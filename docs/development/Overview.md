@@ -57,3 +57,49 @@
 | `src/lib/infrastructure/outbound`                  | Outbound Port adapter declaration                                     |
 | `src/lib/infrastructure/configuration.rs`          | Configuration related bootstrapping                                   |
 | `src/lib/infrastructure/logging.rs`                | Logging related bootstrapping                                         |
+
+## Branch naming and PR title naming
+
+All change types and scopes below match the values enforced by the semantic PR
+gating job in `.github/workflows/ci.yml`
+(`amannn/action-semantic-pull-request`).
+
+### Branch naming
+
+Format: `{type}({scope})/{description}`, kebab-case.
+
+Examples:
+
+- `feature(core)/serve-media`
+- `hotfix(devops)/fix-dockerfile`
+- `docs(agent)/spellcheck-dead`
+
+### PR title naming
+
+Format: `{type}({scope}): {description}` — enforced by CI.
+
+Examples:
+
+- `feature(core): serve media via streaming`
+- `hotfix(devops): fix Dockerfile registry`
+
+### Scopes
+
+| Scope  | Description                            |
+| ------ | -------------------------------------- |
+| core   | Core media server functionality        |
+| agent  | AI/assistant agent features            |
+| devops | CI, builds, Docker, and infrastructure |
+
+### Type prefixes
+
+| Prefix   | Description                                   |
+| -------- | --------------------------------------------- |
+| feature  | New feature, based on the implementation plan |
+| bugfix   | Non-critical bug fixes                        |
+| refactor | Code cleanup/restructure                      |
+| docs     | Documentation changes                         |
+| chore    | Build and maintenance tasks                   |
+| release  | Release version bumps, with the version       |
+| test     | Tests and test improvements                   |
+| hotfix   | Production fixes                              |
