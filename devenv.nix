@@ -30,9 +30,9 @@
     pkgs.sqlx-cli
     multiverse.prettier."3.8.3"
     multiverse.sqlite."3.51.2"
+    multiverse.yamllint."1.37.1"
   ];
 
-  # https://devenv.sh/languages/
   languages.rust = {
     enable = true;
     channel = "stable";
@@ -115,9 +115,20 @@
       pass_filenames = false;
     };
 
+    yamllint = {
+      enable = true;
+      package = multiverse.yamllint."1.37.1";
+    };
+
+    build = {
+      enable = true;
+      entry = "cargo build";
+      pass_filenames = false;
+    };
+
   };
 
-  # Custom Commands
+  # Build Commands
 
   tasks."build:openapi-gen" = {
     exec = "cargo build --bin openapi_gen";
@@ -145,12 +156,12 @@
     description = "Generate HTML coverage report and open it in the browser";
   };
 
-  scripts.server.exec = "cargo run --bin server";
-
   tasks."test:coverage" = {
     exec = "cargo llvm-cov --lib";
     description = "Generate HTML coverage report and open it in the browser";
   };
+
+  # Formatting tasks
 
   tasks."fmt:nix" = {
     exec = "nixfmt devenv.nix";
@@ -194,10 +205,21 @@
     ];
   };
 
+  # Linting
+
   tasks."lint:rust" = {
     exec = "cargo clippy --all-targets --all-features -- -D warnings";
     description = "Lint rust code";
   };
+
+  tasks."lint:yaml" = {
+    exec = "yamllint -c .yamllint .";
+    description = "Lint yaml file";
+  };
+
+  # Launch the Memorium server
+
+  scripts.server.exec = "cargo run --bin server";
 
   processes = {
     docs.exec = "mkdocs serve --dev-addr 0.0.0.0:8000";

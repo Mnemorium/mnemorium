@@ -1,3 +1,4 @@
+---
 site_name: Mnemorium
 
 theme:
@@ -19,11 +20,11 @@ theme:
 nav:
   - Home: index.md
   - Development:
-    - Overview: development/Overview.md
-    - API documentation:
-      - Overview: development/api/Openapi.md
-      - Spec: development/api/Spec.md
-    - Style Guide: development/StyleGuide.md
+      - Overview: development/Overview.md
+      - API documentation:
+          - Overview: development/api/Openapi.md
+          - Spec: development/api/Spec.md
+      - Style Guide: development/StyleGuide.md
 plugins:
   - plantuml:
       puml_url: https://www.plantuml.com/plantuml

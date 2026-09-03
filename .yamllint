@@ -1,0 +1,9 @@
+---
+extends: default
+
+rules:
+  trailing-spaces: disable
+
+ignore: |
+  .devenv/
+  .pre-commit-config.yaml

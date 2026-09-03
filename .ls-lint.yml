@@ -1,3 +1,4 @@
+---
 ls:
   .rs: snake_case
   .py: snake_case
