@@ -4,6 +4,13 @@ inputs:
     url: github:cachix/git-hooks.nix
   nixpkgs:
     url: github:cachix/devenv-nixpkgs/rolling
+  nixpkgs-multiverse:
+    url: github:fzakaria/nixpkgs-multiverse
+  nixpkgs-python:
+    url: github:cachix/nixpkgs-python
+    inputs:
+      nixpkgs:
+        follows: nixpkgs
   rust-overlay:
     url: github:oxalica/rust-overlay
     inputs:

@@ -1,0 +1,16 @@
+target-version = "py314"
+
+line-length = 120
+
+extend-exclude = ["docs", "site", "target", ".devenv"]
+
+[lint]
+
+extend-select = [
+  "E",   # pycodestyle errors
+  "F",   # pyflakes
+  "I",   # import sorting
+  "B",   # bugbear
+  "UP",  # pyupgrade
+  "SIM", # simplification
+]

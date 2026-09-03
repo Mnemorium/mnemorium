@@ -1,0 +1,72 @@
+{
+  "components": {
+    "schemas": {
+      "HealthResponse": {
+        "description": "Service health status.",
+        "properties": {
+          "status": {
+            "description": "Service status.",
+            "example": "ok",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "description": "HTTP API of the Mnemorium service",
+    "license": {
+      "identifier": "MIT",
+      "name": "MIT"
+    },
+    "title": "Mnemorium API",
+    "version": "0.1.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/health": {
+      "get": {
+        "description": "Returns `200` with the current health status when the service is running.",
+        "operationId": "get_health",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            },
+            "description": "Service is healthy"
+          }
+        },
+        "servers": [
+          {
+            "description": "Root of the service, outside /api/v1",
+            "url": "http://0.0.0.0:4080"
+          }
+        ],
+        "summary": "Check service health",
+        "tags": [
+          "system"
+        ]
+      }
+    }
+  },
+  "servers": [
+    {
+      "description": "Local development server",
+      "url": "http://0.0.0.0:4080/api/v1"
+    }
+  ],
+  "tags": [
+    {
+      "description": "System-level endpoints",
+      "name": "system"
+    }
+  ]
+}

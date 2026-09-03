@@ -1,0 +1,40 @@
+site_name: Mnemorium
+
+theme:
+  name: material
+  language: en
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+
+nav:
+  - Home: index.md
+  - Development:
+    - Overview: development/Overview.md
+    - API documentation:
+      - Overview: development/api/Openapi.md
+      - Spec: development/api/Spec.md
+    - Style Guide: development/StyleGuide.md
+plugins:
+  - plantuml:
+      puml_url: https://www.plantuml.com/plantuml
+  - search
+  - neoteroi.mkdocsoad
+
+markdown_extensions:
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences

@@ -8,3 +8,11 @@ devenv.local.yaml
 
 # pre-commit
 .pre-commit-config.yaml
+
+target/
+
+site/
+
+dev.db
+
+.ruff_cache/
