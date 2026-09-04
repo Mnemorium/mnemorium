@@ -55,7 +55,6 @@ get_unwrap = "warn"
 if_then_some_else_none = "warn"
 impl_trait_in_params = "warn"
 indexing_slicing = "warn"
-inline_modules = "warn"
 integer_division = "warn"
 large_include_file = "warn"
 let_underscore_must_use = "warn"
@@ -122,15 +121,14 @@ negative_feature_names = "deny"
 wildcard_dependencies = "deny"
 
 [dependencies]
-sqlx = { version = "0.9.0", features = ["runtime-tokio", "sqlite", "migrate"] }
+sqlx = { version = "0.9.0", features = ["runtime-tokio", "sqlite"] }
 axum = "0.8.9"
 moka = { version = "0.12.16", features = ["sync"] }
-mockall = "0.15.0"
 reqwest = "0.13.4"
 argon2 = "0.6.0"
 utoipa = { version = "5.5.0", features = ["axum_extras"] }
 tracing = "0.1.44"
-tracing-subscriber = "0.3.23"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
 tracing-appender = "0.2.5"
 infer = "0.22.0"
 config = { version = "0.15.25", features = ["yaml"] }
@@ -142,5 +140,10 @@ tokio = { version = "1", features = ["full"] }
 anyhow = "1.0.104"
 
 [dev-dependencies]
+mockall = "0.15.0"
 rstest = "0.26.1"
 wiremock = "0.6.5"
+tempfile = "3"
+
+[build-dependencies]
+sqlx = { version = "0.9.0", features = ["migrate"] }

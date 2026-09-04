@@ -222,7 +222,7 @@
   # Linting
 
   tasks."lint:rust" = {
-    exec = "cargo clippy --all-targets --all-features -- -D warnings";
+    exec = "cargo clippy --all-targets -- -D warnings";
     description = "Lint rust code";
   };
 
@@ -251,9 +251,12 @@
     ];
   };
 
-  # Launch the Memorium server
+  # Scripts
 
-  scripts.server.exec = "cargo run --bin server";
+  # Launch the Memorium server
+  scripts = {
+    server.exec = "cargo run --bin server";
+  };
 
   processes = {
     docs.exec = "mkdocs serve --dev-addr 0.0.0.0:8000";

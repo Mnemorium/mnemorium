@@ -1,6 +1,6 @@
 use std::io::stdout;
 use tracing_appender::rolling::{RollingFileAppender, Rotation};
-use tracing_subscriber::{fmt, layer::SubscriberExt as _, util::SubscriberInitExt as _};
+use tracing_subscriber::{EnvFilter, fmt, layer::SubscriberExt as _, util::SubscriberInitExt as _};
 
 pub fn setup() {
     let file_appender = RollingFileAppender::new(Rotation::DAILY, "logs", "mnemorium.log");
@@ -12,6 +12,7 @@ pub fn setup() {
     let stdout_layer = fmt::layer().with_writer(stdout).with_ansi(false);
 
     tracing_subscriber::registry()
+        .with(EnvFilter::new("debug,sqlx=warn"))
         .with(file_layer)
         .with(stdout_layer)
         .init();

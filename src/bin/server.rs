@@ -3,7 +3,7 @@ use tokio::net::TcpListener;
 use tracing::{error, info};
 
 #[tokio::main]
-async fn main() {
+async fn main() -> Result<(), anyhow::Error> {
     logging::setup();
 
     let app = bootstrap::setup_routes();
@@ -27,4 +27,6 @@ async fn main() {
             error!("Fail to bind TcpListener to port: {}", err);
         }
     }
+
+    Ok(())
 }
