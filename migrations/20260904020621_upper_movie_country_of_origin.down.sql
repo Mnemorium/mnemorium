@@ -1,0 +1,2 @@
+DROP TRIGGER tg_movie_upper_country_of_origin_insert;
+DROP TRIGGER tg_movie_upper_country_of_origin_update;

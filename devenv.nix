@@ -28,6 +28,7 @@
     pkgs.shfmt
     pkgs.taplo
     pkgs.sqlx-cli
+    pkgs.sqlfluff
     multiverse.prettier."3.8.3"
     multiverse.sqlite."3.51.2"
     multiverse.yamllint."1.37.1"
@@ -89,6 +90,13 @@
     #  entry = "cargo llvm-cov --fail-under-functions 80 --fail-under-regions 80 --fail-under-lines 80";
     #  pass_filenames = false;
     #};
+
+    # sql
+    sql = {
+      enable = true;
+      name = "sqlfluff";
+      entry = "sqlfluff lint --dialect sqlite migrations";
+    };
 
     cargo-audit = {
       enable = true;
@@ -194,6 +202,11 @@
     description = "Format markdown code";
   };
 
+  tasks."fmt:sql" = {
+    exec = "sqlfluff format --dialect sqlite migrations";
+    description = "Format sql file";
+  };
+
   tasks."fmt:all" = {
     description = "Run all the Formaters";
     after = [
@@ -216,6 +229,26 @@
   tasks."lint:yaml" = {
     exec = "yamllint -c .yamllint .";
     description = "Lint yaml file";
+  };
+
+  tasks."lint:sql" = {
+    exec = "sqlfluff lint --dialect sqlite migrations";
+    description = "Lint sql file";
+  };
+
+  tasks."lint:python" = {
+    exec = "ruff check .";
+    description = "Lint python code";
+  };
+
+  tasks."lint:all" = {
+    description = "Run all the Linters";
+    after = [
+      "lint:rust"
+      "lint:python"
+      "lint:yaml"
+      "lint:sql"
+    ];
   };
 
   # Launch the Memorium server

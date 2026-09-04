@@ -1,0 +1,2 @@
+DROP TRIGGER tg_audio_upper_codec_insert;
+DROP TRIGGER tg_audio_upper_codec_update;

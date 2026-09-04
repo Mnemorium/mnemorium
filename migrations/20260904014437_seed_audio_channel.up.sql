@@ -1,0 +1,15 @@
+INSERT INTO audio_channel (audio_channel_id, nb_channel, description) VALUES
+('1.0', 1, 'Single audio channel'),
+('2.0', 2, 'Left (L), Right (R)'),
+('2.1', 3, 'Stereo + Subwoofer (LFE)'),
+('3.0', 3, 'Left, Center, Right'),
+('3.1', 4, 'Left, Center, Right + LFE'),
+('4.0', 4, 'Front Left, Front Right, Rear Left, Rear Right'),
+('4.1', 5, '4.0 + LFE'),
+('5.0', 5, 'L, C, R, Surround Left (SL), Surround Right (SR)'),
+('5.1', 6, '5.0 + LFE'),
+('6.1', 7, '5.1 + Rear Center'),
+('7.1', 8, 'L, C, R, SL, SR, Rear Left (RL), Rear Right (RR), LFE'),
+('7.1.2', 10, '7.1 + 2 Height channels'),
+('7.1.4', 12, '7.1 + 4 Height channels'),
+('9.1.6', 16, '9 base channels + LFE + 6 height channels');
