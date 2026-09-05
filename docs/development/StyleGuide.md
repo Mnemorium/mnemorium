@@ -45,6 +45,53 @@ Declare items in this order:
 For the `#[utoipa::path(...)]` declaration contract, see
 [OpenAPI documentation](api/Openapi.md).
 
+### SQL data models
+
+#### Enum for a CHECK constraint
+
+For a column backed by a SQL `CHECK (... IN (...))` constraint, declare the Rust
+enum **before** the model struct, in the same file.
+
+- Name the enum after the attribute it represents, in `UpperCamelCase`, e.g.
+  `Role` for the `role` column of table `app_user` used in model `AppUser`.
+- Derive `sqlx::Type` with `#[sqlx(rename_all = "UPPERCASE")]` to match the
+  uppercase constraint strings required by the SQL section.
+- Name variants in `UpperCamelCase`, one per allowed constraint value.
+
+```rust
+#[derive(Debug, Clone, Copy, PartialEq, Eq, sqlx::Type)]
+#[sqlx(rename_all = "UPPERCASE")]
+pub enum Role {
+    Admin,
+    Standard,
+}
+
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct AppUser {
+    #[sqlx(primary_key)]
+    pub user_id: NumericID,
+    pub role: Role,
+    // ...
+}
+```
+
+#### Alias type for numeric IDs
+
+Use the `NumericID` alias from `domain/alias.rs` for all numeric table columns
+that are identifiers (primary keys, foreign keys) rather than a raw integer
+type.
+
+```rust
+use crate::domain::alias::NumericID;
+
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct AppUser {
+    pub user_id: NumericID,
+    pub credential_id: NumericID,
+    // ...
+}
+```
+
 ### Test conventions
 
 - Name tests `<UnitOfWork>_<Scenario>_<ExpectedResult>`, e.g.

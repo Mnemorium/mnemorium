@@ -115,7 +115,7 @@
     markdownlint = {
       enable = true;
       package = pkgs.markdownlint-cli2;
-      entry = "markdownlint-cli2 'docs/**/*.md'";
+      entry = "markdownlint-cli2 '**/*.md'";
     };
     mkdocs-link = {
       enable = true;
@@ -241,6 +241,11 @@
     description = "Lint python code";
   };
 
+  tasks."lint:md" = {
+    exec = "markdownlint-cli2 '**/*.md'";
+    description = "Lint markdown file";
+  };
+
   tasks."lint:all" = {
     description = "Run all the Linters";
     after = [
@@ -248,6 +253,7 @@
       "lint:python"
       "lint:yaml"
       "lint:sql"
+      "lint:md"
     ];
   };
 

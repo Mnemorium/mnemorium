@@ -24,7 +24,9 @@ nav:
       - API documentation:
           - Overview: development/api/Openapi.md
           - Spec: development/api/Spec.md
+      - Glossary: development/Glossary.md
       - Style Guide: development/StyleGuide.md
+
 plugins:
   - plantuml:
       puml_url: https://www.plantuml.com/plantuml

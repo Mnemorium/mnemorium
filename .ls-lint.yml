@@ -9,3 +9,4 @@ ignore:
   - README.md
   - AGENTS.md
   - docs/index.md
+  - target

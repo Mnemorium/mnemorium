@@ -7,5 +7,10 @@
         },
 
         "MD024": false 
-    }
+    },
+    "ignores": [
+        ".devenv/",
+        "target/"
+    ]
+
 }

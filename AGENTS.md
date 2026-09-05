@@ -13,5 +13,6 @@ Design goals:
 - One Docker container ships the entire backend — no external services.
 - REST-first: clients talk to the server exclusively over HTTP.
 
-The rest of this file (architecture, conventions, commands) is a work in
-progress.
+## Style & Conventions
+
+- Rust and SQL conventions and guidelines live in `docs/development/StyleGuide.md`.
