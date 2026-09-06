@@ -2,7 +2,7 @@ CREATE TABLE user (
     user_id INTEGER NOT NULL,
     role VARCHAR(50) NOT NULL,
     username VARCHAR(100) NOT NULL,
-    email TEXT NOT NULL,
+    email TEXT,
     credential_id INTEGER NOT NULL,
     CONSTRAINT pk_user_user_id PRIMARY KEY (user_id),
     CONSTRAINT uq_user_username UNIQUE (username),

@@ -36,10 +36,18 @@ Test must:
 
 - be `async`;
 - have one or more happy-path tests;
-- test the domain models here — they have no dedicated test of their own;
+- test the domain models here — **they have no dedicated test of their own**
+  (domain services _do_; see below);
 - cover business-rule violations;
 - cover validation errors;
 - cover dependency failures.
 
 Any test that falls outside the scope above (rare situation, cheap coverage)
 must be justified in the documentation.
+
+### Domain service strategy
+
+- Domain services (in `src/lib/domain/service/`) have a dedicated unit test
+  module of their own, living in the same file as the service under test.
+- Test must cover the business rules each service enforces.
+- Domain services are pure — no external dependency, so no mocking.

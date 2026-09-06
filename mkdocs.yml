@@ -22,7 +22,7 @@ nav:
   - Development:
       - Overview: development/Overview.md
       - API documentation:
-          - Overview: development/api/Openapi.md
+          - Overview: development/api/Overview.md
           - Spec: development/api/Spec.md
       - Glossary: development/Glossary.md
       - Style Guide: development/StyleGuide.md

@@ -29,8 +29,9 @@ pub trait UserRepository: Send + Sync {
     /// not an error.
     fn delete(&self, id: NumericID) -> impl Future<Output = Result<bool, RepositoryError>> + Send;
 
-    /// Insert or update `user`.
-    fn save(&self, user: User) -> impl Future<Output = Result<(), RepositoryError>> + Send;
+    /// Insert or update `user`, returning the persisted user with its final
+    /// identifier.
+    fn save(&self, user: User) -> impl Future<Output = Result<User, RepositoryError>> + Send;
 
     /// Search users matching `filter`, returned as `Vec<User>`.
     ///

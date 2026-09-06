@@ -17,6 +17,10 @@ Design goals:
 
 - Rust and SQL conventions and guidelines live in `docs/development/StyleGuide.md`.
 
+## API
+
+- REST and OpenAPI guidelines live in `docs/development/api/Overview.md`.
+
 ## Tests
 
 - Testing guidelines, strategies, and conventions live in

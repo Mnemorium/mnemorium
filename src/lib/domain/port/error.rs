@@ -92,6 +92,19 @@ pub enum ExternalServiceError {
     Unknown(#[source] anyhow::Error),
 }
 
+/// Error returned when a password hashing operation fails.
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
+pub enum PasswordHasherError {
+    /// The password hashing or verification could not complete for a
+    /// non-specific reason.
+    #[error("the password hashing operation could not complete for a non-specific reason")]
+    OperationFailed,
+    /// An unexpected or unmapped error occurred.
+    #[error("an unexpected or unmapped error occurred: {0}")]
+    Unknown(#[source] anyhow::Error),
+}
+
 /// Error returned when a token provider operation fails.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]

@@ -19,7 +19,10 @@ pub enum UserError {
 }
 
 /// Role of a `User`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize, serde::Serialize, utoipa::ToSchema,
+)]
+#[serde(rename_all = "UPPERCASE")]
 #[non_exhaustive]
 pub enum Role {
     Admin,
@@ -29,6 +32,8 @@ pub enum Role {
 /// A user account.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct User {
+    /// Identifier of the credential used to authenticate the user.
+    credential_id: NumericID,
     /// Email address of the user, when set.
     email: Option<String>,
     /// Unique identifier of the user.
@@ -40,6 +45,12 @@ pub struct User {
 }
 
 impl User {
+    /// Return the identifier of the credential used to authenticate the user.
+    #[must_use]
+    pub fn credential_id(&self) -> NumericID {
+        self.credential_id
+    }
+
     /// Return the email, if any.
     #[must_use]
     pub fn email(&self) -> Option<&str> {
@@ -96,11 +107,13 @@ impl User {
         id: NumericID,
         username: String,
         email: Option<String>,
+        credential_id: NumericID,
         role: Role,
     ) -> Result<Self, UserError> {
         let validated_username = Self::validate_username(username)?;
         let validated_email = Self::validate_email(email)?;
         Ok(Self {
+            credential_id,
             email: validated_email,
             id,
             role,

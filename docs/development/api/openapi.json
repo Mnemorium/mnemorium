@@ -1,6 +1,20 @@
 {
   "components": {
     "schemas": {
+      "ErrorBody": {
+        "description": "Standard error payload returned by every failed request.",
+        "properties": {
+          "error": {
+            "description": "Human-readable description of the error.",
+            "example": "An error message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "error"
+        ],
+        "type": "object"
+      },
       "HealthResponse": {
         "description": "Service health status.",
         "properties": {
@@ -14,6 +28,91 @@
           "status"
         ],
         "type": "object"
+      },
+      "RegisterRequest": {
+        "description": "Payload to register a new user.\n\nThe requested `role` is granted only when the authenticated caller is\nallowed to create it: the Root Admin can register `Admin` or `Standard`\nusers, an `Admin` user can register `Standard` users only.",
+        "properties": {
+          "email": {
+            "description": "Email address of the new user, when provided.",
+            "format": "email",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "password": {
+            "description": "Password of the new user; never returned by the API.",
+            "minLength": 8,
+            "type": "string",
+            "writeOnly": true
+          },
+          "role": {
+            "$ref": "#/components/schemas/Role",
+            "description": "Role to grant to the new user."
+          },
+          "username": {
+            "description": "Username of the new user.",
+            "maxLength": 100,
+            "minLength": 4,
+            "type": "string"
+          }
+        },
+        "required": [
+          "password",
+          "role",
+          "username"
+        ],
+        "type": "object"
+      },
+      "RegisterResponse": {
+        "description": "User created by a successful registration.",
+        "properties": {
+          "email": {
+            "description": "Email address of the newly registered user, when one was provided.",
+            "format": "email",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "$ref": "#/components/schemas/u64",
+            "description": "Unique identifier of the newly registered user."
+          },
+          "role": {
+            "$ref": "#/components/schemas/Role",
+            "description": "Role granted to the newly registered user."
+          },
+          "username": {
+            "description": "Username of the newly registered user.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "role",
+          "username"
+        ],
+        "type": "object"
+      },
+      "Role": {
+        "description": "Role of a `User`.",
+        "enum": [
+          "ADMIN",
+          "STANDARD"
+        ],
+        "type": "string"
+      },
+      "u64": {
+        "format": "int64",
+        "minimum": 0,
+        "type": "integer"
+      }
+    },
+    "securitySchemes": {
+      "bearer_auth": {
+        "scheme": "bearer",
+        "type": "http"
       }
     }
   },
@@ -55,6 +154,101 @@
           "system"
         ]
       }
+    },
+    "/identity/register": {
+      "post": {
+        "description": "The Root Admin (user identifier `0`) may register `Admin` or `Standard`\nusers; an `Admin` user may register `Standard` users only; any other role is\nrejected with `403`.\n\n# Errors\n\nReturns [`ApiError`] when the request cannot be completed, mapping the\nuse-case errors to their HTTP responses.",
+        "operationId": "post_register",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegisterResponse"
+                }
+              }
+            },
+            "description": "User registered",
+            "headers": {
+              "Location": {
+                "description": "URI of the newly registered user",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Invalid payload"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Insufficient privileges to register the requested role"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Username or email is already taken"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unexpected error"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ],
+        "summary": "Register a new user",
+        "tags": [
+          "identity"
+        ]
+      }
     }
   },
   "servers": [
@@ -67,6 +261,10 @@
     {
       "description": "System-level endpoints",
       "name": "system"
+    },
+    {
+      "description": "Identity bounded context",
+      "name": "identity"
     }
   ]
 }

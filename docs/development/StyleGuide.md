@@ -43,7 +43,7 @@ Declare items in this order:
   return/parameter/query value.
 
 For the `#[utoipa::path(...)]` declaration contract, see
-[OpenAPI documentation](api/Openapi.md).
+[OpenAPI documentation](api/Overview.md).
 
 ### Error handling
 
