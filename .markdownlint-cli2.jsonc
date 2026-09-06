@@ -10,7 +10,8 @@
     },
     "ignores": [
         ".devenv/",
-        "target/"
+        "target/",
+        ".agents/"
     ]
 
 }

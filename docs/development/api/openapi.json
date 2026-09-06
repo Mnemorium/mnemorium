@@ -29,6 +29,51 @@
         ],
         "type": "object"
       },
+      "LoginRequest": {
+        "description": "Payload to authenticate a user.",
+        "properties": {
+          "password": {
+            "description": "Password used to authenticate.",
+            "type": "string",
+            "writeOnly": true
+          },
+          "username": {
+            "description": "Username of the user to authenticate.",
+            "type": "string",
+            "writeOnly": true
+          }
+        },
+        "required": [
+          "password",
+          "username"
+        ],
+        "type": "object"
+      },
+      "LoginResponse": {
+        "description": "Token issued by a successful authentication.",
+        "properties": {
+          "access_token": {
+            "description": "Token to present in the `Authorization` header of subsequent requests.",
+            "type": "string"
+          },
+          "expires_in": {
+            "description": "Lifetime of the token, in seconds.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "token_type": {
+            "description": "Token type, always `bearer`.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "access_token",
+          "expires_in",
+          "token_type"
+        ],
+        "type": "object"
+      },
       "RegisterRequest": {
         "description": "Payload to register a new user.\n\nThe requested `role` is granted only when the authenticated caller is\nallowed to create it: the Root Admin can register `Admin` or `Standard`\nusers, an `Admin` user can register `Standard` users only.",
         "properties": {
@@ -76,7 +121,7 @@
             ]
           },
           "id": {
-            "$ref": "#/components/schemas/u64",
+            "$ref": "#/components/schemas/i64",
             "description": "Unique identifier of the newly registered user."
           },
           "role": {
@@ -103,9 +148,8 @@
         ],
         "type": "string"
       },
-      "u64": {
+      "i64": {
         "format": "int64",
-        "minimum": 0,
         "type": "integer"
       }
     },
@@ -152,6 +196,68 @@
         "summary": "Check service health",
         "tags": [
           "system"
+        ]
+      }
+    },
+    "/identity/login": {
+      "post": {
+        "description": "The caller presents a username and a password. On success the endpoint\nreturns an access token to present in the `Authorization` header of\nsubsequent requests, together with the number of seconds it stays valid.\n\n# Errors\n\nReturns [`ApiError`] when the request cannot be completed, mapping the\nuse-case errors to their HTTP responses.",
+        "operationId": "post_login",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LoginResponse"
+                }
+              }
+            },
+            "description": "User authenticated"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Invalid payload"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Invalid credentials"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unexpected error"
+          }
+        },
+        "summary": "Authenticate a user",
+        "tags": [
+          "identity"
         ]
       }
     },

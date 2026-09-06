@@ -58,6 +58,35 @@
 | `src/lib/infrastructure/configuration.rs`          | Configuration related bootstrapping                                   |
 | `src/lib/infrastructure/logging.rs`                | Logging related bootstrapping                                         |
 
+## Server lifecycle
+
+The server binary (`src/bin/server.rs`) shuts down gracefully on `SIGINT` and
+`SIGTERM`:
+
+1. The signal stops the listener: new connections are refused.
+2. In-flight requests drain to completion; idle keep-alive connections are
+   closed.
+3. `axum::serve` returns and the process exits with code `0`.
+
+Because the `/health` endpoint starts failing as soon as the drain begins,
+orchestrators stop routing traffic to the instance while existing requests
+finish.
+
+The supervisor controls the hard termination window:
+
+- **Docker**: `docker stop` sends `SIGTERM`, then `SIGKILL` after the grace
+  period (default 10 s). Current endpoints complete well within it; raise the
+  grace (`docker stop --time <seconds>`, or `stop_grace_period` in compose) once
+  long-running uploads or media scans land.
+- **systemd**: `KillSignal=SIGTERM` is the default; size `TimeoutStopSec` to the
+  longest expected drain plus a margin for filesystem syncs
+  (`TimeoutStopSec=120` is a safe starting point on networked storage).
+- **launchd**: use `launchctl bootout` (sends `SIGTERM` and waits); avoid
+  `launchctl kickstart -k`, which sends `SIGKILL` and truncates in-flight I/O.
+
+Note: the `SQLite` pool is not wired into the server yet. When it is, the
+shutdown sequence becomes: signal → drain → `pool.close().await` → exit.
+
 ## Domain model
 
 ```puml
@@ -272,6 +301,16 @@ GalleryItem "1" -- "0..1" Video: References >
 | **Gallery**        | An aggregated collection of visual assets, such as **ImageObjects** and **VideoObjects**. The first one is the default one containings all available **ImageObjects** and **VideoObjects** (other than movie). Deleting item in this **Gallery** will also delete permently from the system |
 | **GalleryItem**    | A position-aware entry within a **Gallery** that references either an **ImageObject** or a **VideoObject**.                                                                                                                                                                                 |
 | **Audio**          | An abstract domain representation of an audio file or a Audio Stream details                                                                                                                                                                                                                |
+
+## Bounded context
+
+| Name          | Description                                                               |
+| ------------- | ------------------------------------------------------------------------- |
+| Identity      | Authentication and identity validation                                    |
+| User          | Managing user records, profiles, lifecycle, and administrative operations |
+| Library       | User's collection of media                                                |
+| Configuration | Manage service configuration                                              |
+| Asset         | Manage files                                                              |
 
 ## Branch naming and PR title naming
 

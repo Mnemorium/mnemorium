@@ -1,4 +1,5 @@
 use axum::Json;
+use axum::extract::rejection::JsonRejection;
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::response::Response;
@@ -50,5 +51,11 @@ impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
         let (status, message) = self.status_and_message();
         (status, Json(json!({ "error": message }))).into_response()
+    }
+}
+
+impl From<JsonRejection> for ApiError {
+    fn from(rejection: JsonRejection) -> Self {
+        Self::BadRequest(rejection.body_text())
     }
 }

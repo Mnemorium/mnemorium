@@ -5,10 +5,13 @@ pub mod handler;
 pub mod middleware;
 
 use handler::get_health::__path_get_health;
+use handler::identity::post_login::__path_post_login;
 use handler::identity::post_register::__path_post_register;
 
 use crate::domain::model::user::Role;
 use crate::infrastructure::inbound::rest::api_error::ErrorBody;
+use crate::infrastructure::inbound::rest::handler::identity::post_login::LoginRequest;
+use crate::infrastructure::inbound::rest::handler::identity::post_login::LoginResponse;
 use crate::infrastructure::inbound::rest::handler::identity::post_register::RegisterRequest;
 use crate::infrastructure::inbound::rest::handler::identity::post_register::RegisterResponse;
 
@@ -43,8 +46,8 @@ impl utoipa::Modify for SecurityAddon {
     servers(
         (url = "http://0.0.0.0:4080/api/v1", description = "Local development server")
     ),
-    paths(get_health, post_register),
-    components(schemas(ErrorBody, RegisterRequest, RegisterResponse, Role)),
+    paths(get_health, post_login, post_register),
+    components(schemas(ErrorBody, LoginRequest, LoginResponse, RegisterRequest, RegisterResponse, Role)),
     tags(
         (name = "system", description = "System-level endpoints"),
         (name = "identity", description = "Identity bounded context")

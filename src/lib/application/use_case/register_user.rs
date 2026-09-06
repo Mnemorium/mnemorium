@@ -207,11 +207,11 @@ mod tests {
         ))
     }
 
-    fn user(id: u64, username: &str, role: Role) -> Result<User, UserError> {
+    fn user(id: i64, username: &str, role: Role) -> Result<User, UserError> {
         User::try_new(id, username.to_owned(), None, 7, role)
     }
 
-    fn command(caller_id: u64, username: &str, role: Role) -> RegisterUserCommand {
+    fn command(caller_id: i64, username: &str, role: Role) -> RegisterUserCommand {
         RegisterUserCommand::new(
             caller_id,
             username.to_owned(),
@@ -231,7 +231,7 @@ mod tests {
             });
     }
 
-    fn existing_users(id: u64, username: &str, role: Role) -> Result<Vec<User>, RepositoryError> {
+    fn existing_users(id: i64, username: &str, role: Role) -> Result<Vec<User>, RepositoryError> {
         user(id, username, role)
             .map(|user| vec![user])
             .map_err(|_| RepositoryError::OperationFailed)

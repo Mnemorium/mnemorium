@@ -10,3 +10,4 @@ ignore:
   - AGENTS.md
   - docs/index.md
   - target
+  - .agents

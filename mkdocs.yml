@@ -7,15 +7,19 @@ theme:
   palette:
     - media: "(prefers-color-scheme: light)"
       scheme: default
+      primary: green
       toggle:
         icon: material/brightness-7
         name: Switch to dark mode
 
     - media: "(prefers-color-scheme: dark)"
       scheme: slate
+      primary: green
       toggle:
         icon: material/brightness-4
         name: Switch to light mode
+  features:
+    - navigation.tracking
 
 nav:
   - Home: index.md
@@ -27,6 +31,7 @@ nav:
       - Glossary: development/Glossary.md
       - Style Guide: development/StyleGuide.md
       - Test: development/Test.md
+      - Use Cases: development/UseCases.md
 
 plugins:
   - plantuml:

@@ -14,7 +14,7 @@ pub enum Role {
 #[derive(Debug, Clone, sqlx::FromRow)]
 pub struct User {
     pub credential_id: NumericID,
-    pub email: String,
+    pub email: Option<String>,
     pub role: Role,
     #[sqlx(primary_key)]
     pub user_id: NumericID,

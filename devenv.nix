@@ -29,6 +29,7 @@
     pkgs.taplo
     pkgs.sqlx-cli
     pkgs.sqlfluff
+    multiverse.nodejs."24.19.0"
     multiverse.prettier."3.8.3"
     multiverse.sqlite."3.51.2"
     multiverse.yamllint."1.37.1"
@@ -53,6 +54,7 @@
         neoteroi-mkdocs==1.2.0
         mkdocs-linkcheck==1.0.6
         ruff==0.16.5
+        requests==2.34.2
       '';
     };
   };
@@ -83,13 +85,13 @@
     # toml
     taplo.enable = true;
 
-    #coverage = {
-    #  enable = true;
+    coverage = {
+      enable = true;
 
-    #  name = "Coverage >= 80%";
-    #  entry = "cargo llvm-cov --fail-under-functions 80 --fail-under-regions 80 --fail-under-lines 80";
-    #  pass_filenames = false;
-    #};
+      name = "Coverage >= 80%";
+      entry = "cargo llvm-cov --fail-under-functions 80 --fail-under-regions 80 --fail-under-lines 80";
+      pass_filenames = false;
+    };
 
     # sql
     sql = {
@@ -168,6 +170,11 @@
   tasks."test:coverage" = {
     exec = "cargo llvm-cov --lib";
     description = "Generate HTML coverage report and open it in the browser";
+  };
+
+  tasks."test:e2e" = {
+    exec = "pytest test/e2e";
+    description = "Run the E2E tests against a fresh Docker container";
   };
 
   # Formatting tasks
@@ -266,6 +273,7 @@
 
   processes = {
     docs.exec = "mkdocs serve --dev-addr 0.0.0.0:8000";
+    openapi-spec.exec = "npx @redocly/cli preview -d docs/development/api --port 8001";
   };
 
 }

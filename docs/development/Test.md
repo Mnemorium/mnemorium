@@ -6,7 +6,8 @@
 - When a unit needs an external dependency, mock it with `mockall`'s
   `#[automock]` attribute.
 - Unit tests cover the HTTP handler and every layer except the outbound port
-  adapters (SQLite, moka cache), which are exercised elsewhere.
+  adapters (SQLite, moka cache), which are exercised in the
+  [Integration test](#integration-test) section.
 - Do not test the payload DTOs (`<Context>Request`, `<Context>Query`,
   `<Context>Response`) in isolation; test the handler that consumes them.
 - Repository query filters must be tested for strictness: the same filter backs
@@ -51,3 +52,48 @@ must be justified in the documentation.
   module of their own, living in the same file as the service under test.
 - Test must cover the business rules each service enforces.
 - Domain services are pure — no external dependency, so no mocking.
+
+## Integration test
+
+- Integration tests exercise the outbound port adapters: the repository (SQLite,
+  moka cache) and the external services.
+- The test module lives in the same file as the code under test.
+
+### Repository
+
+Test must:
+
+- have one happy-path test;
+- verify every constraint — declared in the db schema and reflected in the rest
+  of the project;
+- test every trigger defined in the schema.
+
+When one test covers two rules at once it is acceptable, but it must be
+documented. Any test that falls outside the scope above (rare situation, cheap
+coverage) must be justified in the documentation.
+
+#### SQLite3
+
+- Use an in-memory database — one `:memory:` connection per test, so each test
+  runs against a fresh database.
+- Configure sqlx with the SQLite option that caps the pool at one connection.
+
+#### Moka
+
+- Mock the wrapped repository with `mockall`.
+
+### External Service
+
+- Stub the service with `wiremock`; canned responses come from golden files.
+- Test every possible server response — including failures such as `Timeout`.
+- The test module lives in the same file as the client under test. Reformat the
+  file when needed so the test module stays clear.
+
+## E2E test
+
+- Tests are written in Python with `pytest`.
+- Tests live under `test/e2e/`.
+- One file per use case, matching an entry in the
+  [use case catalog](UseCases.md).
+- One folder per bounded context, as listed in the
+  [Bounded context section of the Overview](Overview.md#bounded-context).

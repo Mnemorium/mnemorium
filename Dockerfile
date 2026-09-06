@@ -18,6 +18,8 @@ FROM alpine:3.21
 
 WORKDIR /app
 
+USER mnemorium
+
 COPY --from=builder /app/server /usr/local/bin/server
 
 EXPOSE 4080
