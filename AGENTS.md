@@ -16,3 +16,8 @@ Design goals:
 ## Style & Conventions
 
 - Rust and SQL conventions and guidelines live in `docs/development/StyleGuide.md`.
+
+## Tests
+
+- Testing guidelines, strategies, and conventions live in
+  `docs/development/Test.md`.

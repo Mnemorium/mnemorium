@@ -1,2 +1,2 @@
-DROP TRIGGER tg_app_user_delete_root_admin;
-DROP TRIGGER tg_app_user_update_root_admin;
+DROP TRIGGER tg_user_delete_root_admin;
+DROP TRIGGER tg_user_update_root_admin;

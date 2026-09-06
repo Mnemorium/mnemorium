@@ -9,6 +9,6 @@ CREATE TABLE music_playlist (
     ),
     CONSTRAINT fk_music_playlist_user FOREIGN KEY (
         user_id
-    ) REFERENCES app_user (user_id),
+    ) REFERENCES user (user_id),
     CONSTRAINT chk_music_playlist_is_public CHECK (is_public IN (0, 1))
 );

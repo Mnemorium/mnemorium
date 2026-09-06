@@ -45,6 +45,168 @@ Declare items in this order:
 For the `#[utoipa::path(...)]` declaration contract, see
 [OpenAPI documentation](api/Openapi.md).
 
+### Error handling
+
+Errors follow a layered model: one error type per role, each translating to the
+next as it crosses an architectural boundary.
+
+- **`ApiError`** — declared in
+  `src/lib/infrastructure/inbound/rest/api_error.rs`. Its variants map one to
+  one to HTTP status codes (e.g. `Conflict`, `BadRequest`,
+  `InternalServerError`). It is **not** derived with `thiserror`; it is an HTTP
+  transport concern, not a domain error.
+- **Domain error** — for failure when initialising or updating a domain model.
+  Declared **before the model struct, in the same file** as the model, e.g. in
+  `src/lib/domain/model/user.rs`.
+- **Use Case error** — one enum per use case, declared in
+  `src/lib/application/port`. It must have:
+  - an `Unknown(_)` variant carrying the underlying error, and
+  - an invalid-parameter variant (e.g. `InvalidEmail`) describing invalid input.
+- **`thiserror`** is used for the **Use Case**, **Domain**, and **Port** error
+  enums. It is **not** used for `ApiError`.
+- **Port errors** (Repository, External Service) are declared in
+  `src/lib/domain/port/error.rs`. They do **not** map directly to a use-case
+  error; the use case translates them.
+- **`NotFound` is not an error.** A missing entity is a valid outcome and is
+  returned as `Option`/`None` (or a corresponding non-error type), never as an
+  error variant.
+
+#### Domain error
+
+Declare the error enum before the model struct, in the same file.
+
+```rust
+#[derive(Debug, thiserror::Error)]
+pub enum CreateUserError {
+    #[error("email has an invalid format")]
+    InvalidEmail,
+    #[error("an unknown error occurred: {0}")]
+    Unknown(#[source] anyhow::Error),
+}
+
+pub struct User {
+    // ...
+}
+```
+
+#### Getter and setter
+
+Accessors are named after the field they expose.
+
+- **Constructor**: `new` when infallible, `try_new` when it can fail; it returns
+  `Result<Self, _>` and performs validation.
+- **Getter**: `<field>(&self) -> <field type>`. Return a borrowed reference
+  (`&str`, `Option<&str>`) or a `Copy` value type — never an owned clone.
+- **Setter**: `set_<field>(&mut self, <value>)`. Return `Result<(), _>` when the
+  field is validated, `()` otherwise.
+
+```rust
+impl User {
+    pub fn try_new(username: String) -> Result<Self, UserError> {
+        let username = Self::validate_username(username)?;
+        Ok(Self { username })
+    }
+
+    #[must_use]
+    pub fn username(&self) -> &str {
+        &self.username
+    }
+
+    pub fn set_username(&mut self, username: String) -> Result<(), UserError> {
+        self.username = Self::validate_username(username)?;
+        Ok(())
+    }
+}
+```
+
+Note: reject-invalid-then-assign. A setter validates the new value, assigns only
+on success, and reports the cause through the domain error enum when it fails.
+
+#### Use Case error
+
+Declared in `src/lib/application/port`, it always exposes an `Unknown(_)`
+variant and one or more invalid-parameter variants.
+
+```rust
+#[derive(Debug, thiserror::Error)]
+pub enum CreateUserError {
+    #[error("a user with this email already exists")]
+    UserAlreadyExists,
+    #[error("email has an invalid format")]
+    InvalidEmail,
+    #[error("an unknown error occurred: {0}")]
+    Unknown(#[source] anyhow::Error),
+}
+```
+
+#### Mapping use-case error to API error
+
+Each rest handler file declares the mapping from its use-case error to the
+`ApiError`:
+
+```rust
+impl From<CreateUserError> for ApiError {
+    fn from(err: CreateUserError) -> Self {
+        match err {
+            CreateUserError::UserAlreadyExists => ApiError::Conflict,
+            CreateUserError::InvalidEmail => ApiError::BadRequest,
+            CreateUserError::Unknown(_) => ApiError::InternalServerError,
+        }
+    }
+}
+```
+
+#### ApiError to axum response
+
+`ApiError` implements `IntoResponse`, converting to the corresponding HTTP
+status code and the standard error body.
+
+#### Error public payload
+
+Every error response carries the same body:
+
+```json
+{
+  "error": "An error message"
+}
+```
+
+#### Port error
+
+Port errors are translated into use-case errors by the use case, never consumed
+directly by the HTTP adapter.
+
+##### Repository
+
+| Error                  | Description                                                                                                               |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| AlreadyExist           | The entity already exists and cannot be created again. Typically caused by duplicate business keys or unique constraints. |
+| Conflict               | The operation cannot be completed because the current state of the data conflicts with the requested action.              |
+| ConcurrencyConflict    | The operation failed due to a concurrent modification of the same entity (for example, optimistic locking failure).       |
+| DataIntegrityViolation | The operation would violate a data integrity rule or constraint.                                                          |
+| ValidationFailed       | The provided data does not satisfy validation rules required by the repository.                                           |
+| OperationFailed        | The repository could not complete the requested operation for a non-specific reason.                                      |
+| Timeout                | The operation exceeded the allowed execution time.                                                                        |
+| Unavailable            | The repository or underlying datastore is currently unavailable.                                                          |
+| Unknown                | An unexpected or unmapped error occurred.                                                                                 |
+
+##### External Service
+
+| Error                  | Description                                                                                  |
+| ---------------------- | -------------------------------------------------------------------------------------------- |
+| Unauthorized           | Authentication is required or the provided credentials are invalid.                          |
+| Forbidden              | The caller is authenticated but does not have permission to perform the requested operation. |
+| RateLimited            | The external service rejected the request because a usage limit was exceeded.                |
+| Timeout                | The external service did not respond within the expected time.                               |
+| Unavailable            | The external service is temporarily unavailable or unreachable.                              |
+| CommunicationFailure   | A network, protocol, or transport-level error occurred while communicating with the service. |
+| SerializationFailure   | The request could not be properly serialized before being sent to the service.               |
+| DeserializationFailure | The service response could not be parsed or converted into the expected format.              |
+| InvalidRequest         | The request was rejected because it contains invalid or missing information.                 |
+| DependencyFailure      | The service failed due to a problem with one of its own dependencies.                        |
+| RetryableFailure       | A transient error occurred and the operation may succeed if retried.                         |
+| Unknown                | An unexpected or unmapped error occurred.                                                    |
+
 ### SQL data models
 
 #### Enum for a CHECK constraint
@@ -53,7 +215,7 @@ For a column backed by a SQL `CHECK (... IN (...))` constraint, declare the Rust
 enum **before** the model struct, in the same file.
 
 - Name the enum after the attribute it represents, in `UpperCamelCase`, e.g.
-  `Role` for the `role` column of table `app_user` used in model `AppUser`.
+  `Role` for the `role` column of table `user` used in model `User`.
 - Derive `sqlx::Type` with `#[sqlx(rename_all = "UPPERCASE")]` to match the
   uppercase constraint strings required by the SQL section.
 - Name variants in `UpperCamelCase`, one per allowed constraint value.
@@ -67,7 +229,7 @@ pub enum Role {
 }
 
 #[derive(Debug, Clone, sqlx::FromRow)]
-pub struct AppUser {
+pub struct User {
     #[sqlx(primary_key)]
     pub user_id: NumericID,
     pub role: Role,
@@ -85,7 +247,7 @@ type.
 use crate::domain::alias::NumericID;
 
 #[derive(Debug, Clone, sqlx::FromRow)]
-pub struct AppUser {
+pub struct User {
     pub user_id: NumericID,
     pub credential_id: NumericID,
     // ...
@@ -224,9 +386,10 @@ A use case trait file declares, in order:
   casing or quoted identifiers (e.g. `"UserId"`).
 - Use clear, descriptive English words. Avoid obscure abbreviations (e.g. prefer
   `customer_number` over `cust_num`).
-- Never use SQL reserved words (e.g. `user`, `order`, `group`, `date`, `select`)
-  as object or column names without an identifying prefix or suffix (e.g.
-  `app_user`, `purchase_order`, `created_at`).
+- Never use SQL reserved words (e.g. `order`, `group`, `date`, `select`) as
+  object or column names without an identifying prefix or suffix (e.g.
+  `purchase_order`, `created_at`). Exception: SQLite accepts a few ANSI SQL
+  reserved words (e.g. `user`) as identifiers, so they are allowed.
 - Use only standard ASCII alphanumeric characters (`a-z`, `0-9`) and underscores
   (`_`). No spaces, hyphens, or special symbols.
 - Enum constraint strings must be in uppercase.

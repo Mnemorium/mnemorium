@@ -9,7 +9,7 @@ CREATE TABLE file (
     CONSTRAINT pk_file_file_id PRIMARY KEY (file_id),
     CONSTRAINT uq_file_path UNIQUE (path),
     CONSTRAINT uq_file_md5_integrity UNIQUE (md5_integrity),
-    CONSTRAINT fk_file_user FOREIGN KEY (user_id) REFERENCES app_user (user_id),
+    CONSTRAINT fk_file_user FOREIGN KEY (user_id) REFERENCES user (user_id),
     CONSTRAINT fk_file_mime_type FOREIGN KEY (
         mime_type_id
     ) REFERENCES mime_type (mime_type_id),

@@ -69,7 +69,6 @@ missing_trait_methods = "warn"
 missing_docs_in_private_items = "warn"
 mixed_read_write_in_expression = "warn"
 mod_module_files = "warn"
-module_name_repetitions = "warn"
 multiple_unsafe_ops_per_block = "warn"
 mutex_atomic = "warn"
 mutex_integer = "warn"
@@ -99,7 +98,6 @@ shadow_same = "warn"
 shadow_unrelated = "warn"
 single_call_fn = "warn"
 single_char_lifetime_names = "warn"
-std_instead_of_alloc = "warn"
 str_to_string = "warn"
 string_add = "warn"
 string_lit_chars_any = "warn"
@@ -121,7 +119,7 @@ negative_feature_names = "deny"
 wildcard_dependencies = "deny"
 
 [dependencies]
-sqlx = { version = "0.9.0", features = ["runtime-tokio", "sqlite"] }
+sqlx = { version = "0.9.0", features = ["runtime-tokio", "sqlite", "chrono"] }
 axum = "0.8.9"
 moka = { version = "0.12.16", features = ["sync"] }
 reqwest = "0.13.4"
@@ -138,6 +136,9 @@ thiserror = "2.0.20"
 md-5 = "0.11.0"
 tokio = { version = "1", features = ["full"] }
 anyhow = "1.0.104"
+email_address = "0.2.9"
+chrono = "0.4.45"
+jsonwebtoken = "11.0.0"
 
 [dev-dependencies]
 mockall = "0.15.0"

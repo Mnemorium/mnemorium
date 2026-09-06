@@ -1,13 +1,13 @@
-CREATE TRIGGER tg_app_user_delete_root_admin
-BEFORE DELETE ON app_user
+CREATE TRIGGER tg_user_delete_root_admin
+BEFORE DELETE ON user
 FOR EACH ROW
 WHEN old.user_id = 0
 BEGIN
     SELECT RAISE(ABORT, 'cannot delete root admin');
 END;
 
-CREATE TRIGGER tg_app_user_update_root_admin
-BEFORE UPDATE ON app_user
+CREATE TRIGGER tg_user_update_root_admin
+BEFORE UPDATE ON user
 FOR EACH ROW
 WHEN old.user_id = 0
 BEGIN

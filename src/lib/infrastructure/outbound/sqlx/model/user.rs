@@ -1,7 +1,7 @@
 use crate::domain::alias::NumericID;
 
-/// Role of an application user, matching the `chk_app_user_role` check
-/// constraint in the `app_user` table.
+/// Role of an application user, matching the `chk_user_role` check
+/// constraint in the `user` table.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, sqlx::Type)]
 #[sqlx(rename_all = "UPPERCASE")]
 #[non_exhaustive]
@@ -10,9 +10,9 @@ pub enum Role {
     Standard,
 }
 
-/// Data model for the `app_user` table.
+/// Data model for the `user` table.
 #[derive(Debug, Clone, sqlx::FromRow)]
-pub struct AppUser {
+pub struct User {
     pub credential_id: NumericID,
     pub email: String,
     pub role: Role,

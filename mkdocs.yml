@@ -26,6 +26,7 @@ nav:
           - Spec: development/api/Spec.md
       - Glossary: development/Glossary.md
       - Style Guide: development/StyleGuide.md
+      - Test: development/Test.md
 
 plugins:
   - plantuml:

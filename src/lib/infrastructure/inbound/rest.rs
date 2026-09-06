@@ -1,6 +1,7 @@
 pub mod api_error;
 pub mod bootstrap;
 pub mod handler;
+pub mod middleware;
 
 use handler::get_health::__path_get_health;
 

@@ -1,1 +1,1 @@
-pub type NumericID = i64;
+pub type NumericID = u64;
