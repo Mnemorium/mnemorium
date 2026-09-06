@@ -1,6 +1,8 @@
 use std::future::pending;
 use std::sync::Arc;
 
+use mnemorium::application::port::initialize_root_admin::InitializeRootAdminUseCase as _;
+use mnemorium::application::use_case::initialize_root_admin::InitializeRootAdmin;
 use mnemorium::application::use_case::login_user::LoginUser as LoginUserUseCase;
 use mnemorium::application::use_case::register_user::RegisterUser;
 use mnemorium::infrastructure::inbound::rest::app_state::AppState;
@@ -8,6 +10,7 @@ use mnemorium::infrastructure::inbound::rest::bootstrap;
 use mnemorium::infrastructure::logging;
 use mnemorium::infrastructure::outbound::argon2::password_hasher::Argon2PasswordHasher;
 use mnemorium::infrastructure::outbound::jwt::token_provider::JwtTokenProvider;
+use mnemorium::infrastructure::outbound::random::password_generator::RandomPasswordGenerator;
 use mnemorium::infrastructure::outbound::sqlx::credential_repository::SqlxCredentialRepository;
 use mnemorium::infrastructure::outbound::sqlx::sqlite3::init_db;
 use mnemorium::infrastructure::outbound::sqlx::user_repository::SqlxUserRepository;
@@ -33,6 +36,12 @@ async fn main() -> Result<(), anyhow::Error> {
         Arc::clone(&credential_repository),
         Arc::clone(&password_hasher),
     ));
+    let initialize_root_admin = Arc::new(InitializeRootAdmin::new(
+        Arc::clone(&user_repository),
+        Arc::clone(&credential_repository),
+        Arc::clone(&password_hasher),
+        Arc::new(RandomPasswordGenerator::new()),
+    ));
     let token_provider = Arc::new(JwtTokenProvider::new());
     let login_user = Arc::new(LoginUserUseCase::new(
         user_repository,
@@ -40,6 +49,15 @@ async fn main() -> Result<(), anyhow::Error> {
         password_hasher,
         Arc::clone(&token_provider),
     ));
+
+    match initialize_root_admin.execute().await {
+        Ok(Some(response)) => info!(
+            "Root admin initialized; use the default password to authenticate and change it: {}",
+            response.default_password()
+        ),
+        Ok(None) => info!("Root admin already initialized"),
+        Err(error) => return Err(error.into()),
+    }
 
     let state = AppState::new(register_user, login_user, token_provider);
 

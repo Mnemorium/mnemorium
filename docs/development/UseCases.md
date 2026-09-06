@@ -164,3 +164,72 @@ credentials and gain access to authorized features and resources.
 
 - The user holds a valid token granting access to authorized features and
   resources.
+
+## UC-003 - Initialize Root Admin
+
+### Description
+
+On the first runtime the system creates the Root Admin account, issues and logs
+a default password to standard output, and lets the Root Admin replace it with a
+personal password. The default password stops being revealed once it has been
+changed.
+
+### Primary actor
+
+- Root Admin
+
+### Pre condition(s)
+
+- First-Time Admin Authentication is enabled in configuration.
+- The default password corresponding to the Root Admin account has not been
+  replaced yet.
+
+### Trigger(s)
+
+- Start of system runtime while the configuration still enables First-Time Admin
+  Authentication.
+
+### Bounded context(s)
+
+- Identity
+- User
+- Configuration
+
+### Business rules
+
+- The Root Admin account is created with a random default password when no Root
+  Admin exists.
+- The default password is written to standard output only while the Root Admin
+  still uses it.
+- The new password must be at least 8 characters long and contain at least one
+  symbol.
+
+### Happy path
+
+1. The system starts with First-Time Admin Authentication enabled.
+2. The system checks whether a Root Admin account exists; none does, so the
+   system creates the account with a generated default password.
+3. The system logs the default password to standard output.
+4. The Root Admin submits an authentication request carrying the default
+   password and a new password.
+5. The system verifies the default password against the stored hash.
+6. The system validates the new password against the business rules.
+7. The system hashes the new password, replaces the credential, and the default
+   password stops being logged.
+8. The system issues a token and returns it with the updated account.
+
+### Alternative flow
+
+- 2a. A Root Admin already exists: the system stops at step 1 and the
+  functionality stays inactive — no new account and no logged password.
+- 5a. Bad password: the default password does not match the stored hash; the
+  system rejects the request.
+- 6a. The new password violates the business rules; the system rejects the
+  request.
+
+### Post condition(s)
+
+- A Root Admin account exists in the system.
+- The Root Admin holds a valid token and a personal credential.
+- The default password is no longer valid and is no longer shown in the standard
+  output while the configuration has First-Time Admin Authentication enabled.

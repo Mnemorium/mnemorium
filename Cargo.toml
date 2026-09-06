@@ -140,6 +140,7 @@ email_address = { version = "0.2.9", default-features = false }
 chrono = "0.4.45"
 jsonwebtoken = { version = "11.0.0", features = ["aws_lc_rs"] }
 tower = "0.5.3"
+rand = "0.10.2"
 
 [dev-dependencies]
 mockall = "0.15.0"

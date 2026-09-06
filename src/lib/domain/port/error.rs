@@ -105,6 +105,18 @@ pub enum PasswordHasherError {
     Unknown(#[source] anyhow::Error),
 }
 
+/// Error returned when a password generation operation fails.
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
+pub enum PasswordGeneratorError {
+    /// The password generation could not complete for a non-specific reason.
+    #[error("the password generation operation could not complete for a non-specific reason")]
+    OperationFailed,
+    /// An unexpected or unmapped error occurred.
+    #[error("an unexpected or unmapped error occurred: {0}")]
+    Unknown(#[source] anyhow::Error),
+}
+
 /// Error returned when a token provider operation fails.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
