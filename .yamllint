@@ -3,7 +3,9 @@ extends: default
 
 rules:
   trailing-spaces: disable
-
+  truthy: disable
 ignore: |
   .devenv/
   .pre-commit-config.yaml
+  codeql-rust-db/
+  default.yaml 

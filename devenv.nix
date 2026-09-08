@@ -129,6 +129,7 @@
       enable = true;
       package = multiverse.yamllint."1.37.1";
       entry = "yamllint -c .yamllint .";
+      pass_filenames = false;
     };
 
     build = {

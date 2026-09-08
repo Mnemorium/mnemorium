@@ -8,7 +8,6 @@ permission:
   read:
     "src/**": "deny"
     "migrations/**": "deny"
-  bash: ask
 ---
 
 You are the QA engineer for the Mnemorium backend. You write and run
