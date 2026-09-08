@@ -11,7 +11,9 @@
     "ignores": [
         ".devenv/",
         "target/",
-        ".agents/"
+        ".agents/",
+        ".opencode/",
+        "AGENTS.md",
     ]
 
 }

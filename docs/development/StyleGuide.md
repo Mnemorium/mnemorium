@@ -354,12 +354,17 @@ Do not add `Clone` just for frameworks — prefer sharing through `Arc<R>`.
 
 ### Repository Method
 
-| Name                                 | Action        |
-| ------------------------------------ | ------------- |
-| `save(domain: DomainSpecificObject)` | Insert/Update |
-| `delete(id: DomainSpecificId)`       | Delete        |
-| `search(filter: &SomeFilter)`        | Query         |
+| Name                                   | Action                                      |
+| -------------------------------------- | ------------------------------------------- |
+| `create(domain: DomainSpecificObject)` | Insert (identity assigned by the datastore) |
+| `save(domain: DomainSpecificObject)`   | Insert/Update (upsert by identity)          |
+| `delete(id: DomainSpecificId)`         | Delete                                      |
+| `search(filter: &SomeFilter)`          | Query                                       |
 
+- `create` inserts a new aggregate and never binds identity columns: the
+  datastore auto-increments them and `create` returns the aggregate with its
+  final identifier.
+- `save` upserts an existing aggregate targeted by its identifier.
 - Trait named `<Aggregate>Repository`, e.g. `NoteRepository`.
 - Implementation named `<Tech><Aggregate>Repository`, e.g. `SqlxNoteRepository`.
 

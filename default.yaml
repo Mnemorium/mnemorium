@@ -1,0 +1,8 @@
+security:
+  jwt:
+    secret: b31cda8b8bfa09a9efc77e3515129e11faac45c86cb3ba6e5f4172f126e5f741
+    ttl: 3600
+  pepper: 84f6177b99ec15736679f95fc51fe4906634dcfa65d421a530934152253d4753
+sqlite3:
+  max_connections: 1
+  path: mnemorium.db

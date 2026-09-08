@@ -5,8 +5,9 @@ use mnemorium::application::port::initialize_root_admin::InitializeRootAdminUseC
 use mnemorium::application::use_case::initialize_root_admin::InitializeRootAdmin;
 use mnemorium::application::use_case::login_user::LoginUser as LoginUserUseCase;
 use mnemorium::application::use_case::register_user::RegisterUser;
+use mnemorium::infrastructure::configuration::Configuration;
 use mnemorium::infrastructure::inbound::rest::app_state::AppState;
-use mnemorium::infrastructure::inbound::rest::bootstrap;
+use mnemorium::infrastructure::inbound::rest::handler;
 use mnemorium::infrastructure::logging;
 use mnemorium::infrastructure::outbound::argon2::password_hasher::Argon2PasswordHasher;
 use mnemorium::infrastructure::outbound::jwt::token_provider::JwtTokenProvider;
@@ -25,12 +26,20 @@ use tracing::{error, info};
 async fn main() -> Result<(), anyhow::Error> {
     logging::setup();
 
-    // TODO: use configuration values
-    let pool = init_db("mnemorium.db", 1).await?;
+    let configuration = Configuration::try_new().await?;
+
+    let pool = init_db(
+        &configuration.sqlite3.path,
+        configuration.sqlite3.max_connections,
+    )
+    .await?;
 
     let user_repository = Arc::new(SqlxUserRepository::new(pool.clone()));
     let credential_repository = Arc::new(SqlxCredentialRepository::new(pool));
-    let password_hasher = Arc::new(Argon2PasswordHasher::new());
+
+    let password_hasher = Arc::new(Argon2PasswordHasher::new(
+        configuration.security.pepper.as_bytes().to_vec(),
+    ));
     let register_user = Arc::new(RegisterUser::new(
         Arc::clone(&user_repository),
         Arc::clone(&credential_repository),
@@ -42,7 +51,10 @@ async fn main() -> Result<(), anyhow::Error> {
         Arc::clone(&password_hasher),
         Arc::new(RandomPasswordGenerator::new()),
     ));
-    let token_provider = Arc::new(JwtTokenProvider::new());
+    let token_provider = Arc::new(JwtTokenProvider::new(
+        configuration.security.jwt.secret.clone(),
+        configuration.security.jwt.ttl,
+    ));
     let login_user = Arc::new(LoginUserUseCase::new(
         user_repository,
         credential_repository,
@@ -50,9 +62,13 @@ async fn main() -> Result<(), anyhow::Error> {
         Arc::clone(&token_provider),
     ));
 
+    #[expect(
+        clippy::print_stdout,
+        reason = "the root admin default password is a sensitive one-time credential; it must be printed to stdout only and never written to the file-based logs"
+    )]
     match initialize_root_admin.execute().await {
-        Ok(Some(response)) => info!(
-            "Root admin initialized; use the default password to authenticate and change it: {}",
+        Ok(Some(response)) => println!(
+            "Root admin initialized; use the default password to authenticate and change it: '{}'",
             response.default_password()
         ),
         Ok(None) => info!("Root admin already initialized"),
@@ -61,7 +77,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     let state = AppState::new(register_user, login_user, token_provider);
 
-    let app = bootstrap::setup_routes(&state);
+    let app = handler::setup_routes(&state);
 
     info!("Starting Mnemorium server");
 

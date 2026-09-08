@@ -11,3 +11,5 @@ ignore:
   - docs/index.md
   - target
   - .agents
+  - .opencode
+  - .pytest_cache

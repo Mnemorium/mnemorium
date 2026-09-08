@@ -27,6 +27,27 @@ impl SqlxUserRepository {
 }
 
 impl UserRepository for SqlxUserRepository {
+    async fn create(&self, user: User) -> Result<User, RepositoryError> {
+        let row = sqlx::query_as::<_, SqlxUser>(
+            "INSERT INTO user (credential_id, email, role, username)
+            VALUES (?1, ?2, ?3, ?4)
+            RETURNING
+                user_id,
+                credential_id,
+                email,
+                role,
+                username",
+        )
+        .bind(user.credential_id())
+        .bind(user.email())
+        .bind(sqlx_role(user.role()))
+        .bind(user.username())
+        .fetch_one(&self.pool)
+        .await?;
+
+        domain_user(row)
+    }
+
     async fn delete(&self, id: NumericID) -> Result<bool, RepositoryError> {
         let result = sqlx::query("DELETE FROM user WHERE user_id = ?")
             .bind(id)
@@ -207,6 +228,55 @@ mod tests {
         assert_eq!(persisted.role(), Role::Standard);
         assert_eq!(found.len(), 1);
         assert_eq!(found.first(), Some(&expected));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn create_assigns_final_identifier_and_round_trips() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let repository = repo().await?;
+        seed_credential(&repository.pool, 1).await?;
+        let pending = user(0, "alice", Some("alice@example.com"), 1, Role::Standard)?;
+
+        // Act
+        let persisted = repository.create(pending).await?;
+        let found = repository
+            .search(&UserFilter {
+                id: Some(persisted.id()),
+                ..UserFilter::default()
+            })
+            .await?;
+
+        // Assert
+        assert_ne!(
+            persisted.id(),
+            0,
+            "a new user must receive a real identifier"
+        );
+        assert_eq!(persisted.username(), "alice");
+        assert_eq!(persisted.email(), Some("alice@example.com"));
+        assert_eq!(persisted.credential_id(), 1);
+        assert_eq!(persisted.role(), Role::Standard);
+        assert_eq!(found.first(), Some(&persisted));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn create_duplicate_username_returns_already_exist() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let repository = repo().await?;
+        seed_credential(&repository.pool, 1).await?;
+        repository
+            .create(user(0, "bobby", None, 1, Role::Standard)?)
+            .await?;
+
+        // Act
+        let result = repository
+            .create(user(0, "bobby", None, 1, Role::Standard)?)
+            .await;
+
+        // Assert
+        assert!(matches!(result, Err(RepositoryError::AlreadyExist)));
         Ok(())
     }
 

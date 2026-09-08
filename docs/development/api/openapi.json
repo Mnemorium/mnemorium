@@ -86,8 +86,9 @@
             ]
           },
           "password": {
-            "description": "Password of the new user; never returned by the API.",
+            "description": "Password of the new user; never returned by the API.\n\nMust be at least 8 characters long and contain at least one symbol\n(a non-alphanumeric character).",
             "minLength": 8,
+            "pattern": "[^A-Za-z0-9]",
             "type": "string",
             "writeOnly": true
           },

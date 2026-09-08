@@ -17,9 +17,16 @@ Design goals:
 
 - Rust and SQL conventions and guidelines live in `docs/development/StyleGuide.md`.
 
+## Use Cases
+
+- The catalog of use cases and their conventions lives in
+  `docs/development/UseCases.md`; each use case maps to one file in
+  `src/lib/application/use_case/`.
+
 ## API
 
 - REST and OpenAPI guidelines live in `docs/development/api/Overview.md`.
+- The OpenAPI specification is generated from source to `docs/development/api/openapi.json`; regenerate it with `cargo run --bin openapi_gen` (see `Overview.md` for details).
 
 ## Tests
 

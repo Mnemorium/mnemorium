@@ -129,7 +129,7 @@ impl<R: UserRepository, C: CredentialRepository, P: PasswordHasher> RegisterUser
             let pending_credential = Credential::try_new(0, password_hash, Utc::now().naive_utc())
                 .map_err(|error| RegisterUserError::Unknown(error.into()))?;
             let credential = credential_repository
-                .save(pending_credential)
+                .create(pending_credential)
                 .await
                 .map_err(|error| RegisterUserError::Unknown(error.into()))?;
 
@@ -142,7 +142,7 @@ impl<R: UserRepository, C: CredentialRepository, P: PasswordHasher> RegisterUser
                     }
                 };
 
-            let user = match user_repository.save(pending_user).await {
+            let user = match user_repository.create(pending_user).await {
                 Ok(user) => user,
                 Err(error) => {
                     drop(credential_repository.delete(credential.id()).await);
@@ -254,11 +254,11 @@ mod tests {
             .times(1)
             .returning(|_| Box::pin(async { Ok("hashed-password".to_owned()) }));
         credential_repository
-            .expect_save()
+            .expect_create()
             .times(1)
             .returning(|credential| Box::pin(async { Ok(credential) }));
         user_repository
-            .expect_save()
+            .expect_create()
             .times(1)
             .returning(|user| Box::pin(async { Ok(user) }));
     }
@@ -581,7 +581,7 @@ mod tests {
                 .times(1)
                 .returning(|_| Box::pin(async { Ok("hashed-password".to_owned()) }));
             credential_repository
-                .expect_save()
+                .expect_create()
                 .times(1)
                 .returning(|_| Box::pin(async { Err(RepositoryError::OperationFailed) }));
             Ok(())
@@ -607,7 +607,7 @@ mod tests {
                 .times(1)
                 .returning(|_| Box::pin(async { Ok("hashed-password".to_owned()) }));
             credential_repository
-                .expect_save()
+                .expect_create()
                 .times(1)
                 .returning(|credential| Box::pin(async { Ok(credential) }));
             credential_repository
@@ -615,7 +615,7 @@ mod tests {
                 .times(1)
                 .returning(|_| Box::pin(async { Ok(true) }));
             user_repository
-                .expect_save()
+                .expect_create()
                 .times(1)
                 .returning(|_| Box::pin(async { Err(RepositoryError::OperationFailed) }));
             Ok(())

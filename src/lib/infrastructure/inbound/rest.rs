@@ -1,6 +1,5 @@
 pub mod api_error;
 pub mod app_state;
-pub mod bootstrap;
 pub mod handler;
 pub mod middleware;
 

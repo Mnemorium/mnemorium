@@ -6,6 +6,7 @@ use crate::application::port::login_user::LoginUserCommand;
 use crate::application::port::login_user::LoginUserError;
 use crate::application::port::login_user::LoginUserResponse;
 use crate::application::port::login_user::LoginUserUseCase;
+use crate::domain::port::credential_repository::CredentialFilter;
 use crate::domain::port::credential_repository::CredentialRepository;
 use crate::domain::port::password_hasher::PasswordHasher;
 use crate::domain::port::token_provider::TokenProvider;
@@ -73,9 +74,14 @@ impl<U: UserRepository, C: CredentialRepository, H: PasswordHasher, P: TokenProv
                 .ok_or(LoginUserError::InvalidUsername)?;
 
             let credential = credential_repository
-                .find(user.credential_id())
+                .search(&CredentialFilter {
+                    id: Some(user.credential_id()),
+                    ..CredentialFilter::default()
+                })
                 .await
                 .map_err(|error| LoginUserError::Unknown(error.into()))?
+                .into_iter()
+                .next()
                 .ok_or_else(|| {
                     LoginUserError::Unknown(anyhow::anyhow!("user {} has no credential", user.id()))
                 })?;
@@ -189,11 +195,11 @@ mod tests {
         credential: Credential,
     ) {
         credential_repository
-            .expect_find()
+            .expect_search()
             .times(1)
             .returning(move |_| {
                 let own_credential = credential.clone();
-                Box::pin(async move { Ok(Some(own_credential)) })
+                Box::pin(async move { Ok(vec![own_credential]) })
             });
     }
 
@@ -275,9 +281,9 @@ mod tests {
         let use_case = use_case_with(|user_repository, credential_repository, _, _| {
             expect_user(user_repository, user(1, "alice")?);
             credential_repository
-                .expect_find()
+                .expect_search()
                 .times(1)
-                .returning(|_| Box::pin(async { Ok(None) }));
+                .returning(|_| Box::pin(async { Ok(Vec::new()) }));
             Ok(())
         })?;
         let command = command("alice", "super-secret");

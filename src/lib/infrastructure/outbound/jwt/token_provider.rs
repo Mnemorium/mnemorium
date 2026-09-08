@@ -11,9 +11,6 @@ use crate::domain::port::error::TokenProviderError;
 use crate::domain::port::token_provider::IssuedToken;
 use crate::domain::port::token_provider::TokenProvider;
 
-/// Default lifetime of an issued token, in seconds.
-const TOKEN_TTL_SECONDS: u64 = 3600;
-
 /// Claims embedded in a `JwtTokenProvider` token.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 struct Claims {
@@ -24,28 +21,19 @@ struct Claims {
     sub: String,
 }
 
-impl Default for JwtTokenProvider {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 /// JWT token provider, signing and verifying with `HS256`.
 pub struct JwtTokenProvider {
     /// Shared signing secret.
     secret: String,
+    /// Lifetime of the token, in seconds.
+    ttl: u64,
 }
 
 impl JwtTokenProvider {
     /// Create a new provider.
-    ///
-    /// TODO: load the secret from the configuration instead of hard-coding
-    /// the temporary value.
     #[must_use]
-    pub fn new() -> Self {
-        Self {
-            secret: "tmptmp".to_owned(),
-        }
+    pub fn new(secret: String, ttl: u64) -> Self {
+        Self { secret, ttl }
     }
 }
 
@@ -57,8 +45,7 @@ impl TokenProvider for JwtTokenProvider {
         let header = Header::new(Algorithm::HS256);
         let key = EncodingKey::from_secret(self.secret.as_bytes());
         async move {
-            let ttl = i64::try_from(TOKEN_TTL_SECONDS)
-                .map_err(|_| TokenProviderError::OperationFailed)?;
+            let ttl = i64::try_from(self.ttl).map_err(|_| TokenProviderError::OperationFailed)?;
             let expiration = Utc::now()
                 .checked_add_signed(Duration::seconds(ttl))
                 .ok_or(TokenProviderError::OperationFailed)?
@@ -69,7 +56,7 @@ impl TokenProvider for JwtTokenProvider {
                 sub: user_id.to_string(),
             };
             encode(&header, &claims, &key)
-                .map(|token| IssuedToken::new(token, TOKEN_TTL_SECONDS))
+                .map(|token| IssuedToken::new(token, self.ttl))
                 .map_err(|_| TokenProviderError::InvalidClaims)
         }
     }
@@ -114,7 +101,7 @@ mod tests {
     #[tokio::test]
     async fn issue_then_validate_round_trips_user_id() -> Result<(), Box<dyn Error>> {
         // Arrange
-        let provider = JwtTokenProvider::new();
+        let provider = JwtTokenProvider::new("tmptmp".to_owned(), 3600);
 
         // Act
         let issued = provider.issue(42).await?;
@@ -129,7 +116,7 @@ mod tests {
     #[tokio::test]
     async fn issue_returns_non_empty_token() -> Result<(), Box<dyn Error>> {
         // Arrange
-        let provider = JwtTokenProvider::new();
+        let provider = JwtTokenProvider::new("tmptmp".to_owned(), 3600);
 
         // Act
         let issued = provider.issue(7).await?;
@@ -142,7 +129,7 @@ mod tests {
     #[tokio::test]
     async fn validate_garbage_token_returns_invalid_token() -> Result<(), Box<dyn Error>> {
         // Arrange
-        let provider = JwtTokenProvider::new();
+        let provider = JwtTokenProvider::new("tmptmp".to_owned(), 3600);
 
         // Act
         let result = provider.validate("not-a-token").await;
@@ -155,7 +142,7 @@ mod tests {
     #[tokio::test]
     async fn validate_expired_token_returns_token_expired() -> Result<(), Box<dyn Error>> {
         // Arrange
-        let provider = JwtTokenProvider::new();
+        let provider = JwtTokenProvider::new("tmptmp".to_owned(), 3600);
         let expired = encode(
             &Header::new(Algorithm::HS256),
             &json!({ "sub": "42", "exp": 1i64 }),
@@ -174,7 +161,7 @@ mod tests {
     async fn validate_token_with_non_numeric_sub_returns_invalid_token()
     -> Result<(), Box<dyn Error>> {
         // Arrange
-        let provider = JwtTokenProvider::new();
+        let provider = JwtTokenProvider::new("tmptmp".to_owned(), 3600);
         let token = encode(
             &Header::new(Algorithm::HS256),
             &json!({ "sub": "alice", "exp": 4_102_444_800i64 }),

@@ -29,7 +29,10 @@ pub struct RegisterRequest {
     #[schema(format = "email")]
     pub email: Option<String>,
     /// Password of the new user; never returned by the API.
-    #[schema(write_only, min_length = 8)]
+    ///
+    /// Must be at least 8 characters long and contain at least one symbol
+    /// (a non-alphanumeric character).
+    #[schema(write_only, min_length = 8, pattern = r"[^A-Za-z0-9]")]
     pub password: String,
     /// Role to grant to the new user.
     pub role: Role,
@@ -209,7 +212,7 @@ mod tests {
         let state = AppState::new(
             Arc::new(use_case),
             Arc::new(MockLoginUserUseCase::new()),
-            Arc::new(JwtTokenProvider::new()),
+            Arc::new(JwtTokenProvider::new("tmptmp".to_owned(), 3600)),
         );
         let router = axum::Router::new()
             .route("/api/v1/identity/register", post(post_register))

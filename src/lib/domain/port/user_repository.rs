@@ -22,6 +22,13 @@ pub struct UserFilter {
 /// Port for persisting and querying `User`.
 #[cfg_attr(test, mockall::automock)]
 pub trait UserRepository: Send + Sync {
+    /// Insert a new `user`, returning the persisted user with its final
+    /// identifier.
+    ///
+    /// The identifier of `user` is ignored: the repository assigns a fresh
+    /// identity.
+    fn create(&self, user: User) -> impl Future<Output = Result<User, RepositoryError>> + Send;
+
     /// Delete the user identified by `id`.
     ///
     /// Returns `Ok(true)` when a user matched `id` and was deleted, and
@@ -29,8 +36,8 @@ pub trait UserRepository: Send + Sync {
     /// not an error.
     fn delete(&self, id: NumericID) -> impl Future<Output = Result<bool, RepositoryError>> + Send;
 
-    /// Insert or update `user`, returning the persisted user with its final
-    /// identifier.
+    /// Insert or update an existing `user` targeted by its identifier,
+    /// returning the persisted user.
     fn save(&self, user: User) -> impl Future<Output = Result<User, RepositoryError>> + Send;
 
     /// Search users matching `filter`, returned as `Vec<User>`.

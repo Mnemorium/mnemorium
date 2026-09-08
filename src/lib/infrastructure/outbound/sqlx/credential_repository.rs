@@ -1,7 +1,10 @@
+use sqlx::QueryBuilder;
+use sqlx::Sqlite;
 use sqlx::SqlitePool;
 
 use crate::domain::alias::NumericID;
 use crate::domain::model::credential::Credential;
+use crate::domain::port::credential_repository::CredentialFilter;
 use crate::domain::port::credential_repository::CredentialRepository;
 use crate::domain::port::error::RepositoryError;
 
@@ -22,6 +25,20 @@ impl SqlxCredentialRepository {
 }
 
 impl CredentialRepository for SqlxCredentialRepository {
+    async fn create(&self, credential: Credential) -> Result<Credential, RepositoryError> {
+        let row = sqlx::query_as::<_, SqlxCredential>(
+            "INSERT INTO credential (password_hash, updated_at)
+             VALUES (?1, ?2)
+             RETURNING credential_id, password_hash, updated_at",
+        )
+        .bind(credential.password_hash())
+        .bind(credential.updated_at())
+        .fetch_one(&self.pool)
+        .await?;
+
+        domain_credential(row)
+    }
+
     async fn delete(&self, id: NumericID) -> Result<bool, RepositoryError> {
         let result = sqlx::query("DELETE FROM credential WHERE credential_id = ?")
             .bind(id)
@@ -30,46 +47,39 @@ impl CredentialRepository for SqlxCredentialRepository {
         Ok(result.rows_affected() > 0)
     }
 
-    async fn find(&self, id: NumericID) -> Result<Option<Credential>, RepositoryError> {
-        let row = sqlx::query_as::<_, SqlxCredential>(
-            "SELECT credential_id, password_hash, updated_at
-             FROM credential
-             WHERE credential_id = ?",
-        )
-        .bind(id)
-        .fetch_optional(&self.pool)
-        .await?;
-        row.map(domain_credential).transpose()
-    }
-
     async fn save(&self, credential: Credential) -> Result<Credential, RepositoryError> {
-        let row = if credential.id() == 0 {
-            sqlx::query_as::<_, SqlxCredential>(
-                "INSERT INTO credential (password_hash, updated_at)
-                 VALUES (?1, ?2)
-                 RETURNING credential_id, password_hash, updated_at",
-            )
-            .bind(credential.password_hash())
-            .bind(credential.updated_at())
-            .fetch_one(&self.pool)
-            .await?
-        } else {
-            sqlx::query_as::<_, SqlxCredential>(
-                "INSERT INTO credential (credential_id, password_hash, updated_at)
-                 VALUES (?1, ?2, ?3)
-                 ON CONFLICT (credential_id) DO UPDATE SET
-                     password_hash = excluded.password_hash,
-                     updated_at = excluded.updated_at
-                 RETURNING credential_id, password_hash, updated_at",
-            )
-            .bind(credential.id())
-            .bind(credential.password_hash())
-            .bind(credential.updated_at())
-            .fetch_one(&self.pool)
-            .await?
-        };
+        let row = sqlx::query_as::<_, SqlxCredential>(
+            "INSERT INTO credential (credential_id, password_hash, updated_at)
+             VALUES (?1, ?2, ?3)
+             ON CONFLICT (credential_id) DO UPDATE SET
+                 password_hash = excluded.password_hash,
+                 updated_at = excluded.updated_at
+             RETURNING credential_id, password_hash, updated_at",
+        )
+        .bind(credential.id())
+        .bind(credential.password_hash())
+        .bind(credential.updated_at())
+        .fetch_one(&self.pool)
+        .await?;
 
         domain_credential(row)
+    }
+
+    async fn search(&self, filter: &CredentialFilter) -> Result<Vec<Credential>, RepositoryError> {
+        let mut builder = QueryBuilder::<Sqlite>::new(
+            "SELECT credential_id, password_hash, updated_at FROM credential",
+        );
+        if let Some(id) = filter.id {
+            builder.push(" WHERE credential_id = ");
+            builder.push_bind(id);
+        }
+
+        let rows = builder
+            .build_query_as::<SqlxCredential>()
+            .fetch_all(&self.pool)
+            .await?;
+
+        rows.into_iter().map(domain_credential).collect()
     }
 }
 
@@ -88,6 +98,7 @@ mod tests {
 
     use crate::domain::model::credential::Credential;
     use crate::domain::model::credential::CredentialError;
+    use crate::domain::port::credential_repository::CredentialFilter;
     use crate::domain::port::credential_repository::CredentialRepository as _;
     use crate::domain::port::error::RepositoryError;
 
@@ -128,20 +139,25 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn save_then_find_round_trips_credential() -> Result<(), Box<dyn Error>> {
+    async fn save_then_search_round_trips_credential() -> Result<(), Box<dyn Error>> {
         // Arrange
         let repository = repo().await?;
         let expected = credential(5, "hash-alice", updated_at("2026-01-01 12:00:00")?)?;
 
         // Act
         let persisted = repository.save(expected.clone()).await?;
-        let found = repository.find(5).await?;
+        let found = repository
+            .search(&CredentialFilter {
+                id: Some(5),
+                ..CredentialFilter::default()
+            })
+            .await?;
 
         // Assert
         assert_eq!(persisted.id(), 5);
         assert_eq!(persisted.password_hash(), "hash-alice");
         assert_eq!(persisted.updated_at(), expected.updated_at());
-        assert_eq!(found.as_ref(), Some(&expected));
+        assert_eq!(found.first(), Some(&expected));
         Ok(())
     }
 
@@ -155,23 +171,33 @@ mod tests {
         // Act
         repository.save(first).await?;
         let persisted = repository.save(second.clone()).await?;
-        let found = repository.find(5).await?;
+        let found = repository
+            .search(&CredentialFilter {
+                id: Some(5),
+                ..CredentialFilter::default()
+            })
+            .await?;
 
         // Assert
         assert_eq!(persisted.password_hash(), "hash-new");
-        assert_eq!(found.as_ref(), Some(&second));
+        assert_eq!(found.first(), Some(&second));
         Ok(())
     }
 
     #[tokio::test]
-    async fn save_with_zero_id_assigns_final_identifier() -> Result<(), Box<dyn Error>> {
+    async fn create_assigns_final_identifier() -> Result<(), Box<dyn Error>> {
         // Arrange
         let repository = repo().await?;
         let pending = credential(0, "hash-zero", updated_at("2026-03-01 12:00:00")?)?;
 
         // Act
-        let persisted = repository.save(pending).await?;
-        let found = repository.find(persisted.id()).await?;
+        let persisted = repository.create(pending).await?;
+        let found = repository
+            .search(&CredentialFilter {
+                id: Some(persisted.id()),
+                ..CredentialFilter::default()
+            })
+            .await?;
 
         // Assert
         assert_ne!(
@@ -179,7 +205,7 @@ mod tests {
             0,
             "a new credential must receive a real identifier"
         );
-        assert_eq!(found.as_ref(), Some(&persisted));
+        assert_eq!(found.first(), Some(&persisted));
         Ok(())
     }
 
@@ -200,15 +226,23 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn find_missing_credential_returns_none() -> Result<(), Box<dyn Error>> {
+    async fn search_missing_credential_returns_empty() -> Result<(), Box<dyn Error>> {
         // Arrange
         let repository = repo().await?;
 
         // Act
-        let found = repository.find(404).await?;
+        let found = repository
+            .search(&CredentialFilter {
+                id: Some(404),
+                ..CredentialFilter::default()
+            })
+            .await?;
 
         // Assert
-        assert!(found.is_none(), "a missing credential must not be an error");
+        assert!(
+            found.is_empty(),
+            "a missing credential must not be an error"
+        );
         Ok(())
     }
 
@@ -293,10 +327,18 @@ mod tests {
         sqlx::query("INSERT INTO credential (credential_id, password_hash) VALUES (60, 'hash-ts')")
             .execute(&repository.pool)
             .await?;
-        let found = repository.find(60).await?;
+        let found = repository
+            .search(&CredentialFilter {
+                id: Some(60),
+                ..CredentialFilter::default()
+            })
+            .await?;
 
         // Assert
-        let credential = found.ok_or_else(|| anyhow::anyhow!("expected the seeded credential"))?;
+        let credential = found
+            .into_iter()
+            .next()
+            .ok_or_else(|| anyhow::anyhow!("expected the seeded credential"))?;
         assert!(
             credential.updated_at()
                 < NaiveDateTime::parse_from_str("2030-01-01 00:00:00", "%F %T")?,

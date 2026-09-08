@@ -174,7 +174,7 @@
 
   tasks."test:e2e" = {
     exec = "pytest test/e2e";
-    description = "Run the E2E tests against a fresh Docker container";
+    description = "Run the E2E tests against a running server";
   };
 
   # Formatting tasks

@@ -8,5 +8,8 @@ devenv.local.yaml
 target/
 site/
 dev.db
+config.yaml
 .ruff_cache/
 logs/
+**/__pycache__/
+mnemorium.db

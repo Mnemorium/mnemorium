@@ -94,7 +94,7 @@ impl<R: UserRepository, C: CredentialRepository, H: PasswordHasher, G: PasswordG
             let pending_credential = Credential::try_new(0, password_hash, Utc::now().naive_utc())
                 .map_err(|error| InitializeRootAdminError::Unknown(error.into()))?;
             let credential = credential_repository
-                .save(pending_credential)
+                .create(pending_credential)
                 .await
                 .map_err(|error| InitializeRootAdminError::Unknown(error.into()))?;
 
@@ -205,7 +205,7 @@ mod tests {
                     .times(1)
                     .returning(|_| Box::pin(async { Ok("hashed-password".to_owned()) }));
                 credential_repository
-                    .expect_save()
+                    .expect_create()
                     .times(1)
                     .returning(|credential| Box::pin(async { Ok(credential) }));
                 user_repository
@@ -322,7 +322,7 @@ mod tests {
                     .times(1)
                     .returning(|_| Box::pin(async { Ok("hashed-password".to_owned()) }));
                 credential_repository
-                    .expect_save()
+                    .expect_create()
                     .times(1)
                     .returning(|_| Box::pin(async { Err(RepositoryError::OperationFailed) }));
                 Ok(())
@@ -350,7 +350,7 @@ mod tests {
                     .times(1)
                     .returning(|_| Box::pin(async { Ok("hashed-password".to_owned()) }));
                 credential_repository
-                    .expect_save()
+                    .expect_create()
                     .times(1)
                     .returning(|credential| Box::pin(async { Ok(credential) }));
                 credential_repository

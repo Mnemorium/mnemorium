@@ -92,6 +92,18 @@ pub enum ExternalServiceError {
     Unknown(#[source] anyhow::Error),
 }
 
+/// Error returned when a pepper generation operation fails.
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
+pub enum SecretGeneratorError {
+    /// The pepper generation could not complete for a non-specific reason.
+    #[error("the pepper generation operation could not complete for a non-specific reason")]
+    OperationFailed,
+    /// An unexpected or unmapped error occurred.
+    #[error("an unexpected or unmapped error occurred: {0}")]
+    Unknown(#[source] anyhow::Error),
+}
+
 /// Error returned when a password hashing operation fails.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]

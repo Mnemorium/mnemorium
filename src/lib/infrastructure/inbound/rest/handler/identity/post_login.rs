@@ -146,7 +146,7 @@ mod tests {
         let state = AppState::new(
             Arc::new(MockRegisterUserUseCase::new()),
             Arc::new(login_use_case),
-            Arc::new(JwtTokenProvider::new()),
+            Arc::new(JwtTokenProvider::new("tmptmp".to_owned(), 3600)),
         );
         let router = axum::Router::new()
             .route("/api/v1/identity/login", post(post_login))
