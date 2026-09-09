@@ -3,8 +3,7 @@
 Mnemorium uses a single datastore: **SQLite3**, accessed through `sqlx`. The
 schema is versioned by migrations in `migrations/` (one `.up.sql`/`.down.sql`
 pair per change) and applied at startup by `sqlx::migrate!` in
-`src/lib/infrastructure/outbound/sqlx/sqlite3.rs`. Note: the SQLite pool is not
-wired into the server yet.
+`src/lib/infrastructure/outbound/sqlx/sqlite3.rs`.
 
 ## SQLite3
 

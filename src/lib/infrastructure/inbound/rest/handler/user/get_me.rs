@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use axum::Json;
 use axum::extract::State;
 use serde::{Deserialize, Serialize};
@@ -6,11 +8,11 @@ use utoipa::ToSchema;
 use crate::application::port::get_current_user::GetCurrentUserCommand;
 use crate::application::port::get_current_user::GetCurrentUserError;
 use crate::application::port::get_current_user::GetCurrentUserResponse;
+use crate::application::port::get_current_user::GetCurrentUserUseCase;
 use crate::domain::alias::NumericID;
 use crate::domain::model::user::Role;
 use crate::infrastructure::inbound::rest::api_error::ApiError;
 use crate::infrastructure::inbound::rest::api_error::ErrorBody;
-use crate::infrastructure::inbound::rest::app_state::AppState;
 use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 
 /// Current user returned by a successful lookup.
@@ -77,11 +79,10 @@ impl From<GetCurrentUserError> for ApiError {
     summary = "Fetch the current user"
 )]
 pub async fn get_me(
-    State(state): State<AppState>,
+    State(get_current_user): State<Arc<dyn GetCurrentUserUseCase>>,
     caller: AuthenticatedUser,
 ) -> Result<Json<GetMeResponse>, ApiError> {
-    let response = state
-        .get_current_user()
+    let response = get_current_user
         .execute(GetCurrentUserCommand::new(caller.user_id()))
         .await?;
     Ok(Json(GetMeResponse::from(response)))
@@ -108,14 +109,11 @@ mod tests {
     use crate::application::port::get_current_user::GetCurrentUserCommand;
     use crate::application::port::get_current_user::GetCurrentUserError;
     use crate::application::port::get_current_user::GetCurrentUserResponse;
+    use crate::application::port::get_current_user::GetCurrentUserUseCase;
     use crate::application::port::get_current_user::MockGetCurrentUserUseCase;
-    use crate::application::port::login_user::MockLoginUserUseCase;
-    use crate::application::port::register_user::MockRegisterUserUseCase;
     use crate::domain::alias::NumericID;
     use crate::domain::model::user::Role;
-    use crate::infrastructure::inbound::rest::app_state::AppState;
     use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
-    use crate::infrastructure::outbound::jwt::token_provider::JwtTokenProvider;
 
     /// Send a request through the endpoint router on behalf of `caller_id`,
     /// injecting the caller identifier the way the auth middleware does.
@@ -131,15 +129,9 @@ mod tests {
             .extensions_mut()
             .insert(AuthenticatedUser::from(caller_id));
 
-        let state = AppState::new(
-            Arc::new(MockRegisterUserUseCase::new()),
-            Arc::new(MockLoginUserUseCase::new()),
-            Arc::new(use_case),
-            Arc::new(JwtTokenProvider::new("tmptmp".to_owned(), 3600)),
-        );
         let router = axum::Router::new()
             .route("/api/v1/user/me", get(get_me))
-            .with_state(state);
+            .with_state(Arc::new(use_case) as Arc<dyn GetCurrentUserUseCase>);
         Ok(router.oneshot(request).await?)
     }
 

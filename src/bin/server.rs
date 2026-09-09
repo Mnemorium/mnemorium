@@ -1,6 +1,7 @@
 use std::future::pending;
 use std::sync::Arc;
 
+use mnemorium::application::port::UseCaseCatalog;
 use mnemorium::application::port::initialize_root_admin::InitializeRootAdminUseCase as _;
 use mnemorium::application::use_case::get_current_user::GetCurrentUser;
 use mnemorium::application::use_case::initialize_root_admin::InitializeRootAdmin;
@@ -77,9 +78,10 @@ async fn main() -> Result<(), anyhow::Error> {
         Err(error) => return Err(error.into()),
     }
 
-    let state = AppState::new(register_user, login_user, get_current_user, token_provider);
+    let state = AppState::new(token_provider);
+    let catalog = UseCaseCatalog::new(get_current_user, login_user, register_user);
 
-    let app = handler::setup_routes(&state);
+    let app = handler::setup_routes(&state, &catalog);
 
     info!("Starting Mnemorium server");
 

@@ -14,7 +14,6 @@ use serde_json::json;
 use crate::domain::alias::NumericID;
 use crate::domain::port::token_provider::TokenProvider;
 use crate::infrastructure::inbound::rest::api_error::ApiError;
-use crate::infrastructure::inbound::rest::app_state::AppState;
 
 /// Authenticated user identifier attached to a request.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -34,12 +33,15 @@ impl From<NumericID> for AuthenticatedUser {
     }
 }
 
-impl FromRequestParts<AppState> for AuthenticatedUser {
+impl<S> FromRequestParts<S> for AuthenticatedUser
+where
+    S: Send + Sync,
+{
     type Rejection = ApiError;
 
     fn from_request_parts(
         parts: &mut Parts,
-        _state: &AppState,
+        _state: &S,
     ) -> impl Future<Output = Result<Self, Self::Rejection>> + Send {
         ready(
             parts
@@ -109,9 +111,6 @@ mod tests {
 
     use super::AuthenticatedUser;
     use super::authenticate;
-    use crate::application::port::get_current_user::MockGetCurrentUserUseCase;
-    use crate::application::port::login_user::MockLoginUserUseCase;
-    use crate::application::port::register_user::MockRegisterUserUseCase;
     use crate::domain::alias::NumericID;
     use crate::domain::port::error::TokenProviderError;
     use crate::domain::port::token_provider::MockTokenProvider;
@@ -123,15 +122,10 @@ mod tests {
         Json(json!({ "user_id": caller.user_id() }))
     }
 
-    /// Application state with unused mocks and a real token provider that is
-    /// never consulted (the middleware layer carries its own mock).
+    /// Application state with a real token provider that is never consulted
+    /// (the middleware layer carries its own mock).
     fn state() -> AppState {
-        AppState::new(
-            Arc::new(MockRegisterUserUseCase::new()),
-            Arc::new(MockLoginUserUseCase::new()),
-            Arc::new(MockGetCurrentUserUseCase::new()),
-            Arc::new(JwtTokenProvider::new("tmptmp".to_owned(), 3600)),
-        )
+        AppState::new(Arc::new(JwtTokenProvider::new("tmptmp".to_owned(), 3600)))
     }
 
     /// Router guarding `stub` with `authenticate` over a mocked provider.

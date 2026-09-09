@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use axum::Json;
 use axum::extract::State;
 use axum::extract::rejection::JsonRejection;
@@ -7,9 +9,9 @@ use utoipa::ToSchema;
 use crate::application::port::login_user::LoginUserCommand;
 use crate::application::port::login_user::LoginUserError;
 use crate::application::port::login_user::LoginUserResponse;
+use crate::application::port::login_user::LoginUserUseCase;
 use crate::infrastructure::inbound::rest::api_error::ApiError;
 use crate::infrastructure::inbound::rest::api_error::ErrorBody;
-use crate::infrastructure::inbound::rest::app_state::AppState;
 
 /// Payload to authenticate a user.
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
@@ -90,12 +92,11 @@ impl From<LoginUserError> for ApiError {
     summary = "Authenticate a user"
 )]
 pub async fn post_login(
-    State(state): State<AppState>,
+    State(login_user): State<Arc<dyn LoginUserUseCase>>,
     payload: Result<Json<LoginRequest>, JsonRejection>,
 ) -> Result<Json<LoginResponse>, ApiError> {
     let Json(request) = payload.map_err(ApiError::from)?;
-    let response = state
-        .login_user()
+    let response = login_user
         .execute(LoginUserCommand::new(request.username, request.password))
         .await?;
     Ok(Json(LoginResponse::from(response)))
@@ -119,14 +120,11 @@ mod tests {
     use tower::ServiceExt as _;
 
     use super::post_login;
-    use crate::application::port::get_current_user::MockGetCurrentUserUseCase;
     use crate::application::port::login_user::LoginUserCommand;
     use crate::application::port::login_user::LoginUserError;
     use crate::application::port::login_user::LoginUserResponse;
+    use crate::application::port::login_user::LoginUserUseCase;
     use crate::application::port::login_user::MockLoginUserUseCase;
-    use crate::application::port::register_user::MockRegisterUserUseCase;
-    use crate::infrastructure::inbound::rest::app_state::AppState;
-    use crate::infrastructure::outbound::jwt::token_provider::JwtTokenProvider;
 
     /// Send `body` through the endpoint router.
     async fn send(
@@ -139,15 +137,9 @@ mod tests {
             .header(header::CONTENT_TYPE, "application/json")
             .body(body)?;
 
-        let state = AppState::new(
-            Arc::new(MockRegisterUserUseCase::new()),
-            Arc::new(login_use_case),
-            Arc::new(MockGetCurrentUserUseCase::new()),
-            Arc::new(JwtTokenProvider::new("tmptmp".to_owned(), 3600)),
-        );
         let router = axum::Router::new()
             .route("/api/v1/identity/login", post(post_login))
-            .with_state(state);
+            .with_state(Arc::new(login_use_case) as Arc<dyn LoginUserUseCase>);
         Ok(router.oneshot(request).await?)
     }
 
