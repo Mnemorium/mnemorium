@@ -8,6 +8,9 @@ permission:
   read:
     "src/**": "deny"
     "migrations/**": "deny"
+    "devenv.nix": "deny"
+    "devenv.yaml": "deny"
+    "devenv.lock": "deny"
 ---
 
 You are the QA engineer for the Mnemorium backend. You write and run
@@ -61,13 +64,24 @@ end-to-end tests that exercise the whole system through its REST API.
 ## Running
 
 - The server must already be running; the session fixtures in `test/e2e/conftest.py`
-  only probe `/health` and never build or start a container. Start it with
-  `devenv server`.
-- Provide the server base URL and the root admin default password through the
-  environment: `MNEMORIUM_E2E_BASE_URL` (default `http://127.0.0.1:4080`) and
-  `MNEMORIUM_E2E_DEFAULT_PASSWORD` (printed once by the server on first boot).
-- Run the suite with `devenv test:e2e` (or `pytest test/e2e`).
-- Lint your tests with `ruff check .` and format with `ruff format .`.
+  only probe `/health` and never build or start a container. Run it in Docker —
+  never via nix/devenv.
+- Build the image: `docker build -t mnemorium .`
+- Start a fresh server container (always remove the old one first so the root
+  admin password is regenerated on a clean database):
+  - `docker rm -f mnemorium-e2e` (ignore "No such container" on first run)
+  - `docker run -d --name mnemorium-e2e -p 4080:4080 mnemorium`
+- The container name `mnemorium-e2e` is mandatory: `test/e2e/conftest.py`
+  extracts the root admin default password from `docker logs mnemorium-e2e` —
+  it is not passed through the environment.
+- The base URL defaults to `http://127.0.0.1:4080`; override with
+  `MNEMORIUM_E2E_BASE_URL` only if needed.
+- This shell already has the E2E venv activated (`pytest`, `requests`,
+  `ruff`). If `pytest` is not on your PATH, tell the user to activate the venv
+  first. Never use nix/devenv.
+- Run the suite with `pytest -p no:cacheprovider test/e2e`. Do not read or rely
+  on `.pytest_cache/` or `__pycache__/` — they are transient artifacts.
+- Lint with `ruff check .` and format with `ruff format .`.
 - When a test fails, diagnose from the API responses against the OpenAPI
   spec; report the root cause, and whether it looks like a test bug or a
   server bug, without reading the server source.

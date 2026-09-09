@@ -15,6 +15,68 @@
         ],
         "type": "object"
       },
+      "GetMeResponse": {
+        "description": "Current user returned by a successful lookup.",
+        "properties": {
+          "email": {
+            "description": "Email address of the caller, when one was provided.",
+            "format": "email",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "$ref": "#/components/schemas/i64",
+            "description": "Unique identifier of the caller."
+          },
+          "role": {
+            "$ref": "#/components/schemas/Role",
+            "description": "Role of the caller."
+          },
+          "username": {
+            "description": "Username of the caller.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "role",
+          "username"
+        ],
+        "type": "object"
+      },
+      "GetUserResponse": {
+        "description": "User returned by a successful lookup.",
+        "properties": {
+          "email": {
+            "description": "Email address of the user, when one was provided.",
+            "format": "email",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "$ref": "#/components/schemas/i64",
+            "description": "Unique identifier of the user."
+          },
+          "role": {
+            "$ref": "#/components/schemas/Role",
+            "description": "Role of the user."
+          },
+          "username": {
+            "description": "Username of the user.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "role",
+          "username"
+        ],
+        "type": "object"
+      },
       "HealthResponse": {
         "description": "Service health status.",
         "properties": {
@@ -356,6 +418,256 @@
           "identity"
         ]
       }
+    },
+    "/user": {
+      "get": {
+        "description": "The caller must present a valid `Bearer` token and hold the `Admin` role.\nThe response is the array of user profiles — identifier, username, email\nand role — filtered by the optional query parameters. An empty list is a\nvalid outcome, not an error.\n\n# Errors\n\nReturns [`ApiError`] once implemented, mapping the use-case errors to their\nHTTP responses.\n\n# Panics\n\nThe endpoint is a stub: this handler always panics via `unimplemented!()`\nuntil the `list_users` use case is implemented.",
+        "operationId": "list_users",
+        "parameters": [
+          {
+            "description": "Only return users whose email matches this value.",
+            "in": "query",
+            "name": "email",
+            "required": false,
+            "schema": {
+              "format": "email",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "description": "Only return users holding this role.",
+            "in": "query",
+            "name": "role",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "$ref": "#/components/schemas/Role"
+                }
+              ]
+            }
+          },
+          {
+            "description": "Only return users whose username matches this value.",
+            "in": "query",
+            "name": "username",
+            "required": false,
+            "schema": {
+              "maxLength": 100,
+              "minLength": 4,
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/GetUserResponse"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Users matching the filters"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Invalid filter values"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Caller is not an administrator"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unexpected error"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ],
+        "summary": "List users",
+        "tags": [
+          "user"
+        ]
+      }
+    },
+    "/user/me": {
+      "get": {
+        "description": "The caller presents a valid `Bearer` token and receives its own profile\n— identifier, username, email and role. Credential data is never exposed.\n\n# Errors\n\nReturns [`ApiError`] when the request cannot be completed, mapping the\nuse-case errors to their HTTP responses.",
+        "operationId": "get_me",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GetMeResponse"
+                }
+              }
+            },
+            "description": "Current user"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid credentials"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unexpected error"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ],
+        "summary": "Fetch the current user",
+        "tags": [
+          "user"
+        ]
+      }
+    },
+    "/user/{id}": {
+      "get": {
+        "description": "The caller must present a valid `Bearer` token and hold the `Admin` role.\nThe response carries the profile — identifier, username, email and role —\nnever credential data.\n\n# Errors\n\nReturns [`ApiError`] once implemented, mapping the use-case errors to their\nHTTP responses.\n\n# Panics\n\nThe endpoint is a stub: this handler always panics via `unimplemented!()`\nuntil the `get_user` use case is implemented.",
+        "operationId": "get_user",
+        "parameters": [
+          {
+            "description": "Identifier of the user to fetch",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/i64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GetUserResponse"
+                }
+              }
+            },
+            "description": "User found"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Invalid user identifier"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Caller is not an administrator"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unknown user"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unexpected error"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ],
+        "summary": "Fetch a user by identifier",
+        "tags": [
+          "user"
+        ]
+      }
     }
   },
   "servers": [
@@ -372,6 +684,10 @@
     {
       "description": "Identity bounded context",
       "name": "identity"
+    },
+    {
+      "description": "User bounded context",
+      "name": "user"
     }
   ]
 }

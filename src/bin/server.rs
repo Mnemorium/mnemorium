@@ -2,6 +2,7 @@ use std::future::pending;
 use std::sync::Arc;
 
 use mnemorium::application::port::initialize_root_admin::InitializeRootAdminUseCase as _;
+use mnemorium::application::use_case::get_current_user::GetCurrentUser;
 use mnemorium::application::use_case::initialize_root_admin::InitializeRootAdmin;
 use mnemorium::application::use_case::login_user::LoginUser as LoginUserUseCase;
 use mnemorium::application::use_case::register_user::RegisterUser;
@@ -55,6 +56,7 @@ async fn main() -> Result<(), anyhow::Error> {
         configuration.security.jwt.secret.clone(),
         configuration.security.jwt.ttl,
     ));
+    let get_current_user = Arc::new(GetCurrentUser::new(Arc::clone(&user_repository)));
     let login_user = Arc::new(LoginUserUseCase::new(
         user_repository,
         credential_repository,
@@ -75,7 +77,7 @@ async fn main() -> Result<(), anyhow::Error> {
         Err(error) => return Err(error.into()),
     }
 
-    let state = AppState::new(register_user, login_user, token_provider);
+    let state = AppState::new(register_user, login_user, get_current_user, token_provider);
 
     let app = handler::setup_routes(&state);
 

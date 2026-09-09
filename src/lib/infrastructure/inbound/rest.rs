@@ -6,6 +6,9 @@ pub mod middleware;
 use handler::get_health::__path_get_health;
 use handler::identity::post_login::__path_post_login;
 use handler::identity::post_register::__path_post_register;
+use handler::user::get_me::__path_get_me;
+use handler::user::get_user::__path_get_user;
+use handler::user::list_users::__path_list_users;
 
 use crate::domain::model::user::Role;
 use crate::infrastructure::inbound::rest::api_error::ErrorBody;
@@ -13,6 +16,8 @@ use crate::infrastructure::inbound::rest::handler::identity::post_login::LoginRe
 use crate::infrastructure::inbound::rest::handler::identity::post_login::LoginResponse;
 use crate::infrastructure::inbound::rest::handler::identity::post_register::RegisterRequest;
 use crate::infrastructure::inbound::rest::handler::identity::post_register::RegisterResponse;
+use crate::infrastructure::inbound::rest::handler::user::get_me::GetMeResponse;
+use crate::infrastructure::inbound::rest::handler::user::get_user::GetUserResponse;
 
 use utoipa::openapi::OpenApi;
 use utoipa::openapi::security::Http;
@@ -45,11 +50,12 @@ impl utoipa::Modify for SecurityAddon {
     servers(
         (url = "http://0.0.0.0:4080/api/v1", description = "Local development server")
     ),
-    paths(get_health, post_login, post_register),
-    components(schemas(ErrorBody, LoginRequest, LoginResponse, RegisterRequest, RegisterResponse, Role)),
+    paths(get_health, post_login, post_register, get_me, get_user, list_users),
+    components(schemas(ErrorBody, GetMeResponse, GetUserResponse, LoginRequest, LoginResponse, RegisterRequest, RegisterResponse, Role)),
     tags(
         (name = "system", description = "System-level endpoints"),
-        (name = "identity", description = "Identity bounded context")
+        (name = "identity", description = "Identity bounded context"),
+        (name = "user", description = "User bounded context")
     ),
     modifiers(&SecurityAddon)
 )]

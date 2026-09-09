@@ -26,6 +26,8 @@ pub enum ApiError {
     Forbidden(String),
     /// An unexpected error occurred (`500`).
     InternalServerError,
+    /// The requested resource does not exist (`404`).
+    NotFound(String),
     /// Authentication is required or the credentials are invalid (`401`).
     Unauthorized(String),
 }
@@ -42,6 +44,7 @@ impl ApiError {
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "an unexpected error occurred".to_owned(),
             ),
+            Self::NotFound(message) => (StatusCode::NOT_FOUND, message),
             Self::Unauthorized(message) => (StatusCode::UNAUTHORIZED, message),
         }
     }

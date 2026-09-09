@@ -124,6 +124,7 @@ mod tests {
     use tower::ServiceExt as _;
 
     use super::post_login;
+    use crate::application::port::get_current_user::MockGetCurrentUserUseCase;
     use crate::application::port::login_user::LoginUserCommand;
     use crate::application::port::login_user::LoginUserError;
     use crate::application::port::login_user::LoginUserResponse;
@@ -146,6 +147,7 @@ mod tests {
         let state = AppState::new(
             Arc::new(MockRegisterUserUseCase::new()),
             Arc::new(login_use_case),
+            Arc::new(MockGetCurrentUserUseCase::new()),
             Arc::new(JwtTokenProvider::new("tmptmp".to_owned(), 3600)),
         );
         let router = axum::Router::new()

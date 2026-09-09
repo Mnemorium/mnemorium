@@ -155,10 +155,8 @@ credentials and gain access to authorized features and resources.
 
 ### Alternative flow
 
-- 2a. Bad username: no account matches the username; the system rejects the
-  request.
-- 3a. Bad password: the password does not match the stored hash; the system
-  rejects the request.
+- 2a. Bad credentials: no account matches the username, or the password does
+  not match the stored hash; the system rejects the request.
 
 ### Post condition(s)
 
@@ -233,3 +231,45 @@ changed.
 - The Root Admin holds a valid token and a personal credential.
 - The default password is no longer valid and is no longer shown in the standard
   output while the configuration has First-Time Admin Authentication enabled.
+
+## UC-004 - Get Current User
+
+### Description
+
+Allow an authenticated user to fetch its own account profile.
+
+### Primary actor
+
+- Standard User
+
+### Pre condition(s)
+
+- The caller holds a valid token identifying an existing user.
+
+### Trigger(s)
+
+- `GET /user/me`
+
+### Bounded context(s)
+
+- Identity
+- User
+
+### Business rules
+
+- The caller can only fetch its own account.
+- Credential data is never exposed.
+
+### Happy path
+
+1. The caller submits a request carrying a valid token.
+2. The system resolves the caller from the token.
+3. The system returns the profile of the caller.
+
+### Alternative flow
+
+- 1a. No account matches the caller identifier; the system rejects the request.
+
+### Post condition(s)
+
+- The caller receives its own profile without credential data.
