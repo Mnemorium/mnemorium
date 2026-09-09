@@ -155,8 +155,8 @@ credentials and gain access to authorized features and resources.
 
 ### Alternative flow
 
-- 2a. Bad credentials: no account matches the username, or the password does
-  not match the stored hash; the system rejects the request.
+- 2a. Bad credentials: no account matches the username, or the password does not
+  match the stored hash; the system rejects the request.
 
 ### Post condition(s)
 

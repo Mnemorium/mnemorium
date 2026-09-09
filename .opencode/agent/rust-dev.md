@@ -135,7 +135,12 @@ its patterns over inventing new ones.
 
 ### Add a REST endpoint
 
-1. Handler file `handler/<context>/<method>_<context>.rs`. Item order: request
+1. Handler file `handler/<context>/<method>_<context>.rs`. File name =
+   handler function name = `<method>_<context>`. `<method>` is the HTTP verb in
+   lowercase (`get`/`post`/`put`/`patch`/`delete`), never a semantic verb: a
+   list endpoint is `get_user_list.rs` / `get_user_list` (since `get_user.rs`
+   owns `GET /user/{id}`). `operation_id` stays semantic (e.g. `list_users`) —
+   it's independent of the Rust names. Item order: request
    body struct (`<Context>Request`) → query struct (`<Context>Query`, deriving
    `Serialize`, `Deserialize`, `IntoParams`) → response struct
    (`<Context>Response`) → `From<UseCaseError> for ApiError` → `From<UseCaseResponse>
@@ -147,7 +152,12 @@ its patterns over inventing new ones.
    every possible `responses` (success plus each error with `body = ErrorBody`),
    `security` when protected, and `summary`. Protected endpoints take
    `AuthenticatedUser` from `middleware::auth`. Extract the body as
-   `Result<Json<...>, JsonRejection>` mapped with `ApiError::from`.
+   `Result<Json<...>, JsonRejection>` mapped with `ApiError::from`. The handler's
+   doc comment is a short plain-language description of what the endpoint does
+   (requirements + outcome), e.g. `get_user.rs` / `get_me.rs`. Do **not** write
+   `# Errors` or `# Panics` sections: error behaviour lives in the
+   `responses(...)` of the `#[utoipa::path]` macro, which is why `handler.rs`
+   allows `clippy::missing_errors_doc` module-wide.
 3. Register the route in `handler/<context>.rs` and nest it in `handler.rs`,
    following the existing `identity_routes` pattern. Protected routes use
    `middleware::from_fn_with_state(...)`.
@@ -230,7 +240,7 @@ The `docs/development/api/Overview.md` examples predate utoipa 5.5 and are
 ### Declared-but-unimplemented (stub) endpoints
 
 When an endpoint is declared ahead of its use case (handler body
-`unimplemented!()`), `get_user.rs` and `list_users.rs` are the templates:
+`unimplemented!()`), `get_user.rs` and `get_user_list.rs` are the templates:
 
 - Bind unused parameters with underscore names (`Path(_id)`, `Query(_query)`,
   `_caller`, `State(_state)`) so `-D warnings` (unused variables) passes.
@@ -262,6 +272,10 @@ Write code that complies:
 - `.to_owned()` over `.to_string()` on `&str`; `format!` over string `+`;
   `drop(...)` instead of `let _ = ...`.
 - Tests inside `#[cfg(test)] mod tests`; no control flow inside a test.
+- `src/lib/infrastructure/inbound/rest/handler.rs` allows
+  `clippy::missing_errors_doc` module-wide (`reason = "Handler are declared in
+  the OpenAPI spec"`). The handler module is exempt by design: never re-allow
+  that lint per handler and never add `# Errors` rustdoc to handlers.
 
 If a lint genuinely cannot be satisfied, add
 `#[expect(clippy::<lint>, reason = "<why>")]` on the smallest possible scope —

@@ -26,30 +26,10 @@ pub struct GetUserResponse {
     pub username: String,
 }
 
-// NOTE(stub): the `From<GetUserError> for ApiError` mapping will be declared
-// here (style-guide item order: response struct -> error mapping -> handler)
-// once the `get_user` use case exists. Expected shape:
-//   GetUserError::NoSuchUser => ApiError::NotFound(err.to_string()),
-//   GetUserError::Forbidden  => ApiError::Forbidden(err.to_string()),
-//   GetUserError::Unknown(_) => ApiError::InternalServerError,
-// No placeholder error type is declared now: nothing in the stub can construct
-// it, so it would be dead code that fails `-D warnings`.
-
 /// Fetch a user by its identifier.
 ///
-/// The caller must present a valid `Bearer` token and hold the `Admin` role.
-/// The response carries the profile — identifier, username, email and role —
-/// never credential data.
-///
-/// # Errors
-///
-/// Returns [`ApiError`] once implemented, mapping the use-case errors to their
-/// HTTP responses.
-///
-/// # Panics
-///
-/// The endpoint is a stub: this handler always panics via `unimplemented!()`
-/// until the `get_user` use case is implemented.
+/// Requires an `Admin` caller. Returns the profile — identifier, username,
+/// email and role — of the requested user.
 #[utoipa::path(
     get,
     operation_id = "get_user",

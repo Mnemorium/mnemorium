@@ -15,6 +15,37 @@
         ],
         "type": "object"
       },
+      "GetListUserResponse": {
+        "description": "User returned by a successful lookup.",
+        "properties": {
+          "email": {
+            "description": "Email address of the user, when one was provided.",
+            "format": "email",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "$ref": "#/components/schemas/i64",
+            "description": "Unique identifier of the user."
+          },
+          "role": {
+            "$ref": "#/components/schemas/Role",
+            "description": "Role of the user."
+          },
+          "username": {
+            "description": "Username of the user.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "role",
+          "username"
+        ],
+        "type": "object"
+      },
       "GetMeResponse": {
         "description": "Current user returned by a successful lookup.",
         "properties": {
@@ -264,7 +295,7 @@
     },
     "/identity/login": {
       "post": {
-        "description": "The caller presents a username and a password. On success the endpoint\nreturns an access token to present in the `Authorization` header of\nsubsequent requests, together with the number of seconds it stays valid.\n\n# Errors\n\nReturns [`ApiError`] when the request cannot be completed, mapping the\nuse-case errors to their HTTP responses.",
+        "description": "The caller presents a username and a password. On success the endpoint\nreturns an access token to present in the `Authorization` header of\nsubsequent requests, together with the number of seconds it stays valid.",
         "operationId": "post_login",
         "requestBody": {
           "content": {
@@ -326,7 +357,7 @@
     },
     "/identity/register": {
       "post": {
-        "description": "The Root Admin (user identifier `0`) may register `Admin` or `Standard`\nusers; an `Admin` user may register `Standard` users only; any other role is\nrejected with `403`.\n\n# Errors\n\nReturns [`ApiError`] when the request cannot be completed, mapping the\nuse-case errors to their HTTP responses.",
+        "description": "The Root Admin (user identifier `0`) may register `Admin` or `Standard`\nusers; an `Admin` user may register `Standard` users only; any other role is\nrejected with `403`.",
         "operationId": "post_register",
         "requestBody": {
           "content": {
@@ -421,7 +452,7 @@
     },
     "/user": {
       "get": {
-        "description": "The caller must present a valid `Bearer` token and hold the `Admin` role.\nThe response is the array of user profiles — identifier, username, email\nand role — filtered by the optional query parameters. An empty list is a\nvalid outcome, not an error.\n\n# Errors\n\nReturns [`ApiError`] once implemented, mapping the use-case errors to their\nHTTP responses.\n\n# Panics\n\nThe endpoint is a stub: this handler always panics via `unimplemented!()`\nuntil the `list_users` use case is implemented.",
+        "description": "Requires an `Admin` caller. Returns the profiles of every user matching\nthe optional filters. An empty list is a valid outcome.",
         "operationId": "list_users",
         "parameters": [
           {
@@ -474,7 +505,7 @@
               "application/json": {
                 "schema": {
                   "items": {
-                    "$ref": "#/components/schemas/GetUserResponse"
+                    "$ref": "#/components/schemas/GetListUserResponse"
                   },
                   "type": "array"
                 }
@@ -536,7 +567,7 @@
     },
     "/user/me": {
       "get": {
-        "description": "The caller presents a valid `Bearer` token and receives its own profile\n— identifier, username, email and role. Credential data is never exposed.\n\n# Errors\n\nReturns [`ApiError`] when the request cannot be completed, mapping the\nuse-case errors to their HTTP responses.",
+        "description": "Returns the caller's own profile — identifier, username, email and role.",
         "operationId": "get_me",
         "responses": {
           "200": {
@@ -583,7 +614,7 @@
     },
     "/user/{id}": {
       "get": {
-        "description": "The caller must present a valid `Bearer` token and hold the `Admin` role.\nThe response carries the profile — identifier, username, email and role —\nnever credential data.\n\n# Errors\n\nReturns [`ApiError`] once implemented, mapping the use-case errors to their\nHTTP responses.\n\n# Panics\n\nThe endpoint is a stub: this handler always panics via `unimplemented!()`\nuntil the `get_user` use case is implemented.",
+        "description": "Requires an `Admin` caller. Returns the profile — identifier, username,\nemail and role — of the requested user.",
         "operationId": "get_user",
         "parameters": [
           {

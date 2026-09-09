@@ -3,13 +3,29 @@ use axum::extract::Query;
 use axum::extract::State;
 use serde::{Deserialize, Serialize};
 use utoipa::IntoParams;
+use utoipa::ToSchema;
 
+use crate::domain::alias::NumericID;
 use crate::domain::model::user::Role;
 use crate::infrastructure::inbound::rest::api_error::ApiError;
 use crate::infrastructure::inbound::rest::api_error::ErrorBody;
 use crate::infrastructure::inbound::rest::app_state::AppState;
-use crate::infrastructure::inbound::rest::handler::user::get_user::GetUserResponse;
 use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
+
+/// User returned by a successful lookup.
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[non_exhaustive]
+pub struct GetListUserResponse {
+    /// Email address of the user, when one was provided.
+    #[schema(format = "email")]
+    pub email: Option<String>,
+    /// Unique identifier of the user.
+    pub id: NumericID,
+    /// Role of the user.
+    pub role: Role,
+    /// Username of the user.
+    pub username: String,
+}
 
 /// Filters restricting the returned users.
 ///
@@ -27,30 +43,10 @@ pub struct ListUsersQuery {
     pub username: Option<String>,
 }
 
-// NOTE(stub): the `From<ListUsersError> for ApiError` mapping will be declared
-// here (style-guide item order: query object -> response object -> error
-// mapping -> handler) once the `list_users` use case exists. Expected shape:
-//   ListUsersError::Forbidden  => ApiError::Forbidden(err.to_string()),
-//   ListUsersError::Unknown(_) => ApiError::InternalServerError,
-// No placeholder error type is declared now: nothing in the stub can construct
-// it, so it would be dead code that fails `-D warnings`.
-
 /// List the users of the instance.
 ///
-/// The caller must present a valid `Bearer` token and hold the `Admin` role.
-/// The response is the array of user profiles — identifier, username, email
-/// and role — filtered by the optional query parameters. An empty list is a
-/// valid outcome, not an error.
-///
-/// # Errors
-///
-/// Returns [`ApiError`] once implemented, mapping the use-case errors to their
-/// HTTP responses.
-///
-/// # Panics
-///
-/// The endpoint is a stub: this handler always panics via `unimplemented!()`
-/// until the `list_users` use case is implemented.
+/// Requires an `Admin` caller. Returns the profiles of every user matching
+/// the optional filters. An empty list is a valid outcome.
 #[utoipa::path(
     get,
     operation_id = "list_users",
@@ -60,7 +56,7 @@ pub struct ListUsersQuery {
     responses(
         (
             status = OK,
-            body = [GetUserResponse],
+            body = [GetListUserResponse],
             description = "Users matching the filters"
         ),
         (
@@ -89,10 +85,10 @@ pub struct ListUsersQuery {
     ),
     summary = "List users"
 )]
-pub async fn list_users(
+pub async fn get_user_list(
     Query(_query): Query<ListUsersQuery>,
     _caller: AuthenticatedUser,
     State(_state): State<AppState>,
-) -> Result<Json<Vec<GetUserResponse>>, ApiError> {
+) -> Result<Json<Vec<GetListUserResponse>>, ApiError> {
     unimplemented!()
 }

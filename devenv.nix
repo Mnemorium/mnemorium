@@ -89,7 +89,7 @@
       enable = true;
 
       name = "Coverage >= 80%";
-      entry = "cargo llvm-cov --fail-under-functions 80 --fail-under-regions 80 --fail-under-lines 80";
+      entry = "cargo llvm-cov --lib --fail-under-functions 80 --fail-under-regions 80 --fail-under-lines 80";
       pass_filenames = false;
     };
 
@@ -170,7 +170,7 @@
 
   tasks."test:coverage" = {
     exec = "cargo llvm-cov --lib";
-    description = "Generate HTML coverage report and open it in the browser";
+    description = "Generate test coverage report";
   };
 
   tasks."test:e2e" = {

@@ -1,3 +1,8 @@
+#![allow(
+    clippy::missing_errors_doc,
+    reason = "Handler are declared in the OpenAPI spec"
+)]
+
 pub mod get_health;
 pub mod identity;
 pub mod user;

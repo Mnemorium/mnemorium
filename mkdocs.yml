@@ -25,6 +25,7 @@ nav:
   - Home: index.md
   - Development:
       - Overview: development/Overview.md
+      - Persistence: development/Persistence.md
       - API documentation:
           - Overview: development/api/Overview.md
           - Spec: development/api/Spec.md

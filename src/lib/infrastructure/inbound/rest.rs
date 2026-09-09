@@ -8,7 +8,7 @@ use handler::identity::post_login::__path_post_login;
 use handler::identity::post_register::__path_post_register;
 use handler::user::get_me::__path_get_me;
 use handler::user::get_user::__path_get_user;
-use handler::user::list_users::__path_list_users;
+use handler::user::get_user_list::__path_get_user_list;
 
 use crate::domain::model::user::Role;
 use crate::infrastructure::inbound::rest::api_error::ErrorBody;
@@ -50,7 +50,7 @@ impl utoipa::Modify for SecurityAddon {
     servers(
         (url = "http://0.0.0.0:4080/api/v1", description = "Local development server")
     ),
-    paths(get_health, post_login, post_register, get_me, get_user, list_users),
+    paths(get_health, post_login, post_register, get_me, get_user, get_user_list),
     components(schemas(ErrorBody, GetMeResponse, GetUserResponse, LoginRequest, LoginResponse, RegisterRequest, RegisterResponse, Role)),
     tags(
         (name = "system", description = "System-level endpoints"),

@@ -1,1 +1,0 @@
-DROP TABLE music_album_production_type;

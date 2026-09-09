@@ -52,13 +52,7 @@ impl From<GetCurrentUserError> for ApiError {
 
 /// Fetch the account of the authenticated caller.
 ///
-/// The caller presents a valid `Bearer` token and receives its own profile
-/// — identifier, username, email and role. Credential data is never exposed.
-///
-/// # Errors
-///
-/// Returns [`ApiError`] when the request cannot be completed, mapping the
-/// use-case errors to their HTTP responses.
+/// Returns the caller's own profile — identifier, username, email and role.
 #[utoipa::path(
     get,
     operation_id = "get_me",

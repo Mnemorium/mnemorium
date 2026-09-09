@@ -87,11 +87,6 @@ impl From<RegisterUserError> for ApiError {
 /// The Root Admin (user identifier `0`) may register `Admin` or `Standard`
 /// users; an `Admin` user may register `Standard` users only; any other role is
 /// rejected with `403`.
-///
-/// # Errors
-///
-/// Returns [`ApiError`] when the request cannot be completed, mapping the
-/// use-case errors to their HTTP responses.
 #[utoipa::path(
     post,
     operation_id = "post_register",

@@ -63,11 +63,6 @@ impl From<LoginUserError> for ApiError {
 /// The caller presents a username and a password. On success the endpoint
 /// returns an access token to present in the `Authorization` header of
 /// subsequent requests, together with the number of seconds it stays valid.
-///
-/// # Errors
-///
-/// Returns [`ApiError`] when the request cannot be completed, mapping the
-/// use-case errors to their HTTP responses.
 #[utoipa::path(
     post,
     operation_id = "post_login",
