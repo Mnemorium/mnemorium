@@ -19,8 +19,8 @@
   packages = [
     pkgs.git
     pkgs.ls-lint
-    pkgs.nixfmt
     pkgs.cargo-llvm-cov
+    pkgs.nixfmt
     pkgs.llvm
     pkgs.shellcheck
     pkgs.cargo-audit
@@ -39,6 +39,13 @@
     enable = true;
     channel = "stable";
     version = "1.98.0";
+    components = [
+      "rustc"
+      "cargo"
+      "clippy"
+      "rustfmt"
+      "llvm-tools-preview"
+    ];
   };
 
   languages.python = {
