@@ -21,6 +21,7 @@ _DEFAULT_PASSWORD_RE = re.compile(
 API_PREFIX = "/api/v1"
 LOGIN_PATH = f"{API_PREFIX}/identity/login"
 REGISTER_PATH = f"{API_PREFIX}/identity/register"
+ME_PATH = f"{API_PREFIX}/user/me"
 
 ROOT_ADMIN_USERNAME = "root"
 
@@ -120,6 +121,20 @@ def register(
         )
 
     return _register
+
+
+@pytest.fixture(scope="session")
+def me(server_url: str) -> Callable[[str], requests.Response]:
+    """Return a callable that GETs /api/v1/user/me with the given access token."""
+
+    def _me(token: str) -> requests.Response:
+        return requests.get(
+            f"{server_url}{ME_PATH}",
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=10,
+        )
+
+    return _me
 
 
 def _provision_user(

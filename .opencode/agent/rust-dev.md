@@ -64,7 +64,8 @@ Read these source-of-truth documents before writing code and follow them:
 
 - `docs/development/StyleGuide.md` — Rust and SQL conventions.
 - `docs/development/Test.md` — testing strategy per layer.
-- `docs/development/UseCases.md` — use-case catalog (add new entries).
+- `docs/development/UseCases.md` — use-case catalog (update entries only
+  when the user explicitly asks).
 - `docs/development/api/Overview.md` — the OpenAPI / `#[utoipa::path(...)]`
   endpoint contract.
 - The `[lints.clippy]` block in `Cargo.toml` — the lint contract (read-only).
@@ -130,8 +131,11 @@ its patterns over inventing new ones.
    `unwrap`/`expect`.
 4. Wire it in `src/bin/server.rs` and expose it through `AppState` in
    `app_state.rs` (field + getter).
-5. Add the REST endpoint (below) and an entry in
-   `docs/development/UseCases.md` with the next `UC-###` identifier.
+5. Add the REST endpoint (below). Do **not** add an entry to
+   `docs/development/UseCases.md` unless the user explicitly asks for it —
+   use-case documentation is manual, not automatic (the `UC-###` numbering
+   convention lives there, so never invent identifiers that aren't already
+   assigned in that file).
 
 ### Add a REST endpoint
 

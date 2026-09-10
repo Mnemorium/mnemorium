@@ -4,9 +4,12 @@ use std::sync::Arc;
 use mnemorium::application::port::UseCaseCatalog;
 use mnemorium::application::port::initialize_root_admin::InitializeRootAdminUseCase as _;
 use mnemorium::application::use_case::get_current_user::GetCurrentUser;
+use mnemorium::application::use_case::get_user::GetUser;
 use mnemorium::application::use_case::initialize_root_admin::InitializeRootAdmin;
 use mnemorium::application::use_case::login_user::LoginUser as LoginUserUseCase;
+use mnemorium::application::use_case::patch_credential::PatchCredential as PatchCredentialUseCase;
 use mnemorium::application::use_case::register_user::RegisterUser;
+use mnemorium::application::use_case::update_user::UpdateUser;
 use mnemorium::infrastructure::configuration::Configuration;
 use mnemorium::infrastructure::inbound::rest::app_state::AppState;
 use mnemorium::infrastructure::inbound::rest::handler;
@@ -25,6 +28,10 @@ use tokio::signal::unix::{SignalKind, signal};
 use tracing::{error, info};
 
 #[tokio::main]
+#[expect(
+    clippy::too_many_lines,
+    reason = "main is the composition root wiring every dependency and use case; extracting any of its single-use blocks collides with clippy::single_call_fn"
+)]
 async fn main() -> Result<(), anyhow::Error> {
     logging::setup();
 
@@ -58,6 +65,13 @@ async fn main() -> Result<(), anyhow::Error> {
         configuration.security.jwt.ttl,
     ));
     let get_current_user = Arc::new(GetCurrentUser::new(Arc::clone(&user_repository)));
+    let get_user = Arc::new(GetUser::new(Arc::clone(&user_repository)));
+    let update_user = Arc::new(UpdateUser::new(Arc::clone(&user_repository)));
+    let patch_credential = Arc::new(PatchCredentialUseCase::new(
+        Arc::clone(&user_repository),
+        Arc::clone(&credential_repository),
+        Arc::clone(&password_hasher),
+    ));
     let login_user = Arc::new(LoginUserUseCase::new(
         user_repository,
         credential_repository,
@@ -79,7 +93,14 @@ async fn main() -> Result<(), anyhow::Error> {
     }
 
     let state = AppState::new(token_provider);
-    let catalog = UseCaseCatalog::new(get_current_user, login_user, register_user);
+    let catalog = UseCaseCatalog::new(
+        get_current_user,
+        get_user,
+        login_user,
+        patch_credential,
+        register_user,
+        update_user,
+    );
 
     let app = handler::setup_routes(&state, &catalog);
 

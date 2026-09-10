@@ -167,6 +167,86 @@
         ],
         "type": "object"
       },
+      "PatchCredentialRequest": {
+        "description": "Payload to change the password behind a credential.",
+        "properties": {
+          "password": {
+            "description": "New password; never returned by the API.\n\nMust be at least 8 characters long and contain at least one symbol\n(a non-alphanumeric character).",
+            "minLength": 8,
+            "pattern": "[^A-Za-z0-9]",
+            "type": "string",
+            "writeOnly": true
+          }
+        },
+        "required": [
+          "password"
+        ],
+        "type": "object"
+      },
+      "PatchUserRequest": {
+        "description": "Payload to update the profile of a user.\n\nEvery attribute is optional; an omitted attribute leaves the stored value\nunchanged.",
+        "properties": {
+          "email": {
+            "description": "New email address.",
+            "format": "email",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "role": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/Role",
+                "description": "New role. Only the Root Admin may change the role of a user."
+              }
+            ]
+          },
+          "username": {
+            "description": "New username; must be at least 4 characters long.",
+            "minLength": 4,
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "PatchUserResponse": {
+        "description": "Updated user returned by a successful update.",
+        "properties": {
+          "email": {
+            "description": "Email address of the user, when one was provided.",
+            "format": "email",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "$ref": "#/components/schemas/i64",
+            "description": "Unique identifier of the user."
+          },
+          "role": {
+            "$ref": "#/components/schemas/Role",
+            "description": "Role of the user."
+          },
+          "username": {
+            "description": "Username of the user.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "role",
+          "username"
+        ],
+        "type": "object"
+      },
       "RegisterRequest": {
         "description": "Payload to register a new user.\n\nThe requested `role` is granted only when the authenticated caller is\nallowed to create it: the Root Admin can register `Admin` or `Standard`\nusers, an `Admin` user can register `Standard` users only.",
         "properties": {
@@ -290,6 +370,97 @@
         "summary": "Check service health",
         "tags": [
           "system"
+        ]
+      }
+    },
+    "/identity/credential/{id}": {
+      "patch": {
+        "description": "Only the Root Admin (user identifier `0`, role `Admin`) may invoke this\nendpoint; any other authenticated caller is rejected with `403`. The Root\nAdmin may change its own credential as well as the credential of any other\nuser. The new password must satisfy the password policy: at least 8\ncharacters long and containing at least one symbol.",
+        "operationId": "patch_credential",
+        "parameters": [
+          {
+            "description": "Identifier of the credential whose password is changed",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/i64"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PatchCredentialRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Password changed"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Invalid payload or password policy violation"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Caller is not the Root Admin"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unknown credential"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unexpected error"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ],
+        "summary": "Change the password behind a credential",
+        "tags": [
+          "identity"
         ]
       }
     },
@@ -695,6 +866,102 @@
           }
         ],
         "summary": "Fetch a user by identifier",
+        "tags": [
+          "user"
+        ]
+      },
+      "patch": {
+        "description": "Requires an `Admin` caller. The root admin (identifier `0`) cannot be\nupdated by anyone. A non-root `Admin` may update its own profile (username\nand email) but may not modify another admin; it may update standard users\nof the instance. Only the Root Admin may change the role of a user.",
+        "operationId": "update_user",
+        "parameters": [
+          {
+            "description": "Identifier of the user to update",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/i64"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PatchUserRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PatchUserResponse"
+                }
+              }
+            },
+            "description": "User updated"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Invalid user identifier or payload"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid credentials"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Caller is not an administrator, the target cannot be modified, or the role change is not allowed"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unknown user"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unexpected error"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ],
+        "summary": "Update a user profile",
         "tags": [
           "user"
         ]
