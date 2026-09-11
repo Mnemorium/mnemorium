@@ -1,3 +1,4 @@
+pub mod configuration_repository;
 pub mod credential_repository;
 pub mod error_mapping;
 pub mod model;

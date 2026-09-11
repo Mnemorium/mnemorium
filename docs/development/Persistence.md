@@ -17,7 +17,8 @@ triggers that enforce invariants:
 - `codec`, `genre_id`, and `movie.country_of_origin` are normalised to uppercase
   on insert/update.
 - The `configuration` table is a singleton (`configuration_id = 0`) whose row
-  cannot be deleted.
+  cannot be deleted; it is created at first boot by the Initialize
+  Configuration use case, which also generates the secrets.
 
 ```puml
 @startuml
@@ -264,9 +265,13 @@ entity gallery_video {
 }
 
 entity configuration {
-   * configuration_id: INTEGER <<PK, CC(configuration_id = 0)>>
-   --
-   * content: TEXT <<NN>>
+    * configuration_id: INTEGER <<PK, CC(configuration_id = 0)>>
+    --
+    * jwt_secret: TEXT <<NN, CC(length(jwt_secret) = 64)>>
+    * jwt_ttl: INTEGER <<NN, CC(jwt_ttl > 0)>>
+    * pepper: TEXT <<NN, CC(length(pepper) = 64)>>
+    * sqlite3_path: TEXT <<NN>>
+    * sqlite3_max_connections: INTEGER <<NN, CC(sqlite3_max_connections > 0)>>
 }
 
 user ||--|| credential

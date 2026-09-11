@@ -231,3 +231,56 @@ changed.
 - The Root Admin holds a valid token and a personal credential.
 - The default password is no longer valid and is no longer shown in the standard
   output while the configuration has First-Time Admin Authentication enabled.
+
+## UC-004 - Load Configuration
+
+### Description
+
+On every runtime the system loads the application configuration by layering the
+persisted configuration singleton with the optional configuration file and the
+environment, generating the secrets on the first runtime.
+
+### Primary actor
+
+- System
+
+### Pre condition(s)
+
+- The datastore is reachable.
+
+### Trigger(s)
+
+- Start of system runtime.
+
+### Bounded context(s)
+
+- Configuration
+
+### Business rules
+
+- The configuration is merged following the persistence → file → environment
+  precedence: the persisted singleton row is the base layer, the configuration
+  file overrides it, and the environment overrides both.
+- On the first runtime the singleton row does not exist; the system creates it
+  with the default settings and freshly generated secrets before loading.
+- Secrets left empty after the first runtime creation are never regenerated:
+  the persisted row keeps them stable across restarts.
+
+### Happy path
+
+1. The system starts and checks whether the configuration singleton row
+   exists; none does, so the system creates it with the default settings and
+   freshly generated secrets.
+2. The system loads the configuration: the singleton row is layered with the
+   configuration file and the environment overrides.
+3. The system returns the merged configuration to the runtime.
+
+### Alternative flow
+
+- 1a. The singleton row already exists: the system skips its creation and
+  loads the configuration directly.
+
+### Post condition(s)
+
+- The configuration singleton row exists in the datastore.
+- The runtime holds a complete configuration to wire its dependencies.

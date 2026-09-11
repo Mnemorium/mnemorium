@@ -1,3 +1,5 @@
+pub mod configuration_repository;
+pub mod configuration_source;
 pub mod credential_repository;
 pub mod error;
 pub mod password_generator;
