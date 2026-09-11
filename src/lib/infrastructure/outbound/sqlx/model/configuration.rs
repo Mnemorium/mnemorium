@@ -7,6 +7,7 @@ pub struct Configuration {
     pub configuration_id: NumericID,
     pub jwt_secret: String,
     pub jwt_ttl: i64,
+    pub log_root_admin_password: bool,
     pub pepper: String,
     pub sqlite3_max_connections: i64,
     pub sqlite3_path: String,

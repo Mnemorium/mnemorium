@@ -19,6 +19,9 @@ triggers that enforce invariants:
 - The `configuration` table is a singleton (`configuration_id = 0`) whose row
   cannot be deleted; it is created at first boot by the Initialize
   Configuration use case, which also generates the secrets.
+- The `configuration.log_root_admin_password` flag records whether the Root
+  Admin default password is still revealed on standard output; the Patch
+  Credential use case clears it when the Root Admin replaces its own password.
 
 ```puml
 @startuml
@@ -270,6 +273,7 @@ entity configuration {
     * jwt_secret: TEXT <<NN, CC(length(jwt_secret) = 64)>>
     * jwt_ttl: INTEGER <<NN, CC(jwt_ttl > 0)>>
     * pepper: TEXT <<NN, CC(length(pepper) = 64)>>
+    * log_root_admin_password: INTEGER <<NN, DF(1), CC(log_root_admin_password IN (0, 1))>>
     * sqlite3_path: TEXT <<NN>>
     * sqlite3_max_connections: INTEGER <<NN, CC(sqlite3_max_connections > 0)>>
 }

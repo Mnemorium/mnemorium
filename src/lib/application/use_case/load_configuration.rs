@@ -62,7 +62,7 @@ where
 
         let jwt = Jwt::try_new(hex_encode(&secret), DEFAULT_JWT_TTL)
             .map_err(|error| LoadConfigurationError::InvalidConfiguration(error.into()))?;
-        let security = Security::try_new(jwt, hex_encode(&pepper))
+        let security = Security::try_new(jwt, hex_encode(&pepper), true)
             .map_err(|error| LoadConfigurationError::InvalidConfiguration(error.into()))?;
         let sqlite3 =
             Sqlite3::try_new(DEFAULT_SQLITE3_PATH.to_owned(), DEFAULT_SQLITE3_MAX_CONN)
@@ -227,7 +227,7 @@ mod tests {
 
     fn configuration() -> Result<Configuration, Box<dyn Error>> {
         let jwt = Jwt::try_new(hex64('a'), 3600)?;
-        let security = Security::try_new(jwt, hex64('b'))?;
+        let security = Security::try_new(jwt, hex64('b'), true)?;
         let sqlite3 = Sqlite3::try_new("mnemorium.db".to_owned(), 1)?;
         let persistence = Persistence::try_new(sqlite3);
         Ok(Configuration::try_new(persistence, security))

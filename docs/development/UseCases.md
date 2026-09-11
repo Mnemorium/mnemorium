@@ -214,7 +214,7 @@ changed.
 6. The system validates the new password against the business rules.
 7. The system hashes the new password, replaces the credential, and the default
    password stops being logged.
-8. The system issues a token and returns it with the updated account.
+8. The system returns the updated account.
 
 ### Alternative flow
 
@@ -228,7 +228,7 @@ changed.
 ### Post condition(s)
 
 - A Root Admin account exists in the system.
-- The Root Admin holds a valid token and a personal credential.
+- The Root Admin holds a personal credential.
 - The default password is no longer valid and is no longer shown in the standard
   output while the configuration has First-Time Admin Authentication enabled.
 
@@ -263,6 +263,8 @@ environment, generating the secrets on the first runtime.
   file overrides it, and the environment overrides both.
 - On the first runtime the singleton row does not exist; the system creates it
   with the default settings and freshly generated secrets before loading.
+- The default settings enable logging the Root Admin default password
+  (`log_root_admin_password` is `true`).
 - Secrets left empty after the first runtime creation are never regenerated:
   the persisted row keeps them stable across restarts.
 

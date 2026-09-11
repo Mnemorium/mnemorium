@@ -101,7 +101,7 @@ async fn main() -> Result<(), anyhow::Error> {
         &configuration_repository,
     )));
     let load_configuration = Arc::new(LoadConfiguration::new(
-        configuration_repository,
+        Arc::clone(&configuration_repository),
         configuration_source,
         Arc::new(ChaChaSecretGenerator::new()),
     ));
@@ -141,6 +141,7 @@ async fn main() -> Result<(), anyhow::Error> {
         Arc::clone(&user_repository),
         Arc::clone(&credential_repository),
         Arc::clone(&password_hasher),
+        Arc::clone(&configuration_repository),
     ));
     let login_user = Arc::new(LoginUserUseCase::new(
         user_repository,
@@ -154,10 +155,16 @@ async fn main() -> Result<(), anyhow::Error> {
         reason = "the root admin default password is a sensitive one-time credential; it must be printed to stdout only and never written to the file-based logs"
     )]
     match initialize_root_admin.execute().await {
-        Ok(Some(response)) => println!(
-            "Root admin initialized; use the default password to authenticate and change it: '{}'",
-            response.default_password()
-        ),
+        Ok(Some(response)) => {
+            if configuration.security().log_root_admin_password() {
+                println!(
+                    "Root admin initialized; use the default password to authenticate and change it: '{}'",
+                    response.default_password()
+                );
+            } else {
+                info!("Root admin initialized; the default password logging is disabled");
+            }
+        }
         Ok(None) => info!("Root admin already initialized"),
         Err(error) => return Err(error.into()),
     }

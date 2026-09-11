@@ -22,6 +22,10 @@ pub enum SecurityError {
 pub struct Security {
     /// `JWT` settings.
     jwt: Jwt,
+    /// Whether the Root Admin default password is still logged to standard
+    /// output on runtime start.
+    #[serde(default = "default_log_root_admin_password")]
+    log_root_admin_password: bool,
     /// Site-wide secret mixed into password hashes.
     pepper: String,
 }
@@ -39,10 +43,23 @@ impl Security {
         &mut self.jwt
     }
 
+    /// Return whether the Root Admin default password is still logged to
+    /// standard output on runtime start.
+    #[must_use]
+    pub fn log_root_admin_password(&self) -> bool {
+        self.log_root_admin_password
+    }
+
     /// Return the site-wide secret mixed into password hashes.
     #[must_use]
     pub fn pepper(&self) -> &str {
         &self.pepper
+    }
+
+    /// Update whether the Root Admin default password is logged to standard
+    /// output on runtime start.
+    pub fn set_log_root_admin_password(&mut self, log_root_admin_password: bool) {
+        self.log_root_admin_password = log_root_admin_password;
     }
 
     /// Update the site-wide secret mixed into password hashes.
@@ -62,10 +79,15 @@ impl Security {
     ///
     /// Returns [`SecurityError::InvalidPepper`] when `pepper` is not a
     /// [`PEPPER_HEX_LENGTH`]-character hexadecimal string.
-    pub fn try_new(jwt: Jwt, pepper: String) -> Result<Self, SecurityError> {
+    pub fn try_new(
+        jwt: Jwt,
+        pepper: String,
+        log_root_admin_password: bool,
+    ) -> Result<Self, SecurityError> {
         let validated_pepper = Self::validate_pepper(pepper)?;
         Ok(Self {
             jwt,
+            log_root_admin_password,
             pepper: validated_pepper,
         })
     }
@@ -87,4 +109,9 @@ impl Security {
             Err(SecurityError::InvalidPepper)
         }
     }
+}
+
+/// Default value for [`Security::log_root_admin_password`].
+fn default_log_root_admin_password() -> bool {
+    true
 }

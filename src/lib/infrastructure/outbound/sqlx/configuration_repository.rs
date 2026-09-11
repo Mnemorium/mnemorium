@@ -31,15 +31,17 @@ impl ConfigurationRepository for SqlxConfigurationRepository {
                 jwt_secret,
                 jwt_ttl,
                 pepper,
+                log_root_admin_password,
                 sqlite3_path,
                 sqlite3_max_connections
             )
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
             RETURNING
                 configuration_id,
                 jwt_secret,
                 jwt_ttl,
                 pepper,
+                log_root_admin_password,
                 sqlite3_path,
                 sqlite3_max_connections",
         )
@@ -50,6 +52,7 @@ impl ConfigurationRepository for SqlxConfigurationRepository {
             "configuration jwt_ttl does not fit in i64",
         )?)
         .bind(configuration.security().pepper())
+        .bind(configuration.security().log_root_admin_password())
         .bind(configuration.persistence().sqlite3().path())
         .bind(to_i64(
             u64::from(configuration.persistence().sqlite3().max_connections()),
@@ -68,14 +71,16 @@ impl ConfigurationRepository for SqlxConfigurationRepository {
                 jwt_secret,
                 jwt_ttl,
                 pepper,
+                log_root_admin_password,
                 sqlite3_path,
                 sqlite3_max_connections
             )
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
             ON CONFLICT (configuration_id) DO UPDATE SET
                 jwt_secret = excluded.jwt_secret,
                 jwt_ttl = excluded.jwt_ttl,
                 pepper = excluded.pepper,
+                log_root_admin_password = excluded.log_root_admin_password,
                 sqlite3_path = excluded.sqlite3_path,
                 sqlite3_max_connections = excluded.sqlite3_max_connections
             RETURNING
@@ -83,6 +88,7 @@ impl ConfigurationRepository for SqlxConfigurationRepository {
                 jwt_secret,
                 jwt_ttl,
                 pepper,
+                log_root_admin_password,
                 sqlite3_path,
                 sqlite3_max_connections",
         )
@@ -93,6 +99,7 @@ impl ConfigurationRepository for SqlxConfigurationRepository {
             "configuration jwt_ttl does not fit in i64",
         )?)
         .bind(configuration.security().pepper())
+        .bind(configuration.security().log_root_admin_password())
         .bind(configuration.persistence().sqlite3().path())
         .bind(to_i64(
             u64::from(configuration.persistence().sqlite3().max_connections()),
@@ -111,6 +118,7 @@ impl ConfigurationRepository for SqlxConfigurationRepository {
                 jwt_secret,
                 jwt_ttl,
                 pepper,
+                log_root_admin_password,
                 sqlite3_path,
                 sqlite3_max_connections
             FROM configuration
@@ -146,8 +154,8 @@ fn domain_configuration(row: SqlxConfiguration) -> Result<Configuration, Reposit
         .map_err(|_| RepositoryError::DataIntegrityViolation)?;
     let jwt =
         Jwt::try_new(row.jwt_secret, ttl).map_err(|_| RepositoryError::DataIntegrityViolation)?;
-    let security =
-        Security::try_new(jwt, row.pepper).map_err(|_| RepositoryError::DataIntegrityViolation)?;
+    let security = Security::try_new(jwt, row.pepper, row.log_root_admin_password)
+        .map_err(|_| RepositoryError::DataIntegrityViolation)?;
     let persistence = Persistence::try_new(sqlite3);
 
     Ok(Configuration::try_new(persistence, security))
@@ -186,7 +194,7 @@ mod tests {
 
     fn configuration() -> Result<Configuration, Box<dyn Error>> {
         let jwt = Jwt::try_new(hex64('a'), 3600)?;
-        let security = Security::try_new(jwt, hex64('b'))?;
+        let security = Security::try_new(jwt, hex64('b'), true)?;
         let sqlite3 = Sqlite3::try_new("mnemorium.db".to_owned(), 1)?;
         let persistence = Persistence::try_new(sqlite3);
         Ok(Configuration::try_new(persistence, security))
@@ -242,7 +250,7 @@ mod tests {
         repository.create(configuration()?).await?;
         let updated = Configuration::try_new(
             Persistence::try_new(Sqlite3::try_new("other.db".to_owned(), 3)?),
-            Security::try_new(Jwt::try_new(hex64('c'), 60)?, hex64('d'))?,
+            Security::try_new(Jwt::try_new(hex64('c'), 60)?, hex64('d'), false)?,
         );
 
         // Act
