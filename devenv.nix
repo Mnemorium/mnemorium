@@ -261,6 +261,11 @@
     description = "Lint markdown file";
   };
 
+  tasks."lint:shell" = {
+    exec = "shellcheck script/*.sh";
+    description = "Lint shell file";
+  };
+
   tasks."lint:all" = {
     description = "Run all the Linters";
     after = [
@@ -269,6 +274,7 @@
       "lint:yaml"
       "lint:sql"
       "lint:md"
+      "lint:shell"
     ];
   };
 
