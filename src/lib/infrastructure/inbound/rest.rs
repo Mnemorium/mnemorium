@@ -49,7 +49,7 @@ impl utoipa::Modify for SecurityAddon {
 #[openapi(
     info(
         title = "Mnemorium API",
-        version = "0.1.0",
+        version = "0.1.4",
         description = "HTTP API of the Mnemorium service"
     ),
     servers(
