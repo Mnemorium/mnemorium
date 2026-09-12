@@ -67,44 +67,55 @@
   };
 
   git-hooks.hooks = {
-    # shell
+    # === shell
     shellcheck.enable = true;
     shfmt.enable = true;
-    # rust
+    # === rust
     rustfmt.enable = true;
     clippy = {
       enable = true;
+      name = "clippy";
       entry = "cargo clippy --all-targets --all-features -- -D warnings";
+      language = "rust";
+      pass_filenames = false; # It work on a package basis
+      files = "\\.rs$";
     };
-    # python
+    # === python
     ruff.enable = true;
     ruff-format.enable = true;
-    # This file
+    # === Nix (This file)
     nixfmt.enable = true;
-    # file/dir names
+    # === file/dir names
     ls-lint = {
       enable = true;
       name = "ls-lint";
       entry = "ls-lint";
       language = "system";
       pass_filenames = false;
+      types = [
+        "file"
+        "symlink"
+        "directory"
+      ];
     };
-    # toml
+    # === toml
     taplo.enable = true;
-
+    # === test coverage
     coverage = {
       enable = true;
-
       name = "Coverage >= 80%";
       entry = "cargo llvm-cov --lib --fail-under-functions 80 --fail-under-regions 80 --fail-under-lines 80";
       pass_filenames = false;
+      files = "\\.rs$";
+      language = "rust";
     };
 
-    # sql
+    # === sql
     sql = {
       enable = true;
       name = "sqlfluff";
-      entry = "sqlfluff lint --dialect sqlite migrations";
+      entry = "sqlfluff lint --dialect sqlite";
+      files = "migrations/.*\\.sql$";
     };
 
     cargo-audit = {
@@ -112,37 +123,40 @@
       name = "cargo-audit";
       entry = "cargo audit";
       pass_filenames = false;
+      files = "Cargo\\.toml$";
     };
 
     documentation = {
       enable = true;
-      name = "Verify documentation";
+      name = "Verify Mkdocs documentation build";
       entry = "mkdocs build --strict";
       pass_filenames = false;
+      files = "docs/.*\\.md$";
     };
 
     markdownlint = {
       enable = true;
       package = pkgs.markdownlint-cli2;
-      entry = "markdownlint-cli2 '**/*.md'";
+      entry = "markdownlint-cli2";
+      files = ".*\\.md$";
     };
     mkdocs-link = {
       enable = true;
-      entry = "mkdocs-linkcheck .";
-      pass_filenames = false;
+      entry = "mkdocs-linkcheck --files";
+      files = "docs/.*\\.md$";
     };
 
     yamllint = {
       enable = true;
       package = multiverse.yamllint."1.37.1";
-      entry = "yamllint -c .yamllint .";
-      pass_filenames = false;
+      entry = "yamllint -c .yamllint";
+      files = "\\.(yaml|yml)$";
     };
 
     build = {
       enable = true;
       entry = "cargo build";
-      pass_filenames = false;
+      files = "\\.rs$";
     };
 
   };
@@ -213,25 +227,13 @@
   };
 
   tasks."fmt:md" = {
-    exec = "prettier --write 'docs/**/*.md' README.md";
+    exec = "prettier --write 'docs/**/*.md' README.md '**/TODO.md'";
     description = "Format markdown code";
   };
 
   tasks."fmt:sql" = {
     exec = "sqlfluff format --dialect sqlite migrations";
     description = "Format sql file";
-  };
-
-  tasks."fmt:all" = {
-    description = "Run all the Formaters";
-    after = [
-      "fmt:nix"
-      "fmt:rust"
-      "fmt:python"
-      "fmt:shell"
-      "fmt:toml"
-      "fmt:md"
-    ];
   };
 
   # Linting
@@ -264,18 +266,6 @@
   tasks."lint:shell" = {
     exec = "shellcheck script/*.sh";
     description = "Lint shell file";
-  };
-
-  tasks."lint:all" = {
-    description = "Run all the Linters";
-    after = [
-      "lint:rust"
-      "lint:python"
-      "lint:yaml"
-      "lint:sql"
-      "lint:md"
-      "lint:shell"
-    ];
   };
 
   # Scripts
