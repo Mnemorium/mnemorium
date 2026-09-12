@@ -17,8 +17,8 @@ triggers that enforce invariants:
 - `codec`, `genre_id`, and `movie.country_of_origin` are normalised to uppercase
   on insert/update.
 - The `configuration` table is a singleton (`configuration_id = 0`) whose row
-  cannot be deleted; it is created at first boot by the Initialize
-  Configuration use case, which also generates the secrets.
+  cannot be deleted; it is created at first boot by the Initialize Configuration
+  use case, which also generates the secrets.
 - The `configuration.log_root_admin_password` flag records whether the Root
   Admin default password is still revealed on standard output; the Patch
   Credential use case clears it when the Root Admin replaces its own password.

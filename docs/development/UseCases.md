@@ -265,24 +265,133 @@ environment, generating the secrets on the first runtime.
   with the default settings and freshly generated secrets before loading.
 - The default settings enable logging the Root Admin default password
   (`log_root_admin_password` is `true`).
-- Secrets left empty after the first runtime creation are never regenerated:
-  the persisted row keeps them stable across restarts.
+- Secrets left empty after the first runtime creation are never regenerated: the
+  persisted row keeps them stable across restarts.
 
 ### Happy path
 
-1. The system starts and checks whether the configuration singleton row
-   exists; none does, so the system creates it with the default settings and
-   freshly generated secrets.
+1. The system starts and checks whether the configuration singleton row exists;
+   none does, so the system creates it with the default settings and freshly
+   generated secrets.
 2. The system loads the configuration: the singleton row is layered with the
    configuration file and the environment overrides.
 3. The system returns the merged configuration to the runtime.
 
 ### Alternative flow
 
-- 1a. The singleton row already exists: the system skips its creation and
-  loads the configuration directly.
+- 1a. The singleton row already exists: the system skips its creation and loads
+  the configuration directly.
 
 ### Post condition(s)
 
 - The configuration singleton row exists in the datastore.
 - The runtime holds a complete configuration to wire its dependencies.
+
+## UC-005 - Delete User Account
+
+### Description
+
+Allow an Administrator to remove a user account together with all the data it
+owns, and prevent the affected user from accessing the system.
+
+### Primary actor
+
+- Admin
+
+### Pre condition(s)
+
+- The caller is authenticated as an Admin.
+
+### Trigger(s)
+
+- User deletion request
+
+### Bounded context(s)
+
+- Identity
+- User
+
+### Business rules
+
+- The Root Admin account cannot be deleted.
+- Deletion removes the user, its credential, and everything the user owns: its
+  files, its playlists, and the media records that depend on those files.
+- Tokens issued to the deleted user stop being accepted immediately.
+
+### Happy path
+
+1. The Admin submits a user deletion request identifying the target user.
+2. The system verifies the target user exists.
+3. The system verifies the target user is not the Root Admin.
+4. The system deletes the data owned by the user and then the account with its
+   credential.
+5. The system stops accepting the tokens issued to the deleted user.
+6. The system confirms the deletion.
+
+### Alternative flow
+
+- 1a. The caller is not an Admin; the system rejects the request.
+- 2a. No user exists for the requested identifier; the system rejects the
+  request.
+- 3a. The target user is the Root Admin; the system rejects the request.
+
+### Post condition(s)
+
+- The user account and its credential no longer exist.
+- Every file, playlist, and dependent media record owned by the user no longer
+  exists.
+- The deleted user cannot authenticate and any token it held is rejected.
+
+## UC-006 - Upload Media File
+
+### Description
+
+Allow a user to upload a supported media file to the service for storage,
+processing, cataloging, and distribution.
+
+### Primary actor
+
+- Standard User
+
+### Pre condition(s)
+
+- The caller is authenticated.
+
+### Trigger(s)
+
+- Upload request
+
+### Bounded context(s)
+
+- Asset
+
+### Business rules
+
+- The uploaded content must match one of the supported media MIME types (AUDIO,
+  VIDEO, or IMAGE) recorded in the datastore.
+- The media type is determined from the file content, not from the file name or
+  declared content type alone.
+- The stored file path is unique across files.
+- An integrity hash of the uploaded content is computed and stored with the
+  file; it is unique across files.
+- The uploaded file is private by default (`is_public` is false).
+
+### Happy path
+
+1. The user submits an upload request carrying the media file.
+2. The system determines the media type from the file content.
+3. The system verifies the media type is supported.
+4. The system computes the integrity hash of the content.
+5. The system stores the file and saves its record bound to the caller.
+6. The system returns the created file record.
+
+### Alternative flow
+
+- 3a. The media type is unsupported; the system rejects the upload and stores
+  nothing.
+
+### Post condition(s)
+
+- The file exists on the storage with a unique path.
+- A file record bound to the caller exists in the datastore with its media type,
+  integrity hash, and private visibility.
