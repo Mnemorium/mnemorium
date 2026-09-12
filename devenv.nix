@@ -59,7 +59,6 @@
         mkdocs-material==9.7.7
         mkdocs_puml==2.3.0
         neoteroi-mkdocs==1.2.0
-        mkdocs-linkcheck==1.0.6
         ruff==0.16.5
         requests==2.34.2
       '';
@@ -140,12 +139,6 @@
       entry = "markdownlint-cli2";
       files = ".*\\.md$";
     };
-    mkdocs-link = {
-      enable = true;
-      entry = "mkdocs-linkcheck";
-      files = "docs/.*\\.md$";
-    };
-
     yamllint = {
       enable = true;
       package = multiverse.yamllint."1.37.1";
