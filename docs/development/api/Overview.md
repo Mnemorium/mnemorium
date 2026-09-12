@@ -6,7 +6,7 @@ satisfy.
 
 The OpenAPI specification is generated with [Utoipa]. Handlers are declared in
 `src/lib/infrastructure/inbound/rest/handler`, wired into the axum router in
-`bootstrap.rs` (nested under `/api/v1`) and documented inline, at the source,
+`rest.rs` (nested under `/api/v1`) and documented inline, at the source,
 with `#[utoipa::path(...)]` macros.
 
 [Utoipa]: https://docs.rs/utoipa
