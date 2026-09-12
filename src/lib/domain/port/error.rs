@@ -152,3 +152,25 @@ pub enum TokenProviderError {
     #[error("an unexpected or unmapped error occurred: {0}")]
     Unknown(#[source] anyhow::Error),
 }
+
+/// Error returned when a file storage operation fails.
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
+pub enum StorageError {
+    /// The upload targeted by the given identifier no longer exists: it was
+    /// never begun, already committed, or expired.
+    #[error("the upload does not exist, was already committed, or expired")]
+    Conflict,
+    /// The storage backend could not complete the requested operation for a
+    /// non-specific reason.
+    #[error(
+        "the file storage could not complete the requested operation for a non-specific reason"
+    )]
+    OperationFailed,
+    /// The storage backend is temporarily unavailable or unreachable.
+    #[error("the file storage is temporarily unavailable or unreachable")]
+    Unavailable,
+    /// An unexpected or unmapped error occurred.
+    #[error("an unexpected or unmapped error occurred: {0}")]
+    Unknown(#[source] anyhow::Error),
+}
