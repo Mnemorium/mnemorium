@@ -142,7 +142,7 @@
     };
     mkdocs-link = {
       enable = true;
-      entry = "mkdocs-linkcheck --files";
+      entry = "mkdocs-linkcheck";
       files = "docs/.*\\.md$";
     };
 
