@@ -359,6 +359,7 @@ allowed scopes are:
 | test-e2e    | End-to-end tests                                  |
 | test-system | System tests                                      |
 | sqlite3     | SQLite3 datastore (migrations, sqlx SQLite layer) |
+| application | Application layer (use cases and ports)           |
 | development | Development documentation                         |
 | api         | REST API and OpenAPI specification                |
 

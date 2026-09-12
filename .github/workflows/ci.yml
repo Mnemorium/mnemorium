@@ -37,6 +37,7 @@ jobs:
             test-e2e
             test-system
             sqlite3
+            application
             development
             api
 
