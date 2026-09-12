@@ -11,6 +11,10 @@ on:
       - synchronize
       - reopened
 
+permissions:
+  contents: read
+  pull-requests: read
+
 jobs:
   gatekeeper:
     runs-on: ubuntu-slim
@@ -41,15 +45,233 @@ jobs:
             development
             api
 
-  main:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      rust: ${{ steps.filter.outputs.rust_any_changed }}
+      python: ${{ steps.filter.outputs.python_any_changed }}
+      markdown: ${{ steps.filter.outputs.markdown_any_changed }}
+      docs: ${{ steps.filter.outputs.docs_any_changed }}
+      sql: ${{ steps.filter.outputs.sql_any_changed }}
+      shell: ${{ steps.filter.outputs.shell_any_changed }}
+      nix: ${{ steps.filter.outputs.nix_any_changed }}
+      deps: ${{ steps.filter.outputs.deps_any_changed }}
+      lint: ${{ steps.filter.outputs.lint_any_changed }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      # v47.0.6
+      - uses: tj-actions/changed-files@9426d40962ed5378910ee2e21d5f8c6fcbf2dd96
+        id: filter
+        with:
+          files_yaml: |
+            rust:
+              - '**/*.rs'
+              - 'Cargo.toml'
+              - 'Cargo.lock'
+            python:
+              - '**/*.py'
+              - 'ruff.toml'
+              - 'pytest.ini'
+              - 'requirements.txt'
+            markdown:
+              - '**/*.md'
+            docs:
+              - 'docs/**'
+              - 'mkdocs.yml'
+              - 'requirements.txt'
+            sql:
+              - 'migrations/**/*.sql'
+              - 'requirements.txt'
+            shell:
+              - '**/*.sh'
+            nix:
+              - '**/*.nix'
+            deps:
+              - 'Cargo.toml'
+              - 'Cargo.lock'
+            lint:
+              - '**'
+
+  docs-only:
+    if: >-
+      startsWith(github.event.pull_request.title, 'docs:') ||
+      startsWith(github.event.pull_request.title, 'docs!') ||
+      startsWith(github.event.pull_request.title, 'docs(')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      # v47.0.6
+      - uses: tj-actions/changed-files@9426d40962ed5378910ee2e21d5f8c6fcbf2dd96
+        id: changed
+        with:
+          files: |
+            docs/**
+            **/*.md
+            mkdocs.yml
+      - name: Reject non-documentation changes
+        if: steps.changed.outputs.other_modified_files != ''
+        env:
+          OTHER: ${{ steps.changed.outputs.other_modified_files }}
+        run: |
+          echo "A docs PR may only change documentation." >&2
+          for f in $OTHER; do
+            echo "  unexpected: $f" >&2
+          done
+          exit 1
+
+  rust:
+    needs: [changes]
+    if: needs.changes.outputs.rust == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@1.98.0
+        with:
+          components: rustfmt, clippy, llvm-tools-preview
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@cargo-llvm-cov
+      - name: Format
+        run: cargo fmt --all -- --check
+      - name: Clippy
+        run: >-
+          cargo clippy --all-targets --all-features
+          -- -D warnings
+      - name: Build
+        run: cargo build
+      - name: Coverage
+        run: >-
+          cargo llvm-cov --lib
+          --fail-under-functions 80
+          --fail-under-regions 80
+          --fail-under-lines 80
+
+  security:
+    needs: [changes]
+    if: needs.changes.outputs.deps == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@1.98.0
+      - uses: taiki-e/install-action@cargo-audit
+      - name: Audit dependencies
+        run: cargo audit
+
+  python:
+    needs: [changes]
+    if: needs.changes.outputs.python == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Ruff lint
+        run: ruff check .
+      - name: Ruff format
+        run: ruff format --check .
+
+  docs:
+    needs: [changes]
+    if: >-
+      needs.changes.outputs.markdown == 'true' ||
+      needs.changes.outputs.docs == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - name: Install documentation dependencies
+        run: pip install -r requirements.txt
+      - name: Markdown lint
+        uses: DavidAnson/markdownlint-cli2-action@v24
+        with:
+          globs: "**/*.md"
+      - name: Build documentation
+        if: needs.changes.outputs.docs == 'true'
+        run: mkdocs build --strict
+
+  sql:
+    needs: [changes]
+    if: needs.changes.outputs.sql == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - name: Install sqlfluff
+        run: pip install -r requirements.txt
+      - name: Lint SQL
+        run: sqlfluff lint --dialect sqlite migrations
+
+  shell:
+    needs: [changes]
+    if: needs.changes.outputs.shell == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: shellcheck,shfmt
+      - name: ShellCheck
+        run: shellcheck script/*.sh
+      - name: shfmt
+        run: shfmt -d script/*.sh
+
+  nix:
+    needs: [changes]
+    if: needs.changes.outputs.nix == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
       - uses: cachix/install-nix-action@v31
-      - uses: cachix/cachix-action@v16
+      - name: nixfmt
+        run: nix run nixpkgs#nixfmt -- --check devenv.nix
+
+  lint:
+    needs: [changes]
+    if: needs.changes.outputs.lint == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ls-lint/action@v2
+      - uses: taiki-e/install-action@taplo
+      - uses: actions/setup-python@v5
         with:
-          name: devenv
-      - name: Install devenv
-        run: nix profile add nixpkgs#devenv
-      - name: Build the devenv shell and run any git hooks
-        run: devenv test
+          python-version: "3.14"
+      - name: Install yamllint
+        run: pip install -r requirements.txt
+      - name: Check TOML
+        run: taplo fmt --check
+      - name: Lint YAML
+        run: yamllint -c .yamllint .
+
+  ci:
+    name: CI
+    if: always()
+    needs:
+      - gatekeeper
+      - changes
+      - docs-only
+      - rust
+      - security
+      - python
+      - docs
+      - sql
+      - shell
+      - nix
+      - lint
+    runs-on: ubuntu-slim
+    steps:
+      - name: Check results
+        if: >-
+          contains(needs.*.result, 'failure') ||
+          contains(needs.*.result, 'cancelled')
+        run: exit 1
