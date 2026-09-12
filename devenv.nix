@@ -155,8 +155,10 @@
 
     build = {
       enable = true;
+      name = "Build rust code";
       entry = "cargo build";
       files = "\\.rs$";
+      pass_filenames = false;
     };
 
   };
