@@ -3,6 +3,9 @@ pub mod app_state;
 pub mod handler;
 pub mod middleware;
 
+use handler::asset::post_asset::__path_post_asset;
+use handler::asset::post_asset_chunk::__path_post_asset_chunk;
+use handler::asset::post_asset_finish::__path_post_asset_finish;
 use handler::get_health::__path_get_health;
 use handler::identity::patch_credential::__path_patch_credential;
 use handler::identity::post_login::__path_post_login;
@@ -14,6 +17,10 @@ use handler::user::patch_user::__path_patch_user;
 
 use crate::domain::model::user::Role;
 use crate::infrastructure::inbound::rest::api_error::ErrorBody;
+use crate::infrastructure::inbound::rest::handler::asset::post_asset::PostAssetRequest;
+use crate::infrastructure::inbound::rest::handler::asset::post_asset::PostAssetResponse;
+use crate::infrastructure::inbound::rest::handler::asset::post_asset_chunk::PostAssetChunkRequest;
+use crate::infrastructure::inbound::rest::handler::asset::post_asset_finish::PostAssetFinishResponse;
 use crate::infrastructure::inbound::rest::handler::identity::patch_credential::PatchCredentialRequest;
 use crate::infrastructure::inbound::rest::handler::identity::post_login::LoginRequest;
 use crate::infrastructure::inbound::rest::handler::identity::post_login::LoginResponse;
@@ -49,16 +56,17 @@ impl utoipa::Modify for SecurityAddon {
 #[openapi(
     info(
         title = "Mnemorium API",
-        version = "0.1.4",
+        version = "0.1.5",
         description = "HTTP API of the Mnemorium service"
     ),
     servers(
         (url = "http://0.0.0.0:4080/api/v1", description = "Local development server")
     ),
-    paths(get_health, patch_credential, post_login, post_register, get_me, get_user, get_user_list, patch_user),
-    components(schemas(ErrorBody, GetMeResponse, GetUserResponse, LoginRequest, LoginResponse, PatchCredentialRequest, PatchUserRequest, PatchUserResponse, RegisterRequest, RegisterResponse, Role)),
+    paths(get_health, post_asset, post_asset_chunk, post_asset_finish, patch_credential, post_login, post_register, get_me, get_user, get_user_list, patch_user),
+    components(schemas(ErrorBody, GetMeResponse, GetUserResponse, LoginRequest, LoginResponse, PatchCredentialRequest, PatchUserRequest, PatchUserResponse, PostAssetChunkRequest, PostAssetFinishResponse, PostAssetRequest, PostAssetResponse, RegisterRequest, RegisterResponse, Role)),
     tags(
         (name = "system", description = "System-level endpoints"),
+        (name = "asset", description = "Asset bounded context"),
         (name = "identity", description = "Identity bounded context"),
         (name = "user", description = "User bounded context")
     ),

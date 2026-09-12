@@ -2,6 +2,7 @@ pub mod configuration_repository;
 pub mod configuration_source;
 pub mod credential_repository;
 pub mod error;
+pub mod file_storage;
 pub mod password_generator;
 pub mod password_hasher;
 pub mod secret_generator;
