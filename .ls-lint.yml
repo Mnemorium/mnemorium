@@ -13,3 +13,4 @@ ignore:
   - .agents
   - .opencode
   - .pytest_cache
+  - test/TODO.md
