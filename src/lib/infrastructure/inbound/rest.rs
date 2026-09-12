@@ -50,13 +50,12 @@ impl utoipa::Modify for SecurityAddon {
         }
     }
 }
-
 /// Root `OpenAPI` aggregation for the Mnemorium HTTP API.
 #[derive(utoipa::OpenApi)]
 #[openapi(
     info(
         title = "Mnemorium API",
-        version = "0.1.5",
+        version = env!("CARGO_PKG_VERSION"),
         description = "HTTP API of the Mnemorium service"
     ),
     servers(

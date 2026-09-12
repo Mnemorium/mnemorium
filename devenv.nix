@@ -149,7 +149,7 @@
     yamllint = {
       enable = true;
       package = multiverse.yamllint."1.37.1";
-      entry = "yamllint -c .yamllint";
+      entry = "yamllint -c .yamllint --list-files";
       files = "\\.(yaml|yml)$";
     };
 

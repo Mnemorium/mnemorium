@@ -314,8 +314,11 @@ GalleryItem "1" -- "0..1" Video: References >
 
 ## Branch naming and PR title naming
 
-All change types and scopes below match the values enforced by the semantic PR
-gating job in `.github/workflows/ci.yml`
+PR titles follow the
+[Conventional Commits v1.0.0](https://www.conventionalcommits.org/en/v1.0.0/)
+specification: the type at the start of the title determines the semantic
+version bump (see [Versioning](#versioning) below). The allowed types are
+enforced by the semantic PR gating job in `.github/workflows/ci.yml`
 (`amannn/action-semantic-pull-request`).
 
 ### Branch naming
@@ -324,36 +327,81 @@ Format: `{type}({scope})/{description}`, kebab-case.
 
 Examples:
 
-- `feature(core)/serve-media`
-- `hotfix(devops)/fix-dockerfile`
+- `feat(core)/serve-media`
+- `fix(devops)/fix-dockerfile`
 - `docs(agent)/spellcheck-dead`
 
 ### PR title naming
 
 Format: `{type}({scope}): {description}` — enforced by CI.
 
+For intentional breaking changes, add `!` after the type/scope:
+
+- `feat(core)!: rename endpoints`
+- `fix(core)!: change response schema`
+
 Examples:
 
-- `feature(core): serve media via streaming`
-- `hotfix(devops): fix Dockerfile registry`
+- `feat(core): serve media via streaming`
+- `fix(devops): fix Dockerfile registry`
+- `release: 0.3.0`
 
 ### Scopes
 
-| Scope  | Description                            |
-| ------ | -------------------------------------- |
-| core   | Core media server functionality        |
-| agent  | AI/assistant agent features            |
-| devops | CI, builds, Docker, and infrastructure |
+A scope is an optional noun describing the area of the codebase affected. The
+allowed scopes are:
+
+| Scope       | Description                                       |
+| ----------- | ------------------------------------------------- |
+| agent       | opencode configuration, agents, and `AGENTS.md`   |
+| lint        | Lint configuration files                          |
+| devenv      | devenv environment files                          |
+| test-e2e    | End-to-end tests                                  |
+| test-system | System tests                                      |
+| sqlite3     | SQLite3 datastore (migrations, sqlx SQLite layer) |
+| development | Development documentation                         |
+| api         | REST API and OpenAPI specification                |
+
+Other scopes may be added later as new areas emerge. The `release` type carries
+no scope.
 
 ### Type prefixes
 
-| Prefix   | Description                                   |
-| -------- | --------------------------------------------- |
-| feature  | New feature, based on the implementation plan |
-| bugfix   | Non-critical bug fixes                        |
-| refactor | Code cleanup/restructure                      |
-| docs     | Documentation changes                         |
-| chore    | Build and maintenance tasks                   |
-| release  | Release version bumps, with the version       |
-| test     | Tests and test improvements                   |
-| hotfix   | Production fixes                              |
+| Prefix   | Description                                  | Version bump |
+| -------- | -------------------------------------------- | ------------ |
+| feat     | New feature                                  | MINOR        |
+| fix      | Bug fix (including production fixes)         | PATCH        |
+| refactor | Code cleanup/restructure, no behavior change | PATCH        |
+| perf     | Performance improvement                      | PATCH        |
+| docs     | Documentation changes                        | PATCH        |
+| test     | Tests and test improvements                  | PATCH        |
+| build    | Build system and dependency changes          | PATCH        |
+| ci       | CI/CD workflow changes                       | PATCH        |
+| chore    | Maintenance tasks                            | PATCH        |
+| release  | Release version bumps, reserved for the bot  | explicit     |
+
+## Versioning
+
+The version follows [semantic versioning](https://semver.org/)
+(`MAJOR.MINOR.PATCH`). The bump is computed automatically on merge by the
+release workflow (`.github/workflows/cd.yml`) from the merged PR titles since
+the last tag:
+
+| Bump  | Trigger                                                                                 |
+| ----- | --------------------------------------------------------------------------------------- |
+| MAJOR | A PR title with a `!` marker (e.g. `feat(core)!:`)                                      |
+| MINOR | At least one merged `feat` PR (and no `!` marker)                                       |
+| PATCH | Any other merged PR (`fix`, `refactor`, `perf`, `docs`, `test`, `build`, `ci`, `chore`) |
+
+When a release is needed, the workflow:
+
+1. Bumps the version with `script/version.sh set <version>` and commits it as
+   `github-actions[bot]` with a `release: v<version>` message.
+2. Tags the commit (`v<version>`) and pushes it.
+3. Publishes a GitHub release (with generated release notes and a source ZIP)
+   and pushes the Docker image.
+
+If any step fails after the push, the workflow reverts: it deletes the remote
+tag and restores `main` to its previous commit. PRs titled `release*` are
+skipped by the workflow; the `release` type is reserved for the bot's own
+commits.

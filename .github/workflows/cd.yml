@@ -1,0 +1,156 @@
+---
+name: Mnemorium CD
+
+on:
+  pull_request:
+    types: [closed]
+
+# Run releases one at a time: queued runs wait instead of cancelling the
+# in-flight one, so two merged PRs can never race to bump the version, and
+# an interrupted release can always finish its revert before the next starts.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Release new Mnemorium version
+    if: >
+      github.event.pull_request.merged == true &&
+      github.event.pull_request.base.ref == 'main' &&
+      !startsWith(github.event.pull_request.title, 'release')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: main
+          fetch-depth: 0
+          filter: blob:none
+
+      - name: Record previous commit
+        id: state
+        run: echo "previous_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - uses: paulhatch/semantic-version@v5.4.0
+        id: version
+        with:
+          tag_prefix: "v"
+          version_format: "${major}.${minor}.${patch}"
+          search_commit_body: true
+
+      - name: Skip if no version change needed
+        id: gate
+        run: |
+          current=$(awk -F'"' '/^\[package\]$/{p=1;next} p && /^\[/{p=0}
+            p && /^version = /{print $2; exit}' Cargo.toml)
+          echo "current=$current" >> "$GITHUB_OUTPUT"
+          if [ "${{ steps.version.outputs.is_tagged }}" = "true" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "HEAD is already tagged; nothing to release"
+          elif [ "${{ steps.version.outputs.version_type }}" = "none" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "No version bump detected; nothing to release"
+          elif [ "${{ steps.version.outputs.version }}" = "$current" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "Implied version equals current version ($current)"
+            echo "Nothing to release"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+            new="${{ steps.version.outputs.version }}"
+            type="${{ steps.version.outputs.version_type }}"
+            echo "Bump: $current -> $new ($type); releasing"
+          fi
+
+      - name: Bump version files
+        if: steps.gate.outputs.skip == 'false'
+        run: script/version.sh set "${{ steps.version.outputs.version }}"
+      - name: Verify version files
+        if: steps.gate.outputs.skip == 'false'
+        run: script/version.sh check "${{ steps.version.outputs.version }}"
+
+      - name: Commit version bump
+        if: steps.gate.outputs.skip == 'false'
+        run: |
+          bot="41898282+github-actions[bot]@users.noreply.github.com"
+          git config user.name "github-actions[bot]"
+          git config user.email "$bot"
+          git add Cargo.toml src/lib/infrastructure/inbound/rest.rs
+          git add docs/development/api/openapi.json
+          if git diff --cached --quiet; then
+            echo "Nothing to commit"
+            exit 1
+          fi
+          git commit -m "release: v${{ steps.version.outputs.version }}"
+
+      - name: Push main
+        if: steps.gate.outputs.skip == 'false'
+        run: git push origin HEAD:main
+
+      - name: Create tag
+        if: steps.gate.outputs.skip == 'false'
+        run: |
+          tag="${{ steps.version.outputs.version_tag }}"
+          git tag -a "$tag" -m "Release $tag"
+
+      - name: Push tag
+        id: push_tag
+        if: steps.gate.outputs.skip == 'false'
+        run: git push origin "${{ steps.version.outputs.version_tag }}"
+
+      - name: Create ZIP
+        if: steps.gate.outputs.skip == 'false'
+        run: |
+          zip -r source-${{ steps.version.outputs.version_tag }}.zip . \
+            -x ".git/*" ".github/*" "target/*" "node_modules/*" "result*"
+
+      - name: Release
+        id: gh_release
+        if: steps.gate.outputs.skip == 'false'
+        uses: softprops/action-gh-release@v3
+        with:
+          tag: ${{ steps.version.outputs.version_tag }}
+          files: source-${{ steps.version.outputs.version_tag }}.zip
+          generate_release_notes: true
+          token: ${{ secrets.GH_TOKEN }}
+
+      - name: Login to Docker Hub
+        if: steps.gate.outputs.skip == 'false'
+        uses: docker/login-action@v4
+        with:
+          username: ${{ secrets.DOCKER_HUB_LOGIN }}
+          password: ${{ secrets.DOCKER_HUB_TOKEN }}
+      - name: Setup Docker Buildx
+        if: steps.gate.outputs.skip == 'false'
+        uses: docker/setup-buildx-action@v4
+      - name: Build and push Docker image
+        if: steps.gate.outputs.skip == 'false'
+        uses: docker/build-push-action@v7
+        env:
+          TAG: ${{ steps.version.outputs.version_tag }}
+        with:
+          context: .
+          push: true
+          tags: ${{ vars.DOCKER_HUB_REPOSITORY }}:${TAG}
+
+      - name: Revert release on failure
+        if: failure()
+        run: |
+          set -e
+          tag="${{ steps.version.outputs.version_tag }}"
+          previous="${{ steps.state.outputs.previous_sha }}"
+          remote="origin"
+          if git ls-remote --exit-code --tags "$remote" \
+              "refs/tags/${tag}" >/dev/null 2>&1; then
+            echo "Deleting remote tag ${tag}"
+            git push "$remote" ":refs/tags/${tag}" \
+              || echo "warn: failed to delete tag ${tag}"
+          fi
+          echo "Restoring main to ${previous}"
+          git push --force "$remote" "${previous}:refs/heads/main" \
+            || echo "warn: failed to restore main"
+          echo "Release failed; repository state reverted." >&2
+          echo "See the failing step above." >&2
+          exit 1

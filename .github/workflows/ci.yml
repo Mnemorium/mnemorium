@@ -20,18 +20,25 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           types: |
-            feature
-            bugfix
+            feat
+            fix
             refactor
+            perf
             docs
+            test
+            build
+            ci
             chore
             release
-            test
-            hotfix
           scopes: |
-            core
             agent
-            devops
+            lint
+            devenv
+            test-e2e
+            test-system
+            sqlite3
+            development
+            api
 
   main:
     runs-on: ubuntu-latest
