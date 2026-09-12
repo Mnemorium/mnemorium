@@ -364,6 +364,13 @@ Examples:
 - `fix(devops): fix Dockerfile registry`
 - `release: 0.3.0`
 
+### Docs-only PRs
+
+A PR whose type is `docs` must only change documentation: files under
+`docs/`, any `*.md` file, or `mkdocs.yml`. Anything else is rejected by the
+`docs-only` job in `.github/workflows/ci.yml`; use another type (for example
+`build` or `chore`) for tooling or dependency updates.
+
 ### Scopes
 
 A scope is an optional noun describing the area of the codebase affected. The
