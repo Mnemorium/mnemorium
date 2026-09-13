@@ -433,3 +433,41 @@ When a release is needed, the release workflow
 4. Tags the commit (`v<version>`) and pushes it.
 5. Publishes the GitHub release (with generated release notes) and pushes the
    Docker image.
+
+### Release process
+
+The release workflow (`.github/workflows/cd.yml`) runs when a pull request is
+merged into `main`:
+
+```puml
+@startuml
+skinparam style strictuml
+skinparam activityDiamondBackgroundColor #FFFFFF
+
+|Developer|
+start
+:Merge the pull request into main;
+
+|CD|
+:Trigger cd.yml on push to main\n(one release at a time);
+:Mint a GitHub App token;
+:Checkout main with full history;
+:Log in to Docker Hub;
+:Run semantic-release;
+
+|semantic-release|
+:Analyze the commits since the last tag\n(Conventional Commits preset);
+if (Is a release needed?) then (yes)
+  :Compute the next version\n(MAJOR, MINOR or PATCH);
+  :Update CHANGELOG.md;
+  :Bump info.version in\ndocs/development/api/openapi.json;
+  :Bump the version in Cargo.toml\nand build the Docker image;
+  :Commit the updated files;
+  :Create the GitHub release with notes\nand tag the new version;
+  :Push the image to wpelletier/mnemorium;
+else (no)
+  :Stop without publishing;
+endif
+stop
+@enduml
+```
