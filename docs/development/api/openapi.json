@@ -287,7 +287,7 @@
             "type": "string"
           },
           "file_name": {
-            "description": "Name of the media file being uploaded.",
+            "description": "Name of the file being uploaded.",
             "type": "string"
           }
         },
