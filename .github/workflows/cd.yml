@@ -24,11 +24,20 @@ jobs:
       !startsWith(github.event.pull_request.title, 'release')
     runs-on: ubuntu-latest
     steps:
+      - name: Mint GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v3.2.0
+        with:
+          client-id: ${{ secrets.APP_CLIENT_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          permission-contents: write
+
       - uses: actions/checkout@v6
         with:
           ref: main
           fetch-depth: 0
           filter: blob:none
+          token: ${{ steps.app-token.outputs.token }}
 
       - name: Record previous commit
         id: state
@@ -121,7 +130,7 @@ jobs:
           tag: ${{ steps.version.outputs.version_tag }}
           files: source-${{ steps.version.outputs.version_tag }}.zip
           generate_release_notes: true
-          token: ${{ secrets.GH_TOKEN }}
+          token: ${{ steps.app-token.outputs.token }}
 
       - name: Login to Docker Hub
         if: steps.gate.outputs.skip == 'false'
