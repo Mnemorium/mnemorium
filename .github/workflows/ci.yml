@@ -33,7 +33,6 @@ jobs:
             build
             ci
             chore
-            release
           scopes: |
             agent
             lint
@@ -43,6 +42,7 @@ jobs:
             sqlite3
             application
             development
+            readme
             api
 
   changes:
