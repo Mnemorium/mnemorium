@@ -46,6 +46,7 @@ jobs:
             api
 
   changes:
+    needs: [gatekeeper]
     runs-on: ubuntu-latest
     outputs:
       rust: ${{ steps.filter.outputs.rust_any_changed }}
@@ -96,6 +97,7 @@ jobs:
               - '**'
 
   docs-only:
+    needs: [gatekeeper]
     if: >-
       startsWith(github.event.pull_request.title, 'docs:') ||
       startsWith(github.event.pull_request.title, 'docs!') ||
