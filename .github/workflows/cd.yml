@@ -73,11 +73,6 @@ jobs:
             echo "Bump: $current -> $new ($type); releasing"
           fi
 
-      - uses: dtolnay/rust-toolchain@1.98.0
-        if: steps.gate.outputs.skip == 'false'
-      - uses: Swatinem/rust-cache@v2
-        if: steps.gate.outputs.skip == 'false'
-
       - name: Bump version files
         if: steps.gate.outputs.skip == 'false'
         run: script/version.sh set "${{ steps.version.outputs.version }}"

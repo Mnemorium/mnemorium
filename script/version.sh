@@ -12,7 +12,7 @@ usage() {
 	echo "  script/version.sh set <version>"
 	echo "  script/version.sh check [expected]"
 	echo ""
-	echo "  set    Update the version in Cargo.toml and regenerate openapi.json"
+	echo "  set    Update the version in Cargo.toml and openapi.json"
 	echo "  check  Verify Cargo.toml and openapi.json agree; with an argument,"
 	echo "         verify they equal it"
 	echo ""
@@ -59,10 +59,11 @@ assert_rest_uses_cargo_version() {
 	fi
 }
 
-regenerate_openapi() {
-	echo "regenerating $OPENAPI_JSON"
-	cargo run --bin openapi_gen >/dev/null 2>&1 ||
-		die "failed to regenerate $OPENAPI_JSON — run 'cargo run --bin openapi_gen' manually"
+update_openapi_version() {
+	local version="$1"
+	sed -i '/^  "info": {/,/^  },/ s/^\([[:space:]]*"version": \)\("[^"]*"\)/\1"'"$version"'"/' "$OPENAPI_JSON" ||
+		die "failed to update info.version in $OPENAPI_JSON"
+	echo "updated info.version in $OPENAPI_JSON to $version"
 }
 
 cmd_set() {
@@ -86,7 +87,7 @@ cmd_set() {
 		echo "version set to ${version} in $CARGO_TOML"
 	fi
 
-	regenerate_openapi
+	update_openapi_version "$version"
 
 	if [ "$(openapi_version)" != "$version" ]; then
 		die "$OPENAPI_JSON reports $(openapi_version) but expected $version"
