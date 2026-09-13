@@ -43,6 +43,7 @@ jobs:
             agent
             lint
             devenv
+            github
             test-e2e
             test-system
             sqlite3

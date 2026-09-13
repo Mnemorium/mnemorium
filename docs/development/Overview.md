@@ -378,6 +378,7 @@ allowed scopes are:
 | agent       | opencode configuration, agents, and `AGENTS.md`   |
 | lint        | Lint configuration files                          |
 | devenv      | devenv environment files                          |
+| github      | GitHub Actions workflows and configuration        |
 | test-e2e    | End-to-end tests                                  |
 | test-system | System tests                                      |
 | sqlite3     | SQLite3 datastore (migrations, sqlx SQLite layer) |
