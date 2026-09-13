@@ -14,4 +14,3 @@ logs/
 **/__pycache__/
 mnemorium.db
 default.yaml
-**/openapi.json
