@@ -359,14 +359,14 @@ Examples:
 
 - `feat(core): serve media via streaming`
 - `fix(devops): fix Dockerfile registry`
-- `release: 0.3.0`
+- `perf(application): speed up library scan`
 
 ### Docs-only PRs
 
-A PR whose type is `docs` must only change documentation: files under
-`docs/`, any `*.md` file, or `mkdocs.yml`. Anything else is rejected by the
-`docs-only` job in `.github/workflows/ci.yml`; use another type (for example
-`build` or `chore`) for tooling or dependency updates.
+A PR whose type is `docs` must only change documentation: files under `docs/`,
+any `*.md` file, or `mkdocs.yml`. Anything else is rejected by the `docs-only`
+job in `.github/workflows/ci.yml`; use another type (for example `build` or
+`chore`) for tooling or dependency updates.
 
 ### Scopes
 
@@ -383,10 +383,10 @@ allowed scopes are:
 | sqlite3     | SQLite3 datastore (migrations, sqlx SQLite layer) |
 | application | Application layer (use cases and ports)           |
 | development | Development documentation                         |
+| readme      | Repository `README.md` files                      |
 | api         | REST API and OpenAPI specification                |
 
-Other scopes may be added later as new areas emerge. The `release` type carries
-no scope.
+Other scopes may be added later as new areas emerge.
 
 ### Type prefixes
 
@@ -394,32 +394,41 @@ no scope.
 | -------- | -------------------------------------------- | ------------ |
 | feat     | New feature                                  | MINOR        |
 | fix      | Bug fix (including production fixes)         | PATCH        |
-| refactor | Code cleanup/restructure, no behavior change | PATCH        |
 | perf     | Performance improvement                      | PATCH        |
-| docs     | Documentation changes                        | PATCH        |
-| test     | Tests and test improvements                  | PATCH        |
-| build    | Build system and dependency changes          | PATCH        |
-| ci       | CI/CD workflow changes                       | PATCH        |
-| chore    | Maintenance tasks                            | PATCH        |
-| release  | Release version bumps, reserved for the bot  | explicit     |
+| refactor | Code cleanup/restructure, no behavior change | none         |
+| docs     | Documentation changes                        | none         |
+| test     | Tests and test improvements                  | none         |
+| build    | Build system and dependency changes          | none         |
+| ci       | CI/CD workflow changes                       | none         |
+| chore    | Maintenance tasks                            | none         |
+
+A `!` after the type/scope (or a `BREAKING CHANGE:` footer) marks a breaking
+change and bumps MAJOR regardless of type.
 
 ## Versioning
 
 The version follows [semantic versioning](https://semver.org/)
-(`MAJOR.MINOR.PATCH`). The bump is computed automatically on merge by the
-release workflow (`.github/workflows/cd.yml`) from the merged PR titles since
-the last tag:
+(`MAJOR.MINOR.PATCH`). It is computed automatically on merge by
+[semantic-release](https://semantic-release.org/) from the commits
+since the last tag, using the
+[Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/)
+preset:
 
-| Bump  | Trigger                                                                                 |
-| ----- | --------------------------------------------------------------------------------------- |
-| MAJOR | A PR title with a `!` marker (e.g. `feat(core)!:`)                                      |
-| MINOR | At least one merged `feat` PR (and no `!` marker)                                       |
-| PATCH | Any other merged PR (`fix`, `refactor`, `perf`, `docs`, `test`, `build`, `ci`, `chore`) |
+| Bump  | Trigger                                                                |
+| ----- | ---------------------------------------------------------------------- |
+| MAJOR | A commit with a `!` marker or a `BREAKING CHANGE:` footer              |
+| MINOR | At least one `feat` commit (and no breaking change)                    |
+| PATCH | At least one `fix` or `perf` commit (and no `feat` or breaking change) |
+| none  | `refactor`, `docs`, `test`, `build`, `ci`, and `chore` only            |
 
-When a release is needed, the workflow:
+When a release is needed, the release workflow
+(`.github/workflows/cd.yml`) runs semantic-release, which:
 
-1. Bumps the version with `script/version.sh set <version>` and commits it as
-   `github-actions[bot]` with a `release: v<version>` message.
-2. Tags the commit (`v<version>`) and pushes it.
-3. Publishes a GitHub release (with generated release notes and a source ZIP)
-   and pushes the Docker image.
+1. Bumps the version in `Cargo.toml` and
+   `docs/development/api/openapi.json`.
+2. Builds the Docker image at the new version.
+3. Commits `CHANGELOG.md`, `docs/development/api/openapi.json`, and
+   `Cargo.toml` as `github-actions[bot]`.
+4. Tags the commit (`v<version>`) and pushes it.
+5. Publishes the GitHub release (with generated release notes) and pushes the
+   Docker image.
