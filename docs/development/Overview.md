@@ -5,58 +5,76 @@
 ```text
 └── src
     ├── bin
-    │   ├── openapi_gen.rs
-    │   └── server.rs
+    │   ├── openapi_gen.rs
+    │   └── server.rs
     └── lib
         ├── application
-        │   ├── port
-        │   └── use_case
+        │   ├── port
+        │   └── use_case
         ├── domain
-        │   ├── alias.rs
-        │   ├── model
-        │   ├── port
-        │   │   └── error.rs
-        │   └── service
+        │   ├── alias.rs
+        │   ├── model
+        │   ├── port
+        │   │   └── error.rs
+        │   └── service
         └── infrastructure
-            ├── configuration.rs
             ├── inbound
-            │   └── rest
-            │       ├── api_error.rs
-            │       ├── bootstrap.rs
-            │       └── handler
+            │   └── rest
+            │       ├── api_error.rs
+            │       ├── app_state.rs
+            │       ├── rest.rs
+            │       ├── handler
+            │       │   ├── asset
+            │       │   ├── identity
+            │       │   └── user
+            │       └── middleware
             ├── logging.rs
             └── outbound
-                ├── client
-                ├── moka
-                │   └── bootstrap.rs
+                ├── argon2
+                ├── config
+                ├── file_system
+                ├── jwt
+                ├── moka.rs
+                ├── random
                 └── sqlx
-                    ├── bootstrap.rs
                     ├── model
-                    └── sqlite3
+                    └── sqlite3.rs
 ```
 
-| Entity                                             | Description                                                           |
-| -------------------------------------------------- | --------------------------------------------------------------------- |
-| `docs`                                             |                                                                       |
-| `src`                                              |                                                                       |
-| `src/bin`                                          |                                                                       |
-| `src/lib`                                          |                                                                       |
-| `src/lib/application`                              | App Layer                                                             |
-| `src/lib/application/port`                         | Interface declaration for usecase (one by file)                       |
-| `src/lib/application/use_case`                     | Implementation of the **UseCase**                                     |
-| `src/lib/domain`                                   | Domain Layer                                                          |
-| `src/lib/domain/alias.rs`                          | Type alias for the project (ex: which integer to use for IDs)         |
-| `src/lib/domain/model`                             | Aggregate, Entity, Value object declaration                           |
-| `src/lib/domain/port`                              | Port interface declaration                                            |
-| `src/lib/domain/port/error.rs`                     | Repository, External service error declaration                        |
-| `src/lib/domain/service`                           | Domain Service implementation; see Terms Glossary for more info on it |
-| `src/lib/infrastructure/inbound/rest`              | HTTP adapter layer                                                    |
-| `src/lib/infrastructure/inbound/rest/api_error.rs` | API Error declaration                                                 |
-| `src/lib/infrastructure/inbound/rest/handler`      | HTTP endpoint handler                                                 |
-| `src/lib/infrastructure/inbound/rest/bootstrap.rs` | Setup the routes with axum                                            |
-| `src/lib/infrastructure/outbound`                  | Outbound Port adapter declaration                                     |
-| `src/lib/infrastructure/configuration.rs`          | Configuration related bootstrapping                                   |
-| `src/lib/infrastructure/logging.rs`                | Logging related bootstrapping                                         |
+| Entity                                             | Description                                                               |
+| -------------------------------------------------- | ------------------------------------------------------------------------- |
+| `docs`                                             |                                                                           |
+| `src`                                              |                                                                           |
+| `src/bin`                                          |                                                                           |
+| `src/bin/openapi_gen.rs`                           | Generate the OpenAPI specification to `docs/development/api/openapi.json` |
+| `src/bin/server.rs`                                | Server entrypoint and graceful shutdown                                   |
+| `src/lib`                                          |                                                                           |
+| `src/lib/application`                              | App Layer                                                                 |
+| `src/lib/application/port`                         | Interface declaration for usecase (one by file)                           |
+| `src/lib/application/use_case`                     | Implementation of the **UseCase**                                         |
+| `src/lib/domain`                                   | Domain Layer                                                              |
+| `src/lib/domain/alias.rs`                          | Type alias for the project (ex: which integer to use for IDs)             |
+| `src/lib/domain/model`                             | Aggregate, Entity, Value object declaration                               |
+| `src/lib/domain/port`                              | Port interface declaration                                                |
+| `src/lib/domain/port/error.rs`                     | Repository, External service error declaration                            |
+| `src/lib/domain/service`                           | Domain Service implementation; see Terms Glossary for more info on it     |
+| `src/lib/infrastructure/inbound/rest`              | HTTP adapter layer                                                        |
+| `src/lib/infrastructure/inbound/rest/api_error.rs` | API Error declaration                                                     |
+| `src/lib/infrastructure/inbound/rest/app_state.rs` | Shared application state injected into handlers                           |
+| `src/lib/infrastructure/inbound/rest/rest.rs`      | Setup the axum routes and OpenAPI document                                |
+| `src/lib/infrastructure/inbound/rest/handler`      | HTTP endpoint handler                                                     |
+| `src/lib/infrastructure/inbound/rest/middleware`   | Axum middleware (authentication, tracing)                                 |
+| `src/lib/infrastructure/outbound`                  | Outbound Port adapter declaration                                         |
+| `src/lib/infrastructure/outbound/argon2`           | Argon2 password hasher adapter                                            |
+| `src/lib/infrastructure/outbound/config`           | Configuration source adapters                                             |
+| `src/lib/infrastructure/outbound/file_system`      | File storage adapter                                                      |
+| `src/lib/infrastructure/outbound/jwt`              | JWT token provider adapter                                                |
+| `src/lib/infrastructure/outbound/moka.rs`          | In-memory cache adapter                                                   |
+| `src/lib/infrastructure/outbound/random`           | Password and secret generator adapters                                    |
+| `src/lib/infrastructure/outbound/sqlx`             | SQLx/SQLite repository adapters                                           |
+| `src/lib/infrastructure/outbound/sqlx/model`       | SQLx row models                                                           |
+| `src/lib/infrastructure/outbound/sqlx/sqlite3.rs`  | SQLite pool initialization and migrations                                 |
+| `src/lib/infrastructure/logging.rs`                | Logging related bootstrapping                                             |
 
 ## Server lifecycle
 
