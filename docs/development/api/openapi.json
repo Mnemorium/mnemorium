@@ -283,7 +283,7 @@
         "description": "Payload initializing an upload session.",
         "properties": {
           "content_type": {
-            "description": "Declared media type of the file content.",
+            "description": "Declared mime type of the file content.",
             "type": "string"
           },
           "file_name": {

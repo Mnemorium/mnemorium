@@ -37,6 +37,8 @@ nav:
 plugins:
   - plantuml:
       puml_url: https://www.plantuml.com/plantuml
+      theme:
+        enabled: false
   - search
   - neoteroi.mkdocsoad
 

@@ -13,7 +13,7 @@ use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 #[derive(Debug, Deserialize, Serialize, ToSchema)]
 #[non_exhaustive]
 pub struct PostAssetRequest {
-    /// Declared media type of the file content.
+    /// Declared mime type of the file content.
     pub content_type: String,
     /// Name of the media file being uploaded.
     pub file_name: String,
