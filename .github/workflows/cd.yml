@@ -2,8 +2,9 @@
 name: Mnemorium CD
 
 on:
-  pull_request:
-    types: [closed]
+  push:
+    branches:
+      - main
 
 # Run releases one at a time: queued runs wait instead of cancelling the
 # in-flight one, so two merged PRs can never race to bump the version.
@@ -17,9 +18,6 @@ permissions:
 jobs:
   release:
     name: Release new Mnemorium version
-    if: >
-      github.event.pull_request.merged == true &&
-      github.event.pull_request.base.ref == 'main'
     runs-on: ubuntu-latest
     steps:
       - name: Mint GitHub App token
