@@ -70,6 +70,7 @@ jobs:
               - '**/*.rs'
               - 'Cargo.toml'
               - 'Cargo.lock'
+              - 'docs/development/api/openapi.json'
             python:
               - '**/*.py'
               - 'ruff.toml'
@@ -142,6 +143,14 @@ jobs:
           -- -D warnings
       - name: Build
         run: cargo build
+      - name: Verify OpenAPI spec is current
+        run: |
+          cargo run --bin openapi_gen
+          if ! git diff --exit-code -- docs/development/api/openapi.json; then
+            echo "docs/development/api/openapi.json is stale." >&2
+            echo "Run 'cargo run --bin openapi_gen' and commit the result." >&2
+            exit 1
+          fi
       - name: Coverage
         run: >-
           cargo llvm-cov --lib
