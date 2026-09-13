@@ -102,9 +102,6 @@ The supervisor controls the hard termination window:
 - **launchd**: use `launchctl bootout` (sends `SIGTERM` and waits); avoid
   `launchctl kickstart -k`, which sends `SIGKILL` and truncates in-flight I/O.
 
-Note: the `SQLite` pool is not wired into the server yet. When it is, the
-shutdown sequence becomes: signal → drain → `pool.close().await` → exit.
-
 ## Domain model
 
 ```puml
