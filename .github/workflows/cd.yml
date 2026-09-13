@@ -144,7 +144,7 @@ jobs:
         with:
           context: .
           push: true
-          tags: ${{ vars.DOCKER_HUB_REPOSITORY }}:${TAG}
+          tags: ${{ vars.DOCKER_HUB_REPOSITORY }}:${{ env.TAG }}
 
       - name: Revert release on failure
         if: >-
