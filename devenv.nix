@@ -91,6 +91,16 @@
     };
     # === toml
     taplo.enable = true;
+    # === openapi
+    openapi = {
+      enable = true;
+      name = "Regenerate and stage OpenAPI spec";
+      entry = "bash -c 'cargo run --bin openapi_gen && git add -- docs/development/api/openapi.json'";
+      language = "system";
+      pass_filenames = false;
+      files = "(\\.rs$|(^|/)Cargo\\.(toml|lock)$|^docs/development/api/openapi\\.json$)";
+    };
+
     # === test coverage
     coverage = {
       enable = true;
