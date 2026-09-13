@@ -58,6 +58,9 @@
   };
 
   git-hooks.hooks = {
+    # === commit message
+    commitizen.enable = true;
+
     # === shell
     shellcheck.enable = true;
     shfmt.enable = true;
