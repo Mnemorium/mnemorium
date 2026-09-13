@@ -261,26 +261,3 @@ jobs:
         run: taplo fmt --check
       - name: Lint YAML
         run: yamllint -c .yamllint .
-
-  ci:
-    name: CI
-    if: always()
-    needs:
-      - gatekeeper
-      - changes
-      - docs-only
-      - rust
-      - security
-      - python
-      - docs
-      - sql
-      - shell
-      - nix
-      - lint
-    runs-on: ubuntu-slim
-    steps:
-      - name: Check results
-        if: >-
-          contains(needs.*.result, 'failure') ||
-          contains(needs.*.result, 'cancelled')
-        run: exit 1
