@@ -1,0 +1,56 @@
+{
+    "branches": ["main"],
+    "plugins": [
+        [
+            "@semantic-release/commit-analyzer",
+            {
+                "preset": "conventionalcommits"
+            }
+        ],
+        [
+            "@semantic-release/release-notes-generator",
+            {
+                "preset": "conventionalcommits"
+            }
+        ],
+        [
+            "@semantic-release/changelog",
+            {
+                "changelogFile": "CHANGELOG.md"
+            }
+        ],
+        [
+            "semantic-release-openapi",
+            {
+                "apiSpecFiles": ["docs/development/api/openapi.json"]
+            }
+        ],
+        [
+            "@semantic-release/exec",
+            {
+                "prepareCmd": "sed -i '0,/^version = \".*\"$/s//version = \"${nextRelease.version}\"/' Cargo.toml && docker build -t wpelletier/mnemorium ."
+            }
+        ],
+        [
+            "@semantic-release/git",
+            {
+                "assets": ["CHANGELOG.md", "docs/development/api/openapi.json", "Cargo.toml"]
+            }
+        ],
+        [
+            "@semantic-release/github",
+            {
+                "successCommentCondition": false,
+                "failCommentCondition": false,
+                "releasedLabels": false
+            }
+        ],
+        [
+            "@semantic-release-plus/docker",
+            {
+                "skipLogin": true,
+                "name": "wpelletier/mnemorium"
+            }
+        ]
+    ]
+}
