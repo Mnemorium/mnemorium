@@ -423,8 +423,3 @@ When a release is needed, the workflow:
 2. Tags the commit (`v<version>`) and pushes it.
 3. Publishes a GitHub release (with generated release notes and a source ZIP)
    and pushes the Docker image.
-
-If any step fails after the push, the workflow reverts: it deletes the remote
-tag and restores `main` to its previous commit. PRs titled `release*` are
-skipped by the workflow; the `release` type is reserved for the bot's own
-commits.
