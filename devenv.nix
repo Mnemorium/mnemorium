@@ -152,6 +152,14 @@
       entry = "markdownlint-cli2";
       files = ".*\\.md$";
     };
+    prettier = {
+      enable = true;
+      name = "prettier";
+      entry = "prettier --write";
+      language = "system";
+      files = "\\.md$";
+      before = [ "markdownlint" ];
+    };
     yamllint = {
       enable = true;
       package = multiverse.yamllint."1.37.1";
