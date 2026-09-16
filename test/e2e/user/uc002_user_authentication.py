@@ -3,13 +3,14 @@
 from collections.abc import Callable
 
 import requests
+from conftest import SECRET_PASSWORD
 
 _WRONG_PASSWORD = "Wr0ng!pass"
 
 _LOGIN_PATH = "/api/v1/identity/login"
 
 _STANDARD_USER_USERNAME = "alice"
-_STANDARD_USER_PASSWORD = "S3cret!pass"
+_STANDARD_USER_PASSWORD = SECRET_PASSWORD
 _STANDARD_USER_ROLE = "STANDARD"
 
 

@@ -125,6 +125,7 @@ mod tests {
     use crate::application::port::login_user::LoginUserResponse;
     use crate::application::port::login_user::LoginUserUseCase;
     use crate::application::port::login_user::MockLoginUserUseCase;
+    use crate::test_helpers::SECRET_PASSWORD;
 
     /// Send `body` through the endpoint router.
     async fn send(
@@ -178,7 +179,8 @@ mod tests {
     #[tokio::test]
     async fn post_login_valid_credentials_returns_ok() -> Result<(), Box<dyn Error>> {
         // Arrange
-        let expected_command = LoginUserCommand::new("alice".to_owned(), "super-secret".to_owned());
+        let expected_command =
+            LoginUserCommand::new("alice".to_owned(), SECRET_PASSWORD.to_owned());
         let issued_token = LoginUserResponse::new("jwt-token".to_owned(), 3600);
         let mut login_use_case = MockLoginUserUseCase::new();
         login_use_case
@@ -191,7 +193,7 @@ mod tests {
         let (status, content_type, payload) = into_parts(
             send(
                 login_use_case,
-                Body::from(request_body("alice", "super-secret").to_string()),
+                Body::from(request_body("alice", SECRET_PASSWORD).to_string()),
             )
             .await?,
         )
@@ -298,7 +300,7 @@ mod tests {
         let (status, _, payload) = into_parts(
             send(
                 login_use_case,
-                Body::from(request_body("ghost", "super-secret").to_string()),
+                Body::from(request_body("ghost", SECRET_PASSWORD).to_string()),
             )
             .await?,
         )
@@ -352,7 +354,7 @@ mod tests {
         let (status, _, payload) = into_parts(
             send(
                 login_use_case,
-                Body::from(request_body("alice", "super-secret").to_string()),
+                Body::from(request_body("alice", SECRET_PASSWORD).to_string()),
             )
             .await?,
         )

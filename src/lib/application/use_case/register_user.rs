@@ -176,6 +176,7 @@ mod tests {
     use crate::domain::port::error::RepositoryError;
     use crate::domain::port::password_hasher::MockPasswordHasher;
     use crate::domain::port::user_repository::MockUserRepository;
+    use crate::test_helpers::SECRET_PASSWORD;
 
     use super::RegisterUser;
 
@@ -216,7 +217,7 @@ mod tests {
             caller_id,
             username.to_owned(),
             None,
-            "super-secret!".to_owned(),
+            SECRET_PASSWORD.to_owned(),
             role,
         )
     }
@@ -284,7 +285,7 @@ mod tests {
             0,
             "alice".to_owned(),
             Some("alice@example.com".to_owned()),
-            "super-secret!".to_owned(),
+            SECRET_PASSWORD.to_owned(),
             Role::Standard,
         );
 
@@ -401,7 +402,7 @@ mod tests {
             0,
             "ab".to_owned(),
             None,
-            "super-secret!".to_owned(),
+            SECRET_PASSWORD.to_owned(),
             Role::Standard,
         );
 
@@ -421,7 +422,7 @@ mod tests {
             0,
             "heidi".to_owned(),
             Some("not-an-email".to_owned()),
-            "super-secret!".to_owned(),
+            SECRET_PASSWORD.to_owned(),
             Role::Standard,
         );
 
@@ -516,7 +517,7 @@ mod tests {
             0,
             "oscar".to_owned(),
             Some("nancy@example.com".to_owned()),
-            "super-secret!".to_owned(),
+            SECRET_PASSWORD.to_owned(),
             Role::Standard,
         );
 

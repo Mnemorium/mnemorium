@@ -133,8 +133,34 @@ jobs:
           done
           exit 1
 
+  betterleaks:
+    needs: [gatekeeper]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      # v0.1.0
+      - id: betterleaks
+        uses: dortort/betterleaks-action@cd0b905aa4befb8f42f8b1ab98150180c9e77515  # yamllint disable-line rule:line-length
+        with:
+          version: v1.8.1
+          scan-mode: git
+          config: .betterleaks.toml
+          fail-on-leak: true
+          validation: "false"
+          redact: true
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: betterleaks-report
+          path: ${{ steps.betterleaks.outputs.report-path }}
+
   rust:
-    needs: [changes]
+    needs: [changes, betterleaks]
     if: needs.changes.outputs.rust == 'true'
     runs-on: ubuntu-latest
     steps:
@@ -170,7 +196,7 @@ jobs:
           --fail-under-lines 80
 
   security:
-    needs: [changes]
+    needs: [changes, betterleaks]
     if: needs.changes.outputs.deps == 'true'
     runs-on: ubuntu-latest
     steps:
@@ -181,7 +207,7 @@ jobs:
         run: cargo audit
 
   python:
-    needs: [changes]
+    needs: [changes, betterleaks]
     if: needs.changes.outputs.python == 'true'
     runs-on: ubuntu-latest
     steps:
@@ -197,7 +223,7 @@ jobs:
         run: ruff format --check .
 
   docs:
-    needs: [changes]
+    needs: [changes, betterleaks]
     if: >-
       needs.changes.outputs.markdown == 'true' ||
       needs.changes.outputs.docs == 'true'
@@ -218,7 +244,7 @@ jobs:
         run: mkdocs build --strict
 
   sql:
-    needs: [changes]
+    needs: [changes, betterleaks]
     if: needs.changes.outputs.sql == 'true'
     runs-on: ubuntu-latest
     steps:
@@ -232,7 +258,7 @@ jobs:
         run: sqlfluff lint --dialect sqlite migrations
 
   shell:
-    needs: [changes]
+    needs: [changes, betterleaks]
     if: needs.changes.outputs.shell == 'true'
     runs-on: ubuntu-latest
     steps:
@@ -246,7 +272,7 @@ jobs:
         run: shfmt -d script/*.sh
 
   nix:
-    needs: [changes]
+    needs: [changes, betterleaks]
     if: needs.changes.outputs.nix == 'true'
     runs-on: ubuntu-latest
     steps:
@@ -256,7 +282,7 @@ jobs:
         run: nix run nixpkgs#nixfmt -- --check devenv.nix
 
   lint:
-    needs: [changes]
+    needs: [changes, betterleaks]
     if: needs.changes.outputs.lint == 'true'
     runs-on: ubuntu-latest
     steps:

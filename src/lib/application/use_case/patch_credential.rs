@@ -162,6 +162,7 @@ mod tests {
     use crate::domain::port::error::RepositoryError;
     use crate::domain::port::password_hasher::MockPasswordHasher;
     use crate::domain::port::user_repository::MockUserRepository;
+    use crate::test_helpers::SECRET_PASSWORD;
 
     use super::PatchCredential;
 
@@ -293,7 +294,7 @@ mod tests {
                 Ok(())
             },
         )?;
-        let command = command(0, 0, "super-secret!");
+        let command = command(0, 0, SECRET_PASSWORD);
 
         // Act
         let result = use_case.execute(command).await;
@@ -318,7 +319,7 @@ mod tests {
                 Ok(())
             },
         )?;
-        let command = command(0, 4, "other-user!");
+        let command = command(0, 4, SECRET_PASSWORD);
 
         // Act
         let result = use_case.execute(command).await;
@@ -345,7 +346,7 @@ mod tests {
                 Ok(())
             },
         )?;
-        let command = command(0, 0, "super-secret!");
+        let command = command(0, 0, SECRET_PASSWORD);
 
         // Act
         let result = use_case.execute(command).await;
@@ -380,7 +381,7 @@ mod tests {
                 Ok(())
             },
         )?;
-        let command = command(0, 0, "super-secret!");
+        let command = command(0, 0, SECRET_PASSWORD);
 
         // Act
         let result = use_case.execute(command).await;
@@ -397,7 +398,7 @@ mod tests {
             expect_caller(user_repository, user(3, "bobby", Role::Standard)?);
             Ok(())
         })?;
-        let command = command(3, 1, "secret-one!");
+        let command = command(3, 1, SECRET_PASSWORD);
 
         // Act
         let result = use_case.execute(command).await;
@@ -414,7 +415,7 @@ mod tests {
             expect_caller(user_repository, user(5, "admin", Role::Admin)?);
             Ok(())
         })?;
-        let command = command(5, 1, "secret-two!");
+        let command = command(5, 1, SECRET_PASSWORD);
 
         // Act
         let result = use_case.execute(command).await;
@@ -434,7 +435,7 @@ mod tests {
                 .returning(|_| Box::pin(async { Ok(Vec::new()) }));
             Ok(())
         })?;
-        let command = command(999, 1, "secret-three!");
+        let command = command(999, 1, SECRET_PASSWORD);
 
         // Act
         let result = use_case.execute(command).await;
@@ -486,7 +487,7 @@ mod tests {
                 .returning(|_| Box::pin(async { Ok(Vec::new()) }));
             Ok(())
         })?;
-        let command = command(0, 42, "secret-four!");
+        let command = command(0, 42, SECRET_PASSWORD);
 
         // Act
         let result = use_case.execute(command).await;
@@ -509,7 +510,7 @@ mod tests {
                 .returning(|_| Box::pin(async { Err(RepositoryError::OperationFailed) }));
             Ok(())
         })?;
-        let command = command(0, 1, "secret-five!");
+        let command = command(0, 1, SECRET_PASSWORD);
 
         // Act
         let result = use_case.execute(command).await;
@@ -531,7 +532,7 @@ mod tests {
                 .returning(|_| Box::pin(async { Err(RepositoryError::OperationFailed) }));
             Ok(())
         })?;
-        let command = command(0, 1, "secret-six!");
+        let command = command(0, 1, SECRET_PASSWORD);
 
         // Act
         let result = use_case.execute(command).await;
@@ -555,7 +556,7 @@ mod tests {
                 Ok(())
             },
         )?;
-        let command = command(0, 1, "secret-seven!");
+        let command = command(0, 1, SECRET_PASSWORD);
 
         // Act
         let result = use_case.execute(command).await;
@@ -581,7 +582,7 @@ mod tests {
                 Ok(())
             },
         )?;
-        let command = command(0, 1, "secret-eight!");
+        let command = command(0, 1, SECRET_PASSWORD);
 
         // Act
         let result = use_case.execute(command).await;

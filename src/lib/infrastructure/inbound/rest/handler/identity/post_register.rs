@@ -186,6 +186,7 @@ mod tests {
     use crate::domain::alias::NumericID;
     use crate::domain::model::user::Role;
     use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
+    use crate::test_helpers::SECRET_PASSWORD;
 
     /// Send `body` through the endpoint router on behalf of `caller_id`,
     /// injecting the caller identifier the way the auth middleware does.
@@ -235,7 +236,7 @@ mod tests {
         json!({
             "username": username,
             "email": email,
-            "password": "super-secret!",
+            "password": SECRET_PASSWORD,
             "role": "STANDARD",
         })
     }
@@ -255,7 +256,7 @@ mod tests {
             0,
             "alice".to_owned(),
             Some("alice@example.com".to_owned()),
-            "super-secret!".to_owned(),
+            SECRET_PASSWORD.to_owned(),
             Role::Standard,
         );
         let registered_user = RegisterUserResponse::new(
@@ -305,7 +306,7 @@ mod tests {
             0,
             "brad".to_owned(),
             None,
-            "super-secret!".to_owned(),
+            SECRET_PASSWORD.to_owned(),
             Role::Standard,
         );
         let registered_user = RegisterUserResponse::new(2, "brad".to_owned(), None, Role::Standard);
@@ -351,7 +352,7 @@ mod tests {
             0,
             "cara".to_owned(),
             None,
-            "super-secret!".to_owned(),
+            SECRET_PASSWORD.to_owned(),
             Role::Admin,
         );
         let registered_user = RegisterUserResponse::new(3, "cara".to_owned(), None, Role::Admin);
@@ -370,7 +371,7 @@ mod tests {
                 Body::from(
                     json!({
                         "username": "cara",
-                        "password": "super-secret!",
+                        "password": SECRET_PASSWORD,
                         "role": "ADMIN",
                     })
                     .to_string(),
@@ -435,7 +436,7 @@ mod tests {
                 Body::from(
                     json!({
                         "username": "erin",
-                        "password": "super-secret!",
+                        "password": SECRET_PASSWORD,
                         "role": "ADMIN",
                     })
                     .to_string(),
@@ -583,7 +584,7 @@ mod tests {
                 Body::from(
                     json!({
                         "username": "judy",
-                        "password": "super-secret!",
+                        "password": SECRET_PASSWORD,
                         "role": "SUPERADMIN",
                     })
                     .to_string(),

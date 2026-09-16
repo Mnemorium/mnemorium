@@ -25,15 +25,27 @@ ME_PATH = f"{API_PREFIX}/user/me"
 
 ROOT_ADMIN_USERNAME = "root"
 
+# The one secret password every generic test uses for users it provisions or
+# registers (alice, mallory, ad-hoc users). Tests whose subject is password
+# behavior (policy validation, change-password, wrong-password login) pick
+# their own explicit passwords instead.
+SECRET_PASSWORD = "C0rrect!Horse"
+
 STANDARD_USER_USERNAME = "alice"
 STANDARD_USER_EMAIL = "alice@example.com"
-STANDARD_USER_PASSWORD = "S3cret!pass"
+STANDARD_USER_PASSWORD = SECRET_PASSWORD
 STANDARD_USER_ROLE = "STANDARD"
 
 ADMIN_USER_USERNAME = "mallory"
 ADMIN_USER_EMAIL = "mallory@example.com"
-ADMIN_USER_PASSWORD = "Mallory!pass"
+ADMIN_USER_PASSWORD = SECRET_PASSWORD
 ADMIN_USER_ROLE = "ADMIN"
+
+
+@pytest.fixture(scope="session")
+def secret_password() -> str:
+    """The shared secret password for tests that just need a valid password."""
+    return SECRET_PASSWORD
 
 
 @pytest.fixture(scope="session")

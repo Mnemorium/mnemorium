@@ -33,6 +33,7 @@
     multiverse.prettier."3.8.3"
     multiverse.sqlite."3.51.2"
     multiverse.yamllint."1.37.1"
+    multiverse.betterleaks."1.8.1"
   ];
 
   languages.rust = {
@@ -128,6 +129,13 @@
       entry = "cargo audit";
       pass_filenames = false;
       files = "Cargo\\.toml$";
+    };
+
+    betterleaks = {
+      enable = true;
+      name = "betterleaks";
+      entry = "betterleaks git --pre-commit --staged --redact --verbose";
+      pass_filenames = false;
     };
 
     documentation = {

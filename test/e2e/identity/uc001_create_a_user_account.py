@@ -2,19 +2,19 @@ import time
 from collections.abc import Callable
 
 import requests
+from conftest import SECRET_PASSWORD
 
-_VALID_PASSWORD = "S3cret!pass"
 _VALID_ROLE = "STANDARD"
 
 FORBIDDEN_ADMIN_USERNAME = "stuart"
 FORBIDDEN_ADMIN_EMAIL = "stuart@example.com"
-FORBIDDEN_ADMIN_PASSWORD = "Stuart!pass"
+FORBIDDEN_ADMIN_PASSWORD = SECRET_PASSWORD
 FORBIDDEN_ADMIN_ROLE = "ADMIN"
 
 # Payloads that violate UC-001 business rules; every other field is valid.
 INVALID_PAYLOADS = [
     # Empty username: violates the username minLength (4) rule.
-    {"username": "", "email": None, "password": _VALID_PASSWORD, "role": _VALID_ROLE},
+    {"username": "", "email": None, "password": SECRET_PASSWORD, "role": _VALID_ROLE},
     # 7-char password (contains a symbol): violates the password minLength (8) rule.
     {"username": "carol", "email": "carol@example.com", "password": "short1!", "role": _VALID_ROLE},
     # 11-char password without a symbol: violates the password pattern "[^A-Za-z0-9]".
@@ -29,7 +29,7 @@ def test_uc001_create_user_account_happy_path(
     username = f"alice-{time.time_ns()}"
     email = f"{username}@example.com"
 
-    response = register(root_admin_token, username, email, _VALID_PASSWORD, _VALID_ROLE)
+    response = register(root_admin_token, username, email, SECRET_PASSWORD, _VALID_ROLE)
     assert response.status_code == 201, f"register failed: {response.status_code} {response.text}"
     assert response.headers.get("Location")
     assert response.headers.get("Content-Type", "").startswith("application/json")

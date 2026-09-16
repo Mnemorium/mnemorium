@@ -134,6 +134,7 @@ mod tests {
     use crate::application::port::patch_credential::PatchCredentialUseCase;
     use crate::domain::alias::NumericID;
     use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
+    use crate::test_helpers::SECRET_PASSWORD;
 
     /// Send `body` through the endpoint router on behalf of `caller_id`,
     /// targeting credential `credential_id`, injecting the caller the way the
@@ -193,7 +194,7 @@ mod tests {
     #[tokio::test]
     async fn patch_credential_valid_body_returns_no_content() -> Result<(), Box<dyn Error>> {
         // Arrange
-        let expected_command = PatchCredentialCommand::new(0, 0, "new-password!".to_owned());
+        let expected_command = PatchCredentialCommand::new(0, 0, SECRET_PASSWORD.to_owned());
         let mut use_case = MockPatchCredentialUseCase::new();
         use_case
             .expect_execute()
@@ -203,7 +204,7 @@ mod tests {
 
         // Act
         let (status, body) =
-            into_parts(send(use_case, 0, 0, Body::from(request_body("new-password!"))).await?)
+            into_parts(send(use_case, 0, 0, Body::from(request_body(SECRET_PASSWORD))).await?)
                 .await?;
 
         // Assert
@@ -225,7 +226,7 @@ mod tests {
 
         // Act
         let (status, body) =
-            into_parts(send(use_case, 0, 4, Body::from(request_body("other-user!"))).await?)
+            into_parts(send(use_case, 0, 4, Body::from(request_body(SECRET_PASSWORD))).await?)
                 .await?;
 
         // Assert
@@ -242,7 +243,7 @@ mod tests {
 
         // Act
         let (status, body) =
-            into_parts(send(use_case, 3, 1, Body::from(request_body("secret-one!"))).await?)
+            into_parts(send(use_case, 3, 1, Body::from(request_body(SECRET_PASSWORD))).await?)
                 .await?;
         let payload = payload(body)?;
 
@@ -263,7 +264,7 @@ mod tests {
 
         // Act
         let (status, body) =
-            into_parts(send(use_case, 0, 42, Body::from(request_body("secret-two!"))).await?)
+            into_parts(send(use_case, 0, 42, Body::from(request_body(SECRET_PASSWORD))).await?)
                 .await?;
         let payload = payload(body)?;
 
@@ -309,7 +310,7 @@ mod tests {
 
         // Act
         let (status, body) =
-            into_parts(send(use_case, 0, 0, Body::from(request_body("secret-three!"))).await?)
+            into_parts(send(use_case, 0, 0, Body::from(request_body(SECRET_PASSWORD))).await?)
                 .await?;
         let payload = payload(body)?;
 
@@ -396,7 +397,7 @@ mod tests {
 
         // Act
         let (status, body) =
-            into_parts(send(use_case, 0, 404, Body::from(request_body("secret-four!"))).await?)
+            into_parts(send(use_case, 0, 404, Body::from(request_body(SECRET_PASSWORD))).await?)
                 .await?;
         let payload = payload(body)?;
 

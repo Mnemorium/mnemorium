@@ -1,0 +1,21 @@
+title = "Mnemorium Betterleaks config"
+
+[extend]
+useDefault = true
+
+
+[[allowlists]]
+description = "Throwaway JWT secret in default.yaml (deleted at 3a8b323, gitignored); never used by a deployment."
+condition = "and"
+targetRules = ["generic-api-key"]
+commits = ["00c646edf8f4ab1c25ece306f35e00d3169062f5"]
+paths = ["^default[.]yaml$"]
+
+
+[[allowlists]]
+description = "Shared throwaway passwords used by e2e and unit tests."
+targetRules = ["generic-password"]
+regexTarget = "secret"
+regexes = [
+  "^(?:Mallory!pass|S3cret!pass|Stuart!pass|Wr0ng!pass|longpassword|short1!|super-secret!|C0rrect!Horse)$",
+]

@@ -129,6 +129,7 @@ mod tests {
     use crate::domain::port::token_provider::IssuedToken;
     use crate::domain::port::token_provider::MockTokenProvider;
     use crate::domain::port::user_repository::MockUserRepository;
+    use crate::test_helpers::SECRET_PASSWORD;
 
     use super::LoginUser;
 
@@ -224,7 +225,7 @@ mod tests {
                 Ok(())
             },
         )?;
-        let command = command("alice", "super-secret");
+        let command = command("alice", SECRET_PASSWORD);
 
         // Act
         let response = use_case.execute(command).await?;
@@ -245,7 +246,7 @@ mod tests {
                 .returning(|_| Box::pin(async { Ok(Vec::new()) }));
             Ok(())
         })?;
-        let command = command("ghost", "super-secret");
+        let command = command("ghost", SECRET_PASSWORD);
 
         // Act
         let result = use_case.execute(command).await;
@@ -265,7 +266,7 @@ mod tests {
                 .returning(|_| Box::pin(async { Err(RepositoryError::OperationFailed) }));
             Ok(())
         })?;
-        let command = command("alice", "super-secret");
+        let command = command("alice", SECRET_PASSWORD);
 
         // Act
         let result = use_case.execute(command).await;
@@ -286,7 +287,7 @@ mod tests {
                 .returning(|_| Box::pin(async { Ok(Vec::new()) }));
             Ok(())
         })?;
-        let command = command("alice", "super-secret");
+        let command = command("alice", SECRET_PASSWORD);
 
         // Act
         let result = use_case.execute(command).await;
@@ -337,7 +338,7 @@ mod tests {
                 Ok(())
             },
         )?;
-        let command = command("alice", "super-secret");
+        let command = command("alice", SECRET_PASSWORD);
 
         // Act
         let result = use_case.execute(command).await;
@@ -362,7 +363,7 @@ mod tests {
                 Ok(())
             },
         )?;
-        let command = command("alice", "super-secret");
+        let command = command("alice", SECRET_PASSWORD);
 
         // Act
         let result = use_case.execute(command).await;

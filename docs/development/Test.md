@@ -13,6 +13,11 @@
 - Repository query filters must be tested for strictness: the same filter backs
   both the SQLite repository and the moka cache, for example, and they must
   surface the same error.
+- Generic tests (those whose subject is not password behavior) use the shared
+  `SECRET_PASSWORD` from `crate::test_helpers` for any password they need.
+- Tests whose subject is password behavior (policy validation, wrong-password
+  rejection, change-password, hashing, verification) keep their own explicit
+  passwords and must not use the shared secret.
 
 ### HTTP handler strategy
 
@@ -97,3 +102,11 @@ coverage) must be justified in the documentation.
   [use case catalog](UseCases.md).
 - One folder per bounded context, as listed in the
   [Bounded context section of the Overview](Overview.md#bounded-context).
+- Generic tests (those whose subject is not password behavior) use the shared
+  `SECRET_PASSWORD` from `test/e2e/conftest.py` for any user they provision or
+  register.
+- Tests whose subject is password behavior (password policy validation,
+  change-password flows, wrong-password login) pick their own explicit
+  passwords and must not use the shared secret.
+- The Root Admin's password is random per container and obtained through the
+  `default_password` fixture; the shared secret never applies to it.
