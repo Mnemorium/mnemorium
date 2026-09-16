@@ -375,8 +375,8 @@ allowed scopes are:
 
 | Scope       | Description                                       |
 | ----------- | ------------------------------------------------- |
+| config      | Repository, tooling, and lint configuration files |
 | agent       | opencode configuration, agents, and `AGENTS.md`   |
-| lint        | Lint configuration files                          |
 | devenv      | devenv environment files                          |
 | github      | GitHub Actions workflows and configuration        |
 | test-e2e    | End-to-end tests                                  |

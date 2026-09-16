@@ -40,8 +40,8 @@ jobs:
             ci
             chore
           scopes: |
+            config
             agent
-            lint
             devenv
             github
             test-e2e
