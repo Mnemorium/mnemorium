@@ -1,0 +1,8 @@
+.devenv/
+target/
+site/
+.pytest_cache/
+.agents/
+.opencode/
+AGENTS.md
+CHANGELOG.md
