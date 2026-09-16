@@ -78,29 +78,24 @@
 
 ## Server lifecycle
 
-The server binary (`src/bin/server.rs`) shuts down gracefully on `SIGINT` and
-`SIGTERM`:
+The server binary (`src/bin/server.rs`) shuts down gracefully on `SIGINT` and `SIGTERM`:
 
 1. The signal stops the listener: new connections are refused.
-2. In-flight requests drain to completion; idle keep-alive connections are
-   closed.
+2. In-flight requests drain to completion; idle keep-alive connections are closed.
 3. `axum::serve` returns and the process exits with code `0`.
 
-Because the `/health` endpoint starts failing as soon as the drain begins,
-orchestrators stop routing traffic to the instance while existing requests
-finish.
+Because the `/health` endpoint starts failing as soon as the drain begins, orchestrators stop routing traffic to the
+instance while existing requests finish.
 
 The supervisor controls the hard termination window:
 
-- **Docker**: `docker stop` sends `SIGTERM`, then `SIGKILL` after the grace
-  period (default 10 s). Current endpoints complete well within it; raise the
-  grace (`docker stop --time <seconds>`, or `stop_grace_period` in compose) once
+- **Docker**: `docker stop` sends `SIGTERM`, then `SIGKILL` after the grace period (default 10 s). Current endpoints
+  complete well within it; raise the grace (`docker stop --time <seconds>`, or `stop_grace_period` in compose) once
   long-running uploads or media scans land.
-- **systemd**: `KillSignal=SIGTERM` is the default; size `TimeoutStopSec` to the
-  longest expected drain plus a margin for filesystem syncs
-  (`TimeoutStopSec=120` is a safe starting point on networked storage).
-- **launchd**: use `launchctl bootout` (sends `SIGTERM` and waits); avoid
-  `launchctl kickstart -k`, which sends `SIGKILL` and truncates in-flight I/O.
+- **systemd**: `KillSignal=SIGTERM` is the default; size `TimeoutStopSec` to the longest expected drain plus a margin
+  for filesystem syncs (`TimeoutStopSec=120` is a safe starting point on networked storage).
+- **launchd**: use `launchctl bootout` (sends `SIGTERM` and waits); avoid `launchctl kickstart -k`, which sends
+  `SIGKILL` and truncates in-flight I/O.
 
 ## Domain model
 
@@ -329,12 +324,9 @@ GalleryItem "1" -- "0..1" Video: References >
 
 ## Branch naming and PR title naming
 
-PR titles follow the
-[Conventional Commits v1.0.0](https://www.conventionalcommits.org/en/v1.0.0/)
-specification: the type at the start of the title determines the semantic
-version bump (see [Versioning](#versioning) below). The allowed types are
-enforced by the semantic PR gating job in `.github/workflows/ci.yml`
-(`amannn/action-semantic-pull-request`).
+PR titles follow the [Conventional Commits v1.0.0](https://www.conventionalcommits.org/en/v1.0.0/) specification: the
+type at the start of the title determines the semantic version bump (see [Versioning](#versioning) below). The allowed
+types are enforced by the semantic PR gating job in `.github/workflows/ci.yml` (`amannn/action-semantic-pull-request`).
 
 ### Branch naming
 
@@ -363,15 +355,13 @@ Examples:
 
 ### Docs-only PRs
 
-A PR whose type is `docs` must only change documentation: files under `docs/`,
-any `*.md` file, or `mkdocs.yml`. Anything else is rejected by the `docs-only`
-job in `.github/workflows/ci.yml`; use another type (for example `build` or
+A PR whose type is `docs` must only change documentation: files under `docs/`, any `*.md` file, or `mkdocs.yml`.
+Anything else is rejected by the `docs-only` job in `.github/workflows/ci.yml`; use another type (for example `build` or
 `chore`) for tooling or dependency updates.
 
 ### Scopes
 
-A scope is an optional noun describing the area of the codebase affected. The
-allowed scopes are:
+A scope is an optional noun describing the area of the codebase affected. The allowed scopes are:
 
 | Scope       | Description                                       |
 | ----------- | ------------------------------------------------- |
@@ -403,17 +393,13 @@ Other scopes may be added later as new areas emerge.
 | ci       | CI/CD workflow changes                       | none         |
 | chore    | Maintenance tasks                            | none         |
 
-A `!` after the type/scope (or a `BREAKING CHANGE:` footer) marks a breaking
-change and bumps MAJOR regardless of type.
+A `!` after the type/scope (or a `BREAKING CHANGE:` footer) marks a breaking change and bumps MAJOR regardless of type.
 
 ## Versioning
 
-The version follows [semantic versioning](https://semver.org/)
-(`MAJOR.MINOR.PATCH`). It is computed automatically on merge by
-[semantic-release](https://semantic-release.org/) from the commits
-since the last tag, using the
-[Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/)
-preset:
+The version follows [semantic versioning](https://semver.org/) (`MAJOR.MINOR.PATCH`). It is computed automatically on
+merge by [semantic-release](https://semantic-release.org/) from the commits since the last tag, using the
+[Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) preset:
 
 | Bump  | Trigger                                                                |
 | ----- | ---------------------------------------------------------------------- |
@@ -422,22 +408,17 @@ preset:
 | PATCH | At least one `fix` or `perf` commit (and no `feat` or breaking change) |
 | none  | `refactor`, `docs`, `test`, `build`, `ci`, and `chore` only            |
 
-When a release is needed, the release workflow
-(`.github/workflows/cd.yml`) runs semantic-release, which:
+When a release is needed, the release workflow (`.github/workflows/cd.yml`) runs semantic-release, which:
 
-1. Bumps the version in `Cargo.toml` and
-   `docs/development/api/openapi.json`.
+1. Bumps the version in `Cargo.toml` and `docs/development/api/openapi.json`.
 2. Builds the Docker image at the new version.
-3. Commits `CHANGELOG.md`, `docs/development/api/openapi.json`, and
-   `Cargo.toml` as `github-actions[bot]`.
+3. Commits `CHANGELOG.md`, `docs/development/api/openapi.json`, and `Cargo.toml` as `github-actions[bot]`.
 4. Tags the commit (`v<version>`) and pushes it.
-5. Publishes the GitHub release (with generated release notes) and pushes the
-   Docker image.
+5. Publishes the GitHub release (with generated release notes) and pushes the Docker image.
 
 ### Release process
 
-The release workflow (`.github/workflows/cd.yml`) runs when a pull request is
-merged into `main`:
+The release workflow (`.github/workflows/cd.yml`) runs when a pull request is merged into `main`:
 
 ```puml
 @startuml

@@ -1,13 +1,11 @@
 # API documentation
 
-This document describes how the OpenAPI specification of the Mnemorium HTTP API
-is generated and declared, and defines the contract every endpoint handler must
-satisfy.
+This document describes how the OpenAPI specification of the Mnemorium HTTP API is generated and declared, and defines
+the contract every endpoint handler must satisfy.
 
 The OpenAPI specification is generated with [Utoipa]. Handlers are declared in
-`src/lib/infrastructure/inbound/rest/handler`, wired into the axum router in
-`rest.rs` (nested under `/api/v1`) and documented inline, at the source,
-with `#[utoipa::path(...)]` macros.
+`src/lib/infrastructure/inbound/rest/handler`, wired into the axum router in `rest.rs` (nested under `/api/v1`) and
+documented inline, at the source, with `#[utoipa::path(...)]` macros.
 
 [Utoipa]: https://docs.rs/utoipa
 
@@ -15,12 +13,10 @@ with `#[utoipa::path(...)]` macros.
 
 ### Declaration
 
-1. Each handler function in `src/lib/infrastructure/inbound/rest/handler` is
-   annotated with a `#[utoipa::path(...)]` macro. The macro produces one OpenAPI
-   _path item_ for the endpoint and must respect the
+1. Each handler function in `src/lib/infrastructure/inbound/rest/handler` is annotated with a `#[utoipa::path(...)]`
+   macro. The macro produces one OpenAPI _path item_ for the endpoint and must respect the
    [endpoint handler contract](#endpoint-handler-contract).
-2. A dedicated struct derives `utoipa::OpenApi`. It aggregates all the path
-   items, their tags and the reusable schemas:
+2. A dedicated struct derives `utoipa::OpenApi`. It aggregates all the path items, their tags and the reusable schemas:
 
    ```rust
    #[derive(utoipa::OpenApi)]
@@ -36,9 +32,8 @@ with `#[utoipa::path(...)]` macros.
 
 ### Materializing the specification
 
-`src/bin/openapi_gen.rs` consumes that derive and renders the specification to
-`docs/development/api/openapi.json` — the same folder this documentation lives
-in — so the spec always stays in sync with the source:
+`src/bin/openapi_gen.rs` consumes that derive and renders the specification to `docs/development/api/openapi.json` — the
+same folder this documentation lives in — so the spec always stays in sync with the source:
 
 ```rust
 use std::fs;
@@ -52,20 +47,17 @@ fn main() {
 }
 ```
 
-Run it with `cargo run --bin openapi_gen`. The resulting `openapi.json` is
-committed alongside this document.
+Run it with `cargo run --bin openapi_gen`. The resulting `openapi.json` is committed alongside this document.
 
 ### Serving the specification at runtime
 
-The running server can also expose the specification and an interactive Swagger
-UI through `utoipa-swagger-ui`, so the API surface is browsable while the
-service is up.
+The running server can also expose the specification and an interactive Swagger UI through `utoipa-swagger-ui`, so the
+API surface is browsable while the service is up.
 
 ### Rendering the specification in MkDocs
 
-`mkdocs.yml` uses the `neoteroi.mkdocsoad` plugin. Once `openapi_gen` has
-emitted `docs/development/api/openapi.json`, embed the live specification in any
-page with the `:::oas` directive:
+`mkdocs.yml` uses the `neoteroi.mkdocsoad` plugin. Once `openapi_gen` has emitted `docs/development/api/openapi.json`,
+embed the live specification in any page with the `:::oas` directive:
 
 ````markdown
 ```yaml
@@ -73,13 +65,12 @@ page with the `:::oas` directive:
 ```
 ````
 
-The plugin loads the OAS from the generated JSON, so shipping the documentation
-and the spec together in `docs/development/api/` keeps them version-locked.
+The plugin loads the OAS from the generated JSON, so shipping the documentation and the spec together in
+`docs/development/api/` keeps them version-locked.
 
 ## Endpoint handler contract
 
-Every endpoint handler must declare, inside its `#[utoipa::path(...)]` macro,
-all of the following:
+Every endpoint handler must declare, inside its `#[utoipa::path(...)]` macro, all of the following:
 
 | Attribute                                   | Rule                                                                          |
 | ------------------------------------------- | ----------------------------------------------------------------------------- |
@@ -149,15 +140,13 @@ pub async fn create_note() -> axum::response::Json<Note> {
 Each parameter must declare, inside the `params(...)` attribute:
 
 - `name` — the parameter name as it appears in the URL / header / cookie.
-- `parameter_type` — one of `Path`, `Query`, `Header` or `Cookie`, bound to the
-  Rust type of the parameter.
+- `parameter_type` — one of `Path`, `Query`, `Header` or `Cookie`, bound to the Rust type of the parameter.
 - `description` — a human readable description of the parameter.
 
-Additional constraints may refine the value, see
-[constraint attributes](#constraint-attributes).
+Additional constraints may refine the value, see [constraint attributes](#constraint-attributes).
 
-Parameters can be declared either as inline tuples inside `params(...)`, or as a
-dedicated `IntoParams` struct reused by several handlers.
+Parameters can be declared either as inline tuples inside `params(...)`, or as a dedicated `IntoParams` struct reused by
+several handlers.
 
 ### Inline tuples
 
@@ -236,8 +225,8 @@ pub async fn list_notes() -> axum::response::Json<Vec<Note>> {
 
 ### Constraint attributes
 
-The following attributes can be applied to any parameter (and, through
-`#[schema(...)]`, to any property of a `ToSchema` model):
+The following attributes can be applied to any parameter (and, through `#[schema(...)]`, to any property of a `ToSchema`
+model):
 
 | Attribute           | Type                         | Meaning                                                                                          |
 | ------------------- | ---------------------------- | ------------------------------------------------------------------------------------------------ |
@@ -256,12 +245,11 @@ The following attributes can be applied to any parameter (and, through
 | `max_items`         | number                       | Maximum items allowed for array fields. Value must be a non-negative integer.                    |
 | `min_items`         | number                       | Minimum items allowed for array fields. Value must be a non-negative integer.                    |
 
-> `format` may either be a variant of the `KnownFormat` enum, or otherwise an
-> open value as a string. By default the format is derived from the type of the
-> property according to the OpenAPI specification.
+> `format` may either be a variant of the `KnownFormat` enum, or otherwise an open value as a string. By default the
+> format is derived from the type of the property according to the OpenAPI specification.
 
-These attributes apply identically on request/response body models through the
-`#[schema(...)]` attribute of the `ToSchema` derive:
+These attributes apply identically on request/response body models through the `#[schema(...)]` attribute of the
+`ToSchema` derive:
 
 ```rust
 use serde::{Deserialize, Serialize};
@@ -285,9 +273,8 @@ pub struct Note {
 
 ## Examples
 
-An `example` documents a concrete sample value for a schema, parameter or
-response. It can be declared inline or as a named example with a `name`, a
-`summary` and a `value`.
+An `example` documents a concrete sample value for a schema, parameter or response. It can be declared inline or as a
+named example with a `name`, a `summary` and a `value`.
 
 ### Inline example
 
@@ -360,11 +347,9 @@ Every response declares:
 - `content_type` — the media type of the response payload, when there is one.
 - `headers` — the response headers, when there are any.
 - `example` — an optional example of the response payload.
-- `link` — an optional link to another operation, expressed through the target
-  operation's `operation_id`.
+- `link` — an optional link to another operation, expressed through the target operation's `operation_id`.
 
-All the possible responses must be declared — the success case as well as every
-error case the handler can produce.
+All the possible responses must be declared — the success case as well as every error case the handler can produce.
 
 ```rust
 use utoipa::openapi::{
@@ -407,15 +392,12 @@ pub async fn create_note() -> axum::response::Json<Note> {
 }
 ```
 
-`links` reference another operation declared in the same `OpenApi` derive by its
-`operation_id`, and express how a field of this response maps to a parameter of
-the linked operation. In the example above, on a `409 Conflict`, `create_note`
+`links` reference another operation declared in the same `OpenApi` derive by its `operation_id`, and express how a field
+of this response maps to a parameter of the linked operation. In the example above, on a `409 Conflict`, `create_note`
 points to `get_note` using the `id` field of the response body.
 
-> `write_only`, `read_only` and all the
-> [constraint attributes](#constraint-attributes) apply on request/response body
-> models through the `#[schema(...)]` attribute of the `ToSchema` derive,
-> exactly as they do on parameters.
+> `write_only`, `read_only` and all the [constraint attributes](#constraint-attributes) apply on request/response body
+> models through the `#[schema(...)]` attribute of the `ToSchema` derive, exactly as they do on parameters.
 
 ## HAL Payload Guidelines
 
@@ -426,20 +408,16 @@ points to `get_note` using the `id` field of the response body.
 - Business data lives at the root of the payload.
 - `_links` is reserved for navigation and related resources.
 - **Do not use `_embedded`** unless there is a proven performance need.
-- Expose search and filtering capabilities through URI templates
-  (`templated: true`).
-- Keep actions discoverable through links; clients should never construct or
-  hardcode URLs.
-- HAL is primarily a **response representation format**. Requests should
-  generally contain only business data.
+- Expose search and filtering capabilities through URI templates (`templated: true`).
+- Keep actions discoverable through links; clients should never construct or hardcode URLs.
+- HAL is primarily a **response representation format**. Requests should generally contain only business data.
 
-The examples below use `/orders` as the resource and show how each HTTP method
-maps onto HAL.
+The examples below use `/orders` as the resource and show how each HTTP method maps onto HAL.
 
 ### GET — single resource
 
-Return the resource representation with the relevant links, so the client can
-read the resource and discover related resources.
+Return the resource representation with the relevant links, so the client can read the resource and discover related
+resources.
 
 ```json
 {
@@ -458,8 +436,8 @@ read the resource and discover related resources.
 
 ### GET — collection
 
-Return the collection with navigation and pagination links, so the client
-navigates through links rather than constructing URLs itself.
+Return the collection with navigation and pagination links, so the client navigates through links rather than
+constructing URLs itself.
 
 ```json
 {
@@ -572,9 +550,8 @@ Location: /orders/123
 
 ### Search and filtering
 
-Expose search and filtering through a URI-templated link, so clients discover
-the available search operation from the resource rather than relying on
-hardcoded API URLs.
+Expose search and filtering through a URI-templated link, so clients discover the available search operation from the
+resource rather than relying on hardcoded API URLs.
 
 ```json
 {
@@ -587,8 +564,8 @@ hardcoded API URLs.
 }
 ```
 
-Avoid exposing query parameters as separate metadata fields in the payload; URI
-templates are the appropriate HAL mechanism for this.
+Avoid exposing query parameters as separate metadata fields in the payload; URI templates are the appropriate HAL
+mechanism for this.
 
 See the [HAL] specification for details.
 

@@ -4,8 +4,8 @@
 
 ### General
 
-- Extracting functionality from a function into its own function should only be
-  done when that functionality is used in at least 4 different places.
+- Extracting functionality from a function into its own function should only be done when that functionality is used in
+  at least 4 different places.
 
 ### REST handler layout
 
@@ -17,15 +17,13 @@ Handlers live in `src/lib/infrastructure/inbound/rest/handler`.
 #### File naming
 
 - File name is `<method>_<context>.rs`, e.g. `post_note.rs`, `get_note.rs`.
-- The handler function is named like the file name, e.g. `post_note`,
-  `get_note`.
+- The handler function is named like the file name, e.g. `post_note`, `get_note`.
 
 #### Item order in a file
 
 Declare items in this order:
 
-1. Request body object (only for methods that carry a body: `POST`, `PUT`,
-   `PATCH`)
+1. Request body object (only for methods that carry a body: `POST`, `PUT`, `PATCH`)
 2. Query object
 3. Response body object
 4. Mapping from use-case error to API error
@@ -33,43 +31,31 @@ Declare items in this order:
 
 #### Payload structs
 
-- Query parameters: struct named `<Context>Query`, deriving `Serialize`,
-  `Deserialize`, `IntoParams`.
-- Request body: struct named `<Context>Request`, deriving `Serialize`,
-  `Deserialize`, `ToSchema`.
-- Response body: struct named `<Context>Response`, deriving `Serialize`,
-  `Deserialize`, `ToSchema`.
-- Even when a payload has a single attribute, always prefer a struct over a raw
-  return/parameter/query value.
+- Query parameters: struct named `<Context>Query`, deriving `Serialize`, `Deserialize`, `IntoParams`.
+- Request body: struct named `<Context>Request`, deriving `Serialize`, `Deserialize`, `ToSchema`.
+- Response body: struct named `<Context>Response`, deriving `Serialize`, `Deserialize`, `ToSchema`.
+- Even when a payload has a single attribute, always prefer a struct over a raw return/parameter/query value.
 
-For the `#[utoipa::path(...)]` declaration contract, see
-[OpenAPI documentation](api/Overview.md).
+For the `#[utoipa::path(...)]` declaration contract, see [OpenAPI documentation](api/Overview.md).
 
 ### Error handling
 
-Errors follow a layered model: one error type per role, each translating to the
-next as it crosses an architectural boundary.
+Errors follow a layered model: one error type per role, each translating to the next as it crosses an architectural
+boundary.
 
-- **`ApiError`** — declared in
-  `src/lib/infrastructure/inbound/rest/api_error.rs`. Its variants map one to
-  one to HTTP status codes (e.g. `Conflict`, `BadRequest`,
-  `InternalServerError`). It is **not** derived with `thiserror`; it is an HTTP
-  transport concern, not a domain error.
-- **Domain error** — for failure when initialising or updating a domain model.
-  Declared **before the model struct, in the same file** as the model, e.g. in
-  `src/lib/domain/model/user.rs`.
-- **Use Case error** — one enum per use case, declared in
-  `src/lib/application/port`. It must have:
+- **`ApiError`** — declared in `src/lib/infrastructure/inbound/rest/api_error.rs`. Its variants map one to one to HTTP
+  status codes (e.g. `Conflict`, `BadRequest`, `InternalServerError`). It is **not** derived with `thiserror`; it is an
+  HTTP transport concern, not a domain error.
+- **Domain error** — for failure when initialising or updating a domain model. Declared **before the model struct, in
+  the same file** as the model, e.g. in `src/lib/domain/model/user.rs`.
+- **Use Case error** — one enum per use case, declared in `src/lib/application/port`. It must have:
   - an `Unknown(_)` variant carrying the underlying error, and
   - an invalid-parameter variant (e.g. `InvalidEmail`) describing invalid input.
-- **`thiserror`** is used for the **Use Case**, **Domain**, and **Port** error
-  enums. It is **not** used for `ApiError`.
-- **Port errors** (Repository, External Service) are declared in
-  `src/lib/domain/port/error.rs`. They do **not** map directly to a use-case
-  error; the use case translates them.
-- **`NotFound` is not an error.** A missing entity is a valid outcome and is
-  returned as `Option`/`None` (or a corresponding non-error type), never as an
-  error variant.
+- **`thiserror`** is used for the **Use Case**, **Domain**, and **Port** error enums. It is **not** used for `ApiError`.
+- **Port errors** (Repository, External Service) are declared in `src/lib/domain/port/error.rs`. They do **not** map
+  directly to a use-case error; the use case translates them.
+- **`NotFound` is not an error.** A missing entity is a valid outcome and is returned as `Option`/`None` (or a
+  corresponding non-error type), never as an error variant.
 
 #### Domain error
 
@@ -93,12 +79,11 @@ pub struct User {
 
 Accessors are named after the field they expose.
 
-- **Constructor**: `new` when infallible, `try_new` when it can fail; it returns
-  `Result<Self, _>` and performs validation.
-- **Getter**: `<field>(&self) -> <field type>`. Return a borrowed reference
-  (`&str`, `Option<&str>`) or a `Copy` value type — never an owned clone.
-- **Setter**: `set_<field>(&mut self, <value>)`. Return `Result<(), _>` when the
-  field is validated, `()` otherwise.
+- **Constructor**: `new` when infallible, `try_new` when it can fail; it returns `Result<Self, _>` and performs
+  validation.
+- **Getter**: `<field>(&self) -> <field type>`. Return a borrowed reference (`&str`, `Option<&str>`) or a `Copy` value
+  type — never an owned clone.
+- **Setter**: `set_<field>(&mut self, <value>)`. Return `Result<(), _>` when the field is validated, `()` otherwise.
 
 ```rust
 impl User {
@@ -119,13 +104,13 @@ impl User {
 }
 ```
 
-Note: reject-invalid-then-assign. A setter validates the new value, assigns only
-on success, and reports the cause through the domain error enum when it fails.
+Note: reject-invalid-then-assign. A setter validates the new value, assigns only on success, and reports the cause
+through the domain error enum when it fails.
 
 #### Use Case error
 
-Declared in `src/lib/application/port`, it always exposes an `Unknown(_)`
-variant and one or more invalid-parameter variants.
+Declared in `src/lib/application/port`, it always exposes an `Unknown(_)` variant and one or more invalid-parameter
+variants.
 
 ```rust
 #[derive(Debug, thiserror::Error)]
@@ -141,8 +126,7 @@ pub enum CreateUserError {
 
 #### Mapping use-case error to API error
 
-Each rest handler file declares the mapping from its use-case error to the
-`ApiError`:
+Each rest handler file declares the mapping from its use-case error to the `ApiError`:
 
 ```rust
 impl From<CreateUserError> for ApiError {
@@ -158,8 +142,7 @@ impl From<CreateUserError> for ApiError {
 
 #### ApiError to axum response
 
-`ApiError` implements `IntoResponse`, converting to the corresponding HTTP
-status code and the standard error body.
+`ApiError` implements `IntoResponse`, converting to the corresponding HTTP status code and the standard error body.
 
 #### Error public payload
 
@@ -173,8 +156,7 @@ Every error response carries the same body:
 
 #### Port error
 
-Port errors are translated into use-case errors by the use case, never consumed
-directly by the HTTP adapter.
+Port errors are translated into use-case errors by the use case, never consumed directly by the HTTP adapter.
 
 ##### Repository
 
@@ -211,13 +193,13 @@ directly by the HTTP adapter.
 
 #### Enum for a CHECK constraint
 
-For a column backed by a SQL `CHECK (... IN (...))` constraint, declare the Rust
-enum **before** the model struct, in the same file.
+For a column backed by a SQL `CHECK (... IN (...))` constraint, declare the Rust enum **before** the model struct, in
+the same file.
 
-- Name the enum after the attribute it represents, in `UpperCamelCase`, e.g.
-  `Role` for the `role` column of table `user` used in model `User`.
-- Derive `sqlx::Type` with `#[sqlx(rename_all = "UPPERCASE")]` to match the
-  uppercase constraint strings required by the SQL section.
+- Name the enum after the attribute it represents, in `UpperCamelCase`, e.g. `Role` for the `role` column of table
+  `user` used in model `User`.
+- Derive `sqlx::Type` with `#[sqlx(rename_all = "UPPERCASE")]` to match the uppercase constraint strings required by the
+  SQL section.
 - Name variants in `UpperCamelCase`, one per allowed constraint value.
 
 ```rust
@@ -239,9 +221,8 @@ pub struct User {
 
 #### Alias type for numeric IDs
 
-Use the `NumericID` alias from `domain/alias.rs` for all numeric table columns
-that are identifiers (primary keys, foreign keys) rather than a raw integer
-type.
+Use the `NumericID` alias from `domain/alias.rs` for all numeric table columns that are identifiers (primary keys,
+foreign keys) rather than a raw integer type.
 
 ```rust
 use crate::domain::alias::NumericID;
@@ -256,8 +237,7 @@ pub struct User {
 
 ### Test conventions
 
-- Name tests `<UnitOfWork>_<Scenario>_<ExpectedResult>`, e.g.
-  `apply_discount_code_valid_code_reduces_total_price`.
+- Name tests `<UnitOfWork>_<Scenario>_<ExpectedResult>`, e.g. `apply_discount_code_valid_code_reduces_total_price`.
 - Follow the Arrange–Act–Assert (AAA) pattern:
 
   ```rust
@@ -280,10 +260,8 @@ pub struct User {
   }
   ```
 
-- Do not over-abstract test setup into deeply nested helper functions or distant
-  global state.
-- Keep tests deterministic and linear: no control flow (`if`, `match`, loops)
-  inside a test function.
+- Do not over-abstract test setup into deeply nested helper functions or distant global state.
+- Keep tests deterministic and linear: no control flow (`if`, `match`, loops) inside a test function.
 - Prefer data-driven tests with `rstest` when possible:
 
   ```rust
@@ -315,16 +293,13 @@ pub trait UserRepository: Send + Sync {
 ```
 
 - `Send`: the repository may be moved between threads.
-- `Sync`: the repository may be shared concurrently through
-  `Arc<UserRepository>`.
+- `Sync`: the repository may be shared concurrently through `Arc<UserRepository>`.
 
-Most database pools already satisfy both, e.g. `sqlx::Pool<Postgres>` and
-`sqlx::Pool<Sqlite>`.
+Most database pools already satisfy both, e.g. `sqlx::Pool<Postgres>` and `sqlx::Pool<Sqlite>`.
 
 #### Async methods return `Send` futures
 
-Return an explicitly `Send` future instead of relying on the default (which is
-not guaranteed to be `Send`):
+Return an explicitly `Send` future instead of relying on the default (which is not guaranteed to be `Send`):
 
 ```rust
 use std::future::Future;
@@ -334,13 +309,12 @@ pub trait UserRepository: Send + Sync {
 }
 ```
 
-Web frameworks (axum) move futures across worker threads; without `Send`,
-`tokio::spawn(...)` and other runtime operations fail to compile.
+Web frameworks (axum) move futures across worker threads; without `Send`, `tokio::spawn(...)` and other runtime
+operations fail to compile.
 
 #### Traits are `'static`
 
-Repositories usually live for the whole application lifetime and frameworks
-require injected state to be `'static`:
+Repositories usually live for the whole application lifetime and frameworks require injected state to be `'static`:
 
 ```rust
 struct AppState {
@@ -361,9 +335,8 @@ Do not add `Clone` just for frameworks — prefer sharing through `Arc<R>`.
 | `delete(id: DomainSpecificId)`         | Delete                                      |
 | `search(filter: &SomeFilter)`          | Query                                       |
 
-- `create` inserts a new aggregate and never binds identity columns: the
-  datastore auto-increments them and `create` returns the aggregate with its
-  final identifier.
+- `create` inserts a new aggregate and never binds identity columns: the datastore auto-increments them and `create`
+  returns the aggregate with its final identifier.
 - `save` upserts an existing aggregate targeted by its identifier.
 - Trait named `<Aggregate>Repository`, e.g. `NoteRepository`.
 - Implementation named `<Tech><Aggregate>Repository`, e.g. `SqlxNoteRepository`.
@@ -387,30 +360,25 @@ A use case trait file declares, in order:
 
 ### General
 
-- Use `snake_case` (all lowercase, words separated by underscores). Avoid mixed
-  casing or quoted identifiers (e.g. `"UserId"`).
-- Use clear, descriptive English words. Avoid obscure abbreviations (e.g. prefer
-  `customer_number` over `cust_num`).
-- Never use SQL reserved words (e.g. `order`, `group`, `date`, `select`) as
-  object or column names without an identifying prefix or suffix (e.g.
-  `purchase_order`, `created_at`). Exception: SQLite accepts a few ANSI SQL
-  reserved words (e.g. `user`) as identifiers, so they are allowed.
-- Use only standard ASCII alphanumeric characters (`a-z`, `0-9`) and underscores
-  (`_`). No spaces, hyphens, or special symbols.
+- Use `snake_case` (all lowercase, words separated by underscores). Avoid mixed casing or quoted identifiers (e.g.
+  `"UserId"`).
+- Use clear, descriptive English words. Avoid obscure abbreviations (e.g. prefer `customer_number` over `cust_num`).
+- Never use SQL reserved words (e.g. `order`, `group`, `date`, `select`) as object or column names without an
+  identifying prefix or suffix (e.g. `purchase_order`, `created_at`). Exception: SQLite accepts a few ANSI SQL reserved
+  words (e.g. `user`) as identifiers, so they are allowed.
+- Use only standard ASCII alphanumeric characters (`a-z`, `0-9`) and underscores (`_`). No spaces, hyphens, or special
+  symbols.
 - Enum constraint strings must be in uppercase.
 
 ### Table names
 
 - Singular (`user`, not `users`).
-- Junction / mapping tables combine both entity names in order of primary
-  hierarchy, e.g. `user_role`.
+- Junction / mapping tables combine both entity names in order of primary hierarchy, e.g. `user_role`.
 
 ### Column names
 
-- Primary keys: use `<table_name>_id`, e.g. `user_id`, for readability across
-  joins.
-- Foreign keys: use the exact primary key name of the referenced table (e.g.
-  `customer_id` inside the `orders` table).
+- Primary keys: use `<table_name>_id`, e.g. `user_id`, for readability across joins.
+- Foreign keys: use the exact primary key name of the referenced table (e.g. `customer_id` inside the `orders` table).
 - Data type naming:
   - Boolean: prefix with `is_`, `has_`, or `can_`
   - Timestamps: suffix `_at`
@@ -430,8 +398,7 @@ Name constraints `<constraint_type>_<table_name>_<column_name(s)>`:
 | `idx_` | Non-unique index |
 | `chk_` | Check constraint |
 
-Important: all constraints must be declared at table level, i.e. at the end of
-the `CREATE TABLE` statement.
+Important: all constraints must be declared at table level, i.e. at the end of the `CREATE TABLE` statement.
 
 ### Triggers and functions
 

@@ -1,27 +1,21 @@
 # Persistence
 
-Mnemorium uses a single datastore: **SQLite3**, accessed through `sqlx`. The
-schema is versioned by migrations in `migrations/` (one `.up.sql`/`.down.sql`
-pair per change) and applied at startup by `sqlx::migrate!` in
+Mnemorium uses a single datastore: **SQLite3**, accessed through `sqlx`. The schema is versioned by migrations in
+`migrations/` (one `.up.sql`/`.down.sql` pair per change) and applied at startup by `sqlx::migrate!` in
 `src/lib/infrastructure/outbound/sqlx/sqlite3.rs`.
 
 ## SQLite3
 
-Migrations run at boot inside `init_db`. Besides the table schema they seed
-reference data (`audio_channel`, `color`, `language`, `mime_type`) and install
-triggers that enforce invariants:
+Migrations run at boot inside `init_db`. Besides the table schema they seed reference data (`audio_channel`, `color`,
+`language`, `mime_type`) and install triggers that enforce invariants:
 
 - `user` row with `user_id = 0` (the Root Admin) cannot be deleted or modified.
-- `gallery` row with `gallery_id = 0` (the default gallery) cannot be deleted or
-  modified.
-- `codec`, `genre_id`, and `movie.country_of_origin` are normalised to uppercase
-  on insert/update.
-- The `configuration` table is a singleton (`configuration_id = 0`) whose row
-  cannot be deleted; it is created at first boot by the Initialize Configuration
-  use case, which also generates the secrets.
-- The `configuration.log_root_admin_password` flag records whether the Root
-  Admin default password is still revealed on standard output; the Patch
-  Credential use case clears it when the Root Admin replaces its own password.
+- `gallery` row with `gallery_id = 0` (the default gallery) cannot be deleted or modified.
+- `codec`, `genre_id`, and `movie.country_of_origin` are normalised to uppercase on insert/update.
+- The `configuration` table is a singleton (`configuration_id = 0`) whose row cannot be deleted; it is created at first
+  boot by the Initialize Configuration use case, which also generates the secrets.
+- The `configuration.log_root_admin_password` flag records whether the Root Admin default password is still revealed on
+  standard output; the Patch Credential use case clears it when the Root Admin replaces its own password.
 
 ```puml
 @startuml
