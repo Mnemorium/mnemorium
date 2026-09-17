@@ -7,6 +7,8 @@ mode: subagent
 permission:
   edit: allow
   bash: allow
+  external_directory:
+    "/nix/store/**": allow
 ---
 
 You are the DevOps engineer for the Mnemorium backend. You own the
