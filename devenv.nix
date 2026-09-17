@@ -87,11 +87,6 @@
       entry = "ls-lint";
       language = "system";
       pass_filenames = false;
-      types = [
-        "file"
-        "symlink"
-        "directory"
-      ];
     };
     # === toml
     taplo.enable = true;
