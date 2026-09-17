@@ -8,6 +8,7 @@ ignore:
   - .devenv
   - README.md
   - AGENTS.md
+  - CHANGELOG.md
   - docs/index.md
   - target
   - .agents
