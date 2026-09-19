@@ -26,6 +26,7 @@ nav:
   - Development:
       - Overview: development/Overview.md
       - Persistence: development/Persistence.md
+      - Issue Tracking: development/IssueTracking.md
       - API documentation:
           - Overview: development/api/Overview.md
           - Spec: development/api/Spec.md

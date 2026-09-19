@@ -1,0 +1,39 @@
+---
+name: opencode-review
+
+on:
+  pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - ready_for_review
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Ensure GitHub CLI
+        run: >-
+          command -v gh ||
+          { sudo apt-get update && sudo apt-get install -y gh; }
+      - uses: anomalyco/opencode/github@latest
+        env:
+          OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          model: ${{ vars.AGENT_REVIEWER_MODEL }}
+          agent: review-orchestrator
+          use_github_token: true
+          prompt: |
+            Review this pull request by loading and following the
+            `review-pr` skill.
