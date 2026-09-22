@@ -6,6 +6,7 @@ rules:
   truthy: disable
 ignore: |
   .devenv/
+  .opencode/node_modules/
   .pre-commit-config.yaml
   codeql-rust-db/
   default.yaml 

@@ -280,6 +280,13 @@
     description = "Lint shell file";
   };
 
+  # OpenCode
+
+  tasks."plugins:install" = {
+    exec = "npm ci --prefix .opencode";
+    description = "Install OpenCode plugin dependencies";
+  };
+
   # Scripts
 
   # Launch the Memorium server

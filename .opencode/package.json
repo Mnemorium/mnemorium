@@ -1,0 +1,7 @@
+{
+  "private": true,
+  "dependencies": {
+    "@opencode-ai/plugin": "1.18.29",
+    "@opencode/plugin": "2.0.14"
+  }
+}
