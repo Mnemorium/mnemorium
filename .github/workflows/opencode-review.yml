@@ -30,7 +30,6 @@ jobs:
       - run: |
           opencode run --standalone \
             --model ${{ vars.AGENT_REVIEWER_MODEL }} \
-          "Review this pull request by loading and following the
-          `review-pr` skill."
+            Review this pull request by using the `review-pr` skill.
         env:
           OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
