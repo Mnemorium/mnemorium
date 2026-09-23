@@ -26,14 +26,12 @@ jobs:
         run: >-
           command -v gh ||
           { sudo apt-get update && sudo apt-get install -y gh; }
-      - uses: anomalyco/opencode/github@latest
+      - run: npm install --global @opencode/cli
+      - run: |
+          opencode run --standalone \
+            --model ${{ vars.AGENT_REVIEWER_MODEL }} \
+            --prompt \
+          "Review this pull request by loading and following the
+          `review-pr` skill."
         env:
-          OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          model: ${{ vars.AGENT_REVIEWER_MODEL }}
-          agent: review-orchestrator
-          use_github_token: true
-          prompt: |
-            Review this pull request by loading and following the
-            `review-pr` skill.
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}

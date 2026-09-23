@@ -9,4 +9,5 @@ ignore: |
   .opencode/node_modules/
   .pre-commit-config.yaml
   codeql-rust-db/
-  default.yaml 
+  default.yaml
+  .agents/
