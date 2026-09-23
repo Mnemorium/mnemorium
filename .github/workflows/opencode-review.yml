@@ -33,3 +33,4 @@ jobs:
             Review this pull request by using the `review-pr` skill.
         env:
           OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
