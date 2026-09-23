@@ -86,10 +86,6 @@ fn bootstrap_sqlite3_settings() -> Result<BootstrapSqlite3Settings, anyhow::Erro
 }
 
 #[tokio::main]
-#[expect(
-    clippy::too_many_lines,
-    reason = "main is the composition root wiring every dependency and use case; extracting any of its single-use blocks collides with clippy::single_call_fn"
-)]
 async fn main() -> Result<(), anyhow::Error> {
     logging::setup();
 
