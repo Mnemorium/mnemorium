@@ -5,16 +5,17 @@ import { runTool } from "../lib/devenv-exec.ts"
 const ALL_MARKDOWN = ["**/*.md"]
 
 export default Plugin.define({
-  id: "markdownlint",
+  id: "markdownfmt",
   async setup(ctx) {
     const projectDir = ctx.location.directory
 
     await ctx.tool.transform((editor) => {
       editor.add({
-        name: "markdownlint",
+        name: "markdownfmt",
         description:
-          "Lint Markdown with markdownlint-cli2 using the repository's .markdownlint-cli2.jsonc. " +
-          "Omit `paths` to lint every Markdown file (**/*.md), mirroring the `lint:md` devenv task. " +
+          "Format Markdown with Prettier using the repository's .prettierrc. " +
+          "Omit `paths` to cover every Markdown file (**/*.md); set `write` to apply changes, " +
+          "otherwise Prettier only checks. " +
           "Runs through `devenv shell` when the project is a devenv environment.",
         input: {
           type: "object",
@@ -22,23 +23,23 @@ export default Plugin.define({
             paths: {
               type: "array",
               items: { type: "string" },
-              description: "Files or globs to lint. Omit or leave empty to lint all Markdown.",
+              description: "Files or globs to format. Omit or leave empty to cover all Markdown.",
             },
-            fix: {
+            write: {
               type: "boolean",
-              description: "Apply markdownlint auto-fixes (--fix) instead of only reporting.",
+              description: "Apply formatting (prettier --write). Defaults to check-only (prettier --check).",
             },
           },
           additionalProperties: false,
         },
         async execute(input, context) {
-          const { paths, fix } = input as { paths?: string[]; fix?: boolean }
+          const { paths, write } = input as { paths?: string[]; write?: boolean }
           const targets = paths && paths.length > 0 ? paths : ALL_MARKDOWN
-          const argv: [string, ...string[]] = ["markdownlint-cli2", ...(fix ? ["--fix"] : []), ...targets]
+          const argv: [string, ...string[]] = ["prettier", write ? "--write" : "--check", ...targets]
 
           const result = await runTool({ projectDir, argv, signal: context.signal })
-          if (!result.ok) return { content: `markdownlint:\n${result.content}` }
-          return { content: result.content || "markdownlint: no problems found" }
+          if (!result.ok) return { content: `markdownfmt:\n${result.content}` }
+          return { content: result.content || "markdownfmt: no changes" }
         },
       })
     })
