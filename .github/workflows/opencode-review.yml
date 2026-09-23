@@ -30,7 +30,6 @@ jobs:
       - run: |
           opencode run --standalone \
             --model ${{ vars.AGENT_REVIEWER_MODEL }} \
-            --prompt \
           "Review this pull request by loading and following the
           `review-pr` skill."
         env:
