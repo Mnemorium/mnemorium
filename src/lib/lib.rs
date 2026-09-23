@@ -5,6 +5,7 @@ pub mod infrastructure;
 /// Fixtures shared by the in-crate test modules.
 #[cfg(test)]
 mod test_helpers {
+    use std::error::Error;
     use std::future::Future;
     use std::future::ready;
     use std::sync::Arc;
@@ -12,6 +13,17 @@ mod test_helpers {
     use std::sync::atomic::AtomicBool;
     use std::sync::atomic::Ordering;
 
+    use arc_swap::ArcSwap;
+
+    use crate::application::port::identity_use_case_factory::IdentityUseCaseFactory;
+    use crate::application::port::identity_use_case_factory::MockIdentityUseCaseFactory;
+    use crate::application::port::user_use_case_factory::MockUserUseCaseFactory;
+    use crate::application::port::user_use_case_factory::UserUseCaseFactory;
+    use crate::domain::model::configuration::Configuration;
+    use crate::domain::model::jwt::Jwt;
+    use crate::domain::model::persistence::Persistence;
+    use crate::domain::model::security::Security;
+    use crate::domain::model::sqlite3::Sqlite3;
     use crate::domain::port::configuration_repository::ConfigurationRepository;
     use crate::domain::port::configuration_repository::MockConfigurationRepository;
     use crate::domain::port::configuration_unit_of_work::ConfigurationUnitOfWork;
@@ -24,6 +36,8 @@ mod test_helpers {
     use crate::domain::port::user_repository::MockUserRepository;
     use crate::domain::port::user_repository::UserRepository;
     use crate::domain::port::user_unit_of_work::UserUnitOfWork;
+    use crate::infrastructure::inbound::rest::app_state::AppState;
+    use crate::infrastructure::outbound::jwt::token_provider::JwtTokenProvider;
 
     /// A password that satisfies the password policy.
     ///
@@ -135,5 +149,77 @@ mod test_helpers {
                 users,
             })),
         }
+    }
+
+    /// Build an application state whose use-case factories are mocks and whose
+    /// configuration is a fixed valid snapshot.
+    ///
+    /// Only the token provider is exercised by the callers; the factories are
+    /// never reached.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the fixed configuration cannot be built.
+    #[expect(
+        clippy::single_call_fn,
+        reason = "only the auth middleware tests build an application state around a token provider"
+    )]
+    pub fn app_state(token_provider: Arc<JwtTokenProvider>) -> Result<AppState, Box<dyn Error>> {
+        let jwt = Jwt::try_new("0".repeat(64), 3600)?;
+        let security = Security::try_new(jwt, "1".repeat(64), true)?;
+        let sqlite3 = Sqlite3::try_new(":memory:".to_owned(), 1)?;
+        let configuration = Configuration::try_new(Persistence::try_new(sqlite3), security);
+        Ok(AppState::new(
+            Arc::new(ArcSwap::from_pointee(configuration)),
+            Arc::new(MockIdentityUseCaseFactory::new()),
+            token_provider,
+            Arc::new(MockUserUseCaseFactory::new()),
+        ))
+    }
+
+    /// Build an application state around a mocked Identity use-case factory.
+    ///
+    /// The token provider and the User factory are mocks the callers never
+    /// reach.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the fixed configuration cannot be built.
+    pub fn app_state_with_identity(
+        identity_use_case_factory: Arc<dyn IdentityUseCaseFactory>,
+    ) -> Result<AppState, Box<dyn Error>> {
+        let jwt = Jwt::try_new("0".repeat(64), 3600)?;
+        let security = Security::try_new(jwt, "1".repeat(64), true)?;
+        let sqlite3 = Sqlite3::try_new(":memory:".to_owned(), 1)?;
+        let configuration = Configuration::try_new(Persistence::try_new(sqlite3), security);
+        Ok(AppState::new(
+            Arc::new(ArcSwap::from_pointee(configuration)),
+            identity_use_case_factory,
+            Arc::new(JwtTokenProvider::new("tmptmp".to_owned(), 3600)),
+            Arc::new(MockUserUseCaseFactory::new()),
+        ))
+    }
+
+    /// Build an application state around a mocked User use-case factory.
+    ///
+    /// The token provider and the Identity factory are mocks the callers never
+    /// reach.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the fixed configuration cannot be built.
+    pub fn app_state_with_user(
+        user_use_case_factory: Arc<dyn UserUseCaseFactory>,
+    ) -> Result<AppState, Box<dyn Error>> {
+        let jwt = Jwt::try_new("0".repeat(64), 3600)?;
+        let security = Security::try_new(jwt, "1".repeat(64), true)?;
+        let sqlite3 = Sqlite3::try_new(":memory:".to_owned(), 1)?;
+        let configuration = Configuration::try_new(Persistence::try_new(sqlite3), security);
+        Ok(AppState::new(
+            Arc::new(ArcSwap::from_pointee(configuration)),
+            Arc::new(MockIdentityUseCaseFactory::new()),
+            Arc::new(JwtTokenProvider::new("tmptmp".to_owned(), 3600)),
+            user_use_case_factory,
+        ))
     }
 }

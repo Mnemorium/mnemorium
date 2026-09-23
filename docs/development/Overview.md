@@ -29,52 +29,55 @@
             │       │   └── user
             │       └── middleware
             ├── logging.rs
-            └── outbound
-                ├── argon2
-                ├── config
-                ├── file_system
-                ├── jwt
-                ├── moka.rs
-                ├── random
-                └── sqlx
-                    ├── model
-                    └── sqlite3.rs
+            ├── outbound
+            │   ├── argon2
+            │   ├── config
+            │   ├── file_system
+            │   ├── jwt
+            │   ├── moka.rs
+            │   ├── random
+            │   └── sqlx
+            │       ├── model
+            │       └── sqlite3.rs
+            └── use_case_factory
 ```
 
-| Entity                                             | Description                                                               |
-| -------------------------------------------------- | ------------------------------------------------------------------------- |
-| `docs`                                             |                                                                           |
-| `src`                                              |                                                                           |
-| `src/bin`                                          |                                                                           |
-| `src/bin/openapi_gen.rs`                           | Generate the OpenAPI specification to `docs/development/api/openapi.json` |
-| `src/bin/server.rs`                                | Server entrypoint and graceful shutdown                                   |
-| `src/lib`                                          |                                                                           |
-| `src/lib/application`                              | App Layer                                                                 |
-| `src/lib/application/port`                         | Interface declaration for usecase (one by file)                           |
-| `src/lib/application/use_case`                     | Implementation of the **UseCase**                                         |
-| `src/lib/domain`                                   | Domain Layer                                                              |
-| `src/lib/domain/alias.rs`                          | Type alias for the project (ex: which integer to use for IDs)             |
-| `src/lib/domain/model`                             | Aggregate, Entity, Value object declaration                               |
-| `src/lib/domain/port`                              | Port interface declaration                                                |
-| `src/lib/domain/port/error.rs`                     | Repository, External service error declaration                            |
-| `src/lib/domain/service`                           | Domain Service implementation; see Terms Glossary for more info on it     |
-| `src/lib/infrastructure/inbound/rest`              | HTTP adapter layer                                                        |
-| `src/lib/infrastructure/inbound/rest/api_error.rs` | API Error declaration                                                     |
-| `src/lib/infrastructure/inbound/rest/app_state.rs` | Shared application state injected into handlers                           |
-| `src/lib/infrastructure/inbound/rest/rest.rs`      | Setup the axum routes and OpenAPI document                                |
-| `src/lib/infrastructure/inbound/rest/handler`      | HTTP endpoint handler                                                     |
-| `src/lib/infrastructure/inbound/rest/middleware`   | Axum middleware (authentication, tracing)                                 |
-| `src/lib/infrastructure/outbound`                  | Outbound Port adapter declaration                                         |
-| `src/lib/infrastructure/outbound/argon2`           | Argon2 password hasher adapter                                            |
-| `src/lib/infrastructure/outbound/config`           | Configuration source adapters                                             |
-| `src/lib/infrastructure/outbound/file_system`      | File storage adapter                                                      |
-| `src/lib/infrastructure/outbound/jwt`              | JWT token provider adapter                                                |
-| `src/lib/infrastructure/outbound/moka.rs`          | In-memory cache adapter                                                   |
-| `src/lib/infrastructure/outbound/random`           | Password and secret generator adapters                                    |
-| `src/lib/infrastructure/outbound/sqlx`             | SQLx/SQLite repository adapters                                           |
-| `src/lib/infrastructure/outbound/sqlx/model`       | SQLx row models                                                           |
-| `src/lib/infrastructure/outbound/sqlx/sqlite3.rs`  | SQLite pool initialization and migrations                                 |
-| `src/lib/infrastructure/logging.rs`                | Logging related bootstrapping                                             |
+| Entity                                                | Description                                                                                                       |
+| ----------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `docs`                                                |                                                                                                                   |
+| `src`                                                 |                                                                                                                   |
+| `src/bin`                                             |                                                                                                                   |
+| `src/bin/openapi_gen.rs`                              | Generate the OpenAPI specification to `docs/development/api/openapi.json`                                         |
+| `src/bin/server.rs`                                   | Server entrypoint and graceful shutdown                                                                           |
+| `src/lib`                                             |                                                                                                                   |
+| `src/lib/application`                                 | App Layer                                                                                                         |
+| `src/lib/application/port`                            | Interface declaration for usecase (one by file)                                                                   |
+| `src/lib/application/use_case`                        | Implementation of the **UseCase**                                                                                 |
+| `src/lib/domain`                                      | Domain Layer                                                                                                      |
+| `src/lib/domain/alias.rs`                             | Type alias for the project (ex: which integer to use for IDs)                                                     |
+| `src/lib/domain/model`                                | Aggregate, Entity, Value object declaration                                                                       |
+| `src/lib/domain/port`                                 | Port interface declaration                                                                                        |
+| `src/lib/domain/port/error.rs`                        | Repository, External service error declaration                                                                    |
+| `src/lib/domain/service`                              | Domain Service implementation; see Terms Glossary for more info on it                                             |
+| `src/lib/infrastructure/inbound/rest`                 | HTTP adapter layer                                                                                                |
+| `src/lib/infrastructure/inbound/rest/api_error.rs`    | API Error declaration                                                                                             |
+| `src/lib/infrastructure/inbound/rest/app_state.rs`    | Application state shared by the HTTP layer: live configuration, per-context use-case factories and token provider |
+| `src/lib/infrastructure/inbound/rest/rest.rs`         | Setup the axum routes and OpenAPI document                                                                        |
+| `src/lib/infrastructure/inbound/rest/handler`         | HTTP endpoint handler                                                                                             |
+| `src/lib/infrastructure/inbound/rest/middleware`      | Axum middleware (authentication, tracing)                                                                         |
+| `src/lib/infrastructure/outbound`                     | Outbound Port adapter declaration                                                                                 |
+| `src/lib/infrastructure/outbound/argon2`              | Argon2 password hasher adapter                                                                                    |
+| `src/lib/infrastructure/outbound/config`              | Configuration source adapters                                                                                     |
+| `src/lib/infrastructure/outbound/config/bootstrap.rs` | Bootstrap persistence settings read before the datastore is reachable                                             |
+| `src/lib/infrastructure/outbound/file_system`         | File storage adapter                                                                                              |
+| `src/lib/infrastructure/outbound/jwt`                 | JWT token provider adapter                                                                                        |
+| `src/lib/infrastructure/outbound/moka.rs`             | In-memory cache adapter                                                                                           |
+| `src/lib/infrastructure/outbound/random`              | Password and secret generator adapters                                                                            |
+| `src/lib/infrastructure/outbound/sqlx`                | SQLx/SQLite repository adapters                                                                                   |
+| `src/lib/infrastructure/outbound/sqlx/model`          | SQLx row models                                                                                                   |
+| `src/lib/infrastructure/outbound/sqlx/sqlite3.rs`     | SQLite pool initialization and migrations                                                                         |
+| `src/lib/infrastructure/use_case_factory`             | Per-context factories building use cases on demand                                                                |
+| `src/lib/infrastructure/logging.rs`                   | Logging related bootstrapping                                                                                     |
 
 ## Server lifecycle
 

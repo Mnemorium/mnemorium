@@ -5,7 +5,21 @@
 ### General
 
 - Extracting functionality from a function into its own function should only be done when that functionality is used in
-  at least 4 different places.
+  at least 4 different places. This applies to production code; shared test fixtures are exempt.
+
+### Composition root and application state
+
+`src/bin/server.rs` is the composition root: it is the only place that instantiates concrete adapters, runs the startup
+use cases (`LoadConfiguration`, `InitializeRootAdmin`) and builds the `AppState` the HTTP layer shares.
+
+`AppState` lives in `src/lib/infrastructure/inbound/rest/app_state.rs` and holds:
+
+- the live configuration (`Arc<ArcSwap<Configuration>>`),
+- the per-context use-case factories (see [Use-case factory](#use-case-factory)),
+- the token provider the auth middleware validates with.
+
+`AppState` is the single router state; `FromRef` impls expose exactly what middleware extracts from it. Getters return
+`Arc` clones, never borrows of the shared state. Nothing outside the composition root constructs a concrete adapter.
 
 ### REST handler layout
 
@@ -13,6 +27,8 @@ Handlers live in `src/lib/infrastructure/inbound/rest/handler`.
 
 - Split the directory into subdirectories, one folder per bounded context.
 - Each file contains exactly one endpoint.
+- A handler extracts `State<AppState>` and resolves its use case through the bounded context's factory
+  (`state.<context>_use_case_factory().<use_case>()`) before calling `execute`; it never receives a pre-built use case.
 
 #### File naming
 
@@ -320,6 +336,15 @@ pub trait UserRepository: Send + Sync {
 Repositories are short-lived views over a transaction (see [Repository](#repository)); the shared mutable state is the
 unit of work, not the repository itself.
 
+#### Dyn-safety
+
+Only use-case traits are object-safe: their `execute` returns `Pin<Box<dyn Future<Output = ...> + Send + 'future>>`, so
+a factory can return `Arc<dyn <UseCaseName>UseCase>`.
+
+Outbound ports that return `impl Future` (RPITIT) are **not** dyn-safe. `AppState` and the use-case factories therefore
+hold concrete adapters (`Arc<SqlxUnitOfWorkFactory>`, `Arc<JwtTokenProvider>`, ...) and `Arc<dyn <UseCaseName>UseCase>`
+trait objects — never `Arc<dyn UnitOfWorkFactory>` or `Arc<dyn TokenProvider>`.
+
 #### Async methods take `&mut self` and return `Send` futures
 
 Repository methods mutate the shared transaction, so they take `&mut self`. Return an explicitly `Send` future instead
@@ -520,6 +545,38 @@ A use case trait file declares, in order:
 2. The **Response** object (only when non-empty)
 3. The **Error** enum
 4. The **UseCase** trait
+
+### Use-case factory
+
+Handlers depend on a factory rather than on pre-built use cases: each bounded context exposes one factory that builds
+its use cases on demand.
+
+- **Port** — `src/lib/application/port/<context>_use_case_factory.rs`. The trait is named `<Context>UseCaseFactory`, is
+  `Send + Sync`, carries `#[cfg_attr(test, mockall::automock)]`, and exposes one method per use case — named after the
+  use case — returning `Arc<dyn <UseCaseName>UseCase>`.
+- **Adapter** — `src/lib/infrastructure/use_case_factory/<context>.rs`. The struct is named
+  `Runtime<Context>UseCaseFactory` and holds what the context's use cases need: the live configuration
+  (`Arc<ArcSwap<Configuration>>`) when they read it, and the unit-of-work factory (`Arc<SqlxUnitOfWorkFactory>`).
+- **Lazy instantiation** — every accessor builds the use case on the spot and rebuilds its configuration-derived
+  adapters (password hasher, token provider) from the live configuration; never cache those adapters.
+- The factory only supplies the unit-of-work factory; the use case still opens, commits and rolls back its own unit of
+  work (see [Unit of Work](#unit-of-work)).
+
+#### Declaration order in a factory port file
+
+A factory port file declares the trait only: no `Command`, `Response` or `Error`.
+
+### Live configuration
+
+- `LoadConfiguration` runs once at startup; the resulting `Configuration` is stored as `Arc<ArcSwap<Configuration>>` in
+  `AppState`.
+- Never cache a configuration-derived value (pepper, `JWT` secret, TTL) in a long-lived adapter built at startup; read
+  it from the live configuration.
+- **Bootstrap** — the datastore path is needed before the pool exists, but the configuration singleton row lives behind
+  that pool. `bootstrap_sqlite3` (`src/lib/infrastructure/outbound/config/bootstrap.rs`) therefore reads the file and
+  the environment only. That layering is intentionally duplicated with `ConfigConfigurationSource` (see the extraction
+  rule in [General](#general)); keep the source list and order identical.
+- Runtime write-guarding of the configuration is deferred; see the `TODO` in `src/bin/server.rs`.
 
 ## SQL
 

@@ -116,6 +116,7 @@ mod tests {
     use crate::domain::port::token_provider::MockTokenProvider;
     use crate::infrastructure::inbound::rest::app_state::AppState;
     use crate::infrastructure::outbound::jwt::token_provider::JwtTokenProvider;
+    use crate::test_helpers::app_state;
 
     /// Echo the caller identifier the extractor recovered from the request.
     async fn stub(caller: AuthenticatedUser) -> Json<Value> {
@@ -124,19 +125,19 @@ mod tests {
 
     /// Application state with a real token provider that is never consulted
     /// (the middleware layer carries its own mock).
-    fn state() -> AppState {
-        AppState::new(Arc::new(JwtTokenProvider::new("tmptmp".to_owned(), 3600)))
+    fn state() -> Result<AppState, Box<dyn Error>> {
+        app_state(Arc::new(JwtTokenProvider::new("tmptmp".to_owned(), 3600)))
     }
 
     /// Router guarding `stub` with `authenticate` over a mocked provider.
-    fn router_with(provider: MockTokenProvider) -> axum::Router {
-        axum::Router::new()
+    fn router_with(provider: MockTokenProvider) -> Result<axum::Router, Box<dyn Error>> {
+        Ok(axum::Router::new()
             .route("/", get(stub))
             .route_layer(middleware::from_fn_with_state(
                 Arc::new(provider),
                 authenticate::<MockTokenProvider>,
             ))
-            .with_state(state())
+            .with_state(state()?))
     }
 
     /// Send a GET to `router` carrying `authorization` as the
@@ -184,7 +185,7 @@ mod tests {
         // Act
         let (status, payload) = into_parts(
             send(
-                router_with(provider),
+                router_with(provider)?,
                 Some(HeaderValue::from_static("Bearer valid-token")),
             )
             .await?,
@@ -204,7 +205,7 @@ mod tests {
         let provider = MockTokenProvider::new();
 
         // Act
-        let (status, payload) = into_parts(send(router_with(provider), None).await?).await?;
+        let (status, payload) = into_parts(send(router_with(provider)?, None).await?).await?;
 
         // Assert
         assert_eq!(status, StatusCode::UNAUTHORIZED);
@@ -224,7 +225,7 @@ mod tests {
         // Act
         let (status, payload) = into_parts(
             send(
-                router_with(provider),
+                router_with(provider)?,
                 Some(HeaderValue::from_static("Basic dXNlcjpwYXNz")),
             )
             .await?,
@@ -249,7 +250,7 @@ mod tests {
         // Act
         let (status, payload) = into_parts(
             send(
-                router_with(provider),
+                router_with(provider)?,
                 Some(HeaderValue::from_static("Bearertoken")),
             )
             .await?,
@@ -273,7 +274,8 @@ mod tests {
         let value = HeaderValue::from_bytes(&[b'B', b'e', b'a', b'r', b'e', b'r', b' ', 0xff])?;
 
         // Act
-        let (status, payload) = into_parts(send(router_with(provider), Some(value)).await?).await?;
+        let (status, payload) =
+            into_parts(send(router_with(provider)?, Some(value)).await?).await?;
 
         // Assert
         assert_eq!(status, StatusCode::UNAUTHORIZED);
@@ -293,7 +295,7 @@ mod tests {
         // Act
         let (status, payload) = into_parts(
             send(
-                router_with(provider),
+                router_with(provider)?,
                 Some(HeaderValue::from_static("bearer valid-token")),
             )
             .await?,
@@ -326,7 +328,7 @@ mod tests {
         // Act
         let (status, payload) = into_parts(
             send(
-                router_with(provider),
+                router_with(provider)?,
                 Some(HeaderValue::from_static("Bearer expired-token")),
             )
             .await?,
@@ -345,7 +347,7 @@ mod tests {
         // Arrange
         let router = axum::Router::new()
             .route("/", get(stub))
-            .with_state(state());
+            .with_state(state()?);
 
         // Act
         let (status, payload) = into_parts(send(router, None).await?).await?;
@@ -369,7 +371,7 @@ mod tests {
         // Act
         let (status, payload) = into_parts(
             send(
-                router_with(provider),
+                router_with(provider)?,
                 Some(HeaderValue::from_static("Bearer ")),
             )
             .await?,

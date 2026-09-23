@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use axum::Json;
 use axum::extract::State;
 use axum::extract::rejection::JsonRejection;
@@ -12,11 +10,11 @@ use utoipa::ToSchema;
 use crate::application::port::register_user::RegisterUserCommand;
 use crate::application::port::register_user::RegisterUserError;
 use crate::application::port::register_user::RegisterUserResponse;
-use crate::application::port::register_user::RegisterUserUseCase;
 use crate::domain::alias::NumericID;
 use crate::domain::model::user::Role;
 use crate::infrastructure::inbound::rest::api_error::ApiError;
 use crate::infrastructure::inbound::rest::api_error::ErrorBody;
+use crate::infrastructure::inbound::rest::app_state::AppState;
 use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 
 /// Payload to register a new user.
@@ -136,12 +134,14 @@ impl From<RegisterUserError> for ApiError {
     summary = "Register a new user"
 )]
 pub async fn post_register(
-    State(register_user): State<Arc<dyn RegisterUserUseCase>>,
+    State(state): State<AppState>,
     caller: AuthenticatedUser,
     payload: Result<Json<RegisterRequest>, JsonRejection>,
 ) -> Result<impl IntoResponse, ApiError> {
     let Json(request) = payload.map_err(ApiError::from)?;
-    let response = register_user
+    let response = state
+        .identity_use_case_factory()
+        .register_user()
         .execute(RegisterUserCommand::new(
             caller.user_id(),
             request.username,
@@ -178,6 +178,7 @@ mod tests {
     use tower::ServiceExt as _;
 
     use super::post_register;
+    use crate::application::port::identity_use_case_factory::MockIdentityUseCaseFactory;
     use crate::application::port::register_user::MockRegisterUserUseCase;
     use crate::application::port::register_user::RegisterUserCommand;
     use crate::application::port::register_user::RegisterUserError;
@@ -187,6 +188,7 @@ mod tests {
     use crate::domain::model::user::Role;
     use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
     use crate::test_helpers::SECRET_PASSWORD;
+    use crate::test_helpers::app_state_with_identity;
 
     /// Send `body` through the endpoint router on behalf of `caller_id`,
     /// injecting the caller identifier the way the auth middleware does.
@@ -195,6 +197,12 @@ mod tests {
         caller_id: NumericID,
         body: Body,
     ) -> Result<Response, Box<dyn Error>> {
+        let mut factory = MockIdentityUseCaseFactory::new();
+        factory
+            .expect_register_user()
+            .times(0..=1)
+            .return_once(move || Arc::new(use_case) as Arc<dyn RegisterUserUseCase>);
+
         let mut request = Request::builder()
             .method("POST")
             .uri("/api/v1/identity/register")
@@ -206,7 +214,7 @@ mod tests {
 
         let router = axum::Router::new()
             .route("/api/v1/identity/register", post(post_register))
-            .with_state(Arc::new(use_case) as Arc<dyn RegisterUserUseCase>);
+            .with_state(app_state_with_identity(Arc::new(factory))?);
         Ok(router.oneshot(request).await?)
     }
 

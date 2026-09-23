@@ -25,9 +25,9 @@ use crate::domain::port::unit_of_work::UnitOfWorkFactory;
 /// Lifetime of a JWT token, in seconds.
 const DEFAULT_JWT_TTL: u64 = 3600;
 /// Maximum number of connections to the database.
-const DEFAULT_SQLITE3_MAX_CONN: u32 = 1;
+pub(crate) const DEFAULT_SQLITE3_MAX_CONN: u32 = 1;
 /// Path to the `SQLite3` database file.
-const DEFAULT_SQLITE3_PATH: &str = "mnemorium.db";
+pub(crate) const DEFAULT_SQLITE3_PATH: &str = "mnemorium.db";
 /// Length of each generated secret, in bytes.
 const SECRET_LENGTH: u32 = 32;
 

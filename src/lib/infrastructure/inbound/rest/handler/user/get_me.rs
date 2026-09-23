@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use axum::Json;
 use axum::extract::State;
 use serde::{Deserialize, Serialize};
@@ -8,11 +6,11 @@ use utoipa::ToSchema;
 use crate::application::port::get_current_user::GetCurrentUserCommand;
 use crate::application::port::get_current_user::GetCurrentUserError;
 use crate::application::port::get_current_user::GetCurrentUserResponse;
-use crate::application::port::get_current_user::GetCurrentUserUseCase;
 use crate::domain::alias::NumericID;
 use crate::domain::model::user::Role;
 use crate::infrastructure::inbound::rest::api_error::ApiError;
 use crate::infrastructure::inbound::rest::api_error::ErrorBody;
+use crate::infrastructure::inbound::rest::app_state::AppState;
 use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 
 /// Current user returned by a successful lookup.
@@ -79,10 +77,12 @@ impl From<GetCurrentUserError> for ApiError {
     summary = "Fetch the current user"
 )]
 pub async fn get_me(
-    State(get_current_user): State<Arc<dyn GetCurrentUserUseCase>>,
+    State(state): State<AppState>,
     caller: AuthenticatedUser,
 ) -> Result<Json<GetMeResponse>, ApiError> {
-    let response = get_current_user
+    let response = state
+        .user_use_case_factory()
+        .get_current_user()
         .execute(GetCurrentUserCommand::new(caller.user_id()))
         .await?;
     Ok(Json(GetMeResponse::from(response)))
@@ -111,9 +111,11 @@ mod tests {
     use crate::application::port::get_current_user::GetCurrentUserResponse;
     use crate::application::port::get_current_user::GetCurrentUserUseCase;
     use crate::application::port::get_current_user::MockGetCurrentUserUseCase;
+    use crate::application::port::user_use_case_factory::MockUserUseCaseFactory;
     use crate::domain::alias::NumericID;
     use crate::domain::model::user::Role;
     use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
+    use crate::test_helpers::app_state_with_user;
 
     /// Send a request through the endpoint router on behalf of `caller_id`,
     /// injecting the caller identifier the way the auth middleware does.
@@ -121,6 +123,12 @@ mod tests {
         use_case: MockGetCurrentUserUseCase,
         caller_id: NumericID,
     ) -> Result<Response, Box<dyn Error>> {
+        let mut factory = MockUserUseCaseFactory::new();
+        factory
+            .expect_get_current_user()
+            .times(0..=1)
+            .return_once(move || Arc::new(use_case) as Arc<dyn GetCurrentUserUseCase>);
+
         let mut request = Request::builder()
             .method("GET")
             .uri("/api/v1/user/me")
@@ -131,7 +139,7 @@ mod tests {
 
         let router = axum::Router::new()
             .route("/api/v1/user/me", get(get_me))
-            .with_state(Arc::new(use_case) as Arc<dyn GetCurrentUserUseCase>);
+            .with_state(app_state_with_user(Arc::new(factory))?);
         Ok(router.oneshot(request).await?)
     }
 

@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use axum::Json;
 use axum::extract::Path;
 use axum::extract::State;
@@ -10,11 +8,11 @@ use utoipa::ToSchema;
 use crate::application::port::update_user::UpdateUserCommand;
 use crate::application::port::update_user::UpdateUserError;
 use crate::application::port::update_user::UpdateUserResponse as UpdateUserResponseData;
-use crate::application::port::update_user::UpdateUserUseCase;
 use crate::domain::alias::NumericID;
 use crate::domain::model::user::Role;
 use crate::infrastructure::inbound::rest::api_error::ApiError;
 use crate::infrastructure::inbound::rest::api_error::ErrorBody;
+use crate::infrastructure::inbound::rest::app_state::AppState;
 use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 
 /// Payload to update the profile of a user.
@@ -127,7 +125,7 @@ impl From<UpdateUserError> for ApiError {
     summary = "Update a user profile"
 )]
 pub async fn patch_user(
-    State(update_user): State<Arc<dyn UpdateUserUseCase>>,
+    State(state): State<AppState>,
     caller: AuthenticatedUser,
     Path(id): Path<String>,
     payload: Result<Json<PatchUserRequest>, JsonRejection>,
@@ -136,7 +134,9 @@ pub async fn patch_user(
         return Err(ApiError::BadRequest("invalid user identifier".to_owned()));
     };
     let Json(request) = payload.map_err(ApiError::from)?;
-    let response = update_user
+    let response = state
+        .user_use_case_factory()
+        .update_user()
         .execute(UpdateUserCommand::new(
             caller.user_id(),
             user_id,
@@ -171,9 +171,11 @@ mod tests {
     use crate::application::port::update_user::UpdateUserError;
     use crate::application::port::update_user::UpdateUserResponse;
     use crate::application::port::update_user::UpdateUserUseCase;
+    use crate::application::port::user_use_case_factory::MockUserUseCaseFactory;
     use crate::domain::alias::NumericID;
     use crate::domain::model::user::Role;
     use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
+    use crate::test_helpers::app_state_with_user;
 
     /// Send `body` through the endpoint router on behalf of `caller_id`,
     /// targeting user `user_id`, injecting the caller the way the auth
@@ -184,6 +186,12 @@ mod tests {
         user_id: &str,
         body: Body,
     ) -> Result<Response, Box<dyn Error>> {
+        let mut factory = MockUserUseCaseFactory::new();
+        factory
+            .expect_update_user()
+            .times(0..=1)
+            .return_once(move || Arc::new(use_case) as Arc<dyn UpdateUserUseCase>);
+
         let mut request = Request::builder()
             .method("PATCH")
             .uri(format!("/api/v1/user/{user_id}"))
@@ -195,7 +203,7 @@ mod tests {
 
         let router = axum::Router::new()
             .route("/api/v1/user/{id}", patch(patch_user))
-            .with_state(Arc::new(use_case) as Arc<dyn UpdateUserUseCase>);
+            .with_state(app_state_with_user(Arc::new(factory))?);
         Ok(router.oneshot(request).await?)
     }
 

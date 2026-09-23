@@ -49,10 +49,6 @@ where
     F::Uow: IdentityUnitOfWork + UserUnitOfWork,
     P: PasswordHasher,
 {
-    #[expect(
-        clippy::too_many_lines,
-        reason = "the use case is a single linear scenario; the unit-of-work lifecycle keeps it intentionally explicit"
-    )]
     fn execute<'future>(
         &'future self,
         command: RegisterUserCommand,

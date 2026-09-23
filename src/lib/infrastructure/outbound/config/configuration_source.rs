@@ -11,7 +11,7 @@ use crate::domain::port::error::ConfigurationSourceError;
 use crate::infrastructure::outbound::config::dbsqlite3::DbSqlite3Source;
 
 /// Path to the user configuration file.
-const USER_CONFIG_PATH: &str = "config.yaml";
+pub(crate) const USER_CONFIG_PATH: &str = "config.yaml";
 
 /// Source layering the configuration file and the environment over a base
 /// configuration snapshot read from the datastore by the caller.

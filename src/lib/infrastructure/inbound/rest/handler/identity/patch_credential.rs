@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use axum::Json;
 use axum::extract::Path;
 use axum::extract::State;
@@ -11,10 +9,10 @@ use utoipa::ToSchema;
 
 use crate::application::port::patch_credential::PatchCredentialCommand;
 use crate::application::port::patch_credential::PatchCredentialError;
-use crate::application::port::patch_credential::PatchCredentialUseCase;
 use crate::domain::alias::NumericID;
 use crate::infrastructure::inbound::rest::api_error::ApiError;
 use crate::infrastructure::inbound::rest::api_error::ErrorBody;
+use crate::infrastructure::inbound::rest::app_state::AppState;
 use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 
 /// Payload to change the password behind a credential.
@@ -94,13 +92,15 @@ impl From<PatchCredentialError> for ApiError {
     summary = "Change the password behind a credential"
 )]
 pub async fn patch_credential(
-    State(patch_credential): State<Arc<dyn PatchCredentialUseCase>>,
+    State(state): State<AppState>,
     caller: AuthenticatedUser,
     Path(credential_id): Path<NumericID>,
     payload: Result<Json<PatchCredentialRequest>, JsonRejection>,
 ) -> Result<impl IntoResponse, ApiError> {
     let Json(request) = payload.map_err(ApiError::from)?;
-    patch_credential
+    state
+        .identity_use_case_factory()
+        .patch_credential()
         .execute(PatchCredentialCommand::new(
             caller.user_id(),
             credential_id,
@@ -128,6 +128,7 @@ mod tests {
     use tower::ServiceExt as _;
 
     use super::patch_credential;
+    use crate::application::port::identity_use_case_factory::MockIdentityUseCaseFactory;
     use crate::application::port::patch_credential::MockPatchCredentialUseCase;
     use crate::application::port::patch_credential::PatchCredentialCommand;
     use crate::application::port::patch_credential::PatchCredentialError;
@@ -135,6 +136,7 @@ mod tests {
     use crate::domain::alias::NumericID;
     use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
     use crate::test_helpers::SECRET_PASSWORD;
+    use crate::test_helpers::app_state_with_identity;
 
     /// Send `body` through the endpoint router on behalf of `caller_id`,
     /// targeting credential `credential_id`, injecting the caller the way the
@@ -145,6 +147,12 @@ mod tests {
         credential_id: NumericID,
         body: Body,
     ) -> Result<Response, Box<dyn Error>> {
+        let mut factory = MockIdentityUseCaseFactory::new();
+        factory
+            .expect_patch_credential()
+            .times(0..=1)
+            .return_once(move || Arc::new(use_case) as Arc<dyn PatchCredentialUseCase>);
+
         let mut request = Request::builder()
             .method("PATCH")
             .uri(format!("/api/v1/identity/credential/{credential_id}"))
@@ -156,7 +164,7 @@ mod tests {
 
         let router = axum::Router::new()
             .route("/api/v1/identity/credential/{id}", patch(patch_credential))
-            .with_state(Arc::new(use_case) as Arc<dyn PatchCredentialUseCase>);
+            .with_state(app_state_with_identity(Arc::new(factory))?);
         Ok(router.oneshot(request).await?)
     }
 
