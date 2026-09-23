@@ -33,4 +33,4 @@ jobs:
           "Review this pull request by loading and following the
           `review-pr` skill."
         env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
