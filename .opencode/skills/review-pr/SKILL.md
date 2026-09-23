@@ -28,7 +28,7 @@ The CI invocation always requests a full review of all dimensions.
 
 1. Read the pull request number from the context and call `github-pr-diff`. If the tool fails, or the diff is
    empty or not a unified diff, skip to **Not performed**.
-2. Dispatch the hidden `reviewer` subagent with the Task tool (`subagent_type: "reviewer"`). Embed in the task:
+2. Dispatch the hidden `reviewer` subagent with the `subagent` tool (`agent: "reviewer"`). Embed in the task:
    - the diff verbatim;
    - the **Review output contract** below, verbatim.
 3. The reviewer returns two parts: the review body to publish, and a separate pre-existing-concerns list. Call
@@ -36,7 +36,7 @@ The CI invocation always requests a full review of all dimensions.
    issue. Group the remaining concerns by relatedness (your judgment). If at least one group remains, load the
    `create-issue` skill and file one issue per group.
 4. Append a `Pre-existing` section built from the filed issues to the end of the review body. Emit the combined
-   text as your final message; the opencode GitHub Action publishes it as the pull request comment. Do not
+   text as your final message; the review workflow publishes it as the pull request comment. Do not
    rewrite the review body, and do not add any other section.
 
 You never edit the repository, and you never run shell commands to publish.

@@ -27,10 +27,46 @@ jobs:
           command -v gh ||
           { sudo apt-get update && sudo apt-get install -y gh; }
       - run: npm install --global @opencode/cli
-      - run: |
+      - name: Review pull request
+        run: |
           opencode run --standalone \
-            --model ${{ vars.AGENT_REVIEWER_MODEL }} \
-            Review this pull request by using the `review-pr` skill.
+            --agent review-orchestrator \
+            --model "${{ vars.AGENT_REVIEWER_MODEL }}" \
+            "Review this pull request by loading and following the
+          review-pr skill.
+
+          <pull_request>
+          Number: ${{ github.event.pull_request.number }}
+          URL: ${{ github.event.pull_request.html_url }}
+          Base Branch: ${{ github.event.pull_request.base.ref }}
+          Head Branch: ${{ github.event.pull_request.head.ref }}
+          </pull_request>" | tee review.md
         env:
           OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
+      - name: Publish review comment
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          if [ ! -s review.md ]; then
+            echo "Review produced no output." >&2
+            exit 1
+          fi
+
+          marker='<!-- opencode-review -->'
+          id=$(gh api --paginate "repos/$REPO/issues/$PR/comments" \
+                 | jq -r --arg m "$marker" \
+                     '.[] | select(.body | contains($m)) | .id' \
+                 | head -n1)
+
+          printf '%s\n' "$marker" > body.md
+          cat review.md >> body.md
+
+          if [ -n "$id" ]; then
+            jq -n --rawfile body body.md '{body: $body}' \
+              | gh api -X PATCH "repos/$REPO/issues/comments/$id" --input -
+          else
+            gh pr comment "$PR" --repo "$REPO" --body-file body.md
+          fi
