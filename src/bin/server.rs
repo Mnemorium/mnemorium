@@ -23,10 +23,8 @@ use mnemorium::infrastructure::outbound::config::configuration_source::ConfigCon
 use mnemorium::infrastructure::outbound::jwt::token_provider::JwtTokenProvider;
 use mnemorium::infrastructure::outbound::random::password_generator::RandomPasswordGenerator;
 use mnemorium::infrastructure::outbound::random::secret_generator::ChaChaSecretGenerator;
-use mnemorium::infrastructure::outbound::sqlx::configuration_repository::SqlxConfigurationRepository;
-use mnemorium::infrastructure::outbound::sqlx::credential_repository::SqlxCredentialRepository;
 use mnemorium::infrastructure::outbound::sqlx::sqlite3::init_db;
-use mnemorium::infrastructure::outbound::sqlx::user_repository::SqlxUserRepository;
+use mnemorium::infrastructure::outbound::sqlx::unit_of_work::SqlxUnitOfWorkFactory;
 use tokio::net::TcpListener;
 use tokio::signal::ctrl_c;
 
@@ -34,6 +32,7 @@ use tokio::signal::unix::{SignalKind, signal};
 
 use tracing::{error, info, warn};
 
+// TODO: remove this
 /// Settings required to open the database before it can be read.
 struct BootstrapSqlite3Settings {
     /// Maximum number of connections to the database.
@@ -42,6 +41,7 @@ struct BootstrapSqlite3Settings {
     path: String,
 }
 
+// TODO: remove this
 /// Resolve the sqlite3 settings needed to open the database.
 ///
 /// Read from the configuration file and the environment only: the database
@@ -96,12 +96,10 @@ async fn main() -> Result<(), anyhow::Error> {
     let bootstrap = bootstrap_sqlite3_settings()?;
     let pool = init_db(&bootstrap.path, bootstrap.max_connections).await?;
 
-    let configuration_repository = Arc::new(SqlxConfigurationRepository::new(pool.clone()));
-    let configuration_source = Arc::new(ConfigConfigurationSource::new(Arc::clone(
-        &configuration_repository,
-    )));
+    let unit_of_work_factory = Arc::new(SqlxUnitOfWorkFactory::new(pool));
+    let configuration_source = Arc::new(ConfigConfigurationSource::new());
     let load_configuration = Arc::new(LoadConfiguration::new(
-        Arc::clone(&configuration_repository),
+        Arc::clone(&unit_of_work_factory),
         configuration_source,
         Arc::new(ChaChaSecretGenerator::new()),
     ));
@@ -113,20 +111,15 @@ async fn main() -> Result<(), anyhow::Error> {
         warn!("sqlite3 settings changed in the configuration; restart to apply them");
     }
 
-    let user_repository = Arc::new(SqlxUserRepository::new(pool.clone()));
-    let credential_repository = Arc::new(SqlxCredentialRepository::new(pool));
-
     let password_hasher = Arc::new(Argon2PasswordHasher::new(
         configuration.security().pepper().as_bytes().to_vec(),
     ));
     let register_user = Arc::new(RegisterUser::new(
-        Arc::clone(&user_repository),
-        Arc::clone(&credential_repository),
+        Arc::clone(&unit_of_work_factory),
         Arc::clone(&password_hasher),
     ));
     let initialize_root_admin = Arc::new(InitializeRootAdmin::new(
-        Arc::clone(&user_repository),
-        Arc::clone(&credential_repository),
+        Arc::clone(&unit_of_work_factory),
         Arc::clone(&password_hasher),
         Arc::new(RandomPasswordGenerator::new()),
     ));
@@ -134,18 +127,15 @@ async fn main() -> Result<(), anyhow::Error> {
         configuration.security().jwt().secret().to_owned(),
         configuration.security().jwt().ttl(),
     ));
-    let get_current_user = Arc::new(GetCurrentUser::new(Arc::clone(&user_repository)));
-    let get_user = Arc::new(GetUser::new(Arc::clone(&user_repository)));
-    let update_user = Arc::new(UpdateUser::new(Arc::clone(&user_repository)));
+    let get_current_user = Arc::new(GetCurrentUser::new(Arc::clone(&unit_of_work_factory)));
+    let get_user = Arc::new(GetUser::new(Arc::clone(&unit_of_work_factory)));
+    let update_user = Arc::new(UpdateUser::new(Arc::clone(&unit_of_work_factory)));
     let patch_credential = Arc::new(PatchCredentialUseCase::new(
-        Arc::clone(&user_repository),
-        Arc::clone(&credential_repository),
+        Arc::clone(&unit_of_work_factory),
         Arc::clone(&password_hasher),
-        Arc::clone(&configuration_repository),
     ));
     let login_user = Arc::new(LoginUserUseCase::new(
-        user_repository,
-        credential_repository,
+        Arc::clone(&unit_of_work_factory),
         password_hasher,
         Arc::clone(&token_provider),
     ));

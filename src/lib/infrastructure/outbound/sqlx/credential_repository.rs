@@ -1,6 +1,6 @@
 use sqlx::QueryBuilder;
 use sqlx::Sqlite;
-use sqlx::SqlitePool;
+use sqlx::Transaction;
 
 use crate::domain::alias::NumericID;
 use crate::domain::model::credential::Credential;
@@ -10,22 +10,22 @@ use crate::domain::port::error::RepositoryError;
 
 use super::model::credential::Credential as SqlxCredential;
 
-/// Repository persisting credentials, backed by `SQLite`.
-pub struct SqlxCredentialRepository {
-    /// Connection pool to the `SQLite` database.
-    pool: SqlitePool,
+/// Repository persisting credentials, backed by a `SQLite` transaction.
+pub struct SqlxCredentialRepository<'transaction> {
+    /// Transaction the repository reads from and writes to.
+    transaction: &'transaction mut Transaction<'static, Sqlite>,
 }
 
-impl SqlxCredentialRepository {
-    /// Create a new repository bound to `pool`.
+impl<'transaction> SqlxCredentialRepository<'transaction> {
+    /// Create a new repository bound to `transaction`.
     #[must_use]
-    pub fn new(pool: SqlitePool) -> Self {
-        Self { pool }
+    pub fn new(transaction: &'transaction mut Transaction<'static, Sqlite>) -> Self {
+        Self { transaction }
     }
 }
 
-impl CredentialRepository for SqlxCredentialRepository {
-    async fn create(&self, credential: Credential) -> Result<Credential, RepositoryError> {
+impl CredentialRepository for SqlxCredentialRepository<'_> {
+    async fn create(&mut self, credential: Credential) -> Result<Credential, RepositoryError> {
         let row = sqlx::query_as::<_, SqlxCredential>(
             "INSERT INTO credential (password_hash, updated_at)
              VALUES (?1, ?2)
@@ -33,21 +33,21 @@ impl CredentialRepository for SqlxCredentialRepository {
         )
         .bind(credential.password_hash())
         .bind(credential.updated_at())
-        .fetch_one(&self.pool)
+        .fetch_one(&mut **self.transaction)
         .await?;
 
         domain_credential(row)
     }
 
-    async fn delete(&self, id: NumericID) -> Result<bool, RepositoryError> {
+    async fn delete(&mut self, id: NumericID) -> Result<bool, RepositoryError> {
         let result = sqlx::query("DELETE FROM credential WHERE credential_id = ?")
             .bind(id)
-            .execute(&self.pool)
+            .execute(&mut **self.transaction)
             .await?;
         Ok(result.rows_affected() > 0)
     }
 
-    async fn save(&self, credential: Credential) -> Result<Credential, RepositoryError> {
+    async fn save(&mut self, credential: Credential) -> Result<Credential, RepositoryError> {
         let row = sqlx::query_as::<_, SqlxCredential>(
             "INSERT INTO credential (credential_id, password_hash, updated_at)
              VALUES (?1, ?2, ?3)
@@ -59,13 +59,16 @@ impl CredentialRepository for SqlxCredentialRepository {
         .bind(credential.id())
         .bind(credential.password_hash())
         .bind(credential.updated_at())
-        .fetch_one(&self.pool)
+        .fetch_one(&mut **self.transaction)
         .await?;
 
         domain_credential(row)
     }
 
-    async fn search(&self, filter: &CredentialFilter) -> Result<Vec<Credential>, RepositoryError> {
+    async fn search(
+        &mut self,
+        filter: &CredentialFilter,
+    ) -> Result<Vec<Credential>, RepositoryError> {
         let mut builder = QueryBuilder::<Sqlite>::new(
             "SELECT credential_id, password_hash, updated_at FROM credential",
         );
@@ -76,7 +79,7 @@ impl CredentialRepository for SqlxCredentialRepository {
 
         let rows = builder
             .build_query_as::<SqlxCredential>()
-            .fetch_all(&self.pool)
+            .fetch_all(&mut **self.transaction)
             .await?;
 
         rows.into_iter().map(domain_credential).collect()
@@ -94,7 +97,9 @@ mod tests {
     use std::error::Error;
 
     use chrono::NaiveDateTime;
-    use sqlx::{SqlitePool, sqlite::SqlitePoolOptions};
+    use sqlx::Sqlite;
+    use sqlx::Transaction;
+    use sqlx::sqlite::SqlitePoolOptions;
 
     use crate::domain::model::credential::Credential;
     use crate::domain::model::credential::CredentialError;
@@ -116,24 +121,24 @@ mod tests {
         Credential::try_new(id, password_hash.to_owned(), updated_at)
     }
 
-    async fn repo() -> Result<SqlxCredentialRepository, sqlx::Error> {
+    async fn begin_transaction() -> Result<Transaction<'static, Sqlite>, sqlx::Error> {
         let pool = SqlitePoolOptions::new()
             .max_connections(1)
             .connect("sqlite::memory:")
             .await?;
         sqlx::migrate!("./migrations").run(&pool).await?;
-        Ok(SqlxCredentialRepository::new(pool))
+        pool.begin().await
     }
 
     async fn seed_credential(
-        pool: &SqlitePool,
+        transaction: &mut Transaction<'static, Sqlite>,
         id: i64,
         password_hash: &str,
     ) -> Result<(), sqlx::Error> {
         sqlx::query("INSERT INTO credential (credential_id, password_hash) VALUES (?1, ?2)")
             .bind(id)
             .bind(password_hash)
-            .execute(pool)
+            .execute(&mut **transaction)
             .await?;
         Ok(())
     }
@@ -141,10 +146,11 @@ mod tests {
     #[tokio::test]
     async fn save_then_search_round_trips_credential() -> Result<(), Box<dyn Error>> {
         // Arrange
-        let repository = repo().await?;
+        let mut transaction = begin_transaction().await?;
         let expected = credential(5, "hash-alice", updated_at("2026-01-01 12:00:00")?)?;
 
         // Act
+        let mut repository = SqlxCredentialRepository::new(&mut transaction);
         let persisted = repository.save(expected.clone()).await?;
         let found = repository
             .search(&CredentialFilter {
@@ -164,11 +170,12 @@ mod tests {
     #[tokio::test]
     async fn save_explicit_id_updates_existing_credential() -> Result<(), Box<dyn Error>> {
         // Arrange
-        let repository = repo().await?;
+        let mut transaction = begin_transaction().await?;
         let first = credential(5, "hash-old", updated_at("2026-01-01 12:00:00")?)?;
         let second = credential(5, "hash-new", updated_at("2026-02-01 12:00:00")?)?;
 
         // Act
+        let mut repository = SqlxCredentialRepository::new(&mut transaction);
         repository.save(first).await?;
         let persisted = repository.save(second.clone()).await?;
         let found = repository
@@ -187,10 +194,11 @@ mod tests {
     #[tokio::test]
     async fn create_assigns_final_identifier() -> Result<(), Box<dyn Error>> {
         // Arrange
-        let repository = repo().await?;
+        let mut transaction = begin_transaction().await?;
         let pending = credential(0, "hash-zero", updated_at("2026-03-01 12:00:00")?)?;
 
         // Act
+        let mut repository = SqlxCredentialRepository::new(&mut transaction);
         let persisted = repository.create(pending).await?;
         let found = repository
             .search(&CredentialFilter {
@@ -212,11 +220,12 @@ mod tests {
     #[tokio::test]
     async fn save_duplicate_password_hash_returns_already_exist() -> Result<(), Box<dyn Error>> {
         // Arrange
-        let repository = repo().await?;
+        let mut transaction = begin_transaction().await?;
         let first = credential(1, "shared-hash", updated_at("2026-01-01 12:00:00")?)?;
         let second = credential(2, "shared-hash", updated_at("2026-01-01 12:00:00")?)?;
 
         // Act
+        let mut repository = SqlxCredentialRepository::new(&mut transaction);
         repository.save(first).await?;
         let result = repository.save(second).await;
 
@@ -228,9 +237,10 @@ mod tests {
     #[tokio::test]
     async fn search_missing_credential_returns_empty() -> Result<(), Box<dyn Error>> {
         // Arrange
-        let repository = repo().await?;
+        let mut transaction = begin_transaction().await?;
 
         // Act
+        let mut repository = SqlxCredentialRepository::new(&mut transaction);
         let found = repository
             .search(&CredentialFilter {
                 id: Some(404),
@@ -249,9 +259,10 @@ mod tests {
     #[tokio::test]
     async fn delete_missing_credential_returns_false() -> Result<(), Box<dyn Error>> {
         // Arrange
-        let repository = repo().await?;
+        let mut transaction = begin_transaction().await?;
 
         // Act
+        let mut repository = SqlxCredentialRepository::new(&mut transaction);
         let deleted = repository.delete(404).await?;
 
         // Assert
@@ -262,10 +273,11 @@ mod tests {
     #[tokio::test]
     async fn delete_existing_credential_returns_true() -> Result<(), Box<dyn Error>> {
         // Arrange
-        let repository = repo().await?;
-        seed_credential(&repository.pool, 7, "hash-delete").await?;
+        let mut transaction = begin_transaction().await?;
+        seed_credential(&mut transaction, 7, "hash-delete").await?;
 
         // Act
+        let mut repository = SqlxCredentialRepository::new(&mut transaction);
         let deleted = repository.delete(7).await?;
 
         // Assert
@@ -277,16 +289,17 @@ mod tests {
     async fn delete_referenced_credential_returns_data_integrity_violation()
     -> Result<(), Box<dyn Error>> {
         // Arrange
-        let repository = repo().await?;
-        seed_credential(&repository.pool, 1, "hash-referenced").await?;
+        let mut transaction = begin_transaction().await?;
+        seed_credential(&mut transaction, 1, "hash-referenced").await?;
         sqlx::query(
             "INSERT INTO user (user_id, role, username, credential_id)
              VALUES (1, 'STANDARD', 'alice', 1)",
         )
-        .execute(&repository.pool)
+        .execute(&mut *transaction)
         .await?;
 
         // Act
+        let mut repository = SqlxCredentialRepository::new(&mut transaction);
         let result = repository.delete(1).await;
 
         // Assert
@@ -301,12 +314,12 @@ mod tests {
     async fn insert_null_password_hash_returns_data_integrity_violation()
     -> Result<(), Box<dyn Error>> {
         // Arrange
-        let repository = repo().await?;
+        let mut transaction = begin_transaction().await?;
 
         // Act
         let result =
             sqlx::query("INSERT INTO credential (credential_id, password_hash) VALUES (99, NULL)")
-                .execute(&repository.pool)
+                .execute(&mut *transaction)
                 .await;
 
         // Assert
@@ -321,12 +334,13 @@ mod tests {
     #[tokio::test]
     async fn insert_without_updated_at_uses_current_timestamp() -> Result<(), Box<dyn Error>> {
         // Arrange
-        let repository = repo().await?;
+        let mut transaction = begin_transaction().await?;
 
         // Act
         sqlx::query("INSERT INTO credential (credential_id, password_hash) VALUES (60, 'hash-ts')")
-            .execute(&repository.pool)
+            .execute(&mut *transaction)
             .await?;
+        let mut repository = SqlxCredentialRepository::new(&mut transaction);
         let found = repository
             .search(&CredentialFilter {
                 id: Some(60),

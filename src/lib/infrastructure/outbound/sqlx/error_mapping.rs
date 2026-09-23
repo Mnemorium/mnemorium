@@ -5,6 +5,7 @@ use sqlx::error::ErrorKind;
 use tracing::error;
 
 use crate::domain::port::error::RepositoryError;
+use crate::domain::port::error::UnitOfWorkError;
 
 impl From<Error> for RepositoryError {
     fn from(err: Error) -> Self {
@@ -44,6 +45,39 @@ impl From<Error> for RepositoryError {
                 Self::Unknown(anyhow::anyhow!("beginning the transaction failed"))
             }
             other => Self::Unknown(anyhow::anyhow!(other)),
+        }
+    }
+}
+
+impl From<Error> for UnitOfWorkError {
+    fn from(err: Error) -> Self {
+        error!(
+            error = ?err,
+            "an error occurred while accessing the unit of work"
+        );
+        match err {
+            Error::PoolTimedOut
+            | Error::PoolClosed
+            | Error::WorkerCrashed
+            | Error::Io(_)
+            | Error::Configuration(_)
+            | Error::Tls(_)
+            | Error::ConfigFile(_) => Self::Unavailable,
+            Error::Migrate(migration_error) => Self::Unknown(anyhow::anyhow!(migration_error)),
+            Error::Database(_)
+            | Error::Protocol(_)
+            | Error::InvalidArgument(_)
+            | Error::RowNotFound
+            | Error::TypeNotFound { .. }
+            | Error::ColumnIndexOutOfBounds { .. }
+            | Error::ColumnNotFound(_)
+            | Error::ColumnDecode { .. }
+            | Error::Encode(_)
+            | Error::Decode(_)
+            | Error::AnyDriverError(_)
+            | Error::InvalidSavePointStatement
+            | Error::BeginFailed
+            | _ => Self::OperationFailed,
         }
     }
 }

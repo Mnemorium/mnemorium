@@ -3,6 +3,8 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
+use tracing::error;
+
 use crate::application::port::load_configuration::LoadConfigurationError;
 use crate::application::port::load_configuration::LoadConfigurationResponse;
 use crate::application::port::load_configuration::LoadConfigurationUseCase;
@@ -13,8 +15,12 @@ use crate::domain::model::security::Security;
 use crate::domain::model::sqlite3::Sqlite3;
 use crate::domain::port::configuration_repository::ConfigurationRepository;
 use crate::domain::port::configuration_source::ConfigurationSource;
+use crate::domain::port::configuration_unit_of_work::ConfigurationUnitOfWork;
+use crate::domain::port::error::ConfigurationSourceError;
 use crate::domain::port::error::RepositoryError;
 use crate::domain::port::secret_generator::SecretGenerator;
+use crate::domain::port::unit_of_work::UnitOfWork as _;
+use crate::domain::port::unit_of_work::UnitOfWorkFactory;
 
 /// Lifetime of a JWT token, in seconds.
 const DEFAULT_JWT_TTL: u64 = 3600;
@@ -26,21 +32,64 @@ const DEFAULT_SQLITE3_PATH: &str = "mnemorium.db";
 const SECRET_LENGTH: u32 = 32;
 
 /// Use case implementation for loading the configuration.
-pub struct LoadConfiguration<R, S, F> {
-    /// Repository persisting the configuration singleton.
-    configuration_repository: Arc<R>,
+pub struct LoadConfiguration<F, S, C> {
     /// Source loading the layered configuration.
-    configuration_source: Arc<F>,
+    configuration_source: Arc<C>,
     /// Generator producing random secrets.
     secret_generator: Arc<S>,
+    /// Factory opening the unit of work wrapping the load.
+    unit_of_work_factory: Arc<F>,
 }
 
-impl<R, S, F> LoadConfiguration<R, S, F>
+impl<F, S, C> LoadConfiguration<F, S, C>
 where
-    R: ConfigurationRepository,
+    F: UnitOfWorkFactory,
     S: SecretGenerator,
-    F: ConfigurationSource,
+    C: ConfigurationSource,
 {
+    /// Ensure the configuration singleton row exists, returning its base layer.
+    ///
+    /// On first boot the row is created with defaults and freshly generated
+    /// secrets, so the configuration source always finds a base layer.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`LoadConfigurationError::Unknown`] when the repository or the
+    /// secret generator fails, and
+    /// [`LoadConfigurationError::InvalidConfiguration`] when the default
+    /// settings fail validation.
+    async fn base_layer(
+        &self,
+        configuration: &mut impl ConfigurationRepository,
+    ) -> Result<Configuration, LoadConfigurationError> {
+        if let Some(row) = configuration
+            .search()
+            .await
+            .map_err(|error| LoadConfigurationError::Unknown(error.into()))?
+        {
+            return Ok(row);
+        }
+
+        let configuration_row = self.default_configuration().await?;
+        match configuration.create(configuration_row.clone()).await {
+            Ok(_) => Ok(configuration_row),
+            Err(RepositoryError::AlreadyExist) => {
+                // Another boot created the singleton concurrently; the row
+                // exists, which is all this boot needs.
+                configuration
+                    .search()
+                    .await
+                    .map_err(|error| LoadConfigurationError::Unknown(error.into()))?
+                    .ok_or_else(|| {
+                        LoadConfigurationError::Unknown(anyhow::anyhow!(
+                            "the configuration singleton row does not exist"
+                        ))
+                    })
+            }
+            Err(error) => Err(LoadConfigurationError::Unknown(error.into())),
+        }
+    }
+
     /// Build the default configuration with freshly generated secrets.
     ///
     /// # Errors
@@ -72,74 +121,27 @@ where
         Ok(Configuration::try_new(persistence, security))
     }
 
-    /// Ensure the configuration singleton row exists.
-    ///
-    /// On first boot the row is created with defaults and freshly generated
-    /// secrets, so the configuration source always finds a base layer.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`LoadConfigurationError::Unknown`] when the repository or the
-    /// secret generator fails, and
-    /// [`LoadConfigurationError::InvalidConfiguration`] when the default
-    /// settings fail validation.
-    async fn ensure_row(&self) -> Result<(), LoadConfigurationError> {
-        let existing = self
-            .configuration_repository
-            .search()
-            .await
-            .map_err(|error| LoadConfigurationError::Unknown(error.into()))?;
-        if existing.is_some() {
-            return Ok(());
-        }
-
-        let configuration = self.default_configuration().await?;
-        match self.configuration_repository.create(configuration).await {
-            Ok(_) => Ok(()),
-            Err(RepositoryError::AlreadyExist) => {
-                // Another boot created the singleton concurrently; the row
-                // exists, which is all this boot needs.
-                Ok(())
-            }
-            Err(error) => Err(LoadConfigurationError::Unknown(error.into())),
-        }
-    }
-
-    /// Load the configuration singleton through the configuration source.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`LoadConfigurationError::Unknown`] when the repository or the
-    /// configuration source fails.
-    async fn load(&self) -> Result<Configuration, LoadConfigurationError> {
-        self.ensure_row().await?;
-
-        self.configuration_source
-            .load()
-            .await
-            .map_err(|error| LoadConfigurationError::Unknown(error.into()))
-    }
-
     /// Create a new use case.
     #[must_use]
     pub fn new(
-        configuration_repository: Arc<R>,
-        configuration_source: Arc<F>,
+        unit_of_work_factory: Arc<F>,
+        configuration_source: Arc<C>,
         secret_generator: Arc<S>,
     ) -> Self {
         Self {
-            configuration_repository,
             configuration_source,
             secret_generator,
+            unit_of_work_factory,
         }
     }
 }
 
-impl<R, S, F> LoadConfigurationUseCase for LoadConfiguration<R, S, F>
+impl<F, S, C> LoadConfigurationUseCase for LoadConfiguration<F, S, C>
 where
-    R: ConfigurationRepository,
+    F: UnitOfWorkFactory,
+    F::Uow: ConfigurationUnitOfWork,
     S: SecretGenerator,
-    F: ConfigurationSource,
+    C: ConfigurationSource,
 {
     fn execute<'future>(
         &'future self,
@@ -151,9 +153,49 @@ where
         >,
     > {
         Box::pin(async move {
-            let configuration = self.load().await?;
+            let mut unit_of_work = self
+                .unit_of_work_factory
+                .begin()
+                .await
+                .map_err(|error| LoadConfigurationError::Unknown(error.into()))?;
 
-            Ok(LoadConfigurationResponse::new(configuration))
+            let result =
+                async {
+                    let base = self.base_layer(&mut unit_of_work.configuration()).await?;
+                    let configuration = self.configuration_source.load(base).await.map_err(
+                        |error| match error {
+                            ConfigurationSourceError::InvalidConfiguration(source) => {
+                                LoadConfigurationError::InvalidConfiguration(source)
+                            }
+                            other @ (ConfigurationSourceError::OperationFailed
+                            | ConfigurationSourceError::Unknown(_)) => {
+                                LoadConfigurationError::Unknown(anyhow::Error::new(other))
+                            }
+                        },
+                    )?;
+
+                    Ok(LoadConfigurationResponse::new(configuration))
+                }
+                .await;
+
+            match result {
+                Ok(value) => {
+                    unit_of_work
+                        .commit()
+                        .await
+                        .map_err(|error| LoadConfigurationError::Unknown(error.into()))?;
+                    Ok(value)
+                }
+                Err(error) => {
+                    if let Err(rollback_error) = unit_of_work.rollback().await {
+                        error!(
+                            error = ?rollback_error,
+                            "failed to roll back the load configuration unit of work"
+                        );
+                    }
+                    Err(error)
+                }
+            }
         })
     }
 }
@@ -172,6 +214,9 @@ mod tests {
     use std::error::Error;
     use std::iter::repeat_n;
     use std::sync::Arc;
+    use std::sync::Mutex;
+    use std::sync::atomic::AtomicBool;
+    use std::sync::atomic::Ordering;
 
     use crate::application::port::load_configuration::LoadConfigurationError;
     use crate::application::port::load_configuration::LoadConfigurationUseCase as _;
@@ -182,17 +227,36 @@ mod tests {
     use crate::domain::model::sqlite3::Sqlite3;
     use crate::domain::port::configuration_repository::MockConfigurationRepository;
     use crate::domain::port::configuration_source::MockConfigurationSource;
+    use crate::domain::port::credential_repository::MockCredentialRepository;
+    use crate::domain::port::error::ConfigurationSourceError;
     use crate::domain::port::error::RepositoryError;
     use crate::domain::port::error::SecretGeneratorError;
     use crate::domain::port::secret_generator::MockSecretGenerator;
+    use crate::domain::port::user_repository::MockUserRepository;
+    use crate::test_helpers::TestUnitOfWork;
+    use crate::test_helpers::TestUnitOfWorkFactory;
 
     use super::LoadConfiguration;
 
     type UseCase = LoadConfiguration<
-        MockConfigurationRepository,
+        TestUnitOfWorkFactory<
+            MockUserRepository,
+            MockCredentialRepository,
+            MockConfigurationRepository,
+        >,
         MockSecretGenerator,
         MockConfigurationSource,
     >;
+
+    /// A use case under test together with its transaction-lifecycle flags.
+    struct Harness {
+        /// Set when the unit of work is committed.
+        committed: Arc<AtomicBool>,
+        /// Set when the unit of work is rolled back.
+        rolled_back: Arc<AtomicBool>,
+        /// The use case under test.
+        use_case: UseCase,
+    }
 
     /// A 64-character hexadecimal string, valid for secrets and peppers.
     fn hex64(character: char) -> String {
@@ -207,7 +271,7 @@ mod tests {
             &mut MockSecretGenerator,
             &mut MockConfigurationSource,
         ) -> Result<(), Box<dyn Error>>,
-    ) -> Result<UseCase, Box<dyn Error>> {
+    ) -> Result<Harness, Box<dyn Error>> {
         let mut configuration_repository = MockConfigurationRepository::new();
         let mut secret_generator = MockSecretGenerator::new();
         let mut configuration_source = MockConfigurationSource::new();
@@ -218,11 +282,27 @@ mod tests {
             &mut configuration_source,
         )?;
 
-        Ok(LoadConfiguration::new(
-            Arc::new(configuration_repository),
-            Arc::new(configuration_source),
-            Arc::new(secret_generator),
-        ))
+        let committed = Arc::new(AtomicBool::new(false));
+        let rolled_back = Arc::new(AtomicBool::new(false));
+        let factory = TestUnitOfWorkFactory {
+            unit_of_work: Mutex::new(Some(TestUnitOfWork {
+                committed: Arc::clone(&committed),
+                configuration: configuration_repository,
+                credentials: MockCredentialRepository::new(),
+                rolled_back: Arc::clone(&rolled_back),
+                users: MockUserRepository::new(),
+            })),
+        };
+
+        Ok(Harness {
+            use_case: LoadConfiguration::new(
+                Arc::new(factory),
+                Arc::new(configuration_source),
+                Arc::new(secret_generator),
+            ),
+            committed,
+            rolled_back,
+        })
     }
 
     fn configuration() -> Result<Configuration, Box<dyn Error>> {
@@ -233,12 +313,11 @@ mod tests {
         Ok(Configuration::try_new(persistence, security))
     }
 
-    /// Expect the row to exist and the source to return the given layer.
     #[tokio::test]
     async fn row_exists_returns_loaded_configuration() -> Result<(), Box<dyn Error>> {
         // Arrange
         let expected = configuration()?;
-        let use_case = use_case_with(|repository, secret_generator, configuration_source| {
+        let harness = use_case_with(|repository, secret_generator, configuration_source| {
             let row = configuration()?;
             repository.expect_search().times(1).returning(move || {
                 let stored = row.clone();
@@ -246,7 +325,7 @@ mod tests {
             });
             configuration_source.expect_load().times(1).returning({
                 let stored = expected.clone();
-                move || {
+                move |_base| {
                     let layer = stored.clone();
                     Box::pin(async move { Ok(layer) })
                 }
@@ -257,10 +336,11 @@ mod tests {
         })?;
 
         // Act
-        let response = use_case.execute().await?;
+        let response = harness.use_case.execute().await?;
 
         // Assert
         assert_eq!(response.configuration(), &expected);
+        assert!(harness.committed.load(Ordering::SeqCst));
         Ok(())
     }
 
@@ -268,7 +348,7 @@ mod tests {
     async fn row_missing_creates_row_then_loads() -> Result<(), Box<dyn Error>> {
         // Arrange
         let expected = configuration()?;
-        let use_case = use_case_with(|repository, secret_generator, configuration_source| {
+        let harness = use_case_with(|repository, secret_generator, configuration_source| {
             repository
                 .expect_search()
                 .times(1)
@@ -283,7 +363,7 @@ mod tests {
                 .returning(|configuration| Box::pin(async move { Ok(configuration) }));
             configuration_source.expect_load().times(1).returning({
                 let stored = expected.clone();
-                move || {
+                move |_base| {
                     let layer = stored.clone();
                     Box::pin(async move { Ok(layer) })
                 }
@@ -292,10 +372,11 @@ mod tests {
         })?;
 
         // Act
-        let response = use_case.execute().await?;
+        let response = harness.use_case.execute().await?;
 
         // Assert
         assert_eq!(response.configuration(), &expected);
+        assert!(harness.committed.load(Ordering::SeqCst));
         Ok(())
     }
 
@@ -303,7 +384,7 @@ mod tests {
     async fn row_missing_create_race_still_loads() -> Result<(), Box<dyn Error>> {
         // Arrange
         let expected = configuration()?;
-        let use_case = use_case_with(|repository, secret_generator, configuration_source| {
+        let harness = use_case_with(|repository, secret_generator, configuration_source| {
             repository
                 .expect_search()
                 .times(1)
@@ -316,9 +397,14 @@ mod tests {
                 .expect_create()
                 .times(1)
                 .returning(|_| Box::pin(async { Err(RepositoryError::AlreadyExist) }));
+            let row = configuration()?;
+            repository.expect_search().times(1).returning(move || {
+                let stored = row.clone();
+                Box::pin(async move { Ok(Some(stored)) })
+            });
             configuration_source.expect_load().times(1).returning({
                 let stored = expected.clone();
-                move || {
+                move |_base| {
                     let layer = stored.clone();
                     Box::pin(async move { Ok(layer) })
                 }
@@ -327,7 +413,7 @@ mod tests {
         })?;
 
         // Act
-        let response = use_case.execute().await?;
+        let response = harness.use_case.execute().await?;
 
         // Assert
         assert_eq!(response.configuration(), &expected);
@@ -337,7 +423,7 @@ mod tests {
     #[tokio::test]
     async fn ensure_row_search_failure_returns_unknown() -> Result<(), Box<dyn Error>> {
         // Arrange
-        let use_case = use_case_with(|repository, secret_generator, _configuration_source| {
+        let harness = use_case_with(|repository, secret_generator, _configuration_source| {
             repository
                 .expect_search()
                 .times(1)
@@ -347,17 +433,18 @@ mod tests {
         })?;
 
         // Act
-        let result = use_case.execute().await;
+        let result = harness.use_case.execute().await;
 
         // Assert
         assert!(matches!(result, Err(LoadConfigurationError::Unknown(_))));
+        assert!(harness.rolled_back.load(Ordering::SeqCst));
         Ok(())
     }
 
     #[tokio::test]
     async fn source_load_failure_returns_unknown() -> Result<(), Box<dyn Error>> {
         // Arrange
-        let use_case = use_case_with(|repository, secret_generator, configuration_source| {
+        let harness = use_case_with(|repository, secret_generator, configuration_source| {
             let row = configuration()?;
             repository.expect_search().times(1).returning(move || {
                 let stored = row.clone();
@@ -366,23 +453,26 @@ mod tests {
             configuration_source
                 .expect_load()
                 .times(1)
-                .returning(|| Box::pin(async { Err(RepositoryError::OperationFailed) }));
+                .returning(|_base| {
+                    Box::pin(async { Err(ConfigurationSourceError::OperationFailed) })
+                });
             secret_generator.expect_generate().times(0);
             Ok(())
         })?;
 
         // Act
-        let result = use_case.execute().await;
+        let result = harness.use_case.execute().await;
 
         // Assert
         assert!(matches!(result, Err(LoadConfigurationError::Unknown(_))));
+        assert!(harness.rolled_back.load(Ordering::SeqCst));
         Ok(())
     }
 
     #[tokio::test]
     async fn generation_failure_returns_unknown() -> Result<(), Box<dyn Error>> {
         // Arrange
-        let use_case = use_case_with(|repository, secret_generator, _configuration_source| {
+        let harness = use_case_with(|repository, secret_generator, _configuration_source| {
             repository
                 .expect_search()
                 .times(1)
@@ -395,17 +485,18 @@ mod tests {
         })?;
 
         // Act
-        let result = use_case.execute().await;
+        let result = harness.use_case.execute().await;
 
         // Assert
         assert!(matches!(result, Err(LoadConfigurationError::Unknown(_))));
+        assert!(harness.rolled_back.load(Ordering::SeqCst));
         Ok(())
     }
 
     #[tokio::test]
     async fn create_failure_returns_unknown() -> Result<(), Box<dyn Error>> {
         // Arrange
-        let use_case = use_case_with(|repository, secret_generator, _configuration_source| {
+        let harness = use_case_with(|repository, secret_generator, _configuration_source| {
             repository
                 .expect_search()
                 .times(1)
@@ -422,10 +513,11 @@ mod tests {
         })?;
 
         // Act
-        let result = use_case.execute().await;
+        let result = harness.use_case.execute().await;
 
         // Assert
         assert!(matches!(result, Err(LoadConfigurationError::Unknown(_))));
+        assert!(harness.rolled_back.load(Ordering::SeqCst));
         Ok(())
     }
 }

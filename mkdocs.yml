@@ -25,7 +25,6 @@ nav:
   - Home: index.md
   - Development:
       - Overview: development/Overview.md
-      - OpenCode: development/OpenCode.md
       - Persistence: development/Persistence.md
       - Dependencies: development/Dependencies.md
       - Issue Tracking: development/IssueTracking.md

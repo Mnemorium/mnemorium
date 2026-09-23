@@ -21,6 +21,7 @@ permission:
     "*": deny
     review-pr: allow
     create-issue: allow
+  hidden: true
 ---
 
 # Role
