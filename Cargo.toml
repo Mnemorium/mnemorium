@@ -141,6 +141,7 @@ chrono = "0.4.45"
 jsonwebtoken = { version = "11.0.0", features = ["aws_lc_rs"] }
 tower = "0.5.3"
 rand = { version = "0.10.2", features = ["chacha"] }
+arc-swap = "1.9.2"
 
 
 [dev-dependencies]
