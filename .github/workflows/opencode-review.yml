@@ -27,6 +27,8 @@ jobs:
           command -v gh ||
           { sudo apt-get update && sudo apt-get install -y gh; }
       - run: npm install --global @opencode/cli
+      - name: Install OpenCode plugin dependencies
+        run: npm ci --prefix .opencode
       - name: Review pull request
         run: |
           opencode run --standalone \
@@ -43,10 +45,10 @@ jobs:
           </pull_request>" | tee review.md
         env:
           OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
-          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Publish review comment
         env:
-          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
           PR: ${{ github.event.pull_request.number }}
         run: |
