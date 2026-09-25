@@ -10,8 +10,10 @@ use axum::http::{StatusCode, header};
 use axum::middleware::Next;
 use axum::response::{IntoResponse as _, Response};
 use serde_json::json;
+use tracing::error;
 
 use crate::domain::alias::NumericID;
+use crate::domain::port::error::TokenProviderError;
 use crate::domain::port::token_provider::TokenProvider;
 use crate::infrastructure::inbound::rest::api_error::ApiError;
 
@@ -76,12 +78,26 @@ where
         )
             .into_response();
     };
-    let Some(user_id) = token_provider.validate(token).await.ok() else {
-        return (
-            StatusCode::UNAUTHORIZED,
-            Json(json!({ "error": "invalid or expired token" })),
-        )
-            .into_response();
+    let user_id = match token_provider.validate(token).await {
+        Ok(user_id) => user_id,
+        Err(
+            TokenProviderError::InvalidClaims
+            | TokenProviderError::InvalidToken
+            | TokenProviderError::TokenExpired,
+        ) => {
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(json!({ "error": "invalid or expired token" })),
+            )
+                .into_response();
+        }
+        Err(error) => {
+            error!(
+                error = ?error,
+                "token provider failed to validate a token"
+            );
+            return ApiError::InternalServerError.into_response();
+        }
     };
     request
         .extensions_mut()
@@ -311,9 +327,7 @@ mod tests {
     #[rstest]
     #[case::invalid_claims(TokenProviderError::InvalidClaims)]
     #[case::invalid_token(TokenProviderError::InvalidToken)]
-    #[case::operation_failed(TokenProviderError::OperationFailed)]
     #[case::token_expired(TokenProviderError::TokenExpired)]
-    #[case::unknown(TokenProviderError::Unknown(anyhow::anyhow!("boom")))]
     #[tokio::test]
     async fn authenticate_provider_rejection_returns_invalid_or_expired(
         #[case] error: TokenProviderError,
@@ -338,6 +352,36 @@ mod tests {
         // Assert
         assert_eq!(status, StatusCode::UNAUTHORIZED);
         assert_eq!(payload, json!({ "error": "invalid or expired token" }));
+        Ok(())
+    }
+
+    #[rstest]
+    #[case::operation_failed(TokenProviderError::OperationFailed)]
+    #[case::unknown(TokenProviderError::Unknown(anyhow::anyhow!("boom")))]
+    #[tokio::test]
+    async fn authenticate_provider_failure_returns_internal_server_error(
+        #[case] error: TokenProviderError,
+    ) -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let mut provider = MockTokenProvider::new();
+        provider
+            .expect_validate()
+            .times(1)
+            .return_once(move |_| Box::pin(async move { Err(error) }));
+
+        // Act
+        let (status, payload) = into_parts(
+            send(
+                router_with(provider)?,
+                Some(HeaderValue::from_static("Bearer valid-token")),
+            )
+            .await?,
+        )
+        .await?;
+
+        // Assert
+        assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(payload, json!({ "error": "an unexpected error occurred" }));
         Ok(())
     }
 
