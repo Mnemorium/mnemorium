@@ -1,10 +1,14 @@
 pub mod configuration_repository;
 pub mod configuration_source;
+pub mod configuration_unit_of_work;
 pub mod credential_repository;
 pub mod error;
 pub mod file_storage;
+pub mod identity_unit_of_work;
 pub mod password_generator;
 pub mod password_hasher;
 pub mod secret_generator;
 pub mod token_provider;
+pub mod unit_of_work;
 pub mod user_repository;
+pub mod user_unit_of_work;

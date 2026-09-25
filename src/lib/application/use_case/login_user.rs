@@ -2,107 +2,142 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
+use tracing::error;
+
 use crate::application::port::login_user::LoginUserCommand;
 use crate::application::port::login_user::LoginUserError;
 use crate::application::port::login_user::LoginUserResponse;
 use crate::application::port::login_user::LoginUserUseCase;
 use crate::domain::port::credential_repository::CredentialFilter;
-use crate::domain::port::credential_repository::CredentialRepository;
+use crate::domain::port::credential_repository::CredentialRepository as _;
+use crate::domain::port::identity_unit_of_work::IdentityUnitOfWork;
 use crate::domain::port::password_hasher::PasswordHasher;
 use crate::domain::port::token_provider::TokenProvider;
+use crate::domain::port::unit_of_work::UnitOfWork as _;
+use crate::domain::port::unit_of_work::UnitOfWorkFactory;
 use crate::domain::port::user_repository::UserFilter;
-use crate::domain::port::user_repository::UserRepository;
+use crate::domain::port::user_repository::UserRepository as _;
+use crate::domain::port::user_unit_of_work::UserUnitOfWork;
 
 /// Use case implementation for authenticating a user.
-pub struct LoginUser<U, C, H, P> {
-    /// Repository persisting credentials.
-    credential_repository: Arc<C>,
+pub struct LoginUser<F, H, P> {
     /// Hasher for user passwords.
     password_hasher: Arc<H>,
     /// Provider issuing and validating tokens.
     token_provider: Arc<P>,
-    /// Repository persisting users.
-    user_repository: Arc<U>,
+    /// Factory opening the unit of work wrapping the authentication.
+    unit_of_work_factory: Arc<F>,
 }
 
-impl<U: UserRepository, C: CredentialRepository, H: PasswordHasher, P: TokenProvider>
-    LoginUser<U, C, H, P>
-{
+impl<F: UnitOfWorkFactory, H: PasswordHasher, P: TokenProvider> LoginUser<F, H, P> {
     /// Create a new use case.
     #[must_use]
     pub fn new(
-        user_repository: Arc<U>,
-        credential_repository: Arc<C>,
+        unit_of_work_factory: Arc<F>,
         password_hasher: Arc<H>,
         token_provider: Arc<P>,
     ) -> Self {
         Self {
-            credential_repository,
             password_hasher,
             token_provider,
-            user_repository,
+            unit_of_work_factory,
         }
     }
 }
 
-impl<U: UserRepository, C: CredentialRepository, H: PasswordHasher, P: TokenProvider>
-    LoginUserUseCase for LoginUser<U, C, H, P>
+impl<F, H, P> LoginUserUseCase for LoginUser<F, H, P>
+where
+    F: UnitOfWorkFactory,
+    F::Uow: IdentityUnitOfWork + UserUnitOfWork,
+    H: PasswordHasher,
+    P: TokenProvider,
 {
     fn execute<'future>(
         &'future self,
         command: LoginUserCommand,
     ) -> Pin<Box<dyn Future<Output = Result<LoginUserResponse, LoginUserError>> + Send + 'future>>
     {
-        let credential_repository = Arc::clone(&self.credential_repository);
         let password_hasher = Arc::clone(&self.password_hasher);
         let token_provider = Arc::clone(&self.token_provider);
-        let user_repository = Arc::clone(&self.user_repository);
+        let unit_of_work_factory = Arc::clone(&self.unit_of_work_factory);
 
         Box::pin(async move {
             let username = command.username().to_owned();
             let password = command.password().to_owned();
 
-            let user = user_repository
-                .search(&UserFilter {
-                    username: Some(username),
-                    ..UserFilter::default()
-                })
-                .await
-                .map_err(|error| LoginUserError::Unknown(error.into()))?
-                .into_iter()
-                .next()
-                .ok_or(LoginUserError::InvalidUsername)?;
-
-            let credential = credential_repository
-                .search(&CredentialFilter {
-                    id: Some(user.credential_id()),
-                    ..CredentialFilter::default()
-                })
-                .await
-                .map_err(|error| LoginUserError::Unknown(error.into()))?
-                .into_iter()
-                .next()
-                .ok_or_else(|| {
-                    LoginUserError::Unknown(anyhow::anyhow!("user {} has no credential", user.id()))
-                })?;
-
-            let verified = password_hasher
-                .verify_password(&password, credential.password_hash())
+            let mut unit_of_work = unit_of_work_factory
+                .begin()
                 .await
                 .map_err(|error| LoginUserError::Unknown(error.into()))?;
-            if !verified {
-                return Err(LoginUserError::InvalidPassword);
+
+            let result = async {
+                let user = unit_of_work
+                    .users()
+                    .search(&UserFilter {
+                        username: Some(username),
+                        ..UserFilter::default()
+                    })
+                    .await
+                    .map_err(|error| LoginUserError::Unknown(error.into()))?
+                    .into_iter()
+                    .next()
+                    .ok_or(LoginUserError::InvalidUsername)?;
+
+                let credential = unit_of_work
+                    .credentials()
+                    .search(&CredentialFilter {
+                        id: Some(user.credential_id()),
+                        ..CredentialFilter::default()
+                    })
+                    .await
+                    .map_err(|error| LoginUserError::Unknown(error.into()))?
+                    .into_iter()
+                    .next()
+                    .ok_or_else(|| {
+                        LoginUserError::Unknown(anyhow::anyhow!(
+                            "user {} has no credential",
+                            user.id()
+                        ))
+                    })?;
+
+                let verified = password_hasher
+                    .verify_password(&password, credential.password_hash())
+                    .await
+                    .map_err(|error| LoginUserError::Unknown(error.into()))?;
+                if !verified {
+                    return Err(LoginUserError::InvalidPassword);
+                }
+
+                let token = token_provider
+                    .issue(user.id())
+                    .await
+                    .map_err(|error| LoginUserError::Unknown(error.into()))?;
+
+                Ok(LoginUserResponse::new(
+                    token.value().to_owned(),
+                    token.expires_in(),
+                ))
             }
+            .await;
 
-            let token = token_provider
-                .issue(user.id())
-                .await
-                .map_err(|error| LoginUserError::Unknown(error.into()))?;
-
-            Ok(LoginUserResponse::new(
-                token.value().to_owned(),
-                token.expires_in(),
-            ))
+            match result {
+                Ok(value) => {
+                    unit_of_work
+                        .commit()
+                        .await
+                        .map_err(|error| LoginUserError::Unknown(error.into()))?;
+                    Ok(value)
+                }
+                Err(error) => {
+                    if let Err(rollback_error) = unit_of_work.rollback().await {
+                        error!(
+                            error = ?rollback_error,
+                            "failed to roll back the login user unit of work"
+                        );
+                    }
+                    Err(error)
+                }
+            }
         })
     }
 }
@@ -111,6 +146,8 @@ impl<U: UserRepository, C: CredentialRepository, H: PasswordHasher, P: TokenProv
 mod tests {
     use std::error::Error;
     use std::sync::Arc;
+    use std::sync::atomic::AtomicBool;
+    use std::sync::atomic::Ordering;
 
     use chrono::NaiveDateTime;
 
@@ -121,6 +158,7 @@ mod tests {
     use crate::domain::model::user::Role;
     use crate::domain::model::user::User;
     use crate::domain::model::user::UserError;
+    use crate::domain::port::configuration_repository::MockConfigurationRepository;
     use crate::domain::port::credential_repository::MockCredentialRepository;
     use crate::domain::port::error::PasswordHasherError;
     use crate::domain::port::error::RepositoryError;
@@ -130,15 +168,22 @@ mod tests {
     use crate::domain::port::token_provider::MockTokenProvider;
     use crate::domain::port::user_repository::MockUserRepository;
     use crate::test_helpers::SECRET_PASSWORD;
+    use crate::test_helpers::TestFactory;
+    use crate::test_helpers::unit_of_work_factory;
 
     use super::LoginUser;
 
-    type UseCase = LoginUser<
-        MockUserRepository,
-        MockCredentialRepository,
-        MockPasswordHasher,
-        MockTokenProvider,
-    >;
+    type UseCase = LoginUser<TestFactory, MockPasswordHasher, MockTokenProvider>;
+
+    /// A use case under test together with its transaction-lifecycle flags.
+    struct Harness {
+        /// Set when the unit of work is committed.
+        committed: Arc<AtomicBool>,
+        /// Set when the unit of work is rolled back.
+        rolled_back: Arc<AtomicBool>,
+        /// The use case under test.
+        use_case: UseCase,
+    }
 
     fn use_case_with(
         setup: impl FnOnce(
@@ -147,7 +192,7 @@ mod tests {
             &mut MockPasswordHasher,
             &mut MockTokenProvider,
         ) -> Result<(), Box<dyn Error>>,
-    ) -> Result<UseCase, Box<dyn Error>> {
+    ) -> Result<Harness, Box<dyn Error>> {
         let mut user_repository = MockUserRepository::new();
         let mut credential_repository = MockCredentialRepository::new();
         let mut password_hasher = MockPasswordHasher::new();
@@ -160,12 +205,25 @@ mod tests {
             &mut token_provider,
         )?;
 
-        Ok(LoginUser::new(
-            Arc::new(user_repository),
-            Arc::new(credential_repository),
-            Arc::new(password_hasher),
-            Arc::new(token_provider),
-        ))
+        let committed = Arc::new(AtomicBool::new(false));
+        let rolled_back = Arc::new(AtomicBool::new(false));
+        let factory = unit_of_work_factory(
+            user_repository,
+            credential_repository,
+            MockConfigurationRepository::new(),
+            Arc::clone(&committed),
+            Arc::clone(&rolled_back),
+        );
+
+        Ok(Harness {
+            use_case: LoginUser::new(
+                Arc::new(factory),
+                Arc::new(password_hasher),
+                Arc::new(token_provider),
+            ),
+            committed,
+            rolled_back,
+        })
     }
 
     fn user(id: i64, username: &str) -> Result<User, UserError> {
@@ -214,7 +272,7 @@ mod tests {
     #[tokio::test]
     async fn login_user_valid_credentials_returns_issued_token() -> Result<(), Box<dyn Error>> {
         // Arrange
-        let use_case = use_case_with(
+        let harness = use_case_with(
             |user_repository, credential_repository, password_hasher, token_provider| {
                 expect_user(user_repository, user(1, "alice")?);
                 expect_credential(credential_repository, credential(1)?);
@@ -228,18 +286,19 @@ mod tests {
         let command = command("alice", SECRET_PASSWORD);
 
         // Act
-        let response = use_case.execute(command).await?;
+        let response = harness.use_case.execute(command).await?;
 
         // Assert
         assert_eq!(response.access_token(), "token");
         assert_eq!(response.expires_in(), 3600);
+        assert!(harness.committed.load(Ordering::SeqCst));
         Ok(())
     }
 
     #[tokio::test]
     async fn login_user_unknown_username_returns_invalid_username() -> Result<(), Box<dyn Error>> {
         // Arrange
-        let use_case = use_case_with(|user_repository, _, _, _| {
+        let harness = use_case_with(|user_repository, _, _, _| {
             user_repository
                 .expect_search()
                 .times(1)
@@ -249,17 +308,18 @@ mod tests {
         let command = command("ghost", SECRET_PASSWORD);
 
         // Act
-        let result = use_case.execute(command).await;
+        let result = harness.use_case.execute(command).await;
 
         // Assert
         assert!(matches!(result, Err(LoginUserError::InvalidUsername)));
+        assert!(harness.rolled_back.load(Ordering::SeqCst));
         Ok(())
     }
 
     #[tokio::test]
     async fn login_user_search_failure_returns_unknown() -> Result<(), Box<dyn Error>> {
         // Arrange
-        let use_case = use_case_with(|user_repository, _, _, _| {
+        let harness = use_case_with(|user_repository, _, _, _| {
             user_repository
                 .expect_search()
                 .times(1)
@@ -269,17 +329,18 @@ mod tests {
         let command = command("alice", SECRET_PASSWORD);
 
         // Act
-        let result = use_case.execute(command).await;
+        let result = harness.use_case.execute(command).await;
 
         // Assert
         assert!(matches!(result, Err(LoginUserError::Unknown(_))));
+        assert!(harness.rolled_back.load(Ordering::SeqCst));
         Ok(())
     }
 
     #[tokio::test]
     async fn login_user_missing_credential_returns_unknown() -> Result<(), Box<dyn Error>> {
         // Arrange
-        let use_case = use_case_with(|user_repository, credential_repository, _, _| {
+        let harness = use_case_with(|user_repository, credential_repository, _, _| {
             expect_user(user_repository, user(1, "alice")?);
             credential_repository
                 .expect_search()
@@ -290,17 +351,18 @@ mod tests {
         let command = command("alice", SECRET_PASSWORD);
 
         // Act
-        let result = use_case.execute(command).await;
+        let result = harness.use_case.execute(command).await;
 
         // Assert
         assert!(matches!(result, Err(LoginUserError::Unknown(_))));
+        assert!(harness.rolled_back.load(Ordering::SeqCst));
         Ok(())
     }
 
     #[tokio::test]
     async fn login_user_wrong_password_returns_invalid_password() -> Result<(), Box<dyn Error>> {
         // Arrange
-        let use_case = use_case_with(
+        let harness = use_case_with(
             |user_repository, credential_repository, password_hasher, _| {
                 expect_user(user_repository, user(1, "alice")?);
                 expect_credential(credential_repository, credential(1)?);
@@ -314,10 +376,11 @@ mod tests {
         let command = command("alice", "wrong-password");
 
         // Act
-        let result = use_case.execute(command).await;
+        let result = harness.use_case.execute(command).await;
 
         // Assert
         assert!(matches!(result, Err(LoginUserError::InvalidPassword)));
+        assert!(harness.rolled_back.load(Ordering::SeqCst));
         Ok(())
     }
 
@@ -325,7 +388,7 @@ mod tests {
     async fn login_user_password_verification_failure_returns_unknown() -> Result<(), Box<dyn Error>>
     {
         // Arrange
-        let use_case = use_case_with(
+        let harness = use_case_with(
             |user_repository, credential_repository, password_hasher, _| {
                 expect_user(user_repository, user(1, "alice")?);
                 expect_credential(credential_repository, credential(1)?);
@@ -341,17 +404,18 @@ mod tests {
         let command = command("alice", SECRET_PASSWORD);
 
         // Act
-        let result = use_case.execute(command).await;
+        let result = harness.use_case.execute(command).await;
 
         // Assert
         assert!(matches!(result, Err(LoginUserError::Unknown(_))));
+        assert!(harness.rolled_back.load(Ordering::SeqCst));
         Ok(())
     }
 
     #[tokio::test]
     async fn login_user_token_issuance_failure_returns_unknown() -> Result<(), Box<dyn Error>> {
         // Arrange
-        let use_case = use_case_with(
+        let harness = use_case_with(
             |user_repository, credential_repository, password_hasher, token_provider| {
                 expect_user(user_repository, user(1, "alice")?);
                 expect_credential(credential_repository, credential(1)?);
@@ -366,10 +430,11 @@ mod tests {
         let command = command("alice", SECRET_PASSWORD);
 
         // Act
-        let result = use_case.execute(command).await;
+        let result = harness.use_case.execute(command).await;
 
         // Assert
         assert!(matches!(result, Err(LoginUserError::Unknown(_))));
+        assert!(harness.rolled_back.load(Ordering::SeqCst));
         Ok(())
     }
 }

@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use axum::Json;
 use axum::extract::State;
 use axum::extract::rejection::JsonRejection;
@@ -9,9 +7,9 @@ use utoipa::ToSchema;
 use crate::application::port::login_user::LoginUserCommand;
 use crate::application::port::login_user::LoginUserError;
 use crate::application::port::login_user::LoginUserResponse;
-use crate::application::port::login_user::LoginUserUseCase;
 use crate::infrastructure::inbound::rest::api_error::ApiError;
 use crate::infrastructure::inbound::rest::api_error::ErrorBody;
+use crate::infrastructure::inbound::rest::app_state::AppState;
 
 /// Payload to authenticate a user.
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
@@ -92,11 +90,13 @@ impl From<LoginUserError> for ApiError {
     summary = "Authenticate a user"
 )]
 pub async fn post_login(
-    State(login_user): State<Arc<dyn LoginUserUseCase>>,
+    State(state): State<AppState>,
     payload: Result<Json<LoginRequest>, JsonRejection>,
 ) -> Result<Json<LoginResponse>, ApiError> {
     let Json(request) = payload.map_err(ApiError::from)?;
-    let response = login_user
+    let response = state
+        .identity_use_case_factory()
+        .login_user()
         .execute(LoginUserCommand::new(request.username, request.password))
         .await?;
     Ok(Json(LoginResponse::from(response)))
@@ -120,18 +120,26 @@ mod tests {
     use tower::ServiceExt as _;
 
     use super::post_login;
+    use crate::application::port::identity_use_case_factory::MockIdentityUseCaseFactory;
     use crate::application::port::login_user::LoginUserCommand;
     use crate::application::port::login_user::LoginUserError;
     use crate::application::port::login_user::LoginUserResponse;
     use crate::application::port::login_user::LoginUserUseCase;
     use crate::application::port::login_user::MockLoginUserUseCase;
     use crate::test_helpers::SECRET_PASSWORD;
+    use crate::test_helpers::app_state_with_identity;
 
     /// Send `body` through the endpoint router.
     async fn send(
         login_use_case: MockLoginUserUseCase,
         body: Body,
     ) -> Result<Response, Box<dyn Error>> {
+        let mut factory = MockIdentityUseCaseFactory::new();
+        factory
+            .expect_login_user()
+            .times(0..=1)
+            .return_once(move || Arc::new(login_use_case) as Arc<dyn LoginUserUseCase>);
+
         let request = Request::builder()
             .method("POST")
             .uri("/api/v1/identity/login")
@@ -140,7 +148,7 @@ mod tests {
 
         let router = axum::Router::new()
             .route("/api/v1/identity/login", post(post_login))
-            .with_state(Arc::new(login_use_case) as Arc<dyn LoginUserUseCase>);
+            .with_state(app_state_with_identity(Arc::new(factory))?);
         Ok(router.oneshot(request).await?)
     }
 

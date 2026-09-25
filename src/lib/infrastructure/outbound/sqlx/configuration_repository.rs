@@ -1,4 +1,5 @@
-use sqlx::SqlitePool;
+use sqlx::Sqlite;
+use sqlx::Transaction;
 
 use crate::domain::model::configuration::Configuration;
 use crate::domain::model::jwt::Jwt;
@@ -9,22 +10,26 @@ use crate::domain::port::configuration_repository::ConfigurationRepository;
 use crate::domain::port::error::RepositoryError;
 use crate::infrastructure::outbound::sqlx::model::configuration::Configuration as SqlxConfiguration;
 
-/// Repository persisting the configuration singleton, backed by `SQLite`.
-pub struct SqlxConfigurationRepository {
-    /// Connection pool to the `SQLite` database.
-    pool: SqlitePool,
+/// Repository persisting the configuration singleton, backed by a `SQLite`
+/// transaction.
+pub struct SqlxConfigurationRepository<'transaction> {
+    /// Transaction the repository reads from and writes to.
+    transaction: &'transaction mut Transaction<'static, Sqlite>,
 }
 
-impl SqlxConfigurationRepository {
-    /// Create a new repository bound to `pool`.
+impl<'transaction> SqlxConfigurationRepository<'transaction> {
+    /// Create a new repository bound to `transaction`.
     #[must_use]
-    pub fn new(pool: SqlitePool) -> Self {
-        Self { pool }
+    pub fn new(transaction: &'transaction mut Transaction<'static, Sqlite>) -> Self {
+        Self { transaction }
     }
 }
 
-impl ConfigurationRepository for SqlxConfigurationRepository {
-    async fn create(&self, configuration: Configuration) -> Result<Configuration, RepositoryError> {
+impl ConfigurationRepository for SqlxConfigurationRepository<'_> {
+    async fn create(
+        &mut self,
+        configuration: Configuration,
+    ) -> Result<Configuration, RepositoryError> {
         let row = sqlx::query_as::<_, SqlxConfiguration>(
             "INSERT INTO configuration (
                 configuration_id,
@@ -58,13 +63,16 @@ impl ConfigurationRepository for SqlxConfigurationRepository {
             u64::from(configuration.persistence().sqlite3().max_connections()),
             "configuration sqlite3_max_connections does not fit in i64",
         )?)
-        .fetch_one(&self.pool)
+        .fetch_one(&mut **self.transaction)
         .await?;
 
         domain_configuration(row)
     }
 
-    async fn save(&self, configuration: Configuration) -> Result<Configuration, RepositoryError> {
+    async fn save(
+        &mut self,
+        configuration: Configuration,
+    ) -> Result<Configuration, RepositoryError> {
         let row = sqlx::query_as::<_, SqlxConfiguration>(
             "INSERT INTO configuration (
                 configuration_id,
@@ -105,13 +113,13 @@ impl ConfigurationRepository for SqlxConfigurationRepository {
             u64::from(configuration.persistence().sqlite3().max_connections()),
             "configuration sqlite3_max_connections does not fit in i64",
         )?)
-        .fetch_one(&self.pool)
+        .fetch_one(&mut **self.transaction)
         .await?;
 
         domain_configuration(row)
     }
 
-    async fn search(&self) -> Result<Option<Configuration>, RepositoryError> {
+    async fn search(&mut self) -> Result<Option<Configuration>, RepositoryError> {
         let row = sqlx::query_as::<_, SqlxConfiguration>(
             "SELECT
                 configuration_id,
@@ -124,7 +132,7 @@ impl ConfigurationRepository for SqlxConfigurationRepository {
             FROM configuration
             WHERE configuration_id = 0",
         )
-        .fetch_optional(&self.pool)
+        .fetch_optional(&mut **self.transaction)
         .await?;
 
         row.map(domain_configuration).transpose()
@@ -166,6 +174,8 @@ mod tests {
     use std::error::Error;
     use std::iter::repeat_n;
 
+    use sqlx::Sqlite;
+    use sqlx::Transaction;
     use sqlx::sqlite::SqlitePoolOptions;
 
     use crate::domain::model::configuration::Configuration;
@@ -183,13 +193,13 @@ mod tests {
         repeat_n(character, 64).collect()
     }
 
-    async fn repo() -> Result<SqlxConfigurationRepository, sqlx::Error> {
+    async fn begin_transaction() -> Result<Transaction<'static, Sqlite>, sqlx::Error> {
         let pool = SqlitePoolOptions::new()
             .max_connections(1)
             .connect("sqlite::memory:")
             .await?;
         sqlx::migrate!("./migrations").run(&pool).await?;
-        Ok(SqlxConfigurationRepository::new(pool))
+        pool.begin().await
     }
 
     fn configuration() -> Result<Configuration, Box<dyn Error>> {
@@ -203,7 +213,8 @@ mod tests {
     #[tokio::test]
     async fn search_missing_configuration_returns_none() -> Result<(), Box<dyn Error>> {
         // Arrange
-        let repository = repo().await?;
+        let mut transaction = begin_transaction().await?;
+        let mut repository = SqlxConfigurationRepository::new(&mut transaction);
 
         // Act
         let found = repository.search().await?;
@@ -216,7 +227,8 @@ mod tests {
     #[tokio::test]
     async fn create_then_search_round_trips_configuration() -> Result<(), Box<dyn Error>> {
         // Arrange
-        let repository = repo().await?;
+        let mut transaction = begin_transaction().await?;
+        let mut repository = SqlxConfigurationRepository::new(&mut transaction);
         let expected = configuration()?;
 
         // Act
@@ -232,7 +244,8 @@ mod tests {
     #[tokio::test]
     async fn create_existing_configuration_returns_already_exist() -> Result<(), Box<dyn Error>> {
         // Arrange
-        let repository = repo().await?;
+        let mut transaction = begin_transaction().await?;
+        let mut repository = SqlxConfigurationRepository::new(&mut transaction);
         repository.create(configuration()?).await?;
 
         // Act
@@ -246,7 +259,8 @@ mod tests {
     #[tokio::test]
     async fn save_updates_existing_configuration() -> Result<(), Box<dyn Error>> {
         // Arrange
-        let repository = repo().await?;
+        let mut transaction = begin_transaction().await?;
+        let mut repository = SqlxConfigurationRepository::new(&mut transaction);
         repository.create(configuration()?).await?;
         let updated = Configuration::try_new(
             Persistence::try_new(Sqlite3::try_new("other.db".to_owned(), 3)?),
@@ -266,7 +280,8 @@ mod tests {
     #[tokio::test]
     async fn save_missing_configuration_inserts_it() -> Result<(), Box<dyn Error>> {
         // Arrange
-        let repository = repo().await?;
+        let mut transaction = begin_transaction().await?;
+        let mut repository = SqlxConfigurationRepository::new(&mut transaction);
         let expected = configuration()?;
 
         // Act

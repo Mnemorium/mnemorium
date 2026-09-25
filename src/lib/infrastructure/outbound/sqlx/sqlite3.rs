@@ -4,6 +4,8 @@ use std::path::Path;
 use sqlx::{SqlitePool, sqlite::SqlitePoolOptions};
 use tracing::warn;
 
+use crate::domain::model::sqlite3::Sqlite3;
+
 /// Initializes the `SQLite` database connection pool, creating the database file
 /// when it does not exist.
 ///
@@ -12,7 +14,9 @@ use tracing::warn;
 /// Returns an error when the database file cannot be created, when the
 /// connection to the database cannot be established, or when applying
 /// migrations fails.
-pub async fn init_db(db_file: &str, max_conn: u32) -> Result<SqlitePool, sqlx::Error> {
+pub async fn init_db(settings: &Sqlite3) -> Result<SqlitePool, sqlx::Error> {
+    let db_file = settings.path();
+
     if !Path::new(db_file).exists() {
         File::create(db_file)?;
         warn!("sqlite database file {db_file} did not exist; created it");
@@ -21,7 +25,7 @@ pub async fn init_db(db_file: &str, max_conn: u32) -> Result<SqlitePool, sqlx::E
     let conn_str = format!("sqlite:{db_file}");
 
     let pool = SqlitePoolOptions::new()
-        .max_connections(max_conn)
+        .max_connections(settings.max_connections())
         .connect(&conn_str)
         .await?;
     sqlx::migrate!("./migrations").run(&pool).await?;
@@ -35,16 +39,17 @@ mod tests {
     use tempfile::tempdir;
 
     use super::init_db;
+    use crate::domain::model::sqlite3::Sqlite3;
 
     #[tokio::test]
     async fn init_db_missing_file_creates_file() -> Result<(), Box<dyn Error>> {
         // Arrange
         let tmp = tempdir()?;
         let db_path = tmp.path().join("test.db");
-        let db_file = db_path.to_string_lossy();
+        let settings = Sqlite3::try_new(db_path.to_string_lossy().into_owned(), 1)?;
 
         // Act
-        let pool = init_db(&db_file, 1).await?;
+        let pool = init_db(&settings).await?;
 
         // Assert
         assert!(

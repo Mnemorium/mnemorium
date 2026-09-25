@@ -153,6 +153,36 @@ pub enum TokenProviderError {
     Unknown(#[source] anyhow::Error),
 }
 
+/// Error returned when a unit of work operation fails.
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
+pub enum UnitOfWorkError {
+    /// The unit of work could not complete for a non-specific reason.
+    #[error("the unit of work could not complete for a non-specific reason")]
+    OperationFailed,
+    /// The datastore is currently unavailable.
+    #[error("the datastore is currently unavailable")]
+    Unavailable,
+    /// An unexpected or unmapped error occurred.
+    #[error("an unexpected or unmapped error occurred: {0}")]
+    Unknown(#[source] anyhow::Error),
+}
+
+/// Error returned when loading the layered configuration fails.
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
+pub enum ConfigurationSourceError {
+    /// The layered settings do not form a valid configuration.
+    #[error("the configuration is invalid: {0}")]
+    InvalidConfiguration(#[source] anyhow::Error),
+    /// The configuration source could not be read for a non-specific reason.
+    #[error("the configuration source could not be read for a non-specific reason")]
+    OperationFailed,
+    /// An unexpected or unmapped error occurred.
+    #[error("an unexpected or unmapped error occurred: {0}")]
+    Unknown(#[source] anyhow::Error),
+}
+
 /// Error returned when a file storage operation fails.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]

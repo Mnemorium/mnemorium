@@ -3,4 +3,5 @@ pub mod credential_repository;
 pub mod error_mapping;
 pub mod model;
 pub mod sqlite3;
+pub mod unit_of_work;
 pub mod user_repository;

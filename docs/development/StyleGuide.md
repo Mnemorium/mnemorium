@@ -5,7 +5,21 @@
 ### General
 
 - Extracting functionality from a function into its own function should only be done when that functionality is used in
-  at least 4 different places.
+  at least 4 different places. This applies to production code; shared test fixtures are exempt.
+
+### Composition root and application state
+
+`src/bin/server.rs` is the composition root: it is the only place that instantiates concrete adapters, runs the startup
+use cases (`LoadConfiguration`, `InitializeRootAdmin`) and builds the `AppState` the HTTP layer shares.
+
+`AppState` lives in `src/lib/infrastructure/inbound/rest/app_state.rs` and holds:
+
+- the live configuration (`Arc<ArcSwap<Configuration>>`),
+- the per-context use-case factories (see [Use-case factory](#use-case-factory)),
+- the token provider the auth middleware validates with.
+
+`AppState` is the single router state; `FromRef` impls expose exactly what middleware extracts from it. Getters return
+`Arc` clones, never borrows of the shared state. Nothing outside the composition root constructs a concrete adapter.
 
 ### REST handler layout
 
@@ -13,6 +27,8 @@ Handlers live in `src/lib/infrastructure/inbound/rest/handler`.
 
 - Split the directory into subdirectories, one folder per bounded context.
 - Each file contains exactly one endpoint.
+- A handler extracts `State<AppState>` and resolves its use case through the bounded context's factory
+  (`state.<context>_use_case_factory().<use_case>()`) before calling `execute`; it never receives a pre-built use case.
 
 #### File naming
 
@@ -158,6 +174,9 @@ Every error response carries the same body:
 
 Port errors are translated into use-case errors by the use case, never consumed directly by the HTTP adapter.
 
+Besides the two shared families below (Repository, External Service), a port may declare its **own** error family in
+`src/lib/domain/port/error.rs`. Every port error exposes at least an `Unknown(anyhow::Error)` variant.
+
 ##### Repository
 
 | Error                  | Description                                                                                                               |
@@ -188,6 +207,22 @@ Port errors are translated into use-case errors by the use case, never consumed 
 | DependencyFailure      | The service failed due to a problem with one of its own dependencies.                        |
 | RetryableFailure       | A transient error occurred and the operation may succeed if retried.                         |
 | Unknown                | An unexpected or unmapped error occurred.                                                    |
+
+##### Unit of Work
+
+| Error           | Description                                                    |
+| --------------- | -------------------------------------------------------------- |
+| OperationFailed | The unit of work could not complete for a non-specific reason. |
+| Unavailable     | The datastore is currently unavailable.                        |
+| Unknown         | An unexpected or unmapped error occurred.                      |
+
+##### Configuration Source
+
+| Error                | Description                                                           |
+| -------------------- | --------------------------------------------------------------------- |
+| InvalidConfiguration | The layered settings do not form a valid configuration.               |
+| OperationFailed      | The configuration source could not be read for a non-specific reason. |
+| Unknown              | An unexpected or unmapped error occurred.                             |
 
 ### SQL data models
 
@@ -280,11 +315,14 @@ pub struct User {
 
 - Use `#[fixture]` functions when a test case input is a struct.
 
-### Trait declarations
+### Outbound port traits
 
-#### Repository traits are `Send + Sync`
+Outbound ports are the interfaces infrastructure implements and the application consumes: repositories, the unit of
+work, the configuration source, the password hasher, and so on.
 
-Always declare repository traits as `Send + Sync`:
+#### Port traits are `Send + Sync`
+
+Always declare outbound port traits as `Send + Sync`:
 
 ```rust
 pub trait UserRepository: Send + Sync {
@@ -292,41 +330,175 @@ pub trait UserRepository: Send + Sync {
 }
 ```
 
-- `Send`: the repository may be moved between threads.
-- `Sync`: the repository may be shared concurrently through `Arc<UserRepository>`.
+- `Send`: the port and its futures may be moved between threads.
+- `Sync`: the port may be shared behind an `Arc`; the unit-of-work factory is shared this way.
 
-Most database pools already satisfy both, e.g. `sqlx::Pool<Postgres>` and `sqlx::Pool<Sqlite>`.
+Repositories are short-lived views over a transaction (see [Repository](#repository)); the shared mutable state is the
+unit of work, not the repository itself.
 
-#### Async methods return `Send` futures
+#### Dyn-safety
 
-Return an explicitly `Send` future instead of relying on the default (which is not guaranteed to be `Send`):
+Only use-case traits are object-safe: their `execute` returns `Pin<Box<dyn Future<Output = ...> + Send + 'future>>`, so
+a factory can return `Arc<dyn <UseCaseName>UseCase>`.
+
+Outbound ports that return `impl Future` (RPITIT) are **not** dyn-safe. `AppState` and the use-case factories therefore
+hold concrete adapters (`Arc<SqlxUnitOfWorkFactory>`, `Arc<JwtTokenProvider>`, ...) and `Arc<dyn <UseCaseName>UseCase>`
+trait objects — never `Arc<dyn UnitOfWorkFactory>` or `Arc<dyn TokenProvider>`.
+
+#### Async methods take `&mut self` and return `Send` futures
+
+Repository methods mutate the shared transaction, so they take `&mut self`. Return an explicitly `Send` future instead
+of relying on the default (which is not guaranteed to be `Send`):
 
 ```rust
 use std::future::Future;
 
 pub trait UserRepository: Send + Sync {
-    fn find(&self, id: UserId) -> impl Future<Output = Result<User, FindUserError>> + Send;
+    fn create(&mut self, user: User) -> impl Future<Output = Result<User, RepositoryError>> + Send;
 }
 ```
 
 Web frameworks (axum) move futures across worker threads; without `Send`, `tokio::spawn(...)` and other runtime
 operations fail to compile.
 
-#### Traits are `'static`
+#### Port traits are `'static`; implementations may borrow
 
-Repositories usually live for the whole application lifetime and frameworks require injected state to be `'static`:
+The trait bound is `'static` so ports can be injected into the application:
 
 ```rust
-struct AppState {
-    user_repo: Arc<Repository>,
+struct Application<F: UnitOfWorkFactory> {
+    unit_of_work_factory: Arc<F>,
 }
 ```
 
+The _implementation_ need not be `'static`: a sqlx repository borrows the unit-of-work transaction
+(`SqlxUserRepository<'transaction>`). Never store a repository beyond the use-case `execute` that obtained it.
+
 #### Prefer `Arc<T>` over `Clone`
 
-Do not add `Clone` just for frameworks — prefer sharing through `Arc<R>`.
+Do not add `Clone` just for frameworks — share long-lived adapters and the unit-of-work factory through `Arc<T>`.
+Repositories obtained from a unit of work are borrowed views, not cloned.
 
-### Repository Method
+### Unit of Work
+
+The transaction boundary lives in the application service, not the presentation layer. A use case opens a unit of work,
+runs business logic across the repositories it exposes, then commits on success or rolls back on failure. Handlers only
+call the use case.
+
+#### Lifecycle
+
+The application service is responsible for opening the unit of work, running the business logic, and committing on
+success or rolling back on failure:
+
+```rust
+let mut unit_of_work = factory.begin().await.map_err(...)?;
+
+let result = async {
+    // business logic using unit_of_work.users() / credentials() / ...
+    Ok(value)
+}
+.await;
+
+match result {
+    Ok(value) => {
+        unit_of_work.commit().await.map_err(...)?;
+        Ok(value)
+    }
+    Err(error) => {
+        if let Err(rollback_error) = unit_of_work.rollback().await {
+            error!(error = ?rollback_error, "failed to roll back the unit of work");
+        }
+        Err(error)
+    }
+}
+```
+
+- `commit` and `rollback` consume the unit of work.
+- A rollback failure is logged and the **original** business error is returned.
+- A commit failure maps to the use-case `Unknown(_)`.
+- Repository views borrow the unit of work mutably; drop them before `commit`/`rollback`.
+
+The base trait and the factory are declared in `domain/port/unit_of_work.rs`:
+
+```rust
+pub trait UnitOfWork: Send {
+    fn commit(self) -> impl Future<Output = Result<(), UnitOfWorkError>> + Send;
+    fn rollback(self) -> impl Future<Output = Result<(), UnitOfWorkError>> + Send;
+}
+
+pub trait UnitOfWorkFactory: Send + Sync {
+    type Uow: UnitOfWork;
+    fn begin(&self) -> impl Future<Output = Result<Self::Uow, UnitOfWorkError>> + Send;
+}
+```
+
+The factory is generic with an associated `Uow` type: no `dyn`, and the concrete unit of work is owned and `'static`
+(one `Transaction<'static, Sqlite>` in the SQLite adapter).
+
+#### Context views
+
+Each bounded context (see [Bounded context](Overview.md#bounded-context)) has a view trait over the unit of work,
+declared in its own `domain/port/<context>_unit_of_work.rs`:
+
+```rust
+pub trait UserUnitOfWork: UnitOfWork {
+    fn users(&mut self) -> impl UserRepository + '_;
+}
+```
+
+- Repository accessors return a short-lived view that borrows the unit of work.
+- A context view exposes only its own context's repositories.
+- Repositories are obtained **only** from a unit of work; concrete sqlx adapters never leave infrastructure.
+
+#### Cross-context use cases
+
+A use case that spans bounded contexts declares every context view it needs as an `execute` bound:
+
+```rust
+impl<F, P> RegisterUserUseCase for RegisterUser<F, P>
+where
+    F: UnitOfWorkFactory,
+    F::Uow: IdentityUnitOfWork + UserUnitOfWork,
+    P: PasswordHasher,
+{
+    // ...
+}
+```
+
+- Every repository comes from the **same** unit of work (one `begin()`); opening a second unit of work would be a second
+  transaction and break atomicity.
+- Cross-context writes stay atomic: Register User (Identity + User), Delete User Account (Identity + User + Library +
+  Asset; see [UseCases.md](UseCases.md)).
+- Each accessor borrows `&mut self`, so repositories are requested **sequentially**, never held two at a time.
+
+#### Declaration order in `domain/port/unit_of_work.rs`
+
+The file declares, in order:
+
+1. The `UnitOfWork` trait
+2. The `UnitOfWorkFactory` trait
+
+Each context view lives in its own file, e.g. `user_unit_of_work.rs`.
+
+Naming: `UnitOfWork`, `UnitOfWorkFactory`, `<Context>UnitOfWork`.
+
+### Repository
+
+A repository persists and queries one aggregate. It is obtained from a unit of work and shares that unit of work's
+transaction.
+
+#### Port
+
+The port trait is named `<Aggregate>Repository` and declared in `domain/port/<aggregate>_repository.rs`. Methods take
+`&mut self` and return `impl Future<...> + Send`:
+
+```rust
+#[cfg_attr(test, mockall::automock)]
+pub trait UserRepository: Send + Sync {
+    fn create(&mut self, user: User) -> impl Future<Output = Result<User, RepositoryError>> + Send;
+    // ...
+}
+```
 
 | Name                                   | Action                                      |
 | -------------------------------------- | ------------------------------------------- |
@@ -338,8 +510,26 @@ Do not add `Clone` just for frameworks — prefer sharing through `Arc<R>`.
 - `create` inserts a new aggregate and never binds identity columns: the datastore auto-increments them and `create`
   returns the aggregate with its final identifier.
 - `save` upserts an existing aggregate targeted by its identifier.
-- Trait named `<Aggregate>Repository`, e.g. `NoteRepository`.
-- Implementation named `<Tech><Aggregate>Repository`, e.g. `SqlxNoteRepository`.
+- `delete` returns `Ok(false)` when no row matched; a missing entity is not an error.
+- `search` returns an empty collection when nothing matches.
+- Missing entities are never errors (see [Port error](#port-error)).
+
+#### Adapter
+
+The implementation is named `<Tech><Aggregate>Repository`, e.g. `SqlxUserRepository`, and lives in
+`infrastructure/outbound/<tech>/`.
+
+- It holds the transaction it operates on (`&'transaction mut Transaction<'static, Sqlite>` for SQLite) and is built by
+  the unit-of-work accessor — never with a connection pool.
+- It maps `sqlx::Error` to `RepositoryError` in `error_mapping.rs`; sqlx types never cross into the domain or
+  application layers.
+
+#### Declaration order in a port file
+
+A repository port file declares, in order:
+
+1. The filter struct, e.g. `UserFilter`
+2. The repository trait
 
 ### UseCase Method
 
@@ -355,6 +545,38 @@ A use case trait file declares, in order:
 2. The **Response** object (only when non-empty)
 3. The **Error** enum
 4. The **UseCase** trait
+
+### Use-case factory
+
+Handlers depend on a factory rather than on pre-built use cases: each bounded context exposes one factory that builds
+its use cases on demand.
+
+- **Port** — `src/lib/application/port/<context>_use_case_factory.rs`. The trait is named `<Context>UseCaseFactory`, is
+  `Send + Sync`, carries `#[cfg_attr(test, mockall::automock)]`, and exposes one method per use case — named after the
+  use case — returning `Arc<dyn <UseCaseName>UseCase>`.
+- **Adapter** — `src/lib/infrastructure/use_case_factory/<context>.rs`. The struct is named
+  `Runtime<Context>UseCaseFactory` and holds what the context's use cases need: the live configuration
+  (`Arc<ArcSwap<Configuration>>`) when they read it, and the unit-of-work factory (`Arc<SqlxUnitOfWorkFactory>`).
+- **Lazy instantiation** — every accessor builds the use case on the spot and rebuilds its configuration-derived
+  adapters (password hasher, token provider) from the live configuration; never cache those adapters.
+- The factory only supplies the unit-of-work factory; the use case still opens, commits and rolls back its own unit of
+  work (see [Unit of Work](#unit-of-work)).
+
+#### Declaration order in a factory port file
+
+A factory port file declares the trait only: no `Command`, `Response` or `Error`.
+
+### Live configuration
+
+- `LoadConfiguration` runs once at startup; the resulting `Configuration` is stored as `Arc<ArcSwap<Configuration>>` in
+  `AppState`.
+- Never cache a configuration-derived value (pepper, `JWT` secret, TTL) in a long-lived adapter built at startup; read
+  it from the live configuration.
+- **Bootstrap** — the datastore path is needed before the pool exists, but the configuration singleton row lives behind
+  that pool. `bootstrap_sqlite3` (`src/lib/infrastructure/outbound/config/bootstrap.rs`) therefore reads the file and
+  the environment only. That layering is intentionally duplicated with `ConfigConfigurationSource` (see the extraction
+  rule in [General](#general)); keep the source list and order identical.
+- Runtime write-guarding of the configuration is deferred; see the `TODO` in `src/bin/server.rs`.
 
 ## SQL
 
