@@ -18,16 +18,13 @@ use crate::infrastructure::outbound::sqlx::user_repository::SqlxUserRepository;
 /// Unit of work backed by a single `SQLite` transaction.
 pub struct SqlxUnitOfWork {
     /// Transaction shared by every repository the unit of work exposes.
-    transaction: Option<Transaction<'static, Sqlite>>,
+    transaction: Transaction<'static, Sqlite>,
 }
 
 impl SqlxUnitOfWork {
     /// Borrow the transaction backing this unit of work.
     fn transaction(&mut self) -> &mut Transaction<'static, Sqlite> {
-        match self.transaction.as_mut() {
-            Some(transaction) => transaction,
-            None => unreachable!("the transaction is present until commit or rollback"),
-        }
+        &mut self.transaction
     }
 }
 
@@ -50,19 +47,13 @@ impl UserUnitOfWork for SqlxUnitOfWork {
 }
 
 impl UnitOfWork for SqlxUnitOfWork {
-    async fn commit(mut self) -> Result<(), UnitOfWorkError> {
-        let transaction = self
-            .transaction
-            .take()
-            .ok_or(UnitOfWorkError::OperationFailed)?;
+    async fn commit(self) -> Result<(), UnitOfWorkError> {
+        let Self { transaction } = self;
         transaction.commit().await.map_err(UnitOfWorkError::from)
     }
 
-    async fn rollback(mut self) -> Result<(), UnitOfWorkError> {
-        let transaction = self
-            .transaction
-            .take()
-            .ok_or(UnitOfWorkError::OperationFailed)?;
+    async fn rollback(self) -> Result<(), UnitOfWorkError> {
+        let Self { transaction } = self;
         transaction.rollback().await.map_err(UnitOfWorkError::from)
     }
 }
@@ -86,8 +77,6 @@ impl UnitOfWorkFactory for SqlxUnitOfWorkFactory {
 
     async fn begin(&self) -> Result<Self::Uow, UnitOfWorkError> {
         let transaction = self.pool.begin().await.map_err(UnitOfWorkError::from)?;
-        Ok(SqlxUnitOfWork {
-            transaction: Some(transaction),
-        })
+        Ok(SqlxUnitOfWork { transaction })
     }
 }

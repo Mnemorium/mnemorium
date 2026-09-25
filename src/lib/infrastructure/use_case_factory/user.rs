@@ -30,7 +30,7 @@ impl UserUseCaseFactory for RuntimeUserUseCaseFactory {
         Arc::new(GetCurrentUser::new(Arc::clone(&self.unit_of_work_factory)))
     }
 
-    fn get_user_by_id(&self) -> Arc<dyn GetUserUseCase> {
+    fn get_user(&self) -> Arc<dyn GetUserUseCase> {
         Arc::new(GetUser::new(Arc::clone(&self.unit_of_work_factory)))
     }
 

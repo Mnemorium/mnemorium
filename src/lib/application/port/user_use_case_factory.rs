@@ -1,3 +1,11 @@
+#![cfg_attr(
+    test,
+    expect(
+        clippy::struct_field_names,
+        reason = "mockall names the mock's fields after the trait methods, all of which end in `user`"
+    )
+)]
+
 use std::sync::Arc;
 
 use crate::application::port::get_current_user::GetCurrentUserUseCase;
@@ -14,7 +22,7 @@ pub trait UserUseCaseFactory: Send + Sync {
     fn get_current_user(&self) -> Arc<dyn GetCurrentUserUseCase>;
 
     /// Build the use case fetching a user by identifier.
-    fn get_user_by_id(&self) -> Arc<dyn GetUserUseCase>;
+    fn get_user(&self) -> Arc<dyn GetUserUseCase>;
 
     /// Build the use case updating the profile of a user.
     fn update_user(&self) -> Arc<dyn UpdateUserUseCase>;

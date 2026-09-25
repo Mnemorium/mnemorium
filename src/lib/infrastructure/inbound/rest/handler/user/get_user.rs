@@ -108,7 +108,7 @@ pub async fn get_user(
     };
     let response = state
         .user_use_case_factory()
-        .get_user_by_id()
+        .get_user()
         .execute(GetUserCommand::new(caller.user_id(), user_id))
         .await?;
     Ok(Json(GetUserResponse::from(response)))
@@ -152,7 +152,7 @@ mod tests {
     ) -> Result<Response, Box<dyn Error>> {
         let mut factory = MockUserUseCaseFactory::new();
         factory
-            .expect_get_user_by_id()
+            .expect_get_user()
             .times(0..=1)
             .return_once(move || Arc::new(use_case) as Arc<dyn GetUserUseCase>);
 
