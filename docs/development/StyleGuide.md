@@ -156,7 +156,8 @@ Every error response carries the same body:
 
 #### Port error
 
-Port errors are translated into use-case errors by the use case, never consumed directly by the HTTP adapter.
+Port errors are translated into use-case errors by the use case, never consumed directly by the HTTP adapter — the one
+exception being inbound middleware (see below).
 
 ##### Repository
 
@@ -188,6 +189,17 @@ Port errors are translated into use-case errors by the use case, never consumed 
 | DependencyFailure      | The service failed due to a problem with one of its own dependencies.                        |
 | RetryableFailure       | A transient error occurred and the operation may succeed if retried.                         |
 | Unknown                | An unexpected or unmapped error occurred.                                                    |
+
+##### Inbound middleware
+
+Inbound middleware may consume a port directly when that port's decision is the middleware's own responsibility — for
+example, `authenticate` calls `TokenProvider` to decide whether to admit a request. Two rules apply:
+
+- Map only the variants that mean _the caller is unauthenticated_ (for example `InvalidClaims`, `InvalidToken`,
+  `TokenExpired`) to a client error. Every other variant — including `OperationFailed` and `Unknown` — maps to `500` and
+  is logged at `error`.
+- Match the port error exhaustively. Port errors are `#[non_exhaustive]`, so end the match with a catch-all arm that
+  defaults to `500`; never let a wildcard arm collapse a server-side failure into a misleading `401`.
 
 ### SQL data models
 
