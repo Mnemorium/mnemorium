@@ -358,9 +358,9 @@ Examples:
 
 ### Docs-only PRs
 
-A PR whose type is `docs` must only change documentation: files under `docs/`, any `*.md` file, or `mkdocs.yml`.
-Anything else is rejected by the `docs-only` job in `.github/workflows/ci.yml`; use another type (for example `build` or
-`chore`) for tooling or dependency updates.
+A PR whose type is `docs` must only change documentation: files under `docs/`, any `*.md` file, `mkdocs.yml`, or image
+assets (`*.png` anywhere, or any file under `.github/assets/`). Anything else is rejected by the `docs-only` job in
+`.github/workflows/ci.yml`; use another type (for example `build` or `chore`) for tooling or dependency updates.
 
 ### Scopes
 

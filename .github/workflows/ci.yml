@@ -124,6 +124,8 @@ jobs:
             docs/**
             **/*.md
             mkdocs.yml
+            **/*.png
+            .github/assets/**
       - name: Reject non-documentation changes
         if: steps.changed.outputs.other_modified_files != ''
         env:

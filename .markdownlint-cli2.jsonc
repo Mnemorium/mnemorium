@@ -6,7 +6,24 @@
             "tables": false
         },
 
-        "MD024": false 
+        "MD024": false,
+
+        "MD033": {
+            "allowed_elements": [
+                "a",
+                "br",
+                "details",
+                "div",
+                "em",
+                "h1",
+                "img",
+                "p",
+                "span",
+                "summary"
+            ]
+        },
+
+        "MD041": false
     },
     "ignores": [
         ".devenv/",
