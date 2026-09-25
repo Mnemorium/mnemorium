@@ -18,6 +18,7 @@ Source: `Cargo.toml`.
 | Name                                                              | Description                                                                     | Version | License                            |
 | ----------------------------------------------------------------- | ------------------------------------------------------------------------------- | ------- | ---------------------------------- |
 | [anyhow](https://crates.io/crates/anyhow)                         | Flexible concrete error type built on `std::error::Error`.                      | 1.0.104 | MIT OR Apache-2.0                  |
+| [arc-swap](https://crates.io/crates/arc-swap)                     | Atomically swappable `Arc` with lock-free load and store.                       | 1.9.2   | MIT OR Apache-2.0                  |
 | [argon2](https://crates.io/crates/argon2)                         | Pure Rust implementation of the Argon2 password hashing function.               | 0.6.0   | MIT OR Apache-2.0                  |
 | [axum](https://crates.io/crates/axum)                             | HTTP routing and request handling library focused on ergonomics and modularity. | 0.8.9   | MIT                                |
 | [chrono](https://crates.io/crates/chrono)                         | Date and time library for Rust.                                                 | 0.4.45  | MIT OR Apache-2.0                  |
