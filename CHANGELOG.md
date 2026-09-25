@@ -1,3 +1,9 @@
+## [0.1.8](https://github.com/Mnemorium/mnemorium/compare/v0.1.7...v0.1.8) (2026-09-25)
+
+### Bug Fixes
+
+* **application:** fix the error handling in token-provider ([#17](https://github.com/Mnemorium/mnemorium/issues/17)) ([1c0ed0d](https://github.com/Mnemorium/mnemorium/commit/1c0ed0de142f8848790db618a0d1caf83c014c31))
+
 ## [0.1.7](https://github.com/Mnemorium/mnemorium/compare/v0.1.6...v0.1.7) (2026-09-13)
 
 ### Bug Fixes
