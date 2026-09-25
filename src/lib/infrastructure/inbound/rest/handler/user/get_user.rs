@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use axum::Json;
 use axum::extract::Path;
 use axum::extract::State;
@@ -9,11 +7,11 @@ use utoipa::ToSchema;
 use crate::application::port::get_user::GetUserCommand;
 use crate::application::port::get_user::GetUserError;
 use crate::application::port::get_user::GetUserResponse as GetUserResponseData;
-use crate::application::port::get_user::GetUserUseCase;
 use crate::domain::alias::NumericID;
 use crate::domain::model::user::Role;
 use crate::infrastructure::inbound::rest::api_error::ApiError;
 use crate::infrastructure::inbound::rest::api_error::ErrorBody;
+use crate::infrastructure::inbound::rest::app_state::AppState;
 use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 
 /// User returned by a successful lookup.
@@ -102,13 +100,15 @@ impl From<GetUserError> for ApiError {
 )]
 pub async fn get_user(
     Path(id): Path<String>,
-    State(get_user): State<Arc<dyn GetUserUseCase>>,
+    State(state): State<AppState>,
     caller: AuthenticatedUser,
 ) -> Result<Json<GetUserResponse>, ApiError> {
     let Ok(user_id) = id.parse::<NumericID>() else {
         return Err(ApiError::BadRequest("invalid user identifier".to_owned()));
     };
-    let response = get_user
+    let response = state
+        .user_use_case_factory()
+        .get_user()
         .execute(GetUserCommand::new(caller.user_id(), user_id))
         .await?;
     Ok(Json(GetUserResponse::from(response)))
@@ -137,9 +137,11 @@ mod tests {
     use crate::application::port::get_user::GetUserResponse;
     use crate::application::port::get_user::GetUserUseCase;
     use crate::application::port::get_user::MockGetUserUseCase;
+    use crate::application::port::user_use_case_factory::MockUserUseCaseFactory;
     use crate::domain::alias::NumericID;
     use crate::domain::model::user::Role;
     use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
+    use crate::test_helpers::app_state_with_user;
 
     /// Send a GET to `/api/v1/user/{id}` on behalf of `caller_id`, injecting
     /// the caller identifier the way the auth middleware does.
@@ -148,6 +150,12 @@ mod tests {
         caller_id: NumericID,
         id: &str,
     ) -> Result<Response, Box<dyn Error>> {
+        let mut factory = MockUserUseCaseFactory::new();
+        factory
+            .expect_get_user()
+            .times(0..=1)
+            .return_once(move || Arc::new(use_case) as Arc<dyn GetUserUseCase>);
+
         let mut request = Request::builder()
             .method("GET")
             .uri(format!("/api/v1/user/{id}"))
@@ -158,7 +166,7 @@ mod tests {
 
         let router = axum::Router::new()
             .route("/api/v1/user/{id}", get(get_user))
-            .with_state(Arc::new(use_case) as Arc<dyn GetUserUseCase>);
+            .with_state(app_state_with_user(Arc::new(factory))?);
         Ok(router.oneshot(request).await?)
     }
 

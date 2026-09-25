@@ -89,6 +89,7 @@ impl FileStorage for FileSystemStorage {
                 .await
                 .map_err(Self::map_io_error)?;
             file.write_all(&chunk).await.map_err(Self::map_io_error)?;
+            file.flush().await.map_err(Self::map_io_error)?;
             Ok(())
         }
     }

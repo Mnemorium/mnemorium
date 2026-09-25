@@ -22,7 +22,7 @@ pub trait CredentialRepository: Send + Sync {
     /// The identifier of `credential` is ignored: the repository assigns a
     /// fresh identity.
     fn create(
-        &self,
+        &mut self,
         credential: Credential,
     ) -> impl Future<Output = Result<Credential, RepositoryError>> + Send;
 
@@ -31,12 +31,15 @@ pub trait CredentialRepository: Send + Sync {
     /// Returns `Ok(true)` when a credential matched `id` and was deleted, and
     /// `Ok(false)` when no credential matched. A missing credential is a valid
     /// outcome, not an error.
-    fn delete(&self, id: NumericID) -> impl Future<Output = Result<bool, RepositoryError>> + Send;
+    fn delete(
+        &mut self,
+        id: NumericID,
+    ) -> impl Future<Output = Result<bool, RepositoryError>> + Send;
 
     /// Insert or update an existing `credential` targeted by its identifier,
     /// returning the persisted credential.
     fn save(
-        &self,
+        &mut self,
         credential: Credential,
     ) -> impl Future<Output = Result<Credential, RepositoryError>> + Send;
 
@@ -45,7 +48,38 @@ pub trait CredentialRepository: Send + Sync {
     /// Returns an empty list when no credential matches; a missing match is a
     /// valid outcome, not an error.
     fn search(
-        &self,
+        &mut self,
         filter: &CredentialFilter,
     ) -> impl Future<Output = Result<Vec<Credential>, RepositoryError>> + Send;
+}
+
+#[cfg(test)]
+impl<T: CredentialRepository + ?Sized> CredentialRepository for &mut T {
+    fn create(
+        &mut self,
+        credential: Credential,
+    ) -> impl Future<Output = Result<Credential, RepositoryError>> + Send {
+        (**self).create(credential)
+    }
+
+    fn delete(
+        &mut self,
+        id: NumericID,
+    ) -> impl Future<Output = Result<bool, RepositoryError>> + Send {
+        (**self).delete(id)
+    }
+
+    fn save(
+        &mut self,
+        credential: Credential,
+    ) -> impl Future<Output = Result<Credential, RepositoryError>> + Send {
+        (**self).save(credential)
+    }
+
+    fn search(
+        &mut self,
+        filter: &CredentialFilter,
+    ) -> impl Future<Output = Result<Vec<Credential>, RepositoryError>> + Send {
+        (**self).search(filter)
+    }
 }

@@ -80,6 +80,9 @@ its patterns over inventing new ones.
 - `src/lib/application/port/<name>.rs` — the use-case contract: `Command`,
   optional `Response`, `Error`, and the trait `<Name>UseCase`. Register the
   module in `src/lib/application/port.rs`.
+- `src/lib/application/port/<context>_use_case_factory.rs` — the per-context
+  factory contract (`<Context>UseCaseFactory`), returning `Arc<dyn
+  ...UseCase>`. See the StyleGuide.
 - `src/lib/application/use_case/<name>.rs` — the implementation: a struct
   holding `Arc` dependencies, `new()`, and `execute` implemented with
   `Box::pin(async move { ... })`. Register the module in
@@ -97,15 +100,18 @@ its patterns over inventing new ones.
 - `src/lib/infrastructure/inbound/rest/handler/<context>/<method>_<context>.rs`
   — one endpoint per file, one folder per bounded context.
 - `src/lib/infrastructure/inbound/rest/` — `api_error.rs` (`ApiError`,
-  `ErrorBody`), `app_state.rs` (`AppState`), `middleware/`, `rest.rs` (the
-  `ApiDoc` OpenAPI aggregation), `handler.rs` and `handler/<context>.rs`
-  (route wiring).
+  `ErrorBody`), `app_state.rs` (`AppState`: live configuration, per-context
+  use-case factories and token provider), `middleware/`, `rest.rs` (the `ApiDoc`
+  OpenAPI aggregation), `handler.rs` and `handler/<context>.rs` (route wiring).
 - `src/lib/infrastructure/outbound/sqlx/` — repository implementations
   (`Sqlx<Aggregate>Repository`), `model/` (sqlx row models), `error_mapping.rs`
   (`From<sqlx::Error> for RepositoryError`), `sqlite3.rs` (pool init +
   migrations).
 - `src/lib/infrastructure/outbound/` — the other adapters: `jwt/`, `argon2/`,
-  `moka/`, `random/`.
+  `moka/`, `random/`, and `config/` (`bootstrap.rs` reads the persistence
+  settings before the datastore is reachable).
+- `src/lib/infrastructure/use_case_factory/` — per-context factories
+  (`Runtime<Context>UseCaseFactory`) building use cases on demand.
 - `migrations/` — SQLite migrations, `<timestamp>_<name>.up.sql` and
   `.down.sql` pairs.
 
@@ -129,8 +135,11 @@ its patterns over inventing new ones.
    validation errors, business-rule violations, dependency failures — mocks via
    mockall, tests return `Result<(), Box<dyn Error>>` and use `?`, never
    `unwrap`/`expect`.
-4. Wire it in `src/bin/server.rs` and expose it through `AppState` in
-   `app_state.rs` (field + getter).
+4. Expose it through the bounded context's use-case factory: add a method to the
+   `<Context>UseCaseFactory` port and implement it in
+   `infrastructure/use_case_factory/<context>.rs`. Handlers resolve it from
+   `State<AppState>`; only startup use cases are wired directly in
+   `src/bin/server.rs`.
 5. Add the REST endpoint (below). Do **not** add an entry to
    `docs/development/UseCases.md` unless the user explicitly asks for it —
    use-case documentation is manual, not automatic (the `UC-###` numbering

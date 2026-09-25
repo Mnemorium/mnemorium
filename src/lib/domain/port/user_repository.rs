@@ -27,25 +27,53 @@ pub trait UserRepository: Send + Sync {
     ///
     /// The identifier of `user` is ignored: the repository assigns a fresh
     /// identity.
-    fn create(&self, user: User) -> impl Future<Output = Result<User, RepositoryError>> + Send;
+    fn create(&mut self, user: User) -> impl Future<Output = Result<User, RepositoryError>> + Send;
 
     /// Delete the user identified by `id`.
     ///
     /// Returns `Ok(true)` when a user matched `id` and was deleted, and
     /// `Ok(false)` when no user matched. A missing user is a valid outcome,
     /// not an error.
-    fn delete(&self, id: NumericID) -> impl Future<Output = Result<bool, RepositoryError>> + Send;
+    fn delete(
+        &mut self,
+        id: NumericID,
+    ) -> impl Future<Output = Result<bool, RepositoryError>> + Send;
 
     /// Insert or update an existing `user` targeted by its identifier,
     /// returning the persisted user.
-    fn save(&self, user: User) -> impl Future<Output = Result<User, RepositoryError>> + Send;
+    fn save(&mut self, user: User) -> impl Future<Output = Result<User, RepositoryError>> + Send;
 
     /// Search users matching `filter`, returned as `Vec<User>`.
     ///
     /// Returns an empty list when no user matches; a missing match is a valid
     /// outcome, not an error.
     fn search(
-        &self,
+        &mut self,
         filter: &UserFilter,
     ) -> impl Future<Output = Result<Vec<User>, RepositoryError>> + Send;
+}
+
+#[cfg(test)]
+impl<T: UserRepository + ?Sized> UserRepository for &mut T {
+    fn create(&mut self, user: User) -> impl Future<Output = Result<User, RepositoryError>> + Send {
+        (**self).create(user)
+    }
+
+    fn delete(
+        &mut self,
+        id: NumericID,
+    ) -> impl Future<Output = Result<bool, RepositoryError>> + Send {
+        (**self).delete(id)
+    }
+
+    fn save(&mut self, user: User) -> impl Future<Output = Result<User, RepositoryError>> + Send {
+        (**self).save(user)
+    }
+
+    fn search(
+        &mut self,
+        filter: &UserFilter,
+    ) -> impl Future<Output = Result<Vec<User>, RepositoryError>> + Send {
+        (**self).search(filter)
+    }
 }

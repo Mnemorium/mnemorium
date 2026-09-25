@@ -3,64 +3,58 @@ use std::pin::Pin;
 use std::sync::Arc;
 
 use chrono::Utc;
+use tracing::error;
 
 use crate::application::port::patch_credential::PatchCredentialCommand;
 use crate::application::port::patch_credential::PatchCredentialError;
 use crate::application::port::patch_credential::PatchCredentialUseCase;
 use crate::domain::model::credential::Credential;
 use crate::domain::model::user::Role;
-use crate::domain::port::configuration_repository::ConfigurationRepository;
+use crate::domain::port::configuration_repository::ConfigurationRepository as _;
+use crate::domain::port::configuration_unit_of_work::ConfigurationUnitOfWork;
 use crate::domain::port::credential_repository::CredentialFilter;
-use crate::domain::port::credential_repository::CredentialRepository;
+use crate::domain::port::credential_repository::CredentialRepository as _;
+use crate::domain::port::identity_unit_of_work::IdentityUnitOfWork;
 use crate::domain::port::password_hasher::PasswordHasher;
+use crate::domain::port::unit_of_work::UnitOfWork as _;
+use crate::domain::port::unit_of_work::UnitOfWorkFactory;
 use crate::domain::port::user_repository::UserFilter;
-use crate::domain::port::user_repository::UserRepository;
+use crate::domain::port::user_repository::UserRepository as _;
+use crate::domain::port::user_unit_of_work::UserUnitOfWork;
 use crate::domain::service::password_policy::PasswordPolicy;
 use crate::domain::service::password_policy::PasswordPolicyError;
 
 /// Use case implementation for changing the password behind a credential.
-pub struct PatchCredential<R, C, H, K> {
-    /// Repository persisting the configuration singleton.
-    configuration_repository: Arc<K>,
-    /// Repository persisting credentials.
-    credential_repository: Arc<C>,
+pub struct PatchCredential<F, H> {
     /// Hasher for user passwords.
     password_hasher: Arc<H>,
-    /// Repository persisting users.
-    user_repository: Arc<R>,
+    /// Factory opening the unit of work wrapping the change.
+    unit_of_work_factory: Arc<F>,
 }
 
-impl<R: UserRepository, C: CredentialRepository, H: PasswordHasher, K: ConfigurationRepository>
-    PatchCredential<R, C, H, K>
-{
+impl<F: UnitOfWorkFactory, H: PasswordHasher> PatchCredential<F, H> {
     /// Create a new use case.
     #[must_use]
-    pub fn new(
-        user_repository: Arc<R>,
-        credential_repository: Arc<C>,
-        password_hasher: Arc<H>,
-        configuration_repository: Arc<K>,
-    ) -> Self {
+    pub fn new(unit_of_work_factory: Arc<F>, password_hasher: Arc<H>) -> Self {
         Self {
-            configuration_repository,
-            credential_repository,
             password_hasher,
-            user_repository,
+            unit_of_work_factory,
         }
     }
 }
 
-impl<R: UserRepository, C: CredentialRepository, H: PasswordHasher, K: ConfigurationRepository>
-    PatchCredentialUseCase for PatchCredential<R, C, H, K>
+impl<F, H> PatchCredentialUseCase for PatchCredential<F, H>
+where
+    F: UnitOfWorkFactory,
+    F::Uow: IdentityUnitOfWork + UserUnitOfWork + ConfigurationUnitOfWork,
+    H: PasswordHasher,
 {
     fn execute<'future>(
         &'future self,
         command: PatchCredentialCommand,
     ) -> Pin<Box<dyn Future<Output = Result<(), PatchCredentialError>> + Send + 'future>> {
-        let configuration_repository = Arc::clone(&self.configuration_repository);
-        let credential_repository = Arc::clone(&self.credential_repository);
         let password_hasher = Arc::clone(&self.password_hasher);
-        let user_repository = Arc::clone(&self.user_repository);
+        let unit_of_work_factory = Arc::clone(&self.unit_of_work_factory);
         let password_policy = PasswordPolicy::new();
 
         Box::pin(async move {
@@ -73,65 +67,97 @@ impl<R: UserRepository, C: CredentialRepository, H: PasswordHasher, K: Configura
                     }
                 })?;
 
-            let caller = user_repository
-                .search(&UserFilter {
-                    id: Some(command.caller_id()),
-                    ..UserFilter::default()
-                })
-                .await
-                .map_err(|error| PatchCredentialError::Unknown(error.into()))?
-                .into_iter()
-                .next()
-                .ok_or(PatchCredentialError::Forbidden)?;
-
-            if !(caller.role() == Role::Admin && caller.id() == 0) {
-                return Err(PatchCredentialError::Forbidden);
-            }
-
-            let credential = credential_repository
-                .search(&CredentialFilter {
-                    id: Some(command.credential_id()),
-                    ..CredentialFilter::default()
-                })
-                .await
-                .map_err(|error| PatchCredentialError::Unknown(error.into()))?
-                .into_iter()
-                .next()
-                .ok_or(PatchCredentialError::UnknownCredential)?;
-
-            let password_hash = password_hasher
-                .hash_password(command.password())
-                .await
-                .map_err(|error| PatchCredentialError::Unknown(error.into()))?;
-            let updated_credential =
-                Credential::try_new(credential.id(), password_hash, Utc::now().naive_utc())
-                    .map_err(|error| PatchCredentialError::Unknown(error.into()))?;
-
-            credential_repository
-                .save(updated_credential)
+            let mut unit_of_work = unit_of_work_factory
+                .begin()
                 .await
                 .map_err(|error| PatchCredentialError::Unknown(error.into()))?;
 
-            if command.credential_id() == caller.credential_id() {
-                let mut configuration = configuration_repository
-                    .search()
+            let result = async {
+                let caller = unit_of_work
+                    .users()
+                    .search(&UserFilter {
+                        id: Some(command.caller_id()),
+                        ..UserFilter::default()
+                    })
                     .await
                     .map_err(|error| PatchCredentialError::Unknown(error.into()))?
-                    .ok_or_else(|| {
-                        PatchCredentialError::Unknown(anyhow::anyhow!(
-                            "the configuration singleton row does not exist"
-                        ))
-                    })?;
-                configuration
-                    .security_mut()
-                    .set_log_root_admin_password(false);
-                configuration_repository
-                    .save(configuration)
+                    .into_iter()
+                    .next()
+                    .ok_or(PatchCredentialError::Forbidden)?;
+
+                if !(caller.role() == Role::Admin && caller.id() == 0) {
+                    return Err(PatchCredentialError::Forbidden);
+                }
+
+                let credential = unit_of_work
+                    .credentials()
+                    .search(&CredentialFilter {
+                        id: Some(command.credential_id()),
+                        ..CredentialFilter::default()
+                    })
+                    .await
+                    .map_err(|error| PatchCredentialError::Unknown(error.into()))?
+                    .into_iter()
+                    .next()
+                    .ok_or(PatchCredentialError::UnknownCredential)?;
+
+                let password_hash = password_hasher
+                    .hash_password(command.password())
                     .await
                     .map_err(|error| PatchCredentialError::Unknown(error.into()))?;
-            }
+                let updated_credential =
+                    Credential::try_new(credential.id(), password_hash, Utc::now().naive_utc())
+                        .map_err(|error| PatchCredentialError::Unknown(error.into()))?;
 
-            Ok(())
+                unit_of_work
+                    .credentials()
+                    .save(updated_credential)
+                    .await
+                    .map_err(|error| PatchCredentialError::Unknown(error.into()))?;
+
+                if command.credential_id() == caller.credential_id() {
+                    let mut configuration = unit_of_work
+                        .configuration()
+                        .search()
+                        .await
+                        .map_err(|error| PatchCredentialError::Unknown(error.into()))?
+                        .ok_or_else(|| {
+                            PatchCredentialError::Unknown(anyhow::anyhow!(
+                                "the configuration singleton row does not exist"
+                            ))
+                        })?;
+                    configuration
+                        .security_mut()
+                        .set_log_root_admin_password(false);
+                    unit_of_work
+                        .configuration()
+                        .save(configuration)
+                        .await
+                        .map_err(|error| PatchCredentialError::Unknown(error.into()))?;
+                }
+
+                Ok(())
+            }
+            .await;
+
+            match result {
+                Ok(value) => {
+                    unit_of_work
+                        .commit()
+                        .await
+                        .map_err(|error| PatchCredentialError::Unknown(error.into()))?;
+                    Ok(value)
+                }
+                Err(error) => {
+                    if let Err(rollback_error) = unit_of_work.rollback().await {
+                        error!(
+                            error = ?rollback_error,
+                            "failed to roll back the patch credential unit of work"
+                        );
+                    }
+                    Err(error)
+                }
+            }
         })
     }
 }
@@ -141,6 +167,8 @@ mod tests {
     use std::error::Error;
     use std::iter::repeat_n;
     use std::sync::Arc;
+    use std::sync::atomic::AtomicBool;
+    use std::sync::atomic::Ordering;
 
     use chrono::NaiveDateTime;
 
@@ -163,15 +191,22 @@ mod tests {
     use crate::domain::port::password_hasher::MockPasswordHasher;
     use crate::domain::port::user_repository::MockUserRepository;
     use crate::test_helpers::SECRET_PASSWORD;
+    use crate::test_helpers::TestFactory;
+    use crate::test_helpers::unit_of_work_factory;
 
     use super::PatchCredential;
 
-    type UseCase = PatchCredential<
-        MockUserRepository,
-        MockCredentialRepository,
-        MockPasswordHasher,
-        MockConfigurationRepository,
-    >;
+    type UseCase = PatchCredential<TestFactory, MockPasswordHasher>;
+
+    /// A use case under test together with its transaction-lifecycle flags.
+    struct Harness {
+        /// Set when the unit of work is committed.
+        committed: Arc<AtomicBool>,
+        /// Set when the unit of work is rolled back.
+        rolled_back: Arc<AtomicBool>,
+        /// The use case under test.
+        use_case: UseCase,
+    }
 
     /// A 64-character hexadecimal string, valid for secrets and peppers.
     fn hex64(character: char) -> String {
@@ -187,7 +222,7 @@ mod tests {
             &mut MockPasswordHasher,
             &mut MockConfigurationRepository,
         ) -> Result<(), Box<dyn Error>>,
-    ) -> Result<UseCase, Box<dyn Error>> {
+    ) -> Result<Harness, Box<dyn Error>> {
         let mut user_repository = MockUserRepository::new();
         let mut credential_repository = MockCredentialRepository::new();
         let mut password_hasher = MockPasswordHasher::new();
@@ -200,12 +235,21 @@ mod tests {
             &mut configuration_repository,
         )?;
 
-        Ok(PatchCredential::new(
-            Arc::new(user_repository),
-            Arc::new(credential_repository),
-            Arc::new(password_hasher),
-            Arc::new(configuration_repository),
-        ))
+        let committed = Arc::new(AtomicBool::new(false));
+        let rolled_back = Arc::new(AtomicBool::new(false));
+        let factory = unit_of_work_factory(
+            user_repository,
+            credential_repository,
+            configuration_repository,
+            Arc::clone(&committed),
+            Arc::clone(&rolled_back),
+        );
+
+        Ok(Harness {
+            use_case: PatchCredential::new(Arc::new(factory), Arc::new(password_hasher)),
+            committed,
+            rolled_back,
+        })
     }
 
     fn configuration(log_root_admin_password: bool) -> Result<Configuration, Box<dyn Error>> {
@@ -270,7 +314,7 @@ mod tests {
     async fn patch_credential_root_admin_changes_own_credential_succeeds()
     -> Result<(), Box<dyn Error>> {
         // Arrange
-        let use_case = use_case_with(
+        let harness = use_case_with(
             |user_repository, credential_repository, password_hasher, configuration_repository| {
                 expect_caller(user_repository, user(0, "root", Role::Admin)?);
                 expect_credential(credential_repository, credential(0)?);
@@ -297,10 +341,11 @@ mod tests {
         let command = command(0, 0, SECRET_PASSWORD);
 
         // Act
-        let result = use_case.execute(command).await;
+        let result = harness.use_case.execute(command).await;
 
         // Assert
         assert!(result.is_ok());
+        assert!(harness.committed.load(Ordering::SeqCst));
         Ok(())
     }
 
@@ -308,7 +353,7 @@ mod tests {
     async fn patch_credential_root_admin_changes_other_user_credential_succeeds()
     -> Result<(), Box<dyn Error>> {
         // Arrange
-        let use_case = use_case_with(
+        let harness = use_case_with(
             |user_repository, credential_repository, password_hasher, configuration_repository| {
                 expect_caller(user_repository, user(0, "root", Role::Admin)?);
                 expect_credential(credential_repository, credential(4)?);
@@ -322,10 +367,11 @@ mod tests {
         let command = command(0, 4, SECRET_PASSWORD);
 
         // Act
-        let result = use_case.execute(command).await;
+        let result = harness.use_case.execute(command).await;
 
         // Assert
         assert!(result.is_ok());
+        assert!(harness.committed.load(Ordering::SeqCst));
         Ok(())
     }
 
@@ -333,7 +379,7 @@ mod tests {
     async fn patch_credential_root_admin_own_credential_configuration_search_failure_returns_unknown()
     -> Result<(), Box<dyn Error>> {
         // Arrange
-        let use_case = use_case_with(
+        let harness = use_case_with(
             |user_repository, credential_repository, password_hasher, configuration_repository| {
                 expect_caller(user_repository, user(0, "root", Role::Admin)?);
                 expect_credential(credential_repository, credential(0)?);
@@ -349,10 +395,11 @@ mod tests {
         let command = command(0, 0, SECRET_PASSWORD);
 
         // Act
-        let result = use_case.execute(command).await;
+        let result = harness.use_case.execute(command).await;
 
         // Assert
         assert!(matches!(result, Err(PatchCredentialError::Unknown(_))));
+        assert!(harness.rolled_back.load(Ordering::SeqCst));
         Ok(())
     }
 
@@ -360,7 +407,7 @@ mod tests {
     async fn patch_credential_root_admin_own_credential_configuration_save_failure_returns_unknown()
     -> Result<(), Box<dyn Error>> {
         // Arrange
-        let use_case = use_case_with(
+        let harness = use_case_with(
             |user_repository, credential_repository, password_hasher, configuration_repository| {
                 expect_caller(user_repository, user(0, "root", Role::Admin)?);
                 expect_credential(credential_repository, credential(0)?);
@@ -384,51 +431,54 @@ mod tests {
         let command = command(0, 0, SECRET_PASSWORD);
 
         // Act
-        let result = use_case.execute(command).await;
+        let result = harness.use_case.execute(command).await;
 
         // Assert
         assert!(matches!(result, Err(PatchCredentialError::Unknown(_))));
+        assert!(harness.rolled_back.load(Ordering::SeqCst));
         Ok(())
     }
 
     #[tokio::test]
     async fn patch_credential_standard_caller_forbidden() -> Result<(), Box<dyn Error>> {
         // Arrange
-        let use_case = use_case_with(|user_repository, _, _, _| {
+        let harness = use_case_with(|user_repository, _, _, _| {
             expect_caller(user_repository, user(3, "bobby", Role::Standard)?);
             Ok(())
         })?;
         let command = command(3, 1, SECRET_PASSWORD);
 
         // Act
-        let result = use_case.execute(command).await;
+        let result = harness.use_case.execute(command).await;
 
         // Assert
         assert!(matches!(result, Err(PatchCredentialError::Forbidden)));
+        assert!(harness.rolled_back.load(Ordering::SeqCst));
         Ok(())
     }
 
     #[tokio::test]
     async fn patch_credential_non_root_admin_caller_forbidden() -> Result<(), Box<dyn Error>> {
         // Arrange
-        let use_case = use_case_with(|user_repository, _, _, _| {
+        let harness = use_case_with(|user_repository, _, _, _| {
             expect_caller(user_repository, user(5, "admin", Role::Admin)?);
             Ok(())
         })?;
         let command = command(5, 1, SECRET_PASSWORD);
 
         // Act
-        let result = use_case.execute(command).await;
+        let result = harness.use_case.execute(command).await;
 
         // Assert
         assert!(matches!(result, Err(PatchCredentialError::Forbidden)));
+        assert!(harness.rolled_back.load(Ordering::SeqCst));
         Ok(())
     }
 
     #[tokio::test]
     async fn patch_credential_unknown_caller_forbidden() -> Result<(), Box<dyn Error>> {
         // Arrange
-        let use_case = use_case_with(|user_repository, _, _, _| {
+        let harness = use_case_with(|user_repository, _, _, _| {
             user_repository
                 .expect_search()
                 .times(1)
@@ -438,10 +488,11 @@ mod tests {
         let command = command(999, 1, SECRET_PASSWORD);
 
         // Act
-        let result = use_case.execute(command).await;
+        let result = harness.use_case.execute(command).await;
 
         // Assert
         assert!(matches!(result, Err(PatchCredentialError::Forbidden)));
+        assert!(harness.rolled_back.load(Ordering::SeqCst));
         Ok(())
     }
 
@@ -449,14 +500,15 @@ mod tests {
     async fn patch_credential_short_password_returns_invalid_password() -> Result<(), Box<dyn Error>>
     {
         // Arrange
-        let use_case = use_case_with(|_, _, _, _| Ok(()))?;
+        let harness = use_case_with(|_, _, _, _| Ok(()))?;
         let command = command(0, 0, "xY3!z9w");
 
         // Act
-        let result = use_case.execute(command).await;
+        let result = harness.use_case.execute(command).await;
 
         // Assert
         assert!(matches!(result, Err(PatchCredentialError::InvalidPassword)));
+        assert!(!harness.rolled_back.load(Ordering::SeqCst));
         Ok(())
     }
 
@@ -464,11 +516,11 @@ mod tests {
     async fn patch_credential_password_without_symbol_returns_invalid_password()
     -> Result<(), Box<dyn Error>> {
         // Arrange
-        let use_case = use_case_with(|_, _, _, _| Ok(()))?;
+        let harness = use_case_with(|_, _, _, _| Ok(()))?;
         let command = command(0, 0, "password123");
 
         // Act
-        let result = use_case.execute(command).await;
+        let result = harness.use_case.execute(command).await;
 
         // Assert
         assert!(matches!(result, Err(PatchCredentialError::InvalidPassword)));
@@ -479,7 +531,7 @@ mod tests {
     async fn patch_credential_unknown_credential_returns_unknown_credential()
     -> Result<(), Box<dyn Error>> {
         // Arrange
-        let use_case = use_case_with(|user_repository, credential_repository, _, _| {
+        let harness = use_case_with(|user_repository, credential_repository, _, _| {
             expect_caller(user_repository, user(0, "root", Role::Admin)?);
             credential_repository
                 .expect_search()
@@ -490,20 +542,21 @@ mod tests {
         let command = command(0, 42, SECRET_PASSWORD);
 
         // Act
-        let result = use_case.execute(command).await;
+        let result = harness.use_case.execute(command).await;
 
         // Assert
         assert!(matches!(
             result,
             Err(PatchCredentialError::UnknownCredential)
         ));
+        assert!(harness.rolled_back.load(Ordering::SeqCst));
         Ok(())
     }
 
     #[tokio::test]
     async fn patch_credential_user_search_failure_returns_unknown() -> Result<(), Box<dyn Error>> {
         // Arrange
-        let use_case = use_case_with(|user_repository, _, _, _| {
+        let harness = use_case_with(|user_repository, _, _, _| {
             user_repository
                 .expect_search()
                 .times(1)
@@ -513,10 +566,11 @@ mod tests {
         let command = command(0, 1, SECRET_PASSWORD);
 
         // Act
-        let result = use_case.execute(command).await;
+        let result = harness.use_case.execute(command).await;
 
         // Assert
         assert!(matches!(result, Err(PatchCredentialError::Unknown(_))));
+        assert!(harness.rolled_back.load(Ordering::SeqCst));
         Ok(())
     }
 
@@ -524,7 +578,7 @@ mod tests {
     async fn patch_credential_credential_search_failure_returns_unknown()
     -> Result<(), Box<dyn Error>> {
         // Arrange
-        let use_case = use_case_with(|user_repository, credential_repository, _, _| {
+        let harness = use_case_with(|user_repository, credential_repository, _, _| {
             expect_caller(user_repository, user(0, "root", Role::Admin)?);
             credential_repository
                 .expect_search()
@@ -535,17 +589,18 @@ mod tests {
         let command = command(0, 1, SECRET_PASSWORD);
 
         // Act
-        let result = use_case.execute(command).await;
+        let result = harness.use_case.execute(command).await;
 
         // Assert
         assert!(matches!(result, Err(PatchCredentialError::Unknown(_))));
+        assert!(harness.rolled_back.load(Ordering::SeqCst));
         Ok(())
     }
 
     #[tokio::test]
     async fn patch_credential_hash_failure_returns_unknown() -> Result<(), Box<dyn Error>> {
         // Arrange
-        let use_case = use_case_with(
+        let harness = use_case_with(
             |user_repository, credential_repository, password_hasher, _| {
                 expect_caller(user_repository, user(0, "root", Role::Admin)?);
                 expect_credential(credential_repository, credential(1)?);
@@ -559,10 +614,11 @@ mod tests {
         let command = command(0, 1, SECRET_PASSWORD);
 
         // Act
-        let result = use_case.execute(command).await;
+        let result = harness.use_case.execute(command).await;
 
         // Assert
         assert!(matches!(result, Err(PatchCredentialError::Unknown(_))));
+        assert!(harness.rolled_back.load(Ordering::SeqCst));
         Ok(())
     }
 
@@ -570,7 +626,7 @@ mod tests {
     async fn patch_credential_credential_save_failure_returns_unknown() -> Result<(), Box<dyn Error>>
     {
         // Arrange
-        let use_case = use_case_with(
+        let harness = use_case_with(
             |user_repository, credential_repository, password_hasher, _| {
                 expect_caller(user_repository, user(0, "root", Role::Admin)?);
                 expect_credential(credential_repository, credential(1)?);
@@ -585,10 +641,11 @@ mod tests {
         let command = command(0, 1, SECRET_PASSWORD);
 
         // Act
-        let result = use_case.execute(command).await;
+        let result = harness.use_case.execute(command).await;
 
         // Assert
         assert!(matches!(result, Err(PatchCredentialError::Unknown(_))));
+        assert!(harness.rolled_back.load(Ordering::SeqCst));
         Ok(())
     }
 }

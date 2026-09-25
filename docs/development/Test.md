@@ -26,6 +26,10 @@ Test must:
   number larger than the allowed bound);
 - have one test per authorization rule;
 - mock the application service / use case.
+- build the router state with a real `AppState` wrapping a mocked per-context use-case factory
+  (`crate::test_helpers::app_state_with_identity` / `crate::test_helpers::app_state_with_user`), and inject the mocked
+  use case through that factory;
+- set the factory expectation with `times(0..=1)` when the handler can reject the request before reaching the use case.
 
 When one test covers two rules at once it is acceptable, but it must be documented. Any test that falls outside the
 scope above (rare situation, cheap coverage) must be justified in the documentation.
