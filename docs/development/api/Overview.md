@@ -140,7 +140,8 @@ pub async fn create_note() -> axum::response::Json<Note> {
 Each parameter must declare, inside the `params(...)` attribute:
 
 - `name` — the parameter name as it appears in the URL / header / cookie.
-- `parameter_type` — one of `Path`, `Query`, `Header` or `Cookie`, bound to the Rust type of the parameter.
+- `in` — the parameter location, one of `Path`, `Query`, `Header` or `Cookie`.
+- `parameter_type` — optional; written `= Type` after the name to bind the value to a specific Rust type.
 - `description` — a human readable description of the parameter.
 
 Additional constraints may refine the value, see [constraint attributes](#constraint-attributes).
@@ -157,10 +158,10 @@ several handlers.
     path = "/notes/{id}",
     tag = "notes",
     params(
-        ("id", Path = uuid::Uuid, description = "Note id"),
+        ("id" = NumericID, Path, description = "Note id"),
         (
-            "X-Request-Id",
-            Header = uuid::Uuid,
+            "X-Request-Id" = String,
+            Header,
             description = "Correlation id",
         ),
     ),
@@ -188,15 +189,15 @@ use utoipa::IntoParams;
 #[derive(Debug, Deserialize, Serialize, IntoParams)]
 pub struct ListNotesParams {
     /// Maximum number of notes to return.
-    #[param(maximum = 100, minimum = 1, default = 20, description = "Page size")]
+    #[param(maximum = 100, minimum = 1, default = 20)]
     pub limit: u32,
 
     /// Offset of the first note to return.
-    #[param(minimum = 0, default = 0, description = "Page offset")]
+    #[param(minimum = 0, default = 0)]
     pub offset: u32,
 
     /// Only return notes matching this title.
-    #[param(min_length = 1, max_length = 128, description = "Title filter")]
+    #[param(min_length = 1, max_length = 128)]
     pub title: Option<String>,
 }
 ```
@@ -372,7 +373,7 @@ use utoipa::openapi::{
             body = ErrorBody,
             content_type = "application/json",
             headers(
-                ("Location", Header = String, description = "URI of the conflicting note"),
+                ("Location" = String, description = "URI of the conflicting note"),
             ),
             example = json!({"error": "A note with this title already exists"}),
             links(
