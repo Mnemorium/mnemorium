@@ -21,8 +21,8 @@ documented inline, at the source, with `#[utoipa::path(...)]` macros.
    ```rust
    #[derive(utoipa::OpenApi)]
    #[openapi(
-       paths(create_note, list_notes),
-       components(schemas(Note, NewNote, ErrorBody)),
+       paths(create_note, get_note, list_notes),
+       components(schemas(CreateNoteRequest, CreateNoteResponse, GetNoteResponse, ListNotesQuery, ListNotesResponse, ErrorBody)),
        tags(
            (name = "notes", description = "Note bounded context")
        )
@@ -91,8 +91,8 @@ use utoipa::OpenApi;
 
 #[derive(utoipa::OpenApi)]
 #[openapi(
-    paths(create_note, list_notes),
-    components(schemas(Note, NewNote, ErrorBody)),
+    paths(create_note, get_note, list_notes),
+    components(schemas(CreateNoteRequest, CreateNoteResponse, GetNoteResponse, ListNotesQuery, ListNotesResponse, ErrorBody)),
     tags(
         (name = "notes", description = "Note bounded context")
     ),
@@ -111,9 +111,9 @@ struct ApiDoc;
     operation_id = "create_note",
     path = "/notes",
     tag = "notes",
-    request_body = NewNote,
+    request_body = CreateNoteRequest,
     responses(
-        (status = CREATED, body = Note, description = "Note created"),
+        (status = CREATED, body = CreateNoteResponse, description = "Note created"),
         (
             status = BAD_REQUEST,
             body = ErrorBody,
@@ -130,7 +130,7 @@ struct ApiDoc;
     ),
     summary = "Create a new note"
 )]
-pub async fn create_note() -> axum::response::Json<Note> {
+pub async fn create_note() -> axum::response::Json<CreateNoteResponse> {
     unimplemented!()
 }
 ```
@@ -166,7 +166,7 @@ several handlers.
         ),
     ),
     responses(
-        (status = OK, body = Note, description = "Note found"),
+        (status = OK, body = GetNoteResponse, description = "Note found"),
         (status = NOT_FOUND, body = ErrorBody, description = "Unknown note"),
     ),
     security(
@@ -174,7 +174,7 @@ several handlers.
     ),
     summary = "Fetch a single note"
 )]
-pub async fn get_note() -> axum::response::Json<Note> {
+pub async fn get_note() -> axum::response::Json<GetNoteResponse> {
     unimplemented!()
 }
 ```
@@ -187,7 +187,7 @@ use utoipa::IntoParams;
 
 /// List notes, paginated.
 #[derive(Debug, Deserialize, Serialize, IntoParams)]
-pub struct ListNotesParams {
+pub struct ListNotesQuery {
     /// Maximum number of notes to return.
     #[param(maximum = 100, minimum = 1, default = 20)]
     pub limit: u32,
@@ -210,16 +210,16 @@ In the macro:
     operation_id = "list_notes",
     path = "/notes",
     tag = "notes",
-    params(ListNotesParams),
+    params(ListNotesQuery),
     responses(
-        (status = OK, body = [Note], description = "Notes matching the query"),
+        (status = OK, body = [ListNotesResponse], description = "Notes matching the query"),
     ),
     security(
         ("bearer_auth" = [])
     ),
     summary = "List notes"
 )]
-pub async fn list_notes() -> axum::response::Json<Vec<Note>> {
+pub async fn list_notes() -> axum::response::Json<Vec<ListNotesResponse>> {
     unimplemented!()
 }
 ```
@@ -257,7 +257,7 @@ use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
-pub struct Note {
+pub struct NoteResponse {
     /// Unique note identifier.
     #[schema(read_only, format = "uuid", example = json!("2lJT"))]
     pub id: String,
@@ -294,7 +294,7 @@ use utoipa::openapi::Example;
     summary = "A note with the smallest valid payload",
     value = json!({"title": "Todo", "body": "x"}),
 ))]
-pub struct NewNote {
+pub struct CreateNoteRequest {
     /// Note title.
     #[schema(min_length = 1, max_length = 128)]
     pub title: String,
@@ -321,11 +321,11 @@ Each request body declares:
     tag = "notes",
     request_body(
         content_type = "application/json",
-        content = NewNote,
+        content = CreateNoteRequest,
         example = json!({"title": "Habit tracking", "body": "Log daily streaks."}),
     ),
     responses(
-        (status = CREATED, body = Note, description = "Note created"),
+        (status = CREATED, body = CreateNoteResponse, description = "Note created"),
         (status = BAD_REQUEST, body = ErrorBody, description = "Invalid payload"),
     ),
     security(
@@ -333,7 +333,7 @@ Each request body declares:
     ),
     summary = "Create a new note"
 )]
-pub async fn create_note() -> axum::response::Json<Note> {
+pub async fn create_note() -> axum::response::Json<CreateNoteResponse> {
     unimplemented!()
 }
 ```
@@ -364,9 +364,9 @@ use utoipa::openapi::{
     operation_id = "create_note",
     path = "/notes",
     tag = "notes",
-    request_body = NewNote,
+    request_body = CreateNoteRequest,
     responses(
-        (status = CREATED, body = Note, description = "Note created"),
+        (status = CREATED, body = CreateNoteResponse, description = "Note created"),
         (status = BAD_REQUEST, body = ErrorBody, description = "Invalid payload"),
         (
             status = CONFLICT,
@@ -388,7 +388,7 @@ use utoipa::openapi::{
     ),
     summary = "Create a new note"
 )]
-pub async fn create_note() -> axum::response::Json<Note> {
+pub async fn create_note() -> axum::response::Json<CreateNoteResponse> {
     unimplemented!()
 }
 ```
