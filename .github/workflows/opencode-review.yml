@@ -31,7 +31,7 @@ jobs:
         run: npm ci --prefix .opencode
       - name: Review pull request
         run: |
-          opencode run --standalone \
+          opencode run --standalone --format json \
             --agent review-orchestrator \
             --model "${{ vars.AGENT_REVIEWER_MODEL }}" \
             "Review this pull request by loading and following the
@@ -42,7 +42,14 @@ jobs:
           URL: ${{ github.event.pull_request.html_url }}
           Base Branch: ${{ github.event.pull_request.base.ref }}
           Head Branch: ${{ github.event.pull_request.head.ref }}
-          </pull_request>" | tee review.md
+          </pull_request>" > events.ndjson
+
+          jq -js 'map(select(.type == "text")) | last | .part.text // ""' \
+            events.ndjson > review.md
+          if [ ! -s review.md ]; then
+            echo "Review produced no output." >&2
+            exit 1
+          fi
         env:
           OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
