@@ -19,15 +19,17 @@
         │   └── service
         └── infrastructure
             ├── inbound
+            │   ├── rest.rs
             │   └── rest
             │       ├── api_error.rs
             │       ├── app_state.rs
-            │       ├── rest.rs
+            │       ├── handler.rs
             │       ├── handler
             │       │   ├── asset
+            │       │   ├── get_health.rs
             │       │   ├── identity
             │       │   └── user
-            │       └── middleware
+            │       └── middleware.rs
             ├── logging.rs
             ├── outbound
             │   ├── argon2
@@ -57,12 +59,13 @@
 | `src/lib/domain/alias.rs`                             | Type alias for the project (ex: which integer to use for IDs)                                                     |
 | `src/lib/domain/model`                                | Aggregate, Entity, Value object declaration                                                                       |
 | `src/lib/domain/port`                                 | Port interface declaration                                                                                        |
-| `src/lib/domain/port/error.rs`                        | Repository, External service error declaration                                                                    |
+| `src/lib/domain/port/error.rs`                        | Outbound port errors: the shared Repository and External Service families, plus each port's own error family      |
 | `src/lib/domain/service`                              | Domain Service implementation; see Terms Glossary for more info on it                                             |
 | `src/lib/infrastructure/inbound/rest`                 | HTTP adapter layer                                                                                                |
 | `src/lib/infrastructure/inbound/rest/api_error.rs`    | API Error declaration                                                                                             |
 | `src/lib/infrastructure/inbound/rest/app_state.rs`    | Application state shared by the HTTP layer: live configuration, per-context use-case factories and token provider |
-| `src/lib/infrastructure/inbound/rest/rest.rs`         | Setup the axum routes and OpenAPI document                                                                        |
+| `src/lib/infrastructure/inbound/rest.rs`              | REST module root: declares the submodules and aggregates the OpenAPI document (`ApiDoc`)                          |
+| `src/lib/infrastructure/inbound/rest/handler.rs`      | Declares the route table (`setup_routes`) and installs the tracing middleware                                     |
 | `src/lib/infrastructure/inbound/rest/handler`         | HTTP endpoint handler                                                                                             |
 | `src/lib/infrastructure/inbound/rest/middleware`      | Axum middleware (authentication, tracing)                                                                         |
 | `src/lib/infrastructure/outbound`                     | Outbound Port adapter declaration                                                                                 |

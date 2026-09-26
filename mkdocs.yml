@@ -3,18 +3,20 @@ site_name: Mnemorium
 
 theme:
   name: material
+  logo: assets/logo.png
+  favicon: assets/logo.png
   language: en
   palette:
     - media: "(prefers-color-scheme: light)"
       scheme: default
-      primary: green
+      primary: blue
       toggle:
         icon: material/brightness-7
         name: Switch to dark mode
 
     - media: "(prefers-color-scheme: dark)"
       scheme: slate
-      primary: green
+      primary: blue
       toggle:
         icon: material/brightness-4
         name: Switch to light mode
