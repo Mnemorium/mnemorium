@@ -1,8 +1,7 @@
 FROM rust:1.98-alpine3.21 AS chef
 
-RUN apk add --no-cache musl-dev
-
-RUN cargo install --locked cargo-chef
+RUN apk add --no-cache musl-dev=1.2.5-r11 \
+    && cargo install --locked cargo-chef
 WORKDIR /app
 
 FROM chef AS planner

@@ -34,6 +34,7 @@
     multiverse.sqlite."3.51.2"
     multiverse.yamllint."1.37.1"
     multiverse.betterleaks."1.8.1"
+    multiverse.hadolint."2.13.1"
   ];
 
   languages.rust = {
@@ -161,6 +162,14 @@
       entry = "yamllint -c .yamllint .";
       pass_filenames = false;
       files = "\\.(yaml|yml)$";
+    };
+
+    # === docker
+    hadolint = {
+      enable = true;
+      package = multiverse.hadolint."2.13.1";
+      entry = "hadolint";
+      files = "(^|/)Dockerfile(\\..*)?$";
     };
 
     build = {
