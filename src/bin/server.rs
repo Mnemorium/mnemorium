@@ -28,8 +28,6 @@ use tracing::{error, info, warn};
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    logging::setup();
-
     let sqlite3 = bootstrap_sqlite3()?;
     let pool = init_db(&sqlite3).await?;
 
@@ -42,6 +40,8 @@ async fn main() -> Result<(), anyhow::Error> {
     ));
     let loaded_configuration = load_configuration.execute().await?.configuration().clone();
     let configuration = Arc::new(ArcSwap::from_pointee(loaded_configuration));
+
+    let _log_guard = logging::setup(configuration.load().logging())?;
 
     if configuration.load().persistence().sqlite3() != &sqlite3 {
         warn!("sqlite3 settings changed in the configuration; restart to apply them");

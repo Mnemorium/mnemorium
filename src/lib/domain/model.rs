@@ -4,6 +4,7 @@ pub mod configuration;
 pub mod credential;
 pub mod file;
 pub mod jwt;
+pub mod logging;
 pub mod music_album;
 pub mod music_medium;
 pub mod music_playlist;

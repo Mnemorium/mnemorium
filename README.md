@@ -158,9 +158,10 @@ cargo run --bin server
 ### Configuration
 
 Configuration is layered: the persisted singleton row is the base, the optional `config.yaml` file overrides it, and the
-environment overrides both. Environment variables use the `mnemorium` prefix and the `__` separator.
+environment overrides both. Environment variables use the `mnemorium` prefix and the `__` separator, for example
+`MNEMORIUM__LOGGING_LEVEL`.
 
-TODO: document the configuration keys, the `config.yaml` shape, and the exact environment variable names.
+TODO: link to a document that explains the configuration.
 
 ### First-Time Admin
 

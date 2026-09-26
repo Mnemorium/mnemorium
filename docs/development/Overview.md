@@ -80,7 +80,7 @@
 | `src/lib/infrastructure/outbound/sqlx/model`          | SQLx row models                                                                                                   |
 | `src/lib/infrastructure/outbound/sqlx/sqlite3.rs`     | SQLite pool initialization and migrations                                                                         |
 | `src/lib/infrastructure/use_case_factory`             | Per-context factories building use cases on demand                                                                |
-| `src/lib/infrastructure/logging.rs`                   | Logging related bootstrapping                                                                                     |
+| `src/lib/infrastructure/logging.rs`                   | `tracing` subscriber setup driven by the configuration                                                            |
 
 ## Server lifecycle
 
