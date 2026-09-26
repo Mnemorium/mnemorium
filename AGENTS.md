@@ -89,4 +89,5 @@ in `docs/development/UseCases.md`.
   infrastructure.
 - Any Rust change that affects the API must regenerate and commit
   `docs/development/api/openapi.json`.
-- Migrations are append-only: never edit a migration that has been merged.
+- Migrations are mutable until release — see
+  `docs/development/TechnicalDesign.md` § 4 (Persistence), `PERS-014`.
