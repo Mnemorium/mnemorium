@@ -2,7 +2,7 @@
 name: create-issue
 description: Files one GitHub issue for a group of related pre-existing concerns surfaced by a pull request
   review. Formats a decision request with the AI disclosure and a needs-triage label, then calls the
-  github-issue_create tool. Use when review-pr hands off pre-existing concerns that are not yet tracked.
+  github_issue_write tool. Use when review-pr hands off pre-existing concerns that are not yet tracked.
 ---
 
 # Create Issue
@@ -20,6 +20,7 @@ already removed the concerns that have an equivalent open issue; do not re-check
   appears to breach, a fact and rationale, and optionally an authoritative source. When no rule covers the
   concern, the source states the potential rule gap instead.
 - The pull request reference (`number` and `url`) where the concerns were found.
+- The repository (`owner` and `repo`), passed down from `review-pr`.
 
 ## Process
 
@@ -29,7 +30,8 @@ already removed the concerns that have an equivalent open issue; do not re-check
    `docs/development/IssueTracking.md`: the AI disclosure first, then Context (the pull request reference and
    that the concern is pre-existing), then Evidence (one `path:line` entry per concern with its source or
    potential rule gap), then Decision.
-3. Call the `github-issue_create` tool with the title, the body, and `labels: ["needs-triage"]`.
+3. Call the `github` MCP server's `issue_write` tool from Code Mode (`tools.github.issue_write({ ... })`) with
+   `owner`, `repo`, `method: "create"`, the title, the body, and `labels: ["needs-triage"]`.
 4. Return the created issue number and URL to the caller.
 
 ## Constraints
@@ -38,6 +40,6 @@ already removed the concerns that have an equivalent open issue; do not re-check
 - Cite the source attached to the concerns when there is one. Never invent a rule; when none applies, state the
   potential rule gap instead.
 - Do not search for existing issues; deduplication is owned by `review-pr`.
-- If the `github-issue_create` tool fails, report the failure and stop. Leave the concern in the review comment
+- If the `issue_write` tool fails, report the failure and stop. Leave the concern in the review comment
   unfiled; do not retry or fall back to another mechanism.
 - Do not edit the repository.

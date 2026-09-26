@@ -458,3 +458,7 @@ endif
 stop
 @enduml
 ```
+
+## GitHub token
+
+TODO: document how to set up the token used by the `github` MCP server.

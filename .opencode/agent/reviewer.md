@@ -18,8 +18,7 @@ permission:
   skill: allow
   todowrite: deny
   external_directory: deny
-  github-issue_search: deny
-  github-issue_create: deny
+  github_*: deny
 ---
 
 # Role

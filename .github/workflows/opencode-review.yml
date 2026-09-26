@@ -22,13 +22,21 @@ jobs:
         with:
           fetch-depth: 1
           persist-credentials: false
-      - name: Ensure GitHub CLI
-        run: >-
-          command -v gh ||
-          { sudo apt-get update && sudo apt-get install -y gh; }
       - run: npm install --global @opencode/cli
       - name: Install OpenCode plugin dependencies
         run: npm ci --prefix .opencode
+      - name: Check the GitHub MCP server connection
+        run: |
+          output=$(opencode mcp list 2>&1)
+          printf '%s\n' "$output"
+          if printf '%s\n' "$output" | grep -qE 'github.*connected'; then
+            exit 0
+          fi
+          echo "The github MCP server is not connected." >&2
+          echo "On auth failure, set GITHUB_MCP_TOKEN to a PAT." >&2
+          exit 1
+        env:
+          GITHUB_MCP_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Review pull request
         run: |
           opencode run --standalone --format json \
@@ -40,42 +48,18 @@ jobs:
           <pull_request>
           Number: ${{ github.event.pull_request.number }}
           URL: ${{ github.event.pull_request.html_url }}
+          Owner: ${{ github.repository_owner }}
+          Repository: ${{ github.event.repository.name }}
           Base Branch: ${{ github.event.pull_request.base.ref }}
           Head Branch: ${{ github.event.pull_request.head.ref }}
           </pull_request>" > events.ndjson
-
-          jq -js 'map(select(.type == "text")) | last | .part.text // ""' \
-            events.ndjson > review.md
-          if [ ! -s review.md ]; then
-            echo "Review produced no output." >&2
-            exit 1
-          fi
         env:
           OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - name: Publish review comment
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          REPO: ${{ github.repository }}
-          PR: ${{ github.event.pull_request.number }}
-        run: |
-          if [ ! -s review.md ]; then
-            echo "Review produced no output." >&2
-            exit 1
-          fi
-
-          marker='<!-- opencode-review -->'
-          id=$(gh api --paginate "repos/$REPO/issues/$PR/comments" \
-                 | jq -r --arg m "$marker" \
-                     '.[] | select(.body | contains($m)) | .id' \
-                 | head -n1)
-
-          printf '%s\n' "$marker" > body.md
-          cat review.md >> body.md
-
-          if [ -n "$id" ]; then
-            jq -n --rawfile body body.md '{body: $body}' \
-              | gh api -X PATCH "repos/$REPO/issues/comments/$id" --input -
-          else
-            gh pr comment "$PR" --repo "$REPO" --body-file body.md
-          fi
+          GITHUB_MCP_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Upload review event log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: opencode-review-events
+          path: events.ndjson
+          if-no-files-found: ignore

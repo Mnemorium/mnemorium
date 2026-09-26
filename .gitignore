@@ -22,6 +22,9 @@ mnemorium.db
 # Local config
 config.yaml
 
+# Local secrets (SecretSpec dotenv provider)
+.env
+
 # Python
 .ruff_cache/
 **/__pycache__/

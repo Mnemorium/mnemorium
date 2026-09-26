@@ -1,5 +1,9 @@
 ---
 # yaml-language-server: $schema=https://devenv.sh/devenv.schema.json
+secretspec:
+  enable: true
+  provider: dotenv
+  profile: default
 inputs:
   git-hooks:
     url: github:cachix/git-hooks.nix

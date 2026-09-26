@@ -1,10 +1,28 @@
 {
   "$schema": "https://opencode.ai/config.json",
-  "permission": {
-    "edit": {
-      "Cargo.toml": "deny",
-      "clippy.toml": "deny",
+  "permissions": [
+    {
+      "action": "edit",
+      "resource": "Cargo.toml",
+      "effect": "deny"
+    },
+    {
+      "action": "edit",
+      "resource": "clippy.toml",
+      "effect": "deny"
+    }
+  ],
+  "mcp": {
+    "servers": {
+      "github": {
+        "type": "remote",
+        "url": "https://api.githubcopilot.com/mcp/",
+        "oauth": false,
+        "headers": {
+          "Authorization": "Bearer {env:GITHUB_MCP_TOKEN}",
+          "X-MCP-Toolsets": "issues,pull_requests"
+        }
+      }
     }
   }
 }
-

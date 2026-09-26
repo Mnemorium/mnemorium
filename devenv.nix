@@ -8,11 +8,15 @@
 }:
 
 {
+  # `.env` belongs to the SecretSpec dotenv provider, not devenv's dotenv integration.
+  dotenv.disableHint = true;
+
   env = {
     NO_MKDOCS_2_WARNING = 1;
     LLVM_COV = "${pkgs.llvm}/bin/llvm-cov";
     LLVM_PROFDATA = "${pkgs.llvm}/bin/llvm-profdata";
     DATABASE_URL = "sqlite://dev.db";
+    GITHUB_MCP_TOKEN = config.secretspec.secrets.GITHUB_MCP_TOKEN or "";
   };
 
   # https://devenv.sh/packages/
