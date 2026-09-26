@@ -178,6 +178,8 @@ mod tests {
     use crate::domain::model::configuration::Configuration;
     use crate::domain::model::credential::Credential;
     use crate::domain::model::jwt::Jwt;
+    use crate::domain::model::logging::Logging;
+    use crate::domain::model::logging::Rotation;
     use crate::domain::model::persistence::Persistence;
     use crate::domain::model::security::Security;
     use crate::domain::model::sqlite3::Sqlite3;
@@ -257,7 +259,8 @@ mod tests {
         let security = Security::try_new(jwt, hex64('b'), log_root_admin_password)?;
         let sqlite3 = Sqlite3::try_new("mnemorium.db".to_owned(), 1)?;
         let persistence = Persistence::try_new(sqlite3);
-        Ok(Configuration::try_new(persistence, security))
+        let logging = Logging::try_new(false, "debug,sqlx=warn".to_owned(), 7, Rotation::Daily)?;
+        Ok(Configuration::try_new(persistence, security, logging))
     }
 
     fn user(id: i64, username: &str, role: Role) -> Result<User, UserError> {

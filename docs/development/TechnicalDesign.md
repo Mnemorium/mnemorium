@@ -181,6 +181,7 @@ material. The `#[utoipa::path(...)]` declaration contract lives in the [API sect
 | `STY-RUST-069` | Configuration     | `LoadConfiguration` runs once at startup; the resulting `Configuration` is stored as `Arc<ArcSwap<Configuration>>` in `AppState`.                                                                                                                                                                                                                               | [§ 10](#10-configuration)                                        |
 | `STY-RUST-070` | Configuration     | Never cache a configuration-derived value (pepper, `JWT` secret, TTL) in a long-lived adapter built at startup; read it from the live configuration.                                                                                                                                                                                                            | [§ 10](#10-configuration)                                        |
 | `STY-RUST-071` | Configuration     | Keep the bootstrap sources and their order identical to `ConfigConfigurationSource`.                                                                                                                                                                                                                                                                            | [§ 10](#10-configuration)                                        |
+| `STY-RUST-080` | Configuration     | The `logging` section drives the runtime logs; install the subscriber once, after `LoadConfiguration`, because the configuration lives behind the datastore.                                                                                                                                                                                                    | [§ 10](#10-configuration)                                        |
 
 ---
 
@@ -717,6 +718,13 @@ The datastore path is needed before the pool exists, but the configuration singl
 `bootstrap_sqlite3` (`src/lib/infrastructure/outbound/config/bootstrap.rs`) therefore reads the file and the environment
 only. That layering is intentionally duplicated with `ConfigConfigurationSource` (see `STY-RUST-001`); keep the source
 list and order identical.
+
+The configuration also carries the logging settings (`logging.level`, `logging.rotation`, `logging.max_files`,
+`logging.ansi`). Because those settings live behind the datastore, the `tracing` subscriber is installed from the loaded
+configuration **after** `LoadConfiguration` returns: anything logged during bootstrap, `init_db` and `LoadConfiguration`
+itself is discarded, and a startup failure reaches the operator through the error `main` returns. `logging::setup`
+(`src/lib/infrastructure/logging.rs`) fails fast on invalid filter directives and returns the `WorkerGuard` the
+composition root holds for the lifetime of the process.
 
 Runtime write-guarding of the configuration is deferred; see the `TODO` in `src/bin/server.rs`.
 
@@ -1631,6 +1639,10 @@ entity configuration {
     * log_root_admin_password: INTEGER <<NN, DF(1), CC(log_root_admin_password IN (0, 1))>>
     * sqlite3_path: TEXT <<NN>>
     * sqlite3_max_connections: INTEGER <<NN, CC(sqlite3_max_connections > 0)>>
+    * log_ansi: INTEGER <<NN, DF(0), CC(log_ansi IN (0, 1))>>
+    * log_level: TEXT <<NN, DF('debug,sqlx=warn')>>
+    * log_max_files: INTEGER <<NN, DF(7), CC(log_max_files >= 0)>>
+    * log_rotation: TEXT <<NN, DF('DAILY'), CC(log_rotation IN ('MINUTELY', 'HOURLY', 'DAILY', 'NEVER'))>>
 }
 
 user ||--|| credential

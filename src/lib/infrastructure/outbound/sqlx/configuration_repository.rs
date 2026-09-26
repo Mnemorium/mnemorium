@@ -3,12 +3,15 @@ use sqlx::Transaction;
 
 use crate::domain::model::configuration::Configuration;
 use crate::domain::model::jwt::Jwt;
+use crate::domain::model::logging::Logging;
+use crate::domain::model::logging::Rotation;
 use crate::domain::model::persistence::Persistence;
 use crate::domain::model::security::Security;
 use crate::domain::model::sqlite3::Sqlite3;
 use crate::domain::port::configuration_repository::ConfigurationRepository;
 use crate::domain::port::error::RepositoryError;
 use crate::infrastructure::outbound::sqlx::model::configuration::Configuration as SqlxConfiguration;
+use crate::infrastructure::outbound::sqlx::model::configuration::Rotation as SqlxRotation;
 
 /// Repository persisting the configuration singleton, backed by a `SQLite`
 /// transaction.
@@ -38,9 +41,13 @@ impl ConfigurationRepository for SqlxConfigurationRepository<'_> {
                 pepper,
                 log_root_admin_password,
                 sqlite3_path,
-                sqlite3_max_connections
+                sqlite3_max_connections,
+                log_ansi,
+                log_level,
+                log_max_files,
+                log_rotation
             )
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
             RETURNING
                 configuration_id,
                 jwt_secret,
@@ -48,7 +55,11 @@ impl ConfigurationRepository for SqlxConfigurationRepository<'_> {
                 pepper,
                 log_root_admin_password,
                 sqlite3_path,
-                sqlite3_max_connections",
+                sqlite3_max_connections,
+                log_ansi,
+                log_level,
+                log_max_files,
+                log_rotation",
         )
         .bind(0i64)
         .bind(configuration.security().jwt().secret())
@@ -63,6 +74,13 @@ impl ConfigurationRepository for SqlxConfigurationRepository<'_> {
             u64::from(configuration.persistence().sqlite3().max_connections()),
             "configuration sqlite3_max_connections does not fit in i64",
         )?)
+        .bind(configuration.logging().ansi())
+        .bind(configuration.logging().level())
+        .bind(to_i64(
+            u64::from(configuration.logging().max_files()),
+            "configuration log_max_files does not fit in i64",
+        )?)
+        .bind(sqlx_rotation(configuration.logging().rotation()))
         .fetch_one(&mut **self.transaction)
         .await?;
 
@@ -81,16 +99,24 @@ impl ConfigurationRepository for SqlxConfigurationRepository<'_> {
                 pepper,
                 log_root_admin_password,
                 sqlite3_path,
-                sqlite3_max_connections
+                sqlite3_max_connections,
+                log_ansi,
+                log_level,
+                log_max_files,
+                log_rotation
             )
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
             ON CONFLICT (configuration_id) DO UPDATE SET
                 jwt_secret = excluded.jwt_secret,
                 jwt_ttl = excluded.jwt_ttl,
                 pepper = excluded.pepper,
                 log_root_admin_password = excluded.log_root_admin_password,
                 sqlite3_path = excluded.sqlite3_path,
-                sqlite3_max_connections = excluded.sqlite3_max_connections
+                sqlite3_max_connections = excluded.sqlite3_max_connections,
+                log_ansi = excluded.log_ansi,
+                log_level = excluded.log_level,
+                log_max_files = excluded.log_max_files,
+                log_rotation = excluded.log_rotation
             RETURNING
                 configuration_id,
                 jwt_secret,
@@ -98,7 +124,11 @@ impl ConfigurationRepository for SqlxConfigurationRepository<'_> {
                 pepper,
                 log_root_admin_password,
                 sqlite3_path,
-                sqlite3_max_connections",
+                sqlite3_max_connections,
+                log_ansi,
+                log_level,
+                log_max_files,
+                log_rotation",
         )
         .bind(0i64)
         .bind(configuration.security().jwt().secret())
@@ -113,6 +143,13 @@ impl ConfigurationRepository for SqlxConfigurationRepository<'_> {
             u64::from(configuration.persistence().sqlite3().max_connections()),
             "configuration sqlite3_max_connections does not fit in i64",
         )?)
+        .bind(configuration.logging().ansi())
+        .bind(configuration.logging().level())
+        .bind(to_i64(
+            u64::from(configuration.logging().max_files()),
+            "configuration log_max_files does not fit in i64",
+        )?)
+        .bind(sqlx_rotation(configuration.logging().rotation()))
         .fetch_one(&mut **self.transaction)
         .await?;
 
@@ -128,7 +165,11 @@ impl ConfigurationRepository for SqlxConfigurationRepository<'_> {
                 pepper,
                 log_root_admin_password,
                 sqlite3_path,
-                sqlite3_max_connections
+                sqlite3_max_connections,
+                log_ansi,
+                log_level,
+                log_max_files,
+                log_rotation
             FROM configuration
             WHERE configuration_id = 0",
         )
@@ -143,6 +184,16 @@ impl ConfigurationRepository for SqlxConfigurationRepository<'_> {
 fn to_i64(value: u64, message: &'static str) -> Result<i64, RepositoryError> {
     i64::try_from(value)
         .map_err(|error| RepositoryError::Unknown(anyhow::anyhow!(error).context(message)))
+}
+
+/// Map the domain rotation period to its persisted representation.
+fn sqlx_rotation(rotation: Rotation) -> SqlxRotation {
+    match rotation {
+        Rotation::Daily => SqlxRotation::Daily,
+        Rotation::Hourly => SqlxRotation::Hourly,
+        Rotation::Minutely => SqlxRotation::Minutely,
+        Rotation::Never => SqlxRotation::Never,
+    }
 }
 
 /// Map a persisted configuration row back to the domain model.
@@ -165,8 +216,21 @@ fn domain_configuration(row: SqlxConfiguration) -> Result<Configuration, Reposit
     let security = Security::try_new(jwt, row.pepper, row.log_root_admin_password)
         .map_err(|_| RepositoryError::DataIntegrityViolation)?;
     let persistence = Persistence::try_new(sqlite3);
+    let log_max_files = u32::try_from(row.log_max_files).map_err(|error| {
+        RepositoryError::Unknown(
+            anyhow::anyhow!(error).context("configuration log_max_files does not fit in u32"),
+        )
+    })?;
+    let rotation = match row.log_rotation {
+        SqlxRotation::Daily => Rotation::Daily,
+        SqlxRotation::Hourly => Rotation::Hourly,
+        SqlxRotation::Minutely => Rotation::Minutely,
+        SqlxRotation::Never => Rotation::Never,
+    };
+    let logging = Logging::try_new(row.log_ansi, row.log_level, log_max_files, rotation)
+        .map_err(|_| RepositoryError::DataIntegrityViolation)?;
 
-    Ok(Configuration::try_new(persistence, security))
+    Ok(Configuration::try_new(persistence, security, logging))
 }
 
 #[cfg(test)]
@@ -180,6 +244,8 @@ mod tests {
 
     use crate::domain::model::configuration::Configuration;
     use crate::domain::model::jwt::Jwt;
+    use crate::domain::model::logging::Logging;
+    use crate::domain::model::logging::Rotation;
     use crate::domain::model::persistence::Persistence;
     use crate::domain::model::security::Security;
     use crate::domain::model::sqlite3::Sqlite3;
@@ -207,7 +273,8 @@ mod tests {
         let security = Security::try_new(jwt, hex64('b'), true)?;
         let sqlite3 = Sqlite3::try_new("mnemorium.db".to_owned(), 1)?;
         let persistence = Persistence::try_new(sqlite3);
-        Ok(Configuration::try_new(persistence, security))
+        let logging = Logging::try_new(true, "info,sqlx=trace".to_owned(), 3, Rotation::Hourly)?;
+        Ok(Configuration::try_new(persistence, security, logging))
     }
 
     #[tokio::test]
@@ -265,6 +332,7 @@ mod tests {
         let updated = Configuration::try_new(
             Persistence::try_new(Sqlite3::try_new("other.db".to_owned(), 3)?),
             Security::try_new(Jwt::try_new(hex64('c'), 60)?, hex64('d'), false)?,
+            Logging::try_new(false, "warn".to_owned(), 0, Rotation::Never)?,
         );
 
         // Act
@@ -274,6 +342,37 @@ mod tests {
         // Assert
         assert_eq!(persisted, updated);
         assert_eq!(found, Some(updated));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn save_round_trips_every_rotation_period() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let mut transaction = begin_transaction().await?;
+        let mut repository = SqlxConfigurationRepository::new(&mut transaction);
+        let base = configuration()?;
+
+        // Act & Assert
+        for rotation in [
+            Rotation::Daily,
+            Rotation::Hourly,
+            Rotation::Minutely,
+            Rotation::Never,
+        ] {
+            let expected = Configuration::try_new(
+                base.persistence().clone(),
+                base.security().clone(),
+                Logging::try_new(
+                    base.logging().ansi(),
+                    base.logging().level().to_owned(),
+                    base.logging().max_files(),
+                    rotation,
+                )?,
+            );
+            let persisted = repository.save(expected.clone()).await?;
+            assert_eq!(persisted, expected);
+            assert_eq!(repository.search().await?, Some(expected));
+        }
         Ok(())
     }
 
