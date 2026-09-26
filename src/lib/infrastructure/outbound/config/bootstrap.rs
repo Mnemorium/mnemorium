@@ -15,7 +15,7 @@ use crate::infrastructure::outbound::config::configuration_source::USER_CONFIG_P
 // the `ConfigurationSource` port. Either would move this layering behind a port
 // and let `main` stop touching the `config` crate entirely. The file and
 // environment layering is intentionally duplicated with
-// `ConfigConfigurationSource` (see the extraction rule in the StyleGuide); keep
+// `ConfigConfigurationSource` (see the extraction rule in `docs/development/TechnicalDesign.md` § 1); keep
 // the source list and order identical.
 /// Read the persistence settings from the user configuration file and the
 /// environment, before the datastore is reachable.

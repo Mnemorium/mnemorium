@@ -62,12 +62,14 @@ work from the code and the conventions documented under `docs/development/`.
 
 Read these source-of-truth documents before writing code and follow them:
 
-- `docs/development/StyleGuide.md` — Rust and SQL conventions.
-- `docs/development/Test.md` — testing strategy per layer.
+- `docs/development/TechnicalDesign.md` § 1 — Rust and SQL conventions.
+- `docs/development/TechnicalDesign.md` § 5 — testing strategy per layer.
 - `docs/development/UseCases.md` — use-case catalog (update entries only
   when the user explicitly asks).
-- `docs/development/api/Overview.md` — the OpenAPI / `#[utoipa::path(...)]`
+- `docs/development/TechnicalDesign.md` § 3 — the OpenAPI / `#[utoipa::path(...)]`
   endpoint contract.
+- `docs/development/TechnicalDesign.md` § 7 — the unit-of-work lifecycle every
+  datastore-touching use case follows, and § 8 — the repository contract.
 - The `[lints.clippy]` block in `Cargo.toml` — the lint contract (read-only).
 
 Mimic the existing code: it already satisfies every rule above. Prefer copying
@@ -82,18 +84,24 @@ its patterns over inventing new ones.
   module in `src/lib/application/port.rs`.
 - `src/lib/application/port/<context>_use_case_factory.rs` — the per-context
   factory contract (`<Context>UseCaseFactory`), returning `Arc<dyn
-  ...UseCase>`. See the StyleGuide.
+  ...UseCase>`. See `docs/development/TechnicalDesign.md` § 1.
 - `src/lib/application/use_case/<name>.rs` — the implementation: a struct
-  holding `Arc` dependencies, `new()`, and `execute` implemented with
-  `Box::pin(async move { ... })`. Register the module in
-  `src/lib/application/use_case.rs`.
+  holding `Arc` dependencies (the unit-of-work factory plus adapters rebuilt
+  from the live configuration), `new()`, and `execute` implemented with
+  `Box::pin(async move { ... })`. Inside `execute` it opens a unit of work,
+  obtains the context views it needs, and commits or rolls back. Register the
+  module in `src/lib/application/use_case.rs`.
+- `src/lib/domain/port/unit_of_work.rs` — the `UnitOfWork` and
+  `UnitOfWorkFactory` traits. Per-context views (`identity_unit_of_work.rs`,
+  `user_unit_of_work.rs`, ...) expose only their own context's repositories.
 - `src/lib/domain/model/<name>.rs` — domain entities: the domain error enum
   declared before the struct, `try_new` validation, getters/setters, and
   `Role`-style `CHECK` enums.
 - `src/lib/domain/port/<name>_repository.rs` — repository/port traits
   (`Send + Sync`, async methods returning `impl Future + Send`) and filter
   structs. Port errors live in `src/lib/domain/port/error.rs`
-  (`RepositoryError`, `ExternalServiceError`, ...).
+  (`RepositoryError`, `ExternalServiceError`, ...). Repositories are obtained
+  only from a unit of work; a concrete adapter never leaves infrastructure.
 - `src/lib/domain/service/` — pure domain services with no dependencies.
   `src/lib/domain/alias.rs` defines `NumericID` — use it for every numeric
   identifier column.
@@ -104,9 +112,11 @@ its patterns over inventing new ones.
   use-case factories and token provider), `middleware/`, `rest.rs` (the `ApiDoc`
   OpenAPI aggregation), `handler.rs` and `handler/<context>.rs` (route wiring).
 - `src/lib/infrastructure/outbound/sqlx/` — repository implementations
-  (`Sqlx<Aggregate>Repository`), `model/` (sqlx row models), `error_mapping.rs`
-  (`From<sqlx::Error> for RepositoryError`), `sqlite3.rs` (pool init +
-  migrations).
+  (`<Tech><Aggregate>Repository`, e.g. `SqlxUserRepository`, holding the unit
+  of work's `&mut Transaction<'static, Sqlite>`), `unit_of_work.rs`
+  (`SqlxUnitOfWork` / `SqlxUnitOfWorkFactory`), `model/` (sqlx row models),
+  `error_mapping.rs` (`From<sqlx::Error> for RepositoryError`), `sqlite3.rs`
+  (pool init + migrations).
 - `src/lib/infrastructure/outbound/` — the other adapters: `jwt/`, `argon2/`,
   `moka/`, `random/`, and `config/` (`bootstrap.rs` reads the persistence
   settings before the datastore is reachable).
@@ -116,6 +126,18 @@ its patterns over inventing new ones.
   `.down.sql` pairs.
 
 ## Workflows
+
+### Use the unit of work
+
+- Every use case that touches the datastore opens its own unit of work from the
+  injected `UnitOfWorkFactory` (`begin()`), requests each context view it needs
+  and drops it before requesting the next, then calls `commit()` on success or
+  `rollback()` on failure.
+- Cross-context writes stay atomic: request every repository from the **same**
+  unit of work; opening a second one would be a second transaction.
+- A rollback failure is logged and the **original** business error is returned;
+  a commit failure maps to the use-case `Unknown`. See
+  `docs/development/TechnicalDesign.md` § 7 (`STY-RUST-037`–`048`).
 
 ### Add a use case
 
@@ -128,8 +150,11 @@ its patterns over inventing new ones.
    `Pin<Box<dyn Future<Output = Result<Response, Error>> + Send + 'future>>`.
    Register the module in `port.rs`.
 2. Implementation `src/lib/application/use_case/<name>.rs`: struct `<Name>`
-   holding `Arc` dependencies, `new()`, and `execute` as
-   `Box::pin(async move { ... })`. Translate port errors into the use-case
+   holding `Arc` dependencies (the unit-of-work factory plus adapters rebuilt
+   from the live configuration), `new()`, and `execute` as
+   `Box::pin(async move { ... })`. Inside `execute`, open a unit of work,
+   obtain the context views it needs, then commit on success or roll back
+   before returning a business error. Translate port errors into the use-case
    error's `Unknown`. Register the module in `use_case.rs`.
 3. Unit tests in the same file (`#[cfg(test)] mod tests`): happy path,
    validation errors, business-rule violations, dependency failures — mocks via
@@ -187,9 +212,12 @@ its patterns over inventing new ones.
 1. Port trait in `src/lib/domain/port/<name>_repository.rs`: `<Aggregate>Repository:
    Send + Sync` with `create`/`save`/`delete`/`search` returning `impl Future
    ... + Send`, a filter struct, and `#[cfg_attr(test, mockall::automock)]`.
-   Register the module in `port.rs`.
+   Register the module in `port.rs`. The repository is requested from a
+   unit-of-work context view, never constructed by the caller.
 2. sqlx implementation in `src/lib/infrastructure/outbound/sqlx/<name>_repository.rs`:
-   struct `Sqlx<Aggregate>Repository` holding a `SqlitePool`. `create` never
+   struct `<Tech><Aggregate>Repository`, e.g. `SqlxUserRepository<'transaction>`,
+   borrowing `&'transaction mut Transaction<'static, Sqlite>`; it is built by
+   the unit-of-work accessor — never with a connection pool. `create` never
    binds identity columns and uses `RETURNING`; `save` upserts by identifier;
    `search` builds with `QueryBuilder`; rows map through a private
    `domain_<name>` helper. Errors go through `RepositoryError::from`
@@ -202,6 +230,9 @@ its patterns over inventing new ones.
 4. Integration tests in the same file: an in-memory pool capped at one
    connection (`sqlite::memory:`) plus `sqlx::migrate!("./migrations")`. Cover
    the happy path, every schema constraint, and every trigger.
+5. Expose it through the context's unit-of-work view: add the accessor to
+   `domain/port/<context>_unit_of_work.rs` and implement it in
+   `infrastructure/outbound/sqlx/unit_of_work.rs`.
 
 ### Add a domain model
 
@@ -222,13 +253,14 @@ its patterns over inventing new ones.
 ### Error translation chain
 
 - Domain error → use-case error (in the use case) → `ApiError` (in the handler)
-  → the standard `{"error": "message"}` body. `NotFound` is not an error:
-  missing entities come back as `Option`/empty collections, never as an error
-  variant.
+  → the standard `{"error": "message"}` body. A missing entity is not an
+  **outbound-port** error: at a repository it comes back as `Option`/an empty
+  collection/`Ok(false)`. Use-case errors may model absence (`STY-RUST-021`,
+  `STY-RUST-022`).
 
 ## API declaration gotchas (utoipa 5.5)
 
-The `docs/development/api/Overview.md` examples predate utoipa 5.5 and are
+The `docs/development/TechnicalDesign.md` § 3 examples predate utoipa 5.5 and are
 **wrong for the pinned version** — follow these instead:
 
 - Inline path-parameter tuple syntax is `("id" = NumericID, Path, description = "...")`

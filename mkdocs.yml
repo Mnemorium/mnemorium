@@ -27,15 +27,10 @@ nav:
   - Home: index.md
   - Development:
       - Overview: development/Overview.md
-      - Persistence: development/Persistence.md
-      - Dependencies: development/Dependencies.md
+      - Technical Design: development/TechnicalDesign.md
       - Issue Tracking: development/IssueTracking.md
-      - API documentation:
-          - Overview: development/api/Overview.md
-          - Spec: development/api/Spec.md
+      - API Spec: development/api/Spec.md
       - Glossary: development/Glossary.md
-      - Style Guide: development/StyleGuide.md
-      - Test: development/Test.md
       - Use Cases: development/UseCases.md
 
 plugins:

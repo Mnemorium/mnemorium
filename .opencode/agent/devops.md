@@ -20,9 +20,10 @@ conventions.
 
 - You work across build, tooling, container, and CI configuration files.
 - Own: `devenv.nix`, `devenv.yaml`, `Dockerfile`, `.dockerignore`,
-  `.github/workflows/*`, and repo hygiene config (`.yamllint`,
-  `.markdownlint-cli2.jsonc`, `.ls-lint.yml`, `.taplo.toml`, `ruff.toml`,
-  `.prettierrc`, `.gitignore`, `script/*`).
+  `.github/workflows/*`, `mkdocs.yml`, and repo hygiene config (`.yamllint`,
+  `.markdownlint-cli2.jsonc`, `.prettierrc`, `.prettierignore`, `.ls-lint.yml`,
+  `.taplo.toml`, `.betterleaks.toml`, `clippy.toml`, `ruff.toml`, `pytest.ini`,
+  `requirements.txt`, `.releaserc.json`, `.gitignore`, `script/*`).
 - You may read and modify anything you need to run the gates. Formatting and
   lint-fix edits are allowed on source under `src/` (via `cargo fmt`,
   `rustfmt`, clippy fixes). Substantive logic changes to `src/` belong to the
@@ -41,25 +42,28 @@ conventions.
 
 - Enter the environment with `devenv shell`. `devenv test` builds the shell and
   runs every pre-commit hook.
-- Tasks are invoked as `devenv <task>`. Canonical groups:
-  - `fmt:all` (and per-tool: `fmt:rust`, `fmt:nix`, `fmt:python`, `fmt:shell`,
-    `fmt:toml`, `fmt:md`, `fmt:sql`)
-  - `lint:all` (and per-tool: `lint:rust`, `lint:python`, `lint:yaml`,
-    `lint:sql`, `lint:md`)
-  - `build:all`, `build:server`, `build:openapi-gen`
-  - `test:coverage`, `test:e2e`
-  - `docs:openapi-gen`, `docs:html-coverage`
-- The `scripts.server` script launches the server (`devenv server`).
+- Tasks are invoked as `devenv <task>`. There is no aggregate `fmt:all` or
+  `lint:all`; run the per-tool tasks:
+  - format: `fmt:rust`, `fmt:nix`, `fmt:python`, `fmt:shell`, `fmt:toml`,
+    `fmt:md`, `fmt:sql`
+  - lint: `lint:rust`, `lint:python`, `lint:yaml`, `lint:sql`, `lint:md`,
+    `lint:shell`
+  - build: `build:all`, `build:server`, `build:openapi-gen`
+  - test: `test:coverage`, `test:e2e`
+  - docs: `docs:openapi-gen`, `docs:html-coverage`
+- The `server` script launches the server (`devenv server`).
 
 ## Linting & formatting
 
-- `lint:all` and `fmt:all` are the canonical gates; run them before finishing
-  devops work and confirm they pass.
-- Pre-commit hooks enforce: clippy with `-D warnings`, `rustfmt`, `ruff` +
-  ruff-format, `shellcheck`/`shfmt`, `sqlfluff`, `nixfmt`, `taplo`,
-  `markdownlint-cli2`, `yamllint`, `ls-lint`, `cargo-audit`, an llvm-cov
-  coverage gate (functions/regions/lines ≥ 80%), and `mkdocs build --strict`
-  plus link checking.
+- Run the relevant `fmt:*`/`lint:*` tasks, or `devenv test` for the whole gate,
+  before finishing devops work and confirm they pass.
+- Pre-commit hooks enforce: `commitizen`, `shellcheck`/`shfmt`, `rustfmt`,
+  clippy with `-D warnings`, `ruff` + ruff-format, `nixfmt`, `ls-lint`,
+  `taplo`, an `openapi` hook that regenerates and stages
+  `docs/development/api/openapi.json`, an llvm-cov coverage gate
+  (functions/regions/lines ≥ 80%), `sqlfluff`, `cargo-audit`, `betterleaks`,
+  `mkdocs build --strict`, `prettier` then `markdownlint-cli2`, `yamllint`,
+  and a `cargo build`.
 - You may run `cargo fmt` and clippy autofixes, which modify files under
   `src/`. Keep such changes scoped to formatting; do not introduce behavior
   changes.
@@ -79,25 +83,35 @@ conventions.
 ## Git structure & conventions
 
 - Branch naming: `{type}({scope})/{description}`, kebab-case — e.g.
-  `feature(core)/serve-media`, `hotfix(devops)/fix-dockerfile`.
+  `feat(application)/serve-media`, `fix(devenv)/fix-dockerfile`.
 - PR title naming: `{type}({scope}): {description}` — enforced by CI.
-- Scopes: `core`, `agent`, `devops`. Type prefixes: `feature`, `bugfix`,
-  `refactor`, `docs`, `chore`, `release`, `test`, `hotfix`.
+  Conventional Commits v1.0.0; append `!` after the type/scope (or a
+  `BREAKING CHANGE:` footer) for a breaking change.
+- Types: `feat`, `fix`, `perf`, `refactor`, `docs`, `test`, `build`, `ci`,
+  `chore`. Scopes: `config`, `agent`, `devenv`, `github`, `test-e2e`,
+  `test-system`, `sqlite3`, `application`, `development`, `readme`, `api`.
+  See `docs/development/Overview.md` for the full tables.
 - `main` is protected; the semantic-PR gate rejects non-conforming titles.
+- A `docs`-type PR may only change documentation (`docs/**`, any `*.md`,
+  `mkdocs.yml`, or image assets); the `docs-only` job rejects anything else.
+  Use another type (`build`, `chore`, ...) for tooling or dependency changes.
 
 ## CI/CD
 
-- `ci.yml`: runs on PRs to `main`. The `gatekeeper` job enforces semantic PR
-  titles; the `main` job sets up Nix + devenv and runs `devenv test` (all
-  hooks). Replicate locally with `devenv test`.
-- `cd-pre-v1.yml`: on `v0.*` tags, logs into Docker Hub and builds/pushes the
-  image. Keep tags, repository vars, and secrets consistent with the
-  workflow's expectations.
+- `ci.yml`: runs on PRs to `main`. `gatekeeper` enforces the semantic PR title;
+  `changes` fans out per file type, then `betterleaks`, `rust`, `security`,
+  `python`, `docs`, `sql`, `shell`, `nix`, and `lint` run as needed, plus the
+  `docs-only` guard. There is no aggregate `devenv test` job — run `devenv test`
+  locally to replicate it.
+- `cd.yml`: on push to `main`, semantic-release bumps `Cargo.toml` and
+  `docs/development/api/openapi.json`, builds and pushes the Docker image,
+  commits `CHANGELOG.md`, tags `v<version>`, and publishes the release. The
+  versioning rules live in `docs/development/Overview.md`.
 
 ## Running things
 
 - Server: `devenv server` (or `cargo run --bin server`).
-- Docs site: `devenv docs` (mkdocs serve). OpenAPI preview: `devenv
-  openapi-spec`.
+- Processes (run with `devenv up`): `docs` (mkdocs serve on `:8000`) and
+  `openapi-spec` (Redocly preview on `:8001`).
 - When you change build/CI/tooling config, verify with `devenv test` (or the
-  relevant `lint:`/`fmt:`/`build:` task) and report which gates pass or fail.
+  relevant `fmt:`/`lint:`/`build:` task) and report which gates pass or fail.

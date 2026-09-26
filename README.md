@@ -198,8 +198,8 @@ Enter the environment first: `devenv shell`.
 | Full gate | `devenv test` (all pre-commit hooks)                                                     |
 
 The module and layer map lives in [Overview](docs/development/Overview.md). That document also defines the branch, PR
-title, and commit conventions; see [Testing](docs/development/Test.md) for the testing strategy and
-[Style Guide](docs/development/StyleGuide.md) for the Rust and SQL conventions.
+title, and commit conventions; see the [Technical Design Document](docs/development/TechnicalDesign.md) § 5 for the
+testing strategy and § 1 for the Rust and SQL conventions.
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 

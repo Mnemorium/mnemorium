@@ -78,7 +78,7 @@ Always list all eight dimensions, in this order, using the evaluation of the lin
 ## Checklist
 
 - [x] Correctness & safety
-- [ ] StyleGuide compliance — 2 violations
+- [ ] Code style compliance — 2 violations
 - [x] Architecture & boundaries
 - [x] REST & OpenAPI
 - [x] Persistence & SQL
@@ -101,7 +101,7 @@ Group `Introduced` findings by severity, strongest first. Omit an empty group.
 ### Blocker
 
 - **`path:line`** — <fact>
-  - Source: `docs/development/StyleGuide.md` § "<section>"
+  - Source: `docs/development/TechnicalDesign.md` § 1, STY-RUST-012
 
 ### Violation
 

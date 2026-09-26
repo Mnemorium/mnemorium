@@ -53,7 +53,7 @@ IDs are sequential across the whole catalog: `UC-001`, `UC-002`, …
 
 - Numbered steps, each branch starting from a happy-path step (e.g. `3a.` when branching from step 3).
 - Every flow listed here is a `Critical exception path` (see Glossary): a scenario worth testing, covered following
-  [Test.md](Test.md).
+  [TechnicalDesign.md](TechnicalDesign.md) § 5.
 - List a flow only when it is needed; business rules do not require a one-to-one branch.
 
 ### Post condition(s)

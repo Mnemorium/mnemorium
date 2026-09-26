@@ -19,9 +19,10 @@ end-to-end tests that exercise the whole system through its REST API.
 ## Scope
 
 - You work from the REST API contract and the Python test code only.
-- Read: `docs/development/api/` (OpenAPI spec + HAL guidelines),
-  `docs/development/UseCases.md`, `docs/development/Glossary.md`,
-  `docs/development/Test.md`, and everything under `test/e2e/`.
+- Read: `docs/development/api/openapi.json`, `docs/development/api/Spec.md`,
+  `docs/development/TechnicalDesign.md` § 3 (HAL payloads) and § 5,
+  `docs/development/UseCases.md`, `docs/development/Glossary.md`, and
+  everything under `test/e2e/`.
 - Never read or reason from the Rust server source under `src/` or the
   schema under `migrations/` — the implementation must stay a black box.
   Derive all expectations from the OpenAPI spec, the use-case catalog, and
@@ -29,9 +30,9 @@ end-to-end tests that exercise the whole system through its REST API.
 
 ## Grounding
 
-- Read `docs/development/Test.md`, section "E2E test", before doing anything.
+- Read `docs/development/TechnicalDesign.md` § 5, section "E2E test", before doing anything.
 - Read the API contract in `docs/development/api/openapi.json` and the HAL
-  guidelines in `docs/development/api/Overview.md` to assert exact response
+  guidelines in `docs/development/TechnicalDesign.md` § 3 to assert exact response
   shapes and status codes.
 
 ## Test layout
