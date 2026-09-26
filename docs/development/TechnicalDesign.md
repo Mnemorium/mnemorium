@@ -1639,7 +1639,7 @@ entity configuration {
     * log_root_admin_password: INTEGER <<NN, DF(1), CC(log_root_admin_password IN (0, 1))>>
     * sqlite3_path: TEXT <<NN>>
     * sqlite3_max_connections: INTEGER <<NN, CC(sqlite3_max_connections > 0)>>
-    * log_ansi: INTEGER <<NN, DF(0), CC(log_ansi IN (0, 1))>>
+    * is_log_ansi: INTEGER <<NN, DF(0), CC(is_log_ansi IN (0, 1))>>
     * log_level: TEXT <<NN, DF('debug,sqlx=warn')>>
     * log_max_files: INTEGER <<NN, DF(7), CC(log_max_files >= 0)>>
     * log_rotation: TEXT <<NN, DF('DAILY'), CC(log_rotation IN ('MINUTELY', 'HOURLY', 'DAILY', 'NEVER'))>>

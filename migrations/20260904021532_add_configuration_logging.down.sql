@@ -4,4 +4,4 @@ ALTER TABLE configuration DROP COLUMN log_max_files;
 
 ALTER TABLE configuration DROP COLUMN log_level;
 
-ALTER TABLE configuration DROP COLUMN log_ansi;
+ALTER TABLE configuration DROP COLUMN is_log_ansi;

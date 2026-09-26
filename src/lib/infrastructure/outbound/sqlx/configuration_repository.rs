@@ -33,6 +33,12 @@ impl ConfigurationRepository for SqlxConfigurationRepository<'_> {
         &mut self,
         configuration: Configuration,
     ) -> Result<Configuration, RepositoryError> {
+        let log_rotation = match configuration.logging().rotation() {
+            Rotation::Daily => SqlxRotation::Daily,
+            Rotation::Hourly => SqlxRotation::Hourly,
+            Rotation::Minutely => SqlxRotation::Minutely,
+            Rotation::Never => SqlxRotation::Never,
+        };
         let row = sqlx::query_as::<_, SqlxConfiguration>(
             "INSERT INTO configuration (
                 configuration_id,
@@ -42,7 +48,7 @@ impl ConfigurationRepository for SqlxConfigurationRepository<'_> {
                 log_root_admin_password,
                 sqlite3_path,
                 sqlite3_max_connections,
-                log_ansi,
+                is_log_ansi,
                 log_level,
                 log_max_files,
                 log_rotation
@@ -56,7 +62,7 @@ impl ConfigurationRepository for SqlxConfigurationRepository<'_> {
                 log_root_admin_password,
                 sqlite3_path,
                 sqlite3_max_connections,
-                log_ansi,
+                is_log_ansi,
                 log_level,
                 log_max_files,
                 log_rotation",
@@ -80,7 +86,7 @@ impl ConfigurationRepository for SqlxConfigurationRepository<'_> {
             u64::from(configuration.logging().max_files()),
             "configuration log_max_files does not fit in i64",
         )?)
-        .bind(sqlx_rotation(configuration.logging().rotation()))
+        .bind(log_rotation)
         .fetch_one(&mut **self.transaction)
         .await?;
 
@@ -91,6 +97,12 @@ impl ConfigurationRepository for SqlxConfigurationRepository<'_> {
         &mut self,
         configuration: Configuration,
     ) -> Result<Configuration, RepositoryError> {
+        let log_rotation = match configuration.logging().rotation() {
+            Rotation::Daily => SqlxRotation::Daily,
+            Rotation::Hourly => SqlxRotation::Hourly,
+            Rotation::Minutely => SqlxRotation::Minutely,
+            Rotation::Never => SqlxRotation::Never,
+        };
         let row = sqlx::query_as::<_, SqlxConfiguration>(
             "INSERT INTO configuration (
                 configuration_id,
@@ -100,7 +112,7 @@ impl ConfigurationRepository for SqlxConfigurationRepository<'_> {
                 log_root_admin_password,
                 sqlite3_path,
                 sqlite3_max_connections,
-                log_ansi,
+                is_log_ansi,
                 log_level,
                 log_max_files,
                 log_rotation
@@ -113,7 +125,7 @@ impl ConfigurationRepository for SqlxConfigurationRepository<'_> {
                 log_root_admin_password = excluded.log_root_admin_password,
                 sqlite3_path = excluded.sqlite3_path,
                 sqlite3_max_connections = excluded.sqlite3_max_connections,
-                log_ansi = excluded.log_ansi,
+                is_log_ansi = excluded.is_log_ansi,
                 log_level = excluded.log_level,
                 log_max_files = excluded.log_max_files,
                 log_rotation = excluded.log_rotation
@@ -125,7 +137,7 @@ impl ConfigurationRepository for SqlxConfigurationRepository<'_> {
                 log_root_admin_password,
                 sqlite3_path,
                 sqlite3_max_connections,
-                log_ansi,
+                is_log_ansi,
                 log_level,
                 log_max_files,
                 log_rotation",
@@ -149,7 +161,7 @@ impl ConfigurationRepository for SqlxConfigurationRepository<'_> {
             u64::from(configuration.logging().max_files()),
             "configuration log_max_files does not fit in i64",
         )?)
-        .bind(sqlx_rotation(configuration.logging().rotation()))
+        .bind(log_rotation)
         .fetch_one(&mut **self.transaction)
         .await?;
 
@@ -166,7 +178,7 @@ impl ConfigurationRepository for SqlxConfigurationRepository<'_> {
                 log_root_admin_password,
                 sqlite3_path,
                 sqlite3_max_connections,
-                log_ansi,
+                is_log_ansi,
                 log_level,
                 log_max_files,
                 log_rotation
@@ -184,16 +196,6 @@ impl ConfigurationRepository for SqlxConfigurationRepository<'_> {
 fn to_i64(value: u64, message: &'static str) -> Result<i64, RepositoryError> {
     i64::try_from(value)
         .map_err(|error| RepositoryError::Unknown(anyhow::anyhow!(error).context(message)))
-}
-
-/// Map the domain rotation period to its persisted representation.
-fn sqlx_rotation(rotation: Rotation) -> SqlxRotation {
-    match rotation {
-        Rotation::Daily => SqlxRotation::Daily,
-        Rotation::Hourly => SqlxRotation::Hourly,
-        Rotation::Minutely => SqlxRotation::Minutely,
-        Rotation::Never => SqlxRotation::Never,
-    }
 }
 
 /// Map a persisted configuration row back to the domain model.
@@ -227,7 +229,7 @@ fn domain_configuration(row: SqlxConfiguration) -> Result<Configuration, Reposit
         SqlxRotation::Minutely => Rotation::Minutely,
         SqlxRotation::Never => Rotation::Never,
     };
-    let logging = Logging::try_new(row.log_ansi, row.log_level, log_max_files, rotation)
+    let logging = Logging::try_new(row.is_log_ansi, row.log_level, log_max_files, rotation)
         .map_err(|_| RepositoryError::DataIntegrityViolation)?;
 
     Ok(Configuration::try_new(persistence, security, logging))
@@ -238,6 +240,7 @@ mod tests {
     use std::error::Error;
     use std::iter::repeat_n;
 
+    use rstest::rstest;
     use sqlx::Sqlite;
     use sqlx::Transaction;
     use sqlx::sqlite::SqlitePoolOptions;
@@ -345,34 +348,37 @@ mod tests {
         Ok(())
     }
 
+    #[rstest]
+    #[case::daily(Rotation::Daily)]
+    #[case::hourly(Rotation::Hourly)]
+    #[case::minutely(Rotation::Minutely)]
+    #[case::never(Rotation::Never)]
     #[tokio::test]
-    async fn save_round_trips_every_rotation_period() -> Result<(), Box<dyn Error>> {
+    async fn save_round_trips_every_rotation_period(
+        #[case] rotation: Rotation,
+    ) -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut transaction = begin_transaction().await?;
         let mut repository = SqlxConfigurationRepository::new(&mut transaction);
         let base = configuration()?;
+        let expected = Configuration::try_new(
+            base.persistence().clone(),
+            base.security().clone(),
+            Logging::try_new(
+                base.logging().ansi(),
+                base.logging().level().to_owned(),
+                base.logging().max_files(),
+                rotation,
+            )?,
+        );
 
-        // Act & Assert
-        for rotation in [
-            Rotation::Daily,
-            Rotation::Hourly,
-            Rotation::Minutely,
-            Rotation::Never,
-        ] {
-            let expected = Configuration::try_new(
-                base.persistence().clone(),
-                base.security().clone(),
-                Logging::try_new(
-                    base.logging().ansi(),
-                    base.logging().level().to_owned(),
-                    base.logging().max_files(),
-                    rotation,
-                )?,
-            );
-            let persisted = repository.save(expected.clone()).await?;
-            assert_eq!(persisted, expected);
-            assert_eq!(repository.search().await?, Some(expected));
-        }
+        // Act
+        let persisted = repository.save(expected.clone()).await?;
+        let found = repository.search().await?;
+
+        // Assert
+        assert_eq!(persisted, expected);
+        assert_eq!(found, Some(expected));
         Ok(())
     }
 

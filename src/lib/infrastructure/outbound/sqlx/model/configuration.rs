@@ -17,9 +17,9 @@ pub enum Rotation {
 pub struct Configuration {
     #[sqlx(primary_key)]
     pub configuration_id: NumericID,
+    pub is_log_ansi: bool,
     pub jwt_secret: String,
     pub jwt_ttl: i64,
-    pub log_ansi: bool,
     pub log_level: String,
     pub log_max_files: i64,
     pub log_root_admin_password: bool,
