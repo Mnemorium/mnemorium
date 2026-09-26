@@ -240,7 +240,7 @@ the optional configuration file and the environment, generating the secrets on t
   the base layer, the configuration file overrides it, and the environment overrides both.
 - On the first runtime the singleton row does not exist; the system creates it with the default settings and freshly
   generated secrets before loading.
-- The default settings enable logging the Root Admin default password (`log_root_admin_password` is `true`).
+- The default settings enable logging the Root Admin default password (`is_root_admin_password_logged` is `true`).
 - Secrets left empty after the first runtime creation are never regenerated: the persisted row keeps them stable across
   restarts.
 
