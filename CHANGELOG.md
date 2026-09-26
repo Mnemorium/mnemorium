@@ -1,3 +1,9 @@
+## [0.2.0](https://github.com/Mnemorium/mnemorium/compare/v0.1.8...v0.2.0) (2026-09-26)
+
+### Features
+
+* **application:** add configurable logging settings ([#21](https://github.com/Mnemorium/mnemorium/issues/21)) ([d30aa45](https://github.com/Mnemorium/mnemorium/commit/d30aa45b29fa866ae9ae35c6008f7666cd8a8d5a))
+
 ## [0.1.8](https://github.com/Mnemorium/mnemorium/compare/v0.1.7...v0.1.8) (2026-09-25)
 
 ### Bug Fixes
