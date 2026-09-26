@@ -23,8 +23,6 @@ jobs:
           fetch-depth: 1
           persist-credentials: false
       - run: npm install --global @opencode/cli
-      - name: Install OpenCode plugin dependencies
-        run: npm ci --prefix .opencode
       - name: Check the GitHub MCP server connection
         env:
           GITHUB_MCP_TOKEN: ${{ secrets.GITHUB_TOKEN }}
