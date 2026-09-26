@@ -23,7 +23,6 @@ pub struct Configuration {
     pub jwt_ttl: i64,
     pub log_level: String,
     pub log_max_files: i64,
-    pub log_root_admin_password: bool,
     pub log_rotation: Rotation,
     pub pepper: String,
     pub sqlite3_max_connections: i64,

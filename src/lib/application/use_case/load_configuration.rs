@@ -565,7 +565,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn rotation_deserializes_its_persisted_representation() -> Result<(), Box<dyn Error>> {
+    async fn logging_rotation_deserializes_its_persisted_representation()
+    -> Result<(), Box<dyn Error>> {
         // Act & Assert
         assert_eq!(
             serde_json::from_str::<Rotation>("\"DAILY\"")?,
