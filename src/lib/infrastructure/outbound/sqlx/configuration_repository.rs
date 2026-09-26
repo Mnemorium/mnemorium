@@ -36,7 +36,7 @@ impl ConfigurationRepository for SqlxConfigurationRepository<'_> {
                 jwt_secret,
                 jwt_ttl,
                 pepper,
-                log_root_admin_password,
+                is_root_admin_password_logged,
                 sqlite3_path,
                 sqlite3_max_connections
             )
@@ -46,7 +46,7 @@ impl ConfigurationRepository for SqlxConfigurationRepository<'_> {
                 jwt_secret,
                 jwt_ttl,
                 pepper,
-                log_root_admin_password,
+                is_root_admin_password_logged,
                 sqlite3_path,
                 sqlite3_max_connections",
         )
@@ -79,7 +79,7 @@ impl ConfigurationRepository for SqlxConfigurationRepository<'_> {
                 jwt_secret,
                 jwt_ttl,
                 pepper,
-                log_root_admin_password,
+                is_root_admin_password_logged,
                 sqlite3_path,
                 sqlite3_max_connections
             )
@@ -88,7 +88,7 @@ impl ConfigurationRepository for SqlxConfigurationRepository<'_> {
                 jwt_secret = excluded.jwt_secret,
                 jwt_ttl = excluded.jwt_ttl,
                 pepper = excluded.pepper,
-                log_root_admin_password = excluded.log_root_admin_password,
+                is_root_admin_password_logged = excluded.is_root_admin_password_logged,
                 sqlite3_path = excluded.sqlite3_path,
                 sqlite3_max_connections = excluded.sqlite3_max_connections
             RETURNING
@@ -96,7 +96,7 @@ impl ConfigurationRepository for SqlxConfigurationRepository<'_> {
                 jwt_secret,
                 jwt_ttl,
                 pepper,
-                log_root_admin_password,
+                is_root_admin_password_logged,
                 sqlite3_path,
                 sqlite3_max_connections",
         )
@@ -126,7 +126,7 @@ impl ConfigurationRepository for SqlxConfigurationRepository<'_> {
                 jwt_secret,
                 jwt_ttl,
                 pepper,
-                log_root_admin_password,
+                is_root_admin_password_logged,
                 sqlite3_path,
                 sqlite3_max_connections
             FROM configuration
@@ -162,7 +162,7 @@ fn domain_configuration(row: SqlxConfiguration) -> Result<Configuration, Reposit
         .map_err(|_| RepositoryError::DataIntegrityViolation)?;
     let jwt =
         Jwt::try_new(row.jwt_secret, ttl).map_err(|_| RepositoryError::DataIntegrityViolation)?;
-    let security = Security::try_new(jwt, row.pepper, row.log_root_admin_password)
+    let security = Security::try_new(jwt, row.pepper, row.is_root_admin_password_logged)
         .map_err(|_| RepositoryError::DataIntegrityViolation)?;
     let persistence = Persistence::try_new(sqlite3);
 
