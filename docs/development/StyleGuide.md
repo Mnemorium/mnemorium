@@ -70,8 +70,12 @@ boundary.
 - **`thiserror`** is used for the **Use Case**, **Domain**, and **Port** error enums. It is **not** used for `ApiError`.
 - **Port errors** (Repository, External Service) are declared in `src/lib/domain/port/error.rs`. They do **not** map
   directly to a use-case error; the use case translates them.
-- **`NotFound` is not an error.** A missing entity is a valid outcome and is returned as `Option`/`None` (or a
-  corresponding non-error type), never as an error variant.
+- **A missing entity is not an outbound-port error.** At an outbound port (Repository, External Service), a missing
+  entity is a valid outcome: return `Option`/`None` (or a corresponding non-error type) — never a port error variant. A
+  repository expresses absence as an empty `search` result or `Ok(false)` from `delete`; see [Repository](#repository).
+- **Use-case errors may model absence.** Above the outbound port, a use case may legitimately report a missing entity as
+  an error variant (e.g. `NoSuchUser`, `UnknownCredential`) so the inbound boundary can map it to a transport status
+  such as `404 Not Found`. The "not an error" rule applies to outbound ports only, not to use-case errors.
 
 #### Domain error
 
@@ -139,6 +143,10 @@ pub enum CreateUserError {
     Unknown(#[source] anyhow::Error),
 }
 ```
+
+A use-case error may also carry a not-found variant (e.g. `NoSuchUser`, `UnknownCredential`) that the REST handler maps
+to `ApiError::NotFound`; only outbound ports must express absence as a value, not an error (see
+[Error handling](#error-handling)).
 
 #### Mapping use-case error to API error
 
