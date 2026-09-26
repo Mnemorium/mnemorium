@@ -145,10 +145,13 @@ Check the triggers on lines the diff adds or changes. Cite the rulebook for ever
 
 ## 5. Persistence & SQL
 
-- Migrations under `migrations/` follow the naming and ordering conventions (`PERS-002`, `STY-SQL-*`).
-- Seeds and invariant triggers are declared as migrations (`PERS-005`–`010`).
+- The rule table in `docs/development/TechnicalDesign.md` § 4 (Persistence) is the source of truth: check **every**
+  `PERS-*` rule, including any added after this brief was written.
+- Migrations under `migrations/` follow the naming and ordering conventions (`STY-SQL-*`); the migration lifecycle
+  (mutable while unreleased, Expand/Contract once released) is a current instance.
+- Seeds and invariant triggers are declared as migrations.
 - The entity-relationship diagram stays in sync with `migrations/`, uses only the documented markers, and puts the
-  FK on the child table (`PERS-011`–`013`).
+  FK on the child table.
 - Trigger and function naming `tg_`/`fn_`; constraints declared at table level.
 - Datastore invariants are reflected in the model.
 

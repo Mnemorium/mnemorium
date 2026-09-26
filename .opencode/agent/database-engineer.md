@@ -104,8 +104,14 @@ other agents).
   (the `sqlite3` settings are fixed at boot; changing them needs a restart).
 - Migrations live in `migrations/` as `<YYYYMMDDHHMMSS>_<name>.up.sql` /
   `.down.sql` pairs and are applied at boot by `sqlx::migrate!("./migrations")`.
-  sqlx records applied migrations in `_sqlx_migrations` and **checksum-verifies
-  them** — never edit an applied migration; add a new one on top.
+  While the schema is unreleased, migrations are mutable: edit, rewrite, or
+  delete a `.up.sql`/`.down.sql` pair in place (`PERS-014` in
+  `docs/development/TechnicalDesign.md` § 4). sqlx records applied migrations in
+  `_sqlx_migrations` and checksum-verifies them, so editing a migration a
+  database already applied fails at boot with a checksum mismatch — reset the
+  local database (or clear its `_sqlx_migrations` row) after such an edit. Once
+  the schema is released, the Expand/Contract workflow replaces this exception
+  and migrations become append-only.
 - Seeds are migrations too (`seed_*`): they populate reference data
   (`audio_channel`, `color`, `language`, `mime_type`). Seed migrations must
   come after the migrations that create their tables.
