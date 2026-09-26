@@ -9,6 +9,12 @@ pub struct Persistence {
 }
 
 impl Persistence {
+    /// Initialise a new `Persistence`.
+    #[must_use]
+    pub fn new(sqlite3: Sqlite3) -> Self {
+        Self { sqlite3 }
+    }
+
     /// Return the `SQLite3` datastore settings.
     #[must_use]
     pub fn sqlite3(&self) -> &Sqlite3 {
@@ -19,11 +25,5 @@ impl Persistence {
     #[must_use]
     pub fn sqlite3_mut(&mut self) -> &mut Sqlite3 {
         &mut self.sqlite3
-    }
-
-    /// Initialise a new `Persistence`.
-    #[must_use]
-    pub fn try_new(sqlite3: Sqlite3) -> Self {
-        Self { sqlite3 }
     }
 }

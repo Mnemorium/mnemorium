@@ -171,8 +171,7 @@ mod test_helpers {
         let security = Security::try_new(jwt, "1".repeat(64), true)?;
         let sqlite3 = Sqlite3::try_new(":memory:".to_owned(), 1)?;
         let logging = Logging::try_new(false, "debug,sqlx=warn".to_owned(), 7, Rotation::Daily)?;
-        let configuration =
-            Configuration::try_new(Persistence::try_new(sqlite3), security, logging);
+        let configuration = Configuration::new(Persistence::new(sqlite3), security, logging);
         Ok(AppState::new(
             Arc::new(ArcSwap::from_pointee(configuration)),
             Arc::new(MockIdentityUseCaseFactory::new()),
@@ -196,8 +195,7 @@ mod test_helpers {
         let security = Security::try_new(jwt, "1".repeat(64), true)?;
         let sqlite3 = Sqlite3::try_new(":memory:".to_owned(), 1)?;
         let logging = Logging::try_new(false, "debug,sqlx=warn".to_owned(), 7, Rotation::Daily)?;
-        let configuration =
-            Configuration::try_new(Persistence::try_new(sqlite3), security, logging);
+        let configuration = Configuration::new(Persistence::new(sqlite3), security, logging);
         Ok(AppState::new(
             Arc::new(ArcSwap::from_pointee(configuration)),
             identity_use_case_factory,
@@ -221,8 +219,7 @@ mod test_helpers {
         let security = Security::try_new(jwt, "1".repeat(64), true)?;
         let sqlite3 = Sqlite3::try_new(":memory:".to_owned(), 1)?;
         let logging = Logging::try_new(false, "debug,sqlx=warn".to_owned(), 7, Rotation::Daily)?;
-        let configuration =
-            Configuration::try_new(Persistence::try_new(sqlite3), security, logging);
+        let configuration = Configuration::new(Persistence::new(sqlite3), security, logging);
         Ok(AppState::new(
             Arc::new(ArcSwap::from_pointee(configuration)),
             Arc::new(MockIdentityUseCaseFactory::new()),

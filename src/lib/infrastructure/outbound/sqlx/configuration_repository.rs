@@ -217,7 +217,7 @@ fn domain_configuration(row: SqlxConfiguration) -> Result<Configuration, Reposit
         Jwt::try_new(row.jwt_secret, ttl).map_err(|_| RepositoryError::DataIntegrityViolation)?;
     let security = Security::try_new(jwt, row.pepper, row.log_root_admin_password)
         .map_err(|_| RepositoryError::DataIntegrityViolation)?;
-    let persistence = Persistence::try_new(sqlite3);
+    let persistence = Persistence::new(sqlite3);
     let log_max_files = u32::try_from(row.log_max_files).map_err(|error| {
         RepositoryError::Unknown(
             anyhow::anyhow!(error).context("configuration log_max_files does not fit in u32"),
@@ -232,7 +232,7 @@ fn domain_configuration(row: SqlxConfiguration) -> Result<Configuration, Reposit
     let logging = Logging::try_new(row.is_log_ansi, row.log_level, log_max_files, rotation)
         .map_err(|_| RepositoryError::DataIntegrityViolation)?;
 
-    Ok(Configuration::try_new(persistence, security, logging))
+    Ok(Configuration::new(persistence, security, logging))
 }
 
 #[cfg(test)]
@@ -275,9 +275,9 @@ mod tests {
         let jwt = Jwt::try_new(hex64('a'), 3600)?;
         let security = Security::try_new(jwt, hex64('b'), true)?;
         let sqlite3 = Sqlite3::try_new("mnemorium.db".to_owned(), 1)?;
-        let persistence = Persistence::try_new(sqlite3);
+        let persistence = Persistence::new(sqlite3);
         let logging = Logging::try_new(true, "info,sqlx=trace".to_owned(), 3, Rotation::Hourly)?;
-        Ok(Configuration::try_new(persistence, security, logging))
+        Ok(Configuration::new(persistence, security, logging))
     }
 
     #[tokio::test]
@@ -332,8 +332,8 @@ mod tests {
         let mut transaction = begin_transaction().await?;
         let mut repository = SqlxConfigurationRepository::new(&mut transaction);
         repository.create(configuration()?).await?;
-        let updated = Configuration::try_new(
-            Persistence::try_new(Sqlite3::try_new("other.db".to_owned(), 3)?),
+        let updated = Configuration::new(
+            Persistence::new(Sqlite3::try_new("other.db".to_owned(), 3)?),
             Security::try_new(Jwt::try_new(hex64('c'), 60)?, hex64('d'), false)?,
             Logging::try_new(false, "warn".to_owned(), 0, Rotation::Never)?,
         );
@@ -361,7 +361,7 @@ mod tests {
         let mut transaction = begin_transaction().await?;
         let mut repository = SqlxConfigurationRepository::new(&mut transaction);
         let base = configuration()?;
-        let expected = Configuration::try_new(
+        let expected = Configuration::new(
             base.persistence().clone(),
             base.security().clone(),
             Logging::try_new(

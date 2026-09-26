@@ -126,7 +126,7 @@ where
         let sqlite3 =
             Sqlite3::try_new(DEFAULT_SQLITE3_PATH.to_owned(), DEFAULT_SQLITE3_MAX_CONN)
                 .map_err(|error| LoadConfigurationError::InvalidConfiguration(error.into()))?;
-        let persistence = Persistence::try_new(sqlite3);
+        let persistence = Persistence::new(sqlite3);
         let logging = Logging::try_new(
             DEFAULT_LOG_ANSI,
             DEFAULT_LOG_LEVEL.to_owned(),
@@ -135,7 +135,7 @@ where
         )
         .map_err(|error| LoadConfigurationError::InvalidConfiguration(error.into()))?;
 
-        Ok(Configuration::try_new(persistence, security, logging))
+        Ok(Configuration::new(persistence, security, logging))
     }
 
     /// Create a new use case.
@@ -329,9 +329,9 @@ mod tests {
         let jwt = Jwt::try_new(hex64('a'), 3600)?;
         let security = Security::try_new(jwt, hex64('b'), true)?;
         let sqlite3 = Sqlite3::try_new("mnemorium.db".to_owned(), 1)?;
-        let persistence = Persistence::try_new(sqlite3);
+        let persistence = Persistence::new(sqlite3);
         let logging = Logging::try_new(false, "debug,sqlx=warn".to_owned(), 7, Rotation::Daily)?;
-        Ok(Configuration::try_new(persistence, security, logging))
+        Ok(Configuration::new(persistence, security, logging))
     }
 
     #[tokio::test]

@@ -258,9 +258,9 @@ mod tests {
         let jwt = Jwt::try_new(hex64('a'), 3600)?;
         let security = Security::try_new(jwt, hex64('b'), log_root_admin_password)?;
         let sqlite3 = Sqlite3::try_new("mnemorium.db".to_owned(), 1)?;
-        let persistence = Persistence::try_new(sqlite3);
+        let persistence = Persistence::new(sqlite3);
         let logging = Logging::try_new(false, "debug,sqlx=warn".to_owned(), 7, Rotation::Daily)?;
-        Ok(Configuration::try_new(persistence, security, logging))
+        Ok(Configuration::new(persistence, security, logging))
     }
 
     fn user(id: i64, username: &str, role: Role) -> Result<User, UserError> {

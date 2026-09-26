@@ -21,6 +21,16 @@ impl Configuration {
         &self.logging
     }
 
+    /// Initialise a new `Configuration`.
+    #[must_use]
+    pub fn new(persistence: Persistence, security: Security, logging: Logging) -> Self {
+        Self {
+            logging,
+            persistence,
+            security,
+        }
+    }
+
     /// Return the persistence-related settings.
     #[must_use]
     pub fn persistence(&self) -> &Persistence {
@@ -43,15 +53,5 @@ impl Configuration {
     #[must_use]
     pub fn security_mut(&mut self) -> &mut Security {
         &mut self.security
-    }
-
-    /// Initialise a new `Configuration`.
-    #[must_use]
-    pub fn try_new(persistence: Persistence, security: Security, logging: Logging) -> Self {
-        Self {
-            logging,
-            persistence,
-            security,
-        }
     }
 }
