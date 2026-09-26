@@ -159,19 +159,9 @@ cargo run --bin server
 
 Configuration is layered: the persisted singleton row is the base, the optional `config.yaml` file overrides it, and the
 environment overrides both. Environment variables use the `mnemorium` prefix and the `__` separator, for example
-`MNEMORIUM_LOGGING__LEVEL`.
+`MNEMORIUM__LOGGING_LEVEL`.
 
-The `logging` section drives the runtime logs:
-
-```yaml
-logging:
-  level: "debug,sqlx=warn" # verbosity directives; empty falls back to RUST_LOG, then to this default
-  rotation: DAILY # MINUTELY | HOURLY | DAILY | NEVER
-  max_files: 7 # rotated files to keep; 0 keeps every file
-  ansi: false # colour the standard-output sink (the file sink stays plain)
-```
-
-TODO: document the remaining persistence and security keys.
+TODO: link to a document that explains the configuration.
 
 ### First-Time Admin
 
