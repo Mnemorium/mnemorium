@@ -18,6 +18,7 @@ pub struct Configuration {
     #[sqlx(primary_key)]
     pub configuration_id: NumericID,
     pub is_log_ansi: bool,
+    pub is_root_admin_password_logged: bool,
     pub jwt_secret: String,
     pub jwt_ttl: i64,
     pub log_level: String,

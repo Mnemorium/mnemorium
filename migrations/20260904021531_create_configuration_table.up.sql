@@ -3,7 +3,7 @@ CREATE TABLE configuration (
     jwt_secret TEXT NOT NULL,
     jwt_ttl INTEGER NOT NULL,
     pepper TEXT NOT NULL,
-    log_root_admin_password INTEGER NOT NULL DEFAULT 1,
+    is_root_admin_password_logged INTEGER NOT NULL DEFAULT 1,
     sqlite3_path TEXT NOT NULL,
     sqlite3_max_connections INTEGER NOT NULL,
     CONSTRAINT pk_configuration_configuration_id PRIMARY KEY (configuration_id),
@@ -11,8 +11,8 @@ CREATE TABLE configuration (
     CONSTRAINT chk_configuration_jwt_secret CHECK (LENGTH(jwt_secret) = 64),
     CONSTRAINT chk_configuration_jwt_ttl CHECK (jwt_ttl > 0),
     CONSTRAINT chk_configuration_pepper CHECK (LENGTH(pepper) = 64),
-    CONSTRAINT chk_configuration_log_root_admin_password CHECK (
-        log_root_admin_password IN (0, 1)
+    CONSTRAINT chk_configuration_is_root_admin_password_logged CHECK (
+        is_root_admin_password_logged IN (0, 1)
     ),
     CONSTRAINT chk_configuration_sqlite3_max_connections CHECK (
         sqlite3_max_connections > 0
