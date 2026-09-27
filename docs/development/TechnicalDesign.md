@@ -1526,7 +1526,22 @@ entity file {
    * is_public: BOOLEAN <<NN, DF(0)>>
    * mime_type_id: TEXT <<FK, NN>>
    * uploaded_at: DATE <<NN, DF(date('now'))>>
-   * md5_integrity: VARCHAR(128) <<NN, UN, CC(length(md5_integrity) = 128)>>
+   * md5_integrity: CHAR(32) <<NN, UN, CC(length(md5_integrity) = 32)>>
+}
+
+entity upload {
+   * upload_id: INTEGER <<PK>>
+   --
+   * user_id: INTEGER <<FK, NN>>
+   * file_name: TEXT <<NN>>
+   * file_size: INTEGER <<NN, CC(file_size > 0)>>
+   * mime_type_id: TEXT <<FK, NN>>
+   * chunk_size: INTEGER <<NN, CC(chunk_size > 0)>>
+   * md5_integrity: CHAR(32) <<NN, CC(length(md5_integrity) = 32)>>
+   * chunk_bitmap: BLOB <<NN>>
+   * is_finished: BOOLEAN <<NN, DF(0), CC(is_finished IN (0, 1))>>
+   * version: INTEGER <<NN, DF(0), CC(version >= 0)>>
+   * created_at: TEXT <<NN, DF(CURRENT_TIMESTAMP)>>
 }
 
 entity mime_type {
@@ -1644,11 +1659,15 @@ entity configuration {
     * log_level: TEXT <<NN, DF('debug,sqlx=warn')>>
     * log_max_files: INTEGER <<NN, DF(7), CC(log_max_files >= 0)>>
     * log_rotation: TEXT <<NN, DF('DAILY'), CC(log_rotation IN ('MINUTELY', 'HOURLY', 'DAILY', 'NEVER'))>>
+    * asset_storage_root: TEXT <<NN, DF('data'), CC(length(asset_storage_root) > 0)>>
+    * asset_upload_chunk_size_bytes: INTEGER <<NN, DF(5242880), CC(asset_upload_chunk_size_bytes > 0)>>
+    * asset_upload_expiry_seconds: INTEGER <<NN, DF(86400), CC(asset_upload_expiry_seconds > 0)>>
 }
 
 user ||--|| credential
 user ||--o{ music_playlist
 user ||--o{ file
+user ||--o{ upload
 
 music_album ||--o{ music_medium
 music_album ||--o{ music_album_genre
@@ -1673,6 +1692,7 @@ genre ||--o{ music_recording_genre
 genre ||--o{ movie_genre
 
 mime_type ||--o{ file
+mime_type ||--o{ upload
 
 music_group ||--o{ music_group_person
 music_group ||--o{ music_recording_group

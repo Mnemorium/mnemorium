@@ -4,7 +4,7 @@ use crate::domain::alias::NumericID;
 
 /// Required length of `File::md5_integrity`, mirroring the
 /// `chk_file_md5_integrity` check constraint.
-pub const MD5_INTEGRITY_LENGTH: usize = 128;
+pub const MD5_INTEGRITY_LENGTH: usize = 32;
 
 /// Error returned when initialising or updating a `File`.
 #[derive(Debug, thiserror::Error)]

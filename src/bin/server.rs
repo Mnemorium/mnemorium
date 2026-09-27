@@ -1,4 +1,5 @@
 use std::future::pending;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use arc_swap::ArcSwap;
@@ -12,11 +13,13 @@ use mnemorium::infrastructure::logging;
 use mnemorium::infrastructure::outbound::argon2::password_hasher::Argon2PasswordHasher;
 use mnemorium::infrastructure::outbound::config::bootstrap::bootstrap_sqlite3;
 use mnemorium::infrastructure::outbound::config::configuration_source::ConfigConfigurationSource;
+use mnemorium::infrastructure::outbound::file_system::file_storage::FileSystemStorage;
 use mnemorium::infrastructure::outbound::jwt::token_provider::JwtTokenProvider;
 use mnemorium::infrastructure::outbound::random::password_generator::RandomPasswordGenerator;
 use mnemorium::infrastructure::outbound::random::secret_generator::ChaChaSecretGenerator;
 use mnemorium::infrastructure::outbound::sqlx::sqlite3::init_db;
 use mnemorium::infrastructure::outbound::sqlx::unit_of_work::SqlxUnitOfWorkFactory;
+use mnemorium::infrastructure::use_case_factory::asset::RuntimeAssetUseCaseFactory;
 use mnemorium::infrastructure::use_case_factory::identity::RuntimeIdentityUseCaseFactory;
 use mnemorium::infrastructure::use_case_factory::user::RuntimeUserUseCaseFactory;
 use tokio::net::TcpListener;
@@ -92,7 +95,18 @@ async fn main() -> Result<(), anyhow::Error> {
         &unit_of_work_factory,
     )));
 
+    let file_storage = Arc::new(
+        FileSystemStorage::new(PathBuf::from(configuration.load().asset().storage().root()))
+            .await?,
+    );
+    let asset_use_case_factory = Arc::new(RuntimeAssetUseCaseFactory::new(
+        Arc::clone(&configuration),
+        file_storage,
+        Arc::clone(&unit_of_work_factory),
+    ));
+
     let state = AppState::new(
+        asset_use_case_factory,
         configuration,
         identity_use_case_factory,
         token_provider,

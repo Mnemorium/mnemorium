@@ -24,12 +24,16 @@ pub enum ApiError {
     Conflict(String),
     /// The caller is not allowed to perform the request (`403`).
     Forbidden(String),
+    /// The requested resource is no longer available (`410`).
+    Gone(String),
     /// An unexpected error occurred (`500`).
     InternalServerError,
     /// The requested resource does not exist (`404`).
     NotFound(String),
     /// Authentication is required or the credentials are invalid (`401`).
     Unauthorized(String),
+    /// The request payload media type is not supported (`415`).
+    UnsupportedMediaType(String),
 }
 
 impl ApiError {
@@ -40,12 +44,14 @@ impl ApiError {
             Self::BadRequest(message) => (StatusCode::BAD_REQUEST, message),
             Self::Conflict(message) => (StatusCode::CONFLICT, message),
             Self::Forbidden(message) => (StatusCode::FORBIDDEN, message),
+            Self::Gone(message) => (StatusCode::GONE, message),
             Self::InternalServerError => (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "an unexpected error occurred".to_owned(),
             ),
             Self::NotFound(message) => (StatusCode::NOT_FOUND, message),
             Self::Unauthorized(message) => (StatusCode::UNAUTHORIZED, message),
+            Self::UnsupportedMediaType(message) => (StatusCode::UNSUPPORTED_MEDIA_TYPE, message),
         }
     }
 }

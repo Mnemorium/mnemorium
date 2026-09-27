@@ -8,6 +8,7 @@ use tracing::error;
 use crate::application::port::load_configuration::LoadConfigurationError;
 use crate::application::port::load_configuration::LoadConfigurationResponse;
 use crate::application::port::load_configuration::LoadConfigurationUseCase;
+use crate::domain::model::asset::Asset;
 use crate::domain::model::configuration::Configuration;
 use crate::domain::model::jwt::Jwt;
 use crate::domain::model::logging::Logging;
@@ -135,7 +136,12 @@ where
         )
         .map_err(|error| LoadConfigurationError::InvalidConfiguration(error.into()))?;
 
-        Ok(Configuration::new(persistence, security, logging))
+        Ok(Configuration::new(
+            persistence,
+            security,
+            logging,
+            Asset::default(),
+        ))
     }
 
     /// Create a new use case.
@@ -237,6 +243,7 @@ mod tests {
 
     use crate::application::port::load_configuration::LoadConfigurationError;
     use crate::application::port::load_configuration::LoadConfigurationUseCase as _;
+    use crate::domain::model::asset::Asset;
     use crate::domain::model::configuration::Configuration;
     use crate::domain::model::jwt::Jwt;
     use crate::domain::model::logging::Logging;
@@ -331,7 +338,12 @@ mod tests {
         let sqlite3 = Sqlite3::try_new("mnemorium.db".to_owned(), 1)?;
         let persistence = Persistence::new(sqlite3);
         let logging = Logging::try_new(false, "debug,sqlx=warn".to_owned(), 7, Rotation::Daily)?;
-        Ok(Configuration::new(persistence, security, logging))
+        Ok(Configuration::new(
+            persistence,
+            security,
+            logging,
+            Asset::default(),
+        ))
     }
 
     #[tokio::test]

@@ -77,6 +77,48 @@
         ],
         "type": "object"
       },
+      "GetUploadResponse": {
+        "description": "State of an upload session returned by a successful lookup.",
+        "properties": {
+          "bitmap": {
+            "description": "One character per chunk, `1` when received and `0` otherwise.",
+            "example": "110",
+            "type": "string"
+          },
+          "expires_at": {
+            "description": "Date and time at which the upload session expires, as\n`YYYY-MM-DDTHH:MM:SS`.",
+            "example": "2026-01-01T12:00:00",
+            "type": "string"
+          },
+          "file_id": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/i64",
+                "description": "Unique identifier of the finished file, when the upload is finished."
+              }
+            ]
+          },
+          "is_finished": {
+            "description": "Whether the upload session has been finished.",
+            "type": "boolean"
+          },
+          "total_chunks": {
+            "description": "Total number of chunks the upload is split into.",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "bitmap",
+          "expires_at",
+          "is_finished",
+          "total_chunks"
+        ],
+        "type": "object"
+      },
       "GetUserResponse": {
         "description": "User returned by a successful lookup.",
         "properties": {
@@ -247,66 +289,138 @@
         ],
         "type": "object"
       },
-      "PostAssetChunkRequest": {
-        "description": "Payload of a chunk upload, declared for the `OpenAPI` contract.",
+      "PostUploadCheckRequest": {
+        "description": "Payload checking for an already stored file.",
         "properties": {
-          "chunk": {
-            "description": "Raw bytes of the uploaded chunk.",
-            "format": "binary",
+          "md5": {
+            "description": "MD5 digest of the complete file, as a 32-character hexadecimal string.",
+            "example": "d41d8cd98f00b204e9800998ecf8427e",
+            "maxLength": 32,
+            "minLength": 32,
             "type": "string"
           }
         },
         "required": [
-          "chunk"
+          "md5"
         ],
         "type": "object"
       },
-      "PostAssetFinishResponse": {
-        "description": "File finalized by a successful upload.",
+      "PostUploadCheckResponse": {
+        "description": "Result of a check for an already stored file.",
         "properties": {
-          "file_name": {
-            "description": "Name of the media file that was uploaded.",
-            "type": "string"
-          },
-          "id": {
+          "file_id": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/i64",
+                "description": "Unique identifier of the matching file, when the caller owns one."
+              }
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "PostUploadCompleteRequest": {
+        "description": "Payload completing an upload session.",
+        "properties": {
+          "upload_id": {
+            "$ref": "#/components/schemas/i64",
+            "description": "Unique identifier of the upload session to complete."
+          }
+        },
+        "required": [
+          "upload_id"
+        ],
+        "type": "object"
+      },
+      "PostUploadCompleteResponse": {
+        "description": "File finalized by a successful completion.",
+        "properties": {
+          "file_id": {
             "$ref": "#/components/schemas/i64",
             "description": "Unique identifier of the stored file."
           }
         },
         "required": [
-          "file_name",
-          "id"
+          "file_id"
         ],
         "type": "object"
       },
-      "PostAssetRequest": {
+      "PostUploadRequest": {
         "description": "Payload initializing an upload session.",
         "properties": {
           "content_type": {
-            "description": "Declared mime type of the file content.",
+            "description": "Declared media type of the file content.",
+            "example": "video/mp4",
             "type": "string"
           },
           "file_name": {
             "description": "Name of the file being uploaded.",
+            "example": "clip.mp4",
+            "minLength": 1,
+            "type": "string"
+          },
+          "file_size": {
+            "description": "Total size of the file being uploaded, in bytes.",
+            "example": 1048576,
+            "format": "int64",
+            "minimum": 1,
+            "type": "integer"
+          },
+          "md5": {
+            "description": "MD5 digest of the complete file, as a 32-character lowercase\nhexadecimal string.",
+            "example": "d41d8cd98f00b204e9800998ecf8427e",
+            "maxLength": 32,
+            "minLength": 32,
             "type": "string"
           }
         },
         "required": [
           "content_type",
-          "file_name"
+          "file_name",
+          "file_size",
+          "md5"
         ],
         "type": "object"
       },
-      "PostAssetResponse": {
+      "PostUploadResponse": {
         "description": "Upload session created by a successful initialization.",
         "properties": {
-          "id": {
+          "chunk_size": {
+            "description": "Fixed size of every chunk except the last, in bytes.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "expires_at": {
+            "description": "Date and time at which the upload session expires, as\n`YYYY-MM-DDTHH:MM:SS`.",
+            "example": "2026-01-01T12:00:00",
+            "type": "string"
+          },
+          "upload_id": {
             "$ref": "#/components/schemas/i64",
             "description": "Unique identifier of the upload session."
           }
         },
         "required": [
-          "id"
+          "chunk_size",
+          "expires_at",
+          "upload_id"
+        ],
+        "type": "object"
+      },
+      "PutUploadChunkResponse": {
+        "description": "Response of a successfully stored chunk.",
+        "properties": {
+          "received": {
+            "description": "Whether the chunk has been received.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "received"
         ],
         "type": "object"
       },
@@ -408,15 +522,15 @@
   },
   "openapi": "3.1.0",
   "paths": {
-    "/asset": {
+    "/asset/upload": {
       "post": {
-        "description": "Validates that the declared content type is a supported media type and\nreturns the identifier of the created upload session.",
-        "operationId": "post_asset",
+        "description": "Validates the declared content type, file name, size and MD5 digest, creates\nthe upload session and its staging file, and returns the session identifier,\nthe fixed chunk size and the expiry instant.",
+        "operationId": "post_upload",
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/PostAssetRequest"
+                "$ref": "#/components/schemas/PostUploadRequest"
               }
             }
           },
@@ -427,7 +541,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/PostAssetResponse"
+                  "$ref": "#/components/schemas/PostUploadResponse"
                 }
               }
             },
@@ -485,34 +599,195 @@
         ]
       }
     },
-    "/asset/{id}": {
+    "/asset/upload/check": {
       "post": {
-        "description": "Persists the raw bytes carried by the request body for the upload session\nidentified by `id`.",
-        "operationId": "post_asset_chunk",
-        "parameters": [
-          {
-            "description": "Identifier of the upload session",
-            "in": "path",
-            "name": "id",
-            "required": true,
-            "schema": {
-              "$ref": "#/components/schemas/i64"
-            }
-          }
-        ],
+        "description": "Returns the identifier of the matching file, or `null` when the caller owns\nno file with that digest. The lookup is caller-scoped: a file owned by\nanother user is not reported.",
+        "operationId": "post_upload_check",
         "requestBody": {
           "content": {
-            "application/octet-stream": {
+            "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/PostAssetChunkRequest"
+                "$ref": "#/components/schemas/PostUploadCheckRequest"
               }
             }
           },
           "required": true
         },
         "responses": {
-          "204": {
-            "description": "Chunk stored"
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PostUploadCheckResponse"
+                }
+              }
+            },
+            "description": "Check completed"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Invalid payload"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid credentials"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unexpected error"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ],
+        "summary": "Check for an existing file",
+        "tags": [
+          "asset"
+        ]
+      }
+    },
+    "/asset/upload/complete": {
+      "post": {
+        "description": "Verifies the recomputed MD5 digest, deduplicates against the caller's\nexisting files and, on success, registers the file and marks the upload as\nfinished. Completion is idempotent: completing an already finished upload\nreturns the caller's file for the same digest.",
+        "operationId": "post_upload_complete",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PostUploadCompleteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PostUploadCompleteResponse"
+                }
+              }
+            },
+            "description": "Upload completed"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Invalid payload, incomplete upload or integrity mismatch"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid credentials"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unknown upload session"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The digest is already owned by another user"
+          },
+          "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Upload session expired"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unexpected error"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ],
+        "summary": "Complete an upload session",
+        "tags": [
+          "asset"
+        ]
+      }
+    },
+    "/asset/upload/{upload_id}": {
+      "get": {
+        "description": "Returns the received-chunk bitmap, the total number of chunks, the expiry\ninstant, whether the upload is finished and, when it is, the identifier of\nthe finished file.",
+        "operationId": "get_upload",
+        "parameters": [
+          {
+            "description": "Identifier of the upload session",
+            "in": "path",
+            "name": "upload_id",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/i64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GetUploadResponse"
+                }
+              }
+            },
+            "description": "Upload session found"
           },
           "400": {
             "content": {
@@ -552,7 +827,149 @@
                 }
               }
             },
-            "description": "Upload session already finished or expired"
+            "description": "Upload session expired"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unexpected error"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ],
+        "summary": "Fetch the state of an upload session",
+        "tags": [
+          "asset"
+        ]
+      }
+    },
+    "/asset/upload/{upload_id}/chunk/{chunk_number}": {
+      "put": {
+        "description": "The request body carries the raw bytes of the chunk. The `Content-Range`\nheader declares the inclusive byte range as `bytes {start}-{end}/{total}` and\nthe `Content-MD5` header carries the lowercase hexadecimal MD5 digest of the\nbody. The chunk is idempotent: re-uploading it with the same digest succeeds\nwithout changing the stored content.",
+        "operationId": "put_upload_chunk",
+        "parameters": [
+          {
+            "description": "Identifier of the upload session",
+            "in": "path",
+            "name": "upload_id",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/i64"
+            }
+          },
+          {
+            "description": "Zero-based number of the chunk",
+            "in": "path",
+            "name": "chunk_number",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Inclusive byte range, `bytes {start}-{end}/{total}`",
+            "in": "header",
+            "name": "Content-Range",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Lowercase hexadecimal MD5 digest of the chunk",
+            "in": "header",
+            "name": "Content-MD5",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/octet-stream": {
+              "schema": {
+                "items": {
+                  "format": "int32",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "type": "array"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PutUploadChunkResponse"
+                }
+              }
+            },
+            "description": "Chunk stored"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Invalid identifier, chunk number, range, digest or body"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid credentials"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unknown upload session"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Upload session already finished"
+          },
+          "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Upload session expired"
           },
           "500": {
             "content": {
@@ -571,94 +988,6 @@
           }
         ],
         "summary": "Upload one chunk",
-        "tags": [
-          "asset"
-        ]
-      }
-    },
-    "/asset/{id}/finish": {
-      "post": {
-        "description": "Marks the upload session identified by `id` as finished and returns the\nstored file.",
-        "operationId": "post_asset_finish",
-        "parameters": [
-          {
-            "description": "Identifier of the upload session",
-            "in": "path",
-            "name": "id",
-            "required": true,
-            "schema": {
-              "$ref": "#/components/schemas/i64"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PostAssetFinishResponse"
-                }
-              }
-            },
-            "description": "Upload finished"
-          },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "Invalid upload session identifier"
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "Missing or invalid credentials"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "Unknown upload session"
-          },
-          "410": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "Upload session already finished or expired"
-          },
-          "500": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "Unexpected error"
-          }
-        },
-        "security": [
-          {
-            "bearer_auth": []
-          }
-        ],
-        "summary": "Finish an upload session",
         "tags": [
           "asset"
         ]

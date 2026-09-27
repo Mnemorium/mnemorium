@@ -1,0 +1,489 @@
+use std::future::Future;
+use std::pin::Pin;
+use std::sync::Arc;
+
+use chrono::Duration;
+use chrono::NaiveDateTime;
+use chrono::Utc;
+use tracing::error;
+
+use crate::application::port::get_upload::GetUploadCommand;
+use crate::application::port::get_upload::GetUploadError;
+use crate::application::port::get_upload::GetUploadResponse;
+use crate::application::port::get_upload::GetUploadUseCase;
+use crate::domain::model::upload::Upload;
+use crate::domain::port::asset_unit_of_work::AssetUnitOfWork;
+use crate::domain::port::file_repository::FileFilter;
+use crate::domain::port::file_repository::FileRepository as _;
+use crate::domain::port::file_storage::FileStorage;
+use crate::domain::port::unit_of_work::UnitOfWork as _;
+use crate::domain::port::unit_of_work::UnitOfWorkFactory;
+use crate::domain::port::upload_repository::UploadFilter;
+use crate::domain::port::upload_repository::UploadRepository as _;
+
+/// Outcome of the business logic wrapped by the unit-of-work lifecycle.
+enum Flow<T, E> {
+    /// The upload expired: its row and staged file have been deleted, so the
+    /// unit of work must be committed before returning the error.
+    Expired,
+    /// The business logic failed and the unit of work must be rolled back.
+    Failed(E),
+    /// The business logic succeeded.
+    Succeeded(T),
+}
+
+/// Use case implementation for fetching the state of an upload session.
+pub struct GetUpload<F, S> {
+    /// Lifetime of an upload session, in seconds.
+    expiry_seconds: u64,
+    /// Storage adapter deleting the staged file of an expired upload.
+    file_storage: Arc<S>,
+    /// Factory opening the unit of work wrapping the read.
+    unit_of_work_factory: Arc<F>,
+}
+
+impl<F: UnitOfWorkFactory, S: FileStorage> GetUpload<F, S> {
+    /// Create a new use case.
+    #[must_use]
+    pub fn new(unit_of_work_factory: Arc<F>, file_storage: Arc<S>, expiry_seconds: u64) -> Self {
+        Self {
+            expiry_seconds,
+            file_storage,
+            unit_of_work_factory,
+        }
+    }
+}
+
+impl<F, S> GetUploadUseCase for GetUpload<F, S>
+where
+    F: UnitOfWorkFactory,
+    F::Uow: AssetUnitOfWork,
+    S: FileStorage,
+{
+    fn execute<'future>(
+        &'future self,
+        command: GetUploadCommand,
+    ) -> Pin<Box<dyn Future<Output = Result<GetUploadResponse, GetUploadError>> + Send + 'future>>
+    {
+        let expiry_seconds = self.expiry_seconds;
+        let file_storage = Arc::clone(&self.file_storage);
+        let unit_of_work_factory = Arc::clone(&self.unit_of_work_factory);
+
+        Box::pin(async move {
+            let mut unit_of_work = unit_of_work_factory
+                .begin()
+                .await
+                .map_err(|error| GetUploadError::Unknown(error.into()))?;
+
+            let flow = async {
+                let found = match unit_of_work
+                    .uploads()
+                    .search(&UploadFilter {
+                        id: Some(command.upload_id()),
+                        ..UploadFilter::default()
+                    })
+                    .await
+                {
+                    Ok(found) => found,
+                    Err(error) => return Flow::Failed(GetUploadError::Unknown(error.into())),
+                };
+                let Some(upload) = found.into_iter().next() else {
+                    return Flow::Failed(GetUploadError::NoSuchUpload);
+                };
+
+                // Owner-only: a caller who is not the upload's owner must not see it.
+                if upload.user_id() != command.user_id() {
+                    return Flow::Failed(GetUploadError::NoSuchUpload);
+                }
+
+                let expires_at = match expiry(expiry_seconds, upload.created_at()) {
+                    Ok(expires_at) => expires_at,
+                    Err(error) => return Flow::Failed(GetUploadError::Unknown(error)),
+                };
+                if !upload.is_finished() && Utc::now().naive_utc() > expires_at {
+                    return expire(&mut unit_of_work, &file_storage, command.upload_id()).await;
+                }
+
+                let bitmap = received_bitmap(&upload);
+                let file_id = if upload.is_finished() {
+                    match unit_of_work
+                        .files()
+                        .search(&FileFilter {
+                            md5_integrity: Some(upload.md5_integrity().to_owned()),
+                            user_id: Some(command.user_id()),
+                            ..FileFilter::default()
+                        })
+                        .await
+                    {
+                        Ok(files) => files.into_iter().next().map(|file| file.id()),
+                        Err(error) => {
+                            return Flow::Failed(GetUploadError::Unknown(error.into()));
+                        }
+                    }
+                } else {
+                    None
+                };
+
+                Flow::Succeeded(GetUploadResponse::new(
+                    bitmap,
+                    upload.total_chunks(),
+                    expires_at,
+                    upload.is_finished(),
+                    file_id,
+                ))
+            }
+            .await;
+
+            match flow {
+                Flow::Succeeded(value) => {
+                    unit_of_work
+                        .commit()
+                        .await
+                        .map_err(|error| GetUploadError::Unknown(error.into()))?;
+                    Ok(value)
+                }
+                Flow::Expired => {
+                    // The expired upload row and staged file were already
+                    // deleted inside the transaction; commit so the deletion
+                    // survives, then report the expiry.
+                    if let Err(commit_error) = unit_of_work.commit().await {
+                        error!(
+                            error = ?commit_error,
+                            "failed to commit the expiry cleanup of the get upload unit of work"
+                        );
+                    }
+                    Err(GetUploadError::Expired)
+                }
+                Flow::Failed(error) => {
+                    if let Err(rollback_error) = unit_of_work.rollback().await {
+                        error!(
+                            error = ?rollback_error,
+                            "failed to roll back the get upload unit of work"
+                        );
+                    }
+                    Err(error)
+                }
+            }
+        })
+    }
+}
+
+/// Best-effort delete the expired upload's staged file and row, then signal the
+/// caller to commit before returning the expiry error.
+///
+/// The row deletion is left to the reaper once one exists.
+#[expect(
+    clippy::single_call_fn,
+    reason = "the expiry cleanup is named after the rule it enforces"
+)]
+async fn expire<U, S>(
+    unit_of_work: &mut U,
+    file_storage: &Arc<S>,
+    upload_id: i64,
+) -> Flow<GetUploadResponse, GetUploadError>
+where
+    U: AssetUnitOfWork,
+    S: FileStorage,
+{
+    // TODO(reaper): move the expiry cleanup to a background task; this lazy
+    // delete keeps the row and the staged file only until the next access.
+    if let Err(error) = file_storage.delete_upload_file(upload_id).await {
+        error!(error = ?error, "failed to delete the expired upload staged file");
+    }
+    if let Err(error) = unit_of_work.uploads().delete(upload_id).await {
+        error!(error = ?error, "failed to delete the expired upload row");
+    }
+    Flow::Expired
+}
+
+/// Build the per-chunk received bitmap, one character per chunk.
+#[expect(
+    clippy::single_call_fn,
+    reason = "the bitmap rendering is named for readability"
+)]
+fn received_bitmap(upload: &Upload) -> String {
+    let mut bitmap = String::with_capacity(upload.total_chunks());
+    for chunk_number in 0..upload.total_chunks() {
+        let received = upload
+            .chunk_bitmap()
+            .is_received(chunk_number)
+            .unwrap_or(false);
+        if received {
+            bitmap.push('1');
+        } else {
+            bitmap.push('0');
+        }
+    }
+    bitmap
+}
+
+/// Return the instant at which an upload created at `created_at` expires.
+#[expect(
+    clippy::single_call_fn,
+    reason = "the derived expiry rule is named for readability"
+)]
+fn expiry(expiry_seconds: u64, created_at: NaiveDateTime) -> Result<NaiveDateTime, anyhow::Error> {
+    let seconds = i64::try_from(expiry_seconds)
+        .map_err(|error| anyhow::anyhow!(error).context("the expiry does not fit in i64"))?;
+    created_at
+        .checked_add_signed(Duration::seconds(seconds))
+        .ok_or_else(|| anyhow::anyhow!("the upload expiry overflows the created_at timestamp"))
+}
+
+#[cfg(test)]
+mod tests {
+    use std::error::Error;
+    use std::sync::Arc;
+    use std::sync::atomic::AtomicBool;
+    use std::sync::atomic::Ordering;
+
+    use chrono::NaiveDate;
+    use chrono::NaiveDateTime;
+
+    use crate::application::port::get_upload::GetUploadCommand;
+    use crate::application::port::get_upload::GetUploadError;
+    use crate::application::port::get_upload::GetUploadUseCase as _;
+    use crate::application::use_case::test_support::asset_factory;
+    use crate::domain::model::file::File;
+    use crate::domain::model::upload::ChunkBitmap;
+    use crate::domain::model::upload::Upload;
+    use crate::domain::port::error::RepositoryError;
+    use crate::domain::port::file_repository::MockFileRepository;
+    use crate::domain::port::file_storage::MockFileStorage;
+    use crate::domain::port::mime_type_repository::MockMimeTypeRepository;
+    use crate::domain::port::upload_repository::MockUploadRepository;
+
+    use super::GetUpload;
+
+    const DIGEST: &str = "0123456789abcdef0123456789abcdef";
+    const TTL_SECONDS: u64 = 3600;
+    const CHUNK_SIZE: u64 = 4;
+
+    type UseCase =
+        GetUpload<super::super::test_support::AssetTestUnitOfWorkFactory, MockFileStorage>;
+
+    /// A use case under test together with its transaction-lifecycle flags.
+    struct Harness {
+        /// Set when the unit of work is committed.
+        committed: Arc<AtomicBool>,
+        /// Set when the unit of work is rolled back.
+        rolled_back: Arc<AtomicBool>,
+        /// The use case under test.
+        use_case: UseCase,
+    }
+
+    fn use_case_with(
+        uploads: MockUploadRepository,
+        files: MockFileRepository,
+        file_storage: MockFileStorage,
+    ) -> Harness {
+        let harness = asset_factory(uploads, files, MockMimeTypeRepository::new());
+        Harness {
+            use_case: GetUpload::new(
+                Arc::clone(&harness.factory),
+                Arc::new(file_storage),
+                TTL_SECONDS,
+            ),
+            committed: harness.committed,
+            rolled_back: harness.rolled_back,
+        }
+    }
+
+    fn timestamp() -> NaiveDateTime {
+        chrono::Utc::now().naive_utc()
+    }
+
+    fn upload(
+        upload_id: i64,
+        user_id: i64,
+        file_size: u64,
+        received: &[usize],
+        is_finished: bool,
+        created_at: NaiveDateTime,
+    ) -> Result<Upload, RepositoryError> {
+        let total_chunks = usize::try_from(file_size.div_ceil(CHUNK_SIZE)).unwrap_or(0);
+        let mut bitmap = ChunkBitmap::try_new(total_chunks.max(1))
+            .map_err(|_| RepositoryError::OperationFailed)?;
+        for chunk_number in received {
+            bitmap
+                .mark_received(*chunk_number)
+                .map_err(|_| RepositoryError::OperationFailed)?;
+        }
+        Upload::try_new(
+            upload_id,
+            user_id,
+            "clip.mp4".to_owned(),
+            file_size,
+            "video/mp4".to_owned(),
+            CHUNK_SIZE,
+            DIGEST.to_owned(),
+            bitmap,
+            is_finished,
+            0,
+            created_at,
+        )
+        .map_err(|_| RepositoryError::OperationFailed)
+    }
+
+    fn expect_upload(uploads: &mut MockUploadRepository, upload: Upload) {
+        uploads.expect_search().times(1).returning(move |_| {
+            let stored = upload.clone();
+            Box::pin(async move { Ok(vec![stored]) })
+        });
+    }
+
+    #[expect(
+        clippy::single_call_fn,
+        reason = "the failure fixture is named for readability"
+    )]
+    fn expect_upload_failure(uploads: &mut MockUploadRepository) {
+        uploads
+            .expect_search()
+            .times(1)
+            .returning(|_| Box::pin(async { Err(RepositoryError::OperationFailed) }));
+    }
+
+    #[expect(
+        clippy::single_call_fn,
+        reason = "the test fixture mirrors the persisted file"
+    )]
+    fn file(id: i64, user_id: i64) -> Result<File, RepositoryError> {
+        File::try_new(
+            id,
+            format!("files/{id}_clip.mp4"),
+            user_id,
+            false,
+            "video/mp4".to_owned(),
+            NaiveDate::from_ymd_opt(2026, 1, 1).unwrap_or_default(),
+            DIGEST.to_owned(),
+        )
+        .map_err(|_| RepositoryError::OperationFailed)
+    }
+
+    #[tokio::test]
+    async fn get_upload_partial_upload_returns_bitmap() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let mut uploads = MockUploadRepository::new();
+        expect_upload(&mut uploads, upload(5, 3, 10, &[0, 2], false, timestamp())?);
+        let harness = use_case_with(uploads, MockFileRepository::new(), MockFileStorage::new());
+        let command = GetUploadCommand::new(5, 3);
+
+        // Act
+        let response = harness.use_case.execute(command).await?;
+
+        // Assert
+        assert_eq!(response.bitmap(), "101");
+        assert_eq!(response.total_chunks(), 3);
+        assert!(!response.is_finished());
+        assert_eq!(response.file_id(), None);
+        assert!(harness.committed.load(Ordering::SeqCst));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn get_upload_finished_upload_returns_file_id() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let mut uploads = MockUploadRepository::new();
+        expect_upload(&mut uploads, upload(5, 3, 4, &[0], true, timestamp())?);
+        let mut files = MockFileRepository::new();
+        files.expect_search().times(1).returning(|_| {
+            let stored = file(11, 3);
+            Box::pin(async move { stored.map(|file| vec![file]) })
+        });
+        let harness = use_case_with(uploads, files, MockFileStorage::new());
+        let command = GetUploadCommand::new(5, 3);
+
+        // Act
+        let response = harness.use_case.execute(command).await?;
+
+        // Assert
+        assert!(response.is_finished());
+        assert_eq!(response.file_id(), Some(11));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn get_upload_unknown_upload_returns_no_such_upload() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let mut uploads = MockUploadRepository::new();
+        uploads
+            .expect_search()
+            .times(1)
+            .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+        let harness = use_case_with(uploads, MockFileRepository::new(), MockFileStorage::new());
+        let command = GetUploadCommand::new(999, 3);
+
+        // Act
+        let result = harness.use_case.execute(command).await;
+
+        // Assert
+        assert!(matches!(result, Err(GetUploadError::NoSuchUpload)));
+        assert!(harness.rolled_back.load(Ordering::SeqCst));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn get_upload_other_user_returns_no_such_upload() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let mut uploads = MockUploadRepository::new();
+        expect_upload(&mut uploads, upload(5, 3, 4, &[0], false, timestamp())?);
+        let harness = use_case_with(uploads, MockFileRepository::new(), MockFileStorage::new());
+        let command = GetUploadCommand::new(5, 99);
+
+        // Act
+        let result = harness.use_case.execute(command).await;
+
+        // Assert
+        assert!(matches!(result, Err(GetUploadError::NoSuchUpload)));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn get_upload_expired_upload_returns_expired() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let expired_at = chrono::Utc::now()
+            .naive_utc()
+            .checked_sub_signed(chrono::Duration::seconds(
+                i64::try_from(TTL_SECONDS).unwrap_or(0) + 1,
+            ))
+            .unwrap_or_else(timestamp);
+        let mut uploads = MockUploadRepository::new();
+        expect_upload(&mut uploads, upload(5, 3, 4, &[0], false, expired_at)?);
+        uploads
+            .expect_delete()
+            .times(1)
+            .returning(|_| Box::pin(async { Ok(true) }));
+        let mut file_storage = MockFileStorage::new();
+        file_storage
+            .expect_delete_upload_file()
+            .times(1)
+            .returning(|_| Box::pin(async { Ok(()) }));
+        let harness = use_case_with(uploads, MockFileRepository::new(), file_storage);
+        let command = GetUploadCommand::new(5, 3);
+
+        // Act
+        let result = harness.use_case.execute(command).await;
+
+        // Assert
+        assert!(matches!(result, Err(GetUploadError::Expired)));
+        assert!(harness.committed.load(Ordering::SeqCst));
+        assert!(!harness.rolled_back.load(Ordering::SeqCst));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn get_upload_search_failure_returns_unknown() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let mut uploads = MockUploadRepository::new();
+        expect_upload_failure(&mut uploads);
+        let harness = use_case_with(uploads, MockFileRepository::new(), MockFileStorage::new());
+        let command = GetUploadCommand::new(5, 3);
+
+        // Act
+        let result = harness.use_case.execute(command).await;
+
+        // Assert
+        assert!(matches!(result, Err(GetUploadError::Unknown(_))));
+        Ok(())
+    }
+}

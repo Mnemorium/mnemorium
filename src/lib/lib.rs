@@ -15,10 +15,13 @@ mod test_helpers {
 
     use arc_swap::ArcSwap;
 
+    use crate::application::port::asset_use_case_factory::AssetUseCaseFactory;
+    use crate::application::port::asset_use_case_factory::MockAssetUseCaseFactory;
     use crate::application::port::identity_use_case_factory::IdentityUseCaseFactory;
     use crate::application::port::identity_use_case_factory::MockIdentityUseCaseFactory;
     use crate::application::port::user_use_case_factory::MockUserUseCaseFactory;
     use crate::application::port::user_use_case_factory::UserUseCaseFactory;
+    use crate::domain::model::asset::Asset;
     use crate::domain::model::configuration::Configuration;
     use crate::domain::model::jwt::Jwt;
     use crate::domain::model::logging::Logging;
@@ -171,8 +174,14 @@ mod test_helpers {
         let security = Security::try_new(jwt, "1".repeat(64), true)?;
         let sqlite3 = Sqlite3::try_new(":memory:".to_owned(), 1)?;
         let logging = Logging::try_new(false, "debug,sqlx=warn".to_owned(), 7, Rotation::Daily)?;
-        let configuration = Configuration::new(Persistence::new(sqlite3), security, logging);
+        let configuration = Configuration::new(
+            Persistence::new(sqlite3),
+            security,
+            logging,
+            Asset::default(),
+        );
         Ok(AppState::new(
+            Arc::new(MockAssetUseCaseFactory::new()),
             Arc::new(ArcSwap::from_pointee(configuration)),
             Arc::new(MockIdentityUseCaseFactory::new()),
             token_provider,
@@ -195,8 +204,14 @@ mod test_helpers {
         let security = Security::try_new(jwt, "1".repeat(64), true)?;
         let sqlite3 = Sqlite3::try_new(":memory:".to_owned(), 1)?;
         let logging = Logging::try_new(false, "debug,sqlx=warn".to_owned(), 7, Rotation::Daily)?;
-        let configuration = Configuration::new(Persistence::new(sqlite3), security, logging);
+        let configuration = Configuration::new(
+            Persistence::new(sqlite3),
+            security,
+            logging,
+            Asset::default(),
+        );
         Ok(AppState::new(
+            Arc::new(MockAssetUseCaseFactory::new()),
             Arc::new(ArcSwap::from_pointee(configuration)),
             identity_use_case_factory,
             Arc::new(JwtTokenProvider::new("tmptmp".to_owned(), 3600)),
@@ -219,12 +234,48 @@ mod test_helpers {
         let security = Security::try_new(jwt, "1".repeat(64), true)?;
         let sqlite3 = Sqlite3::try_new(":memory:".to_owned(), 1)?;
         let logging = Logging::try_new(false, "debug,sqlx=warn".to_owned(), 7, Rotation::Daily)?;
-        let configuration = Configuration::new(Persistence::new(sqlite3), security, logging);
+        let configuration = Configuration::new(
+            Persistence::new(sqlite3),
+            security,
+            logging,
+            Asset::default(),
+        );
         Ok(AppState::new(
+            Arc::new(MockAssetUseCaseFactory::new()),
             Arc::new(ArcSwap::from_pointee(configuration)),
             Arc::new(MockIdentityUseCaseFactory::new()),
             Arc::new(JwtTokenProvider::new("tmptmp".to_owned(), 3600)),
             user_use_case_factory,
+        ))
+    }
+
+    /// Build an application state around a mocked Asset use-case factory.
+    ///
+    /// The token provider and the Identity and User factories are mocks the
+    /// callers never reach.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the fixed configuration cannot be built.
+    pub fn app_state_with_asset(
+        asset_use_case_factory: Arc<dyn AssetUseCaseFactory>,
+    ) -> Result<AppState, Box<dyn Error>> {
+        let jwt = Jwt::try_new("0".repeat(64), 3600)?;
+        let security = Security::try_new(jwt, "1".repeat(64), true)?;
+        let sqlite3 = Sqlite3::try_new(":memory:".to_owned(), 1)?;
+        let logging = Logging::try_new(false, "debug,sqlx=warn".to_owned(), 7, Rotation::Daily)?;
+        let configuration = Configuration::new(
+            Persistence::new(sqlite3),
+            security,
+            logging,
+            Asset::default(),
+        );
+        Ok(AppState::new(
+            asset_use_case_factory,
+            Arc::new(ArcSwap::from_pointee(configuration)),
+            Arc::new(MockIdentityUseCaseFactory::new()),
+            Arc::new(JwtTokenProvider::new("tmptmp".to_owned(), 3600)),
+            Arc::new(MockUserUseCaseFactory::new()),
         ))
     }
 }
