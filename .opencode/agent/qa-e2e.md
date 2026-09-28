@@ -40,8 +40,8 @@ end-to-end tests that exercise the whole system through its REST API.
 - Tests live under `test/e2e/`.
 - One folder per bounded context: `identity/`, `user/`, `library/`,
   `configuration/`, `asset/` (see Overview.md).
-- One file per use case, named after the matching entry in
-  `docs/development/UseCases.md` (e.g. `identity/create_user_account.py`).
+- One file per business use case, named after its catalog entry
+  (e.g. `identity/uc001_create_a_user_account.py`).
 
 ## Scenarios
 

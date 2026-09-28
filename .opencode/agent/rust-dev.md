@@ -169,7 +169,8 @@ its patterns over inventing new ones.
    `docs/development/UseCases.md` unless the user explicitly asks for it —
    use-case documentation is manual, not automatic (the `UC-###` numbering
    convention lives there, so never invent identifiers that aren't already
-   assigned in that file).
+   assigned in that file). Business use cases group application use cases: one
+   entry may be implemented by several `use_case/*.rs` files.
 
 ### Add a REST endpoint
 

@@ -53,8 +53,8 @@
 | `src/bin/server.rs`                                   | Server entrypoint and graceful shutdown                                                                           |
 | `src/lib`                                             |                                                                                                                   |
 | `src/lib/application`                                 | App Layer                                                                                                         |
-| `src/lib/application/port`                            | Interface declaration for usecase (one by file)                                                                   |
-| `src/lib/application/use_case`                        | Implementation of the **UseCase**                                                                                 |
+| `src/lib/application/port`                            | Application use-case interfaces (one application use case per file)                                               |
+| `src/lib/application/use_case`                        | Application use-case implementations (one per file)                                                               |
 | `src/lib/domain`                                      | Domain Layer                                                                                                      |
 | `src/lib/domain/alias.rs`                             | Type alias for the project (ex: which integer to use for IDs)                                                     |
 | `src/lib/domain/model`                                | Aggregate, Entity, Value object declaration                                                                       |
@@ -81,6 +81,9 @@
 | `src/lib/infrastructure/outbound/sqlx/sqlite3.rs`     | SQLite pool initialization and migrations                                                                         |
 | `src/lib/infrastructure/use_case_factory`             | Per-context factories building use cases on demand                                                                |
 | `src/lib/infrastructure/logging.rs`                   | `tracing` subscriber setup driven by the configuration                                                            |
+
+An **application use case** (`port/<name>.rs` plus `use_case/<name>.rs`) is a technical unit. A **business use case** in
+[UseCases.md](UseCases.md) is business-level and may be implemented by several application use cases.
 
 ## Server lifecycle
 

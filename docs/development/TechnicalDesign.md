@@ -687,6 +687,10 @@ A repository port file declares, in order:
 
 #### 9. Use cases
 
+An **application use case** — the `<Name>UseCase` trait and its `<Name>` implementation — is the unit this section
+governs. It is not the same as a **business use case**: the `UC-###` entries in [UseCases.md](UseCases.md) are
+business-level, and each may be implemented by several application use cases.
+
 ---
 
 ##### 9.1 Declaration order in a use-case port file
@@ -1788,7 +1792,7 @@ the flows the E2E suite covers come from the critical exception paths in [UseCas
 | `TEST-038` | External service | The test module lives in the same file as the client under test. Reformat the file when needed so the test module stays clear.                                                                                                                   | [§ External service](#external-service)      |
 | `TEST-039` | E2E              | Tests are written in Python with `pytest`.                                                                                                                                                                                                       | [§ E2E test](#e2e-test)                      |
 | `TEST-040` | E2E              | Tests live under `test/e2e/`.                                                                                                                                                                                                                    | [§ E2E test](#e2e-test)                      |
-| `TEST-041` | E2E              | One file per use case, matching an entry in the [use case catalog](UseCases.md).                                                                                                                                                                 | [§ E2E test](#e2e-test)                      |
+| `TEST-041` | E2E              | One file per catalogued business use case, matching an entry in the [use case catalog](UseCases.md).                                                                                                                                             | [§ E2E test](#e2e-test)                      |
 | `TEST-042` | E2E              | One folder per bounded context, as listed in the [Bounded context section of the Overview](Overview.md#bounded-context).                                                                                                                         | [§ E2E test](#e2e-test)                      |
 | `TEST-043` | E2E              | Generic tests (those whose subject is not password behavior) use the shared `SECRET_PASSWORD` from `test/e2e/conftest.py` for any user they provision or register.                                                                               | [§ E2E test](#e2e-test)                      |
 | `TEST-044` | E2E              | Tests whose subject is password behavior (password policy validation, change-password flows, wrong-password login) pick their own explicit passwords and must not use the shared secret.                                                         | [§ E2E test](#e2e-test)                      |

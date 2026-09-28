@@ -125,7 +125,8 @@ Check the triggers on lines the diff adds or changes. Cite the rulebook for ever
 
 ## 3. Architecture & boundaries
 
-- A use case lives in `src/lib/application/use_case/` and matches an entry in `docs/development/UseCases.md`.
+- An application use case lives in `src/lib/application/use_case/`; a business use case in
+  `docs/development/UseCases.md` may be implemented by several of them — do not require a 1:1 file-to-entry mapping.
 - Dependency direction is inbound adapter to application to domain; domain does not import infrastructure
   (§ 2, canonical source `docs/development/Overview.md`).
 - `src/bin/server.rs` is the composition root: the only place that builds concrete adapters and `AppState`

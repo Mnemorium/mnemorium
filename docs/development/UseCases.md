@@ -1,7 +1,12 @@
 # Use Cases
 
-Catalog of the use cases of Mnemorium. Every use case implemented in `src/lib/application/use_case/` has an entry here,
-and every entry maps to exactly one use-case file.
+Catalog of the **business use cases** of Mnemorium. Each entry describes a capability initiated by an actor; it is a
+business-level view, not a one-to-one list of the application's implementation units.
+
+A business use case is implemented by one or more **application use cases** — the `port/<name>.rs` /
+`use_case/<name>.rs` pair governed by [TechnicalDesign.md](TechnicalDesign.md) § 9. Each entry lists the application use
+cases that implement it, so several application use cases may appear under a single entry. Application use cases not yet
+grouped under a catalogued business use case may exist; this catalog does not enumerate every one.
 
 IDs are sequential across the whole catalog: `UC-001`, `UC-002`, …
 
@@ -9,8 +14,8 @@ IDs are sequential across the whole catalog: `UC-001`, `UC-002`, …
 
 ### Title
 
-- `## UC-<seq> - <Name>` heading, e.g. `## UC-001 - Register User`.
-- The name is the use-case file name in words, e.g. `Register User` → `register_user.rs`.
+- `## UC-<seq> - <Name>` heading, e.g. `## UC-001 - Create a User Account`.
+- The name states the business capability, not an application use-case file name.
 
 ### Description
 
@@ -40,6 +45,11 @@ IDs are sequential across the whole catalog: `UC-001`, `UC-002`, …
 - Bullet list of the bounded contexts the use case touches.
 - The available bounded contexts are listed in the
   [Bounded context section of the Overview](Overview.md#bounded-context).
+
+### Application use case(s)
+
+- Bullet list of the application use-case files implementing this business use case, e.g. `register_user.rs`.
+- One or more files; the same file may appear under several entries.
 
 ### Business rules
 
@@ -85,6 +95,10 @@ Allow an Administrator to create a new user in the system and assign the appropr
 
 - Identity
 - User
+
+### Application use case(s)
+
+- `register_user.rs`
 
 ### Business rules
 
@@ -135,6 +149,10 @@ features and resources.
 - Identity
 - User
 
+### Application use case(s)
+
+- `login_user.rs`
+
 ### Happy path
 
 1. The user submits an authentication request carrying a username and a password.
@@ -178,6 +196,11 @@ changed.
 - Identity
 - User
 - Configuration
+
+### Application use case(s)
+
+- `initialize_root_admin.rs`
+- `patch_credential.rs`
 
 ### Business rules
 
@@ -234,6 +257,10 @@ the optional configuration file and the environment, generating the secrets on t
 
 - Configuration
 
+### Application use case(s)
+
+- `load_configuration.rs`
+
 ### Business rules
 
 - The configuration is merged following the persistence → file → environment precedence: the persisted singleton row is
@@ -287,6 +314,10 @@ accessing the system.
 - Identity
 - User
 
+### Application use case(s)
+
+- Not yet implemented: no application use case.
+
 ### Business rules
 
 - The Root Admin account cannot be deleted.
@@ -336,6 +367,16 @@ Allow a user to upload a supported media file to the service for storage, proces
 ### Bounded context(s)
 
 - Asset
+
+### Application use case(s)
+
+- `begin_upload.rs`
+- `write_upload_chunk.rs`
+- `check_upload.rs`
+- `complete_upload.rs`
+- `get_upload.rs`
+
+The upload flow is resumable and chunked, so it spans several requests.
 
 ### Business rules
 
