@@ -274,13 +274,11 @@ where
         Err(AttemptError::Expired) => {
             // The expired upload row and staged file were already deleted
             // inside the transaction; commit so the deletion survives, then
-            // report the expiry.
-            if let Err(commit_error) = unit_of_work.commit().await {
-                error!(
-                    error = ?commit_error,
-                    "failed to commit the expiry cleanup of the write upload chunk unit of work"
-                );
-            }
+            // report the expiry. A commit failure is a server error and takes
+            // precedence.
+            unit_of_work.commit().await.map_err(|error| {
+                AttemptError::Business(WriteUploadChunkError::Unknown(error.into()))
+            })?;
             Err(AttemptError::Business(WriteUploadChunkError::Expired))
         }
         Err(error) => {
@@ -315,6 +313,7 @@ mod tests {
     use crate::domain::port::mime_type_repository::MockMimeTypeRepository;
     use crate::domain::port::upload_repository::MockUploadRepository;
     use crate::test_helpers::TestUnitOfWorkFactory;
+    use crate::test_helpers::asset_factory;
     use crate::test_helpers::asset_unit_of_work;
 
     use super::WriteUploadChunk;
@@ -564,6 +563,68 @@ mod tests {
         assert!(matches!(result, Err(WriteUploadChunkError::Expired)));
         assert!(committed.load(Ordering::SeqCst));
         assert!(!rolled_back.load(Ordering::SeqCst));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn write_upload_chunk_expiry_commit_failure_returns_unknown() -> Result<(), Box<dyn Error>>
+    {
+        // Arrange
+        let expired_at = chrono::Utc::now()
+            .naive_utc()
+            .checked_sub_signed(chrono::Duration::seconds(
+                i64::try_from(TTL_SECONDS).unwrap_or(0) + 1,
+            ))
+            .unwrap_or_else(timestamp);
+        let mut bitmap = ChunkBitmap::try_new(2).map_err(|_| RepositoryError::OperationFailed)?;
+        bitmap
+            .mark_received(0)
+            .map_err(|_| RepositoryError::OperationFailed)?;
+        let expired = Upload::try_new(
+            5,
+            3,
+            "clip.mp4".to_owned(),
+            8,
+            "video/mp4".to_owned(),
+            CHUNK_SIZE,
+            DIGEST.to_owned(),
+            bitmap,
+            false,
+            0,
+            expired_at,
+        )
+        .map_err(|_| RepositoryError::OperationFailed)?;
+        let mut uploads = MockUploadRepository::new();
+        expect_upload(&mut uploads, expired);
+        uploads
+            .expect_delete()
+            .times(1)
+            .returning(|_| Box::pin(async { Ok(true) }));
+        let mut file_storage = MockFileStorage::new();
+        file_storage
+            .expect_delete_upload_file()
+            .times(1)
+            .returning(|_| Box::pin(async { Ok(()) }));
+        let harness = asset_factory(
+            uploads,
+            MockFileRepository::new(),
+            MockMimeTypeRepository::new(),
+        );
+        harness.commit_fails.store(true, Ordering::SeqCst);
+        let use_case = WriteUploadChunk::new(
+            Arc::clone(&harness.factory),
+            Arc::new(file_storage),
+            TTL_SECONDS,
+        );
+        let command = WriteUploadChunkCommand::new(5, 1, b"5678".to_vec(), CHUNK_MD5.to_owned(), 3);
+
+        // Act
+        let result = use_case.execute(command).await;
+
+        // Assert
+        assert!(matches!(result, Err(WriteUploadChunkError::Unknown(_))));
+        assert!(harness.committed.load(Ordering::SeqCst));
+        assert!(!harness.rolled_back.load(Ordering::SeqCst));
         Ok(())
     }
 

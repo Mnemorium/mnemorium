@@ -208,13 +208,12 @@ where
                 Flow::Expired => {
                     // The expired upload row and staged file were already
                     // deleted inside the transaction; commit so the deletion
-                    // survives, then report the expiry.
-                    if let Err(commit_error) = unit_of_work.commit().await {
-                        error!(
-                            error = ?commit_error,
-                            "failed to commit the expiry cleanup of the complete upload unit of work"
-                        );
-                    }
+                    // survives, then report the expiry. A commit failure is a
+                    // server error and takes precedence.
+                    unit_of_work
+                        .commit()
+                        .await
+                        .map_err(|error| CompleteUploadError::Unknown(error.into()))?;
                     Err(CompleteUploadError::Expired)
                 }
                 Flow::Failed(error) => {
@@ -347,6 +346,8 @@ mod tests {
 
     /// A use case under test together with its transaction-lifecycle flags.
     struct Harness {
+        /// Set to force `commit` to fail.
+        commit_fails: Arc<AtomicBool>,
         /// Set when the unit of work is committed.
         committed: Arc<AtomicBool>,
         /// Set when the unit of work is rolled back.
@@ -368,6 +369,7 @@ mod tests {
                 TTL_SECONDS,
             ),
             committed: harness.committed,
+            commit_fails: harness.commit_fails,
             rolled_back: harness.rolled_back,
         }
     }
@@ -618,6 +620,58 @@ mod tests {
 
         // Assert
         assert!(matches!(result, Err(CompleteUploadError::Expired)));
+        assert!(harness.committed.load(Ordering::SeqCst));
+        assert!(!harness.rolled_back.load(Ordering::SeqCst));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn complete_upload_expiry_commit_failure_returns_unknown() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let expired_at = chrono::Utc::now()
+            .naive_utc()
+            .checked_sub_signed(chrono::Duration::seconds(
+                i64::try_from(TTL_SECONDS).unwrap_or(0) + 1,
+            ))
+            .unwrap_or_else(timestamp);
+        let mut bitmap = ChunkBitmap::try_new(1).map_err(|_| RepositoryError::OperationFailed)?;
+        bitmap
+            .mark_received(0)
+            .map_err(|_| RepositoryError::OperationFailed)?;
+        let expired = Upload::try_new(
+            5,
+            3,
+            "clip.mp4".to_owned(),
+            4,
+            "video/mp4".to_owned(),
+            CHUNK_SIZE,
+            DIGEST.to_owned(),
+            bitmap,
+            false,
+            0,
+            expired_at,
+        )
+        .map_err(|_| RepositoryError::OperationFailed)?;
+        let mut uploads = MockUploadRepository::new();
+        expect_upload(&mut uploads, expired);
+        uploads
+            .expect_delete()
+            .times(1)
+            .returning(|_| Box::pin(async { Ok(true) }));
+        let mut file_storage = MockFileStorage::new();
+        file_storage
+            .expect_delete_upload_file()
+            .times(1)
+            .returning(|_| Box::pin(async { Ok(()) }));
+        let harness = use_case_with(uploads, MockFileRepository::new(), file_storage);
+        harness.commit_fails.store(true, Ordering::SeqCst);
+        let command = CompleteUploadCommand::new(5, 3);
+
+        // Act
+        let result = harness.use_case.execute(command).await;
+
+        // Assert
+        assert!(matches!(result, Err(CompleteUploadError::Unknown(_))));
         assert!(harness.committed.load(Ordering::SeqCst));
         assert!(!harness.rolled_back.load(Ordering::SeqCst));
         Ok(())

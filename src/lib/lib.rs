@@ -69,6 +69,8 @@ mod test_helpers {
     /// One type serves every bounded context: a context a test does not
     /// exercise holds fresh mocks supplied by the constructors below.
     pub struct TestUnitOfWork<U, C, K, F, M, P> {
+        /// Set to force `commit` to fail.
+        pub commit_fails: Arc<AtomicBool>,
         /// Set when `commit` is called.
         pub committed: Arc<AtomicBool>,
         /// Configuration repository.
@@ -162,6 +164,9 @@ mod test_helpers {
     {
         fn commit(self) -> impl Future<Output = Result<(), UnitOfWorkError>> + Send {
             self.committed.store(true, Ordering::SeqCst);
+            if self.commit_fails.load(Ordering::SeqCst) {
+                return ready(Err(UnitOfWorkError::OperationFailed));
+            }
             ready(Ok(()))
         }
 
@@ -231,6 +236,8 @@ mod test_helpers {
 
     /// The unit-of-work fixtures produced by [`asset_factory`].
     pub struct AssetFactoryHarness {
+        /// Set to force `commit` to fail.
+        pub commit_fails: Arc<AtomicBool>,
         /// Set when the unit of work is committed.
         pub committed: Arc<AtomicBool>,
         /// The factory handed to the use case under test.
@@ -254,6 +261,7 @@ mod test_helpers {
         TestUnitOfWorkFactory {
             unit_of_works: Mutex::new(vec![TestUnitOfWork {
                 committed,
+                commit_fails: Arc::new(AtomicBool::new(false)),
                 configuration,
                 credentials,
                 files: MockFileRepository::new(),
@@ -276,6 +284,7 @@ mod test_helpers {
         mime_types: MockMimeTypeRepository,
     ) -> AssetFactoryHarness {
         let committed = Arc::new(AtomicBool::new(false));
+        let commit_fails = Arc::new(AtomicBool::new(false));
         let rolled_back = Arc::new(AtomicBool::new(false));
         let factory = TestUnitOfWorkFactory {
             unit_of_works: Mutex::new(vec![asset_unit_of_work_with(
@@ -283,11 +292,13 @@ mod test_helpers {
                 files,
                 mime_types,
                 Arc::clone(&committed),
+                Arc::clone(&commit_fails),
                 Arc::clone(&rolled_back),
             )]),
         };
         AssetFactoryHarness {
             committed,
+            commit_fails,
             factory: Arc::new(factory),
             rolled_back,
         }
@@ -307,6 +318,7 @@ mod test_helpers {
             files,
             mime_types,
             Arc::clone(&committed),
+            Arc::new(AtomicBool::new(false)),
             Arc::clone(&rolled_back),
         );
         (unit_of_work, committed, rolled_back)
@@ -318,10 +330,12 @@ mod test_helpers {
         files: MockFileRepository,
         mime_types: MockMimeTypeRepository,
         committed: Arc<AtomicBool>,
+        commit_fails: Arc<AtomicBool>,
         rolled_back: Arc<AtomicBool>,
     ) -> TestUow {
         TestUnitOfWork {
             committed,
+            commit_fails,
             configuration: MockConfigurationRepository::new(),
             credentials: MockCredentialRepository::new(),
             files,
