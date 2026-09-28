@@ -31,6 +31,10 @@ Enter the environment first: `devenv shell`.
 | OpenAPI   | `cargo run --bin openapi_gen` (writes `docs/development/api/openapi.json`)                                                           |
 | Full gate | `devenv test` (all pre-commit hooks)                                                                                                 |
 
+Run `git commit` through the environment as well, prefixed with `devenv shell --`
+(e.g. `devenv shell -- git commit`), because the repository's commit hook needs
+tooling that is only available inside the development environment.
+
 For Markdown, use the `markdownlint` and `markdownfmt` tools rather than
 invoking the underlying binaries directly.
 
