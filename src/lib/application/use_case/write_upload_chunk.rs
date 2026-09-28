@@ -3,7 +3,6 @@ use std::pin::Pin;
 use std::sync::Arc;
 
 use chrono::Duration;
-use chrono::NaiveDateTime;
 use chrono::Utc;
 use md5::Digest as _;
 use md5::Md5;
@@ -14,11 +13,10 @@ use crate::application::port::write_upload_chunk::WriteUploadChunkError;
 use crate::application::port::write_upload_chunk::WriteUploadChunkResponse;
 use crate::application::port::write_upload_chunk::WriteUploadChunkUseCase;
 use crate::domain::model::upload::MD5_INTEGRITY_LENGTH;
-use crate::domain::model::upload::Upload;
 use crate::domain::port::asset_unit_of_work::AssetUnitOfWork;
 use crate::domain::port::error::RepositoryError;
 use crate::domain::port::file_storage::FileStorage;
-use crate::domain::port::unit_of_work::UnitOfWork;
+use crate::domain::port::unit_of_work::UnitOfWork as _;
 use crate::domain::port::unit_of_work::UnitOfWorkFactory;
 use crate::domain::port::upload_repository::UploadFilter;
 use crate::domain::port::upload_repository::UploadRepository as _;
@@ -112,27 +110,11 @@ enum AttemptError {
     Expired,
 }
 
-/// Best-effort delete the expired upload's staged file and row.
-///
-/// The row deletion is left to the reaper once one exists.
-#[expect(
-    clippy::single_call_fn,
-    reason = "the expiry cleanup is named after the rule it enforces"
-)]
-async fn delete_expired<U, S>(file_storage: &Arc<S>, unit_of_work: &mut U, upload_id: i64)
-where
-    U: AssetUnitOfWork,
-    S: FileStorage,
-{
-    if let Err(error) = file_storage.delete_upload_file(upload_id).await {
-        error!(error = ?error, "failed to delete the expired upload staged file");
-    }
-    if let Err(error) = unit_of_work.uploads().delete(upload_id).await {
-        error!(error = ?error, "failed to delete the expired upload row");
-    }
-}
-
 /// Run one chunk-write attempt inside its own unit of work.
+///
+/// The attempt opens one transaction, persists the chunk, and closes the
+/// transaction according to the outcome. The caller retries the whole attempt
+/// when the bitmap compare-and-swap loses a race.
 #[expect(
     clippy::single_call_fn,
     reason = "the retry loop body is extracted so the attempt owns its unit of work"
@@ -148,40 +130,139 @@ where
     F::Uow: AssetUnitOfWork,
     S: FileStorage,
 {
+    use std::fmt::Write as _;
+
     let mut unit_of_work = unit_of_work_factory
         .begin()
         .await
         .map_err(|error| AttemptError::Business(WriteUploadChunkError::Unknown(error.into())))?;
 
-    let result = persist_chunk(&mut unit_of_work, file_storage, command, expiry_seconds).await;
-    finalize_attempt(unit_of_work, result).await
-}
+    let result = async {
+        let upload = unit_of_work
+            .uploads()
+            .search(&UploadFilter {
+                id: Some(command.upload_id()),
+                ..UploadFilter::default()
+            })
+            .await
+            .map_err(|error| AttemptError::Business(WriteUploadChunkError::Unknown(error.into())))?
+            .into_iter()
+            .next()
+            .ok_or(AttemptError::Business(WriteUploadChunkError::NoSuchUpload))?;
 
-/// Return the instant at which an upload created at `created_at` expires.
-#[expect(
-    clippy::single_call_fn,
-    reason = "the derived expiry rule is named for readability"
-)]
-fn expiry(expiry_seconds: u64, created_at: NaiveDateTime) -> Result<NaiveDateTime, anyhow::Error> {
-    let seconds = i64::try_from(expiry_seconds)
-        .map_err(|error| anyhow::anyhow!(error).context("the expiry does not fit in i64"))?;
-    created_at
-        .checked_add_signed(Duration::seconds(seconds))
-        .ok_or_else(|| anyhow::anyhow!("the upload expiry overflows the created_at timestamp"))
-}
+        // Owner-only: a caller who is not the upload's owner must not see it.
+        if upload.user_id() != command.user_id() {
+            return Err(AttemptError::Business(WriteUploadChunkError::NoSuchUpload));
+        }
 
-/// Close the attempt's unit of work according to its outcome.
-#[expect(
-    clippy::single_call_fn,
-    reason = "the transaction lifecycle is named for readability"
-)]
-async fn finalize_attempt<U>(
-    unit_of_work: U,
-    result: Result<WriteUploadChunkResponse, AttemptError>,
-) -> Result<WriteUploadChunkResponse, AttemptError>
-where
-    U: UnitOfWork,
-{
+        let seconds = i64::try_from(expiry_seconds).map_err(|error| {
+            AttemptError::Business(WriteUploadChunkError::Unknown(
+                anyhow::anyhow!(error).context("the expiry does not fit in i64"),
+            ))
+        })?;
+        let expires_at = upload
+            .created_at()
+            .checked_add_signed(Duration::seconds(seconds))
+            .ok_or_else(|| {
+                AttemptError::Business(WriteUploadChunkError::Unknown(anyhow::anyhow!(
+                    "the upload expiry overflows the created_at timestamp"
+                )))
+            })?;
+        if !upload.is_finished() && Utc::now().naive_utc() > expires_at {
+            // TODO(reaper): move the expiry cleanup to a background task; this
+            // lazy delete keeps the row and the staged file only until the next
+            // access.
+            if let Err(error) = file_storage.delete_upload_file(upload.upload_id()).await {
+                error!(error = ?error, "failed to delete the expired upload staged file");
+            }
+            if let Err(error) = unit_of_work.uploads().delete(upload.upload_id()).await {
+                error!(error = ?error, "failed to delete the expired upload row");
+            }
+            return Err(AttemptError::Expired);
+        }
+
+        if upload.is_finished() {
+            return Err(AttemptError::Business(
+                WriteUploadChunkError::AlreadyFinished,
+            ));
+        }
+
+        let total_chunks = upload.total_chunks();
+        let chunk_number = usize::try_from(command.chunk_number()).map_err(|error| {
+            AttemptError::Business(WriteUploadChunkError::Unknown(anyhow::anyhow!(error)))
+        })?;
+        if chunk_number >= total_chunks {
+            return Err(AttemptError::Business(WriteUploadChunkError::InvalidChunk));
+        }
+
+        let chunk_size = usize::try_from(upload.chunk_size()).map_err(|error| {
+            AttemptError::Business(WriteUploadChunkError::Unknown(anyhow::anyhow!(error)))
+        })?;
+        let remaining = upload
+            .file_size()
+            .saturating_sub(command.chunk_number().saturating_mul(upload.chunk_size()));
+        let expected_len = remaining.min(upload.chunk_size());
+        let chunk_len = u64::try_from(command.chunk().len()).map_err(|error| {
+            AttemptError::Business(WriteUploadChunkError::Unknown(anyhow::anyhow!(error)))
+        })?;
+        if chunk_len != expected_len {
+            return Err(AttemptError::Business(WriteUploadChunkError::InvalidChunk));
+        }
+        // The last chunk may be shorter than `chunk_size`; every other chunk
+        // must be exactly `chunk_size`.
+        if chunk_number < total_chunks.saturating_sub(1) && chunk_size != command.chunk().len() {
+            return Err(AttemptError::Business(WriteUploadChunkError::InvalidChunk));
+        }
+
+        let declared = command.content_md5();
+        let is_hex = declared.len() == MD5_INTEGRITY_LENGTH
+            && declared
+                .chars()
+                .all(|character| character.is_ascii_hexdigit());
+        if !is_hex {
+            return Err(AttemptError::Business(WriteUploadChunkError::InvalidChunk));
+        }
+
+        // Recompute the digest of the received bytes and compare: a chunk whose
+        // digest does not match its `Content-MD5` header is rejected.
+        let digest = Md5::digest(command.chunk());
+        let mut computed = String::with_capacity(digest.len().saturating_mul(2));
+        for byte in digest {
+            let _result = write!(computed, "{byte:02x}");
+        }
+        if !computed.eq_ignore_ascii_case(declared) {
+            return Err(AttemptError::Business(WriteUploadChunkError::InvalidChunk));
+        }
+
+        let offset = command
+            .chunk_number()
+            .checked_mul(upload.chunk_size())
+            .ok_or(AttemptError::Business(WriteUploadChunkError::InvalidChunk))?;
+
+        file_storage
+            .add_chunk(upload.upload_id(), offset, command.chunk().to_vec())
+            .await
+            .map_err(|error| {
+                AttemptError::Business(WriteUploadChunkError::Unknown(error.into()))
+            })?;
+
+        let mut updated = upload;
+        updated.mark_chunk_received(chunk_number).map_err(|error| {
+            AttemptError::Business(WriteUploadChunkError::Unknown(error.into()))
+        })?;
+
+        match unit_of_work.uploads().save(updated).await {
+            Ok(_) => Ok(WriteUploadChunkResponse::new(true)),
+            Err(RepositoryError::ConcurrentModification) => {
+                Err(AttemptError::ConcurrentModification)
+            }
+            Err(error) => Err(AttemptError::Business(WriteUploadChunkError::Unknown(
+                error.into(),
+            ))),
+        }
+    }
+    .await;
+
     match result {
         Ok(value) => {
             unit_of_work.commit().await.map_err(|error| {
@@ -202,180 +283,15 @@ where
             Err(AttemptError::Business(WriteUploadChunkError::Expired))
         }
         Err(error) => {
-            log_rollback(unit_of_work).await;
+            if let Err(rollback_error) = unit_of_work.rollback().await {
+                error!(
+                    error = ?rollback_error,
+                    "failed to roll back the write upload chunk unit of work"
+                );
+            }
             Err(error)
         }
     }
-}
-
-/// Roll back the unit of work, logging a failure without masking the original
-/// error.
-#[expect(
-    clippy::single_call_fn,
-    reason = "the rollback logging is named for readability"
-)]
-async fn log_rollback<U>(unit_of_work: U)
-where
-    U: UnitOfWork,
-{
-    if let Err(rollback_error) = unit_of_work.rollback().await {
-        error!(
-            error = ?rollback_error,
-            "failed to roll back the write upload chunk unit of work"
-        );
-    }
-}
-
-/// Hexadecimal-encode `bytes`, lowercase.
-#[expect(
-    clippy::single_call_fn,
-    reason = "the digest encoding is named for readability"
-)]
-fn hex_encode(bytes: &[u8]) -> String {
-    use std::fmt::Write as _;
-
-    let mut hex = String::with_capacity(bytes.len().saturating_mul(2));
-    for byte in bytes {
-        let _result = write!(hex, "{byte:02x}");
-    }
-    hex
-}
-
-/// Return whether `upload` is unfinished and past `expires_at`.
-#[expect(
-    clippy::single_call_fn,
-    reason = "the expiry predicate is named for readability"
-)]
-fn is_expired(upload: &Upload, expires_at: NaiveDateTime) -> bool {
-    !upload.is_finished() && Utc::now().naive_utc() > expires_at
-}
-
-/// Persist one chunk inside an open unit of work.
-#[expect(
-    clippy::single_call_fn,
-    reason = "the per-attempt persistence is named for readability"
-)]
-async fn persist_chunk<U, S>(
-    unit_of_work: &mut U,
-    file_storage: &Arc<S>,
-    command: &WriteUploadChunkCommand,
-    expiry_seconds: u64,
-) -> Result<WriteUploadChunkResponse, AttemptError>
-where
-    U: AssetUnitOfWork,
-    S: FileStorage,
-{
-    let upload = unit_of_work
-        .uploads()
-        .search(&UploadFilter {
-            id: Some(command.upload_id()),
-            ..UploadFilter::default()
-        })
-        .await
-        .map_err(|error| AttemptError::Business(WriteUploadChunkError::Unknown(error.into())))?
-        .into_iter()
-        .next()
-        .ok_or(AttemptError::Business(WriteUploadChunkError::NoSuchUpload))?;
-
-    // Owner-only: a caller who is not the upload's owner must not see it.
-    if upload.user_id() != command.user_id() {
-        return Err(AttemptError::Business(WriteUploadChunkError::NoSuchUpload));
-    }
-
-    let expires_at = expiry(expiry_seconds, upload.created_at())
-        .map_err(|error| AttemptError::Business(WriteUploadChunkError::Unknown(error)))?;
-    if is_expired(&upload, expires_at) {
-        // TODO(reaper): move the expiry cleanup to a background task; this lazy
-        // delete keeps the row and the staged file only until the next access.
-        delete_expired(file_storage, unit_of_work, upload.upload_id()).await;
-        return Err(AttemptError::Expired);
-    }
-
-    if upload.is_finished() {
-        return Err(AttemptError::Business(
-            WriteUploadChunkError::AlreadyFinished,
-        ));
-    }
-
-    validate_chunk(command, &upload)?;
-
-    let offset = command
-        .chunk_number()
-        .checked_mul(upload.chunk_size())
-        .ok_or(AttemptError::Business(WriteUploadChunkError::InvalidChunk))?;
-    let chunk_number = usize::try_from(command.chunk_number()).map_err(|error| {
-        AttemptError::Business(WriteUploadChunkError::Unknown(anyhow::anyhow!(error)))
-    })?;
-
-    file_storage
-        .add_chunk(upload.upload_id(), offset, command.chunk().to_vec())
-        .await
-        .map_err(|error| AttemptError::Business(WriteUploadChunkError::Unknown(error.into())))?;
-
-    let mut updated = upload;
-    updated
-        .mark_chunk_received(chunk_number)
-        .map_err(|error| AttemptError::Business(WriteUploadChunkError::Unknown(error.into())))?;
-
-    match unit_of_work.uploads().save(updated).await {
-        Ok(_) => Ok(WriteUploadChunkResponse::new(true)),
-        Err(RepositoryError::ConcurrentModification) => Err(AttemptError::ConcurrentModification),
-        Err(error) => Err(AttemptError::Business(WriteUploadChunkError::Unknown(
-            error.into(),
-        ))),
-    }
-}
-
-/// Validate the chunk number, its size, and its declared MD5 digest.
-#[expect(
-    clippy::single_call_fn,
-    reason = "the chunk validation is named after the rules it enforces"
-)]
-fn validate_chunk(command: &WriteUploadChunkCommand, upload: &Upload) -> Result<(), AttemptError> {
-    let total_chunks = upload.total_chunks();
-    let chunk_number = usize::try_from(command.chunk_number()).map_err(|error| {
-        AttemptError::Business(WriteUploadChunkError::Unknown(anyhow::anyhow!(error)))
-    })?;
-    if chunk_number >= total_chunks {
-        return Err(AttemptError::Business(WriteUploadChunkError::InvalidChunk));
-    }
-
-    let chunk_size = usize::try_from(upload.chunk_size()).map_err(|error| {
-        AttemptError::Business(WriteUploadChunkError::Unknown(anyhow::anyhow!(error)))
-    })?;
-    let remaining = upload
-        .file_size()
-        .saturating_sub(command.chunk_number().saturating_mul(upload.chunk_size()));
-    let expected_len = remaining.min(upload.chunk_size());
-    let chunk_len = u64::try_from(command.chunk().len()).map_err(|error| {
-        AttemptError::Business(WriteUploadChunkError::Unknown(anyhow::anyhow!(error)))
-    })?;
-    if chunk_len != expected_len {
-        return Err(AttemptError::Business(WriteUploadChunkError::InvalidChunk));
-    }
-    // The last chunk may be shorter than `chunk_size`; every other chunk must
-    // be exactly `chunk_size`.
-    if chunk_number < total_chunks.saturating_sub(1) && chunk_size != command.chunk().len() {
-        return Err(AttemptError::Business(WriteUploadChunkError::InvalidChunk));
-    }
-
-    let declared = command.content_md5();
-    let is_hex = declared.len() == MD5_INTEGRITY_LENGTH
-        && declared
-            .chars()
-            .all(|character| character.is_ascii_hexdigit());
-    if !is_hex {
-        return Err(AttemptError::Business(WriteUploadChunkError::InvalidChunk));
-    }
-
-    // Recompute the digest of the received bytes and compare: a chunk whose
-    // digest does not match its `Content-MD5` header is rejected.
-    let computed = hex_encode(&Md5::digest(command.chunk()));
-    if !computed.eq_ignore_ascii_case(declared) {
-        return Err(AttemptError::Business(WriteUploadChunkError::InvalidChunk));
-    }
-
-    Ok(())
 }
 
 #[cfg(test)]
