@@ -576,6 +576,32 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn put_upload_chunk_invalid_chunk_number_returns_bad_request()
+    -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let use_case = MockWriteUploadChunkUseCase::new();
+
+        // Act
+        let (status, payload) = into_parts(
+            send(
+                use_case,
+                3,
+                "/api/v1/asset/upload/7/chunk/abc",
+                Some(RANGE_CHUNK_ZERO),
+                Some(&chunk_md5()),
+                Body::from(CHUNK),
+            )
+            .await?,
+        )
+        .await?;
+
+        // Assert
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(payload, json!({ "error": "invalid chunk number" }));
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn put_upload_chunk_unknown_upload_returns_not_found() -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut use_case = MockWriteUploadChunkUseCase::new();
