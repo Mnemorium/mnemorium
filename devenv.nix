@@ -80,6 +80,14 @@
       pass_filenames = false; # It work on a package basis
       files = "\\.rs$";
     };
+    domain-model-tests = {
+      enable = true;
+      name = "No tests in domain/model";
+      entry = "script/no_domain_model_tests.sh";
+      language = "system";
+      pass_filenames = true;
+      files = "^src/lib/domain/model/.*\\.rs$";
+    };
     # === python
     ruff.enable = true;
     ruff-format.enable = true;

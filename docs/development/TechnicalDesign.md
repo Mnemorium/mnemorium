@@ -1794,6 +1794,9 @@ Handler tests drive the axum router in-process, so they exercise routing, extrac
 
 Application tests exercise a use case with its ports replaced by mocks.
 
+Domain models (`src/lib/domain/model/`) have no dedicated test of their own ([TEST-019](#application-strategy)); they
+are covered here. `script/no_domain_model_tests.sh` enforces this in pre-commit and CI.
+
 ---
 
 #### Domain service strategy
