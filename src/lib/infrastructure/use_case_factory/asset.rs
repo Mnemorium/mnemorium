@@ -55,6 +55,7 @@ impl AssetUseCaseFactory for RuntimeAssetUseCaseFactory {
             Arc::clone(&self.file_storage),
             live.asset().upload().chunk_size_bytes(),
             live.asset().upload().expiry_seconds(),
+            live.asset().upload().max_file_size_bytes(),
         ))
     }
 

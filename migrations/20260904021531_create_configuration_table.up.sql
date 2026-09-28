@@ -6,6 +6,10 @@ CREATE TABLE configuration (
     is_root_admin_password_logged INTEGER NOT NULL DEFAULT 1,
     sqlite3_path TEXT NOT NULL,
     sqlite3_max_connections INTEGER NOT NULL,
+    asset_storage_root TEXT NOT NULL DEFAULT 'data',
+    asset_upload_chunk_size_bytes INTEGER NOT NULL DEFAULT 5242880,
+    asset_upload_expiry_seconds INTEGER NOT NULL DEFAULT 86400,
+    asset_upload_max_file_size_bytes INTEGER NOT NULL DEFAULT 107374182400,
     CONSTRAINT pk_configuration_configuration_id PRIMARY KEY (configuration_id),
     CONSTRAINT chk_configuration_configuration_id CHECK (configuration_id = 0),
     CONSTRAINT chk_configuration_jwt_secret CHECK (LENGTH(jwt_secret) = 64),
@@ -16,6 +20,18 @@ CREATE TABLE configuration (
     ),
     CONSTRAINT chk_configuration_sqlite3_max_connections CHECK (
         sqlite3_max_connections > 0
+    ),
+    CONSTRAINT chk_configuration_asset_storage_root CHECK (
+        LENGTH(asset_storage_root) > 0
+    ),
+    CONSTRAINT chk_configuration_asset_upload_chunk_size_bytes CHECK (
+        asset_upload_chunk_size_bytes > 0
+    ),
+    CONSTRAINT chk_configuration_asset_upload_expiry_seconds CHECK (
+        asset_upload_expiry_seconds > 0
+    ),
+    CONSTRAINT chk_configuration_asset_upload_max_file_size_bytes CHECK (
+        asset_upload_max_file_size_bytes > 0
     )
 );
 

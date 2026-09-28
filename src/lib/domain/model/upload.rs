@@ -6,6 +6,12 @@ use crate::domain::alias::NumericID;
 /// `chk_upload_md5_integrity` check constraint.
 pub const MD5_INTEGRITY_LENGTH: usize = 32;
 
+/// Hard upper bound on the number of chunks an upload may be split into.
+///
+/// Bounds the `chunk_bitmap` blob to 8 MiB (`MAX_TOTAL_CHUNKS / 8`) regardless
+/// of configuration, as a backstop against an unbounded allocation.
+pub const MAX_TOTAL_CHUNKS: usize = 67_108_864;
+
 /// Error returned when initialising or updating a `ChunkBitmap`.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]

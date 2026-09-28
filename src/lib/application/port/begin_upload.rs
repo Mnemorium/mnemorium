@@ -117,6 +117,9 @@ impl BeginUploadResponse {
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum BeginUploadError {
+    /// The file size exceeds the maximum allowed size.
+    #[error("the file size exceeds the maximum allowed size")]
+    FileTooLarge,
     /// The file name is unsafe.
     #[error("the file name is invalid")]
     InvalidFileName,

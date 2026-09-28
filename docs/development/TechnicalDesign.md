@@ -1662,6 +1662,7 @@ entity configuration {
     * asset_storage_root: TEXT <<NN, DF('data'), CC(length(asset_storage_root) > 0)>>
     * asset_upload_chunk_size_bytes: INTEGER <<NN, DF(5242880), CC(asset_upload_chunk_size_bytes > 0)>>
     * asset_upload_expiry_seconds: INTEGER <<NN, DF(86400), CC(asset_upload_expiry_seconds > 0)>>
+    * asset_upload_max_file_size_bytes: INTEGER <<NN, DF(107374182400), CC(asset_upload_max_file_size_bytes > 0)>>
 }
 
 user ||--|| credential

@@ -12,6 +12,7 @@ use crate::application::port::begin_upload::BeginUploadResponse;
 use crate::application::port::begin_upload::BeginUploadUseCase;
 use crate::domain::model::file::MD5_INTEGRITY_LENGTH;
 use crate::domain::model::upload::ChunkBitmap;
+use crate::domain::model::upload::MAX_TOTAL_CHUNKS;
 use crate::domain::model::upload::Upload;
 use crate::domain::model::upload::UploadError;
 use crate::domain::port::asset_unit_of_work::AssetUnitOfWork;
@@ -29,6 +30,8 @@ pub struct BeginUpload<F, S> {
     expiry_seconds: u64,
     /// Storage adapter creating the staging file.
     file_storage: Arc<S>,
+    /// Maximum size of a single uploaded file, in bytes.
+    max_file_size_bytes: u64,
     /// Factory opening the unit of work wrapping the upload creation.
     unit_of_work_factory: Arc<F>,
 }
@@ -41,11 +44,13 @@ impl<F: UnitOfWorkFactory, S: FileStorage> BeginUpload<F, S> {
         file_storage: Arc<S>,
         chunk_size: u64,
         expiry_seconds: u64,
+        max_file_size_bytes: u64,
     ) -> Self {
         Self {
             chunk_size,
             expiry_seconds,
             file_storage,
+            max_file_size_bytes,
             unit_of_work_factory,
         }
     }
@@ -65,11 +70,24 @@ where
         let chunk_size = self.chunk_size;
         let expiry_seconds = self.expiry_seconds;
         let file_storage = Arc::clone(&self.file_storage);
+        let max_file_size_bytes = self.max_file_size_bytes;
         let unit_of_work_factory = Arc::clone(&self.unit_of_work_factory);
 
         Box::pin(async move {
             let md5 = command.md5().to_owned();
             let validated_md5 = validate_md5(&md5)?;
+
+            // Reject oversized requests before opening a transaction, building a
+            // bitmap, or preallocating the staging file: nothing is allocated
+            // from a client-declared size above the configured maximum.
+            let file_size = command.file_size();
+            if file_size == 0 {
+                return Err(BeginUploadError::InvalidFileSize);
+            }
+            if file_size > max_file_size_bytes {
+                return Err(BeginUploadError::FileTooLarge);
+            }
+            let total_chunks = validate_total_chunks(file_size, chunk_size)?;
 
             let mut unit_of_work = unit_of_work_factory
                 .begin()
@@ -87,10 +105,6 @@ where
                 }
 
                 let created_at = Utc::now().naive_utc();
-                let file_size = command.file_size();
-                let total = file_size.div_ceil(chunk_size);
-                let total_chunks = usize::try_from(total)
-                    .map_err(|error| BeginUploadError::Unknown(anyhow::anyhow!(error)))?;
                 let chunk_bitmap = ChunkBitmap::try_new(total_chunks)
                     .map_err(|error| BeginUploadError::Unknown(anyhow::Error::new(error)))?;
 
@@ -195,6 +209,27 @@ fn validate_md5(md5: &str) -> Result<String, BeginUploadError> {
     }
 }
 
+/// Compute the upload's total chunk count, rejecting a count above
+/// [`MAX_TOTAL_CHUNKS`].
+///
+/// # Errors
+///
+/// Returns [`BeginUploadError::FileTooLarge`] when the file splits into more
+/// than [`MAX_TOTAL_CHUNKS`] chunks.
+#[expect(
+    clippy::single_call_fn,
+    reason = "the chunk-count bound is named after the rule it enforces"
+)]
+fn validate_total_chunks(file_size: u64, chunk_size: u64) -> Result<usize, BeginUploadError> {
+    let total = file_size.div_ceil(chunk_size);
+    let total_chunks = usize::try_from(total)
+        .map_err(|error| BeginUploadError::Unknown(anyhow::anyhow!(error)))?;
+    if total_chunks > MAX_TOTAL_CHUNKS {
+        return Err(BeginUploadError::FileTooLarge);
+    }
+    Ok(total_chunks)
+}
+
 #[cfg(test)]
 mod tests {
     use std::error::Error;
@@ -206,6 +241,7 @@ mod tests {
     use crate::application::port::begin_upload::BeginUploadError;
     use crate::application::port::begin_upload::BeginUploadUseCase as _;
     use crate::application::use_case::test_support::asset_factory;
+    use crate::domain::model::upload::MAX_TOTAL_CHUNKS;
     use crate::domain::model::upload::Upload;
     use crate::domain::port::error::RepositoryError;
     use crate::domain::port::error::StorageError;
@@ -219,6 +255,7 @@ mod tests {
     const DIGEST: &str = "0123456789abcdef0123456789abcdef";
     const CHUNK_SIZE: u64 = 4;
     const TTL_SECONDS: u64 = 3600;
+    const DEFAULT_MAX_FILE_SIZE: u64 = 1_000_000;
 
     type UseCase =
         BeginUpload<super::super::test_support::AssetTestUnitOfWorkFactory, MockFileStorage>;
@@ -240,6 +277,19 @@ mod tests {
             &mut MockFileStorage,
         ) -> Result<(), Box<dyn Error>>,
     ) -> Result<Harness, Box<dyn Error>> {
+        use_case_with_max(setup, DEFAULT_MAX_FILE_SIZE)
+    }
+
+    /// Build a use case whose configured maximum file size is
+    /// `max_file_size_bytes`.
+    fn use_case_with_max(
+        setup: impl FnOnce(
+            &mut MockUploadRepository,
+            &mut MockMimeTypeRepository,
+            &mut MockFileStorage,
+        ) -> Result<(), Box<dyn Error>>,
+        max_file_size_bytes: u64,
+    ) -> Result<Harness, Box<dyn Error>> {
         let mut uploads = MockUploadRepository::new();
         let mut mime_types = MockMimeTypeRepository::new();
         let mut file_storage = MockFileStorage::new();
@@ -251,6 +301,7 @@ mod tests {
                 Arc::new(file_storage),
                 CHUNK_SIZE,
                 TTL_SECONDS,
+                max_file_size_bytes,
             ),
             committed: harness.committed,
             rolled_back: harness.rolled_back,
@@ -464,6 +515,90 @@ mod tests {
         // Assert
         assert!(matches!(result, Err(BeginUploadError::Unknown(_))));
         assert!(harness.rolled_back.load(Ordering::SeqCst));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn begin_upload_file_at_max_size_succeeds() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let max_file_size = 10;
+        let harness = use_case_with_max(
+            |uploads, mime_types, file_storage| {
+                expect_mime_type(mime_types, true);
+                uploads
+                    .expect_create()
+                    .times(1)
+                    .returning(|upload| Box::pin(async move { Ok(upload) }));
+                file_storage
+                    .expect_create_upload_file()
+                    .times(1)
+                    .returning(|_, _| Box::pin(async { Ok(()) }));
+                Ok(())
+            },
+            max_file_size,
+        )?;
+        let command = command(max_file_size);
+
+        // Act
+        let response = harness.use_case.execute(command).await?;
+
+        // Assert
+        assert_eq!(response.chunk_size(), CHUNK_SIZE);
+        assert!(harness.committed.load(Ordering::SeqCst));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn begin_upload_file_over_max_size_returns_file_too_large() -> Result<(), Box<dyn Error>>
+    {
+        // Arrange
+        // No repository or storage expectation: the rejection must happen before
+        // any of them is reached (mockall fails the test on an unexpected call).
+        let harness = use_case_with_max(|_, _, _| Ok(()), 10)?;
+        let command = command(11);
+
+        // Act
+        let result = harness.use_case.execute(command).await;
+
+        // Assert
+        assert!(matches!(result, Err(BeginUploadError::FileTooLarge)));
+        assert!(!harness.committed.load(Ordering::SeqCst));
+        assert!(!harness.rolled_back.load(Ordering::SeqCst));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn begin_upload_zero_file_size_returns_invalid_file_size() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let harness = use_case_with_max(|_, _, _| Ok(()), DEFAULT_MAX_FILE_SIZE)?;
+        let command = command(0);
+
+        // Act
+        let result = harness.use_case.execute(command).await;
+
+        // Assert
+        assert!(matches!(result, Err(BeginUploadError::InvalidFileSize)));
+        assert!(!harness.committed.load(Ordering::SeqCst));
+        assert!(!harness.rolled_back.load(Ordering::SeqCst));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn begin_upload_too_many_chunks_returns_file_too_large() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        // One byte per chunk keeps the file size small while exceeding the hard
+        // chunk-count backstop.
+        let harness = use_case_with_max(|_, _, _| Ok(()), MAX_TOTAL_CHUNKS as u64 + 1)?;
+        let file_size = (MAX_TOTAL_CHUNKS as u64 + 1).saturating_mul(CHUNK_SIZE);
+        let command = command(file_size);
+
+        // Act
+        let result = harness.use_case.execute(command).await;
+
+        // Assert
+        assert!(matches!(result, Err(BeginUploadError::FileTooLarge)));
+        assert!(!harness.committed.load(Ordering::SeqCst));
+        assert!(!harness.rolled_back.load(Ordering::SeqCst));
         Ok(())
     }
 }

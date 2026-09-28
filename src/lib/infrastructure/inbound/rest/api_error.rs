@@ -30,6 +30,8 @@ pub enum ApiError {
     InternalServerError,
     /// The requested resource does not exist (`404`).
     NotFound(String),
+    /// The request payload is larger than the server allows (`413`).
+    PayloadTooLarge(String),
     /// Authentication is required or the credentials are invalid (`401`).
     Unauthorized(String),
     /// The request payload media type is not supported (`415`).
@@ -50,6 +52,7 @@ impl ApiError {
                 "an unexpected error occurred".to_owned(),
             ),
             Self::NotFound(message) => (StatusCode::NOT_FOUND, message),
+            Self::PayloadTooLarge(message) => (StatusCode::PAYLOAD_TOO_LARGE, message),
             Self::Unauthorized(message) => (StatusCode::UNAUTHORIZED, message),
             Self::UnsupportedMediaType(message) => (StatusCode::UNSUPPORTED_MEDIA_TYPE, message),
         }

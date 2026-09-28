@@ -69,6 +69,7 @@ impl From<BeginUploadError> for ApiError {
             BeginUploadError::InvalidFileName
             | BeginUploadError::InvalidFileSize
             | BeginUploadError::InvalidMd5 => Self::BadRequest(err.to_string()),
+            BeginUploadError::FileTooLarge => Self::PayloadTooLarge(err.to_string()),
             BeginUploadError::Unknown(_) => Self::InternalServerError,
             BeginUploadError::UnsupportedMediaType => Self::UnsupportedMediaType(err.to_string()),
         }
@@ -104,6 +105,11 @@ impl From<BeginUploadError> for ApiError {
             status = UNAUTHORIZED,
             body = ErrorBody,
             description = "Missing or invalid credentials"
+        ),
+        (
+            status = PAYLOAD_TOO_LARGE,
+            body = ErrorBody,
+            description = "The declared file size exceeds the maximum allowed size"
         ),
         (
             status = UNSUPPORTED_MEDIA_TYPE,
@@ -281,6 +287,24 @@ mod tests {
         assert_eq!(
             payload,
             json!({ "error": "the declared content type is not a supported media type" })
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn post_upload_file_too_large_returns_payload_too_large() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let mut use_case = MockBeginUploadUseCase::new();
+        expect_error(&mut use_case, BeginUploadError::FileTooLarge);
+
+        // Act
+        let (status, payload) = into_parts(send(use_case, 3, request_body()?).await?).await?;
+
+        // Assert
+        assert_eq!(status, StatusCode::PAYLOAD_TOO_LARGE);
+        assert_eq!(
+            payload,
+            json!({ "error": "the file size exceeds the maximum allowed size" })
         );
         Ok(())
     }

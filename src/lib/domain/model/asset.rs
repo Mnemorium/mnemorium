@@ -7,6 +7,9 @@ pub const DEFAULT_CHUNK_SIZE_BYTES: u64 = 5_242_880;
 /// Default lifetime of an upload session, in seconds.
 pub const DEFAULT_EXPIRY_SECONDS: u64 = 86_400;
 
+/// Default maximum size of a single uploaded file, in bytes (100 GiB).
+pub const DEFAULT_MAX_FILE_SIZE_BYTES: u64 = 107_374_182_400;
+
 /// Error returned when initialising or updating an asset value object.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
@@ -17,6 +20,12 @@ pub enum AssetError {
     /// The upload expiry is zero.
     #[error("asset upload expiry_seconds must be greater than zero")]
     ExpiryZero,
+    /// The maximum file size does not fit in a signed 64-bit integer.
+    #[error("asset upload max_file_size_bytes must fit in a signed 64-bit integer")]
+    MaxFileSizeTooLarge,
+    /// The maximum file size is zero.
+    #[error("asset upload max_file_size_bytes must be greater than zero")]
+    MaxFileSizeZero,
     /// The storage root is empty.
     #[error("asset storage root must not be empty")]
     RootEmpty,
@@ -88,6 +97,8 @@ pub struct AssetUpload {
     chunk_size_bytes: u64,
     /// Lifetime of an upload session, in seconds.
     expiry_seconds: u64,
+    /// Maximum size of a single uploaded file, in bytes.
+    max_file_size_bytes: u64,
 }
 
 impl AssetUpload {
@@ -101,6 +112,12 @@ impl AssetUpload {
     #[must_use]
     pub fn expiry_seconds(&self) -> u64 {
         self.expiry_seconds
+    }
+
+    /// Return the maximum size of a single uploaded file, in bytes.
+    #[must_use]
+    pub fn max_file_size_bytes(&self) -> u64 {
+        self.max_file_size_bytes
     }
 
     /// Update the size of every chunk except the last, in bytes.
@@ -123,18 +140,38 @@ impl AssetUpload {
         Ok(())
     }
 
-    /// Initialise a new `AssetUpload`, validating both settings are non-zero.
+    /// Update the maximum size of a single uploaded file, in bytes.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`AssetError::MaxFileSizeZero`] when `max_file_size_bytes` is
+    /// zero, and [`AssetError::MaxFileSizeTooLarge`] when it exceeds
+    /// [`i64::MAX`].
+    pub fn set_max_file_size_bytes(&mut self, max_file_size_bytes: u64) -> Result<(), AssetError> {
+        self.max_file_size_bytes = Self::validate_max_file_size_bytes(max_file_size_bytes)?;
+        Ok(())
+    }
+
+    /// Initialise a new `AssetUpload`, validating every setting.
     ///
     /// # Errors
     ///
     /// Returns [`AssetError::ChunkSizeZero`] when `chunk_size_bytes` is zero,
-    /// and [`AssetError::ExpiryZero`] when `expiry_seconds` is zero.
-    pub fn try_new(chunk_size_bytes: u64, expiry_seconds: u64) -> Result<Self, AssetError> {
+    /// [`AssetError::ExpiryZero`] when `expiry_seconds` is zero,
+    /// [`AssetError::MaxFileSizeZero`] when `max_file_size_bytes` is zero, and
+    /// [`AssetError::MaxFileSizeTooLarge`] when it exceeds [`i64::MAX`].
+    pub fn try_new(
+        chunk_size_bytes: u64,
+        expiry_seconds: u64,
+        max_file_size_bytes: u64,
+    ) -> Result<Self, AssetError> {
         let validated_chunk_size = Self::validate_chunk_size_bytes(chunk_size_bytes)?;
         let validated_expiry = Self::validate_expiry_seconds(expiry_seconds)?;
+        let validated_max_file_size = Self::validate_max_file_size_bytes(max_file_size_bytes)?;
         Ok(Self {
             chunk_size_bytes: validated_chunk_size,
             expiry_seconds: validated_expiry,
+            max_file_size_bytes: validated_max_file_size,
         })
     }
 
@@ -161,6 +198,23 @@ impl AssetUpload {
         }
         Ok(expiry_seconds)
     }
+
+    /// Validate `max_file_size_bytes`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`AssetError::MaxFileSizeZero`] when `max_file_size_bytes` is
+    /// zero, and [`AssetError::MaxFileSizeTooLarge`] when it exceeds
+    /// [`i64::MAX`].
+    fn validate_max_file_size_bytes(max_file_size_bytes: u64) -> Result<u64, AssetError> {
+        if max_file_size_bytes == 0 {
+            return Err(AssetError::MaxFileSizeZero);
+        }
+        if max_file_size_bytes > i64::MAX as u64 {
+            return Err(AssetError::MaxFileSizeTooLarge);
+        }
+        Ok(max_file_size_bytes)
+    }
 }
 
 impl Default for AssetUpload {
@@ -168,6 +222,7 @@ impl Default for AssetUpload {
         Self {
             chunk_size_bytes: DEFAULT_CHUNK_SIZE_BYTES,
             expiry_seconds: DEFAULT_EXPIRY_SECONDS,
+            max_file_size_bytes: DEFAULT_MAX_FILE_SIZE_BYTES,
         }
     }
 }
@@ -199,5 +254,83 @@ impl Asset {
     #[must_use]
     pub fn upload(&self) -> &AssetUpload {
         &self.upload
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::error::Error;
+
+    use super::AssetError;
+    use super::AssetUpload;
+    use super::DEFAULT_CHUNK_SIZE_BYTES;
+    use super::DEFAULT_EXPIRY_SECONDS;
+    use super::DEFAULT_MAX_FILE_SIZE_BYTES;
+
+    #[test]
+    fn asset_upload_default_exposes_configured_values() {
+        // Arrange & Act
+        let upload = AssetUpload::default();
+
+        // Assert
+        assert_eq!(upload.chunk_size_bytes(), DEFAULT_CHUNK_SIZE_BYTES);
+        assert_eq!(upload.expiry_seconds(), DEFAULT_EXPIRY_SECONDS);
+        assert_eq!(upload.max_file_size_bytes(), DEFAULT_MAX_FILE_SIZE_BYTES);
+    }
+
+    #[test]
+    fn asset_upload_zero_max_file_size_returns_max_file_size_zero() {
+        // Act
+        let result = AssetUpload::try_new(2048, 120, 0);
+
+        // Assert
+        assert!(matches!(result, Err(AssetError::MaxFileSizeZero)));
+    }
+
+    #[test]
+    fn asset_upload_i64_max_max_file_size_is_accepted() -> Result<(), Box<dyn Error>> {
+        // Act
+        let upload = AssetUpload::try_new(2048, 120, i64::MAX as u64)?;
+
+        // Assert
+        assert_eq!(upload.max_file_size_bytes(), i64::MAX as u64);
+        Ok(())
+    }
+
+    #[test]
+    fn asset_upload_above_i64_max_max_file_size_returns_max_file_size_too_large() {
+        // Arrange
+        let max_file_size_bytes = (i64::MAX as u64).saturating_add(1);
+
+        // Act
+        let result = AssetUpload::try_new(2048, 120, max_file_size_bytes);
+
+        // Assert
+        assert!(matches!(result, Err(AssetError::MaxFileSizeTooLarge)));
+    }
+
+    #[test]
+    fn asset_upload_set_max_file_size_updates_the_value() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let mut upload = AssetUpload::default();
+
+        // Act
+        upload.set_max_file_size_bytes(4_294_967_296)?;
+
+        // Assert
+        assert_eq!(upload.max_file_size_bytes(), 4_294_967_296);
+        Ok(())
+    }
+
+    #[test]
+    fn asset_upload_set_zero_max_file_size_returns_max_file_size_zero() {
+        // Arrange
+        let mut upload = AssetUpload::default();
+
+        // Act
+        let result = upload.set_max_file_size_bytes(0);
+
+        // Assert
+        assert!(matches!(result, Err(AssetError::MaxFileSizeZero)));
     }
 }

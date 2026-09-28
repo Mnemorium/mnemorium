@@ -567,6 +567,16 @@
             },
             "description": "Missing or invalid credentials"
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The declared file size exceeds the maximum allowed size"
+          },
           "415": {
             "content": {
               "application/json": {
