@@ -62,30 +62,6 @@ project uses.
 When adding a crate or tool: reuse an existing adapter before adding one, never
 use wildcard dependency versions, and keep `cargo audit` clean.
 
-## Agent skills
-
-### Issue tracker
-
-Issues are tracked on GitHub Issues in the `Mnemorium/mnemorium` repository.
-See `docs/development/IssueTracking.md`.
-
-### Triage labels
-
-The state labels are `needs-triage`, `needs-info`, `ready-for-agent`,
-`ready-for-human`, and `wontfix`. See `docs/development/IssueTracking.md`.
-
-### Domain docs
-
-Single-context repository: there is no `CONTEXT.md` and no `docs/adr/`. The
-domain language lives in `docs/development/Glossary.md` and the use-case catalog
-in `docs/development/UseCases.md`.
-
-## Agents and skills
-
-- **Agents** — `.opencode/agent/`: `rust-dev`, `database-engineer`, `qa-e2e`,
-  `devops`, `reviewer`, and `review-orchestrator`.
-- **Skills** — `.opencode/skills/`: `review-pr` and `create-issue`.
-
 ## Special Rules
 
 - Respect the hexagonal dependency direction: `domain` ← `application` ←

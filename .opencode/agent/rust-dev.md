@@ -63,7 +63,6 @@ work from the code and the conventions documented under `docs/development/`.
 Read these source-of-truth documents before writing code and follow them:
 
 - `docs/development/TechnicalDesign.md` § 1 — Rust and SQL conventions.
-- `docs/development/TechnicalDesign.md` § 5 — testing strategy per layer.
 - `docs/development/UseCases.md` — use-case catalog (update entries only
   when the user explicitly asks).
 - `docs/development/TechnicalDesign.md` § 3 — the OpenAPI / `#[utoipa::path(...)]`
@@ -156,16 +155,12 @@ its patterns over inventing new ones.
    obtain the context views it needs, then commit on success or roll back
    before returning a business error. Translate port errors into the use-case
    error's `Unknown`. Register the module in `use_case.rs`.
-3. Unit tests in the same file (`#[cfg(test)] mod tests`): happy path,
-   validation errors, business-rule violations, dependency failures — mocks via
-   mockall, tests return `Result<(), Box<dyn Error>>` and use `?`, never
-   `unwrap`/`expect`.
-4. Expose it through the bounded context's use-case factory: add a method to the
+3. Expose it through the bounded context's use-case factory: add a method to the
    `<Context>UseCaseFactory` port and implement it in
    `infrastructure/use_case_factory/<context>.rs`. Handlers resolve it from
    `State<AppState>`; only startup use cases are wired directly in
    `src/bin/server.rs`.
-5. Add the REST endpoint (below). Do **not** add an entry to
+4. Add the REST endpoint (below). Do **not** add an entry to
    `docs/development/UseCases.md` unless the user explicitly asks for it —
    use-case documentation is manual, not automatic (the `UC-###` numbering
    convention lives there, so never invent identifiers that aren't already
@@ -203,9 +198,6 @@ its patterns over inventing new ones.
    `paths(...)`, `components(schemas(...))`, and the bounded-context `tags`.
 5. Regenerate the spec with `cargo run --bin openapi_gen` (writes
    `docs/development/api/openapi.json`).
-6. Unit tests: `async`, sent through `oneshot` (`tower::ServiceExt`), mock the
-   use case, one test per valid variant, per invalid attribute, per
-   authorization rule, and per error mapping.
 
 ### Add a repository
 
@@ -227,10 +219,7 @@ its patterns over inventing new ones.
    identifier columns, and `sqlx::Type` enums with
    `#[sqlx(rename_all = "UPPERCASE")]` for `CHECK (... IN (...))` columns,
    declared before the struct.
-4. Integration tests in the same file: an in-memory pool capped at one
-   connection (`sqlite::memory:`) plus `sqlx::migrate!("./migrations")`. Cover
-   the happy path, every schema constraint, and every trigger.
-5. Expose it through the context's unit-of-work view: add the accessor to
+4. Expose it through the context's unit-of-work view: add the accessor to
    `domain/port/<context>_unit_of_work.rs` and implement it in
    `infrastructure/outbound/sqlx/unit_of_work.rs`.
 
@@ -294,8 +283,6 @@ When an endpoint is declared ahead of its use case (handler body
   `// NOTE(stub): ...` comment stating the expected future mapping.
 - Keep the full `#[utoipa::path]` contract (all responses, params, security)
   so the spec is honest even though the handler panics.
-- Do not add E2E tests against a stub — `unimplemented!()` panics when the
-  route is hit.
 
 ## Clippy contract
 
@@ -341,6 +328,8 @@ After changes, run in order and report results:
 
 ## Scope boundaries
 
+- Tests are authored by the test engineer, not by you: implement production code
+  and leave `#[cfg(test)] mod tests` and `test/` to that agent.
 - Never read or modify anything under `test/` or the `devenv.nix` /
   `devenv.yaml` / `devenv.lock` files — permissions deny it, and you must not
   try to bypass them (including through bash or subagents). `test/` and the

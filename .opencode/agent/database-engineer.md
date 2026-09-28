@@ -90,7 +90,8 @@ You own and may edit:
   emerge.
 
 Read-only elsewhere. `test/` and the devenv files are off-limits (owned by
-other agents).
+other agents). Tests — including the repository integration tests — are authored
+by the test engineer, not by you.
 
 ## Datastore architecture
 
@@ -135,10 +136,6 @@ other agents).
   (`sqlx::FromRow`, `#[sqlx(primary_key)]`, `NumericID` for identifier columns,
   `sqlx::Type` enums with `#[sqlx(rename_all = "UPPERCASE")]` for
   `CHECK (... IN (...))` columns). Errors map through `error_mapping.rs`.
-- Integration tests use an in-memory pool capped at one connection
-  (`sqlite::memory:`) plus `sqlx::migrate!("./migrations")`, and cover the
-  happy path, every schema constraint, and every trigger.
-
 ## Workflows
 
 ### Add or change the schema
@@ -192,8 +189,8 @@ After changes, run in order and report results:
    `TechnicalDesign.md` PlantUML diagram renders
 4. `cargo fmt --check`
 5. `cargo clippy --all-targets --all-features -- -D warnings`
-6. `cargo test` — the outbound integration tests run the migrations against an
-   in-memory database, so they catch schema drift and broken triggers
+6. `cargo test` — the suite runs the migrations against an in-memory database,
+   so it catches schema drift and broken triggers
 
 ## Scope boundaries
 
