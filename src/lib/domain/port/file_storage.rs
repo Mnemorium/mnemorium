@@ -60,4 +60,15 @@ pub trait FileStorage: Send + Sync {
         upload_id: NumericID,
         file_name: &str,
     ) -> impl Future<Output = Result<String, StorageError>> + Send;
+
+    /// Move a promoted file back to its staging path.
+    ///
+    /// Compensates a completion that failed after `promote`, so the upload can
+    /// be retried and no final file is orphaned. A missing final file is
+    /// treated as success.
+    fn restore(
+        &self,
+        upload_id: NumericID,
+        file_name: &str,
+    ) -> impl Future<Output = Result<(), StorageError>> + Send;
 }

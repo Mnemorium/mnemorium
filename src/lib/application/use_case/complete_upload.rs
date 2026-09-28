@@ -11,6 +11,7 @@ use crate::application::port::complete_upload::CompleteUploadCommand;
 use crate::application::port::complete_upload::CompleteUploadError;
 use crate::application::port::complete_upload::CompleteUploadResponse;
 use crate::application::port::complete_upload::CompleteUploadUseCase;
+use crate::domain::alias::NumericID;
 use crate::domain::model::file::File;
 use crate::domain::model::upload::Upload;
 use crate::domain::port::asset_unit_of_work::AssetUnitOfWork;
@@ -81,6 +82,7 @@ where
                 .begin()
                 .await
                 .map_err(|error| CompleteUploadError::Unknown(error.into()))?;
+            let mut promoted: Option<(NumericID, String)> = None;
 
             let flow = async {
                 let found = match unit_of_work
@@ -164,6 +166,7 @@ where
                     Ok(path) => path,
                     Err(error) => return Flow::Failed(CompleteUploadError::Unknown(error.into())),
                 };
+                promoted = Some((upload.upload_id(), upload.file_name().to_owned()));
 
                 let pending = match File::try_new(
                     0,
@@ -199,10 +202,10 @@ where
 
             match flow {
                 Flow::Succeeded(value) => {
-                    unit_of_work
-                        .commit()
-                        .await
-                        .map_err(|error| CompleteUploadError::Unknown(error.into()))?;
+                    if let Err(error) = unit_of_work.commit().await {
+                        restore_promoted(&file_storage, promoted.as_ref()).await;
+                        return Err(CompleteUploadError::Unknown(error.into()));
+                    }
                     Ok(value)
                 }
                 Flow::Expired => {
@@ -223,6 +226,7 @@ where
                             "failed to roll back the complete upload unit of work"
                         );
                     }
+                    restore_promoted(&file_storage, promoted.as_ref()).await;
                     Err(error)
                 }
             }
@@ -296,6 +300,22 @@ where
         }
     }
     Ok(own_file)
+}
+
+/// Best-effort move a promoted file back to its staging path after a failed
+/// completion, so the upload can be retried and no final file is orphaned.
+async fn restore_promoted<S>(file_storage: &Arc<S>, promoted: Option<&(NumericID, String)>)
+where
+    S: FileStorage,
+{
+    let Some(identity) = promoted else {
+        return;
+    };
+    if let Err(error) = file_storage.restore(identity.0, identity.1.as_str()).await {
+        // TODO(reaper): a failed restore leaves the final file orphaned; delete
+        // it once a background reaper exists.
+        error!(error = ?error, "failed to restore the promoted file of an incomplete upload");
+    }
 }
 
 /// Return the instant at which an upload created at `created_at` expires.
@@ -498,6 +518,10 @@ mod tests {
             .expect_promote()
             .times(1)
             .returning(|_, _| Box::pin(async { Ok("files/5_clip.mp4".to_owned()) }));
+        file_storage
+            .expect_restore()
+            .times(1)
+            .returning(|_, _| Box::pin(async { Ok(()) }));
         let harness = use_case_with(uploads, files, file_storage);
         let command = CompleteUploadCommand::new(5, 3);
 
@@ -839,6 +863,10 @@ mod tests {
             .expect_promote()
             .times(1)
             .returning(|_, _| Box::pin(async { Ok("files/5_clip.mp4".to_owned()) }));
+        file_storage
+            .expect_restore()
+            .times(1)
+            .returning(|_, _| Box::pin(async { Ok(()) }));
         let harness = use_case_with(uploads, files, file_storage);
         let command = CompleteUploadCommand::new(5, 3);
 
@@ -847,6 +875,84 @@ mod tests {
 
         // Assert
         assert!(matches!(result, Err(CompleteUploadError::Unknown(_))));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn complete_upload_create_failure_restores_staged_file() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let mut uploads = MockUploadRepository::new();
+        expect_upload(&mut uploads, upload(5, 3, 4, &[0], false)?);
+        let mut files = MockFileRepository::new();
+        files
+            .expect_search()
+            .times(1)
+            .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+        files
+            .expect_create()
+            .times(1)
+            .returning(|_| Box::pin(async { Err(RepositoryError::OperationFailed) }));
+        let mut file_storage = MockFileStorage::new();
+        expect_checksum(&mut file_storage, DIGEST);
+        file_storage
+            .expect_promote()
+            .times(1)
+            .returning(|_, _| Box::pin(async { Ok("files/5_clip.mp4".to_owned()) }));
+        file_storage
+            .expect_restore()
+            .times(1)
+            .returning(|_, _| Box::pin(async { Ok(()) }));
+        let harness = use_case_with(uploads, files, file_storage);
+        let command = CompleteUploadCommand::new(5, 3);
+
+        // Act
+        let result = harness.use_case.execute(command).await;
+
+        // Assert
+        assert!(matches!(result, Err(CompleteUploadError::Unknown(_))));
+        assert!(harness.rolled_back.load(Ordering::SeqCst));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn complete_upload_commit_failure_restores_staged_file() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let mut uploads = MockUploadRepository::new();
+        expect_upload(&mut uploads, upload(5, 3, 4, &[0], false)?);
+        uploads
+            .expect_save()
+            .times(1)
+            .returning(|upload| Box::pin(async move { Ok(Some(upload)) }));
+        let mut files = MockFileRepository::new();
+        files
+            .expect_search()
+            .times(1)
+            .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+        files
+            .expect_create()
+            .times(1)
+            .returning(|file| Box::pin(async move { Ok(file) }));
+        let mut file_storage = MockFileStorage::new();
+        expect_checksum(&mut file_storage, DIGEST);
+        file_storage
+            .expect_promote()
+            .times(1)
+            .returning(|_, _| Box::pin(async { Ok("files/5_clip.mp4".to_owned()) }));
+        file_storage
+            .expect_restore()
+            .times(1)
+            .returning(|_, _| Box::pin(async { Ok(()) }));
+        let harness = use_case_with(uploads, files, file_storage);
+        harness.commit_fails.store(true, Ordering::SeqCst);
+        let command = CompleteUploadCommand::new(5, 3);
+
+        // Act
+        let result = harness.use_case.execute(command).await;
+
+        // Assert
+        assert!(matches!(result, Err(CompleteUploadError::Unknown(_))));
+        assert!(harness.committed.load(Ordering::SeqCst));
+        assert!(!harness.rolled_back.load(Ordering::SeqCst));
         Ok(())
     }
 }

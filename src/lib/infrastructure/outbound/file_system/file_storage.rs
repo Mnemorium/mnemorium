@@ -49,6 +49,11 @@ impl FileSystemStorage {
         PathBuf::from(FILES_FOLDER)
     }
 
+    /// Return the path of the finished file of `upload_id`.
+    fn final_path(&self, upload_id: NumericID, file_name: &str) -> PathBuf {
+        self.files_path().join(format!("{upload_id}_{file_name}"))
+    }
+
     /// Map an I/O error onto a storage error.
     fn map_io_error(err: Error) -> StorageError {
         let kind = err.kind();
@@ -177,8 +182,9 @@ impl FileStorage for FileSystemStorage {
         file_name: &str,
     ) -> impl Future<Output = Result<String, StorageError>> + Send {
         let staged = self.staged_path(upload_id);
+        let final_path = self.final_path(upload_id, file_name);
         let files_relative = Self::files_relative();
-        let files_path = self.files_path();
+        let final_name = format!("{upload_id}_{file_name}");
         let owned_file_name = file_name.to_owned();
 
         async move {
@@ -186,8 +192,7 @@ impl FileStorage for FileSystemStorage {
             if !is_safe_name {
                 return Err(StorageError::OperationFailed);
             }
-            let final_name = format!("{upload_id}_{owned_file_name}");
-            fs::rename(&staged, files_path.join(&final_name))
+            fs::rename(&staged, final_path)
                 .await
                 .map_err(Self::map_io_error)?;
             let relative = files_relative.join(final_name);
@@ -195,6 +200,23 @@ impl FileStorage for FileSystemStorage {
                 .to_str()
                 .map(str::to_owned)
                 .ok_or(StorageError::OperationFailed)
+        }
+    }
+
+    fn restore(
+        &self,
+        upload_id: NumericID,
+        file_name: &str,
+    ) -> impl Future<Output = Result<(), StorageError>> + Send {
+        let staged = self.staged_path(upload_id);
+        let final_path = self.final_path(upload_id, file_name);
+
+        async move {
+            match fs::rename(&final_path, &staged).await {
+                Ok(()) => Ok(()),
+                Err(err) if err.kind() == ErrorKind::NotFound => Ok(()),
+                Err(err) => Err(Self::map_io_error(err)),
+            }
         }
     }
 }
@@ -433,6 +455,39 @@ mod tests {
 
         // Assert
         assert!(matches!(result, Err(StorageError::Conflict)));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn restore_moves_final_file_back_to_staging() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let tmp = tempdir()?;
+        let storage = FileSystemStorage::new(tmp.path().to_path_buf()).await?;
+        storage.create_upload_file(42, 4).await?;
+        storage.add_chunk(42, 0, b"1234".to_vec()).await?;
+        let relative = storage.promote(42, "clip.mp4").await?;
+        assert_eq!(relative, "files/42_clip.mp4");
+
+        // Act
+        storage.restore(42, "clip.mp4").await?;
+
+        // Assert
+        assert_eq!(fs::read(tmp.path().join("uploads/42")).await?, b"1234");
+        assert!(!tmp.path().join("files/42_clip.mp4").exists());
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn restore_missing_final_file_succeeds() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let tmp = tempdir()?;
+        let storage = FileSystemStorage::new(tmp.path().to_path_buf()).await?;
+
+        // Act
+        let result = storage.restore(42, "clip.mp4").await;
+
+        // Assert
+        assert!(result.is_ok());
         Ok(())
     }
 }
