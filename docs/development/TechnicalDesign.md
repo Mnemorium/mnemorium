@@ -1799,6 +1799,8 @@ the flows the E2E suite covers come from the critical exception paths in [UseCas
 | `TEST-043` | E2E              | Generic tests (those whose subject is not password behavior) use the shared `SECRET_PASSWORD` from `test/e2e/conftest.py` for any user they provision or register.                                                                               | [§ E2E test](#e2e-test)                      |
 | `TEST-044` | E2E              | Tests whose subject is password behavior (password policy validation, change-password flows, wrong-password login) pick their own explicit passwords and must not use the shared secret.                                                         | [§ E2E test](#e2e-test)                      |
 | `TEST-045` | E2E              | The Root Admin's password is random per container and obtained through the `default_password` fixture; the shared secret never applies to it.                                                                                                    | [§ E2E test](#e2e-test)                      |
+| `TEST-046` | Test helpers     | Shared Rust test helpers live **only** in the single `#[cfg(test)] mod test_helpers` in `src/lib/lib.rs`; never create a separate helper file or module (for example `test_helper.rs`).                                                          | [§ Test helpers](#test-helpers)              |
+| `TEST-047` | Test helpers     | Adding a new shared test helper, or changing the existing helper surface, requires the developer's explicit approval (their thumbs-up on the change).                                                                                            | [§ Test helpers](#test-helpers)              |
 
 ---
 
@@ -1860,6 +1862,22 @@ External service clients are exercised against a stubbed HTTP server.
 ### E2E test
 
 End-to-end tests drive the containerised server through its REST API as a black box.
+
+---
+
+### Test helpers
+
+Shared Rust test helpers live only in the single `#[cfg(test)] mod test_helpers` in `src/lib/lib.rs`. The module is the
+sanctioned exception to [TEST-001](#unit-test) (a test module lives with the code under test) and to `STY-RUST-001`
+(shared test fixtures are exempt from the extract-function rule).
+
+It holds the fixtures the in-crate tests share: `SECRET_PASSWORD`, `TestFactory`, `unit_of_work_factory`,
+`TestUnitOfWork`, `TestUnitOfWorkFactory`, and the app-state builders `app_state`, `app_state_with_identity`,
+`app_state_with_user`.
+
+Helpers are never scattered into per-module files — for example a `test_helper.rs` beside the code under test, or a
+second helper module. A new shared helper is added to this single module, and only with the developer's explicit
+approval.
 
 ---
 
