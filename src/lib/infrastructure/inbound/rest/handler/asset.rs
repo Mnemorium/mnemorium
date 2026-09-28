@@ -5,6 +5,7 @@ pub mod post_upload_complete;
 pub mod put_upload_chunk;
 
 use axum::Router;
+use axum::extract::DefaultBodyLimit;
 use axum::middleware;
 use axum::routing::get;
 use axum::routing::post;
@@ -23,6 +24,23 @@ use crate::infrastructure::outbound::jwt::token_provider::JwtTokenProvider;
 ///
 /// Every route requires an authenticated caller.
 pub fn asset_routes(state: &AppState) -> Router {
+    // The chunk endpoint receives a full chunk (up to `chunk_size_bytes`), which
+    // exceeds axum's 2 MiB default request body limit, so that route's limit is
+    // raised to the configured chunk size; every other route keeps the default.
+    //
+    // TODO(hot-reload): the limit is fixed when the router is built, so a runtime
+    // change to `asset.upload.chunk_size_bytes` only takes effect after a
+    // restart (the chunk handler still reads the live value for range checks).
+    let chunk_body_limit = usize::try_from(
+        state
+            .configuration()
+            .load()
+            .asset()
+            .upload()
+            .chunk_size_bytes(),
+    )
+    .unwrap_or(usize::MAX);
+
     let upload: Router<AppState> = Router::new()
         .route("/upload", post(post_upload))
         .route("/upload/complete", post(post_upload_complete))
@@ -30,7 +48,7 @@ pub fn asset_routes(state: &AppState) -> Router {
         .route("/upload/{upload_id}", get(get_upload))
         .route(
             "/upload/{upload_id}/chunk/{chunk_number}",
-            put(put_upload_chunk),
+            put(put_upload_chunk).layer(DefaultBodyLimit::max(chunk_body_limit)),
         )
         .with_state(state.clone());
 
