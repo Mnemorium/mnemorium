@@ -53,7 +53,9 @@ impl From<WriteUploadChunkResponseData> for PutUploadChunkResponse {
 impl From<WriteUploadChunkError> for ApiError {
     fn from(err: WriteUploadChunkError) -> Self {
         match err {
-            WriteUploadChunkError::InvalidChunk => Self::BadRequest(err.to_string()),
+            WriteUploadChunkError::InvalidChunk
+            | WriteUploadChunkError::InvalidChunkNumber
+            | WriteUploadChunkError::InvalidMd5 => Self::BadRequest(err.to_string()),
             WriteUploadChunkError::Expired => Self::Gone(err.to_string()),
             WriteUploadChunkError::AlreadyFinished => Self::Conflict(err.to_string()),
             WriteUploadChunkError::NoSuchUpload => Self::NotFound(err.to_string()),

@@ -101,9 +101,15 @@ pub enum WriteUploadChunkError {
     /// The upload session has expired.
     #[error("the upload session has expired")]
     Expired,
-    /// The chunk number, its size, or its declared range is invalid.
+    /// The chunk length does not match the expected size.
     #[error("the chunk is invalid")]
     InvalidChunk,
+    /// The chunk number is outside the upload's range.
+    #[error("the chunk number is out of range")]
+    InvalidChunkNumber,
+    /// The declared `Content-MD5` digest is malformed or does not match the chunk.
+    #[error("the content md5 digest is invalid")]
+    InvalidMd5,
     /// No upload session matches the requested identifier.
     #[error("no upload session matches this identifier")]
     NoSuchUpload,

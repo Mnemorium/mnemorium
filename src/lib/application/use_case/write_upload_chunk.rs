@@ -192,7 +192,9 @@ where
             AttemptError::Business(WriteUploadChunkError::Unknown(anyhow::anyhow!(error)))
         })?;
         if chunk_number >= total_chunks {
-            return Err(AttemptError::Business(WriteUploadChunkError::InvalidChunk));
+            return Err(AttemptError::Business(
+                WriteUploadChunkError::InvalidChunkNumber,
+            ));
         }
 
         let chunk_size = usize::try_from(upload.chunk_size()).map_err(|error| {
@@ -220,7 +222,7 @@ where
                 .chars()
                 .all(|character| character.is_ascii_hexdigit());
         if !is_hex {
-            return Err(AttemptError::Business(WriteUploadChunkError::InvalidChunk));
+            return Err(AttemptError::Business(WriteUploadChunkError::InvalidMd5));
         }
 
         // Recompute the digest of the received bytes and compare: a chunk whose
@@ -231,13 +233,15 @@ where
             let _result = write!(computed, "{byte:02x}");
         }
         if !computed.eq_ignore_ascii_case(declared) {
-            return Err(AttemptError::Business(WriteUploadChunkError::InvalidChunk));
+            return Err(AttemptError::Business(WriteUploadChunkError::InvalidMd5));
         }
 
         let offset = command
             .chunk_number()
             .checked_mul(upload.chunk_size())
-            .ok_or(AttemptError::Business(WriteUploadChunkError::InvalidChunk))?;
+            .ok_or(AttemptError::Business(
+                WriteUploadChunkError::InvalidChunkNumber,
+            ))?;
 
         file_storage
             .add_chunk(upload.upload_id(), offset, command.chunk().to_vec())
@@ -661,7 +665,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn write_upload_chunk_out_of_range_returns_invalid_chunk() -> Result<(), Box<dyn Error>> {
+    async fn write_upload_chunk_out_of_range_returns_invalid_chunk_number()
+    -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut uploads = MockUploadRepository::new();
         expect_upload(&mut uploads, upload(5, 3, 4, &[], false)?);
@@ -684,7 +689,10 @@ mod tests {
         let result = use_case.execute(command).await;
 
         // Assert
-        assert!(matches!(result, Err(WriteUploadChunkError::InvalidChunk)));
+        assert!(matches!(
+            result,
+            Err(WriteUploadChunkError::InvalidChunkNumber)
+        ));
         Ok(())
     }
 
@@ -717,7 +725,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn write_upload_chunk_bad_content_md5_returns_invalid_chunk() -> Result<(), Box<dyn Error>>
+    async fn write_upload_chunk_bad_content_md5_returns_invalid_md5() -> Result<(), Box<dyn Error>>
     {
         // Arrange
         let mut uploads = MockUploadRepository::new();
@@ -741,12 +749,12 @@ mod tests {
         let result = use_case.execute(command).await;
 
         // Assert
-        assert!(matches!(result, Err(WriteUploadChunkError::InvalidChunk)));
+        assert!(matches!(result, Err(WriteUploadChunkError::InvalidMd5)));
         Ok(())
     }
 
     #[tokio::test]
-    async fn write_upload_chunk_wrong_digest_returns_invalid_chunk() -> Result<(), Box<dyn Error>> {
+    async fn write_upload_chunk_wrong_digest_returns_invalid_md5() -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut uploads = MockUploadRepository::new();
         expect_upload(&mut uploads, upload(5, 3, 8, &[], false)?);
@@ -770,7 +778,7 @@ mod tests {
         let result = use_case.execute(command).await;
 
         // Assert
-        assert!(matches!(result, Err(WriteUploadChunkError::InvalidChunk)));
+        assert!(matches!(result, Err(WriteUploadChunkError::InvalidMd5)));
         Ok(())
     }
 
