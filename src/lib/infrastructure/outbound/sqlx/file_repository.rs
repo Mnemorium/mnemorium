@@ -127,6 +127,7 @@ mod tests {
     use std::error::Error;
 
     use chrono::NaiveDate;
+    use rstest::rstest;
     use sqlx::Sqlite;
     use sqlx::Transaction;
     use sqlx::sqlite::SqlitePoolOptions;
@@ -358,28 +359,30 @@ mod tests {
         Ok(())
     }
 
+    #[rstest]
+    #[case::md5_integrity_length(
+        "INSERT INTO file (path, user_id, is_public, mime_type_id, md5_integrity)
+         VALUES ('files/short.mp4', 1, 0, 'video/mp4', 'too-short')"
+    )]
+    #[case::is_public_out_of_range(
+        "INSERT INTO file (path, user_id, is_public, mime_type_id, md5_integrity)
+         VALUES ('files/public.mp4', 1, 2, 'video/mp4', '0123456789abcdef0123456789abcdef')"
+    )]
     #[tokio::test]
-    async fn create_violating_a_check_returns_data_integrity_violation()
-    -> Result<(), Box<dyn Error>> {
+    async fn create_violating_a_check_returns_data_integrity_violation(
+        #[case] statement: &'static str,
+    ) -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut transaction = begin_transaction().await?;
         seed_user(&mut transaction, 1).await?;
-        let statements = [
-            "INSERT INTO file (path, user_id, is_public, mime_type_id, md5_integrity)
-             VALUES ('files/short.mp4', 1, 0, 'video/mp4', 'too-short')",
-            "INSERT INTO file (path, user_id, is_public, mime_type_id, md5_integrity)
-             VALUES ('files/public.mp4', 1, 2, 'video/mp4', '0123456789abcdef0123456789abcdef')",
-        ];
 
         // Act & Assert
-        for statement in statements {
-            let result = sqlx::query(statement).execute(&mut *transaction).await;
-            let mapped = result.map_err(RepositoryError::from);
-            assert!(
-                matches!(mapped, Err(RepositoryError::DataIntegrityViolation)),
-                "statement must violate a check constraint: {statement}"
-            );
-        }
+        let result = sqlx::query(statement).execute(&mut *transaction).await;
+        let mapped = result.map_err(RepositoryError::from);
+        assert!(
+            matches!(mapped, Err(RepositoryError::DataIntegrityViolation)),
+            "statement must violate a check constraint: {statement}"
+        );
         Ok(())
     }
 }

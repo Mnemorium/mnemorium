@@ -227,6 +227,7 @@ fn domain_upload(row: SqlxUpload) -> Result<Upload, RepositoryError> {
 mod tests {
     use std::error::Error;
 
+    use rstest::rstest;
     use sqlx::Sqlite;
     use sqlx::Transaction;
     use sqlx::sqlite::SqlitePoolOptions;
@@ -483,39 +484,47 @@ mod tests {
         Ok(())
     }
 
+    #[rstest]
+    #[case::file_size_zero(
+        "INSERT INTO upload (
+            user_id, file_name, file_size, mime_type_id, chunk_size, md5_integrity, chunk_bitmap
+         ) VALUES (1, 'clip.mp4', 0, 'video/mp4', 4, '0123456789abcdef0123456789abcdef', x'00')"
+    )]
+    #[case::chunk_size_zero(
+        "INSERT INTO upload (
+            user_id, file_name, file_size, mime_type_id, chunk_size, md5_integrity, chunk_bitmap
+         ) VALUES (1, 'clip.mp4', 4, 'video/mp4', 0, '0123456789abcdef0123456789abcdef', x'00')"
+    )]
+    #[case::md5_integrity_length(
+        "INSERT INTO upload (
+            user_id, file_name, file_size, mime_type_id, chunk_size, md5_integrity, chunk_bitmap
+         ) VALUES (1, 'clip.mp4', 4, 'video/mp4', 4, 'too-short', x'00')"
+    )]
+    #[case::is_finished_out_of_range(
+        "INSERT INTO upload (
+            user_id, file_name, file_size, mime_type_id, chunk_size, md5_integrity, chunk_bitmap, is_finished
+         ) VALUES (1, 'clip.mp4', 4, 'video/mp4', 4, '0123456789abcdef0123456789abcdef', x'00', 2)"
+    )]
+    #[case::version_negative(
+        "INSERT INTO upload (
+            user_id, file_name, file_size, mime_type_id, chunk_size, md5_integrity, chunk_bitmap, version
+         ) VALUES (1, 'clip.mp4', 4, 'video/mp4', 4, '0123456789abcdef0123456789abcdef', x'00', -1)"
+    )]
     #[tokio::test]
-    async fn create_violating_a_check_returns_data_integrity_violation()
-    -> Result<(), Box<dyn Error>> {
+    async fn create_violating_a_check_returns_data_integrity_violation(
+        #[case] statement: &'static str,
+    ) -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut transaction = begin_transaction().await?;
         seed_user(&mut transaction, 1).await?;
-        let statements = [
-            "INSERT INTO upload (
-                user_id, file_name, file_size, mime_type_id, chunk_size, md5_integrity, chunk_bitmap
-             ) VALUES (1, 'clip.mp4', 0, 'video/mp4', 4, '0123456789abcdef0123456789abcdef', x'00')",
-            "INSERT INTO upload (
-                user_id, file_name, file_size, mime_type_id, chunk_size, md5_integrity, chunk_bitmap
-             ) VALUES (1, 'clip.mp4', 4, 'video/mp4', 0, '0123456789abcdef0123456789abcdef', x'00')",
-            "INSERT INTO upload (
-                user_id, file_name, file_size, mime_type_id, chunk_size, md5_integrity, chunk_bitmap
-             ) VALUES (1, 'clip.mp4', 4, 'video/mp4', 4, 'too-short', x'00')",
-            "INSERT INTO upload (
-                user_id, file_name, file_size, mime_type_id, chunk_size, md5_integrity, chunk_bitmap, is_finished
-             ) VALUES (1, 'clip.mp4', 4, 'video/mp4', 4, '0123456789abcdef0123456789abcdef', x'00', 2)",
-            "INSERT INTO upload (
-                user_id, file_name, file_size, mime_type_id, chunk_size, md5_integrity, chunk_bitmap, version
-             ) VALUES (1, 'clip.mp4', 4, 'video/mp4', 4, '0123456789abcdef0123456789abcdef', x'00', -1)",
-        ];
 
         // Act & Assert
-        for statement in statements {
-            let result = sqlx::query(statement).execute(&mut *transaction).await;
-            let mapped = result.map_err(RepositoryError::from);
-            assert!(
-                matches!(mapped, Err(RepositoryError::DataIntegrityViolation)),
-                "statement must violate a check constraint: {statement}"
-            );
-        }
+        let result = sqlx::query(statement).execute(&mut *transaction).await;
+        let mapped = result.map_err(RepositoryError::from);
+        assert!(
+            matches!(mapped, Err(RepositoryError::DataIntegrityViolation)),
+            "statement must violate a check constraint: {statement}"
+        );
         Ok(())
     }
 

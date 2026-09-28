@@ -381,6 +381,7 @@ fn validate_chunk(command: &WriteUploadChunkCommand, upload: &Upload) -> Result<
 #[cfg(test)]
 mod tests {
     use std::error::Error;
+    use std::iter::repeat_with;
     use std::sync::Arc;
     use std::sync::Mutex;
     use std::sync::atomic::Ordering;
@@ -842,8 +843,7 @@ mod tests {
     async fn write_upload_chunk_cas_conflict_exhausts_retries_returns_unknown()
     -> Result<(), Box<dyn Error>> {
         // Arrange
-        let mut unit_of_works = Vec::new();
-        for _ in 0i32..3i32 {
+        let unit_of_works = repeat_with(|| -> Result<_, Box<dyn Error>> {
             let mut uploads = MockUploadRepository::new();
             expect_upload(&mut uploads, upload(5, 3, 8, &[], false)?);
             uploads
@@ -855,8 +855,10 @@ mod tests {
                 MockFileRepository::new(),
                 MockMimeTypeRepository::new(),
             );
-            unit_of_works.push(unit_of_work);
-        }
+            Ok(unit_of_work)
+        })
+        .take(3)
+        .collect::<Result<Vec<_>, _>>()?;
         let mut file_storage = MockFileStorage::new();
         file_storage
             .expect_add_chunk()
