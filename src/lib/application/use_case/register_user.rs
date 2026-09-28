@@ -192,7 +192,6 @@ where
 mod tests {
     use std::error::Error;
     use std::sync::Arc;
-    use std::sync::Mutex;
     use std::sync::atomic::AtomicBool;
     use std::sync::atomic::Ordering;
 
@@ -209,19 +208,12 @@ mod tests {
     use crate::domain::port::password_hasher::MockPasswordHasher;
     use crate::domain::port::user_repository::MockUserRepository;
     use crate::test_helpers::SECRET_PASSWORD;
-    use crate::test_helpers::TestUnitOfWork;
-    use crate::test_helpers::TestUnitOfWorkFactory;
+    use crate::test_helpers::TestFactory;
+    use crate::test_helpers::unit_of_work_factory;
 
     use super::RegisterUser;
 
-    type UseCase = RegisterUser<
-        TestUnitOfWorkFactory<
-            MockUserRepository,
-            MockCredentialRepository,
-            MockConfigurationRepository,
-        >,
-        MockPasswordHasher,
-    >;
+    type UseCase = RegisterUser<TestFactory, MockPasswordHasher>;
 
     /// A use case under test together with the transaction-lifecycle flags of
     /// its fake unit of work.
@@ -255,15 +247,13 @@ mod tests {
 
         let committed = Arc::new(AtomicBool::new(false));
         let rolled_back = Arc::new(AtomicBool::new(false));
-        let factory = TestUnitOfWorkFactory {
-            unit_of_work: Mutex::new(Some(TestUnitOfWork {
-                committed: Arc::clone(&committed),
-                configuration: MockConfigurationRepository::new(),
-                credentials: credential_repository,
-                rolled_back: Arc::clone(&rolled_back),
-                users: user_repository,
-            })),
-        };
+        let factory = unit_of_work_factory(
+            user_repository,
+            credential_repository,
+            MockConfigurationRepository::new(),
+            Arc::clone(&committed),
+            Arc::clone(&rolled_back),
+        );
 
         Ok(Harness {
             use_case: RegisterUser::new(Arc::new(factory), Arc::new(password_hasher)),

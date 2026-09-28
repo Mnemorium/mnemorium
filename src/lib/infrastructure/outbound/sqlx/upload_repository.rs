@@ -82,8 +82,8 @@ impl UploadRepository for SqlxUploadRepository<'_> {
         Ok(result.rows_affected() > 0)
     }
 
-    async fn save(&mut self, upload: Upload) -> Result<Upload, RepositoryError> {
-        let row = sqlx::query_as::<_, SqlxUpload>(
+    async fn save(&mut self, upload: Upload) -> Result<Option<Upload>, RepositoryError> {
+        let persisted = sqlx::query_as::<_, SqlxUpload>(
             "UPDATE upload
             SET
                 user_id = ?1,
@@ -126,10 +126,25 @@ impl UploadRepository for SqlxUploadRepository<'_> {
         .bind(upload.upload_id())
         .bind(upload.version())
         .fetch_optional(&mut **self.transaction)
-        .await?
-        .ok_or(RepositoryError::ConcurrentModification)?;
+        .await?;
 
-        domain_upload(row)
+        if let Some(row) = persisted {
+            Ok(Some(domain_upload(row)?))
+        } else {
+            // The compare-and-swap matched no row: either the upload is gone,
+            // or a live row carries a newer version. Absence is a value, not a
+            // port error; a live row means the race was lost.
+            let exists = sqlx::query_scalar::<_, i64>("SELECT 1 FROM upload WHERE upload_id = ?")
+                .bind(upload.upload_id())
+                .fetch_optional(&mut **self.transaction)
+                .await?
+                .is_some();
+            if exists {
+                Err(RepositoryError::ConcurrentModification)
+            } else {
+                Ok(None)
+            }
+        }
     }
 
     async fn search(&mut self, filter: &UploadFilter) -> Result<Vec<Upload>, RepositoryError> {
@@ -375,7 +390,10 @@ mod tests {
         updated.finish();
 
         // Act
-        let saved = repository.save(updated).await?;
+        let saved = repository
+            .save(updated)
+            .await?
+            .ok_or("the saved upload must still exist")?;
         let found = repository
             .search(&UploadFilter {
                 id: Some(created.upload_id()),
@@ -417,7 +435,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn save_missing_upload_returns_concurrent_modification() -> Result<(), Box<dyn Error>> {
+    async fn save_missing_upload_returns_none() -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut transaction = begin_transaction().await?;
         seed_user(&mut transaction, 1).await?;
@@ -427,10 +445,7 @@ mod tests {
         let result = repository.save(upload(404, 1, 8, &[], false, 0)?).await;
 
         // Assert
-        assert!(matches!(
-            result,
-            Err(RepositoryError::ConcurrentModification)
-        ));
+        assert!(matches!(result, Ok(None)));
         Ok(())
     }
 

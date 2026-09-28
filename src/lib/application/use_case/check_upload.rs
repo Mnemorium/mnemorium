@@ -123,19 +123,20 @@ mod tests {
     use crate::application::port::check_upload::CheckUploadCommand;
     use crate::application::port::check_upload::CheckUploadError;
     use crate::application::port::check_upload::CheckUploadUseCase as _;
-    use crate::application::use_case::test_support::asset_factory;
     use crate::domain::model::file::File;
     use crate::domain::port::error::RepositoryError;
     use crate::domain::port::file_repository::MockFileRepository;
     use crate::domain::port::mime_type_repository::MockMimeTypeRepository;
     use crate::domain::port::upload_repository::MockUploadRepository;
+    use crate::test_helpers::TestFactory;
+    use crate::test_helpers::asset_factory;
 
     use super::CheckUpload;
 
     const DIGEST: &str = "0123456789abcdef0123456789abcdef";
     const OTHER_DIGEST: &str = "fedcba9876543210fedcba9876543210";
 
-    type UseCase = CheckUpload<super::super::test_support::AssetTestUnitOfWorkFactory>;
+    type UseCase = CheckUpload<TestFactory>;
 
     /// A use case under test together with its transaction-lifecycle flags.
     struct Harness {

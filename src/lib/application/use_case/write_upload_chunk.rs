@@ -252,7 +252,8 @@ where
         })?;
 
         match unit_of_work.uploads().save(updated).await {
-            Ok(_) => Ok(WriteUploadChunkResponse::new(true)),
+            Ok(Some(_)) => Ok(WriteUploadChunkResponse::new(true)),
+            Ok(None) => Err(AttemptError::Business(WriteUploadChunkError::NoSuchUpload)),
             Err(RepositoryError::ConcurrentModification) => {
                 Err(AttemptError::ConcurrentModification)
             }
@@ -305,8 +306,6 @@ mod tests {
     use crate::application::port::write_upload_chunk::WriteUploadChunkCommand;
     use crate::application::port::write_upload_chunk::WriteUploadChunkError;
     use crate::application::port::write_upload_chunk::WriteUploadChunkUseCase as _;
-    use crate::application::use_case::test_support::QueueAssetTestUnitOfWorkFactory;
-    use crate::application::use_case::test_support::asset_unit_of_work;
     use crate::domain::model::upload::ChunkBitmap;
     use crate::domain::model::upload::Upload;
     use crate::domain::port::error::RepositoryError;
@@ -315,6 +314,8 @@ mod tests {
     use crate::domain::port::file_storage::MockFileStorage;
     use crate::domain::port::mime_type_repository::MockMimeTypeRepository;
     use crate::domain::port::upload_repository::MockUploadRepository;
+    use crate::test_helpers::TestUnitOfWorkFactory;
+    use crate::test_helpers::asset_unit_of_work;
 
     use super::WriteUploadChunk;
 
@@ -374,7 +375,7 @@ mod tests {
         uploads
             .expect_save()
             .times(1)
-            .returning(|upload| Box::pin(async move { Ok(upload) }));
+            .returning(|upload| Box::pin(async move { Ok(Some(upload)) }));
         let mut file_storage = MockFileStorage::new();
         file_storage
             .expect_add_chunk()
@@ -390,7 +391,7 @@ mod tests {
             MockFileRepository::new(),
             MockMimeTypeRepository::new(),
         );
-        let factory = QueueAssetTestUnitOfWorkFactory {
+        let factory = TestUnitOfWorkFactory {
             unit_of_works: Mutex::new(vec![unit_of_work]),
         };
         let use_case =
@@ -408,6 +409,42 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn write_upload_chunk_vanished_upload_returns_no_such_upload()
+    -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let mut uploads = MockUploadRepository::new();
+        expect_upload(&mut uploads, upload(5, 3, 8, &[], false)?);
+        uploads
+            .expect_save()
+            .times(1)
+            .returning(|_| Box::pin(async { Ok(None) }));
+        let mut file_storage = MockFileStorage::new();
+        file_storage
+            .expect_add_chunk()
+            .times(1)
+            .returning(|_, _, _| Box::pin(async { Ok(()) }));
+        let (unit_of_work, _committed, rolled_back) = asset_unit_of_work(
+            uploads,
+            MockFileRepository::new(),
+            MockMimeTypeRepository::new(),
+        );
+        let factory = TestUnitOfWorkFactory {
+            unit_of_works: Mutex::new(vec![unit_of_work]),
+        };
+        let use_case =
+            WriteUploadChunk::new(Arc::new(factory), Arc::new(file_storage), TTL_SECONDS);
+        let command = WriteUploadChunkCommand::new(5, 0, b"1234".to_vec(), CHUNK_MD5.to_owned(), 3);
+
+        // Act
+        let result = use_case.execute(command).await;
+
+        // Assert
+        assert!(matches!(result, Err(WriteUploadChunkError::NoSuchUpload)));
+        assert!(rolled_back.load(Ordering::SeqCst));
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn write_upload_chunk_unknown_upload_returns_no_such_upload() -> Result<(), Box<dyn Error>>
     {
         // Arrange
@@ -421,7 +458,7 @@ mod tests {
             MockFileRepository::new(),
             MockMimeTypeRepository::new(),
         );
-        let factory = QueueAssetTestUnitOfWorkFactory {
+        let factory = TestUnitOfWorkFactory {
             unit_of_works: Mutex::new(vec![unit_of_work]),
         };
         let use_case = WriteUploadChunk::new(
@@ -451,7 +488,7 @@ mod tests {
             MockFileRepository::new(),
             MockMimeTypeRepository::new(),
         );
-        let factory = QueueAssetTestUnitOfWorkFactory {
+        let factory = TestUnitOfWorkFactory {
             unit_of_works: Mutex::new(vec![unit_of_work]),
         };
         let use_case = WriteUploadChunk::new(
@@ -513,7 +550,7 @@ mod tests {
             .expect_delete_upload_file()
             .times(1)
             .returning(|_| Box::pin(async { Ok(()) }));
-        let factory = QueueAssetTestUnitOfWorkFactory {
+        let factory = TestUnitOfWorkFactory {
             unit_of_works: Mutex::new(vec![unit_of_work]),
         };
         let use_case =
@@ -541,7 +578,7 @@ mod tests {
             MockFileRepository::new(),
             MockMimeTypeRepository::new(),
         );
-        let factory = QueueAssetTestUnitOfWorkFactory {
+        let factory = TestUnitOfWorkFactory {
             unit_of_works: Mutex::new(vec![unit_of_work]),
         };
         let use_case = WriteUploadChunk::new(
@@ -572,7 +609,7 @@ mod tests {
             MockFileRepository::new(),
             MockMimeTypeRepository::new(),
         );
-        let factory = QueueAssetTestUnitOfWorkFactory {
+        let factory = TestUnitOfWorkFactory {
             unit_of_works: Mutex::new(vec![unit_of_work]),
         };
         let use_case = WriteUploadChunk::new(
@@ -600,7 +637,7 @@ mod tests {
             MockFileRepository::new(),
             MockMimeTypeRepository::new(),
         );
-        let factory = QueueAssetTestUnitOfWorkFactory {
+        let factory = TestUnitOfWorkFactory {
             unit_of_works: Mutex::new(vec![unit_of_work]),
         };
         let use_case = WriteUploadChunk::new(
@@ -629,7 +666,7 @@ mod tests {
             MockFileRepository::new(),
             MockMimeTypeRepository::new(),
         );
-        let factory = QueueAssetTestUnitOfWorkFactory {
+        let factory = TestUnitOfWorkFactory {
             unit_of_works: Mutex::new(vec![unit_of_work]),
         };
         let use_case = WriteUploadChunk::new(
@@ -657,7 +694,7 @@ mod tests {
             MockFileRepository::new(),
             MockMimeTypeRepository::new(),
         );
-        let factory = QueueAssetTestUnitOfWorkFactory {
+        let factory = TestUnitOfWorkFactory {
             unit_of_works: Mutex::new(vec![unit_of_work]),
         };
         let use_case = WriteUploadChunk::new(
@@ -691,7 +728,7 @@ mod tests {
             MockFileRepository::new(),
             MockMimeTypeRepository::new(),
         );
-        let factory = QueueAssetTestUnitOfWorkFactory {
+        let factory = TestUnitOfWorkFactory {
             unit_of_works: Mutex::new(vec![unit_of_work]),
         };
         let use_case =
@@ -721,7 +758,7 @@ mod tests {
         second_uploads
             .expect_save()
             .times(1)
-            .returning(|upload| Box::pin(async move { Ok(upload) }));
+            .returning(|upload| Box::pin(async move { Ok(Some(upload)) }));
         let mut file_storage = MockFileStorage::new();
         file_storage
             .expect_add_chunk()
@@ -737,7 +774,7 @@ mod tests {
             MockFileRepository::new(),
             MockMimeTypeRepository::new(),
         );
-        let factory = QueueAssetTestUnitOfWorkFactory {
+        let factory = TestUnitOfWorkFactory {
             unit_of_works: Mutex::new(vec![first_unit_of_work, second_unit_of_work]),
         };
         let use_case =
@@ -780,7 +817,7 @@ mod tests {
             .expect_add_chunk()
             .times(3)
             .returning(|_, _, _| Box::pin(async { Ok(()) }));
-        let factory = QueueAssetTestUnitOfWorkFactory {
+        let factory = TestUnitOfWorkFactory {
             unit_of_works: Mutex::new(unit_of_works),
         };
         let use_case =

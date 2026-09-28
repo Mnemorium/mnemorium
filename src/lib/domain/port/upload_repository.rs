@@ -41,13 +41,18 @@ pub trait UploadRepository: Send + Sync {
     /// Update the upload targeted by its identifier using a compare-and-swap on
     /// its `version`.
     ///
-    /// Fails with [`RepositoryError::ConcurrentModification`] when the stored
-    /// version no longer matches the version carried by `upload`, meaning
-    /// another writer won the race.
+    /// Returns `Ok(Some(upload))` with the persisted upload when the stored
+    /// version matches and the row is updated. Returns `Ok(None)` when no
+    /// upload carries the identifier: a missing upload is a valid outcome, not
+    /// an error.
+    ///
+    /// Fails with [`RepositoryError::ConcurrentModification`] when an upload
+    /// carries the identifier but its stored version no longer matches the
+    /// version carried by `upload`, meaning another writer won the race.
     fn save(
         &mut self,
         upload: Upload,
-    ) -> impl Future<Output = Result<Upload, RepositoryError>> + Send;
+    ) -> impl Future<Output = Result<Option<Upload>, RepositoryError>> + Send;
 
     /// Search uploads matching `filter`, returned as `Vec<Upload>`.
     ///
@@ -78,7 +83,7 @@ impl<T: UploadRepository + ?Sized> UploadRepository for &mut T {
     fn save(
         &mut self,
         upload: Upload,
-    ) -> impl Future<Output = Result<Upload, RepositoryError>> + Send {
+    ) -> impl Future<Output = Result<Option<Upload>, RepositoryError>> + Send {
         (**self).save(upload)
     }
 

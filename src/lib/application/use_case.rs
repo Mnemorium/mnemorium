@@ -9,7 +9,5 @@ pub mod load_configuration;
 pub mod login_user;
 pub mod patch_credential;
 pub mod register_user;
-#[cfg(test)]
-pub mod test_support;
 pub mod update_user;
 pub mod write_upload_chunk;

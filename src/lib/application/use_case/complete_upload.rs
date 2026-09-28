@@ -185,7 +185,8 @@ where
                 let mut finished = upload;
                 finished.finish();
                 match unit_of_work.uploads().save(finished).await {
-                    Ok(_) => Flow::Succeeded(CompleteUploadResponse::new(file.id())),
+                    Ok(Some(_)) => Flow::Succeeded(CompleteUploadResponse::new(file.id())),
+                    Ok(None) => Flow::Failed(CompleteUploadError::NoSuchUpload),
                     Err(RepositoryError::ConcurrentModification) => {
                         Flow::Failed(CompleteUploadError::Unknown(anyhow::anyhow!(
                             "the upload was modified while completing"
@@ -324,7 +325,6 @@ mod tests {
     use crate::application::port::complete_upload::CompleteUploadCommand;
     use crate::application::port::complete_upload::CompleteUploadError;
     use crate::application::port::complete_upload::CompleteUploadUseCase as _;
-    use crate::application::use_case::test_support::asset_factory;
     use crate::domain::model::file::File;
     use crate::domain::model::upload::ChunkBitmap;
     use crate::domain::model::upload::Upload;
@@ -334,6 +334,8 @@ mod tests {
     use crate::domain::port::file_storage::MockFileStorage;
     use crate::domain::port::mime_type_repository::MockMimeTypeRepository;
     use crate::domain::port::upload_repository::MockUploadRepository;
+    use crate::test_helpers::TestFactory;
+    use crate::test_helpers::asset_factory;
 
     use super::CompleteUpload;
 
@@ -341,8 +343,7 @@ mod tests {
     const TTL_SECONDS: u64 = 3600;
     const CHUNK_SIZE: u64 = 4;
 
-    type UseCase =
-        CompleteUpload<super::super::test_support::AssetTestUnitOfWorkFactory, MockFileStorage>;
+    type UseCase = CompleteUpload<TestFactory, MockFileStorage>;
 
     /// A use case under test together with its transaction-lifecycle flags.
     struct Harness {
@@ -450,7 +451,7 @@ mod tests {
         uploads
             .expect_save()
             .times(1)
-            .returning(|upload| Box::pin(async move { Ok(upload) }));
+            .returning(|upload| Box::pin(async move { Ok(Some(upload)) }));
         let mut file_storage = MockFileStorage::new();
         expect_checksum(&mut file_storage, DIGEST);
         file_storage
@@ -467,6 +468,43 @@ mod tests {
         assert_eq!(response.file_id(), 0);
         assert!(harness.committed.load(Ordering::SeqCst));
         assert!(!harness.rolled_back.load(Ordering::SeqCst));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn complete_upload_vanished_upload_returns_no_such_upload() -> Result<(), Box<dyn Error>>
+    {
+        // Arrange
+        let mut uploads = MockUploadRepository::new();
+        expect_upload(&mut uploads, upload(5, 3, 4, &[0], false)?);
+        uploads
+            .expect_save()
+            .times(1)
+            .returning(|_| Box::pin(async { Ok(None) }));
+        let mut files = MockFileRepository::new();
+        files
+            .expect_search()
+            .times(1)
+            .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+        files
+            .expect_create()
+            .times(1)
+            .returning(|file| Box::pin(async move { Ok(file) }));
+        let mut file_storage = MockFileStorage::new();
+        expect_checksum(&mut file_storage, DIGEST);
+        file_storage
+            .expect_promote()
+            .times(1)
+            .returning(|_, _| Box::pin(async { Ok("files/5_clip.mp4".to_owned()) }));
+        let harness = use_case_with(uploads, files, file_storage);
+        let command = CompleteUploadCommand::new(5, 3);
+
+        // Act
+        let result = harness.use_case.execute(command).await;
+
+        // Assert
+        assert!(matches!(result, Err(CompleteUploadError::NoSuchUpload)));
+        assert!(harness.rolled_back.load(Ordering::SeqCst));
         Ok(())
     }
 

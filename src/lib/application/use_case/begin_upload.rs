@@ -240,7 +240,6 @@ mod tests {
     use crate::application::port::begin_upload::BeginUploadCommand;
     use crate::application::port::begin_upload::BeginUploadError;
     use crate::application::port::begin_upload::BeginUploadUseCase as _;
-    use crate::application::use_case::test_support::asset_factory;
     use crate::domain::model::upload::MAX_TOTAL_CHUNKS;
     use crate::domain::model::upload::Upload;
     use crate::domain::port::error::RepositoryError;
@@ -249,6 +248,8 @@ mod tests {
     use crate::domain::port::file_storage::MockFileStorage;
     use crate::domain::port::mime_type_repository::MockMimeTypeRepository;
     use crate::domain::port::upload_repository::MockUploadRepository;
+    use crate::test_helpers::TestFactory;
+    use crate::test_helpers::asset_factory;
 
     use super::BeginUpload;
 
@@ -257,8 +258,7 @@ mod tests {
     const TTL_SECONDS: u64 = 3600;
     const DEFAULT_MAX_FILE_SIZE: u64 = 1_000_000;
 
-    type UseCase =
-        BeginUpload<super::super::test_support::AssetTestUnitOfWorkFactory, MockFileStorage>;
+    type UseCase = BeginUpload<TestFactory, MockFileStorage>;
 
     /// A use case under test together with its transaction-lifecycle flags.
     struct Harness {

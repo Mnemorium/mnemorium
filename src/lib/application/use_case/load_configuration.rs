@@ -237,7 +237,6 @@ mod tests {
     use std::error::Error;
     use std::iter::repeat_n;
     use std::sync::Arc;
-    use std::sync::Mutex;
     use std::sync::atomic::AtomicBool;
     use std::sync::atomic::Ordering;
 
@@ -260,20 +259,12 @@ mod tests {
     use crate::domain::port::error::SecretGeneratorError;
     use crate::domain::port::secret_generator::MockSecretGenerator;
     use crate::domain::port::user_repository::MockUserRepository;
-    use crate::test_helpers::TestUnitOfWork;
-    use crate::test_helpers::TestUnitOfWorkFactory;
+    use crate::test_helpers::TestFactory;
+    use crate::test_helpers::unit_of_work_factory;
 
     use super::LoadConfiguration;
 
-    type UseCase = LoadConfiguration<
-        TestUnitOfWorkFactory<
-            MockUserRepository,
-            MockCredentialRepository,
-            MockConfigurationRepository,
-        >,
-        MockSecretGenerator,
-        MockConfigurationSource,
-    >;
+    type UseCase = LoadConfiguration<TestFactory, MockSecretGenerator, MockConfigurationSource>;
 
     /// A use case under test together with its transaction-lifecycle flags.
     struct Harness {
@@ -311,15 +302,13 @@ mod tests {
 
         let committed = Arc::new(AtomicBool::new(false));
         let rolled_back = Arc::new(AtomicBool::new(false));
-        let factory = TestUnitOfWorkFactory {
-            unit_of_work: Mutex::new(Some(TestUnitOfWork {
-                committed: Arc::clone(&committed),
-                configuration: configuration_repository,
-                credentials: MockCredentialRepository::new(),
-                rolled_back: Arc::clone(&rolled_back),
-                users: MockUserRepository::new(),
-            })),
-        };
+        let factory = unit_of_work_factory(
+            MockUserRepository::new(),
+            MockCredentialRepository::new(),
+            configuration_repository,
+            Arc::clone(&committed),
+            Arc::clone(&rolled_back),
+        );
 
         Ok(Harness {
             use_case: LoadConfiguration::new(
