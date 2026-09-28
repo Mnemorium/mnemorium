@@ -26,6 +26,7 @@ use crate::infrastructure::inbound::rest::handler::asset::post_upload_check::Pos
 use crate::infrastructure::inbound::rest::handler::asset::post_upload_check::PostUploadCheckResponse;
 use crate::infrastructure::inbound::rest::handler::asset::post_upload_complete::PostUploadCompleteRequest;
 use crate::infrastructure::inbound::rest::handler::asset::post_upload_complete::PostUploadCompleteResponse;
+use crate::infrastructure::inbound::rest::handler::asset::put_upload_chunk::PutUploadChunkRequest;
 use crate::infrastructure::inbound::rest::handler::asset::put_upload_chunk::PutUploadChunkResponse;
 use crate::infrastructure::inbound::rest::handler::identity::patch_credential::PatchCredentialRequest;
 use crate::infrastructure::inbound::rest::handler::identity::post_login::LoginRequest;
@@ -68,7 +69,7 @@ impl utoipa::Modify for SecurityAddon {
         (url = "http://0.0.0.0:4080/api/v1", description = "Local development server")
     ),
     paths(get_health, get_upload, patch_credential, post_login, post_register, post_upload, post_upload_check, post_upload_complete, put_upload_chunk, get_me, get_user, get_user_list, patch_user),
-    components(schemas(ErrorBody, GetMeResponse, GetUploadResponse, GetUserResponse, LoginRequest, LoginResponse, PatchCredentialRequest, PatchUserRequest, PatchUserResponse, PostUploadCheckRequest, PostUploadCheckResponse, PostUploadCompleteRequest, PostUploadCompleteResponse, PostUploadRequest, PostUploadResponse, PutUploadChunkResponse, RegisterRequest, RegisterResponse, Role)),
+    components(schemas(ErrorBody, GetMeResponse, GetUploadResponse, GetUserResponse, LoginRequest, LoginResponse, PatchCredentialRequest, PatchUserRequest, PatchUserResponse, PostUploadCheckRequest, PostUploadCheckResponse, PostUploadCompleteRequest, PostUploadCompleteResponse, PostUploadRequest, PostUploadResponse, PutUploadChunkRequest, PutUploadChunkResponse, RegisterRequest, RegisterResponse, Role)),
     tags(
         (name = "system", description = "System-level endpoints"),
         (name = "asset", description = "Asset bounded context"),

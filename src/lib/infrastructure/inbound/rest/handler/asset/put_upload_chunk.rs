@@ -19,6 +19,19 @@ use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 /// Required length of the `Content-MD5` header, in characters.
 const MD5_HEX_LENGTH: usize = 32;
 
+/// Raw bytes of one chunk.
+///
+/// The handler extracts the body as raw bytes. It is declared as a binary
+/// `String` so the `OpenAPI` schema describes the raw `application/octet-stream`
+/// payload instead of the JSON array of integers a bare `Vec<u8>` would produce.
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[schema(value_type = String, format = Binary)]
+#[non_exhaustive]
+pub struct PutUploadChunkRequest(
+    /// Raw bytes of the chunk.
+    pub Vec<u8>,
+);
+
 /// Response of a successfully stored chunk.
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 #[non_exhaustive]
@@ -63,7 +76,7 @@ impl From<WriteUploadChunkError> for ApiError {
     tag = "asset",
     request_body(
         content_type = "application/octet-stream",
-        content = Vec<u8>,
+        content = PutUploadChunkRequest,
     ),
     params(
         ("upload_id" = NumericID, Path, description = "Identifier of the upload session"),

@@ -411,6 +411,11 @@
         ],
         "type": "object"
       },
+      "PutUploadChunkRequest": {
+        "description": "Raw bytes of one chunk.\n\nThe handler extracts the body as raw bytes. It is declared as a binary\n`String` so the `OpenAPI` schema describes the raw `application/octet-stream`\npayload instead of the JSON array of integers a bare `Vec<u8>` would produce.",
+        "format": "binary",
+        "type": "string"
+      },
       "PutUploadChunkResponse": {
         "description": "Response of a successfully stored chunk.",
         "properties": {
@@ -909,12 +914,7 @@
           "content": {
             "application/octet-stream": {
               "schema": {
-                "items": {
-                  "format": "int32",
-                  "minimum": 0,
-                  "type": "integer"
-                },
-                "type": "array"
+                "$ref": "#/components/schemas/PutUploadChunkRequest"
               }
             }
           },
