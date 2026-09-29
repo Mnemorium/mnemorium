@@ -59,7 +59,7 @@ until it migrates; treat that document as the source of truth for architecture.
 A change that crosses a boundary may touch sections you do not own — API,
 persistence, testing, dependencies. Follow it across those boundaries when the
 architecture forces it, but defer the detailed adjudication of those sections to
-their owners (`api-architect`, `database-engineer`, the test agents, `devops`)
+their owners (`api-architect`, `database-engineer`, the `test-specialist`, `devops`)
 and say so explicitly rather than judging outside your remit.
 
 # The task is the caller's

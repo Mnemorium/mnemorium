@@ -44,7 +44,7 @@ A maintainer creates and triages issues with the `triage` skill. Human-driven cr
 ### CI (pre-existing violations)
 
 The pull request review pipeline may detect violations that already exist in the repository and are not introduced by
-the change under review. `review-pr` routes each such violation, grouped with related ones, to the `create-issue` skill,
+the change under review. `mn-review` routes each such violation, grouped with related ones, to the `create-issue` skill,
 which files one issue per group.
 
 ## Pre-existing decision request

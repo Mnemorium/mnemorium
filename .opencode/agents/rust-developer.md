@@ -113,7 +113,7 @@ the repository over invention.
   the `devenv.*` / `.devenv/**` files, and everything else are denied. Never try
   to bypass a denial through the shell, a subagent, or any other route.
 - **Never author tests.** `#[cfg(test)] mod tests` blocks, test functions, and
-  everything under `test/**` belong to the test engineer. You implement
+  everything under `test/**` belong to the `test-specialist`. You implement
   production code and leave the tests to that agent.
 - **Defer deep persistence work.** Non-trivial schema, seed, and trigger design
   — and edits to the persistence rules — belong to the `database-engineer`.
