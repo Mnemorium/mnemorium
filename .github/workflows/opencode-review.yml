@@ -45,10 +45,10 @@ jobs:
       - name: Review pull request
         run: |
           opencode run --standalone --format json \
-            --agent review-orchestrator \
+            --agent plan \
             --model "${{ vars.AGENT_REVIEWER_MODEL }}" \
             "Review this pull request by loading and following the
-          review-pr skill.
+          mn-review skill.
 
           <pull_request>
           Number: ${{ github.event.pull_request.number }}

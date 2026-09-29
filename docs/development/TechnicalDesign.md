@@ -23,14 +23,14 @@ written to be cited and checked.
 
 ### Section registry
 
-| #   | Section                        | Status   | Canonical source           | Owner                                     |
-| --- | ------------------------------ | -------- | -------------------------- | ----------------------------------------- |
-| 1   | Code Style Guidelines          | migrated | —                          | rust-dev (Rust), database-engineer (SQL)  |
-| 2   | Architecture                   | linked   | [Overview.md](Overview.md) | —                                         |
-| 3   | API                            | migrated | —                          | rust-dev                                  |
-| 4   | Persistence                    | migrated | —                          | database-engineer                         |
-| 5   | Testing                        | migrated | —                          | rust-dev (unit/integration), qa-e2e (E2E) |
-| 6   | Dependencies & Dev Environment | migrated | —                          | devops                                    |
+| #   | Section                        | Status   | Canonical source           | Owner                                           |
+| --- | ------------------------------ | -------- | -------------------------- | ----------------------------------------------- |
+| 1   | Code Style Guidelines          | migrated | —                          | rust-developer (Rust), database-engineer (SQL)  |
+| 2   | Architecture                   | linked   | [Overview.md](Overview.md) | system-architect                                |
+| 3   | API                            | migrated | —                          | rust-developer                                  |
+| 4   | Persistence                    | migrated | —                          | database-engineer                               |
+| 5   | Testing                        | migrated | —                          | rust-developer (unit/integration), qa-e2e (E2E) |
+| 6   | Dependencies & Dev Environment | migrated | —                          | devops                                          |
 
 Rule-ID prefixes: § 1 `STY-*`, § 2 `ARCH-*`, § 3 `API-*`, § 4 `PERS-*`, § 5 `TEST-*`, § 6 `DEPS-*`.
 
@@ -843,7 +843,7 @@ use utoipa::OpenApi;
 #[derive(utoipa::OpenApi)]
 #[openapi(
     paths(create_note, get_note, list_notes),
-    components(schemas(CreateNoteRequest, CreateNoteResponse, GetNoteResponse, ListNotesQuery, ListNotesResponse, ErrorBody)),
+    components(schemas(CreateNoteRequest, CreateNoteResponse, GetNoteResponse, ListNotesResponse, ErrorBody)),
     tags(
         (name = "notes", description = "Note bounded context")
     ),
@@ -1144,7 +1144,7 @@ schemas:
 #[derive(utoipa::OpenApi)]
 #[openapi(
     paths(create_note, get_note, list_notes),
-    components(schemas(CreateNoteRequest, CreateNoteResponse, GetNoteResponse, ListNotesQuery, ListNotesResponse, ErrorBody)),
+    components(schemas(CreateNoteRequest, CreateNoteResponse, GetNoteResponse, ListNotesResponse, ErrorBody)),
     tags(
         (name = "notes", description = "Note bounded context")
     )
@@ -1820,6 +1820,9 @@ Handler tests drive the axum router in-process, so they exercise routing, extrac
 #### Application strategy
 
 Application tests exercise a use case with its ports replaced by mocks.
+
+Domain models (`src/lib/domain/model/`) have no dedicated test of their own ([TEST-019](#application-strategy)); they
+are covered here. `script/no_domain_model_tests.sh` enforces this in pre-commit and CI.
 
 ---
 
