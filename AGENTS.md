@@ -60,7 +60,7 @@ See `docs/development/TechnicalDesign.md` § 6 for the direct dependencies and t
 project uses.
 
 When adding a crate or tool: reuse an existing adapter before adding one, never
-use wildcard dependency versions, and keep `cargo audit` clean.
+use wildcard dependency versions, and keep `cargo deny` clean.
 
 ## Special Rules
 

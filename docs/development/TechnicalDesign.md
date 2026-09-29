@@ -1933,27 +1933,29 @@ Source: `Cargo.toml`.
 
 Source: `devenv.nix`.
 
-| Name                                                              | Description                                                | Version | License |
-| ----------------------------------------------------------------- | ---------------------------------------------------------- | ------- | ------- |
-| [betterleaks](https://github.com/dortort/betterleaks)             | Secret scanning in pre-commit and CI.                      | 1.8.1   | TODO    |
-| [cargo-audit](https://github.com/rustsec/rustsec)                 | Audits `Cargo.lock` for known vulnerabilities.             | 0.22.2  | TODO    |
-| [cargo-llvm-cov](https://github.com/taiki-e/cargo-llvm-cov)       | Coverage instrumentation and reporting for Rust.           | 0.9.0   | TODO    |
-| [git](https://git-scm.com/)                                       | Version control.                                           | 2.55.0  | TODO    |
-| [llvm](https://llvm.org/)                                         | LLVM tools used by coverage (`llvm-cov`, `llvm-profdata`). | 21.1.8  | TODO    |
-| [ls-lint](https://ls-lint.org/)                                   | File and directory naming linter.                          | 2.3.1   | TODO    |
-| [nixfmt](https://github.com/NixOS/nixfmt)                         | Nix code formatter.                                        | 1.4.0   | TODO    |
-| [nodejs](https://nodejs.org/)                                     | Node.js runtime for tooling.                               | 24.19.0 | TODO    |
-| [prettier](https://prettier.io/)                                  | Markdown formatter.                                        | 3.8.3   | TODO    |
-| [Python toolchain](https://www.python.org/)                       | Python runtime for tooling and tests.                      | 3.14.6  | TODO    |
-| [Rust toolchain](https://www.rust-lang.org/)                      | Rust compiler and standard tooling.                        | 1.98.0  | TODO    |
-| [shellcheck](https://github.com/koalaman/shellcheck)              | Shell script linter.                                       | 0.11.0  | TODO    |
-| [shfmt](https://github.com/mvdan/sh)                              | Shell script formatter.                                    | 3.13.1  | TODO    |
-| [sqlfluff](https://sqlfluff.com/)                                 | SQL linter and formatter (SQLite dialect).                 | 4.3.0   | TODO    |
-| [sqlite](https://sqlite.org/)                                     | SQLite command-line shell.                                 | 3.51.2  | TODO    |
-| [sqlx-cli](https://github.com/launchbadge/sqlx)                   | SQLx migrations and database CLI.                          | 0.9.0   | TODO    |
-| [taplo](https://taplo.tamasfe.dev/)                               | TOML formatter.                                            | 0.10.0  | TODO    |
-| [xdg-utils](https://www.freedesktop.org/wiki/Software/xdg-utils/) | Desktop integration helpers (opens reports in a browser).  | 1.2.1   | TODO    |
-| [yamllint](https://github.com/adrienverge/yamllint)               | YAML linter.                                               | 1.37.1  | TODO    |
+| Name                                                                       | Description                                                          | Version | License |
+| -------------------------------------------------------------------------- | -------------------------------------------------------------------- | ------- | ------- |
+| [betterleaks](https://github.com/dortort/betterleaks)                      | Secret scanning in pre-commit and CI.                                | 1.8.1   | TODO    |
+| [cargo-bundle-licenses](https://github.com/sstadick/cargo-bundle-licenses) | Bundles the third-party license texts for `THIRD_PARTY_NOTICES.txt`. | 4.2.0   | TODO    |
+| [cargo-deny](https://github.com/EmbarkStudios/cargo-deny)                  | Audits `Cargo.lock` for advisories, licenses, bans, and sources.     | 0.20.2  | TODO    |
+| [cargo-llvm-cov](https://github.com/taiki-e/cargo-llvm-cov)                | Coverage instrumentation and reporting for Rust.                     | 0.9.0   | TODO    |
+| [git](https://git-scm.com/)                                                | Version control.                                                     | 2.55.0  | TODO    |
+| [llvm](https://llvm.org/)                                                  | LLVM tools used by coverage (`llvm-cov`, `llvm-profdata`).           | 21.1.8  | TODO    |
+| [ls-lint](https://ls-lint.org/)                                            | File and directory naming linter.                                    | 2.3.1   | TODO    |
+| [nixfmt](https://github.com/NixOS/nixfmt)                                  | Nix code formatter.                                                  | 1.4.0   | TODO    |
+| [nodejs](https://nodejs.org/)                                              | Node.js runtime for tooling.                                         | 24.19.0 | TODO    |
+| [prettier](https://prettier.io/)                                           | Markdown formatter.                                                  | 3.8.3   | TODO    |
+| [Python toolchain](https://www.python.org/)                                | Python runtime for tooling and tests.                                | 3.14.6  | TODO    |
+| [Rust toolchain](https://www.rust-lang.org/)                               | Rust compiler and standard tooling.                                  | 1.98.0  | TODO    |
+| [semgrep](https://semgrep.dev/)                                            | Static-analysis (SAST) scanner; CI and the `security:semgrep` task.  | 1.172.0 | TODO    |
+| [shellcheck](https://github.com/koalaman/shellcheck)                       | Shell script linter.                                                 | 0.11.0  | TODO    |
+| [shfmt](https://github.com/mvdan/sh)                                       | Shell script formatter.                                              | 3.13.1  | TODO    |
+| [sqlfluff](https://sqlfluff.com/)                                          | SQL linter and formatter (SQLite dialect).                           | 4.3.0   | TODO    |
+| [sqlite](https://sqlite.org/)                                              | SQLite command-line shell.                                           | 3.51.2  | TODO    |
+| [sqlx-cli](https://github.com/launchbadge/sqlx)                            | SQLx migrations and database CLI.                                    | 0.9.0   | TODO    |
+| [taplo](https://taplo.tamasfe.dev/)                                        | TOML formatter.                                                      | 0.10.0  | TODO    |
+| [xdg-utils](https://www.freedesktop.org/wiki/Software/xdg-utils/)          | Desktop integration helpers (opens reports in a browser).            | 1.2.1   | TODO    |
+| [yamllint](https://github.com/adrienverge/yamllint)                        | YAML linter.                                                         | 1.37.1  | TODO    |
 
 ---
 
@@ -1996,6 +1998,7 @@ Source: `.github/workflows/*`.
 | [@semantic-release/git](https://www.npmjs.com/package/@semantic-release/git)                                           | TODO        | 11.0.1  | TODO    |
 | [actions/checkout](https://github.com/actions/checkout)                                                                | TODO        | v6      | TODO    |
 | [actions/create-github-app-token](https://github.com/actions/create-github-app-token)                                  | TODO        | v3.2.0  | TODO    |
+| [actions/download-artifact](https://github.com/actions/download-artifact)                                              | TODO        | v4      | TODO    |
 | [actions/setup-node](https://github.com/actions/setup-node)                                                            | TODO        | v4      | TODO    |
 | [actions/setup-node](https://github.com/actions/setup-node)                                                            | TODO        | v7      | TODO    |
 | [actions/setup-python](https://github.com/actions/setup-python)                                                        | TODO        | v5      | TODO    |

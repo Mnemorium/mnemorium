@@ -31,3 +31,6 @@ config.yaml
 
 # Logs
 logs/
+
+# Security scan artifacts
+.artifacts/

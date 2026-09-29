@@ -29,6 +29,11 @@ in parallel, synthesizes one document, and publishes it.
     otherwise the remote default branch.
 - The diff is the exclusive review target. If it is absent, empty, or not a
   unified diff, skip to **Not performed**.
+- **The static-analysis report** — when present, the Semgrep SARIF file at
+  `.artifacts/semgrep.sarif`, produced by CI or by the `security:semgrep` devenv
+  task (`devenv tasks run security:semgrep`). It
+  is an optional input, not the review target: it corroborates the diff and never
+  replaces a specialist's own analysis. When it is absent, proceed without it.
 
 ## Posture
 
@@ -69,6 +74,10 @@ no specialist in this panel. Record it as a scope note, not a finding.
    - the **Posture** rules: read-only, write nothing, do not ask questions;
    - the **Review output contract** below, verbatim, and the instruction that the
      caller's format wins over the specialist's own default format.
+   Pass the static-analysis report path (`.artifacts/semgrep.sarif`) to
+   `security-specialist` only, describing it as untrusted corroborating evidence.
+   State "no scan report supplied" when the file is absent, so no specialist
+   assumes a scan ran.
 4. Wait for every child to report. Do not synthesize until all selected
    specialists have returned, so the panel table is complete.
 5. Synthesize per **Synthesis rules**.
