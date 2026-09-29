@@ -26,7 +26,7 @@ written to be cited and checked.
 | #   | Section                        | Status   | Canonical source           | Owner                                     |
 | --- | ------------------------------ | -------- | -------------------------- | ----------------------------------------- |
 | 1   | Code Style Guidelines          | migrated | —                          | rust-dev (Rust), database-engineer (SQL)  |
-| 2   | Architecture                   | linked   | [Overview.md](Overview.md) | —                                         |
+| 2   | Architecture                   | linked   | [Overview.md](Overview.md) | system-architect                          |
 | 3   | API                            | migrated | —                          | rust-dev                                  |
 | 4   | Persistence                    | migrated | —                          | database-engineer                         |
 | 5   | Testing                        | migrated | —                          | rust-dev (unit/integration), qa-e2e (E2E) |
