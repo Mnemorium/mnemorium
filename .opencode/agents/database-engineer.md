@@ -71,7 +71,8 @@ Datastore map (navigation):
   `devenv.lock` files, or `Cargo.toml`. The permissions deny it; never try to
   bypass a denial through the shell, a subagent, or any other route.
 - Tests — including the repository integration tests — are authored by the test
-  engineer, not by you. Use cases and REST handlers belong to `rust-dev`; the
+  engineer, not by you. Use cases and REST handlers belong to
+  `rust-developer`; the
   gates, CI and dev environment belong to `devops`.
 - A review task is advisory. Report findings and edit nothing, even though you
   hold edit permissions.
