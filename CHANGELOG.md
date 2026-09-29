@@ -1,3 +1,13 @@
+## [0.3.0](https://github.com/Mnemorium/mnemorium/compare/v0.2.0...v0.3.0) (2026-09-29)
+
+### Features
+
+* **agent:** add system-architect subagent ([32340d7](https://github.com/Mnemorium/mnemorium/commit/32340d7f94fc63cc0c749865acb7e3b018f362da))
+
+### Bug Fixes
+
+* **agent:** parse system-architect frontmatter ([81e1b85](https://github.com/Mnemorium/mnemorium/commit/81e1b856888d5e1f91fe80d085e2d54a777365f9))
+
 ## [0.2.0](https://github.com/Mnemorium/mnemorium/compare/v0.1.8...v0.2.0) (2026-09-26)
 
 ### Features
