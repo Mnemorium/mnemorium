@@ -2,7 +2,7 @@
 description: System architect for the Mnemorium backend. Plans an implementation
   change or reviews a change/implementation through the architecture lens — the
   layer map, hexagonal dependency direction, bounded contexts, composition root,
-  and server lifecycle. Read-only: reports rule-cited findings and ordered plans,
+  and server lifecycle. Read-only — reports rule-cited findings and ordered plans,
   never edits. Use to plan or adjudicate an architecture-affecting change.
 mode: subagent
 permissions:
