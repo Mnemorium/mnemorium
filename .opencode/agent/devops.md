@@ -48,6 +48,8 @@ conventions.
     `fmt:md`, `fmt:sql`
   - lint: `lint:rust`, `lint:python`, `lint:yaml`, `lint:sql`, `lint:md`,
     `lint:shell`
+  - security: `security:semgrep`
+  - licenses: `licenses:generate`
   - build: `build:all`, `build:server`, `build:openapi-gen`
   - test: `test:coverage`, `test:e2e`
   - docs: `docs:openapi-gen`, `docs:html-coverage`
@@ -61,7 +63,8 @@ conventions.
   clippy with `-D warnings`, `ruff` + ruff-format, `nixfmt`, `ls-lint`,
   `taplo`, an `openapi` hook that regenerates and stages
   `docs/development/api/openapi.json`, an llvm-cov coverage gate
-  (functions/regions/lines ≥ 80%), `sqlfluff`, `cargo-audit`, `betterleaks`,
+  (functions/regions/lines ≥ 80%), `sqlfluff`, `cargo-deny`,
+  `cargo-bundle-licenses`, `betterleaks`,
   `mkdocs build --strict`, `prettier` then `markdownlint-cli2`, `yamllint`,
   and a `cargo build`.
 - You may run `cargo fmt` and clippy autofixes, which modify files under
@@ -98,11 +101,15 @@ conventions.
 
 ## CI/CD
 
-- `ci.yml`: runs on PRs to `main`. `gatekeeper` enforces the semantic PR title;
-  `changes` fans out per file type, then `betterleaks`, `rust`, `security`,
-  `python`, `docs`, `sql`, `shell`, `nix`, and `lint` run as needed, plus the
-  `docs-only` guard. There is no aggregate `devenv test` job — run `devenv test`
-  locally to replicate it.
+- `ci.yml`: runs on PRs to `main`, including `ready_for_review`. `gatekeeper`
+  enforces the semantic PR title; `changes` fans out per file type, then
+  `betterleaks`, `rust`, `security` (which runs `cargo deny check`), `python`,
+  `docs`, `sql`, `shell`, `nix`, and `lint` run as needed, plus the `docs-only`
+  guard. The `semgrep` job runs on every PR and uploads its SARIF report; the
+  `review` job then runs the `mn-review` panel after it, handing the report to the
+  security specialist from `.artifacts/`. The `security` job also fails when
+  `THIRD_PARTY_NOTICES.txt` is stale. There is no aggregate `devenv test` job —
+  run `devenv test` locally to replicate it.
 - `cd.yml`: on push to `main`, semantic-release bumps `Cargo.toml` and
   `docs/development/api/openapi.json`, builds and pushes the Docker image,
   commits `CHANGELOG.md`, tags `v<version>`, and publishes the release. The

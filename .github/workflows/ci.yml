@@ -10,6 +10,7 @@ on:
       - edited
       - synchronize
       - reopened
+      - ready_for_review
 
 permissions:
   contents: read
@@ -163,6 +164,63 @@ jobs:
           name: betterleaks-report
           path: ${{ steps.betterleaks.outputs.report-path }}
 
+  semgrep:
+    needs: [gatekeeper]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - name: Install Semgrep
+        run: pip install semgrep==1.172.0
+      - name: Scan
+        run: |
+          mkdir -p .artifacts
+          semgrep scan \
+            --config p/rust \
+            --config p/security-audit \
+            --config p/cwe-top-25 \
+            --baseline-commit "${{ github.event.pull_request.base.sha }}" \
+            --metrics=off \
+            --sarif \
+            --output .artifacts/semgrep.sarif
+      - name: Gate on ERROR findings
+        run: |
+          python - .artifacts/semgrep.sarif <<'PY'
+          import json
+          import sys
+
+          with open(sys.argv[1], encoding="utf-8") as fh:
+              runs = json.load(fh).get("runs", [])
+
+          findings = []
+          for run in runs:
+              driver = run.get("tool", {}).get("driver", {})
+              levels = {
+                  rule["id"]: rule.get("defaultConfiguration", {})
+                  .get("level")
+                  for rule in driver.get("rules", [])
+              }
+              for result in run.get("results", []):
+                  level = levels.get(result.get("ruleId"))
+                  if result.get("level", level) == "error":
+                      findings.append(result)
+
+          if findings:
+              print(f"{len(findings)} ERROR finding(s).", file=sys.stderr)
+              sys.exit(1)
+          print("No semgrep ERROR findings.")
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: semgrep-sarif
+          path: .artifacts/semgrep.sarif
+          if-no-files-found: ignore
+
   rust:
     needs: [changes, betterleaks]
     if: needs.changes.outputs.rust == 'true'
@@ -208,9 +266,15 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@1.98.0
-      - uses: taiki-e/install-action@cargo-audit
-      - name: Audit dependencies
-        run: cargo audit
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-deny@0.20,cargo-bundle-licenses
+      - name: Check dependencies
+        run: cargo deny check
+      - name: Check third-party notices are current
+        run: |
+          cargo fetch
+          script/generate_third_party_notices.sh --check
 
   python:
     needs: [changes, betterleaks]
@@ -309,3 +373,75 @@ jobs:
         run: taplo fmt --check
       - name: Lint YAML
         run: yamllint -c .yamllint .
+
+  review:
+    needs: [semgrep]
+    if: always()
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: semgrep-sarif
+          path: .artifacts
+      - run: npm install --global @opencode/cli
+      - name: Check the GitHub MCP server connection
+        env:
+          GITHUB_MCP_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          status=$(curl -s -o /dev/null -w '%{http_code}' \
+            -X POST https://api.githubcopilot.com/mcp/ \
+            -H "Authorization: Bearer $GITHUB_MCP_TOKEN" \
+            -H 'Content-Type: application/json' \
+            -H 'Accept: application/json, text/event-stream' \
+            -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}')
+          echo "GitHub MCP endpoint returned HTTP $status"
+          case "$status" in
+            2*) ;;
+            *)
+              echo "github MCP rejected the token (HTTP $status)." >&2
+              echo "Set GITHUB_MCP_TOKEN to a PAT." >&2
+              exit 1
+              ;;
+          esac
+      - name: Review pull request
+        env:
+          OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
+          GITHUB_MCP_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REVIEWER_MODEL: ${{ vars.AGENT_REVIEWER_MODEL }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          PR_OWNER: ${{ github.repository_owner }}
+          PR_REPOSITORY: ${{ github.event.repository.name }}
+          PR_BASE_BRANCH: ${{ github.event.pull_request.base.ref }}
+          PR_HEAD_BRANCH: ${{ github.event.pull_request.head.ref }}
+        run: |
+          opencode run --standalone --format json \
+            --agent plan \
+            --model "$REVIEWER_MODEL" \
+            "Review this pull request by loading and following the
+          mn-review skill.
+
+          <pull_request>
+          Number: ${PR_NUMBER}
+          URL: ${PR_URL}
+          Owner: ${PR_OWNER}
+          Repository: ${PR_REPOSITORY}
+          Base Branch: ${PR_BASE_BRANCH}
+          Head Branch: ${PR_HEAD_BRANCH}
+          </pull_request>" > events.ndjson
+      - name: Upload review event log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: opencode-review-events
+          path: events.ndjson
+          if-no-files-found: ignore

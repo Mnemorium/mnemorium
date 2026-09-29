@@ -258,6 +258,10 @@ mod tests {
     const TTL_SECONDS: u64 = 3600;
     const DEFAULT_MAX_FILE_SIZE: u64 = 1_000_000;
 
+    /// Largest declared file size that still splits into exactly
+    /// [`MAX_TOTAL_CHUNKS`] chunks.
+    const MAX_TOTAL_CHUNKS_FILE_SIZE: u64 = MAX_TOTAL_CHUNKS as u64 * CHUNK_SIZE;
+
     type UseCase = BeginUpload<TestFactory, MockFileStorage>;
 
     /// A use case under test together with its transaction-lifecycle flags.
@@ -584,12 +588,47 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn begin_upload_max_total_chunks_succeeds() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        // Exactly `MAX_TOTAL_CHUNKS` chunks is the largest file the chunk-count
+        // backstop accepts. `max_file_size_bytes` equals the declared size, so
+        // the size rule is satisfied at its limit and the chunk rule decides.
+        let harness = use_case_with_max(
+            |uploads, mime_types, file_storage| {
+                expect_mime_type(mime_types, true);
+                uploads
+                    .expect_create()
+                    .times(1)
+                    .withf(|upload| upload.total_chunks() == MAX_TOTAL_CHUNKS)
+                    .returning(|upload| Box::pin(async move { Ok(upload) }));
+                file_storage
+                    .expect_create_upload_file()
+                    .times(1)
+                    .returning(|_, _| Box::pin(async { Ok(()) }));
+                Ok(())
+            },
+            MAX_TOTAL_CHUNKS_FILE_SIZE,
+        )?;
+        let command = command(MAX_TOTAL_CHUNKS_FILE_SIZE);
+
+        // Act
+        let response = harness.use_case.execute(command).await?;
+
+        // Assert
+        assert_eq!(response.chunk_size(), CHUNK_SIZE);
+        assert!(harness.committed.load(Ordering::SeqCst));
+        assert!(!harness.rolled_back.load(Ordering::SeqCst));
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn begin_upload_too_many_chunks_returns_file_too_large() -> Result<(), Box<dyn Error>> {
         // Arrange
-        // One byte per chunk keeps the file size small while exceeding the hard
-        // chunk-count backstop.
-        let harness = use_case_with_max(|_, _, _| Ok(()), MAX_TOTAL_CHUNKS as u64 + 1)?;
-        let file_size = (MAX_TOTAL_CHUNKS as u64 + 1).saturating_mul(CHUNK_SIZE);
+        // One byte past the largest file that fits in `MAX_TOTAL_CHUNKS`
+        // chunks. `max_file_size_bytes` equals the declared size, so the size
+        // rule is satisfied and only the chunk-count backstop can reject.
+        let file_size = MAX_TOTAL_CHUNKS_FILE_SIZE + 1;
+        let harness = use_case_with_max(|_, _, _| Ok(()), file_size)?;
         let command = command(file_size);
 
         // Act

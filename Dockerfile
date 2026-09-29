@@ -22,6 +22,7 @@ FROM alpine:3.21 AS runtime
 
 WORKDIR /app
 COPY --from=builder /app/target/release/server /usr/local/bin/server
+COPY LICENSE THIRD_PARTY_NOTICES.txt /licenses/
 
 EXPOSE 4080
 

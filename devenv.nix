@@ -27,7 +27,9 @@
     pkgs.nixfmt
     pkgs.llvm
     pkgs.shellcheck
-    pkgs.cargo-audit
+    pkgs.cargo-deny
+    pkgs.cargo-bundle-licenses
+    pkgs.semgrep
     pkgs.xdg-utils
     pkgs.shfmt
     pkgs.taplo
@@ -113,6 +115,15 @@
       files = "(\\.rs$|(^|/)Cargo\\.(toml|lock)$|^docs/development/api/openapi\\.json$)";
     };
 
+    bundle-licenses = {
+      enable = true;
+      name = "Regenerate THIRD_PARTY_NOTICES.txt";
+      entry = "bash -c 'script/generate_third_party_notices.sh && git add -- THIRD_PARTY_NOTICES.txt'";
+      language = "system";
+      pass_filenames = false;
+      files = "(^|/)Cargo\\.(toml|lock)$";
+    };
+
     # === test coverage
     coverage = {
       enable = true;
@@ -131,10 +142,10 @@
       files = "migrations/.*\\.sql$";
     };
 
-    cargo-audit = {
+    cargo-deny = {
       enable = true;
-      name = "cargo-audit";
-      entry = "cargo audit";
+      name = "cargo-deny";
+      entry = "cargo deny check";
       pass_filenames = false;
       files = "Cargo\\.toml$";
     };
@@ -299,6 +310,18 @@
   tasks."lint:shell" = {
     exec = "shellcheck script/*.sh";
     description = "Lint shell file";
+  };
+
+  # Security
+
+  tasks."security:semgrep" = {
+    exec = "mkdir -p .artifacts && semgrep scan --config p/rust --config p/security-audit --config p/cwe-top-25 --metrics=off --sarif --output .artifacts/semgrep.sarif .";
+    description = "Run the Semgrep scan and write the SARIF report to .artifacts/semgrep.sarif";
+  };
+
+  tasks."licenses:generate" = {
+    exec = "script/generate_third_party_notices.sh";
+    description = "Regenerate THIRD_PARTY_NOTICES.txt from the crate graph";
   };
 
   # OpenCode
