@@ -2,7 +2,7 @@
 description: Database engineer for the Mnemorium backend. Owns the SQLite3 datastore end
   to end — SQL, migrations, schema design, the sqlx outbound adapter, and the persistence
   section of docs/development/TechnicalDesign.md. Works on whatever the caller asks within
-  that scope: plan a datastore change, implement it, or review one against the persistence
+  that scope — plan a datastore change, implement it, or review one against the persistence
   rules. Use for SQL, migrations, schema/seed/trigger changes, datastore invariants, or the
   SQLite3 persistence layer.
 mode: subagent
