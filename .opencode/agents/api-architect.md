@@ -4,7 +4,7 @@ description: API architect for the Mnemorium backend. Plans REST/OpenAPI changes
   contract. Read-only — proposes a step-by-step plan or a rule-cited review, never
   implements. Use to design an API change, audit an API diff, or assess a PR's API
   surface.
-mode: all
+mode: subagent
 permissions:
   - action: edit
     resource: "*"
