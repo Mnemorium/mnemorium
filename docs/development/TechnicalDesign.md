@@ -278,13 +278,23 @@ impl From<CreateUserError> for ApiError {
 
 ##### 2.5 Error public payload
 
-Every error response carries the same body:
+Every error response carries the same body, a HAL representation served as `application/hal+json`: the human-readable
+`error` message at the root (`API-033`) and a `_links.self` whose `href` is the request URI the client called
+(`API-032`).
 
 ```json
 {
+  "_links": {
+    "self": {
+      "href": "/api/v1/users/42"
+    }
+  },
   "error": "An error message"
 }
 ```
+
+The envelope is uniform across every error the server emits — use-case errors, authentication failures, routing
+fallbacks (an unknown or malformed URL) and extractor rejections alike. See `API-039`.
 
 ---
 
@@ -785,45 +795,46 @@ are documented inline, at the source, with `#[utoipa::path(...)]` macros.
 
 [Utoipa]: https://docs.rs/utoipa
 
-| ID        | Section                   | Rule                                                                                                    | More info                                   |
-| --------- | ------------------------- | ------------------------------------------------------------------------------------------------------- | ------------------------------------------- |
-| `API-001` | OpenAPI generation        | Annotate each handler in `src/lib/infrastructure/inbound/rest/handler` with `#[utoipa::path(...)]`.     | [§ OpenAPI generation](#openapi-generation) |
-| `API-002` | OpenAPI generation        | Aggregate path items, tags and reusable schemas in a struct deriving `utoipa::OpenApi`.                 | [§ OpenAPI generation](#openapi-generation) |
-| `API-004` | Endpoint handler contract | Declare `operation_id`, a unique operation identifier.                                                  | [§ 1](#1-endpoint-handler-example)          |
-| `API-005` | Endpoint handler contract | Declare the HTTP method (`get`/`post`/`put`/`patch`/`delete`).                                          | [§ 1](#1-endpoint-handler-example)          |
-| `API-006` | Endpoint handler contract | Declare `path`, the route of the endpoint.                                                              | [§ 1](#1-endpoint-handler-example)          |
-| `API-007` | Endpoint handler contract | Declare `tag`, the bounded context the endpoint belongs to.                                             | [§ 1](#1-endpoint-handler-example)          |
-| `API-008` | Endpoint handler contract | Declare `request_body` for an endpoint that carries a body.                                             | [§ 1](#1-endpoint-handler-example)          |
-| `API-009` | Endpoint handler contract | Declare `params` for path, query, header and cookie parameters.                                         | [§ 1](#1-endpoint-handler-example)          |
-| `API-010` | Endpoint handler contract | Declare `responses` with all the possible responses.                                                    | [§ 1](#1-endpoint-handler-example)          |
-| `API-011` | Endpoint handler contract | Declare `security`, the scheme(s) protecting the endpoint.                                              | [§ 1](#1-endpoint-handler-example)          |
-| `API-012` | Endpoint handler contract | Declare `summary`, a one-line human-readable summary.                                                   | [§ 1](#1-endpoint-handler-example)          |
-| `API-013` | Parameters                | Declare `name`, the parameter name as it appears in the URL, header or cookie.                          | [§ 2](#2-parameter-declaration-examples)    |
-| `API-014` | Parameters                | Declare `in`, the location: `Path`, `Query`, `Header` or `Cookie`.                                      | [§ 2](#2-parameter-declaration-examples)    |
-| `API-015` | Parameters                | Declare `parameter_type` (optional), written `= Type` after the name to bind a specific Rust type.      | [§ 2](#2-parameter-declaration-examples)    |
-| `API-016` | Parameters                | Declare `description`, a human-readable description.                                                    | [§ 2](#2-parameter-declaration-examples)    |
-| `API-017` | Parameters                | Use the constraint attributes to refine a parameter value.                                              | [§ 3](#3-constraint-attributes)             |
-| `API-018` | Parameters                | Prefer a reused `IntoParams` struct over inline tuples when several handlers share the query.           | [§ 2](#2-parameter-declaration-examples)    |
-| `API-019` | Examples                  | Provide an `example` for a schema, parameter or response, inline or named (`name`, `summary`, `value`). | [§ 4](#4-example-values)                    |
-| `API-020` | Request body              | Declare `content_type`, the media type of the body (for example `application/json`).                    | [§ 5](#5-request-body-example)              |
-| `API-021` | Request body              | Declare `body`, the schema of the body (`content` in OpenAPI terms).                                    | [§ 5](#5-request-body-example)              |
-| `API-022` | Request body              | Provide an `example` value (optional).                                                                  | [§ 5](#5-request-body-example)              |
-| `API-023` | Responses                 | Declare `status`, the HTTP status code.                                                                 | [§ 6](#6-response-example)                  |
-| `API-024` | Responses                 | Declare `description`, a human-readable description.                                                    | [§ 6](#6-response-example)                  |
-| `API-025` | Responses                 | Declare `body`, the response payload schema, when there is one.                                         | [§ 6](#6-response-example)                  |
-| `API-026` | Responses                 | Declare `content_type`, the payload media type, when there is one.                                      | [§ 6](#6-response-example)                  |
-| `API-027` | Responses                 | Declare `headers`, when there are any.                                                                  | [§ 6](#6-response-example)                  |
-| `API-028` | Responses                 | Provide an `example` of the response payload (optional).                                                | [§ 6](#6-response-example)                  |
-| `API-029` | Responses                 | Declare `link` to another operation through its `operation_id` (optional).                              | [§ 6](#6-response-example)                  |
-| `API-030` | Responses                 | Declare every possible response, the success case as well as every error.                               | [§ 6](#6-response-example)                  |
-| `API-031` | HAL payload               | Use `application/hal+json` for HAL responses.                                                           | [§ HAL payload](#hal-payload-guidelines)    |
-| `API-032` | HAL payload               | Always include `_links.self` on resource representations.                                               | [§ HAL payload](#hal-payload-guidelines)    |
-| `API-033` | HAL payload               | Keep business data at the root of the payload.                                                          | [§ HAL payload](#hal-payload-guidelines)    |
-| `API-034` | HAL payload               | Reserve `_links` for navigation and related resources.                                                  | [§ HAL payload](#hal-payload-guidelines)    |
-| `API-035` | HAL payload               | Do not use `_embedded` unless there is a proven performance need.                                       | [§ HAL payload](#hal-payload-guidelines)    |
-| `API-036` | HAL payload               | Expose search and filtering through URI templates (`templated: true`).                                  | [§ HAL payload](#hal-payload-guidelines)    |
-| `API-037` | HAL payload               | Keep actions discoverable through links; clients never construct or hardcode URLs.                      | [§ HAL payload](#hal-payload-guidelines)    |
-| `API-038` | HAL payload               | HAL is a response representation format; requests carry only business data.                             | [§ HAL payload](#hal-payload-guidelines)    |
+| ID        | Section                   | Rule                                                                                                                                                                                                                                                                          | More info                                   |
+| --------- | ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------- |
+| `API-001` | OpenAPI generation        | Annotate each handler in `src/lib/infrastructure/inbound/rest/handler` with `#[utoipa::path(...)]`.                                                                                                                                                                           | [§ OpenAPI generation](#openapi-generation) |
+| `API-002` | OpenAPI generation        | Aggregate path items, tags and reusable schemas in a struct deriving `utoipa::OpenApi`.                                                                                                                                                                                       | [§ OpenAPI generation](#openapi-generation) |
+| `API-004` | Endpoint handler contract | Declare `operation_id`, a unique operation identifier.                                                                                                                                                                                                                        | [§ 1](#1-endpoint-handler-example)          |
+| `API-005` | Endpoint handler contract | Declare the HTTP method (`get`/`post`/`put`/`patch`/`delete`).                                                                                                                                                                                                                | [§ 1](#1-endpoint-handler-example)          |
+| `API-006` | Endpoint handler contract | Declare `path`, the route of the endpoint.                                                                                                                                                                                                                                    | [§ 1](#1-endpoint-handler-example)          |
+| `API-007` | Endpoint handler contract | Declare `tag`, the bounded context the endpoint belongs to.                                                                                                                                                                                                                   | [§ 1](#1-endpoint-handler-example)          |
+| `API-008` | Endpoint handler contract | Declare `request_body` for an endpoint that carries a body.                                                                                                                                                                                                                   | [§ 1](#1-endpoint-handler-example)          |
+| `API-009` | Endpoint handler contract | Declare `params` for path, query, header and cookie parameters.                                                                                                                                                                                                               | [§ 1](#1-endpoint-handler-example)          |
+| `API-010` | Endpoint handler contract | Declare `responses` with all the possible responses.                                                                                                                                                                                                                          | [§ 1](#1-endpoint-handler-example)          |
+| `API-011` | Endpoint handler contract | Declare `security`, the scheme(s) protecting the endpoint.                                                                                                                                                                                                                    | [§ 1](#1-endpoint-handler-example)          |
+| `API-012` | Endpoint handler contract | Declare `summary`, a one-line human-readable summary.                                                                                                                                                                                                                         | [§ 1](#1-endpoint-handler-example)          |
+| `API-013` | Parameters                | Declare `name`, the parameter name as it appears in the URL, header or cookie.                                                                                                                                                                                                | [§ 2](#2-parameter-declaration-examples)    |
+| `API-014` | Parameters                | Declare `in`, the location: `Path`, `Query`, `Header` or `Cookie`.                                                                                                                                                                                                            | [§ 2](#2-parameter-declaration-examples)    |
+| `API-015` | Parameters                | Declare `parameter_type` (optional), written `= Type` after the name to bind a specific Rust type.                                                                                                                                                                            | [§ 2](#2-parameter-declaration-examples)    |
+| `API-016` | Parameters                | Declare `description`, a human-readable description.                                                                                                                                                                                                                          | [§ 2](#2-parameter-declaration-examples)    |
+| `API-017` | Parameters                | Use the constraint attributes to refine a parameter value.                                                                                                                                                                                                                    | [§ 3](#3-constraint-attributes)             |
+| `API-018` | Parameters                | Prefer a reused `IntoParams` struct over inline tuples when several handlers share the query.                                                                                                                                                                                 | [§ 2](#2-parameter-declaration-examples)    |
+| `API-019` | Examples                  | Provide an `example` for a schema, parameter or response, inline or named (`name`, `summary`, `value`).                                                                                                                                                                       | [§ 4](#4-example-values)                    |
+| `API-020` | Request body              | Declare `content_type`, the media type of the body (for example `application/json`).                                                                                                                                                                                          | [§ 5](#5-request-body-example)              |
+| `API-021` | Request body              | Declare `body`, the schema of the body (`content` in OpenAPI terms).                                                                                                                                                                                                          | [§ 5](#5-request-body-example)              |
+| `API-022` | Request body              | Provide an `example` value (optional).                                                                                                                                                                                                                                        | [§ 5](#5-request-body-example)              |
+| `API-023` | Responses                 | Declare `status`, the HTTP status code.                                                                                                                                                                                                                                       | [§ 6](#6-response-example)                  |
+| `API-024` | Responses                 | Declare `description`, a human-readable description.                                                                                                                                                                                                                          | [§ 6](#6-response-example)                  |
+| `API-025` | Responses                 | Declare `body`, the response payload schema, when there is one.                                                                                                                                                                                                               | [§ 6](#6-response-example)                  |
+| `API-026` | Responses                 | Declare `content_type`, the payload media type, when there is one.                                                                                                                                                                                                            | [§ 6](#6-response-example)                  |
+| `API-027` | Responses                 | Declare `headers`, when there are any.                                                                                                                                                                                                                                        | [§ 6](#6-response-example)                  |
+| `API-028` | Responses                 | Provide an `example` of the response payload (optional).                                                                                                                                                                                                                      | [§ 6](#6-response-example)                  |
+| `API-029` | Responses                 | Declare `link` to another operation through its `operation_id` (optional).                                                                                                                                                                                                    | [§ 6](#6-response-example)                  |
+| `API-030` | Responses                 | Declare every possible response, the success case as well as every error.                                                                                                                                                                                                     | [§ 6](#6-response-example)                  |
+| `API-031` | HAL payload               | Use `application/hal+json` for HAL responses.                                                                                                                                                                                                                                 | [§ HAL payload](#hal-payload-guidelines)    |
+| `API-032` | HAL payload               | Always include `_links.self` on resource representations.                                                                                                                                                                                                                     | [§ HAL payload](#hal-payload-guidelines)    |
+| `API-033` | HAL payload               | Keep business data at the root of the payload.                                                                                                                                                                                                                                | [§ HAL payload](#hal-payload-guidelines)    |
+| `API-034` | HAL payload               | Reserve `_links` for navigation and related resources.                                                                                                                                                                                                                        | [§ HAL payload](#hal-payload-guidelines)    |
+| `API-035` | HAL payload               | Do not use `_embedded` unless there is a proven performance need.                                                                                                                                                                                                             | [§ HAL payload](#hal-payload-guidelines)    |
+| `API-036` | HAL payload               | Expose search and filtering through URI templates (`templated: true`).                                                                                                                                                                                                        | [§ HAL payload](#hal-payload-guidelines)    |
+| `API-037` | HAL payload               | Keep actions discoverable through links; clients never construct or hardcode URLs.                                                                                                                                                                                            | [§ HAL payload](#hal-payload-guidelines)    |
+| `API-038` | HAL payload               | HAL is a response representation format; requests carry only business data.                                                                                                                                                                                                   | [§ HAL payload](#hal-payload-guidelines)    |
+| `API-039` | HAL payload               | Error responses are HAL representations: the `error` message at the root plus `_links.self` carrying the request URI, served as `application/hal+json`. The same envelope is returned for every error the server emits, including routing fallbacks and extractor rejections. | [§ 2.5](#25-error-public-payload)           |
 
 ---
 
@@ -1092,21 +1103,34 @@ use utoipa::openapi::{
     request_body = CreateNoteRequest,
     responses(
         (status = CREATED, body = CreateNoteResponse, description = "Note created"),
-        (status = BAD_REQUEST, body = ErrorBody, description = "Invalid payload"),
+        (
+            status = BAD_REQUEST,
+            body = ErrorBody,
+            content_type = "application/hal+json",
+            description = "Invalid payload"
+        ),
         (
             status = CONFLICT,
             body = ErrorBody,
-            content_type = "application/json",
+            content_type = "application/hal+json",
             headers(
                 ("Location" = String, description = "URI of the conflicting note"),
             ),
-            example = json!({"error": "A note with this title already exists"}),
+            example = json!({
+                "_links": {"self": {"href": "/api/v1/notes"}},
+                "error": "A note with this title already exists"
+            }),
             links(
                 ("conflict" = Link("get_note") = ("id")),
             ),
             description = "A note with the same title already exists"
         ),
-        (status = UNAUTHORIZED, body = ErrorBody, description = "Missing or invalid credentials"),
+        (
+            status = UNAUTHORIZED,
+            body = ErrorBody,
+            content_type = "application/hal+json",
+            description = "Missing or invalid credentials"
+        ),
     ),
     security(
         ("bearer_auth" = [])
@@ -1121,6 +1145,9 @@ pub async fn create_note() -> axum::response::Json<CreateNoteResponse> {
 `links` reference another operation declared in the same `OpenApi` derive by its `operation_id`, and express how a field
 of this response maps to a parameter of the linked operation. In the example above, on a `409 Conflict`, `create_note`
 points to `get_note` using the `id` field of the response body.
+
+Every error response declares `content_type = "application/hal+json"` and carries the body defined in
+[§ 2.5](#25-error-public-payload).
 
 > `write_only`, `read_only` and all the [constraint attributes](#3-constraint-attributes) apply on request/response body
 > models through the `#[schema(...)]` attribute of the `ToSchema` derive, exactly as they do on parameters.
@@ -1182,7 +1209,8 @@ The plugin loads the OAS from the generated JSON, so shipping the documentation 
 
 ### HAL payload guidelines
 
-The examples below use `/orders` as the resource and show how each HTTP method maps onto HAL.
+The examples below use `/orders` as the resource and show how each HTTP method maps onto HAL. Errors use the same
+representation format; their body is defined in [§ 2.5](#25-error-public-payload) and governed by `API-039`.
 
 ---
 
