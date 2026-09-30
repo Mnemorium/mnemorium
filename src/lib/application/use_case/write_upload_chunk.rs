@@ -242,6 +242,13 @@ where
             .ok_or(AttemptError::Business(
                 WriteUploadChunkError::InvalidChunkNumber,
             ))?;
+        // The chunk size is the one persisted when the session began, never the
+        // current configuration: the range must match the session's geometry.
+        if command.start() != offset {
+            return Err(AttemptError::Business(
+                WriteUploadChunkError::InvalidChunkRange,
+            ));
+        }
 
         file_storage
             .add_chunk(upload.upload_id(), offset, command.chunk().to_vec())
@@ -399,7 +406,8 @@ mod tests {
         };
         let use_case =
             WriteUploadChunk::new(Arc::new(factory), Arc::new(file_storage), TTL_SECONDS);
-        let command = WriteUploadChunkCommand::new(5, 0, b"1234".to_vec(), CHUNK_MD5.to_owned(), 3);
+        let command =
+            WriteUploadChunkCommand::new(5, 0, 0, b"1234".to_vec(), CHUNK_MD5.to_owned(), 3);
 
         // Act
         let response = use_case.execute(command).await?;
@@ -436,7 +444,8 @@ mod tests {
         };
         let use_case =
             WriteUploadChunk::new(Arc::new(factory), Arc::new(file_storage), TTL_SECONDS);
-        let command = WriteUploadChunkCommand::new(5, 0, b"1234".to_vec(), CHUNK_MD5.to_owned(), 3);
+        let command =
+            WriteUploadChunkCommand::new(5, 0, 0, b"1234".to_vec(), CHUNK_MD5.to_owned(), 3);
 
         // Act
         let result = use_case.execute(command).await;
@@ -470,7 +479,7 @@ mod tests {
             TTL_SECONDS,
         );
         let command =
-            WriteUploadChunkCommand::new(999, 0, b"1234".to_vec(), CHUNK_MD5.to_owned(), 3);
+            WriteUploadChunkCommand::new(999, 0, 0, b"1234".to_vec(), CHUNK_MD5.to_owned(), 3);
 
         // Act
         let result = use_case.execute(command).await;
@@ -500,7 +509,7 @@ mod tests {
             TTL_SECONDS,
         );
         let command =
-            WriteUploadChunkCommand::new(5, 0, b"1234".to_vec(), CHUNK_MD5.to_owned(), 99);
+            WriteUploadChunkCommand::new(5, 0, 0, b"1234".to_vec(), CHUNK_MD5.to_owned(), 99);
 
         // Act
         let result = use_case.execute(command).await;
@@ -558,7 +567,8 @@ mod tests {
         };
         let use_case =
             WriteUploadChunk::new(Arc::new(factory), Arc::new(file_storage), TTL_SECONDS);
-        let command = WriteUploadChunkCommand::new(5, 1, b"5678".to_vec(), CHUNK_MD5.to_owned(), 3);
+        let command =
+            WriteUploadChunkCommand::new(5, 1, 4, b"5678".to_vec(), CHUNK_MD5.to_owned(), 3);
 
         // Act
         let result = use_case.execute(command).await;
@@ -620,7 +630,8 @@ mod tests {
             Arc::new(file_storage),
             TTL_SECONDS,
         );
-        let command = WriteUploadChunkCommand::new(5, 1, b"5678".to_vec(), CHUNK_MD5.to_owned(), 3);
+        let command =
+            WriteUploadChunkCommand::new(5, 1, 4, b"5678".to_vec(), CHUNK_MD5.to_owned(), 3);
 
         // Act
         let result = use_case.execute(command).await;
@@ -651,7 +662,8 @@ mod tests {
             Arc::new(MockFileStorage::new()),
             TTL_SECONDS,
         );
-        let command = WriteUploadChunkCommand::new(5, 0, b"1234".to_vec(), CHUNK_MD5.to_owned(), 3);
+        let command =
+            WriteUploadChunkCommand::new(5, 0, 0, b"1234".to_vec(), CHUNK_MD5.to_owned(), 3);
 
         // Act
         let result = use_case.execute(command).await;
@@ -683,7 +695,8 @@ mod tests {
             Arc::new(MockFileStorage::new()),
             TTL_SECONDS,
         );
-        let command = WriteUploadChunkCommand::new(5, 5, b"1234".to_vec(), CHUNK_MD5.to_owned(), 3);
+        let command =
+            WriteUploadChunkCommand::new(5, 5, 20, b"1234".to_vec(), CHUNK_MD5.to_owned(), 3);
 
         // Act
         let result = use_case.execute(command).await;
@@ -692,6 +705,40 @@ mod tests {
         assert!(matches!(
             result,
             Err(WriteUploadChunkError::InvalidChunkNumber)
+        ));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn write_upload_chunk_start_mismatch_returns_invalid_chunk_range()
+    -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let mut uploads = MockUploadRepository::new();
+        expect_upload(&mut uploads, upload(5, 3, 8, &[], false)?);
+        let (unit_of_work, _committed, _rolled_back) = asset_unit_of_work(
+            uploads,
+            MockFileRepository::new(),
+            MockMimeTypeRepository::new(),
+        );
+        let factory = TestUnitOfWorkFactory {
+            unit_of_works: Mutex::new(vec![unit_of_work]),
+        };
+        let use_case = WriteUploadChunk::new(
+            Arc::new(factory),
+            Arc::new(MockFileStorage::new()),
+            TTL_SECONDS,
+        );
+        // Chunk `0` is persisted with a size of 4, so its start must be 0.
+        let command =
+            WriteUploadChunkCommand::new(5, 0, 4, b"1234".to_vec(), CHUNK_MD5.to_owned(), 3);
+
+        // Act
+        let result = use_case.execute(command).await;
+
+        // Assert
+        assert!(matches!(
+            result,
+            Err(WriteUploadChunkError::InvalidChunkRange)
         ));
         Ok(())
     }
@@ -714,7 +761,8 @@ mod tests {
             Arc::new(MockFileStorage::new()),
             TTL_SECONDS,
         );
-        let command = WriteUploadChunkCommand::new(5, 0, b"12".to_vec(), CHUNK_MD5.to_owned(), 3);
+        let command =
+            WriteUploadChunkCommand::new(5, 0, 0, b"12".to_vec(), CHUNK_MD5.to_owned(), 3);
 
         // Act
         let result = use_case.execute(command).await;
@@ -743,7 +791,7 @@ mod tests {
             Arc::new(MockFileStorage::new()),
             TTL_SECONDS,
         );
-        let command = WriteUploadChunkCommand::new(5, 0, b"1234".to_vec(), "oops".to_owned(), 3);
+        let command = WriteUploadChunkCommand::new(5, 0, 0, b"1234".to_vec(), "oops".to_owned(), 3);
 
         // Act
         let result = use_case.execute(command).await;
@@ -772,7 +820,7 @@ mod tests {
             TTL_SECONDS,
         );
         let command =
-            WriteUploadChunkCommand::new(5, 0, b"1234".to_vec(), WRONG_CHUNK_MD5.to_owned(), 3);
+            WriteUploadChunkCommand::new(5, 0, 0, b"1234".to_vec(), WRONG_CHUNK_MD5.to_owned(), 3);
 
         // Act
         let result = use_case.execute(command).await;
@@ -802,7 +850,8 @@ mod tests {
         };
         let use_case =
             WriteUploadChunk::new(Arc::new(factory), Arc::new(file_storage), TTL_SECONDS);
-        let command = WriteUploadChunkCommand::new(5, 0, b"1234".to_vec(), CHUNK_MD5.to_owned(), 3);
+        let command =
+            WriteUploadChunkCommand::new(5, 0, 0, b"1234".to_vec(), CHUNK_MD5.to_owned(), 3);
 
         // Act
         let result = use_case.execute(command).await;
@@ -848,7 +897,8 @@ mod tests {
         };
         let use_case =
             WriteUploadChunk::new(Arc::new(factory), Arc::new(file_storage), TTL_SECONDS);
-        let command = WriteUploadChunkCommand::new(5, 0, b"1234".to_vec(), CHUNK_MD5.to_owned(), 3);
+        let command =
+            WriteUploadChunkCommand::new(5, 0, 0, b"1234".to_vec(), CHUNK_MD5.to_owned(), 3);
 
         // Act
         let response = use_case.execute(command).await?;
@@ -891,7 +941,8 @@ mod tests {
         };
         let use_case =
             WriteUploadChunk::new(Arc::new(factory), Arc::new(file_storage), TTL_SECONDS);
-        let command = WriteUploadChunkCommand::new(5, 0, b"1234".to_vec(), CHUNK_MD5.to_owned(), 3);
+        let command =
+            WriteUploadChunkCommand::new(5, 0, 0, b"1234".to_vec(), CHUNK_MD5.to_owned(), 3);
 
         // Act
         let result = use_case.execute(command).await;

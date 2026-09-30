@@ -13,6 +13,8 @@ pub struct WriteUploadChunkCommand {
     chunk_number: u64,
     /// MD5 digest of the chunk, supplied by the client.
     content_md5: String,
+    /// Start offset of the chunk declared by the client, from `Content-Range`.
+    start: u64,
     /// Identifier of the upload session.
     upload_id: NumericID,
     /// Identifier of the user owning the upload.
@@ -43,6 +45,7 @@ impl WriteUploadChunkCommand {
     pub fn new(
         upload_id: NumericID,
         chunk_number: u64,
+        start: u64,
         chunk: Vec<u8>,
         content_md5: String,
         user_id: NumericID,
@@ -51,9 +54,16 @@ impl WriteUploadChunkCommand {
             chunk,
             chunk_number,
             content_md5,
+            start,
             upload_id,
             user_id,
         }
+    }
+
+    /// Return the start offset of the chunk declared by the client.
+    #[must_use]
+    pub fn start(&self) -> u64 {
+        self.start
     }
 
     /// Return the identifier of the upload session.
@@ -107,6 +117,9 @@ pub enum WriteUploadChunkError {
     /// The chunk number is outside the upload's range.
     #[error("the chunk number is out of range")]
     InvalidChunkNumber,
+    /// The declared `Content-Range` start does not match the chunk's position.
+    #[error("the chunk range does not match the chunk number")]
+    InvalidChunkRange,
     /// The declared `Content-MD5` digest is malformed or does not match the chunk.
     #[error("the content md5 digest is invalid")]
     InvalidMd5,

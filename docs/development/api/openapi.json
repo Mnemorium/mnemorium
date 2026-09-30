@@ -925,7 +925,7 @@
     },
     "/asset/upload/{upload_id}/chunk/{chunk_number}": {
       "put": {
-        "description": "The request body carries the raw bytes of the chunk. The `Content-Range`\nheader declares the inclusive byte range as `bytes {start}-{end}/{total}` and\nthe `Content-MD5` header carries the lowercase hexadecimal MD5 digest of the\nbody. The chunk is idempotent: re-uploading it with the same digest succeeds\nwithout changing the stored content.",
+        "description": "The request body carries the raw bytes of the chunk. The `Content-Range`\nheader declares the inclusive byte range as `bytes {start}-{end}/{total}` and\nthe `Content-MD5` header carries the lowercase hexadecimal MD5 digest of the\nbody. The chunk's `start` is validated against the chunk size persisted when\nthe session began, not the current configuration. The chunk is idempotent:\nre-uploading it with the same digest succeeds without changing the stored\ncontent.",
         "operationId": "put_upload_chunk",
         "parameters": [
           {

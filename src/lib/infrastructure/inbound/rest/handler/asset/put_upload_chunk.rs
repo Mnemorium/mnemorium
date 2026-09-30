@@ -55,6 +55,7 @@ impl From<WriteUploadChunkError> for ApiError {
         match err {
             WriteUploadChunkError::InvalidChunk
             | WriteUploadChunkError::InvalidChunkNumber
+            | WriteUploadChunkError::InvalidChunkRange
             | WriteUploadChunkError::InvalidMd5 => Self::BadRequest(err.to_string()),
             WriteUploadChunkError::Expired => Self::Gone(err.to_string()),
             WriteUploadChunkError::AlreadyFinished => Self::Conflict(err.to_string()),
@@ -69,8 +70,10 @@ impl From<WriteUploadChunkError> for ApiError {
 /// The request body carries the raw bytes of the chunk. The `Content-Range`
 /// header declares the inclusive byte range as `bytes {start}-{end}/{total}` and
 /// the `Content-MD5` header carries the lowercase hexadecimal MD5 digest of the
-/// body. The chunk is idempotent: re-uploading it with the same digest succeeds
-/// without changing the stored content.
+/// body. The chunk's `start` is validated against the chunk size persisted when
+/// the session began, not the current configuration. The chunk is idempotent:
+/// re-uploading it with the same digest succeeds without changing the stored
+/// content.
 #[utoipa::path(
     put,
     operation_id = "put_upload_chunk",
@@ -144,13 +147,7 @@ pub async fn put_upload_chunk(
         return Err(ApiError::BadRequest("invalid chunk number".to_owned()));
     };
 
-    let configured_chunk_size = state
-        .configuration()
-        .load()
-        .asset()
-        .upload()
-        .chunk_size_bytes();
-    let (start, end) = parse_content_range(&headers, configured_chunk_size, chunk_number)?;
+    let (start, end) = parse_content_range(&headers)?;
     let content_md5 = parse_content_md5(&headers)?;
 
     let body_len = u64::try_from(body.len())
@@ -167,6 +164,7 @@ pub async fn put_upload_chunk(
         .execute(WriteUploadChunkCommand::new(
             upload_id,
             chunk_number,
+            start,
             body.to_vec(),
             content_md5,
             caller.user_id(),
@@ -175,20 +173,16 @@ pub async fn put_upload_chunk(
     Ok(Json(PutUploadChunkResponse::from(response)))
 }
 
-/// Parse the `Content-Range` header and validate it against `chunk_size` and
-/// `chunk_number`.
+/// Parse the `Content-Range` header.
 ///
-/// The header must be `bytes {start}-{end}/{total}` with `start =
-/// chunk_number * chunk_size` and `end >= start`.
+/// The header must be `bytes {start}-{end}/{total}` with `end >= start`. The
+/// `start` offset is checked against the session's persisted chunk size by the
+/// use case.
 #[expect(
     clippy::single_call_fn,
     reason = "the header parser is named after the format it decodes"
 )]
-fn parse_content_range(
-    headers: &HeaderMap,
-    chunk_size: u64,
-    chunk_number: u64,
-) -> Result<(u64, u64), ApiError> {
+fn parse_content_range(headers: &HeaderMap) -> Result<(u64, u64), ApiError> {
     let raw = headers
         .get(header::CONTENT_RANGE)
         .and_then(|value| value.to_str().ok())
@@ -215,14 +209,6 @@ fn parse_content_range(
     if end < start {
         return Err(ApiError::BadRequest(
             "malformed Content-Range header".to_owned(),
-        ));
-    }
-    let expected_start = chunk_number
-        .checked_mul(chunk_size)
-        .ok_or_else(|| ApiError::BadRequest("invalid chunk range".to_owned()))?;
-    if start != expected_start {
-        return Err(ApiError::BadRequest(
-            "the chunk range does not match the chunk number".to_owned(),
         ));
     }
     Ok((start, end))
@@ -353,7 +339,8 @@ mod tests {
     #[tokio::test]
     async fn put_upload_chunk_valid_request_stores_chunk() -> Result<(), Box<dyn Error>> {
         // Arrange
-        let expected_command = WriteUploadChunkCommand::new(7, 0, CHUNK.to_vec(), chunk_md5(), 3);
+        let expected_command =
+            WriteUploadChunkCommand::new(7, 0, 0, CHUNK.to_vec(), chunk_md5(), 3);
         let mut use_case = MockWriteUploadChunkUseCase::new();
         use_case
             .expect_execute()
@@ -440,7 +427,8 @@ mod tests {
     async fn put_upload_chunk_range_not_matching_chunk_returns_bad_request()
     -> Result<(), Box<dyn Error>> {
         // Arrange
-        let use_case = MockWriteUploadChunkUseCase::new();
+        let mut use_case = MockWriteUploadChunkUseCase::new();
+        expect_error(&mut use_case, WriteUploadChunkError::InvalidChunkRange);
 
         // Act
         let (status, payload) = into_parts(
