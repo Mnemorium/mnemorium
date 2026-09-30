@@ -1,6 +1,6 @@
 ---
 description: Run the multi-specialist AI review over a pull request or the local diff
-agent: plan
+agent: mn-reviewer
 subagent: false
 ---
 

@@ -446,7 +446,7 @@ jobs:
           PR_HEAD_BRANCH: ${{ github.event.pull_request.head.ref }}
         run: |
           opencode run --standalone --format json \
-            --agent plan \
+            --agent mn-reviewer \
             --model "$REVIEWER_MODEL" \
             "Review this pull request by loading and following the
           mn-review skill.
