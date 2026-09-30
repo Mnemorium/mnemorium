@@ -29,6 +29,9 @@ pub struct PostUploadCompleteResponse {
     pub file_id: NumericID,
 }
 
+// TODO(file-link): add a `file` link to this response, and to `get_upload`, once
+// a file endpoint exists to address the stored file.
+
 /// Map the complete-upload response onto its HTTP representation.
 impl From<CompleteUploadResponseData> for PostUploadCompleteResponse {
     fn from(response: CompleteUploadResponseData) -> Self {

@@ -1,8 +1,11 @@
 use axum::Json;
 use axum::extract::State;
 use axum::extract::rejection::JsonRejection;
+use axum::http::HeaderValue;
 use axum::http::StatusCode;
-use axum::response::IntoResponse;
+use axum::http::header;
+use axum::response::IntoResponse as _;
+use axum::response::Response;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
@@ -13,6 +16,8 @@ use crate::domain::alias::NumericID;
 use crate::infrastructure::inbound::rest::api_error::ApiError;
 use crate::infrastructure::inbound::rest::api_error::ErrorBody;
 use crate::infrastructure::inbound::rest::app_state::AppState;
+use crate::infrastructure::inbound::rest::hal::HAL_CONTENT_TYPE;
+use crate::infrastructure::inbound::rest::handler::asset::links::UploadSessionLinks;
 use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 
 /// Payload initializing an upload session.
@@ -44,6 +49,9 @@ pub struct PostUploadResponse {
     /// `YYYY-MM-DDTHH:MM:SS`.
     #[schema(example = json!("2026-01-01T12:00:00"))]
     pub expires_at: String,
+    /// Links to the created upload session.
+    #[serde(rename = "_links")]
+    pub links: UploadSessionLinks,
     /// Unique identifier of the upload session.
     pub upload_id: NumericID,
 }
@@ -51,13 +59,15 @@ pub struct PostUploadResponse {
 /// Map the begin-upload response onto its HTTP representation.
 impl From<BeginUploadResponseData> for PostUploadResponse {
     fn from(response: BeginUploadResponseData) -> Self {
+        let upload_id = response.upload_id();
         Self {
             chunk_size: response.chunk_size(),
             expires_at: response
                 .expires_at()
                 .format("%Y-%m-%dT%H:%M:%S")
                 .to_string(),
-            upload_id: response.upload_id(),
+            links: UploadSessionLinks::for_upload(upload_id),
+            upload_id,
         }
     }
 }
@@ -94,6 +104,10 @@ impl From<BeginUploadError> for ApiError {
         (
             status = CREATED,
             body = PostUploadResponse,
+            content_type = "application/hal+json",
+            headers(
+                ("Location" = String, description = "Canonical URI of the created upload session"),
+            ),
             description = "Upload session created"
         ),
         (
@@ -131,7 +145,7 @@ pub async fn post_upload(
     State(state): State<AppState>,
     caller: AuthenticatedUser,
     payload: Result<Json<PostUploadRequest>, JsonRejection>,
-) -> Result<impl IntoResponse, ApiError> {
+) -> Result<Response, ApiError> {
     let Json(request) = payload.map_err(ApiError::from)?;
     let response = state
         .asset_use_case_factory()
@@ -144,10 +158,20 @@ pub async fn post_upload(
             caller.user_id(),
         ))
         .await?;
-    Ok((
-        StatusCode::CREATED,
-        Json(PostUploadResponse::from(response)),
-    ))
+    let body = PostUploadResponse::from(response);
+    let location = body.links.self_link.href.clone();
+    let mut http_response = Json(body).into_response();
+    *http_response.status_mut() = StatusCode::CREATED;
+    let headers = http_response.headers_mut();
+    headers.insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static(HAL_CONTENT_TYPE),
+    );
+    headers.insert(
+        header::LOCATION,
+        HeaderValue::from_str(&location).map_err(|_| ApiError::InternalServerError)?,
+    );
+    Ok(http_response)
 }
 
 #[cfg(test)]
@@ -258,7 +282,24 @@ mod tests {
             });
 
         // Act
-        let (status, payload) = into_parts(send(use_case, 3, request_body()?).await?).await?;
+        let response = send(use_case, 3, request_body()?).await?;
+        assert_eq!(
+            response
+                .headers()
+                .get(header::CONTENT_TYPE)
+                .and_then(|value| value.to_str().ok()),
+            Some("application/hal+json"),
+            "the response must declare the HAL media type"
+        );
+        assert_eq!(
+            response
+                .headers()
+                .get(header::LOCATION)
+                .and_then(|value| value.to_str().ok()),
+            Some("/api/v1/asset/upload/7"),
+            "the response must carry the canonical location"
+        );
+        let (status, payload) = into_parts(response).await?;
 
         // Assert
         assert_eq!(status, StatusCode::CREATED);
@@ -268,6 +309,13 @@ mod tests {
                 "upload_id": 7i64,
                 "chunk_size": 5_242_880u64,
                 "expires_at": "2026-01-01T12:00:00",
+                "_links": {
+                    "self": { "href": "/api/v1/asset/upload/7" },
+                    "chunk": {
+                        "href": "/api/v1/asset/upload/7/chunk/{chunk_number}",
+                        "templated": true,
+                    },
+                },
             })
         );
         Ok(())

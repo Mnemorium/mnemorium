@@ -80,6 +80,10 @@
       "GetUploadResponse": {
         "description": "State of an upload session returned by a successful lookup.",
         "properties": {
+          "_links": {
+            "$ref": "#/components/schemas/UploadSessionLinks",
+            "description": "Links to the upload session itself and its chunk endpoint."
+          },
           "bitmap": {
             "description": "One character per chunk, `1` when received and `0` otherwise.",
             "example": "110",
@@ -115,6 +119,7 @@
           "bitmap",
           "expires_at",
           "is_finished",
+          "_links",
           "total_chunks"
         ],
         "type": "object"
@@ -161,6 +166,27 @@
         },
         "required": [
           "status"
+        ],
+        "type": "object"
+      },
+      "Link": {
+        "description": "A single HAL link.",
+        "properties": {
+          "href": {
+            "description": "Target URI reference of the link.",
+            "type": "string"
+          },
+          "templated": {
+            "description": "Whether `href` is a URI template, per RFC 6570.",
+            "example": true,
+            "type": [
+              "boolean",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "href"
         ],
         "type": "object"
       },
@@ -388,6 +414,10 @@
       "PostUploadResponse": {
         "description": "Upload session created by a successful initialization.",
         "properties": {
+          "_links": {
+            "$ref": "#/components/schemas/UploadSessionLinks",
+            "description": "Links to the created upload session."
+          },
           "chunk_size": {
             "description": "Fixed size of every chunk except the last, in bytes.",
             "format": "int64",
@@ -407,6 +437,7 @@
         "required": [
           "chunk_size",
           "expires_at",
+          "_links",
           "upload_id"
         ],
         "type": "object"
@@ -504,6 +535,24 @@
         ],
         "type": "string"
       },
+      "UploadSessionLinks": {
+        "description": "HAL links exposed by an upload-session representation.\n\nThe `self` link addresses the session itself; the templated `chunk` link\nlets clients discover where to store a chunk instead of building the URL\nfrom the identifiers (`API-037`).",
+        "properties": {
+          "chunk": {
+            "$ref": "#/components/schemas/Link",
+            "description": "URI template for storing one chunk of the upload session."
+          },
+          "self": {
+            "$ref": "#/components/schemas/Link",
+            "description": "Link to the upload-session resource itself."
+          }
+        },
+        "required": [
+          "chunk",
+          "self"
+        ],
+        "type": "object"
+      },
       "i64": {
         "format": "int64",
         "type": "integer"
@@ -544,13 +593,21 @@
         "responses": {
           "201": {
             "content": {
-              "application/json": {
+              "application/hal+json": {
                 "schema": {
                   "$ref": "#/components/schemas/PostUploadResponse"
                 }
               }
             },
-            "description": "Upload session created"
+            "description": "Upload session created",
+            "headers": {
+              "Location": {
+                "description": "Canonical URI of the created upload session",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           },
           "400": {
             "content": {
@@ -796,7 +853,7 @@
         "responses": {
           "200": {
             "content": {
-              "application/json": {
+              "application/hal+json": {
                 "schema": {
                   "$ref": "#/components/schemas/GetUploadResponse"
                 }
