@@ -158,7 +158,7 @@ jobs:
           validation: "false"
           redact: true
           github-token: ${{ secrets.GITHUB_TOKEN }}
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: betterleaks-report
@@ -214,7 +214,7 @@ jobs:
               sys.exit(1)
           print("No semgrep ERROR findings.")
           PY
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: semgrep-sarif
@@ -253,11 +253,27 @@ jobs:
             exit 1
           fi
       - name: Coverage
-        run: >-
-          cargo llvm-cov --lib
-          --fail-under-functions 80
-          --fail-under-regions 80
-          --fail-under-lines 80
+        run: |
+          mkdir -p .artifacts/coverage
+          cargo llvm-cov --lib \
+            --fail-under-functions 80 \
+            --fail-under-regions 80 \
+            --fail-under-lines 80 \
+            --lcov --output-path .artifacts/coverage/lcov.info
+      - name: Coverage summary
+        if: always()
+        continue-on-error: true
+        run: |
+          mkdir -p .artifacts/coverage
+          cargo llvm-cov report > .artifacts/coverage/summary.txt
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-report
+          path: .artifacts/coverage
+          retention-days: 14
+          if-no-files-found: ignore
 
   security:
     needs: [changes, betterleaks]
@@ -375,7 +391,7 @@ jobs:
         run: yamllint -c .yamllint .
 
   review:
-    needs: [semgrep]
+    needs: [semgrep, rust]
     if: always()
     runs-on: ubuntu-latest
     permissions:
@@ -387,11 +403,16 @@ jobs:
         with:
           fetch-depth: 1
           persist-credentials: false
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v7
         continue-on-error: true
         with:
           name: semgrep-sarif
           path: .artifacts
+      - uses: actions/download-artifact@v7
+        continue-on-error: true
+        with:
+          name: coverage-report
+          path: .artifacts/coverage
       - run: npm install --global @opencode/cli
       - name: Check the GitHub MCP server connection
         env:
@@ -440,7 +461,7 @@ jobs:
           </pull_request>" > events.ndjson
       - name: Upload review event log
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: opencode-review-events
           path: events.ndjson
