@@ -10,6 +10,11 @@
       "action": "edit",
       "resource": "clippy.toml",
       "effect": "deny"
+    },
+    {
+        "action": "edit",
+        "resource": "deny.toml",
+        "effect": "deny"
     }
   ],
   "mcp": {
