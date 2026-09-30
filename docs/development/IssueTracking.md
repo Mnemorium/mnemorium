@@ -81,8 +81,8 @@ the code moves.
 ## Deduplication
 
 Before filing, the review orchestrator lists the open issues and discards any pre-existing violation that already has an
-equivalent issue. Discarded entries are also removed from the posted review comment, so the comment only shows newly
-tracked debt.
+equivalent issue. Discarded entries are also removed from the review comment posted by this run, so the comment only
+shows newly tracked debt.
 
 ## Disclosure
 
