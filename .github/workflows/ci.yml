@@ -403,12 +403,12 @@ jobs:
         with:
           fetch-depth: 1
           persist-credentials: false
-      - uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@v7
         continue-on-error: true
         with:
           name: semgrep-sarif
           path: .artifacts
-      - uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@v7
         continue-on-error: true
         with:
           name: coverage-report

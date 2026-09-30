@@ -2051,7 +2051,7 @@ Source: `.github/workflows/*`.
 | [@semantic-release/git](https://www.npmjs.com/package/@semantic-release/git)                                           | TODO        | 11.0.1  | TODO    |
 | [actions/checkout](https://github.com/actions/checkout)                                                                | TODO        | v6      | TODO    |
 | [actions/create-github-app-token](https://github.com/actions/create-github-app-token)                                  | TODO        | v3.2.0  | TODO    |
-| [actions/download-artifact](https://github.com/actions/download-artifact)                                              | TODO        | v8      | TODO    |
+| [actions/download-artifact](https://github.com/actions/download-artifact)                                              | TODO        | v7      | TODO    |
 | [actions/setup-node](https://github.com/actions/setup-node)                                                            | TODO        | v4      | TODO    |
 | [actions/setup-node](https://github.com/actions/setup-node)                                                            | TODO        | v7      | TODO    |
 | [actions/setup-python](https://github.com/actions/setup-python)                                                        | TODO        | v5      | TODO    |
