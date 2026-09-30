@@ -76,6 +76,7 @@
 | `src/lib/infrastructure/outbound/jwt`                 | JWT token provider adapter                                                                                        |
 | `src/lib/infrastructure/outbound/moka.rs`             | In-memory cache adapter                                                                                           |
 | `src/lib/infrastructure/outbound/random`              | Password and secret generator adapters                                                                            |
+| `src/lib/infrastructure/outbound/sha2`                | SHA-256 content hasher adapter                                                                                    |
 | `src/lib/infrastructure/outbound/sqlx`                | SQLx/SQLite repository adapters                                                                                   |
 | `src/lib/infrastructure/outbound/sqlx/model`          | SQLx row models                                                                                                   |
 | `src/lib/infrastructure/outbound/sqlx/sqlite3.rs`     | SQLite pool initialization and migrations                                                                         |
@@ -247,7 +248,7 @@ class File {
   path: string
   mime_type: string
   uploaded_at: date
-  md5_integrity: string
+  integrity_hash: string
   is_public: boolean
 }
 

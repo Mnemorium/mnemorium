@@ -10,7 +10,6 @@ use crate::application::port::begin_upload::BeginUploadCommand;
 use crate::application::port::begin_upload::BeginUploadError;
 use crate::application::port::begin_upload::BeginUploadResponse;
 use crate::application::port::begin_upload::BeginUploadUseCase;
-use crate::domain::model::file::MD5_INTEGRITY_LENGTH;
 use crate::domain::model::upload::ChunkBitmap;
 use crate::domain::model::upload::MAX_TOTAL_CHUNKS;
 use crate::domain::model::upload::Upload;
@@ -74,8 +73,7 @@ where
         let unit_of_work_factory = Arc::clone(&self.unit_of_work_factory);
 
         Box::pin(async move {
-            let md5 = command.md5().to_owned();
-            let validated_md5 = validate_md5(&md5)?;
+            let integrity_hash = command.integrity_hash().clone();
 
             // Reject oversized requests before opening a transaction, building a
             // bitmap, or preallocating the staging file: nothing is allocated
@@ -115,7 +113,7 @@ where
                     file_size,
                     command.content_type().to_owned(),
                     chunk_size,
-                    validated_md5,
+                    integrity_hash,
                     chunk_bitmap,
                     false,
                     0,
@@ -124,9 +122,9 @@ where
                 .map_err(|error| match error {
                     UploadError::InvalidFileName => BeginUploadError::InvalidFileName,
                     UploadError::InvalidFileSize => BeginUploadError::InvalidFileSize,
-                    UploadError::Md5IntegrityInvalidLength => BeginUploadError::InvalidMd5,
                     other @ (UploadError::InvalidChunkSize
                     | UploadError::ChunkNumberOutOfRange
+                    | UploadError::IntegrityHash(_)
                     | UploadError::UploadIncomplete
                     | UploadError::Unknown(_)) => {
                         BeginUploadError::Unknown(anyhow::Error::new(other))
@@ -189,26 +187,6 @@ where
     }
 }
 
-/// Validate that `md5` is a 32-character hexadecimal string, returning its
-/// lowercase form.
-///
-/// # Errors
-///
-/// Returns [`BeginUploadError::InvalidMd5`] when the digest does not match.
-#[expect(
-    clippy::single_call_fn,
-    reason = "the digest validation is named after the rule it enforces"
-)]
-fn validate_md5(md5: &str) -> Result<String, BeginUploadError> {
-    let is_hex = md5.len() == MD5_INTEGRITY_LENGTH
-        && md5.chars().all(|character| character.is_ascii_hexdigit());
-    if is_hex {
-        Ok(md5.to_ascii_lowercase())
-    } else {
-        Err(BeginUploadError::InvalidMd5)
-    }
-}
-
 /// Compute the upload's total chunk count, rejecting a count above
 /// [`MAX_TOTAL_CHUNKS`].
 ///
@@ -240,6 +218,7 @@ mod tests {
     use crate::application::port::begin_upload::BeginUploadCommand;
     use crate::application::port::begin_upload::BeginUploadError;
     use crate::application::port::begin_upload::BeginUploadUseCase as _;
+    use crate::domain::model::integrity_hash::IntegrityHash;
     use crate::domain::model::upload::MAX_TOTAL_CHUNKS;
     use crate::domain::model::upload::Upload;
     use crate::domain::port::error::RepositoryError;
@@ -253,7 +232,7 @@ mod tests {
 
     use super::BeginUpload;
 
-    const DIGEST: &str = "0123456789abcdef0123456789abcdef";
+    const DIGEST: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
     const CHUNK_SIZE: u64 = 4;
     const TTL_SECONDS: u64 = 3600;
     const DEFAULT_MAX_FILE_SIZE: u64 = 1_000_000;
@@ -317,9 +296,18 @@ mod tests {
             "clip.mp4".to_owned(),
             file_size,
             "video/mp4".to_owned(),
-            DIGEST.to_owned(),
+            hash(DIGEST),
             3,
         )
+    }
+
+    /// Build an [`IntegrityHash`] from a literal digest.
+    #[expect(
+        clippy::expect_used,
+        reason = "the test literal is a valid 64-character hexadecimal digest"
+    )]
+    fn hash(digest: &str) -> IntegrityHash<64> {
+        IntegrityHash::try_new(digest.to_owned()).expect("the fixture digest is valid")
     }
 
     fn expect_mime_type(mime_types: &mut MockMimeTypeRepository, exists: bool) {
@@ -346,7 +334,8 @@ mod tests {
             command.file_size(),
             command.content_type().to_owned(),
             CHUNK_SIZE,
-            DIGEST.to_owned(),
+            IntegrityHash::try_new(DIGEST.to_owned())
+                .map_err(|_| RepositoryError::OperationFailed)?,
             bitmap,
             false,
             0,
@@ -405,23 +394,28 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn begin_upload_invalid_md5_returns_error() -> Result<(), Box<dyn Error>> {
+    async fn begin_upload_valid_digest_reaches_repository() -> Result<(), Box<dyn Error>> {
         // Arrange
-        let harness = use_case_with(|_, _, _| Ok(()))?;
-        let command = BeginUploadCommand::new(
-            "clip.mp4".to_owned(),
-            10,
-            "video/mp4".to_owned(),
-            "nope".to_owned(),
-            3,
-        );
+        let harness = use_case_with(|uploads, mime_types, file_storage| {
+            expect_mime_type(mime_types, true);
+            uploads
+                .expect_create()
+                .times(1)
+                .returning(|upload| Box::pin(async move { Ok(upload) }));
+            file_storage
+                .expect_create_upload_file()
+                .times(1)
+                .returning(|_, _| Box::pin(async { Ok(()) }));
+            Ok(())
+        })?;
+        let command = command(10);
 
         // Act
         let result = harness.use_case.execute(command).await;
 
         // Assert
-        assert!(matches!(result, Err(BeginUploadError::InvalidMd5)));
-        assert!(!harness.rolled_back.load(Ordering::SeqCst));
+        assert!(result.is_ok());
+        assert!(harness.committed.load(Ordering::SeqCst));
         Ok(())
     }
 
@@ -436,7 +430,7 @@ mod tests {
             "../escape.mp4".to_owned(),
             10,
             "video/mp4".to_owned(),
-            DIGEST.to_owned(),
+            hash(DIGEST),
             3,
         );
 

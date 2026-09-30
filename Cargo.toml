@@ -132,7 +132,6 @@ config = { version = "0.15.25", features = ["yaml"] }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"
 thiserror = "2.0.20"
-md-5 = "0.11.0"
 tokio = { version = "1", features = ["full"] }
 anyhow = "1.0.104"
 email_address = { version = "0.2.9", default-features = false }
@@ -141,6 +140,8 @@ jsonwebtoken = { version = "11.0.0", features = ["aws_lc_rs"] }
 tower = "0.5.3"
 rand = { version = "0.10.2", features = ["chacha"] }
 arc-swap = "1.9.2"
+sha2 = "0.11.0"
+base64 = "0.23.1"
 
 
 [dev-dependencies]

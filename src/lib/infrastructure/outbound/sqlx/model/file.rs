@@ -7,8 +7,8 @@ use crate::domain::alias::NumericID;
 pub struct File {
     #[sqlx(primary_key)]
     pub file_id: NumericID,
+    pub integrity_hash: String,
     pub is_public: bool,
-    pub md5_integrity: String,
     pub mime_type_id: String,
     pub path: String,
     pub uploaded_at: NaiveDate,

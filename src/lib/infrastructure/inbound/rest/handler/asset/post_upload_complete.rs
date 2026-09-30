@@ -65,9 +65,9 @@ impl From<CompleteUploadError> for ApiError {
 /// Complete an upload session.
 ///
 /// The upload identifier is carried by the path; there is no request body. The
-/// staged content's MD5 digest is recomputed and verified against the digest
+/// staged content's integrity hash is recomputed and verified against the hash
 /// declared when the upload was initialized. When the caller already owns a
-/// file with that digest, no second copy is stored: the existing file's
+/// file with that hash, no second copy is stored: the existing file's
 /// identifier is returned and the upload session is left unfinished. Otherwise
 /// the staged file is promoted, its record registered, and the upload marked
 /// finished. Completion is idempotent: completing an already finished upload
@@ -109,7 +109,7 @@ impl From<CompleteUploadError> for ApiError {
             status = CONFLICT,
             body = ErrorBody,
             content_type = "application/hal+json",
-            description = "The digest is already owned by another user"
+            description = "The integrity hash is already owned by another user"
         ),
         (
             status = GONE,
@@ -296,7 +296,7 @@ mod tests {
         assert_eq!(status, StatusCode::BAD_REQUEST);
         assert_eq!(
             payload,
-            json!({ "error": "the md5 digest does not match the declared one" })
+            json!({ "error": "the integrity hash does not match the declared one" })
         );
         Ok(())
     }
@@ -333,7 +333,7 @@ mod tests {
         assert_eq!(status, StatusCode::CONFLICT);
         assert_eq!(
             payload,
-            json!({ "error": "a file with this md5 digest already exists and is owned by another user" })
+            json!({ "error": "a file with this integrity hash already exists and is owned by another user" })
         );
         Ok(())
     }

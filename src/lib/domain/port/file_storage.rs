@@ -1,6 +1,8 @@
 use std::future::Future;
 
 use crate::domain::alias::NumericID;
+use crate::domain::model::integrity_hash::IntegrityHash;
+use crate::domain::model::integrity_hash::SHA256_HEX_LENGTH;
 use crate::domain::port::error::StorageError;
 
 /// Port for storing uploaded file content on a storage backend.
@@ -22,16 +24,6 @@ pub trait FileStorage: Send + Sync {
         chunk: Vec<u8>,
     ) -> impl Future<Output = Result<(), StorageError>> + Send;
 
-    /// Stream the staging file of the upload identified by `upload_id` and
-    /// return its lowercase hexadecimal MD5 digest.
-    ///
-    /// The adapter reads the file in bounded chunks; the whole content is never
-    /// loaded into memory.
-    fn checksum(
-        &self,
-        upload_id: NumericID,
-    ) -> impl Future<Output = Result<String, StorageError>> + Send;
-
     /// Create the staging file of the upload identified by `upload_id`,
     /// preallocated to `file_size` bytes.
     ///
@@ -50,6 +42,16 @@ pub trait FileStorage: Send + Sync {
         &self,
         upload_id: NumericID,
     ) -> impl Future<Output = Result<(), StorageError>> + Send;
+
+    /// Stream the staging file of the upload identified by `upload_id` and
+    /// return its integrity hash.
+    ///
+    /// The adapter reads the file in bounded chunks; the whole content is never
+    /// loaded into memory.
+    fn integrity_hash(
+        &self,
+        upload_id: NumericID,
+    ) -> impl Future<Output = Result<IntegrityHash<SHA256_HEX_LENGTH>, StorageError>> + Send;
 
     /// Move the staging file of the upload identified by `upload_id` to its
     /// final path, returning the relative final path.

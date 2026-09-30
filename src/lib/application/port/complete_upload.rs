@@ -70,8 +70,9 @@ impl CompleteUploadResponse {
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum CompleteUploadError {
-    /// A file with this MD5 digest already exists and is owned by another user.
-    #[error("a file with this md5 digest already exists and is owned by another user")]
+    /// A file with this integrity hash already exists and is owned by another
+    /// user.
+    #[error("a file with this integrity hash already exists and is owned by another user")]
     Conflict,
     /// The upload session has expired.
     #[error("the upload session has expired")]
@@ -79,8 +80,8 @@ pub enum CompleteUploadError {
     /// The upload session is not complete.
     #[error("the upload session is not complete")]
     Incomplete,
-    /// The recomputed MD5 digest does not match the digest declared at init.
-    #[error("the md5 digest does not match the declared one")]
+    /// The recomputed integrity hash does not match the hash declared at init.
+    #[error("the integrity hash does not match the declared one")]
     IntegrityMismatch,
     /// No upload session matches the requested identifier.
     #[error("no upload session matches this identifier")]

@@ -98,6 +98,18 @@ pub enum ExternalServiceError {
     Unknown(#[source] anyhow::Error),
 }
 
+/// Error returned when a content hashing operation fails.
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
+pub enum ContentHasherError {
+    /// The content hashing could not complete for a non-specific reason.
+    #[error("the content hashing operation could not complete for a non-specific reason")]
+    OperationFailed,
+    /// An unexpected or unmapped error occurred.
+    #[error("an unexpected or unmapped error occurred: {0}")]
+    Unknown(#[source] anyhow::Error),
+}
+
 /// Error returned when a pepper generation operation fails.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]

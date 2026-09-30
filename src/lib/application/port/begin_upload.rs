@@ -4,6 +4,8 @@ use std::pin::Pin;
 use chrono::NaiveDateTime;
 
 use crate::domain::alias::NumericID;
+use crate::domain::model::integrity_hash::IntegrityHash;
+use crate::domain::model::integrity_hash::SHA256_HEX_LENGTH;
 
 /// Command to begin a chunked upload session.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -15,8 +17,8 @@ pub struct BeginUploadCommand {
     file_name: String,
     /// Total size of the file being uploaded, in bytes.
     file_size: u64,
-    /// MD5 digest of the complete file, supplied by the client.
-    md5: String,
+    /// Integrity hash of the complete file, supplied by the client.
+    integrity_hash: IntegrityHash<SHA256_HEX_LENGTH>,
     /// Identifier of the user owning the upload.
     user_id: NumericID,
 }
@@ -40,10 +42,10 @@ impl BeginUploadCommand {
         self.file_size
     }
 
-    /// Return the MD5 digest supplied by the client.
+    /// Return the integrity hash supplied by the client.
     #[must_use]
-    pub fn md5(&self) -> &str {
-        &self.md5
+    pub fn integrity_hash(&self) -> &IntegrityHash<SHA256_HEX_LENGTH> {
+        &self.integrity_hash
     }
 
     /// Create a new begin-upload command.
@@ -52,14 +54,14 @@ impl BeginUploadCommand {
         file_name: String,
         file_size: u64,
         content_type: String,
-        md5: String,
+        integrity_hash: IntegrityHash<SHA256_HEX_LENGTH>,
         user_id: NumericID,
     ) -> Self {
         Self {
             content_type,
             file_name,
             file_size,
-            md5,
+            integrity_hash,
             user_id,
         }
     }
@@ -126,9 +128,6 @@ pub enum BeginUploadError {
     /// The file size is zero.
     #[error("the file size must be greater than zero")]
     InvalidFileSize,
-    /// The MD5 digest is not a 32-character hexadecimal string.
-    #[error("the md5 digest is invalid")]
-    InvalidMd5,
     /// An unexpected or unmapped error occurred.
     #[error("an unknown error occurred: {0}")]
     Unknown(#[source] anyhow::Error),

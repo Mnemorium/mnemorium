@@ -11,8 +11,8 @@ use crate::domain::port::error::RepositoryError;
 pub struct FileFilter {
     /// Filter on the file identifier.
     pub id: Option<NumericID>,
-    /// Filter on the MD5 integrity digest.
-    pub md5_integrity: Option<String>,
+    /// Filter on the integrity hash.
+    pub integrity_hash: Option<String>,
     /// Filter on the owning user identifier.
     pub user_id: Option<NumericID>,
 }

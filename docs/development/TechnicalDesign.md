@@ -233,8 +233,8 @@ pub struct User {
 ##### 2.2 Use Case error
 
 Declared in `src/lib/application/port`, it exposes an `Unknown(_)` variant and one invalid-parameter variant per
-client-supplied parameter the use case validates (for example a raw MD5 digest or a chunk body). Malformed input that
-never reaches the use case — a path or JSON field rejected at the inbound boundary — needs no variant, so a command
+client-supplied parameter the use case validates (for example a raw integrity hash or a chunk body). Malformed input
+that never reaches the use case — a path or JSON field rejected at the inbound boundary — needs no variant, so a command
 whose fields are already-validated types (such as `NumericID`) may expose only `Unknown(_)` and its business variants.
 
 ```rust
@@ -1585,7 +1585,7 @@ entity file {
    * is_public: BOOLEAN <<NN, DF(0)>>
    * mime_type_id: TEXT <<FK, NN>>
    * uploaded_at: DATE <<NN, DF(date('now'))>>
-   * md5_integrity: CHAR(32) <<NN, UN, CC(length(md5_integrity) = 32)>>
+   * integrity_hash: CHAR(64) <<NN, UN, CC(length(integrity_hash) = 64)>>
 }
 
 entity upload {
@@ -1596,7 +1596,7 @@ entity upload {
    * file_size: INTEGER <<NN, CC(file_size > 0)>>
    * mime_type_id: TEXT <<FK, NN>>
    * chunk_size: INTEGER <<NN, CC(chunk_size > 0)>>
-   * md5_integrity: CHAR(32) <<NN, CC(length(md5_integrity) = 32)>>
+   * integrity_hash: CHAR(64) <<NN, CC(length(integrity_hash) = 64)>>
    * chunk_bitmap: BLOB <<NN>>
    * is_finished: BOOLEAN <<NN, DF(0), CC(is_finished IN (0, 1))>>
    * version: INTEGER <<NN, DF(0), CC(version >= 0)>>
@@ -1964,17 +1964,18 @@ Source: `Cargo.toml`.
 | [arc-swap](https://crates.io/crates/arc-swap)                     | Atomically swappable `Arc` with lock-free load and store.                       | 1.9.2   | MIT OR Apache-2.0                  |
 | [argon2](https://crates.io/crates/argon2)                         | Pure Rust implementation of the Argon2 password hashing function.               | 0.6.0   | MIT OR Apache-2.0                  |
 | [axum](https://crates.io/crates/axum)                             | HTTP routing and request handling library focused on ergonomics and modularity. | 0.8.9   | MIT                                |
+| [base64](https://crates.io/crates/base64)                         | Encodes and decodes base64 as bytes or UTF-8.                                   | 0.23.1  | MIT OR Apache-2.0                  |
 | [chrono](https://crates.io/crates/chrono)                         | Date and time library for Rust.                                                 | 0.4.45  | MIT OR Apache-2.0                  |
 | [config](https://crates.io/crates/config)                         | Layered configuration system for Rust applications.                             | 0.15.25 | MIT OR Apache-2.0                  |
 | [email_address](https://crates.io/crates/email_address)           | RFC-compliant `EmailAddress` newtype.                                           | 0.2.9   | MIT                                |
 | [infer](https://crates.io/crates/infer)                           | Infers a file type from its magic number signature.                             | 0.22.0  | MIT                                |
 | [jsonwebtoken](https://crates.io/crates/jsonwebtoken)             | Creates and decodes JWTs in a strongly typed way.                               | 11.0.0  | MIT                                |
-| [md-5](https://crates.io/crates/md-5)                             | MD5 hash function.                                                              | 0.11.0  | MIT OR Apache-2.0                  |
 | [moka](https://crates.io/crates/moka)                             | Fast, concurrent cache library inspired by Java Caffeine.                       | 0.12.16 | (MIT OR Apache-2.0) AND Apache-2.0 |
 | [rand](https://crates.io/crates/rand)                             | Random number generators and other randomness functionality.                    | 0.10.2  | MIT OR Apache-2.0                  |
 | [reqwest](https://crates.io/crates/reqwest)                       | Higher level HTTP client library.                                               | 0.13.4  | MIT OR Apache-2.0                  |
 | [serde](https://crates.io/crates/serde)                           | Generic serialization and deserialization framework.                            | 1.0.229 | MIT OR Apache-2.0                  |
 | [serde_json](https://crates.io/crates/serde_json)                 | JSON serialization file format.                                                 | 1.0.151 | MIT OR Apache-2.0                  |
+| [sha2](https://crates.io/crates/sha2)                             | Pure Rust implementation of the SHA-2 cryptographic hash algorithms.            | 0.11.0  | MIT OR Apache-2.0                  |
 | [sqlx](https://crates.io/crates/sqlx)                             | Async, pure Rust SQL toolkit with compile-time checked queries and no DSL.      | 0.9.0   | MIT OR Apache-2.0                  |
 | [thiserror](https://crates.io/crates/thiserror)                   | Derives `std::error::Error` implementations.                                    | 2.0.20  | MIT OR Apache-2.0                  |
 | [tokio](https://crates.io/crates/tokio)                           | Event-driven, non-blocking I/O platform for asynchronous applications.          | 1.53.1  | MIT                                |

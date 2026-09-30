@@ -13,6 +13,7 @@ use crate::application::use_case::get_upload::GetUpload;
 use crate::application::use_case::write_upload_chunk::WriteUploadChunk;
 use crate::domain::model::configuration::Configuration;
 use crate::infrastructure::outbound::file_system::file_storage::FileSystemStorage;
+use crate::infrastructure::outbound::sha2::content_hasher::Sha2ContentHasher;
 use crate::infrastructure::outbound::sqlx::unit_of_work::SqlxUnitOfWorkFactory;
 
 /// Builds the Asset use cases from the live configuration.
@@ -24,7 +25,7 @@ pub struct RuntimeAssetUseCaseFactory {
     /// Live application configuration.
     configuration: Arc<ArcSwap<Configuration>>,
     /// Storage adapter backing the chunked upload flow.
-    file_storage: Arc<FileSystemStorage>,
+    file_storage: Arc<FileSystemStorage<Sha2ContentHasher>>,
     /// Factory opening the unit of work wrapping the Asset use cases.
     unit_of_work_factory: Arc<SqlxUnitOfWorkFactory>,
 }
@@ -34,7 +35,7 @@ impl RuntimeAssetUseCaseFactory {
     #[must_use]
     pub fn new(
         configuration: Arc<ArcSwap<Configuration>>,
-        file_storage: Arc<FileSystemStorage>,
+        file_storage: Arc<FileSystemStorage<Sha2ContentHasher>>,
         unit_of_work_factory: Arc<SqlxUnitOfWorkFactory>,
     ) -> Self {
         Self {
@@ -80,6 +81,7 @@ impl AssetUseCaseFactory for RuntimeAssetUseCaseFactory {
         Arc::new(WriteUploadChunk::new(
             Arc::clone(&self.unit_of_work_factory),
             Arc::clone(&self.file_storage),
+            Sha2ContentHasher,
             live.asset().upload().expiry_seconds(),
         ))
     }

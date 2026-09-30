@@ -7,12 +7,16 @@ use axum::http::HeaderValue;
 use axum::http::header;
 use axum::response::IntoResponse as _;
 use axum::response::Response;
+use base64::Engine as _;
+use base64::engine::general_purpose::STANDARD;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
 use crate::application::port::write_upload_chunk::WriteUploadChunkCommand;
 use crate::application::port::write_upload_chunk::WriteUploadChunkError;
 use crate::domain::alias::NumericID;
+use crate::domain::model::integrity_hash::IntegrityHash;
+use crate::domain::model::integrity_hash::SHA256_HEX_LENGTH;
 use crate::infrastructure::inbound::rest::api_error::ApiError;
 use crate::infrastructure::inbound::rest::api_error::ErrorBody;
 use crate::infrastructure::inbound::rest::app_state::AppState;
@@ -20,8 +24,8 @@ use crate::infrastructure::inbound::rest::hal::HAL_CONTENT_TYPE;
 use crate::infrastructure::inbound::rest::handler::asset::upload_session::UploadSessionResponse;
 use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 
-/// Required length of the `Content-MD5` header, in characters.
-const MD5_HEX_LENGTH: usize = 32;
+/// Number of raw bytes a SHA-256 digest carries.
+const SHA256_BYTE_LENGTH: usize = 32;
 
 /// Raw bytes of one chunk.
 ///
@@ -43,7 +47,7 @@ impl From<WriteUploadChunkError> for ApiError {
             WriteUploadChunkError::InvalidChunk
             | WriteUploadChunkError::InvalidChunkNumber
             | WriteUploadChunkError::InvalidChunkRange
-            | WriteUploadChunkError::InvalidMd5 => Self::BadRequest(err.to_string()),
+            | WriteUploadChunkError::InvalidContentDigest => Self::BadRequest(err.to_string()),
             WriteUploadChunkError::Expired => Self::Gone(err.to_string()),
             WriteUploadChunkError::AlreadyFinished => Self::Conflict(err.to_string()),
             WriteUploadChunkError::NoSuchUpload => Self::NotFound(err.to_string()),
@@ -56,11 +60,11 @@ impl From<WriteUploadChunkError> for ApiError {
 ///
 /// The request body carries the raw bytes of the chunk. The `Content-Range`
 /// header declares the inclusive byte range as `bytes {start}-{end}/{total}` and
-/// the `Content-MD5` header carries the lowercase hexadecimal MD5 digest of the
-/// body. The chunk's `start` is validated against the chunk size persisted when
-/// the session began, not the current configuration. The chunk is idempotent:
-/// re-uploading it with the same digest succeeds without changing the stored
-/// content.
+/// the `Content-Digest` header carries the SHA-256 digest of the body as an RFC
+/// 9530 Byte Sequence, `sha-256=:<base64>:`. The chunk's `start` is validated
+/// against the chunk size persisted when the session began, not the current
+/// configuration. The chunk is idempotent: re-uploading it with the same digest
+/// succeeds without changing the stored content.
 #[utoipa::path(
     put,
     operation_id = "put_upload_chunk",
@@ -74,7 +78,12 @@ impl From<WriteUploadChunkError> for ApiError {
         ("upload_id" = NumericID, Path, description = "Identifier of the upload session"),
         ("chunk_number" = u64, Path, description = "Zero-based number of the chunk"),
         ("Content-Range" = String, Header, description = "Inclusive byte range, `bytes {start}-{end}/{total}`"),
-        ("Content-MD5" = String, Header, description = "Lowercase hexadecimal MD5 digest of the chunk"),
+        (
+            "Content-Digest" = String,
+            Header,
+            description = "RFC 9530 content digest of the chunk, `sha-256=:<base64 of the raw 32-byte digest>:`",
+            example = "sha-256=:A6xnQhbz4Vx2HuGl4lXwZ5U2I8iziLRFnhP5eNfIRvQ=:"
+        ),
     ),
     responses(
         (
@@ -142,7 +151,7 @@ pub async fn put_upload_chunk(
     };
 
     let (start, end) = parse_content_range(&headers)?;
-    let content_md5 = parse_content_md5(&headers)?;
+    let content_digest = parse_content_digest(&headers)?;
 
     let body_len = u64::try_from(body.len())
         .map_err(|_| ApiError::BadRequest("invalid chunk length".to_owned()))?;
@@ -160,7 +169,7 @@ pub async fn put_upload_chunk(
             chunk_number,
             start,
             body.to_vec(),
-            content_md5,
+            content_digest,
             caller.user_id(),
         ))
         .await?;
@@ -221,24 +230,68 @@ fn parse_content_range(headers: &HeaderMap) -> Result<(u64, u64), ApiError> {
     Ok((start, end))
 }
 
-/// Parse and validate the `Content-MD5` header.
+/// Parse and validate the RFC 9530 `Content-Digest` header.
+///
+/// The header must carry a `sha-256` member whose value is a Byte Sequence, the
+/// base64-encoded raw 32-byte digest wrapped in colons (`sha-256=:<base64>:`).
+/// The decoded bytes are re-encoded as lowercase hexadecimal.
 #[expect(
     clippy::single_call_fn,
     reason = "the header parser is named after the format it decodes"
 )]
-fn parse_content_md5(headers: &HeaderMap) -> Result<String, ApiError> {
+fn parse_content_digest(headers: &HeaderMap) -> Result<IntegrityHash<SHA256_HEX_LENGTH>, ApiError> {
     let raw = headers
-        .get("content-md5")
+        .get("content-digest")
         .and_then(|value| value.to_str().ok())
-        .ok_or_else(|| ApiError::BadRequest("missing Content-MD5 header".to_owned()))?;
-    let is_hex =
-        raw.len() == MD5_HEX_LENGTH && raw.chars().all(|character| character.is_ascii_hexdigit());
-    if !is_hex {
-        return Err(ApiError::BadRequest(
-            "malformed Content-MD5 header".to_owned(),
-        ));
+        .ok_or_else(|| ApiError::BadRequest("missing Content-Digest header".to_owned()))?;
+
+    let mut parsed_any = false;
+    for parameter in raw.split(',').map(str::trim) {
+        let Some((algorithm, value)) = parameter.split_once('=') else {
+            continue;
+        };
+        parsed_any = true;
+        if algorithm.trim() != "sha-256" {
+            continue;
+        }
+        let encoded = value
+            .trim()
+            .strip_prefix(':')
+            .and_then(|rest| rest.strip_suffix(':'))
+            .ok_or_else(|| ApiError::BadRequest("malformed Content-Digest header".to_owned()))?;
+        let bytes = STANDARD
+            .decode(encoded)
+            .map_err(|_| ApiError::BadRequest("malformed Content-Digest header".to_owned()))?;
+        if bytes.len() != SHA256_BYTE_LENGTH {
+            return Err(ApiError::BadRequest(
+                "malformed Content-Digest header".to_owned(),
+            ));
+        }
+        return IntegrityHash::try_new(hex_encode(&bytes))
+            .map_err(|_| ApiError::BadRequest("malformed Content-Digest header".to_owned()));
     }
-    Ok(raw.to_ascii_lowercase())
+
+    let error = if parsed_any {
+        "unsupported Content-Digest algorithm"
+    } else {
+        "malformed Content-Digest header"
+    };
+    Err(ApiError::BadRequest(error.to_owned()))
+}
+
+/// Hexadecimal-encode `bytes`, lowercase.
+#[expect(
+    clippy::single_call_fn,
+    reason = "the digest encoding is named for readability"
+)]
+fn hex_encode(bytes: &[u8]) -> String {
+    use std::fmt::Write as _;
+
+    let mut hex = String::with_capacity(bytes.len().saturating_mul(2));
+    for byte in bytes {
+        let _result = write!(hex, "{byte:02x}");
+    }
+    hex
 }
 
 #[cfg(test)]
@@ -253,13 +306,15 @@ mod tests {
     use axum::http::header;
     use axum::response::Response;
     use axum::routing::put;
+    use base64::Engine as _;
+    use base64::engine::general_purpose::STANDARD;
     use chrono::NaiveDate;
     use chrono::NaiveDateTime;
-    use md5::Digest as _;
-    use md5::Md5;
     use mockall::predicate::eq;
     use serde_json::Value;
     use serde_json::json;
+    use sha2::Digest as _;
+    use sha2::Sha256;
     use tower::ServiceExt as _;
 
     use super::put_upload_chunk;
@@ -270,6 +325,7 @@ mod tests {
     use crate::application::port::write_upload_chunk::WriteUploadChunkResponse;
     use crate::application::port::write_upload_chunk::WriteUploadChunkUseCase;
     use crate::domain::alias::NumericID;
+    use crate::domain::model::integrity_hash::IntegrityHash;
     use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
     use crate::test_helpers::app_state_with_asset;
 
@@ -279,14 +335,26 @@ mod tests {
     /// Valid `Content-Range` for chunk `0` under the default chunk size.
     const RANGE_CHUNK_ZERO: &str = "bytes 0-3/4";
 
-    fn chunk_md5() -> String {
-        use std::fmt::Write as _;
+    /// Build the `Content-Digest` header value for SHA-256 of `CHUNK`.
+    fn chunk_content_digest() -> String {
+        let digest = Sha256::digest(CHUNK);
+        format!("sha-256=:{}:", STANDARD.encode(digest))
+    }
 
-        let mut hex = String::new();
-        for byte in Md5::digest(CHUNK) {
-            let _result = write!(hex, "{byte:02x}");
-        }
-        hex
+    /// Build the domain digest of `CHUNK`.
+    #[expect(
+        clippy::expect_used,
+        clippy::single_call_fn,
+        reason = "the helper drives a valid SHA-256 digest through the value object and is named for readability"
+    )]
+    fn chunk_integrity_hash() -> IntegrityHash<64> {
+        let digest = Sha256::digest(CHUNK);
+        let hex = digest.iter().fold(String::new(), |mut accumulator, byte| {
+            use std::fmt::Write as _;
+            let _result = write!(accumulator, "{byte:02x}");
+            accumulator
+        });
+        IntegrityHash::try_new(hex).expect("a SHA-256 digest is a valid integrity hash")
     }
 
     /// Send a chunk PUT through the endpoint router on behalf of `caller_id`,
@@ -296,7 +364,7 @@ mod tests {
         caller_id: NumericID,
         uri: &str,
         content_range: Option<&str>,
-        content_md5: Option<&str>,
+        content_digest: Option<&str>,
         body: Body,
     ) -> Result<Response, Box<dyn Error>> {
         let mut factory = MockAssetUseCaseFactory::new();
@@ -312,8 +380,8 @@ mod tests {
         if let Some(value) = content_range {
             builder = builder.header(header::CONTENT_RANGE, value);
         }
-        if let Some(value) = content_md5 {
-            builder = builder.header("content-md5", value);
+        if let Some(value) = content_digest {
+            builder = builder.header("content-digest", value);
         }
         let mut request = builder.body(body)?;
         request
@@ -361,7 +429,7 @@ mod tests {
     async fn put_upload_chunk_valid_request_stores_chunk() -> Result<(), Box<dyn Error>> {
         // Arrange
         let expected_command =
-            WriteUploadChunkCommand::new(7, 0, 0, CHUNK.to_vec(), chunk_md5(), 3);
+            WriteUploadChunkCommand::new(7, 0, 0, CHUNK.to_vec(), chunk_integrity_hash(), 3);
         let mut use_case = MockWriteUploadChunkUseCase::new();
         use_case
             .expect_execute()
@@ -385,7 +453,7 @@ mod tests {
             3,
             "/api/v1/asset/upload/7/chunk/0",
             Some(RANGE_CHUNK_ZERO),
-            Some(&chunk_md5()),
+            Some(&chunk_content_digest()),
             Body::from(CHUNK),
         )
         .await?;
@@ -435,7 +503,7 @@ mod tests {
                 3,
                 "/api/v1/asset/upload/7/chunk/2",
                 None,
-                Some(&chunk_md5()),
+                Some(&chunk_content_digest()),
                 Body::from(CHUNK),
             )
             .await?,
@@ -461,7 +529,7 @@ mod tests {
                 3,
                 "/api/v1/asset/upload/7/chunk/2",
                 Some("8-11/12"),
-                Some(&chunk_md5()),
+                Some(&chunk_content_digest()),
                 Body::from(CHUNK),
             )
             .await?,
@@ -491,7 +559,7 @@ mod tests {
                 3,
                 "/api/v1/asset/upload/7/chunk/2",
                 Some("bytes 0-3/12"),
-                Some(&chunk_md5()),
+                Some(&chunk_content_digest()),
                 Body::from(CHUNK),
             )
             .await?,
@@ -520,7 +588,7 @@ mod tests {
                 3,
                 "/api/v1/asset/upload/7/chunk/0",
                 Some("bytes 0-9/12"),
-                Some(&chunk_md5()),
+                Some(&chunk_content_digest()),
                 Body::from(CHUNK),
             )
             .await?,
@@ -537,8 +605,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn put_upload_chunk_missing_content_md5_returns_bad_request() -> Result<(), Box<dyn Error>>
-    {
+    async fn put_upload_chunk_missing_content_digest_returns_bad_request()
+    -> Result<(), Box<dyn Error>> {
         // Arrange
         let use_case = MockWriteUploadChunkUseCase::new();
 
@@ -558,12 +626,12 @@ mod tests {
 
         // Assert
         assert_eq!(status, StatusCode::BAD_REQUEST);
-        assert_eq!(payload, json!({ "error": "missing Content-MD5 header" }));
+        assert_eq!(payload, json!({ "error": "missing Content-Digest header" }));
         Ok(())
     }
 
     #[tokio::test]
-    async fn put_upload_chunk_malformed_content_md5_returns_bad_request()
+    async fn put_upload_chunk_malformed_content_digest_returns_bad_request()
     -> Result<(), Box<dyn Error>> {
         // Arrange
         let use_case = MockWriteUploadChunkUseCase::new();
@@ -584,7 +652,39 @@ mod tests {
 
         // Assert
         assert_eq!(status, StatusCode::BAD_REQUEST);
-        assert_eq!(payload, json!({ "error": "malformed Content-MD5 header" }));
+        assert_eq!(
+            payload,
+            json!({ "error": "malformed Content-Digest header" })
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn put_upload_chunk_unsupported_content_digest_algorithm_returns_bad_request()
+    -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let use_case = MockWriteUploadChunkUseCase::new();
+
+        // Act
+        let (status, payload) = into_parts(
+            send(
+                use_case,
+                3,
+                "/api/v1/asset/upload/7/chunk/0",
+                Some(RANGE_CHUNK_ZERO),
+                Some("sha-512=:AAAA:"),
+                Body::from(CHUNK),
+            )
+            .await?,
+        )
+        .await?;
+
+        // Assert
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(
+            payload,
+            json!({ "error": "unsupported Content-Digest algorithm" })
+        );
         Ok(())
     }
 
@@ -601,7 +701,7 @@ mod tests {
                 3,
                 "/api/v1/asset/upload/abc/chunk/0",
                 Some("bytes 0-3/4"),
-                Some(&chunk_md5()),
+                Some(&chunk_content_digest()),
                 Body::from(CHUNK),
             )
             .await?,
@@ -630,7 +730,7 @@ mod tests {
                 3,
                 "/api/v1/asset/upload/7/chunk/abc",
                 Some(RANGE_CHUNK_ZERO),
-                Some(&chunk_md5()),
+                Some(&chunk_content_digest()),
                 Body::from(CHUNK),
             )
             .await?,
@@ -656,7 +756,7 @@ mod tests {
                 3,
                 "/api/v1/asset/upload/7/chunk/0",
                 Some(RANGE_CHUNK_ZERO),
-                Some(&chunk_md5()),
+                Some(&chunk_content_digest()),
                 Body::from(CHUNK),
             )
             .await?,
@@ -685,7 +785,7 @@ mod tests {
                 3,
                 "/api/v1/asset/upload/7/chunk/0",
                 Some(RANGE_CHUNK_ZERO),
-                Some(&chunk_md5()),
+                Some(&chunk_content_digest()),
                 Body::from(CHUNK),
             )
             .await?,
@@ -714,7 +814,7 @@ mod tests {
                 3,
                 "/api/v1/asset/upload/7/chunk/0",
                 Some(RANGE_CHUNK_ZERO),
-                Some(&chunk_md5()),
+                Some(&chunk_content_digest()),
                 Body::from(CHUNK),
             )
             .await?,
@@ -743,7 +843,7 @@ mod tests {
                 3,
                 "/api/v1/asset/upload/7/chunk/0",
                 Some(RANGE_CHUNK_ZERO),
-                Some(&chunk_md5()),
+                Some(&chunk_content_digest()),
                 Body::from(CHUNK),
             )
             .await?,
@@ -773,7 +873,7 @@ mod tests {
                 3,
                 "/api/v1/asset/upload/7/chunk/0",
                 Some(RANGE_CHUNK_ZERO),
-                Some(&chunk_md5()),
+                Some(&chunk_content_digest()),
                 Body::from(CHUNK),
             )
             .await?,

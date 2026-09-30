@@ -5,7 +5,7 @@ CREATE TABLE upload (
     file_size INTEGER NOT NULL,
     mime_type_id TEXT NOT NULL,
     chunk_size INTEGER NOT NULL,
-    md5_integrity CHAR(32) NOT NULL,
+    integrity_hash CHAR(64) NOT NULL,
     chunk_bitmap BLOB NOT NULL,
     is_finished BOOLEAN NOT NULL DEFAULT 0,
     version INTEGER NOT NULL DEFAULT 0,
@@ -17,7 +17,7 @@ CREATE TABLE upload (
     ) REFERENCES mime_type (mime_type_id),
     CONSTRAINT chk_upload_file_size CHECK (file_size > 0),
     CONSTRAINT chk_upload_chunk_size CHECK (chunk_size > 0),
-    CONSTRAINT chk_upload_md5_integrity CHECK (LENGTH(md5_integrity) = 32),
+    CONSTRAINT chk_upload_integrity_hash CHECK (LENGTH(integrity_hash) = 64),
     CONSTRAINT chk_upload_is_finished CHECK (is_finished IN (0, 1)),
     CONSTRAINT chk_upload_version CHECK (version >= 0)
 );

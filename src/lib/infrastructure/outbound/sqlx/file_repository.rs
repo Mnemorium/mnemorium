@@ -3,6 +3,7 @@ use sqlx::Sqlite;
 use sqlx::Transaction;
 
 use crate::domain::model::file::File;
+use crate::domain::model::integrity_hash::IntegrityHash;
 use crate::domain::port::error::RepositoryError;
 use crate::domain::port::file_repository::FileFilter;
 use crate::domain::port::file_repository::FileRepository;
@@ -32,7 +33,7 @@ impl FileRepository for SqlxFileRepository<'_> {
                 is_public,
                 mime_type_id,
                 uploaded_at,
-                md5_integrity
+                integrity_hash
             )
             VALUES (?1, ?2, ?3, ?4, ?5, ?6)
             RETURNING
@@ -42,14 +43,14 @@ impl FileRepository for SqlxFileRepository<'_> {
                 is_public,
                 mime_type_id,
                 uploaded_at,
-                md5_integrity",
+                integrity_hash",
         )
         .bind(file.path())
         .bind(file.user_id())
         .bind(file.is_public())
         .bind(file.mime_type_id())
         .bind(file.uploaded_at())
-        .bind(file.md5_integrity())
+        .bind(file.integrity_hash().as_str())
         .fetch_one(&mut **self.transaction)
         .await?;
 
@@ -65,7 +66,7 @@ impl FileRepository for SqlxFileRepository<'_> {
                 is_public,
                 mime_type_id,
                 uploaded_at,
-                md5_integrity
+                integrity_hash
             FROM file",
         );
         let mut first = true;
@@ -73,8 +74,13 @@ impl FileRepository for SqlxFileRepository<'_> {
         if let Some(id) = filter.id {
             push_filter(&mut first, &mut builder, "file_id = ", id);
         }
-        if let Some(md5_integrity) = filter.md5_integrity.as_deref() {
-            push_filter(&mut first, &mut builder, "md5_integrity = ", md5_integrity);
+        if let Some(integrity_hash) = filter.integrity_hash.as_deref() {
+            push_filter(
+                &mut first,
+                &mut builder,
+                "integrity_hash = ",
+                integrity_hash,
+            );
         }
         if let Some(user_id) = filter.user_id {
             push_filter(&mut first, &mut builder, "user_id = ", user_id);
@@ -110,6 +116,8 @@ fn push_filter<'value, T>(
 
 /// Map a persisted file row back to the domain model.
 fn domain_file(row: SqlxFile) -> Result<File, RepositoryError> {
+    let integrity_hash = IntegrityHash::try_new(row.integrity_hash)
+        .map_err(|_| RepositoryError::DataIntegrityViolation)?;
     File::try_new(
         row.file_id,
         row.path,
@@ -117,7 +125,7 @@ fn domain_file(row: SqlxFile) -> Result<File, RepositoryError> {
         row.is_public,
         row.mime_type_id,
         row.uploaded_at,
-        row.md5_integrity,
+        integrity_hash,
     )
     .map_err(|_| RepositoryError::DataIntegrityViolation)
 }
@@ -133,14 +141,15 @@ mod tests {
     use sqlx::sqlite::SqlitePoolOptions;
 
     use crate::domain::model::file::File;
+    use crate::domain::model::integrity_hash::IntegrityHash;
     use crate::domain::port::error::RepositoryError;
     use crate::domain::port::file_repository::FileFilter;
     use crate::domain::port::file_repository::FileRepository as _;
 
     use super::SqlxFileRepository;
 
-    /// A 32-character hexadecimal digest, valid for `md5_integrity`.
-    const DIGEST: &str = "0123456789abcdef0123456789abcdef";
+    /// A 64-character hexadecimal digest, valid for `integrity_hash`.
+    const DIGEST: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 
     async fn begin_transaction() -> Result<Transaction<'static, Sqlite>, sqlx::Error> {
         let pool = SqlitePoolOptions::new()
@@ -177,7 +186,7 @@ mod tests {
         id: i64,
         path: &str,
         user_id: i64,
-        md5_integrity: &str,
+        integrity_hash: &str,
     ) -> Result<File, Box<dyn Error>> {
         Ok(File::try_new(
             id,
@@ -186,7 +195,7 @@ mod tests {
             false,
             "video/mp4".to_owned(),
             NaiveDate::from_ymd_opt(2026, 9, 26).ok_or("invalid fixture date")?,
-            md5_integrity.to_owned(),
+            IntegrityHash::try_new(integrity_hash.to_owned())?,
         )?)
     }
 
@@ -217,7 +226,7 @@ mod tests {
         assert_eq!(persisted.user_id(), 1);
         assert!(!persisted.is_public());
         assert_eq!(persisted.mime_type_id(), "video/mp4");
-        assert_eq!(persisted.md5_integrity(), DIGEST);
+        assert_eq!(persisted.integrity_hash().as_str(), DIGEST);
         assert_eq!(found.first(), Some(&persisted));
         Ok(())
     }
@@ -237,14 +246,14 @@ mod tests {
                 0,
                 "files/2_other.mp4",
                 2,
-                "ffffffffffffffffffffffffffffffff",
+                "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
             )?)
             .await?;
 
         // Act
         let by_digest = repository
             .search(&FileFilter {
-                md5_integrity: Some(DIGEST.to_owned()),
+                integrity_hash: Some(DIGEST.to_owned()),
                 ..FileFilter::default()
             })
             .await?;
@@ -303,7 +312,7 @@ mod tests {
                 0,
                 "files/clip.mp4",
                 2,
-                "ffffffffffffffffffffffffffffffff",
+                "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
             )?)
             .await;
 
@@ -344,7 +353,7 @@ mod tests {
             false,
             "application/unknown".to_owned(),
             NaiveDate::from_ymd_opt(2026, 9, 26).ok_or("invalid fixture date")?,
-            DIGEST.to_owned(),
+            IntegrityHash::try_new(DIGEST.to_owned())?,
         )?;
 
         // Act
@@ -360,13 +369,13 @@ mod tests {
     }
 
     #[rstest]
-    #[case::md5_integrity_length(
-        "INSERT INTO file (path, user_id, is_public, mime_type_id, md5_integrity)
+    #[case::integrity_hash_length(
+        "INSERT INTO file (path, user_id, is_public, mime_type_id, integrity_hash)
          VALUES ('files/short.mp4', 1, 0, 'video/mp4', 'too-short')"
     )]
     #[case::is_public_out_of_range(
-        "INSERT INTO file (path, user_id, is_public, mime_type_id, md5_integrity)
-         VALUES ('files/public.mp4', 1, 2, 'video/mp4', '0123456789abcdef0123456789abcdef')"
+        "INSERT INTO file (path, user_id, is_public, mime_type_id, integrity_hash)
+         VALUES ('files/public.mp4', 1, 2, 'video/mp4', '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef')"
     )]
     #[tokio::test]
     async fn create_violating_a_check_returns_data_integrity_violation(

@@ -2,6 +2,7 @@ pub mod asset_unit_of_work;
 pub mod configuration_repository;
 pub mod configuration_source;
 pub mod configuration_unit_of_work;
+pub mod content_hasher;
 pub mod credential_repository;
 pub mod error;
 pub mod file_repository;

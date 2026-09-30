@@ -317,11 +317,12 @@
             "minimum": 1,
             "type": "integer"
           },
-          "md5": {
-            "description": "MD5 digest of the complete file, as a 32-character lowercase\nhexadecimal string.",
-            "example": "d41d8cd98f00b204e9800998ecf8427e",
-            "maxLength": 32,
-            "minLength": 32,
+          "integrity_hash": {
+            "description": "Integrity hash of the complete file, as a 64-character lowercase\nhexadecimal SHA-256 string.",
+            "example": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "maxLength": 64,
+            "minLength": 64,
+            "pattern": "^[0-9a-f]{64}$",
             "type": "string"
           }
         },
@@ -329,7 +330,7 @@
           "content_type",
           "file_name",
           "file_size",
-          "md5"
+          "integrity_hash"
         ],
         "type": "object"
       },
@@ -552,7 +553,7 @@
   "paths": {
     "/asset/upload": {
       "post": {
-        "description": "Validates the declared content type, file name, size and MD5 digest, creates\nthe upload session and its staging file, and returns the session identifier,\nthe fixed chunk size and the expiry instant.",
+        "description": "Validates the declared content type, file name, size and integrity hash,\ncreates the upload session and its staging file, and returns the session\nidentifier, the fixed chunk size and the expiry instant.",
         "operationId": "post_upload",
         "requestBody": {
           "content": {
@@ -735,7 +736,7 @@
     },
     "/asset/upload/{upload_id}/chunk/{chunk_number}": {
       "put": {
-        "description": "The request body carries the raw bytes of the chunk. The `Content-Range`\nheader declares the inclusive byte range as `bytes {start}-{end}/{total}` and\nthe `Content-MD5` header carries the lowercase hexadecimal MD5 digest of the\nbody. The chunk's `start` is validated against the chunk size persisted when\nthe session began, not the current configuration. The chunk is idempotent:\nre-uploading it with the same digest succeeds without changing the stored\ncontent.",
+        "description": "The request body carries the raw bytes of the chunk. The `Content-Range`\nheader declares the inclusive byte range as `bytes {start}-{end}/{total}` and\nthe `Content-Digest` header carries the SHA-256 digest of the body as an RFC\n9530 Byte Sequence, `sha-256=:<base64>:`. The chunk's `start` is validated\nagainst the chunk size persisted when the session began, not the current\nconfiguration. The chunk is idempotent: re-uploading it with the same digest\nsucceeds without changing the stored content.",
         "operationId": "put_upload_chunk",
         "parameters": [
           {
@@ -768,9 +769,10 @@
             }
           },
           {
-            "description": "Lowercase hexadecimal MD5 digest of the chunk",
+            "description": "RFC 9530 content digest of the chunk, `sha-256=:<base64 of the raw 32-byte digest>:`",
+            "example": "sha-256=:A6xnQhbz4Vx2HuGl4lXwZ5U2I8iziLRFnhP5eNfIRvQ=:",
             "in": "header",
-            "name": "Content-MD5",
+            "name": "Content-Digest",
             "required": true,
             "schema": {
               "type": "string"
@@ -872,7 +874,7 @@
     },
     "/asset/upload/{upload_id}/complete": {
       "post": {
-        "description": "The upload identifier is carried by the path; there is no request body. The\nstaged content's MD5 digest is recomputed and verified against the digest\ndeclared when the upload was initialized. When the caller already owns a\nfile with that digest, no second copy is stored: the existing file's\nidentifier is returned and the upload session is left unfinished. Otherwise\nthe staged file is promoted, its record registered, and the upload marked\nfinished. Completion is idempotent: completing an already finished upload\nreturns the caller's file for the same digest.",
+        "description": "The upload identifier is carried by the path; there is no request body. The\nstaged content's integrity hash is recomputed and verified against the hash\ndeclared when the upload was initialized. When the caller already owns a\nfile with that hash, no second copy is stored: the existing file's\nidentifier is returned and the upload session is left unfinished. Otherwise\nthe staged file is promoted, its record registered, and the upload marked\nfinished. Completion is idempotent: completing an already finished upload\nreturns the caller's file for the same digest.",
         "operationId": "post_upload_complete",
         "parameters": [
           {
@@ -934,7 +936,7 @@
                 }
               }
             },
-            "description": "The digest is already owned by another user"
+            "description": "The integrity hash is already owned by another user"
           },
           "410": {
             "content": {

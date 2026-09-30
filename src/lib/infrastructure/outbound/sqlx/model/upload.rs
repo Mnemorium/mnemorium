@@ -10,8 +10,8 @@ pub struct Upload {
     pub created_at: NaiveDateTime,
     pub file_name: String,
     pub file_size: i64,
+    pub integrity_hash: String,
     pub is_finished: bool,
-    pub md5_integrity: String,
     pub mime_type_id: String,
     #[sqlx(primary_key)]
     pub upload_id: NumericID,

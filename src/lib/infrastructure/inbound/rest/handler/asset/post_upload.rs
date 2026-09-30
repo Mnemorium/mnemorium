@@ -13,6 +13,8 @@ use crate::application::port::begin_upload::BeginUploadCommand;
 use crate::application::port::begin_upload::BeginUploadError;
 use crate::application::port::begin_upload::BeginUploadResponse as BeginUploadResponseData;
 use crate::domain::alias::NumericID;
+use crate::domain::model::integrity_hash::IntegrityHash;
+use crate::domain::model::integrity_hash::SHA256_HEX_LENGTH;
 use crate::infrastructure::inbound::rest::api_error::ApiError;
 use crate::infrastructure::inbound::rest::api_error::ErrorBody;
 use crate::infrastructure::inbound::rest::app_state::AppState;
@@ -33,10 +35,15 @@ pub struct PostUploadRequest {
     /// Total size of the file being uploaded, in bytes.
     #[schema(minimum = 1, example = json!(1_048_576))]
     pub file_size: u64,
-    /// MD5 digest of the complete file, as a 32-character lowercase
-    /// hexadecimal string.
-    #[schema(min_length = 32, max_length = 32, example = json!("d41d8cd98f00b204e9800998ecf8427e"))]
-    pub md5: String,
+    /// Integrity hash of the complete file, as a 64-character lowercase
+    /// hexadecimal SHA-256 string.
+    #[schema(
+        min_length = 64,
+        max_length = 64,
+        pattern = "^[0-9a-f]{64}$",
+        example = json!("e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855")
+    )]
+    pub integrity_hash: String,
 }
 
 /// Upload session created by a successful initialization.
@@ -76,9 +83,9 @@ impl From<BeginUploadResponseData> for PostUploadResponse {
 impl From<BeginUploadError> for ApiError {
     fn from(err: BeginUploadError) -> Self {
         match err {
-            BeginUploadError::InvalidFileName
-            | BeginUploadError::InvalidFileSize
-            | BeginUploadError::InvalidMd5 => Self::BadRequest(err.to_string()),
+            BeginUploadError::InvalidFileName | BeginUploadError::InvalidFileSize => {
+                Self::BadRequest(err.to_string())
+            }
             BeginUploadError::FileTooLarge => Self::PayloadTooLarge(err.to_string()),
             BeginUploadError::Unknown(_) => Self::InternalServerError,
             BeginUploadError::UnsupportedMediaType => Self::UnsupportedMediaType(err.to_string()),
@@ -88,9 +95,9 @@ impl From<BeginUploadError> for ApiError {
 
 /// Initialize an upload session.
 ///
-/// Validates the declared content type, file name, size and MD5 digest, creates
-/// the upload session and its staging file, and returns the session identifier,
-/// the fixed chunk size and the expiry instant.
+/// Validates the declared content type, file name, size and integrity hash,
+/// creates the upload session and its staging file, and returns the session
+/// identifier, the fixed chunk size and the expiry instant.
 #[utoipa::path(
     post,
     operation_id = "post_upload",
@@ -152,6 +159,10 @@ pub async fn post_upload(
     payload: Result<Json<PostUploadRequest>, JsonRejection>,
 ) -> Result<Response, ApiError> {
     let Json(request) = payload.map_err(ApiError::from)?;
+    // The handler is where the wire form is parsed into the domain value object:
+    // a malformed digest never reaches the use case.
+    let integrity_hash = IntegrityHash::<SHA256_HEX_LENGTH>::try_new(request.integrity_hash)
+        .map_err(|_| ApiError::BadRequest("the integrity hash is invalid".to_owned()))?;
     let response = state
         .asset_use_case_factory()
         .begin_upload()
@@ -159,7 +170,7 @@ pub async fn post_upload(
             request.file_name,
             request.file_size,
             request.content_type,
-            request.md5,
+            integrity_hash,
             caller.user_id(),
         ))
         .await?;
@@ -205,10 +216,11 @@ mod tests {
     use crate::application::port::begin_upload::BeginUploadUseCase;
     use crate::application::port::begin_upload::MockBeginUploadUseCase;
     use crate::domain::alias::NumericID;
+    use crate::domain::model::integrity_hash::IntegrityHash;
     use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
     use crate::test_helpers::app_state_with_asset;
 
-    const DIGEST: &str = "d41d8cd98f00b204e9800998ecf8427e";
+    const DIGEST: &str = "d41d8cd98f00b204e9800998ecf8427ed41d8cd98f00b204e9800998ecf8427e";
 
     /// Send `body` through the endpoint router on behalf of `caller_id`,
     /// injecting the caller identifier the way the auth middleware does.
@@ -259,7 +271,7 @@ mod tests {
             "file_name": "clip.mp4",
             "file_size": 1_048_576,
             "content_type": "video/mp4",
-            "md5": DIGEST,
+            "integrity_hash": DIGEST,
         }))?))
     }
 
@@ -274,7 +286,7 @@ mod tests {
             "clip.mp4".to_owned(),
             1_048_576,
             "video/mp4".to_owned(),
-            DIGEST.to_owned(),
+            IntegrityHash::try_new(DIGEST.to_owned())?,
             3,
         );
         let mut use_case = MockBeginUploadUseCase::new();
@@ -379,17 +391,44 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn post_upload_invalid_md5_returns_bad_request() -> Result<(), Box<dyn Error>> {
+    async fn post_upload_invalid_integrity_hash_returns_bad_request() -> Result<(), Box<dyn Error>>
+    {
         // Arrange
-        let mut use_case = MockBeginUploadUseCase::new();
-        expect_error(&mut use_case, BeginUploadError::InvalidMd5);
+        let use_case = MockBeginUploadUseCase::new();
+        let body = Body::from(serde_json::to_vec(&json!({
+            "file_name": "clip.mp4",
+            "file_size": 1_048_576u64,
+            "content_type": "video/mp4",
+            "integrity_hash": "not-a-valid-digest",
+        }))?);
 
         // Act
-        let (status, payload) = into_parts(send(use_case, 3, request_body()?).await?).await?;
+        let (status, payload) = into_parts(send(use_case, 3, body).await?).await?;
 
         // Assert
         assert_eq!(status, StatusCode::BAD_REQUEST);
-        assert_eq!(payload, json!({ "error": "the md5 digest is invalid" }));
+        assert_eq!(payload, json!({ "error": "the integrity hash is invalid" }));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn post_upload_non_hexadecimal_integrity_hash_returns_bad_request()
+    -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let use_case = MockBeginUploadUseCase::new();
+        let body = Body::from(serde_json::to_vec(&json!({
+            "file_name": "clip.mp4",
+            "file_size": 1_048_576u64,
+            "content_type": "video/mp4",
+            "integrity_hash": "g".repeat(64),
+        }))?);
+
+        // Act
+        let (status, payload) = into_parts(send(use_case, 3, body).await?).await?;
+
+        // Assert
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(payload, json!({ "error": "the integrity hash is invalid" }));
         Ok(())
     }
 

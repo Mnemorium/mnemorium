@@ -4,14 +4,15 @@ use std::io::ErrorKind;
 use std::io::SeekFrom;
 use std::path::PathBuf;
 
-use md5::Digest as _;
-use md5::Md5;
 use tokio::fs;
 use tokio::io::AsyncReadExt as _;
 use tokio::io::AsyncSeekExt as _;
 use tokio::io::AsyncWriteExt as _;
 
 use crate::domain::alias::NumericID;
+use crate::domain::model::integrity_hash::IntegrityHash;
+use crate::domain::model::integrity_hash::SHA256_HEX_LENGTH;
+use crate::domain::port::content_hasher::ContentHasher;
 use crate::domain::port::error::StorageError;
 use crate::domain::port::file_storage::FileStorage;
 
@@ -22,19 +23,21 @@ const UPLOADS_FOLDER: &str = "uploads";
 const FILES_FOLDER: &str = "files";
 
 /// Size of the buffer used to stream a staged file, in bytes.
-const CHECKSUM_BUFFER_SIZE: usize = 64 * 1024;
+const HASH_BUFFER_SIZE: usize = 64 * 1024;
 
 /// File storage storing uploaded content on the local filesystem.
 ///
 /// Files being uploaded live inside the `uploads` subfolder of the root
 /// directory, named after the upload identifier. Finished files are moved into
 /// the `files` subfolder, named `<upload_id>_<file_name>`.
-pub struct FileSystemStorage {
+pub struct FileSystemStorage<H> {
+    /// Content hasher computing the whole-file digest.
+    hasher: H,
     /// Root directory holding the upload and file folders.
     root: PathBuf,
 }
 
-impl FileSystemStorage {
+impl<H> FileSystemStorage<H> {
     /// Return the path of the finished files folder.
     fn files_path(&self) -> PathBuf {
         self.root.join(FILES_FOLDER)
@@ -66,7 +69,8 @@ impl FileSystemStorage {
         }
     }
 
-    /// Create a new file system storage rooted at `root`.
+    /// Create a new file system storage rooted at `root`, hashing content with
+    /// `hasher`.
     ///
     /// The `uploads` and `files` subfolders are created when they do not exist.
     ///
@@ -74,8 +78,8 @@ impl FileSystemStorage {
     ///
     /// Returns [`StorageError`] when the root or either subfolder cannot be
     /// created.
-    pub async fn new(root: PathBuf) -> Result<Self, StorageError> {
-        let storage = Self { root };
+    pub async fn new(root: PathBuf, hasher: H) -> Result<Self, StorageError> {
+        let storage = Self { hasher, root };
         fs::create_dir_all(storage.files_path())
             .await
             .map_err(Self::map_io_error)?;
@@ -96,7 +100,7 @@ impl FileSystemStorage {
     }
 }
 
-impl FileStorage for FileSystemStorage {
+impl<H: ContentHasher> FileStorage for FileSystemStorage<H> {
     fn add_chunk(
         &self,
         upload_id: NumericID,
@@ -117,28 +121,6 @@ impl FileStorage for FileSystemStorage {
             file.write_all(&chunk).await.map_err(Self::map_io_error)?;
             file.flush().await.map_err(Self::map_io_error)?;
             Ok(())
-        }
-    }
-
-    fn checksum(
-        &self,
-        upload_id: NumericID,
-    ) -> impl Future<Output = Result<String, StorageError>> + Send {
-        let path = self.staged_path(upload_id);
-
-        async move {
-            let mut file = fs::File::open(&path).await.map_err(Self::map_io_error)?;
-            let mut hasher = Md5::new();
-            let mut buffer = vec![0u8; CHECKSUM_BUFFER_SIZE];
-            loop {
-                let read = file.read(&mut buffer).await.map_err(Self::map_io_error)?;
-                if read == 0 {
-                    break;
-                }
-                let chunk = buffer.get(..read).ok_or(StorageError::OperationFailed)?;
-                hasher.update(chunk);
-            }
-            Ok(hex_encode(&hasher.finalize()))
         }
     }
 
@@ -173,6 +155,30 @@ impl FileStorage for FileSystemStorage {
                 Err(err) if err.kind() == ErrorKind::NotFound => Ok(()),
                 Err(err) => Err(Self::map_io_error(err)),
             }
+        }
+    }
+
+    fn integrity_hash(
+        &self,
+        upload_id: NumericID,
+    ) -> impl Future<Output = Result<IntegrityHash<SHA256_HEX_LENGTH>, StorageError>> + Send {
+        let path = self.staged_path(upload_id);
+        let mut session = self.hasher.hasher();
+
+        async move {
+            let mut file = fs::File::open(&path).await.map_err(Self::map_io_error)?;
+            let mut buffer = vec![0u8; HASH_BUFFER_SIZE];
+            loop {
+                let read = file.read(&mut buffer).await.map_err(Self::map_io_error)?;
+                if read == 0 {
+                    break;
+                }
+                let chunk = buffer.get(..read).ok_or(StorageError::OperationFailed)?;
+                session.update(chunk);
+            }
+            session
+                .finalize()
+                .map_err(|error| StorageError::Unknown(error.into()))
         }
     }
 
@@ -233,21 +239,6 @@ fn is_path_safe(file_name: &str) -> bool {
         && !file_name.contains("..")
 }
 
-/// Hexadecimal-encode `bytes`, lowercase.
-#[expect(
-    clippy::single_call_fn,
-    reason = "the digest encoding is named for readability"
-)]
-fn hex_encode(bytes: &[u8]) -> String {
-    use std::fmt::Write as _;
-
-    let mut hex = String::with_capacity(bytes.len().saturating_mul(2));
-    for byte in bytes {
-        let _result = write!(hex, "{byte:02x}");
-    }
-    hex
-}
-
 #[cfg(test)]
 mod tests {
     use std::error::Error;
@@ -258,12 +249,13 @@ mod tests {
     use super::FileSystemStorage;
     use crate::domain::port::error::StorageError;
     use crate::domain::port::file_storage::FileStorage as _;
+    use crate::infrastructure::outbound::sha2::content_hasher::Sha2ContentHasher;
 
     #[tokio::test]
     async fn create_upload_file_creates_preallocated_staged_file() -> Result<(), Box<dyn Error>> {
         // Arrange
         let tmp = tempdir()?;
-        let storage = FileSystemStorage::new(tmp.path().to_path_buf()).await?;
+        let storage = FileSystemStorage::new(tmp.path().to_path_buf(), Sha2ContentHasher).await?;
 
         // Act
         storage.create_upload_file(42, 12).await?;
@@ -278,7 +270,7 @@ mod tests {
     async fn create_upload_file_existing_upload_returns_error() -> Result<(), Box<dyn Error>> {
         // Arrange
         let tmp = tempdir()?;
-        let storage = FileSystemStorage::new(tmp.path().to_path_buf()).await?;
+        let storage = FileSystemStorage::new(tmp.path().to_path_buf(), Sha2ContentHasher).await?;
         storage.create_upload_file(42, 4).await?;
 
         // Act
@@ -293,7 +285,7 @@ mod tests {
     async fn add_chunk_writes_bytes_at_their_offset() -> Result<(), Box<dyn Error>> {
         // Arrange
         let tmp = tempdir()?;
-        let storage = FileSystemStorage::new(tmp.path().to_path_buf()).await?;
+        let storage = FileSystemStorage::new(tmp.path().to_path_buf(), Sha2ContentHasher).await?;
         storage.create_upload_file(42, 8).await?;
 
         // Act
@@ -310,7 +302,7 @@ mod tests {
     async fn add_chunk_rewriting_same_offset_is_idempotent() -> Result<(), Box<dyn Error>> {
         // Arrange
         let tmp = tempdir()?;
-        let storage = FileSystemStorage::new(tmp.path().to_path_buf()).await?;
+        let storage = FileSystemStorage::new(tmp.path().to_path_buf(), Sha2ContentHasher).await?;
         storage.create_upload_file(42, 4).await?;
 
         // Act
@@ -327,7 +319,7 @@ mod tests {
     async fn add_chunk_unknown_upload_returns_conflict() -> Result<(), Box<dyn Error>> {
         // Arrange
         let tmp = tempdir()?;
-        let storage = FileSystemStorage::new(tmp.path().to_path_buf()).await?;
+        let storage = FileSystemStorage::new(tmp.path().to_path_buf(), Sha2ContentHasher).await?;
 
         // Act
         let result = storage.add_chunk(42, 0, b"bytes".to_vec()).await;
@@ -338,44 +330,50 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn checksum_streams_staged_file_and_returns_hex() -> Result<(), Box<dyn Error>> {
+    async fn integrity_hash_streams_staged_file_and_returns_hex() -> Result<(), Box<dyn Error>> {
         // Arrange
         let tmp = tempdir()?;
-        let storage = FileSystemStorage::new(tmp.path().to_path_buf()).await?;
+        let storage = FileSystemStorage::new(tmp.path().to_path_buf(), Sha2ContentHasher).await?;
         storage.create_upload_file(42, 4).await?;
         storage.add_chunk(42, 0, b"1234".to_vec()).await?;
 
         // Act
-        let digest = storage.checksum(42).await?;
+        let digest = storage.integrity_hash(42).await?;
 
         // Assert
-        assert_eq!(digest, "81dc9bdb52d04dc20036dbd8313ed055");
+        assert_eq!(
+            digest.as_str(),
+            "03ac674216f3e15c761ee1a5e255f067953623c8b388b4459e13f978d7c846f4"
+        );
         Ok(())
     }
 
     #[tokio::test]
-    async fn checksum_empty_staged_file_returns_empty_digest() -> Result<(), Box<dyn Error>> {
+    async fn integrity_hash_empty_staged_file_returns_empty_digest() -> Result<(), Box<dyn Error>> {
         // Arrange
         let tmp = tempdir()?;
-        let storage = FileSystemStorage::new(tmp.path().to_path_buf()).await?;
+        let storage = FileSystemStorage::new(tmp.path().to_path_buf(), Sha2ContentHasher).await?;
         storage.create_upload_file(42, 0).await?;
 
         // Act
-        let digest = storage.checksum(42).await?;
+        let digest = storage.integrity_hash(42).await?;
 
         // Assert
-        assert_eq!(digest, "d41d8cd98f00b204e9800998ecf8427e");
+        assert_eq!(
+            digest.as_str(),
+            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        );
         Ok(())
     }
 
     #[tokio::test]
-    async fn checksum_missing_upload_returns_conflict() -> Result<(), Box<dyn Error>> {
+    async fn integrity_hash_missing_upload_returns_conflict() -> Result<(), Box<dyn Error>> {
         // Arrange
         let tmp = tempdir()?;
-        let storage = FileSystemStorage::new(tmp.path().to_path_buf()).await?;
+        let storage = FileSystemStorage::new(tmp.path().to_path_buf(), Sha2ContentHasher).await?;
 
         // Act
-        let result = storage.checksum(42).await;
+        let result = storage.integrity_hash(42).await;
 
         // Assert
         assert!(matches!(result, Err(StorageError::Conflict)));
@@ -386,7 +384,7 @@ mod tests {
     async fn delete_upload_file_removes_staged_file() -> Result<(), Box<dyn Error>> {
         // Arrange
         let tmp = tempdir()?;
-        let storage = FileSystemStorage::new(tmp.path().to_path_buf()).await?;
+        let storage = FileSystemStorage::new(tmp.path().to_path_buf(), Sha2ContentHasher).await?;
         storage.create_upload_file(42, 4).await?;
 
         // Act
@@ -401,7 +399,7 @@ mod tests {
     async fn delete_upload_file_missing_file_succeeds() -> Result<(), Box<dyn Error>> {
         // Arrange
         let tmp = tempdir()?;
-        let storage = FileSystemStorage::new(tmp.path().to_path_buf()).await?;
+        let storage = FileSystemStorage::new(tmp.path().to_path_buf(), Sha2ContentHasher).await?;
 
         // Act
         let result = storage.delete_upload_file(42).await;
@@ -415,7 +413,7 @@ mod tests {
     async fn promote_moves_staged_file_and_returns_relative_path() -> Result<(), Box<dyn Error>> {
         // Arrange
         let tmp = tempdir()?;
-        let storage = FileSystemStorage::new(tmp.path().to_path_buf()).await?;
+        let storage = FileSystemStorage::new(tmp.path().to_path_buf(), Sha2ContentHasher).await?;
         storage.create_upload_file(42, 4).await?;
         storage.add_chunk(42, 0, b"1234".to_vec()).await?;
 
@@ -433,7 +431,7 @@ mod tests {
     async fn promote_path_traversal_file_name_returns_error() -> Result<(), Box<dyn Error>> {
         // Arrange
         let tmp = tempdir()?;
-        let storage = FileSystemStorage::new(tmp.path().to_path_buf()).await?;
+        let storage = FileSystemStorage::new(tmp.path().to_path_buf(), Sha2ContentHasher).await?;
         storage.create_upload_file(42, 4).await?;
 
         // Act
@@ -448,7 +446,7 @@ mod tests {
     async fn promote_unknown_upload_returns_conflict() -> Result<(), Box<dyn Error>> {
         // Arrange
         let tmp = tempdir()?;
-        let storage = FileSystemStorage::new(tmp.path().to_path_buf()).await?;
+        let storage = FileSystemStorage::new(tmp.path().to_path_buf(), Sha2ContentHasher).await?;
 
         // Act
         let result = storage.promote(42, "clip.mp4").await;
@@ -462,7 +460,7 @@ mod tests {
     async fn restore_moves_final_file_back_to_staging() -> Result<(), Box<dyn Error>> {
         // Arrange
         let tmp = tempdir()?;
-        let storage = FileSystemStorage::new(tmp.path().to_path_buf()).await?;
+        let storage = FileSystemStorage::new(tmp.path().to_path_buf(), Sha2ContentHasher).await?;
         storage.create_upload_file(42, 4).await?;
         storage.add_chunk(42, 0, b"1234".to_vec()).await?;
         let relative = storage.promote(42, "clip.mp4").await?;
@@ -481,7 +479,7 @@ mod tests {
     async fn restore_missing_final_file_succeeds() -> Result<(), Box<dyn Error>> {
         // Arrange
         let tmp = tempdir()?;
-        let storage = FileSystemStorage::new(tmp.path().to_path_buf()).await?;
+        let storage = FileSystemStorage::new(tmp.path().to_path_buf(), Sha2ContentHasher).await?;
 
         // Act
         let result = storage.restore(42, "clip.mp4").await;

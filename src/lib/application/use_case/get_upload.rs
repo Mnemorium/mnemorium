@@ -200,6 +200,7 @@ mod tests {
     use crate::application::port::get_upload::GetUploadError;
     use crate::application::port::get_upload::GetUploadUseCase as _;
     use crate::domain::model::file::File;
+    use crate::domain::model::integrity_hash::IntegrityHash;
     use crate::domain::model::upload::ChunkBitmap;
     use crate::domain::model::upload::Upload;
     use crate::domain::port::error::RepositoryError;
@@ -212,7 +213,7 @@ mod tests {
 
     use super::GetUpload;
 
-    const DIGEST: &str = "0123456789abcdef0123456789abcdef";
+    const DIGEST: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
     const TTL_SECONDS: u64 = 3600;
     const CHUNK_SIZE: u64 = 4;
 
@@ -275,7 +276,8 @@ mod tests {
             file_size,
             "video/mp4".to_owned(),
             CHUNK_SIZE,
-            DIGEST.to_owned(),
+            IntegrityHash::try_new(DIGEST.to_owned())
+                .map_err(|_| RepositoryError::OperationFailed)?,
             bitmap,
             is_finished,
             0,
@@ -310,7 +312,8 @@ mod tests {
             false,
             "video/mp4".to_owned(),
             NaiveDate::from_ymd_opt(2026, 1, 1).unwrap_or_default(),
-            DIGEST.to_owned(),
+            IntegrityHash::try_new(DIGEST.to_owned())
+                .map_err(|_| RepositoryError::OperationFailed)?,
         )
         .map_err(|_| RepositoryError::OperationFailed)
     }

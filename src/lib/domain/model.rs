@@ -4,6 +4,7 @@ pub mod audio_channel;
 pub mod configuration;
 pub mod credential;
 pub mod file;
+pub mod integrity_hash;
 pub mod jwt;
 pub mod logging;
 pub mod music_album;

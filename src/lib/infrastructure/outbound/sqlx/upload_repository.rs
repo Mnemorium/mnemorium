@@ -3,6 +3,7 @@ use sqlx::Sqlite;
 use sqlx::Transaction;
 
 use crate::domain::alias::NumericID;
+use crate::domain::model::integrity_hash::IntegrityHash;
 use crate::domain::model::upload::ChunkBitmap;
 use crate::domain::model::upload::Upload;
 use crate::domain::port::error::RepositoryError;
@@ -34,7 +35,7 @@ impl UploadRepository for SqlxUploadRepository<'_> {
                 file_size,
                 mime_type_id,
                 chunk_size,
-                md5_integrity,
+                integrity_hash,
                 chunk_bitmap,
                 is_finished,
                 version
@@ -47,7 +48,7 @@ impl UploadRepository for SqlxUploadRepository<'_> {
                 file_size,
                 mime_type_id,
                 chunk_size,
-                md5_integrity,
+                integrity_hash,
                 chunk_bitmap,
                 is_finished,
                 version,
@@ -64,7 +65,7 @@ impl UploadRepository for SqlxUploadRepository<'_> {
             upload.chunk_size(),
             "upload chunk_size does not fit in i64",
         )?)
-        .bind(upload.md5_integrity())
+        .bind(upload.integrity_hash().as_str())
         .bind(upload.chunk_bitmap().as_bytes().to_vec())
         .bind(upload.is_finished())
         .bind(upload.version())
@@ -91,7 +92,7 @@ impl UploadRepository for SqlxUploadRepository<'_> {
                 file_size = ?3,
                 mime_type_id = ?4,
                 chunk_size = ?5,
-                md5_integrity = ?6,
+                integrity_hash = ?6,
                 chunk_bitmap = ?7,
                 is_finished = ?8,
                 version = version + 1
@@ -103,7 +104,7 @@ impl UploadRepository for SqlxUploadRepository<'_> {
                 file_size,
                 mime_type_id,
                 chunk_size,
-                md5_integrity,
+                integrity_hash,
                 chunk_bitmap,
                 is_finished,
                 version,
@@ -120,7 +121,7 @@ impl UploadRepository for SqlxUploadRepository<'_> {
             upload.chunk_size(),
             "upload chunk_size does not fit in i64",
         )?)
-        .bind(upload.md5_integrity())
+        .bind(upload.integrity_hash().as_str())
         .bind(upload.chunk_bitmap().as_bytes().to_vec())
         .bind(upload.is_finished())
         .bind(upload.upload_id())
@@ -156,7 +157,7 @@ impl UploadRepository for SqlxUploadRepository<'_> {
                 file_size,
                 mime_type_id,
                 chunk_size,
-                md5_integrity,
+                integrity_hash,
                 chunk_bitmap,
                 is_finished,
                 version,
@@ -221,6 +222,8 @@ fn domain_upload(row: SqlxUpload) -> Result<Upload, RepositoryError> {
     })?;
     let chunk_bitmap = ChunkBitmap::from_bytes(row.chunk_bitmap, total_chunks)
         .map_err(|_| RepositoryError::DataIntegrityViolation)?;
+    let integrity_hash = IntegrityHash::try_new(row.integrity_hash)
+        .map_err(|_| RepositoryError::DataIntegrityViolation)?;
 
     Upload::try_new(
         row.upload_id,
@@ -229,7 +232,7 @@ fn domain_upload(row: SqlxUpload) -> Result<Upload, RepositoryError> {
         file_size,
         row.mime_type_id,
         chunk_size,
-        row.md5_integrity,
+        integrity_hash,
         chunk_bitmap,
         row.is_finished,
         row.version,
@@ -247,6 +250,7 @@ mod tests {
     use sqlx::Transaction;
     use sqlx::sqlite::SqlitePoolOptions;
 
+    use crate::domain::model::integrity_hash::IntegrityHash;
     use crate::domain::model::upload::ChunkBitmap;
     use crate::domain::model::upload::Upload;
     use crate::domain::port::error::RepositoryError;
@@ -255,8 +259,8 @@ mod tests {
 
     use super::SqlxUploadRepository;
 
-    /// A 32-character hexadecimal digest, valid for `md5_integrity`.
-    const DIGEST: &str = "0123456789abcdef0123456789abcdef";
+    /// A 64-character hexadecimal digest, valid for `integrity_hash`.
+    const DIGEST: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
     /// Size of every chunk, in bytes.
     const CHUNK_SIZE: u64 = 4;
 
@@ -311,7 +315,7 @@ mod tests {
             file_size,
             "video/mp4".to_owned(),
             CHUNK_SIZE,
-            DIGEST.to_owned(),
+            IntegrityHash::try_new(DIGEST.to_owned())?,
             bitmap,
             is_finished,
             version,
@@ -347,7 +351,7 @@ mod tests {
         assert_eq!(persisted.file_size(), 10);
         assert_eq!(persisted.mime_type_id(), "video/mp4");
         assert_eq!(persisted.chunk_size(), CHUNK_SIZE);
-        assert_eq!(persisted.md5_integrity(), DIGEST);
+        assert_eq!(persisted.integrity_hash().as_str(), DIGEST);
         assert!(!persisted.is_finished());
         assert_eq!(persisted.version(), 0);
         assert_eq!(found.first(), Some(&persisted));
@@ -480,7 +484,7 @@ mod tests {
             8,
             "application/unknown".to_owned(),
             CHUNK_SIZE,
-            DIGEST.to_owned(),
+            IntegrityHash::try_new(DIGEST.to_owned())?,
             chunk_bitmap,
             false,
             0,
@@ -502,28 +506,28 @@ mod tests {
     #[rstest]
     #[case::file_size_zero(
         "INSERT INTO upload (
-            user_id, file_name, file_size, mime_type_id, chunk_size, md5_integrity, chunk_bitmap
-         ) VALUES (1, 'clip.mp4', 0, 'video/mp4', 4, '0123456789abcdef0123456789abcdef', x'00')"
+            user_id, file_name, file_size, mime_type_id, chunk_size, integrity_hash, chunk_bitmap
+         ) VALUES (1, 'clip.mp4', 0, 'video/mp4', 4, '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef', x'00')"
     )]
     #[case::chunk_size_zero(
         "INSERT INTO upload (
-            user_id, file_name, file_size, mime_type_id, chunk_size, md5_integrity, chunk_bitmap
-         ) VALUES (1, 'clip.mp4', 4, 'video/mp4', 0, '0123456789abcdef0123456789abcdef', x'00')"
+            user_id, file_name, file_size, mime_type_id, chunk_size, integrity_hash, chunk_bitmap
+         ) VALUES (1, 'clip.mp4', 4, 'video/mp4', 0, '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef', x'00')"
     )]
-    #[case::md5_integrity_length(
+    #[case::integrity_hash_length(
         "INSERT INTO upload (
-            user_id, file_name, file_size, mime_type_id, chunk_size, md5_integrity, chunk_bitmap
+            user_id, file_name, file_size, mime_type_id, chunk_size, integrity_hash, chunk_bitmap
          ) VALUES (1, 'clip.mp4', 4, 'video/mp4', 4, 'too-short', x'00')"
     )]
     #[case::is_finished_out_of_range(
         "INSERT INTO upload (
-            user_id, file_name, file_size, mime_type_id, chunk_size, md5_integrity, chunk_bitmap, is_finished
-         ) VALUES (1, 'clip.mp4', 4, 'video/mp4', 4, '0123456789abcdef0123456789abcdef', x'00', 2)"
+            user_id, file_name, file_size, mime_type_id, chunk_size, integrity_hash, chunk_bitmap, is_finished
+         ) VALUES (1, 'clip.mp4', 4, 'video/mp4', 4, '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef', x'00', 2)"
     )]
     #[case::version_negative(
         "INSERT INTO upload (
-            user_id, file_name, file_size, mime_type_id, chunk_size, md5_integrity, chunk_bitmap, version
-         ) VALUES (1, 'clip.mp4', 4, 'video/mp4', 4, '0123456789abcdef0123456789abcdef', x'00', -1)"
+            user_id, file_name, file_size, mime_type_id, chunk_size, integrity_hash, chunk_bitmap, version
+         ) VALUES (1, 'clip.mp4', 4, 'video/mp4', 4, '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef', x'00', -1)"
     )]
     #[tokio::test]
     async fn create_violating_a_check_returns_data_integrity_violation(

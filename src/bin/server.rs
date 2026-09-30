@@ -17,6 +17,7 @@ use mnemorium::infrastructure::outbound::file_system::file_storage::FileSystemSt
 use mnemorium::infrastructure::outbound::jwt::token_provider::JwtTokenProvider;
 use mnemorium::infrastructure::outbound::random::password_generator::RandomPasswordGenerator;
 use mnemorium::infrastructure::outbound::random::secret_generator::ChaChaSecretGenerator;
+use mnemorium::infrastructure::outbound::sha2::content_hasher::Sha2ContentHasher;
 use mnemorium::infrastructure::outbound::sqlx::sqlite3::init_db;
 use mnemorium::infrastructure::outbound::sqlx::unit_of_work::SqlxUnitOfWorkFactory;
 use mnemorium::infrastructure::use_case_factory::asset::RuntimeAssetUseCaseFactory;
@@ -96,8 +97,11 @@ async fn main() -> Result<(), anyhow::Error> {
     )));
 
     let file_storage = Arc::new(
-        FileSystemStorage::new(PathBuf::from(configuration.load().asset().storage().root()))
-            .await?,
+        FileSystemStorage::new(
+            PathBuf::from(configuration.load().asset().storage().root()),
+            Sha2ContentHasher,
+        )
+        .await?,
     );
     let asset_use_case_factory = Arc::new(RuntimeAssetUseCaseFactory::new(
         Arc::clone(&configuration),

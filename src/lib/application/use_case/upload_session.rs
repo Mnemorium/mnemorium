@@ -26,7 +26,7 @@ where
     let files = unit_of_work
         .files()
         .search(&FileFilter {
-            md5_integrity: Some(upload.md5_integrity().to_owned()),
+            integrity_hash: Some(upload.integrity_hash().as_str().to_owned()),
             user_id: Some(user_id),
             ..FileFilter::default()
         })

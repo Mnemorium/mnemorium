@@ -174,7 +174,7 @@ where
                     false,
                     upload.mime_type_id().to_owned(),
                     Utc::now().date_naive(),
-                    upload.md5_integrity().to_owned(),
+                    upload.integrity_hash().clone(),
                 ) {
                     Ok(pending) => pending,
                     Err(error) => return Flow::Failed(CompleteUploadError::Unknown(error.into())),
@@ -282,7 +282,7 @@ where
     let files = unit_of_work
         .files()
         .search(&FileFilter {
-            md5_integrity: Some(upload.md5_integrity().to_owned()),
+            integrity_hash: Some(upload.integrity_hash().as_str().to_owned()),
             ..FileFilter::default()
         })
         .await
@@ -301,7 +301,7 @@ where
     Ok(own_file)
 }
 
-/// Recompute the staged file's MD5 digest and compare it with the digest
+/// Recompute the staged file's integrity hash and compare it with the hash
 /// declared when the upload was initialized.
 ///
 /// # Errors
@@ -317,10 +317,10 @@ where
     S: FileStorage,
 {
     let computed = file_storage
-        .checksum(upload.upload_id())
+        .integrity_hash(upload.upload_id())
         .await
         .map_err(|error| CompleteUploadError::Unknown(error.into()))?;
-    if computed != upload.md5_integrity() {
+    if computed != *upload.integrity_hash() {
         return Err(CompleteUploadError::IntegrityMismatch);
     }
     Ok(())
@@ -356,6 +356,7 @@ mod tests {
     use crate::application::port::complete_upload::CompleteUploadError;
     use crate::application::port::complete_upload::CompleteUploadUseCase as _;
     use crate::domain::model::file::File;
+    use crate::domain::model::integrity_hash::IntegrityHash;
     use crate::domain::model::upload::ChunkBitmap;
     use crate::domain::model::upload::Upload;
     use crate::domain::port::error::RepositoryError;
@@ -369,7 +370,7 @@ mod tests {
 
     use super::CompleteUpload;
 
-    const DIGEST: &str = "0123456789abcdef0123456789abcdef";
+    const DIGEST: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
     const TTL_SECONDS: u64 = 3600;
     const CHUNK_SIZE: u64 = 4;
 
@@ -431,7 +432,8 @@ mod tests {
             file_size,
             "video/mp4".to_owned(),
             CHUNK_SIZE,
-            DIGEST.to_owned(),
+            IntegrityHash::try_new(DIGEST.to_owned())
+                .map_err(|_| RepositoryError::OperationFailed)?,
             bitmap,
             is_finished,
             0,
@@ -455,16 +457,21 @@ mod tests {
             false,
             "video/mp4".to_owned(),
             NaiveDate::from_ymd_opt(2026, 1, 1).unwrap_or_default(),
-            DIGEST.to_owned(),
+            IntegrityHash::try_new(DIGEST.to_owned())
+                .map_err(|_| RepositoryError::OperationFailed)?,
         )
         .map_err(|_| RepositoryError::OperationFailed)
     }
 
-    fn expect_checksum(file_storage: &mut MockFileStorage, digest: &'static str) {
+    fn expect_integrity_hash(file_storage: &mut MockFileStorage, digest: &'static str) {
         file_storage
-            .expect_checksum()
+            .expect_integrity_hash()
             .times(1)
-            .returning(move |_| Box::pin(async move { Ok(digest.to_owned()) }));
+            .returning(move |_| {
+                let hash = IntegrityHash::try_new(digest.to_owned())
+                    .map_err(|_| StorageError::OperationFailed);
+                Box::pin(async move { hash })
+            });
     }
 
     #[tokio::test]
@@ -486,7 +493,7 @@ mod tests {
             .times(1)
             .returning(|upload| Box::pin(async move { Ok(Some(upload)) }));
         let mut file_storage = MockFileStorage::new();
-        expect_checksum(&mut file_storage, DIGEST);
+        expect_integrity_hash(&mut file_storage, DIGEST);
         file_storage
             .expect_promote()
             .times(1)
@@ -525,7 +532,7 @@ mod tests {
             .times(1)
             .returning(|file| Box::pin(async move { Ok(file) }));
         let mut file_storage = MockFileStorage::new();
-        expect_checksum(&mut file_storage, DIGEST);
+        expect_integrity_hash(&mut file_storage, DIGEST);
         file_storage
             .expect_promote()
             .times(1)
@@ -547,7 +554,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn complete_upload_checksum_mismatch_returns_integrity_mismatch()
+    async fn complete_upload_integrity_hash_mismatch_returns_integrity_mismatch()
     -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut uploads = MockUploadRepository::new();
@@ -558,7 +565,10 @@ mod tests {
             .times(1)
             .returning(|_| Box::pin(async { Ok(Vec::new()) }));
         let mut file_storage = MockFileStorage::new();
-        expect_checksum(&mut file_storage, "ffffffffffffffffffffffffffffffff");
+        expect_integrity_hash(
+            &mut file_storage,
+            "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        );
         let harness = use_case_with(uploads, files, file_storage);
         let command = CompleteUploadCommand::new(5, 3);
 
@@ -630,7 +640,8 @@ mod tests {
             4,
             "video/mp4".to_owned(),
             CHUNK_SIZE,
-            DIGEST.to_owned(),
+            IntegrityHash::try_new(DIGEST.to_owned())
+                .map_err(|_| RepositoryError::OperationFailed)?,
             bitmap,
             false,
             0,
@@ -681,7 +692,8 @@ mod tests {
             4,
             "video/mp4".to_owned(),
             CHUNK_SIZE,
-            DIGEST.to_owned(),
+            IntegrityHash::try_new(DIGEST.to_owned())
+                .map_err(|_| RepositoryError::OperationFailed)?,
             bitmap,
             false,
             0,
@@ -813,7 +825,7 @@ mod tests {
             Box::pin(async move { stored.map(|file| vec![file]) })
         });
         let mut file_storage = MockFileStorage::new();
-        expect_checksum(&mut file_storage, DIGEST);
+        expect_integrity_hash(&mut file_storage, DIGEST);
         let harness = use_case_with(uploads, files, file_storage);
         let command = CompleteUploadCommand::new(5, 3);
 
@@ -839,7 +851,10 @@ mod tests {
             Box::pin(async move { stored.map(|file| vec![file]) })
         });
         let mut file_storage = MockFileStorage::new();
-        expect_checksum(&mut file_storage, "ffffffffffffffffffffffffffffffff");
+        expect_integrity_hash(
+            &mut file_storage,
+            "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        );
         let harness = use_case_with(uploads, files, file_storage);
         let command = CompleteUploadCommand::new(5, 3);
 
@@ -866,7 +881,7 @@ mod tests {
             .times(1)
             .returning(|_| Box::pin(async { Ok(Vec::new()) }));
         let mut file_storage = MockFileStorage::new();
-        expect_checksum(&mut file_storage, DIGEST);
+        expect_integrity_hash(&mut file_storage, DIGEST);
         file_storage
             .expect_promote()
             .times(1)
@@ -902,7 +917,7 @@ mod tests {
             .times(1)
             .returning(|file| Box::pin(async move { Ok(file) }));
         let mut file_storage = MockFileStorage::new();
-        expect_checksum(&mut file_storage, DIGEST);
+        expect_integrity_hash(&mut file_storage, DIGEST);
         file_storage
             .expect_promote()
             .times(1)
@@ -937,7 +952,7 @@ mod tests {
             .times(1)
             .returning(|_| Box::pin(async { Err(RepositoryError::OperationFailed) }));
         let mut file_storage = MockFileStorage::new();
-        expect_checksum(&mut file_storage, DIGEST);
+        expect_integrity_hash(&mut file_storage, DIGEST);
         file_storage
             .expect_promote()
             .times(1)
@@ -977,7 +992,7 @@ mod tests {
             .times(1)
             .returning(|file| Box::pin(async move { Ok(file) }));
         let mut file_storage = MockFileStorage::new();
-        expect_checksum(&mut file_storage, DIGEST);
+        expect_integrity_hash(&mut file_storage, DIGEST);
         file_storage
             .expect_promote()
             .times(1)

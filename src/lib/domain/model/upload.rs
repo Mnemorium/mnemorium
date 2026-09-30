@@ -1,10 +1,9 @@
 use chrono::NaiveDateTime;
 
 use crate::domain::alias::NumericID;
-
-/// Required length of `Upload::md5_integrity`, mirroring the
-/// `chk_upload_md5_integrity` check constraint.
-pub const MD5_INTEGRITY_LENGTH: usize = 32;
+use crate::domain::model::integrity_hash::IntegrityHash;
+use crate::domain::model::integrity_hash::IntegrityHashError;
+use crate::domain::model::integrity_hash::SHA256_HEX_LENGTH;
 
 /// Hard upper bound on the number of chunks an upload may be split into.
 ///
@@ -154,6 +153,9 @@ pub enum UploadError {
     /// The chunk number is outside the upload range.
     #[error("chunk number must be lower than the total number of chunks")]
     ChunkNumberOutOfRange,
+    /// The integrity hash is malformed.
+    #[error(transparent)]
+    IntegrityHash(#[from] IntegrityHashError),
     /// The chunk size is zero.
     #[error("chunk size must be greater than zero")]
     InvalidChunkSize,
@@ -165,10 +167,6 @@ pub enum UploadError {
     /// The file size is zero.
     #[error("file size must be greater than zero")]
     InvalidFileSize,
-    /// The `md5_integrity` is not exactly [`MD5_INTEGRITY_LENGTH`] characters
-    /// long.
-    #[error("md5_integrity must be exactly {MD5_INTEGRITY_LENGTH} characters long")]
-    Md5IntegrityInvalidLength,
     /// An unexpected or unmapped error occurred.
     #[error("an unknown error occurred: {0}")]
     Unknown(#[source] anyhow::Error),
@@ -194,10 +192,10 @@ pub struct Upload {
     file_name: String,
     /// Total size of the file being uploaded, in bytes.
     file_size: u64,
+    /// Integrity hash of the complete file, supplied by the client.
+    integrity_hash: IntegrityHash<SHA256_HEX_LENGTH>,
     /// Whether the upload has been finished.
     is_finished: bool,
-    /// MD5 digest of the complete file, supplied by the client.
-    md5_integrity: String,
     /// Identifier of the mime type of the file being uploaded.
     mime_type_id: String,
     /// Unique identifier of the upload.
@@ -251,6 +249,12 @@ impl Upload {
         self.is_finished = true;
     }
 
+    /// Return the integrity hash of the complete file.
+    #[must_use]
+    pub fn integrity_hash(&self) -> &IntegrityHash<SHA256_HEX_LENGTH> {
+        &self.integrity_hash
+    }
+
     /// Return whether the upload has been finished.
     #[must_use]
     pub fn is_finished(&self) -> bool {
@@ -272,12 +276,6 @@ impl Upload {
                     UploadError::Unknown(anyhow::Error::new(other))
                 }
             })
-    }
-
-    /// Return the MD5 digest of the complete file.
-    #[must_use]
-    pub fn md5_integrity(&self) -> &str {
-        &self.md5_integrity
     }
 
     /// Return the identifier of the mime type of the file being uploaded.
@@ -313,8 +311,7 @@ impl Upload {
     /// Returns [`UploadError::InvalidFileName`] when `file_name` is unsafe,
     /// [`UploadError::InvalidFileSize`] when `file_size` is zero,
     /// [`UploadError::InvalidChunkSize`] when `chunk_size` is zero, and
-    /// [`UploadError::Md5IntegrityInvalidLength`] when `md5_integrity` is not
-    /// exactly [`MD5_INTEGRITY_LENGTH`] characters long.
+    /// [`UploadError::IntegrityHash`] when `integrity_hash` is malformed.
     #[expect(
         clippy::too_many_arguments,
         reason = "a persisted aggregate needs every column; the constructor mirrors the row"
@@ -326,7 +323,7 @@ impl Upload {
         file_size: u64,
         mime_type_id: String,
         chunk_size: u64,
-        md5_integrity: String,
+        integrity_hash: IntegrityHash<SHA256_HEX_LENGTH>,
         chunk_bitmap: ChunkBitmap,
         is_finished: bool,
         version: i64,
@@ -335,15 +332,14 @@ impl Upload {
         let validated_file_name = Self::validate_file_name(file_name)?;
         let validated_file_size = Self::validate_file_size(file_size)?;
         let validated_chunk_size = Self::validate_chunk_size(chunk_size)?;
-        let validated_md5_integrity = Self::validate_md5_integrity(md5_integrity)?;
         Ok(Self {
             chunk_bitmap,
             chunk_size: validated_chunk_size,
             created_at,
             file_name: validated_file_name,
             file_size: validated_file_size,
+            integrity_hash,
             is_finished,
-            md5_integrity: validated_md5_integrity,
             mime_type_id,
             upload_id,
             user_id,
@@ -415,24 +411,6 @@ impl Upload {
             return Err(UploadError::InvalidFileSize);
         }
         Ok(file_size)
-    }
-
-    /// Validate `md5_integrity`.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`UploadError::Md5IntegrityInvalidLength`] when `md5_integrity`
-    /// is not exactly [`MD5_INTEGRITY_LENGTH`] characters long.
-    #[expect(
-        clippy::single_call_fn,
-        reason = "the validation is named after the field it guards for readability"
-    )]
-    fn validate_md5_integrity(md5_integrity: String) -> Result<String, UploadError> {
-        if md5_integrity.chars().count() == MD5_INTEGRITY_LENGTH {
-            Ok(md5_integrity)
-        } else {
-            Err(UploadError::Md5IntegrityInvalidLength)
-        }
     }
 
     /// Return the optimistic-concurrency version.

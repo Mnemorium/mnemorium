@@ -4,6 +4,8 @@ use std::pin::Pin;
 use chrono::NaiveDateTime;
 
 use crate::domain::alias::NumericID;
+use crate::domain::model::integrity_hash::IntegrityHash;
+use crate::domain::model::integrity_hash::SHA256_HEX_LENGTH;
 
 /// Command to write one chunk of an upload session.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -13,8 +15,8 @@ pub struct WriteUploadChunkCommand {
     chunk: Vec<u8>,
     /// Zero-based number of the chunk.
     chunk_number: u64,
-    /// MD5 digest of the chunk, supplied by the client.
-    content_md5: String,
+    /// Integrity hash of the chunk, supplied by the client.
+    content_digest: IntegrityHash<SHA256_HEX_LENGTH>,
     /// Start offset of the chunk declared by the client, from `Content-Range`.
     start: u64,
     /// Identifier of the upload session.
@@ -36,10 +38,10 @@ impl WriteUploadChunkCommand {
         self.chunk_number
     }
 
-    /// Return the MD5 digest of the chunk supplied by the client.
+    /// Return the integrity hash of the chunk supplied by the client.
     #[must_use]
-    pub fn content_md5(&self) -> &str {
-        &self.content_md5
+    pub fn content_digest(&self) -> &IntegrityHash<SHA256_HEX_LENGTH> {
+        &self.content_digest
     }
 
     /// Create a new write-upload-chunk command.
@@ -49,13 +51,13 @@ impl WriteUploadChunkCommand {
         chunk_number: u64,
         start: u64,
         chunk: Vec<u8>,
-        content_md5: String,
+        content_digest: IntegrityHash<SHA256_HEX_LENGTH>,
         user_id: NumericID,
     ) -> Self {
         Self {
             chunk,
             chunk_number,
-            content_md5,
+            content_digest,
             start,
             upload_id,
             user_id,
@@ -167,9 +169,9 @@ pub enum WriteUploadChunkError {
     /// The declared `Content-Range` start does not match the chunk's position.
     #[error("the chunk range does not match the chunk number")]
     InvalidChunkRange,
-    /// The declared `Content-MD5` digest is malformed or does not match the chunk.
-    #[error("the content md5 digest is invalid")]
-    InvalidMd5,
+    /// The declared `Content-Digest` digest does not match the chunk.
+    #[error("the content digest does not match the chunk")]
+    InvalidContentDigest,
     /// No upload session matches the requested identifier.
     #[error("no upload session matches this identifier")]
     NoSuchUpload,

@@ -3,8 +3,6 @@ use std::pin::Pin;
 use std::sync::Arc;
 
 use chrono::Utc;
-use md5::Digest as _;
-use md5::Md5;
 use tracing::error;
 
 use crate::application::port::write_upload_chunk::WriteUploadChunkCommand;
@@ -14,8 +12,8 @@ use crate::application::port::write_upload_chunk::WriteUploadChunkUseCase;
 use crate::application::use_case::upload_session::caller_file_id;
 use crate::application::use_case::upload_session::expiry;
 use crate::application::use_case::upload_session::received_bitmap;
-use crate::domain::model::upload::MD5_INTEGRITY_LENGTH;
 use crate::domain::port::asset_unit_of_work::AssetUnitOfWork;
+use crate::domain::port::content_hasher::ContentHasher;
 use crate::domain::port::error::RepositoryError;
 use crate::domain::port::file_storage::FileStorage;
 use crate::domain::port::unit_of_work::UnitOfWork as _;
@@ -27,32 +25,41 @@ use crate::domain::port::upload_repository::UploadRepository as _;
 const MAX_CAS_ATTEMPTS: u8 = 3;
 
 /// Use case implementation for writing one chunk of an upload session.
-pub struct WriteUploadChunk<F, S> {
+pub struct WriteUploadChunk<F, S, H> {
     /// Lifetime of an upload session, in seconds.
     expiry_seconds: u64,
     /// Storage adapter writing the chunk bytes.
     file_storage: Arc<S>,
+    /// Content hasher computing the chunk digest.
+    hasher: H,
     /// Factory opening the unit of work wrapping the chunk write.
     unit_of_work_factory: Arc<F>,
 }
 
-impl<F: UnitOfWorkFactory, S: FileStorage> WriteUploadChunk<F, S> {
+impl<F: UnitOfWorkFactory, S: FileStorage, H: ContentHasher> WriteUploadChunk<F, S, H> {
     /// Create a new use case.
     #[must_use]
-    pub fn new(unit_of_work_factory: Arc<F>, file_storage: Arc<S>, expiry_seconds: u64) -> Self {
+    pub fn new(
+        unit_of_work_factory: Arc<F>,
+        file_storage: Arc<S>,
+        hasher: H,
+        expiry_seconds: u64,
+    ) -> Self {
         Self {
             expiry_seconds,
             file_storage,
+            hasher,
             unit_of_work_factory,
         }
     }
 }
 
-impl<F, S> WriteUploadChunkUseCase for WriteUploadChunk<F, S>
+impl<F, S, H> WriteUploadChunkUseCase for WriteUploadChunk<F, S, H>
 where
     F: UnitOfWorkFactory,
     F::Uow: AssetUnitOfWork,
     S: FileStorage,
+    H: ContentHasher,
 {
     fn execute<'future>(
         &'future self,
@@ -67,6 +74,7 @@ where
         let expiry_seconds = self.expiry_seconds;
         let file_storage = Arc::clone(&self.file_storage);
         let unit_of_work_factory = Arc::clone(&self.unit_of_work_factory);
+        let hasher = &self.hasher;
 
         Box::pin(async move {
             let mut attempt = 0u8;
@@ -74,6 +82,7 @@ where
                 let result = execute_attempt(
                     &unit_of_work_factory,
                     &file_storage,
+                    hasher,
                     &command,
                     expiry_seconds,
                 )
@@ -121,9 +130,10 @@ enum AttemptError {
     clippy::single_call_fn,
     reason = "the retry loop body is extracted so the attempt owns its unit of work"
 )]
-async fn execute_attempt<F, S>(
+async fn execute_attempt<F, S, H>(
     unit_of_work_factory: &Arc<F>,
     file_storage: &Arc<S>,
+    hasher: &H,
     command: &WriteUploadChunkCommand,
     expiry_seconds: u64,
 ) -> Result<WriteUploadChunkResponse, AttemptError>
@@ -131,9 +141,8 @@ where
     F: UnitOfWorkFactory,
     F::Uow: AssetUnitOfWork,
     S: FileStorage,
+    H: ContentHasher,
 {
-    use std::fmt::Write as _;
-
     let mut unit_of_work = unit_of_work_factory
         .begin()
         .await
@@ -207,24 +216,18 @@ where
             return Err(AttemptError::Business(WriteUploadChunkError::InvalidChunk));
         }
 
-        let declared = command.content_md5();
-        let is_hex = declared.len() == MD5_INTEGRITY_LENGTH
-            && declared
-                .chars()
-                .all(|character| character.is_ascii_hexdigit());
-        if !is_hex {
-            return Err(AttemptError::Business(WriteUploadChunkError::InvalidMd5));
-        }
-
+        let declared = command.content_digest();
         // Recompute the digest of the received bytes and compare: a chunk whose
-        // digest does not match its `Content-MD5` header is rejected.
-        let digest = Md5::digest(command.chunk());
-        let mut computed = String::with_capacity(digest.len().saturating_mul(2));
-        for byte in digest {
-            let _result = write!(computed, "{byte:02x}");
-        }
-        if !computed.eq_ignore_ascii_case(declared) {
-            return Err(AttemptError::Business(WriteUploadChunkError::InvalidMd5));
+        // digest does not match its `Content-Digest` header is rejected.
+        let mut session = hasher.hasher();
+        session.update(command.chunk());
+        let computed = session.finalize().map_err(|error| {
+            AttemptError::Business(WriteUploadChunkError::Unknown(error.into()))
+        })?;
+        if computed != *declared {
+            return Err(AttemptError::Business(
+                WriteUploadChunkError::InvalidContentDigest,
+            ));
         }
 
         let offset = command
@@ -323,6 +326,7 @@ mod tests {
     use crate::application::port::write_upload_chunk::WriteUploadChunkCommand;
     use crate::application::port::write_upload_chunk::WriteUploadChunkError;
     use crate::application::port::write_upload_chunk::WriteUploadChunkUseCase as _;
+    use crate::domain::model::integrity_hash::IntegrityHash;
     use crate::domain::model::upload::ChunkBitmap;
     use crate::domain::model::upload::Upload;
     use crate::domain::port::error::RepositoryError;
@@ -331,17 +335,32 @@ mod tests {
     use crate::domain::port::file_storage::MockFileStorage;
     use crate::domain::port::mime_type_repository::MockMimeTypeRepository;
     use crate::domain::port::upload_repository::MockUploadRepository;
+    use crate::infrastructure::outbound::sha2::content_hasher::Sha2ContentHasher;
     use crate::test_helpers::TestUnitOfWorkFactory;
     use crate::test_helpers::asset_factory;
     use crate::test_helpers::asset_unit_of_work;
 
     use super::WriteUploadChunk;
 
-    const DIGEST: &str = "0123456789abcdef0123456789abcdef";
-    const CHUNK_MD5: &str = "81dc9bdb52d04dc20036dbd8313ed055";
-    const WRONG_CHUNK_MD5: &str = "ffffffffffffffffffffffffffffffff";
+    const DIGEST: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+    /// SHA-256 of `b"1234"`.
+    const CHUNK_DIGEST: &str = "03ac674216f3e15c761ee1a5e255f067953623c8b388b4459e13f978d7c846f4";
+    /// SHA-256 of `b"5678"`.
+    const CHUNK_DIGEST_5678: &str =
+        "f8638b979b2f4f793ddb6dbd197e0ee25a7a6ea32b0ae22f5e3c5d119d839e75";
+    const WRONG_CHUNK_DIGEST: &str =
+        "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff";
     const TTL_SECONDS: u64 = 3600;
     const CHUNK_SIZE: u64 = 4;
+
+    /// Build an [`IntegrityHash`] from a literal digest.
+    #[expect(
+        clippy::expect_used,
+        reason = "the test literals are valid 64-character hexadecimal digests"
+    )]
+    fn hash(digest: &str) -> IntegrityHash<64> {
+        IntegrityHash::try_new(digest.to_owned()).expect("the fixture digest is valid")
+    }
 
     fn timestamp() -> chrono::NaiveDateTime {
         chrono::Utc::now().naive_utc()
@@ -369,7 +388,7 @@ mod tests {
             file_size,
             "video/mp4".to_owned(),
             CHUNK_SIZE,
-            DIGEST.to_owned(),
+            hash(DIGEST),
             bitmap,
             is_finished,
             0,
@@ -414,10 +433,14 @@ mod tests {
         let factory = TestUnitOfWorkFactory {
             unit_of_works: Mutex::new(vec![unit_of_work]),
         };
-        let use_case =
-            WriteUploadChunk::new(Arc::new(factory), Arc::new(file_storage), TTL_SECONDS);
+        let use_case = WriteUploadChunk::new(
+            Arc::new(factory),
+            Arc::new(file_storage),
+            Sha2ContentHasher,
+            TTL_SECONDS,
+        );
         let command =
-            WriteUploadChunkCommand::new(5, 0, 0, b"1234".to_vec(), CHUNK_MD5.to_owned(), 3);
+            WriteUploadChunkCommand::new(5, 0, 0, b"1234".to_vec(), hash(CHUNK_DIGEST), 3);
 
         // Act
         let response = use_case.execute(command).await?;
@@ -456,10 +479,14 @@ mod tests {
         let factory = TestUnitOfWorkFactory {
             unit_of_works: Mutex::new(vec![unit_of_work]),
         };
-        let use_case =
-            WriteUploadChunk::new(Arc::new(factory), Arc::new(file_storage), TTL_SECONDS);
+        let use_case = WriteUploadChunk::new(
+            Arc::new(factory),
+            Arc::new(file_storage),
+            Sha2ContentHasher,
+            TTL_SECONDS,
+        );
         let command =
-            WriteUploadChunkCommand::new(5, 0, 0, b"1234".to_vec(), CHUNK_MD5.to_owned(), 3);
+            WriteUploadChunkCommand::new(5, 0, 0, b"1234".to_vec(), hash(CHUNK_DIGEST), 3);
 
         // Act
         let result = use_case.execute(command).await;
@@ -490,10 +517,11 @@ mod tests {
         let use_case = WriteUploadChunk::new(
             Arc::new(factory),
             Arc::new(MockFileStorage::new()),
+            Sha2ContentHasher,
             TTL_SECONDS,
         );
         let command =
-            WriteUploadChunkCommand::new(999, 0, 0, b"1234".to_vec(), CHUNK_MD5.to_owned(), 3);
+            WriteUploadChunkCommand::new(999, 0, 0, b"1234".to_vec(), hash(CHUNK_DIGEST), 3);
 
         // Act
         let result = use_case.execute(command).await;
@@ -520,10 +548,11 @@ mod tests {
         let use_case = WriteUploadChunk::new(
             Arc::new(factory),
             Arc::new(MockFileStorage::new()),
+            Sha2ContentHasher,
             TTL_SECONDS,
         );
         let command =
-            WriteUploadChunkCommand::new(5, 0, 0, b"1234".to_vec(), CHUNK_MD5.to_owned(), 99);
+            WriteUploadChunkCommand::new(5, 0, 0, b"1234".to_vec(), hash(CHUNK_DIGEST), 99);
 
         // Act
         let result = use_case.execute(command).await;
@@ -553,7 +582,7 @@ mod tests {
             8,
             "video/mp4".to_owned(),
             CHUNK_SIZE,
-            DIGEST.to_owned(),
+            hash(DIGEST),
             bitmap,
             false,
             0,
@@ -579,10 +608,14 @@ mod tests {
         let factory = TestUnitOfWorkFactory {
             unit_of_works: Mutex::new(vec![unit_of_work]),
         };
-        let use_case =
-            WriteUploadChunk::new(Arc::new(factory), Arc::new(file_storage), TTL_SECONDS);
+        let use_case = WriteUploadChunk::new(
+            Arc::new(factory),
+            Arc::new(file_storage),
+            Sha2ContentHasher,
+            TTL_SECONDS,
+        );
         let command =
-            WriteUploadChunkCommand::new(5, 1, 4, b"5678".to_vec(), CHUNK_MD5.to_owned(), 3);
+            WriteUploadChunkCommand::new(5, 1, 4, b"5678".to_vec(), hash(CHUNK_DIGEST_5678), 3);
 
         // Act
         let result = use_case.execute(command).await;
@@ -615,7 +648,7 @@ mod tests {
             8,
             "video/mp4".to_owned(),
             CHUNK_SIZE,
-            DIGEST.to_owned(),
+            hash(DIGEST),
             bitmap,
             false,
             0,
@@ -642,10 +675,11 @@ mod tests {
         let use_case = WriteUploadChunk::new(
             Arc::clone(&harness.factory),
             Arc::new(file_storage),
+            Sha2ContentHasher,
             TTL_SECONDS,
         );
         let command =
-            WriteUploadChunkCommand::new(5, 1, 4, b"5678".to_vec(), CHUNK_MD5.to_owned(), 3);
+            WriteUploadChunkCommand::new(5, 1, 4, b"5678".to_vec(), hash(CHUNK_DIGEST_5678), 3);
 
         // Act
         let result = use_case.execute(command).await;
@@ -674,10 +708,11 @@ mod tests {
         let use_case = WriteUploadChunk::new(
             Arc::new(factory),
             Arc::new(MockFileStorage::new()),
+            Sha2ContentHasher,
             TTL_SECONDS,
         );
         let command =
-            WriteUploadChunkCommand::new(5, 0, 0, b"1234".to_vec(), CHUNK_MD5.to_owned(), 3);
+            WriteUploadChunkCommand::new(5, 0, 0, b"1234".to_vec(), hash(CHUNK_DIGEST), 3);
 
         // Act
         let result = use_case.execute(command).await;
@@ -707,10 +742,11 @@ mod tests {
         let use_case = WriteUploadChunk::new(
             Arc::new(factory),
             Arc::new(MockFileStorage::new()),
+            Sha2ContentHasher,
             TTL_SECONDS,
         );
         let command =
-            WriteUploadChunkCommand::new(5, 5, 20, b"1234".to_vec(), CHUNK_MD5.to_owned(), 3);
+            WriteUploadChunkCommand::new(5, 5, 20, b"1234".to_vec(), hash(CHUNK_DIGEST), 3);
 
         // Act
         let result = use_case.execute(command).await;
@@ -740,11 +776,12 @@ mod tests {
         let use_case = WriteUploadChunk::new(
             Arc::new(factory),
             Arc::new(MockFileStorage::new()),
+            Sha2ContentHasher,
             TTL_SECONDS,
         );
         // Chunk `0` is persisted with a size of 4, so its start must be 0.
         let command =
-            WriteUploadChunkCommand::new(5, 0, 4, b"1234".to_vec(), CHUNK_MD5.to_owned(), 3);
+            WriteUploadChunkCommand::new(5, 0, 4, b"1234".to_vec(), hash(CHUNK_DIGEST), 3);
 
         // Act
         let result = use_case.execute(command).await;
@@ -773,10 +810,10 @@ mod tests {
         let use_case = WriteUploadChunk::new(
             Arc::new(factory),
             Arc::new(MockFileStorage::new()),
+            Sha2ContentHasher,
             TTL_SECONDS,
         );
-        let command =
-            WriteUploadChunkCommand::new(5, 0, 0, b"12".to_vec(), CHUNK_MD5.to_owned(), 3);
+        let command = WriteUploadChunkCommand::new(5, 0, 0, b"12".to_vec(), hash(CHUNK_DIGEST), 3);
 
         // Act
         let result = use_case.execute(command).await;
@@ -787,8 +824,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn write_upload_chunk_bad_content_md5_returns_invalid_md5() -> Result<(), Box<dyn Error>>
-    {
+    async fn write_upload_chunk_wrong_digest_returns_invalid_content_digest()
+    -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut uploads = MockUploadRepository::new();
         expect_upload(&mut uploads, upload(5, 3, 8, &[], false)?);
@@ -803,44 +840,20 @@ mod tests {
         let use_case = WriteUploadChunk::new(
             Arc::new(factory),
             Arc::new(MockFileStorage::new()),
-            TTL_SECONDS,
-        );
-        let command = WriteUploadChunkCommand::new(5, 0, 0, b"1234".to_vec(), "oops".to_owned(), 3);
-
-        // Act
-        let result = use_case.execute(command).await;
-
-        // Assert
-        assert!(matches!(result, Err(WriteUploadChunkError::InvalidMd5)));
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn write_upload_chunk_wrong_digest_returns_invalid_md5() -> Result<(), Box<dyn Error>> {
-        // Arrange
-        let mut uploads = MockUploadRepository::new();
-        expect_upload(&mut uploads, upload(5, 3, 8, &[], false)?);
-        let (unit_of_work, _committed, _rolled_back) = asset_unit_of_work(
-            uploads,
-            MockFileRepository::new(),
-            MockMimeTypeRepository::new(),
-        );
-        let factory = TestUnitOfWorkFactory {
-            unit_of_works: Mutex::new(vec![unit_of_work]),
-        };
-        let use_case = WriteUploadChunk::new(
-            Arc::new(factory),
-            Arc::new(MockFileStorage::new()),
+            Sha2ContentHasher,
             TTL_SECONDS,
         );
         let command =
-            WriteUploadChunkCommand::new(5, 0, 0, b"1234".to_vec(), WRONG_CHUNK_MD5.to_owned(), 3);
+            WriteUploadChunkCommand::new(5, 0, 0, b"1234".to_vec(), hash(WRONG_CHUNK_DIGEST), 3);
 
         // Act
         let result = use_case.execute(command).await;
 
         // Assert
-        assert!(matches!(result, Err(WriteUploadChunkError::InvalidMd5)));
+        assert!(matches!(
+            result,
+            Err(WriteUploadChunkError::InvalidContentDigest)
+        ));
         Ok(())
     }
 
@@ -862,10 +875,14 @@ mod tests {
         let factory = TestUnitOfWorkFactory {
             unit_of_works: Mutex::new(vec![unit_of_work]),
         };
-        let use_case =
-            WriteUploadChunk::new(Arc::new(factory), Arc::new(file_storage), TTL_SECONDS);
+        let use_case = WriteUploadChunk::new(
+            Arc::new(factory),
+            Arc::new(file_storage),
+            Sha2ContentHasher,
+            TTL_SECONDS,
+        );
         let command =
-            WriteUploadChunkCommand::new(5, 0, 0, b"1234".to_vec(), CHUNK_MD5.to_owned(), 3);
+            WriteUploadChunkCommand::new(5, 0, 0, b"1234".to_vec(), hash(CHUNK_DIGEST), 3);
 
         // Act
         let result = use_case.execute(command).await;
@@ -914,10 +931,14 @@ mod tests {
         let factory = TestUnitOfWorkFactory {
             unit_of_works: Mutex::new(vec![first_unit_of_work, second_unit_of_work]),
         };
-        let use_case =
-            WriteUploadChunk::new(Arc::new(factory), Arc::new(file_storage), TTL_SECONDS);
+        let use_case = WriteUploadChunk::new(
+            Arc::new(factory),
+            Arc::new(file_storage),
+            Sha2ContentHasher,
+            TTL_SECONDS,
+        );
         let command =
-            WriteUploadChunkCommand::new(5, 0, 0, b"1234".to_vec(), CHUNK_MD5.to_owned(), 3);
+            WriteUploadChunkCommand::new(5, 0, 0, b"1234".to_vec(), hash(CHUNK_DIGEST), 3);
 
         // Act
         let response = use_case.execute(command).await?;
@@ -961,10 +982,14 @@ mod tests {
         let factory = TestUnitOfWorkFactory {
             unit_of_works: Mutex::new(unit_of_works),
         };
-        let use_case =
-            WriteUploadChunk::new(Arc::new(factory), Arc::new(file_storage), TTL_SECONDS);
+        let use_case = WriteUploadChunk::new(
+            Arc::new(factory),
+            Arc::new(file_storage),
+            Sha2ContentHasher,
+            TTL_SECONDS,
+        );
         let command =
-            WriteUploadChunkCommand::new(5, 0, 0, b"1234".to_vec(), CHUNK_MD5.to_owned(), 3);
+            WriteUploadChunkCommand::new(5, 0, 0, b"1234".to_vec(), hash(CHUNK_DIGEST), 3);
 
         // Act
         let result = use_case.execute(command).await;
