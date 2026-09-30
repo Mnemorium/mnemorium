@@ -20,14 +20,13 @@ use handler::user::patch_user::__path_patch_user;
 use crate::domain::model::user::Role;
 use crate::infrastructure::inbound::rest::api_error::ErrorBody;
 use crate::infrastructure::inbound::rest::hal::Link;
-use crate::infrastructure::inbound::rest::handler::asset::get_upload::GetUploadResponse;
+use crate::infrastructure::inbound::rest::hal::SelfLinks;
 use crate::infrastructure::inbound::rest::handler::asset::links::UploadSessionLinks;
 use crate::infrastructure::inbound::rest::handler::asset::post_upload::PostUploadRequest;
 use crate::infrastructure::inbound::rest::handler::asset::post_upload::PostUploadResponse;
-use crate::infrastructure::inbound::rest::handler::asset::post_upload_complete::PostUploadCompleteRequest;
 use crate::infrastructure::inbound::rest::handler::asset::post_upload_complete::PostUploadCompleteResponse;
 use crate::infrastructure::inbound::rest::handler::asset::put_upload_chunk::PutUploadChunkRequest;
-use crate::infrastructure::inbound::rest::handler::asset::put_upload_chunk::PutUploadChunkResponse;
+use crate::infrastructure::inbound::rest::handler::asset::upload_session::UploadSessionResponse;
 use crate::infrastructure::inbound::rest::handler::identity::patch_credential::PatchCredentialRequest;
 use crate::infrastructure::inbound::rest::handler::identity::post_login::LoginRequest;
 use crate::infrastructure::inbound::rest::handler::identity::post_login::LoginResponse;
@@ -69,7 +68,7 @@ impl utoipa::Modify for SecurityAddon {
         (url = "http://0.0.0.0:4080/api/v1", description = "Local development server")
     ),
     paths(get_health, get_upload, patch_credential, post_login, post_register, post_upload, post_upload_complete, put_upload_chunk, get_me, get_user, get_user_list, patch_user),
-    components(schemas(ErrorBody, GetMeResponse, GetUploadResponse, GetUserResponse, Link, LoginRequest, LoginResponse, PatchCredentialRequest, PatchUserRequest, PatchUserResponse, PostUploadCompleteRequest, PostUploadCompleteResponse, PostUploadRequest, PostUploadResponse, PutUploadChunkRequest, PutUploadChunkResponse, RegisterRequest, RegisterResponse, Role, UploadSessionLinks)),
+    components(schemas(ErrorBody, GetMeResponse, GetUserResponse, Link, LoginRequest, LoginResponse, PatchCredentialRequest, PatchUserRequest, PatchUserResponse, PostUploadCompleteResponse, PostUploadRequest, PostUploadResponse, PutUploadChunkRequest, RegisterRequest, RegisterResponse, Role, SelfLinks, UploadSessionLinks, UploadSessionResponse)),
     tags(
         (name = "system", description = "System-level endpoints"),
         (name = "asset", description = "Asset bounded context"),

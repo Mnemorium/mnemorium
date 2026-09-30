@@ -2,8 +2,6 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
-use chrono::Duration;
-use chrono::NaiveDateTime;
 use chrono::Utc;
 use tracing::error;
 
@@ -11,6 +9,7 @@ use crate::application::port::complete_upload::CompleteUploadCommand;
 use crate::application::port::complete_upload::CompleteUploadError;
 use crate::application::port::complete_upload::CompleteUploadResponse;
 use crate::application::port::complete_upload::CompleteUploadUseCase;
+use crate::application::use_case::upload_session::expiry;
 use crate::domain::alias::NumericID;
 use crate::domain::model::file::File;
 use crate::domain::model::upload::Upload;
@@ -121,7 +120,9 @@ where
                 // caller's file for the same digest.
                 if upload.is_finished() {
                     return match existing {
-                        Ok(Some(file)) => Flow::Succeeded(CompleteUploadResponse::new(file.id())),
+                        Ok(Some(file)) => {
+                            Flow::Succeeded(CompleteUploadResponse::new(file.id(), true))
+                        }
                         Ok(None) => Flow::Failed(CompleteUploadError::Unknown(anyhow::anyhow!(
                             "the finished upload has no matching file"
                         ))),
@@ -150,7 +151,7 @@ where
                     if let Err(error) = verify_integrity(&file_storage, &upload).await {
                         return Flow::Failed(error);
                     }
-                    return Flow::Succeeded(CompleteUploadResponse::new(own_file.id()));
+                    return Flow::Succeeded(CompleteUploadResponse::new(own_file.id(), false));
                 }
 
                 if let Err(error) = verify_integrity(&file_storage, &upload).await {
@@ -186,7 +187,7 @@ where
                 let mut finished = upload;
                 finished.finish();
                 match unit_of_work.uploads().save(finished).await {
-                    Ok(Some(_)) => Flow::Succeeded(CompleteUploadResponse::new(file.id())),
+                    Ok(Some(_)) => Flow::Succeeded(CompleteUploadResponse::new(file.id(), true)),
                     Ok(None) => Flow::Failed(CompleteUploadError::NoSuchUpload),
                     Err(RepositoryError::ConcurrentModification) => {
                         Flow::Failed(CompleteUploadError::Unknown(anyhow::anyhow!(
@@ -339,19 +340,6 @@ where
         // it once a background reaper exists.
         error!(error = ?error, "failed to restore the promoted file of an incomplete upload");
     }
-}
-
-/// Return the instant at which an upload created at `created_at` expires.
-#[expect(
-    clippy::single_call_fn,
-    reason = "the derived expiry rule is named for readability"
-)]
-fn expiry(expiry_seconds: u64, created_at: NaiveDateTime) -> Result<NaiveDateTime, anyhow::Error> {
-    let seconds = i64::try_from(expiry_seconds)
-        .map_err(|error| anyhow::anyhow!(error).context("the expiry does not fit in i64"))?;
-    created_at
-        .checked_add_signed(Duration::seconds(seconds))
-        .ok_or_else(|| anyhow::anyhow!("the upload expiry overflows the created_at timestamp"))
 }
 
 #[cfg(test)]
@@ -511,6 +499,7 @@ mod tests {
 
         // Assert
         assert_eq!(response.file_id(), 0);
+        assert!(response.is_finished());
         assert!(harness.committed.load(Ordering::SeqCst));
         assert!(!harness.rolled_back.load(Ordering::SeqCst));
         Ok(())
@@ -786,6 +775,7 @@ mod tests {
 
         // Assert
         assert_eq!(response.file_id(), 11);
+        assert!(response.is_finished());
         Ok(())
     }
 
@@ -832,6 +822,7 @@ mod tests {
 
         // Assert
         assert_eq!(response.file_id(), 11);
+        assert!(!response.is_finished());
         assert!(harness.committed.load(Ordering::SeqCst));
         Ok(())
     }

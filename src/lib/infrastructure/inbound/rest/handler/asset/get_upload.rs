@@ -5,61 +5,16 @@ use axum::http::HeaderValue;
 use axum::http::header;
 use axum::response::IntoResponse as _;
 use axum::response::Response;
-use serde::{Deserialize, Serialize};
-use utoipa::ToSchema;
 
 use crate::application::port::get_upload::GetUploadCommand;
 use crate::application::port::get_upload::GetUploadError;
-use crate::application::port::get_upload::GetUploadResponse as GetUploadResponseData;
 use crate::domain::alias::NumericID;
 use crate::infrastructure::inbound::rest::api_error::ApiError;
 use crate::infrastructure::inbound::rest::api_error::ErrorBody;
 use crate::infrastructure::inbound::rest::app_state::AppState;
 use crate::infrastructure::inbound::rest::hal::HAL_CONTENT_TYPE;
-use crate::infrastructure::inbound::rest::handler::asset::links::UploadSessionLinks;
+use crate::infrastructure::inbound::rest::handler::asset::upload_session::UploadSessionResponse;
 use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
-
-/// State of an upload session returned by a successful lookup.
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
-#[non_exhaustive]
-pub struct GetUploadResponse {
-    /// One character per chunk, `1` when received and `0` otherwise.
-    #[schema(example = json!("110"))]
-    pub bitmap: String,
-    /// Date and time at which the upload session expires, as
-    /// `YYYY-MM-DDTHH:MM:SS`.
-    #[schema(example = json!("2026-01-01T12:00:00"))]
-    pub expires_at: String,
-    /// Unique identifier of the caller's file for the session digest, when one
-    /// exists.
-    pub file_id: Option<NumericID>,
-    /// Whether the upload session has been finished.
-    pub is_finished: bool,
-    /// Links to the upload session itself and its chunk endpoint.
-    #[serde(rename = "_links")]
-    pub links: UploadSessionLinks,
-    /// Total number of chunks the upload is split into.
-    pub total_chunks: usize,
-}
-
-impl GetUploadResponse {
-    /// Map the state of the upload session identified by `upload_id` onto its
-    /// HTTP representation.
-    #[must_use]
-    pub fn new(upload_id: NumericID, response: &GetUploadResponseData) -> Self {
-        Self {
-            bitmap: response.bitmap().to_owned(),
-            expires_at: response
-                .expires_at()
-                .format("%Y-%m-%dT%H:%M:%S")
-                .to_string(),
-            file_id: response.file_id(),
-            is_finished: response.is_finished(),
-            links: UploadSessionLinks::for_upload(upload_id),
-            total_chunks: response.total_chunks(),
-        }
-    }
-}
 
 /// Map a get-upload error to its API error.
 impl From<GetUploadError> for ApiError {
@@ -90,33 +45,38 @@ impl From<GetUploadError> for ApiError {
     responses(
         (
             status = OK,
-            body = GetUploadResponse,
+            body = UploadSessionResponse,
             content_type = "application/hal+json",
             description = "Upload session found"
         ),
         (
             status = BAD_REQUEST,
             body = ErrorBody,
+            content_type = "application/hal+json",
             description = "Invalid upload session identifier"
         ),
         (
             status = UNAUTHORIZED,
             body = ErrorBody,
+            content_type = "application/hal+json",
             description = "Missing or invalid credentials"
         ),
         (
             status = NOT_FOUND,
             body = ErrorBody,
+            content_type = "application/hal+json",
             description = "Unknown upload session"
         ),
         (
             status = GONE,
             body = ErrorBody,
+            content_type = "application/hal+json",
             description = "Upload session expired"
         ),
         (
             status = INTERNAL_SERVER_ERROR,
             body = ErrorBody,
+            content_type = "application/hal+json",
             description = "Unexpected error"
         ),
     ),
@@ -140,7 +100,14 @@ pub async fn get_upload(
         .get_upload()
         .execute(GetUploadCommand::new(upload_id, caller.user_id()))
         .await?;
-    let body = GetUploadResponse::new(upload_id, &response);
+    let body = UploadSessionResponse::new(
+        upload_id,
+        response.bitmap().to_owned(),
+        response.total_chunks(),
+        response.expires_at(),
+        response.is_finished(),
+        response.file_id(),
+    );
     let mut http_response = Json(body).into_response();
     http_response.headers_mut().insert(
         header::CONTENT_TYPE,
@@ -278,6 +245,7 @@ mod tests {
                         "href": "/api/v1/asset/upload/7/chunk/{chunk_number}",
                         "templated": true,
                     },
+                    "complete": { "href": "/api/v1/asset/upload/7/complete" },
                 },
             })
         );
@@ -328,6 +296,7 @@ mod tests {
                         "href": "/api/v1/asset/upload/7/chunk/{chunk_number}",
                         "templated": true,
                     },
+                    "complete": { "href": "/api/v1/asset/upload/7/complete" },
                 },
             })
         );

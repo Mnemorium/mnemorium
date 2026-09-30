@@ -40,3 +40,25 @@ impl Link {
         }
     }
 }
+
+/// The `self` link of a HAL representation.
+///
+/// Every resource representation carries the URI it was served from, so clients
+/// never construct or hardcode it themselves (`API-032`, `API-037`).
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[non_exhaustive]
+pub struct SelfLinks {
+    /// Link to the resource itself.
+    #[serde(rename = "self")]
+    pub self_link: Link,
+}
+
+impl SelfLinks {
+    /// Build the `self` link pointing at `href`.
+    #[must_use]
+    pub fn new(href: &str) -> Self {
+        Self {
+            self_link: Link::new(href),
+        }
+    }
+}

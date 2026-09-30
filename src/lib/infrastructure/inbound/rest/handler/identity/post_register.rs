@@ -105,26 +105,31 @@ impl From<RegisterUserError> for ApiError {
         (
             status = BAD_REQUEST,
             body = ErrorBody,
+            content_type = "application/hal+json",
             description = "Invalid payload"
         ),
         (
             status = UNAUTHORIZED,
             body = ErrorBody,
+            content_type = "application/hal+json",
             description = "Missing or invalid credentials"
         ),
         (
             status = FORBIDDEN,
             body = ErrorBody,
+            content_type = "application/hal+json",
             description = "Insufficient privileges to register the requested role"
         ),
         (
             status = CONFLICT,
             body = ErrorBody,
+            content_type = "application/hal+json",
             description = "Username or email is already taken"
         ),
         (
             status = INTERNAL_SERVER_ERROR,
             body = ErrorBody,
+            content_type = "application/hal+json",
             description = "Unexpected error"
         ),
     ),

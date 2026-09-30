@@ -1,6 +1,10 @@
 use axum::Json;
+use axum::extract::Path;
 use axum::extract::State;
-use axum::extract::rejection::JsonRejection;
+use axum::http::HeaderValue;
+use axum::http::header;
+use axum::response::IntoResponse as _;
+use axum::response::Response;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
@@ -11,15 +15,9 @@ use crate::domain::alias::NumericID;
 use crate::infrastructure::inbound::rest::api_error::ApiError;
 use crate::infrastructure::inbound::rest::api_error::ErrorBody;
 use crate::infrastructure::inbound::rest::app_state::AppState;
+use crate::infrastructure::inbound::rest::hal::HAL_CONTENT_TYPE;
+use crate::infrastructure::inbound::rest::hal::SelfLinks;
 use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
-
-/// Payload completing an upload session.
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
-#[non_exhaustive]
-pub struct PostUploadCompleteRequest {
-    /// Unique identifier of the upload session to complete.
-    pub upload_id: NumericID,
-}
 
 /// File finalized by a successful completion.
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
@@ -27,16 +25,24 @@ pub struct PostUploadCompleteRequest {
 pub struct PostUploadCompleteResponse {
     /// Unique identifier of the stored file.
     pub file_id: NumericID,
+    /// Whether the upload session has been finished.
+    pub is_finished: bool,
+    /// Link to the completed upload session.
+    #[serde(rename = "_links")]
+    pub links: SelfLinks,
 }
 
-// TODO(file-link): add a `file` link to this response, and to `get_upload`, once
-// a file endpoint exists to address the stored file.
+// TODO(file-link): add a `file` link to this response, and to the upload-session
+// responses, once a file endpoint exists to address the stored file.
 
-/// Map the complete-upload response onto its HTTP representation.
-impl From<CompleteUploadResponseData> for PostUploadCompleteResponse {
-    fn from(response: CompleteUploadResponseData) -> Self {
+impl PostUploadCompleteResponse {
+    /// Map the completed upload onto its HTTP representation.
+    #[must_use]
+    pub fn new(upload_id: NumericID, response: &CompleteUploadResponseData) -> Self {
         Self {
             file_id: response.file_id(),
+            is_finished: response.is_finished(),
+            links: SelfLinks::new(&format!("/api/v1/asset/upload/{upload_id}")),
         }
     }
 }
@@ -58,9 +64,10 @@ impl From<CompleteUploadError> for ApiError {
 
 /// Complete an upload session.
 ///
-/// The staged content's MD5 digest is recomputed and verified against the
-/// digest declared when the upload was initialized. When the caller already
-/// owns a file with that digest, no second copy is stored: the existing file's
+/// The upload identifier is carried by the path; there is no request body. The
+/// staged content's MD5 digest is recomputed and verified against the digest
+/// declared when the upload was initialized. When the caller already owns a
+/// file with that digest, no second copy is stored: the existing file's
 /// identifier is returned and the upload session is left unfinished. Otherwise
 /// the staged file is promoted, its record registered, and the upload marked
 /// finished. Completion is idempotent: completing an already finished upload
@@ -68,46 +75,52 @@ impl From<CompleteUploadError> for ApiError {
 #[utoipa::path(
     post,
     operation_id = "post_upload_complete",
-    path = "/asset/upload/complete",
+    path = "/asset/upload/{upload_id}/complete",
     tag = "asset",
-    request_body(
-        content_type = "application/json",
-        content = PostUploadCompleteRequest,
+    params(
+        ("upload_id" = NumericID, Path, description = "Identifier of the upload session"),
     ),
     responses(
         (
             status = OK,
             body = PostUploadCompleteResponse,
+            content_type = "application/hal+json",
             description = "Upload completed"
         ),
         (
             status = BAD_REQUEST,
             body = ErrorBody,
-            description = "Invalid payload, incomplete upload or integrity mismatch"
+            content_type = "application/hal+json",
+            description = "Invalid identifier, incomplete upload or integrity mismatch"
         ),
         (
             status = UNAUTHORIZED,
             body = ErrorBody,
+            content_type = "application/hal+json",
             description = "Missing or invalid credentials"
         ),
         (
             status = NOT_FOUND,
             body = ErrorBody,
+            content_type = "application/hal+json",
             description = "Unknown upload session"
         ),
         (
             status = CONFLICT,
             body = ErrorBody,
+            content_type = "application/hal+json",
             description = "The digest is already owned by another user"
         ),
         (
             status = GONE,
             body = ErrorBody,
+            content_type = "application/hal+json",
             description = "Upload session expired"
         ),
         (
             status = INTERNAL_SERVER_ERROR,
             body = ErrorBody,
+            content_type = "application/hal+json",
             description = "Unexpected error"
         ),
     ),
@@ -117,20 +130,27 @@ impl From<CompleteUploadError> for ApiError {
     summary = "Complete an upload session"
 )]
 pub async fn post_upload_complete(
+    Path(upload_id_value): Path<String>,
     State(state): State<AppState>,
     caller: AuthenticatedUser,
-    payload: Result<Json<PostUploadCompleteRequest>, JsonRejection>,
-) -> Result<Json<PostUploadCompleteResponse>, ApiError> {
-    let Json(request) = payload.map_err(ApiError::from)?;
+) -> Result<Response, ApiError> {
+    let Ok(upload_id) = upload_id_value.parse::<NumericID>() else {
+        return Err(ApiError::BadRequest(
+            "invalid upload session identifier".to_owned(),
+        ));
+    };
     let response = state
         .asset_use_case_factory()
         .complete_upload()
-        .execute(CompleteUploadCommand::new(
-            request.upload_id,
-            caller.user_id(),
-        ))
+        .execute(CompleteUploadCommand::new(upload_id, caller.user_id()))
         .await?;
-    Ok(Json(PostUploadCompleteResponse::from(response)))
+    let body = PostUploadCompleteResponse::new(upload_id, &response);
+    let mut http_response = Json(body).into_response();
+    http_response.headers_mut().insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static(HAL_CONTENT_TYPE),
+    );
+    Ok(http_response)
 }
 
 #[cfg(test)]
@@ -161,12 +181,13 @@ mod tests {
     use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
     use crate::test_helpers::app_state_with_asset;
 
-    /// Send `body` through the endpoint router on behalf of `caller_id`,
-    /// injecting the caller the way the auth middleware does.
+    /// Send a completion POST for `upload_id` through the endpoint router on
+    /// behalf of `caller_id`, injecting the caller the way the auth middleware
+    /// does. The endpoint carries no request body.
     async fn send(
         use_case: MockCompleteUploadUseCase,
         caller_id: NumericID,
-        body: Body,
+        upload_id: &str,
     ) -> Result<Response, Box<dyn Error>> {
         let mut factory = MockAssetUseCaseFactory::new();
         factory
@@ -176,15 +197,17 @@ mod tests {
 
         let mut request = Request::builder()
             .method("POST")
-            .uri("/api/v1/asset/upload/complete")
-            .header(header::CONTENT_TYPE, "application/json")
-            .body(body)?;
+            .uri(format!("/api/v1/asset/upload/{upload_id}/complete"))
+            .body(Body::empty())?;
         request
             .extensions_mut()
             .insert(AuthenticatedUser::from(caller_id));
 
         let router = axum::Router::new()
-            .route("/api/v1/asset/upload/complete", post(post_upload_complete))
+            .route(
+                "/api/v1/asset/upload/{upload_id}/complete",
+                post(post_upload_complete),
+            )
             .with_state(app_state_with_asset(Arc::new(factory))?);
         Ok(router.oneshot(request).await?)
     }
@@ -205,10 +228,6 @@ mod tests {
             .return_once(move |_| Box::pin(async { Err(error) }));
     }
 
-    fn request_body() -> Result<Body, Box<dyn Error>> {
-        Ok(Body::from(serde_json::to_vec(&json!({ "upload_id": 7 }))?))
-    }
-
     #[tokio::test]
     async fn post_upload_complete_valid_request_returns_file_id() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -218,14 +237,30 @@ mod tests {
             .expect_execute()
             .times(1)
             .with(eq(expected_command))
-            .return_once(|_| Box::pin(async { Ok(CompleteUploadResponse::new(11)) }));
+            .return_once(|_| Box::pin(async { Ok(CompleteUploadResponse::new(11, true)) }));
 
         // Act
-        let (status, payload) = into_parts(send(use_case, 3, request_body()?).await?).await?;
+        let response = send(use_case, 3, "7").await?;
+        assert_eq!(
+            response
+                .headers()
+                .get(header::CONTENT_TYPE)
+                .and_then(|value| value.to_str().ok()),
+            Some("application/hal+json"),
+            "the response must declare the HAL media type"
+        );
+        let (status, payload) = into_parts(response).await?;
 
         // Assert
         assert_eq!(status, StatusCode::OK);
-        assert_eq!(payload, json!({ "file_id": 11i64 }));
+        assert_eq!(
+            payload,
+            json!({
+                "file_id": 11i64,
+                "is_finished": true,
+                "_links": { "self": { "href": "/api/v1/asset/upload/7" } },
+            })
+        );
         Ok(())
     }
 
@@ -236,7 +271,7 @@ mod tests {
         expect_error(&mut use_case, CompleteUploadError::Incomplete);
 
         // Act
-        let (status, payload) = into_parts(send(use_case, 3, request_body()?).await?).await?;
+        let (status, payload) = into_parts(send(use_case, 3, "7").await?).await?;
 
         // Assert
         assert_eq!(status, StatusCode::BAD_REQUEST);
@@ -255,7 +290,7 @@ mod tests {
         expect_error(&mut use_case, CompleteUploadError::IntegrityMismatch);
 
         // Act
-        let (status, payload) = into_parts(send(use_case, 3, request_body()?).await?).await?;
+        let (status, payload) = into_parts(send(use_case, 3, "7").await?).await?;
 
         // Assert
         assert_eq!(status, StatusCode::BAD_REQUEST);
@@ -273,7 +308,7 @@ mod tests {
         expect_error(&mut use_case, CompleteUploadError::NoSuchUpload);
 
         // Act
-        let (status, payload) = into_parts(send(use_case, 3, request_body()?).await?).await?;
+        let (status, payload) = into_parts(send(use_case, 3, "7").await?).await?;
 
         // Assert
         assert_eq!(status, StatusCode::NOT_FOUND);
@@ -292,7 +327,7 @@ mod tests {
         expect_error(&mut use_case, CompleteUploadError::Conflict);
 
         // Act
-        let (status, payload) = into_parts(send(use_case, 3, request_body()?).await?).await?;
+        let (status, payload) = into_parts(send(use_case, 3, "7").await?).await?;
 
         // Assert
         assert_eq!(status, StatusCode::CONFLICT);
@@ -310,7 +345,7 @@ mod tests {
         expect_error(&mut use_case, CompleteUploadError::Expired);
 
         // Act
-        let (status, payload) = into_parts(send(use_case, 3, request_body()?).await?).await?;
+        let (status, payload) = into_parts(send(use_case, 3, "7").await?).await?;
 
         // Assert
         assert_eq!(status, StatusCode::GONE);
@@ -322,18 +357,20 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn post_upload_complete_invalid_payload_returns_bad_request() -> Result<(), Box<dyn Error>>
-    {
+    async fn post_upload_complete_invalid_identifier_returns_bad_request()
+    -> Result<(), Box<dyn Error>> {
         // Arrange
         let use_case = MockCompleteUploadUseCase::new();
 
         // Act
-        let (status, payload) =
-            into_parts(send(use_case, 3, Body::from("not-json")).await?).await?;
+        let (status, payload) = into_parts(send(use_case, 3, "abc").await?).await?;
 
         // Assert
         assert_eq!(status, StatusCode::BAD_REQUEST);
-        assert!(payload.get("error").is_some());
+        assert_eq!(
+            payload,
+            json!({ "error": "invalid upload session identifier" })
+        );
         Ok(())
     }
 
@@ -348,7 +385,7 @@ mod tests {
         );
 
         // Act
-        let (status, payload) = into_parts(send(use_case, 3, request_body()?).await?).await?;
+        let (status, payload) = into_parts(send(use_case, 3, "7").await?).await?;
 
         // Assert
         assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);

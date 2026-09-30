@@ -11,12 +11,15 @@ use crate::infrastructure::inbound::rest::hal::Link;
 ///
 /// The `self` link addresses the session itself; the templated `chunk` link
 /// lets clients discover where to store a chunk instead of building the URL
-/// from the identifiers (`API-037`).
+/// from the identifiers (`API-037`); the `complete` link lets clients discover
+/// how to finish the session.
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 #[non_exhaustive]
 pub struct UploadSessionLinks {
     /// URI template for storing one chunk of the upload session.
     pub chunk: Link,
+    /// Link completing the upload session.
+    pub complete: Link,
     /// Link to the upload-session resource itself.
     #[serde(rename = "self")]
     pub self_link: Link,
@@ -30,6 +33,7 @@ impl UploadSessionLinks {
             chunk: Link::templated(&format!(
                 "/api/v1/asset/upload/{upload_id}/chunk/{{chunk_number}}"
             )),
+            complete: Link::new(&format!("/api/v1/asset/upload/{upload_id}/complete")),
             self_link: Link::new(&format!("/api/v1/asset/upload/{upload_id}")),
         }
     }

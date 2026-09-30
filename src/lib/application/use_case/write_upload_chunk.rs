@@ -2,7 +2,6 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
-use chrono::Duration;
 use chrono::Utc;
 use md5::Digest as _;
 use md5::Md5;
@@ -12,6 +11,9 @@ use crate::application::port::write_upload_chunk::WriteUploadChunkCommand;
 use crate::application::port::write_upload_chunk::WriteUploadChunkError;
 use crate::application::port::write_upload_chunk::WriteUploadChunkResponse;
 use crate::application::port::write_upload_chunk::WriteUploadChunkUseCase;
+use crate::application::use_case::upload_session::caller_file_id;
+use crate::application::use_case::upload_session::expiry;
+use crate::application::use_case::upload_session::received_bitmap;
 use crate::domain::model::upload::MD5_INTEGRITY_LENGTH;
 use crate::domain::port::asset_unit_of_work::AssetUnitOfWork;
 use crate::domain::port::error::RepositoryError;
@@ -155,19 +157,8 @@ where
             return Err(AttemptError::Business(WriteUploadChunkError::NoSuchUpload));
         }
 
-        let seconds = i64::try_from(expiry_seconds).map_err(|error| {
-            AttemptError::Business(WriteUploadChunkError::Unknown(
-                anyhow::anyhow!(error).context("the expiry does not fit in i64"),
-            ))
-        })?;
-        let expires_at = upload
-            .created_at()
-            .checked_add_signed(Duration::seconds(seconds))
-            .ok_or_else(|| {
-                AttemptError::Business(WriteUploadChunkError::Unknown(anyhow::anyhow!(
-                    "the upload expiry overflows the created_at timestamp"
-                )))
-            })?;
+        let expires_at = expiry(expiry_seconds, upload.created_at())
+            .map_err(|error| AttemptError::Business(WriteUploadChunkError::Unknown(error)))?;
         if !upload.is_finished() && Utc::now().naive_utc() > expires_at {
             // TODO(reaper): move the expiry cleanup to a background task; this
             // lazy delete keeps the row and the staged file only until the next
@@ -262,8 +253,25 @@ where
             AttemptError::Business(WriteUploadChunkError::Unknown(error.into()))
         })?;
 
-        match unit_of_work.uploads().save(updated).await {
-            Ok(Some(_)) => Ok(WriteUploadChunkResponse::new(true)),
+        let save_result = unit_of_work.uploads().save(updated).await;
+        match save_result {
+            Ok(Some(saved)) => {
+                let bitmap = received_bitmap(&saved);
+                let chunk_count = saved.total_chunks();
+                let is_finished = saved.is_finished();
+                let file_id = caller_file_id(&mut unit_of_work, &saved, command.user_id())
+                    .await
+                    .map_err(|error| {
+                        AttemptError::Business(WriteUploadChunkError::Unknown(error.into()))
+                    })?;
+                Ok(WriteUploadChunkResponse::new(
+                    bitmap,
+                    expires_at,
+                    file_id,
+                    is_finished,
+                    chunk_count,
+                ))
+            }
             Ok(None) => Err(AttemptError::Business(WriteUploadChunkError::NoSuchUpload)),
             Err(RepositoryError::ConcurrentModification) => {
                 Err(AttemptError::ConcurrentModification)
@@ -386,6 +394,11 @@ mod tests {
             .expect_save()
             .times(1)
             .returning(|upload| Box::pin(async move { Ok(Some(upload)) }));
+        let mut file_repository = MockFileRepository::new();
+        file_repository
+            .expect_search()
+            .times(1)
+            .returning(|_| Box::pin(async { Ok(Vec::new()) }));
         let mut file_storage = MockFileStorage::new();
         file_storage
             .expect_add_chunk()
@@ -396,11 +409,8 @@ mod tests {
                     Ok(())
                 })
             });
-        let (unit_of_work, committed, rolled_back) = asset_unit_of_work(
-            uploads,
-            MockFileRepository::new(),
-            MockMimeTypeRepository::new(),
-        );
+        let (unit_of_work, committed, rolled_back) =
+            asset_unit_of_work(uploads, file_repository, MockMimeTypeRepository::new());
         let factory = TestUnitOfWorkFactory {
             unit_of_works: Mutex::new(vec![unit_of_work]),
         };
@@ -413,7 +423,11 @@ mod tests {
         let response = use_case.execute(command).await?;
 
         // Assert
-        assert!(response.received());
+        assert_eq!(response.bitmap(), "10");
+        assert_eq!(response.total_chunks(), 2);
+        assert!(!response.is_finished());
+        assert_eq!(response.file_id(), None);
+        assert!(response.expires_at() > timestamp());
         assert!(committed.load(Ordering::SeqCst));
         assert!(!rolled_back.load(Ordering::SeqCst));
         Ok(())
@@ -887,9 +901,14 @@ mod tests {
             MockFileRepository::new(),
             MockMimeTypeRepository::new(),
         );
+        let mut second_file_repository = MockFileRepository::new();
+        second_file_repository
+            .expect_search()
+            .times(1)
+            .returning(|_| Box::pin(async { Ok(Vec::new()) }));
         let (second_unit_of_work, second_committed, _second_rolled_back) = asset_unit_of_work(
             second_uploads,
-            MockFileRepository::new(),
+            second_file_repository,
             MockMimeTypeRepository::new(),
         );
         let factory = TestUnitOfWorkFactory {
@@ -904,7 +923,10 @@ mod tests {
         let response = use_case.execute(command).await?;
 
         // Assert
-        assert!(response.received());
+        assert_eq!(response.bitmap(), "10");
+        assert_eq!(response.total_chunks(), 2);
+        assert!(!response.is_finished());
+        assert_eq!(response.file_id(), None);
         assert!(first_rolled_back.load(Ordering::SeqCst));
         assert!(!first_committed.load(Ordering::SeqCst));
         assert!(second_committed.load(Ordering::SeqCst));

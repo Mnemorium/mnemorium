@@ -113,26 +113,31 @@ impl From<BeginUploadError> for ApiError {
         (
             status = BAD_REQUEST,
             body = ErrorBody,
+            content_type = "application/hal+json",
             description = "Invalid payload"
         ),
         (
             status = UNAUTHORIZED,
             body = ErrorBody,
+            content_type = "application/hal+json",
             description = "Missing or invalid credentials"
         ),
         (
             status = PAYLOAD_TOO_LARGE,
             body = ErrorBody,
+            content_type = "application/hal+json",
             description = "The declared file size exceeds the maximum allowed size"
         ),
         (
             status = UNSUPPORTED_MEDIA_TYPE,
             body = ErrorBody,
+            content_type = "application/hal+json",
             description = "The declared content type is not a supported media type"
         ),
         (
             status = INTERNAL_SERVER_ERROR,
             body = ErrorBody,
+            content_type = "application/hal+json",
             description = "Unexpected error"
         ),
     ),
@@ -315,6 +320,7 @@ mod tests {
                         "href": "/api/v1/asset/upload/7/chunk/{chunk_number}",
                         "templated": true,
                     },
+                    "complete": { "href": "/api/v1/asset/upload/7/complete" },
                 },
             })
         );

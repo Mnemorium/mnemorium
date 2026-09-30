@@ -96,26 +96,31 @@ impl From<UpdateUserError> for ApiError {
         (
             status = BAD_REQUEST,
             body = ErrorBody,
+            content_type = "application/hal+json",
             description = "Invalid user identifier or payload"
         ),
         (
             status = UNAUTHORIZED,
             body = ErrorBody,
+            content_type = "application/hal+json",
             description = "Missing or invalid credentials"
         ),
         (
             status = FORBIDDEN,
             body = ErrorBody,
+            content_type = "application/hal+json",
             description = "Caller is not an administrator, the target cannot be modified, or the role change is not allowed"
         ),
         (
             status = NOT_FOUND,
             body = ErrorBody,
+            content_type = "application/hal+json",
             description = "Unknown user"
         ),
         (
             status = INTERNAL_SERVER_ERROR,
             body = ErrorBody,
+            content_type = "application/hal+json",
             description = "Unexpected error"
         ),
     ),

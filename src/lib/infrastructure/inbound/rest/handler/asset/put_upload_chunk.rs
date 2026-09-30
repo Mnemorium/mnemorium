@@ -3,17 +3,21 @@ use axum::body::Bytes;
 use axum::extract::Path;
 use axum::extract::State;
 use axum::http::HeaderMap;
+use axum::http::HeaderValue;
 use axum::http::header;
+use axum::response::IntoResponse as _;
+use axum::response::Response;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
 use crate::application::port::write_upload_chunk::WriteUploadChunkCommand;
 use crate::application::port::write_upload_chunk::WriteUploadChunkError;
-use crate::application::port::write_upload_chunk::WriteUploadChunkResponse as WriteUploadChunkResponseData;
 use crate::domain::alias::NumericID;
 use crate::infrastructure::inbound::rest::api_error::ApiError;
 use crate::infrastructure::inbound::rest::api_error::ErrorBody;
 use crate::infrastructure::inbound::rest::app_state::AppState;
+use crate::infrastructure::inbound::rest::hal::HAL_CONTENT_TYPE;
+use crate::infrastructure::inbound::rest::handler::asset::upload_session::UploadSessionResponse;
 use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 
 /// Required length of the `Content-MD5` header, in characters.
@@ -31,23 +35,6 @@ pub struct PutUploadChunkRequest(
     /// Raw bytes of the chunk.
     pub Vec<u8>,
 );
-
-/// Response of a successfully stored chunk.
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
-#[non_exhaustive]
-pub struct PutUploadChunkResponse {
-    /// Whether the chunk has been received.
-    pub received: bool,
-}
-
-/// Map the write-upload-chunk response onto its HTTP representation.
-impl From<WriteUploadChunkResponseData> for PutUploadChunkResponse {
-    fn from(response: WriteUploadChunkResponseData) -> Self {
-        Self {
-            received: response.received(),
-        }
-    }
-}
 
 /// Map a write-upload-chunk error to its API error.
 impl From<WriteUploadChunkError> for ApiError {
@@ -92,37 +79,44 @@ impl From<WriteUploadChunkError> for ApiError {
     responses(
         (
             status = OK,
-            body = PutUploadChunkResponse,
+            body = UploadSessionResponse,
+            content_type = "application/hal+json",
             description = "Chunk stored"
         ),
         (
             status = BAD_REQUEST,
             body = ErrorBody,
+            content_type = "application/hal+json",
             description = "Invalid identifier, chunk number, range, digest or body"
         ),
         (
             status = UNAUTHORIZED,
             body = ErrorBody,
+            content_type = "application/hal+json",
             description = "Missing or invalid credentials"
         ),
         (
             status = NOT_FOUND,
             body = ErrorBody,
+            content_type = "application/hal+json",
             description = "Unknown upload session"
         ),
         (
             status = CONFLICT,
             body = ErrorBody,
+            content_type = "application/hal+json",
             description = "Upload session already finished"
         ),
         (
             status = GONE,
             body = ErrorBody,
+            content_type = "application/hal+json",
             description = "Upload session expired"
         ),
         (
             status = INTERNAL_SERVER_ERROR,
             body = ErrorBody,
+            content_type = "application/hal+json",
             description = "Unexpected error"
         ),
     ),
@@ -137,7 +131,7 @@ pub async fn put_upload_chunk(
     Path((upload_id_value, chunk_number_value)): Path<(String, String)>,
     headers: HeaderMap,
     body: Bytes,
-) -> Result<Json<PutUploadChunkResponse>, ApiError> {
+) -> Result<Response, ApiError> {
     let Ok(upload_id) = upload_id_value.parse::<NumericID>() else {
         return Err(ApiError::BadRequest(
             "invalid upload session identifier".to_owned(),
@@ -170,7 +164,20 @@ pub async fn put_upload_chunk(
             caller.user_id(),
         ))
         .await?;
-    Ok(Json(PutUploadChunkResponse::from(response)))
+    let session = UploadSessionResponse::new(
+        upload_id,
+        response.bitmap().to_owned(),
+        response.total_chunks(),
+        response.expires_at(),
+        response.is_finished(),
+        response.file_id(),
+    );
+    let mut http_response = Json(session).into_response();
+    http_response.headers_mut().insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static(HAL_CONTENT_TYPE),
+    );
+    Ok(http_response)
 }
 
 /// Parse the `Content-Range` header.
@@ -246,6 +253,8 @@ mod tests {
     use axum::http::header;
     use axum::response::Response;
     use axum::routing::put;
+    use chrono::NaiveDate;
+    use chrono::NaiveDateTime;
     use md5::Digest as _;
     use md5::Md5;
     use mockall::predicate::eq;
@@ -336,6 +345,18 @@ mod tests {
             .return_once(move |_| Box::pin(async { Err(error) }));
     }
 
+    /// Fixed expiry used by the stubbed success response.
+    #[expect(
+        clippy::single_call_fn,
+        reason = "the fixture is named for readability"
+    )]
+    fn expiry() -> NaiveDateTime {
+        NaiveDate::from_ymd_opt(2026, 1, 1)
+            .unwrap_or_default()
+            .and_hms_opt(12, 0, 0)
+            .unwrap_or_default()
+    }
+
     #[tokio::test]
     async fn put_upload_chunk_valid_request_stores_chunk() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -346,25 +367,58 @@ mod tests {
             .expect_execute()
             .times(1)
             .with(eq(expected_command))
-            .return_once(|_| Box::pin(async { Ok(WriteUploadChunkResponse::new(true)) }));
+            .return_once(move |_| {
+                Box::pin(async move {
+                    Ok(WriteUploadChunkResponse::new(
+                        "100".to_owned(),
+                        expiry(),
+                        None,
+                        false,
+                        3,
+                    ))
+                })
+            });
 
         // Act
-        let (status, payload) = into_parts(
-            send(
-                use_case,
-                3,
-                "/api/v1/asset/upload/7/chunk/0",
-                Some(RANGE_CHUNK_ZERO),
-                Some(&chunk_md5()),
-                Body::from(CHUNK),
-            )
-            .await?,
+        let response = send(
+            use_case,
+            3,
+            "/api/v1/asset/upload/7/chunk/0",
+            Some(RANGE_CHUNK_ZERO),
+            Some(&chunk_md5()),
+            Body::from(CHUNK),
         )
         .await?;
+        assert_eq!(
+            response
+                .headers()
+                .get(header::CONTENT_TYPE)
+                .and_then(|value| value.to_str().ok()),
+            Some("application/hal+json"),
+            "the response must declare the HAL media type"
+        );
+        let (status, payload) = into_parts(response).await?;
 
         // Assert
         assert_eq!(status, StatusCode::OK);
-        assert_eq!(payload, json!({ "received": true }));
+        assert_eq!(
+            payload,
+            json!({
+                "bitmap": "100",
+                "total_chunks": 3usize,
+                "expires_at": "2026-01-01T12:00:00",
+                "is_finished": false,
+                "file_id": null,
+                "_links": {
+                    "self": { "href": "/api/v1/asset/upload/7" },
+                    "chunk": {
+                        "href": "/api/v1/asset/upload/7/chunk/{chunk_number}",
+                        "templated": true,
+                    },
+                    "complete": { "href": "/api/v1/asset/upload/7/complete" },
+                },
+            })
+        );
         Ok(())
     }
 

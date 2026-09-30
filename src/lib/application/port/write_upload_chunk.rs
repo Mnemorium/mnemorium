@@ -1,6 +1,8 @@
 use std::future::Future;
 use std::pin::Pin;
 
+use chrono::NaiveDateTime;
+
 use crate::domain::alias::NumericID;
 
 /// Command to write one chunk of an upload session.
@@ -80,24 +82,69 @@ impl WriteUploadChunkCommand {
 }
 
 /// Response of a successfully written chunk.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct WriteUploadChunkResponse {
-    /// Whether the chunk has been received.
-    received: bool,
+    /// One character per chunk, `1` when received and `0` otherwise.
+    bitmap: String,
+    /// Date and time at which the upload session expires.
+    expires_at: NaiveDateTime,
+    /// Unique identifier of the caller's file for the session digest, when one
+    /// exists.
+    file_id: Option<NumericID>,
+    /// Whether the upload session has been finished.
+    is_finished: bool,
+    /// Total number of chunks the upload is split into.
+    total_chunks: usize,
 }
 
 impl WriteUploadChunkResponse {
-    /// Create a new write-upload-chunk response.
+    /// Return the per-chunk received bitmap.
     #[must_use]
-    pub fn new(received: bool) -> Self {
-        Self { received }
+    pub fn bitmap(&self) -> &str {
+        &self.bitmap
     }
 
-    /// Return whether the chunk has been received.
+    /// Return the date and time at which the upload session expires.
     #[must_use]
-    pub fn received(&self) -> bool {
-        self.received
+    pub fn expires_at(&self) -> NaiveDateTime {
+        self.expires_at
+    }
+
+    /// Return the unique identifier of the caller's file, if any.
+    #[must_use]
+    pub fn file_id(&self) -> Option<NumericID> {
+        self.file_id
+    }
+
+    /// Return whether the upload session has been finished.
+    #[must_use]
+    pub fn is_finished(&self) -> bool {
+        self.is_finished
+    }
+
+    /// Create a new write-upload-chunk response.
+    #[must_use]
+    pub fn new(
+        bitmap: String,
+        expires_at: NaiveDateTime,
+        file_id: Option<NumericID>,
+        is_finished: bool,
+        total_chunks: usize,
+    ) -> Self {
+        Self {
+            bitmap,
+            expires_at,
+            file_id,
+            is_finished,
+            total_chunks,
+        }
+    }
+
+    /// Return the total number of chunks the upload is split into.
+    #[must_use]
+    pub fn total_chunks(&self) -> usize {
+        self.total_chunks
     }
 }
 

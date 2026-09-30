@@ -3,6 +3,7 @@ pub mod links;
 pub mod post_upload;
 pub mod post_upload_complete;
 pub mod put_upload_chunk;
+pub mod upload_session;
 
 use axum::Router;
 use axum::extract::DefaultBodyLimit;
@@ -42,7 +43,7 @@ pub fn asset_routes(state: &AppState) -> Router {
 
     let upload: Router<AppState> = Router::new()
         .route("/upload", post(post_upload))
-        .route("/upload/complete", post(post_upload_complete))
+        .route("/upload/{upload_id}/complete", post(post_upload_complete))
         .route("/upload/{upload_id}", get(get_upload))
         .route(
             "/upload/{upload_id}/chunk/{chunk_number}",
@@ -68,7 +69,6 @@ mod tests {
     use axum::http::StatusCode;
     use axum::http::header;
     use axum::response::Response;
-    use serde_json::json;
     use tower::ServiceExt as _;
 
     use crate::application::port::asset_use_case_factory::MockAssetUseCaseFactory;
@@ -93,7 +93,7 @@ mod tests {
         complete_upload
             .expect_execute()
             .times(0..=1)
-            .return_once(|_| Box::pin(async { Ok(CompleteUploadResponse::new(11)) }));
+            .return_once(|_| Box::pin(async { Ok(CompleteUploadResponse::new(11, true)) }));
 
         let mut factory = MockAssetUseCaseFactory::new();
         factory
@@ -116,17 +116,13 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn asset_routes_static_complete_wins_over_param_upload_id() -> Result<(), Box<dyn Error>>
-    {
+    async fn asset_routes_complete_route_reaches_handler() -> Result<(), Box<dyn Error>> {
         // Arrange
         let request = Request::builder()
             .method("POST")
-            .uri("/upload/complete")
-            .header(header::CONTENT_TYPE, "application/json")
+            .uri("/upload/7/complete")
             .header(header::AUTHORIZATION, format!("Bearer {}", bearer().await?))
-            .body(Body::from(serde_json::to_vec(
-                &json!({ "upload_id": 7i64 }),
-            )?))?;
+            .body(Body::empty())?;
 
         // Act
         let response: Response = router()?.oneshot(request).await?;

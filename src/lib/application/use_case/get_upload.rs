@@ -2,8 +2,6 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
-use chrono::Duration;
-use chrono::NaiveDateTime;
 use chrono::Utc;
 use tracing::error;
 
@@ -11,10 +9,10 @@ use crate::application::port::get_upload::GetUploadCommand;
 use crate::application::port::get_upload::GetUploadError;
 use crate::application::port::get_upload::GetUploadResponse;
 use crate::application::port::get_upload::GetUploadUseCase;
-use crate::domain::model::upload::Upload;
+use crate::application::use_case::upload_session::caller_file_id;
+use crate::application::use_case::upload_session::expiry;
+use crate::application::use_case::upload_session::received_bitmap;
 use crate::domain::port::asset_unit_of_work::AssetUnitOfWork;
-use crate::domain::port::file_repository::FileFilter;
-use crate::domain::port::file_repository::FileRepository as _;
 use crate::domain::port::file_storage::FileStorage;
 use crate::domain::port::unit_of_work::UnitOfWork as _;
 use crate::domain::port::unit_of_work::UnitOfWorkFactory;
@@ -109,20 +107,13 @@ where
                 // or not the session is finished: a caller-scoped duplicate
                 // completion leaves the session open and returns this same id,
                 // so the two endpoints must agree.
-                let file_id = match unit_of_work
-                    .files()
-                    .search(&FileFilter {
-                        md5_integrity: Some(upload.md5_integrity().to_owned()),
-                        user_id: Some(command.user_id()),
-                        ..FileFilter::default()
-                    })
-                    .await
-                {
-                    Ok(files) => files.into_iter().next().map(|file| file.id()),
-                    Err(error) => {
-                        return Flow::Failed(GetUploadError::Unknown(error.into()));
-                    }
-                };
+                let file_id =
+                    match caller_file_id(&mut unit_of_work, &upload, command.user_id()).await {
+                        Ok(file_id) => file_id,
+                        Err(error) => {
+                            return Flow::Failed(GetUploadError::Unknown(error.into()));
+                        }
+                    };
 
                 Flow::Succeeded(GetUploadResponse::new(
                     bitmap,
@@ -193,40 +184,6 @@ where
         error!(error = ?error, "failed to delete the expired upload row");
     }
     Flow::Expired
-}
-
-/// Build the per-chunk received bitmap, one character per chunk.
-#[expect(
-    clippy::single_call_fn,
-    reason = "the bitmap rendering is named for readability"
-)]
-fn received_bitmap(upload: &Upload) -> String {
-    let mut bitmap = String::with_capacity(upload.total_chunks());
-    for chunk_number in 0..upload.total_chunks() {
-        let received = upload
-            .chunk_bitmap()
-            .is_received(chunk_number)
-            .unwrap_or(false);
-        if received {
-            bitmap.push('1');
-        } else {
-            bitmap.push('0');
-        }
-    }
-    bitmap
-}
-
-/// Return the instant at which an upload created at `created_at` expires.
-#[expect(
-    clippy::single_call_fn,
-    reason = "the derived expiry rule is named for readability"
-)]
-fn expiry(expiry_seconds: u64, created_at: NaiveDateTime) -> Result<NaiveDateTime, anyhow::Error> {
-    let seconds = i64::try_from(expiry_seconds)
-        .map_err(|error| anyhow::anyhow!(error).context("the expiry does not fit in i64"))?;
-    created_at
-        .checked_add_signed(Duration::seconds(seconds))
-        .ok_or_else(|| anyhow::anyhow!("the upload expiry overflows the created_at timestamp"))
 }
 
 #[cfg(test)]

@@ -39,6 +39,8 @@ impl CompleteUploadCommand {
 pub struct CompleteUploadResponse {
     /// Unique identifier of the finished file.
     file_id: NumericID,
+    /// Whether the upload session has been finished.
+    is_finished: bool,
 }
 
 impl CompleteUploadResponse {
@@ -48,10 +50,19 @@ impl CompleteUploadResponse {
         self.file_id
     }
 
+    /// Return whether the upload session has been finished.
+    #[must_use]
+    pub fn is_finished(&self) -> bool {
+        self.is_finished
+    }
+
     /// Create a new complete-upload response.
     #[must_use]
-    pub fn new(file_id: NumericID) -> Self {
-        Self { file_id }
+    pub fn new(file_id: NumericID, is_finished: bool) -> Self {
+        Self {
+            file_id,
+            is_finished,
+        }
     }
 }
 

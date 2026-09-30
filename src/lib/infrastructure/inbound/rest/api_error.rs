@@ -5,13 +5,21 @@ use axum::response::IntoResponse;
 use axum::response::Response;
 use serde_json::json;
 
+use crate::infrastructure::inbound::rest::hal::SelfLinks;
+
 /// Standard error payload returned by every failed request.
+///
+/// The envelope is uniform across every error the server emits, including
+/// routing fallbacks and extractor rejections (`API-039`).
 #[derive(Debug, serde::Deserialize, serde::Serialize, utoipa::ToSchema)]
 #[non_exhaustive]
 pub struct ErrorBody {
     /// Human-readable description of the error.
     #[schema(example = json!("An error message"))]
     pub error: String,
+    /// Link to the request that produced the error.
+    #[serde(rename = "_links")]
+    pub links: SelfLinks,
 }
 
 /// HTTP error mapped to a status code and the standard error body.

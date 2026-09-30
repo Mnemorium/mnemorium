@@ -9,4 +9,5 @@ pub mod login_user;
 pub mod patch_credential;
 pub mod register_user;
 pub mod update_user;
+pub(crate) mod upload_session;
 pub mod write_upload_chunk;

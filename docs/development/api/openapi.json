@@ -2,8 +2,12 @@
   "components": {
     "schemas": {
       "ErrorBody": {
-        "description": "Standard error payload returned by every failed request.",
+        "description": "Standard error payload returned by every failed request.\n\nThe envelope is uniform across every error the server emits, including\nrouting fallbacks and extractor rejections (`API-039`).",
         "properties": {
+          "_links": {
+            "$ref": "#/components/schemas/SelfLinks",
+            "description": "Link to the request that produced the error."
+          },
           "error": {
             "description": "Human-readable description of the error.",
             "example": "An error message",
@@ -11,7 +15,8 @@
           }
         },
         "required": [
-          "error"
+          "error",
+          "_links"
         ],
         "type": "object"
       },
@@ -74,53 +79,6 @@
           "id",
           "role",
           "username"
-        ],
-        "type": "object"
-      },
-      "GetUploadResponse": {
-        "description": "State of an upload session returned by a successful lookup.",
-        "properties": {
-          "_links": {
-            "$ref": "#/components/schemas/UploadSessionLinks",
-            "description": "Links to the upload session itself and its chunk endpoint."
-          },
-          "bitmap": {
-            "description": "One character per chunk, `1` when received and `0` otherwise.",
-            "example": "110",
-            "type": "string"
-          },
-          "expires_at": {
-            "description": "Date and time at which the upload session expires, as\n`YYYY-MM-DDTHH:MM:SS`.",
-            "example": "2026-01-01T12:00:00",
-            "type": "string"
-          },
-          "file_id": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/i64",
-                "description": "Unique identifier of the caller's file for the session digest, when one\nexists."
-              }
-            ]
-          },
-          "is_finished": {
-            "description": "Whether the upload session has been finished.",
-            "type": "boolean"
-          },
-          "total_chunks": {
-            "description": "Total number of chunks the upload is split into.",
-            "minimum": 0,
-            "type": "integer"
-          }
-        },
-        "required": [
-          "bitmap",
-          "expires_at",
-          "is_finished",
-          "_links",
-          "total_chunks"
         ],
         "type": "object"
       },
@@ -315,29 +273,26 @@
         ],
         "type": "object"
       },
-      "PostUploadCompleteRequest": {
-        "description": "Payload completing an upload session.",
-        "properties": {
-          "upload_id": {
-            "$ref": "#/components/schemas/i64",
-            "description": "Unique identifier of the upload session to complete."
-          }
-        },
-        "required": [
-          "upload_id"
-        ],
-        "type": "object"
-      },
       "PostUploadCompleteResponse": {
         "description": "File finalized by a successful completion.",
         "properties": {
+          "_links": {
+            "$ref": "#/components/schemas/SelfLinks",
+            "description": "Link to the completed upload session."
+          },
           "file_id": {
             "$ref": "#/components/schemas/i64",
             "description": "Unique identifier of the stored file."
+          },
+          "is_finished": {
+            "description": "Whether the upload session has been finished.",
+            "type": "boolean"
           }
         },
         "required": [
-          "file_id"
+          "file_id",
+          "is_finished",
+          "_links"
         ],
         "type": "object"
       },
@@ -414,19 +369,6 @@
         "format": "binary",
         "type": "string"
       },
-      "PutUploadChunkResponse": {
-        "description": "Response of a successfully stored chunk.",
-        "properties": {
-          "received": {
-            "description": "Whether the chunk has been received.",
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "received"
-        ],
-        "type": "object"
-      },
       "RegisterRequest": {
         "description": "Payload to register a new user.\n\nThe requested `role` is granted only when the authenticated caller is\nallowed to create it: the Root Admin can register `Admin` or `Standard`\nusers, an `Admin` user can register `Standard` users only.",
         "properties": {
@@ -502,12 +444,29 @@
         ],
         "type": "string"
       },
+      "SelfLinks": {
+        "description": "The `self` link of a HAL representation.\n\nEvery resource representation carries the URI it was served from, so clients\nnever construct or hardcode it themselves (`API-032`, `API-037`).",
+        "properties": {
+          "self": {
+            "$ref": "#/components/schemas/Link",
+            "description": "Link to the resource itself."
+          }
+        },
+        "required": [
+          "self"
+        ],
+        "type": "object"
+      },
       "UploadSessionLinks": {
-        "description": "HAL links exposed by an upload-session representation.\n\nThe `self` link addresses the session itself; the templated `chunk` link\nlets clients discover where to store a chunk instead of building the URL\nfrom the identifiers (`API-037`).",
+        "description": "HAL links exposed by an upload-session representation.\n\nThe `self` link addresses the session itself; the templated `chunk` link\nlets clients discover where to store a chunk instead of building the URL\nfrom the identifiers (`API-037`); the `complete` link lets clients discover\nhow to finish the session.",
         "properties": {
           "chunk": {
             "$ref": "#/components/schemas/Link",
             "description": "URI template for storing one chunk of the upload session."
+          },
+          "complete": {
+            "$ref": "#/components/schemas/Link",
+            "description": "Link completing the upload session."
           },
           "self": {
             "$ref": "#/components/schemas/Link",
@@ -516,7 +475,55 @@
         },
         "required": [
           "chunk",
+          "complete",
           "self"
+        ],
+        "type": "object"
+      },
+      "UploadSessionResponse": {
+        "description": "State of an upload session returned by a successful lookup or chunk store.",
+        "properties": {
+          "_links": {
+            "$ref": "#/components/schemas/UploadSessionLinks",
+            "description": "Links to the upload session, its chunk endpoint and its completion."
+          },
+          "bitmap": {
+            "description": "One character per chunk, `1` when received and `0` otherwise.",
+            "example": "110",
+            "type": "string"
+          },
+          "expires_at": {
+            "description": "Date and time at which the upload session expires, as\n`YYYY-MM-DDTHH:MM:SS`.",
+            "example": "2026-01-01T12:00:00",
+            "type": "string"
+          },
+          "file_id": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/i64",
+                "description": "Unique identifier of the caller's file for the session digest, when one\nexists."
+              }
+            ]
+          },
+          "is_finished": {
+            "description": "Whether the upload session has been finished.",
+            "type": "boolean"
+          },
+          "total_chunks": {
+            "description": "Total number of chunks the upload is split into.",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "bitmap",
+          "expires_at",
+          "is_finished",
+          "_links",
+          "total_chunks"
         ],
         "type": "object"
       },
@@ -578,7 +585,7 @@
           },
           "400": {
             "content": {
-              "application/json": {
+              "application/hal+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorBody"
                 }
@@ -588,7 +595,7 @@
           },
           "401": {
             "content": {
-              "application/json": {
+              "application/hal+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorBody"
                 }
@@ -598,7 +605,7 @@
           },
           "413": {
             "content": {
-              "application/json": {
+              "application/hal+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorBody"
                 }
@@ -608,7 +615,7 @@
           },
           "415": {
             "content": {
-              "application/json": {
+              "application/hal+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorBody"
                 }
@@ -618,7 +625,7 @@
           },
           "500": {
             "content": {
-              "application/json": {
+              "application/hal+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorBody"
                 }
@@ -633,103 +640,6 @@
           }
         ],
         "summary": "Initialize an upload session",
-        "tags": [
-          "asset"
-        ]
-      }
-    },
-    "/asset/upload/complete": {
-      "post": {
-        "description": "The staged content's MD5 digest is recomputed and verified against the\ndigest declared when the upload was initialized. When the caller already\nowns a file with that digest, no second copy is stored: the existing file's\nidentifier is returned and the upload session is left unfinished. Otherwise\nthe staged file is promoted, its record registered, and the upload marked\nfinished. Completion is idempotent: completing an already finished upload\nreturns the caller's file for the same digest.",
-        "operationId": "post_upload_complete",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/PostUploadCompleteRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PostUploadCompleteResponse"
-                }
-              }
-            },
-            "description": "Upload completed"
-          },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "Invalid payload, incomplete upload or integrity mismatch"
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "Missing or invalid credentials"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "Unknown upload session"
-          },
-          "409": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "The digest is already owned by another user"
-          },
-          "410": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "Upload session expired"
-          },
-          "500": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "Unexpected error"
-          }
-        },
-        "security": [
-          {
-            "bearer_auth": []
-          }
-        ],
-        "summary": "Complete an upload session",
         "tags": [
           "asset"
         ]
@@ -755,7 +665,7 @@
             "content": {
               "application/hal+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GetUploadResponse"
+                  "$ref": "#/components/schemas/UploadSessionResponse"
                 }
               }
             },
@@ -763,7 +673,7 @@
           },
           "400": {
             "content": {
-              "application/json": {
+              "application/hal+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorBody"
                 }
@@ -773,7 +683,7 @@
           },
           "401": {
             "content": {
-              "application/json": {
+              "application/hal+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorBody"
                 }
@@ -783,7 +693,7 @@
           },
           "404": {
             "content": {
-              "application/json": {
+              "application/hal+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorBody"
                 }
@@ -793,7 +703,7 @@
           },
           "410": {
             "content": {
-              "application/json": {
+              "application/hal+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorBody"
                 }
@@ -803,7 +713,7 @@
           },
           "500": {
             "content": {
-              "application/json": {
+              "application/hal+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorBody"
                 }
@@ -880,9 +790,9 @@
         "responses": {
           "200": {
             "content": {
-              "application/json": {
+              "application/hal+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/PutUploadChunkResponse"
+                  "$ref": "#/components/schemas/UploadSessionResponse"
                 }
               }
             },
@@ -890,7 +800,7 @@
           },
           "400": {
             "content": {
-              "application/json": {
+              "application/hal+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorBody"
                 }
@@ -900,7 +810,7 @@
           },
           "401": {
             "content": {
-              "application/json": {
+              "application/hal+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorBody"
                 }
@@ -910,7 +820,7 @@
           },
           "404": {
             "content": {
-              "application/json": {
+              "application/hal+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorBody"
                 }
@@ -920,7 +830,7 @@
           },
           "409": {
             "content": {
-              "application/json": {
+              "application/hal+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorBody"
                 }
@@ -930,7 +840,7 @@
           },
           "410": {
             "content": {
-              "application/json": {
+              "application/hal+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorBody"
                 }
@@ -940,7 +850,7 @@
           },
           "500": {
             "content": {
-              "application/json": {
+              "application/hal+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorBody"
                 }
@@ -955,6 +865,104 @@
           }
         ],
         "summary": "Upload one chunk",
+        "tags": [
+          "asset"
+        ]
+      }
+    },
+    "/asset/upload/{upload_id}/complete": {
+      "post": {
+        "description": "The upload identifier is carried by the path; there is no request body. The\nstaged content's MD5 digest is recomputed and verified against the digest\ndeclared when the upload was initialized. When the caller already owns a\nfile with that digest, no second copy is stored: the existing file's\nidentifier is returned and the upload session is left unfinished. Otherwise\nthe staged file is promoted, its record registered, and the upload marked\nfinished. Completion is idempotent: completing an already finished upload\nreturns the caller's file for the same digest.",
+        "operationId": "post_upload_complete",
+        "parameters": [
+          {
+            "description": "Identifier of the upload session",
+            "in": "path",
+            "name": "upload_id",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/i64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PostUploadCompleteResponse"
+                }
+              }
+            },
+            "description": "Upload completed"
+          },
+          "400": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Invalid identifier, incomplete upload or integrity mismatch"
+          },
+          "401": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid credentials"
+          },
+          "404": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unknown upload session"
+          },
+          "409": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The digest is already owned by another user"
+          },
+          "410": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Upload session expired"
+          },
+          "500": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unexpected error"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ],
+        "summary": "Complete an upload session",
         "tags": [
           "asset"
         ]
@@ -1019,7 +1027,7 @@
           },
           "400": {
             "content": {
-              "application/json": {
+              "application/hal+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorBody"
                 }
@@ -1029,7 +1037,7 @@
           },
           "401": {
             "content": {
-              "application/json": {
+              "application/hal+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorBody"
                 }
@@ -1039,7 +1047,7 @@
           },
           "403": {
             "content": {
-              "application/json": {
+              "application/hal+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorBody"
                 }
@@ -1049,7 +1057,7 @@
           },
           "404": {
             "content": {
-              "application/json": {
+              "application/hal+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorBody"
                 }
@@ -1059,7 +1067,7 @@
           },
           "500": {
             "content": {
-              "application/json": {
+              "application/hal+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorBody"
                 }
@@ -1106,7 +1114,7 @@
           },
           "400": {
             "content": {
-              "application/json": {
+              "application/hal+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorBody"
                 }
@@ -1116,7 +1124,7 @@
           },
           "401": {
             "content": {
-              "application/json": {
+              "application/hal+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorBody"
                 }
@@ -1126,7 +1134,7 @@
           },
           "500": {
             "content": {
-              "application/json": {
+              "application/hal+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorBody"
                 }
@@ -1176,7 +1184,7 @@
           },
           "400": {
             "content": {
-              "application/json": {
+              "application/hal+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorBody"
                 }
@@ -1186,7 +1194,7 @@
           },
           "401": {
             "content": {
-              "application/json": {
+              "application/hal+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorBody"
                 }
@@ -1196,7 +1204,7 @@
           },
           "403": {
             "content": {
-              "application/json": {
+              "application/hal+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorBody"
                 }
@@ -1206,7 +1214,7 @@
           },
           "409": {
             "content": {
-              "application/json": {
+              "application/hal+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorBody"
                 }
@@ -1216,7 +1224,7 @@
           },
           "500": {
             "content": {
-              "application/json": {
+              "application/hal+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorBody"
                 }
@@ -1301,7 +1309,7 @@
           },
           "400": {
             "content": {
-              "application/json": {
+              "application/hal+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorBody"
                 }
@@ -1311,7 +1319,7 @@
           },
           "401": {
             "content": {
-              "application/json": {
+              "application/hal+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorBody"
                 }
@@ -1321,7 +1329,7 @@
           },
           "403": {
             "content": {
-              "application/json": {
+              "application/hal+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorBody"
                 }
@@ -1331,7 +1339,7 @@
           },
           "500": {
             "content": {
-              "application/json": {
+              "application/hal+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorBody"
                 }
@@ -1368,7 +1376,7 @@
           },
           "401": {
             "content": {
-              "application/json": {
+              "application/hal+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorBody"
                 }
@@ -1378,7 +1386,7 @@
           },
           "500": {
             "content": {
-              "application/json": {
+              "application/hal+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorBody"
                 }
@@ -1426,7 +1434,7 @@
           },
           "400": {
             "content": {
-              "application/json": {
+              "application/hal+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorBody"
                 }
@@ -1436,7 +1444,7 @@
           },
           "401": {
             "content": {
-              "application/json": {
+              "application/hal+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorBody"
                 }
@@ -1446,7 +1454,7 @@
           },
           "403": {
             "content": {
-              "application/json": {
+              "application/hal+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorBody"
                 }
@@ -1456,7 +1464,7 @@
           },
           "404": {
             "content": {
-              "application/json": {
+              "application/hal+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorBody"
                 }
@@ -1466,7 +1474,7 @@
           },
           "500": {
             "content": {
-              "application/json": {
+              "application/hal+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorBody"
                 }
@@ -1522,7 +1530,7 @@
           },
           "400": {
             "content": {
-              "application/json": {
+              "application/hal+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorBody"
                 }
@@ -1532,7 +1540,7 @@
           },
           "401": {
             "content": {
-              "application/json": {
+              "application/hal+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorBody"
                 }
@@ -1542,7 +1550,7 @@
           },
           "403": {
             "content": {
-              "application/json": {
+              "application/hal+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorBody"
                 }
@@ -1552,7 +1560,7 @@
           },
           "404": {
             "content": {
-              "application/json": {
+              "application/hal+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorBody"
                 }
@@ -1562,7 +1570,7 @@
           },
           "500": {
             "content": {
-              "application/json": {
+              "application/hal+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorBody"
                 }
