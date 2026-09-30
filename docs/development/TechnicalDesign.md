@@ -2051,11 +2051,11 @@ Source: `.github/workflows/*`.
 | [@semantic-release/git](https://www.npmjs.com/package/@semantic-release/git)                                           | TODO        | 11.0.1  | TODO    |
 | [actions/checkout](https://github.com/actions/checkout)                                                                | TODO        | v6      | TODO    |
 | [actions/create-github-app-token](https://github.com/actions/create-github-app-token)                                  | TODO        | v3.2.0  | TODO    |
-| [actions/download-artifact](https://github.com/actions/download-artifact)                                              | TODO        | v4      | TODO    |
+| [actions/download-artifact](https://github.com/actions/download-artifact)                                              | TODO        | v8      | TODO    |
 | [actions/setup-node](https://github.com/actions/setup-node)                                                            | TODO        | v4      | TODO    |
 | [actions/setup-node](https://github.com/actions/setup-node)                                                            | TODO        | v7      | TODO    |
 | [actions/setup-python](https://github.com/actions/setup-python)                                                        | TODO        | v5      | TODO    |
-| [actions/upload-artifact](https://github.com/actions/upload-artifact)                                                  | TODO        | v4      | TODO    |
+| [actions/upload-artifact](https://github.com/actions/upload-artifact)                                                  | TODO        | v7      | TODO    |
 | [amannn/action-semantic-pull-request](https://github.com/amannn/action-semantic-pull-request)                          | TODO        | v6      | TODO    |
 | [anomalyco/opencode/github](https://github.com/anomalyco/opencode)                                                     | TODO        | latest  | TODO    |
 | [cachix/install-nix-action](https://github.com/cachix/install-nix-action)                                              | TODO        | v31     | TODO    |
