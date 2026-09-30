@@ -6,7 +6,6 @@ pub mod middleware;
 
 use handler::asset::get_upload::__path_get_upload;
 use handler::asset::post_upload::__path_post_upload;
-use handler::asset::post_upload_check::__path_post_upload_check;
 use handler::asset::post_upload_complete::__path_post_upload_complete;
 use handler::asset::put_upload_chunk::__path_put_upload_chunk;
 use handler::get_health::__path_get_health;
@@ -25,8 +24,6 @@ use crate::infrastructure::inbound::rest::handler::asset::get_upload::GetUploadR
 use crate::infrastructure::inbound::rest::handler::asset::links::UploadSessionLinks;
 use crate::infrastructure::inbound::rest::handler::asset::post_upload::PostUploadRequest;
 use crate::infrastructure::inbound::rest::handler::asset::post_upload::PostUploadResponse;
-use crate::infrastructure::inbound::rest::handler::asset::post_upload_check::PostUploadCheckRequest;
-use crate::infrastructure::inbound::rest::handler::asset::post_upload_check::PostUploadCheckResponse;
 use crate::infrastructure::inbound::rest::handler::asset::post_upload_complete::PostUploadCompleteRequest;
 use crate::infrastructure::inbound::rest::handler::asset::post_upload_complete::PostUploadCompleteResponse;
 use crate::infrastructure::inbound::rest::handler::asset::put_upload_chunk::PutUploadChunkRequest;
@@ -71,8 +68,8 @@ impl utoipa::Modify for SecurityAddon {
     servers(
         (url = "http://0.0.0.0:4080/api/v1", description = "Local development server")
     ),
-    paths(get_health, get_upload, patch_credential, post_login, post_register, post_upload, post_upload_check, post_upload_complete, put_upload_chunk, get_me, get_user, get_user_list, patch_user),
-    components(schemas(ErrorBody, GetMeResponse, GetUploadResponse, GetUserResponse, Link, LoginRequest, LoginResponse, PatchCredentialRequest, PatchUserRequest, PatchUserResponse, PostUploadCheckRequest, PostUploadCheckResponse, PostUploadCompleteRequest, PostUploadCompleteResponse, PostUploadRequest, PostUploadResponse, PutUploadChunkRequest, PutUploadChunkResponse, RegisterRequest, RegisterResponse, Role, UploadSessionLinks)),
+    paths(get_health, get_upload, patch_credential, post_login, post_register, post_upload, post_upload_complete, put_upload_chunk, get_me, get_user, get_user_list, patch_user),
+    components(schemas(ErrorBody, GetMeResponse, GetUploadResponse, GetUserResponse, Link, LoginRequest, LoginResponse, PatchCredentialRequest, PatchUserRequest, PatchUserResponse, PostUploadCompleteRequest, PostUploadCompleteResponse, PostUploadRequest, PostUploadResponse, PutUploadChunkRequest, PutUploadChunkResponse, RegisterRequest, RegisterResponse, Role, UploadSessionLinks)),
     tags(
         (name = "system", description = "System-level endpoints"),
         (name = "asset", description = "Asset bounded context"),

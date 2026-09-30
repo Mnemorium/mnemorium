@@ -105,23 +105,23 @@ where
                 }
 
                 let bitmap = received_bitmap(&upload);
-                let file_id = if upload.is_finished() {
-                    match unit_of_work
-                        .files()
-                        .search(&FileFilter {
-                            md5_integrity: Some(upload.md5_integrity().to_owned()),
-                            user_id: Some(command.user_id()),
-                            ..FileFilter::default()
-                        })
-                        .await
-                    {
-                        Ok(files) => files.into_iter().next().map(|file| file.id()),
-                        Err(error) => {
-                            return Flow::Failed(GetUploadError::Unknown(error.into()));
-                        }
+                // The caller's file for the session digest is reported whether
+                // or not the session is finished: a caller-scoped duplicate
+                // completion leaves the session open and returns this same id,
+                // so the two endpoints must agree.
+                let file_id = match unit_of_work
+                    .files()
+                    .search(&FileFilter {
+                        md5_integrity: Some(upload.md5_integrity().to_owned()),
+                        user_id: Some(command.user_id()),
+                        ..FileFilter::default()
+                    })
+                    .await
+                {
+                    Ok(files) => files.into_iter().next().map(|file| file.id()),
+                    Err(error) => {
+                        return Flow::Failed(GetUploadError::Unknown(error.into()));
                     }
-                } else {
-                    None
                 };
 
                 Flow::Succeeded(GetUploadResponse::new(
@@ -345,10 +345,6 @@ mod tests {
             .returning(|_| Box::pin(async { Err(RepositoryError::OperationFailed) }));
     }
 
-    #[expect(
-        clippy::single_call_fn,
-        reason = "the test fixture mirrors the persisted file"
-    )]
     fn file(id: i64, user_id: i64) -> Result<File, RepositoryError> {
         File::try_new(
             id,
@@ -367,7 +363,12 @@ mod tests {
         // Arrange
         let mut uploads = MockUploadRepository::new();
         expect_upload(&mut uploads, upload(5, 3, 10, &[0, 2], false, timestamp())?);
-        let harness = use_case_with(uploads, MockFileRepository::new(), MockFileStorage::new());
+        let mut files = MockFileRepository::new();
+        files
+            .expect_search()
+            .times(1)
+            .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+        let harness = use_case_with(uploads, files, MockFileStorage::new());
         let command = GetUploadCommand::new(5, 3);
 
         // Act
@@ -379,6 +380,29 @@ mod tests {
         assert!(!response.is_finished());
         assert_eq!(response.file_id(), None);
         assert!(harness.committed.load(Ordering::SeqCst));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn get_upload_unfinished_with_owned_digest_returns_file_id() -> Result<(), Box<dyn Error>>
+    {
+        // Arrange
+        let mut uploads = MockUploadRepository::new();
+        expect_upload(&mut uploads, upload(5, 3, 10, &[0, 2], false, timestamp())?);
+        let mut files = MockFileRepository::new();
+        files.expect_search().times(1).returning(|_| {
+            let stored = file(11, 3);
+            Box::pin(async move { stored.map(|file| vec![file]) })
+        });
+        let harness = use_case_with(uploads, files, MockFileStorage::new());
+        let command = GetUploadCommand::new(5, 3);
+
+        // Act
+        let response = harness.use_case.execute(command).await?;
+
+        // Assert
+        assert!(!response.is_finished());
+        assert_eq!(response.file_id(), Some(11));
         Ok(())
     }
 

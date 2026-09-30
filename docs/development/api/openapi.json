@@ -101,7 +101,7 @@
               },
               {
                 "$ref": "#/components/schemas/i64",
-                "description": "Unique identifier of the finished file, when the upload is finished."
+                "description": "Unique identifier of the caller's file for the session digest, when one\nexists."
               }
             ]
           },
@@ -313,39 +313,6 @@
           "role",
           "username"
         ],
-        "type": "object"
-      },
-      "PostUploadCheckRequest": {
-        "description": "Payload checking for an already stored file.",
-        "properties": {
-          "md5": {
-            "description": "MD5 digest of the complete file, as a 32-character hexadecimal string.",
-            "example": "d41d8cd98f00b204e9800998ecf8427e",
-            "maxLength": 32,
-            "minLength": 32,
-            "type": "string"
-          }
-        },
-        "required": [
-          "md5"
-        ],
-        "type": "object"
-      },
-      "PostUploadCheckResponse": {
-        "description": "Result of a check for an already stored file.",
-        "properties": {
-          "file_id": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/i64",
-                "description": "Unique identifier of the matching file, when the caller owns one."
-              }
-            ]
-          }
-        },
         "type": "object"
       },
       "PostUploadCompleteRequest": {
@@ -671,76 +638,9 @@
         ]
       }
     },
-    "/asset/upload/check": {
-      "post": {
-        "description": "Returns the identifier of the matching file, or `null` when the caller owns\nno file with that digest. The lookup is caller-scoped: a file owned by\nanother user is not reported.",
-        "operationId": "post_upload_check",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/PostUploadCheckRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PostUploadCheckResponse"
-                }
-              }
-            },
-            "description": "Check completed"
-          },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "Invalid payload"
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "Missing or invalid credentials"
-          },
-          "500": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "Unexpected error"
-          }
-        },
-        "security": [
-          {
-            "bearer_auth": []
-          }
-        ],
-        "summary": "Check for an existing file",
-        "tags": [
-          "asset"
-        ]
-      }
-    },
     "/asset/upload/complete": {
       "post": {
-        "description": "Verifies the recomputed MD5 digest, deduplicates against the caller's\nexisting files and, on success, registers the file and marks the upload as\nfinished. Completion is idempotent: completing an already finished upload\nreturns the caller's file for the same digest.",
+        "description": "The staged content's MD5 digest is recomputed and verified against the\ndigest declared when the upload was initialized. When the caller already\nowns a file with that digest, no second copy is stored: the existing file's\nidentifier is returned and the upload session is left unfinished. Otherwise\nthe staged file is promoted, its record registered, and the upload marked\nfinished. Completion is idempotent: completing an already finished upload\nreturns the caller's file for the same digest.",
         "operationId": "post_upload_complete",
         "requestBody": {
           "content": {
@@ -837,7 +737,7 @@
     },
     "/asset/upload/{upload_id}": {
       "get": {
-        "description": "Returns the received-chunk bitmap, the total number of chunks, the expiry\ninstant, whether the upload is finished and, when it is, the identifier of\nthe finished file.",
+        "description": "Returns the received-chunk bitmap, the total number of chunks, the expiry\ninstant, whether the upload is finished and the identifier of the caller's\nfile for the session digest, when one exists. The file identifier is\nreported whether or not the session is finished: a caller-scoped duplicate\ncompletion leaves the session open and returns this same identifier.",
         "operationId": "get_upload",
         "parameters": [
           {

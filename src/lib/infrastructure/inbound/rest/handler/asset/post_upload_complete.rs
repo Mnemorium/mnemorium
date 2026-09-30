@@ -56,10 +56,13 @@ impl From<CompleteUploadError> for ApiError {
     }
 }
 
-/// Complete an upload session and promote its staged file.
+/// Complete an upload session.
 ///
-/// Verifies the recomputed MD5 digest, deduplicates against the caller's
-/// existing files and, on success, registers the file and marks the upload as
+/// The staged content's MD5 digest is recomputed and verified against the
+/// digest declared when the upload was initialized. When the caller already
+/// owns a file with that digest, no second copy is stored: the existing file's
+/// identifier is returned and the upload session is left unfinished. Otherwise
+/// the staged file is promoted, its record registered, and the upload marked
 /// finished. Completion is idempotent: completing an already finished upload
 /// returns the caller's file for the same digest.
 #[utoipa::path(

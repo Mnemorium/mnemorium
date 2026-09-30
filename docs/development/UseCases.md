@@ -372,7 +372,6 @@ Allow a user to upload a supported media file to the service for storage, proces
 
 - `begin_upload.rs`
 - `write_upload_chunk.rs`
-- `check_upload.rs`
 - `complete_upload.rs`
 - `get_upload.rs`
 
@@ -385,6 +384,9 @@ The upload flow is resumable and chunked, so it spans several requests.
 - The media type is determined from the file content, not from the file name or declared content type alone.
 - The stored file path is unique across files.
 - An integrity hash of the uploaded content is computed and stored with the file; it is unique across files.
+- Duplicate content is deduplicated per caller: when the caller already owns a file with the same integrity hash, the
+  uploaded content is verified against the declared hash and the existing file record is returned instead of storing a
+  second copy. The upload session is left unfinished.
 - The uploaded file is private by default (`is_public` is false).
 
 ### Happy path
@@ -399,6 +401,8 @@ The upload flow is resumable and chunked, so it spans several requests.
 ### Alternative flow
 
 - 3a. The media type is unsupported; the system rejects the upload and stores nothing.
+- 4a. The caller already owns a file with the same integrity hash; the system verifies the uploaded content and returns
+  the existing file record, storing nothing new and leaving the upload session unfinished.
 
 ### Post condition(s)
 

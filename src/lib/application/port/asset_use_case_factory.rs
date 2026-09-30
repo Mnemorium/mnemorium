@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
 use crate::application::port::begin_upload::BeginUploadUseCase;
-use crate::application::port::check_upload::CheckUploadUseCase;
 use crate::application::port::complete_upload::CompleteUploadUseCase;
 use crate::application::port::get_upload::GetUploadUseCase;
 use crate::application::port::write_upload_chunk::WriteUploadChunkUseCase;
@@ -14,9 +13,6 @@ use crate::application::port::write_upload_chunk::WriteUploadChunkUseCase;
 pub trait AssetUseCaseFactory: Send + Sync {
     /// Build the use case beginning an upload session.
     fn begin_upload(&self) -> Arc<dyn BeginUploadUseCase>;
-
-    /// Build the use case checking for an existing file.
-    fn check_upload(&self) -> Arc<dyn CheckUploadUseCase>;
 
     /// Build the use case completing an upload session.
     fn complete_upload(&self) -> Arc<dyn CompleteUploadUseCase>;

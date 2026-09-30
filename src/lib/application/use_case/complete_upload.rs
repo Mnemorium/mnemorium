@@ -143,20 +143,18 @@ where
 
                 if let Some(own_file) = matching_file {
                     // The caller already owns a file with this digest, so no new
-                    // file is created and the staged file is left for the reaper.
+                    // file is created and the session is left open. The staged
+                    // content is still verified so a completion never reports
+                    // success for bytes that do not match the declared digest;
+                    // the staged file is left for the reaper.
+                    if let Err(error) = verify_integrity(&file_storage, &upload).await {
+                        return Flow::Failed(error);
+                    }
                     return Flow::Succeeded(CompleteUploadResponse::new(own_file.id()));
                 }
 
-                // The staged file is streamed and its MD5 recomputed, then
-                // compared with the digest declared at init.
-                let computed = match file_storage.checksum(upload.upload_id()).await {
-                    Ok(computed) => computed,
-                    Err(error) => {
-                        return Flow::Failed(CompleteUploadError::Unknown(error.into()));
-                    }
-                };
-                if computed != upload.md5_integrity() {
-                    return Flow::Failed(CompleteUploadError::IntegrityMismatch);
+                if let Err(error) = verify_integrity(&file_storage, &upload).await {
+                    return Flow::Failed(error);
                 }
 
                 let path = match file_storage
@@ -300,6 +298,31 @@ where
         }
     }
     Ok(own_file)
+}
+
+/// Recompute the staged file's MD5 digest and compare it with the digest
+/// declared when the upload was initialized.
+///
+/// # Errors
+///
+/// Returns [`CompleteUploadError::IntegrityMismatch`] when the staged content
+/// does not hash to the declared digest, and [`CompleteUploadError::Unknown`]
+/// when the digest cannot be computed.
+async fn verify_integrity<S>(
+    file_storage: &Arc<S>,
+    upload: &Upload,
+) -> Result<(), CompleteUploadError>
+where
+    S: FileStorage,
+{
+    let computed = file_storage
+        .checksum(upload.upload_id())
+        .await
+        .map_err(|error| CompleteUploadError::Unknown(error.into()))?;
+    if computed != upload.md5_integrity() {
+        return Err(CompleteUploadError::IntegrityMismatch);
+    }
+    Ok(())
 }
 
 /// Best-effort move a promoted file back to its staging path after a failed
@@ -799,7 +822,9 @@ mod tests {
             let stored = stored_file(11, 3);
             Box::pin(async move { stored.map(|file| vec![file]) })
         });
-        let harness = use_case_with(uploads, files, MockFileStorage::new());
+        let mut file_storage = MockFileStorage::new();
+        expect_checksum(&mut file_storage, DIGEST);
+        let harness = use_case_with(uploads, files, file_storage);
         let command = CompleteUploadCommand::new(5, 3);
 
         // Act
@@ -808,6 +833,34 @@ mod tests {
         // Assert
         assert_eq!(response.file_id(), 11);
         assert!(harness.committed.load(Ordering::SeqCst));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn complete_upload_own_duplicate_integrity_mismatch_returns_integrity_mismatch()
+    -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let mut uploads = MockUploadRepository::new();
+        expect_upload(&mut uploads, upload(5, 3, 4, &[0], false)?);
+        let mut files = MockFileRepository::new();
+        files.expect_search().times(1).returning(|_| {
+            let stored = stored_file(11, 3);
+            Box::pin(async move { stored.map(|file| vec![file]) })
+        });
+        let mut file_storage = MockFileStorage::new();
+        expect_checksum(&mut file_storage, "ffffffffffffffffffffffffffffffff");
+        let harness = use_case_with(uploads, files, file_storage);
+        let command = CompleteUploadCommand::new(5, 3);
+
+        // Act
+        let result = harness.use_case.execute(command).await;
+
+        // Assert
+        assert!(matches!(
+            result,
+            Err(CompleteUploadError::IntegrityMismatch)
+        ));
+        assert!(harness.rolled_back.load(Ordering::SeqCst));
         Ok(())
     }
 

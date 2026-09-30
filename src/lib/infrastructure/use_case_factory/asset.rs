@@ -4,12 +4,10 @@ use arc_swap::ArcSwap;
 
 use crate::application::port::asset_use_case_factory::AssetUseCaseFactory;
 use crate::application::port::begin_upload::BeginUploadUseCase;
-use crate::application::port::check_upload::CheckUploadUseCase;
 use crate::application::port::complete_upload::CompleteUploadUseCase;
 use crate::application::port::get_upload::GetUploadUseCase;
 use crate::application::port::write_upload_chunk::WriteUploadChunkUseCase;
 use crate::application::use_case::begin_upload::BeginUpload;
-use crate::application::use_case::check_upload::CheckUpload;
 use crate::application::use_case::complete_upload::CompleteUpload;
 use crate::application::use_case::get_upload::GetUpload;
 use crate::application::use_case::write_upload_chunk::WriteUploadChunk;
@@ -57,10 +55,6 @@ impl AssetUseCaseFactory for RuntimeAssetUseCaseFactory {
             live.asset().upload().expiry_seconds(),
             live.asset().upload().max_file_size_bytes(),
         ))
-    }
-
-    fn check_upload(&self) -> Arc<dyn CheckUploadUseCase> {
-        Arc::new(CheckUpload::new(Arc::clone(&self.unit_of_work_factory)))
     }
 
     fn complete_upload(&self) -> Arc<dyn CompleteUploadUseCase> {

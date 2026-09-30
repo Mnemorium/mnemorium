@@ -30,7 +30,8 @@ pub struct GetUploadResponse {
     /// `YYYY-MM-DDTHH:MM:SS`.
     #[schema(example = json!("2026-01-01T12:00:00"))]
     pub expires_at: String,
-    /// Unique identifier of the finished file, when the upload is finished.
+    /// Unique identifier of the caller's file for the session digest, when one
+    /// exists.
     pub file_id: Option<NumericID>,
     /// Whether the upload session has been finished.
     pub is_finished: bool,
@@ -74,8 +75,10 @@ impl From<GetUploadError> for ApiError {
 /// Fetch the state of an upload session.
 ///
 /// Returns the received-chunk bitmap, the total number of chunks, the expiry
-/// instant, whether the upload is finished and, when it is, the identifier of
-/// the finished file.
+/// instant, whether the upload is finished and the identifier of the caller's
+/// file for the session digest, when one exists. The file identifier is
+/// reported whether or not the session is finished: a caller-scoped duplicate
+/// completion leaves the session open and returns this same identifier.
 #[utoipa::path(
     get,
     operation_id = "get_upload",

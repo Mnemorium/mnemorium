@@ -1,6 +1,5 @@
 pub mod asset_use_case_factory;
 pub mod begin_upload;
-pub mod check_upload;
 pub mod complete_upload;
 pub mod get_current_user;
 pub mod get_upload;
