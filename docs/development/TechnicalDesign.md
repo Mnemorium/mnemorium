@@ -146,6 +146,7 @@ material. The `#[utoipa::path(...)]` declaration contract lives in the [API sect
 | `STY-RUST-077` | Ports             | Repository methods mutate the shared transaction: take `&mut self` and return an explicitly `Send` future.                                                                                                                                                                                                                                                      | [§ 6.3](#63-async-methods-take-mut-self-and-return-send-futures) |
 | `STY-RUST-078` | Ports             | Outbound port traits are `'static`; implementations may borrow, but never store a repository beyond the use-case `execute` that obtained it.                                                                                                                                                                                                                    | [§ 6.4](#64-port-traits-are-static-implementations-may-borrow)   |
 | `STY-RUST-079` | Ports             | Prefer sharing long-lived adapters through `Arc<T>` over adding `Clone`.                                                                                                                                                                                                                                                                                        | [§ 6.5](#65-prefer-arc-over-clone)                               |
+| `STY-RUST-081` | Ports             | A use case reaches a third-party dependency only through an outbound port, never by calling it directly; the dependencies listed in [§ 6.6](#66-third-party-dependencies-sit-behind-a-port) are the only exceptions.                                                                                                                                            | [§ 6.6](#66-third-party-dependencies-sit-behind-a-port)          |
 | `STY-RUST-037` | Unit of Work      | `commit` and `rollback` consume the unit of work.                                                                                                                                                                                                                                                                                                               | [§ 7.1](#71-lifecycle)                                           |
 | `STY-RUST-038` | Unit of Work      | A rollback failure is logged and the **original** business error is returned.                                                                                                                                                                                                                                                                                   | [§ 7.1](#71-lifecycle)                                           |
 | `STY-RUST-039` | Unit of Work      | A commit failure maps to the use-case `Unknown(_)`.                                                                                                                                                                                                                                                                                                             | [§ 7.1](#71-lifecycle)                                           |
@@ -557,6 +558,30 @@ The _implementation_ need not be `'static`: a sqlx repository borrows the unit-o
 
 Do not add `Clone` just for frameworks — share long-lived adapters and the unit-of-work factory through `Arc<T>`.
 Repositories obtained from a unit of work are borrowed views, not cloned.
+
+---
+
+##### 6.6 Third-party dependencies sit behind a port
+
+A third-party dependency is any crate outside the standard library and this workspace. A use case in the application
+layer (`src/lib/application/use_case/**`) reaches one only through an outbound port declared in `src/lib/domain/port/`
+and implemented by an infrastructure adapter; it never calls the crate itself. The rule covers both calling into a crate
+and naming one of its types in a use-case body, command, response or error enum.
+
+Two things are exempt:
+
+- **Derive and attribute macros** — they run at compile time and are not a runtime dependency the port boundary protects
+  (`thiserror::Error`, `serde::Serialize`, `tokio::test`).
+- **Test code** — `#[cfg(test)]` modules inside the application layer, like the shared fixtures exempted by
+  `STY-RUST-001`.
+
+These crates are allowed directly; the list is deliberately short and is extended by adding a bullet — an ordinary
+documentation change:
+
+- `anyhow` — error plumbing: `Unknown(#[source] anyhow::Error)` is the mandated use-case error shape
+  ([§ 2.2](#22-use-case-error), [§ 2.6](#26-port-errors)).
+- `chrono` — date and time: use cases read the current time and carry date-time types.
+- `tracing` — logging: `STY-RUST-038` mandates logging a rollback failure.
 
 ---
 
