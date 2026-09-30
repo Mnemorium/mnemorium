@@ -108,10 +108,11 @@ conventions.
   guard. The `semgrep` job runs on every PR and uploads its SARIF report, and the
   `rust` job uploads its coverage report (`coverage-report` →
   `.artifacts/coverage/{summary.txt,lcov.info}`). The `review` job then runs the
-  `mn-review` panel after `semgrep` and `rust`, handing the SARIF report to the
-  security specialist and the coverage report to the test specialist. The
-  `security` job also fails when `THIRD_PARTY_NOTICES.txt` is stale. There is no
-  aggregate `devenv test` job — run `devenv test` locally to replicate it.
+  `mn-reviewer` orchestrator over the `mn-review` panel after `semgrep` and
+  `rust`, handing the SARIF report to the security specialist and the coverage
+  report to the test specialist. The `security` job also fails when
+  `THIRD_PARTY_NOTICES.txt` is stale. There is no aggregate `devenv test` job —
+  run `devenv test` locally to replicate it.
 - `cd.yml`: on push to `main`, semantic-release bumps `Cargo.toml` and
   `docs/development/api/openapi.json`, builds and pushes the Docker image,
   commits `CHANGELOG.md`, tags `v<version>`, and publishes the release. The
