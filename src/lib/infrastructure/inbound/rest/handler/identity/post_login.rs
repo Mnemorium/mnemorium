@@ -84,6 +84,12 @@ impl From<LoginUserError> for ApiError {
             description = "Invalid credentials"
         ),
         (
+            status = PAYLOAD_TOO_LARGE,
+            body = ErrorBody,
+            content_type = "application/hal+json",
+            description = "The request body exceeds the maximum allowed size"
+        ),
+        (
             status = INTERNAL_SERVER_ERROR,
             body = ErrorBody,
             content_type = "application/hal+json",

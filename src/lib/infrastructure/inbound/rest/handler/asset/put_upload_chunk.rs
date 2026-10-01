@@ -105,6 +105,12 @@ impl From<WriteUploadChunkError> for ApiError {
             description = "Missing or invalid credentials"
         ),
         (
+            status = PAYLOAD_TOO_LARGE,
+            body = ErrorBody,
+            content_type = "application/hal+json",
+            description = "The request body exceeds the maximum chunk size"
+        ),
+        (
             status = NOT_FOUND,
             body = ErrorBody,
             content_type = "application/hal+json",

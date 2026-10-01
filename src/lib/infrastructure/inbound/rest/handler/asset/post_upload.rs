@@ -133,7 +133,7 @@ impl From<BeginUploadError> for ApiError {
             status = PAYLOAD_TOO_LARGE,
             body = ErrorBody,
             content_type = "application/hal+json",
-            description = "The declared file size exceeds the maximum allowed size"
+            description = "The declared file size or the request body exceeds the maximum allowed size"
         ),
         (
             status = UNSUPPORTED_MEDIA_TYPE,

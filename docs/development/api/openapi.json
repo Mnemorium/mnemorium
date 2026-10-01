@@ -612,7 +612,7 @@
                 }
               }
             },
-            "description": "The declared file size exceeds the maximum allowed size"
+            "description": "The declared file size or the request body exceeds the maximum allowed size"
           },
           "415": {
             "content": {
@@ -850,6 +850,16 @@
             },
             "description": "Upload session expired"
           },
+          "413": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request body exceeds the maximum chunk size"
+          },
           "500": {
             "content": {
               "application/hal+json": {
@@ -1060,6 +1070,16 @@
             },
             "description": "Unknown credential"
           },
+          "413": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request body exceeds the maximum allowed size"
+          },
           "500": {
             "content": {
               "application/hal+json": {
@@ -1126,6 +1146,16 @@
               }
             },
             "description": "Invalid credentials"
+          },
+          "413": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request body exceeds the maximum allowed size"
           },
           "500": {
             "content": {
@@ -1219,6 +1249,16 @@
               }
             },
             "description": "Username or email is already taken"
+          },
+          "413": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request body exceeds the maximum allowed size"
           },
           "500": {
             "content": {
@@ -1565,6 +1605,16 @@
               }
             },
             "description": "Unknown user"
+          },
+          "413": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request body exceeds the maximum allowed size"
           },
           "500": {
             "content": {

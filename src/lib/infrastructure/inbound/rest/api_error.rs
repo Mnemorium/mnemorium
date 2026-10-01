@@ -76,6 +76,15 @@ impl IntoResponse for ApiError {
 
 impl From<JsonRejection> for ApiError {
     fn from(rejection: JsonRejection) -> Self {
+        // A body larger than the configured limit is refused by the `Json`
+        // extractor before deserialization. `JsonRejection::status` reports the
+        // underlying rejection's status, so the `413` is recovered here instead
+        // of collapsing into a misleading `400`.
+        if rejection.status() == StatusCode::PAYLOAD_TOO_LARGE {
+            return Self::PayloadTooLarge(
+                "the request body exceeds the maximum allowed size".to_owned(),
+            );
+        }
         Self::BadRequest(rejection.body_text())
     }
 }
