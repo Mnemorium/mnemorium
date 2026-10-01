@@ -90,6 +90,13 @@
       pass_filenames = true;
       files = "^src/lib/domain/model/.*\\.rs$";
     };
+    outward-imports = {
+      enable = true;
+      name = "No outward imports";
+      entry = "script/no_outward_imports.sh";
+      language = "system";
+      pass_filenames = false;
+    };
     # === python
     ruff.enable = true;
     ruff-format.enable = true;

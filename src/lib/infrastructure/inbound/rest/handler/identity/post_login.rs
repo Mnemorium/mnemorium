@@ -90,6 +90,7 @@ impl From<LoginUserError> for ApiError {
             description = "Unexpected error"
         ),
     ),
+    security(()),
     summary = "Authenticate a user"
 )]
 pub async fn post_login(

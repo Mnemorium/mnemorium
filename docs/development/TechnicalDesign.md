@@ -837,7 +837,7 @@ are documented inline, at the source, with `#[utoipa::path(...)]` macros.
 | `API-008` | Endpoint handler contract | Declare `request_body` for an endpoint that carries a body.                                                                                                                                                                                                                   | [§ 1](#1-endpoint-handler-example)          |
 | `API-009` | Endpoint handler contract | Declare `params` for path, query, header and cookie parameters.                                                                                                                                                                                                               | [§ 1](#1-endpoint-handler-example)          |
 | `API-010` | Endpoint handler contract | Declare `responses` with all the possible responses.                                                                                                                                                                                                                          | [§ 1](#1-endpoint-handler-example)          |
-| `API-011` | Endpoint handler contract | Declare `security`, the scheme(s) protecting the endpoint.                                                                                                                                                                                                                    | [§ 1](#1-endpoint-handler-example)          |
+| `API-011` | Endpoint handler contract | Declare `security` on every operation — the scheme(s) protecting it (`("bearer_auth" = [])`), or an explicitly empty requirement (`security(())`) when the endpoint is public.                                                                                                | [§ 1](#1-endpoint-handler-example)          |
 | `API-012` | Endpoint handler contract | Declare `summary`, a one-line human-readable summary.                                                                                                                                                                                                                         | [§ 1](#1-endpoint-handler-example)          |
 | `API-013` | Parameters                | Declare `name`, the parameter name as it appears in the URL, header or cookie.                                                                                                                                                                                                | [§ 2](#2-parameter-declaration-examples)    |
 | `API-014` | Parameters                | Declare `in`, the location: `Path`, `Query`, `Header` or `Cookie`.                                                                                                                                                                                                            | [§ 2](#2-parameter-declaration-examples)    |
@@ -882,9 +882,6 @@ use utoipa::OpenApi;
     components(schemas(CreateNoteRequest, CreateNoteResponse, GetNoteResponse, ListNotesResponse, ErrorBody)),
     tags(
         (name = "notes", description = "Note bounded context")
-    ),
-    security(
-        ("bearer_auth" = [])
     )
 )]
 struct ApiDoc;
@@ -918,6 +915,28 @@ struct ApiDoc;
     summary = "Create a new note"
 )]
 pub async fn create_note() -> axum::response::Json<CreateNoteResponse> {
+    unimplemented!()
+}
+```
+
+An endpoint that is deliberately public declares an empty security requirement instead of a scheme:
+
+```rust
+/// Check the service health.
+///
+/// Returns `200` with the current health status when the service is running.
+#[utoipa::path(
+    get,
+    operation_id = "get_health",
+    path = "/health",
+    tag = "system",
+    responses(
+        (status = OK, body = HealthResponse, description = "Service is healthy"),
+    ),
+    security(()),
+    summary = "Check service health"
+)]
+pub async fn get_health() -> axum::response::Json<HealthResponse> {
     unimplemented!()
 }
 ```

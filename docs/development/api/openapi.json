@@ -547,7 +547,7 @@
       "name": "MIT"
     },
     "title": "Mnemorium API",
-    "version": "0.3.0"
+    "version": "0.3.1"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -976,6 +976,9 @@
             "description": "Service is healthy"
           }
         },
+        "security": [
+          {}
+        ],
         "servers": [
           {
             "description": "Root of the service, outside /api/v1",
@@ -1135,6 +1138,9 @@
             "description": "Unexpected error"
           }
         },
+        "security": [
+          {}
+        ],
         "summary": "Authenticate a user",
         "tags": [
           "identity"

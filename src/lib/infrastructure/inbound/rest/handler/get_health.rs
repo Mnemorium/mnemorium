@@ -25,6 +25,7 @@ pub struct HealthResponse {
     responses(
         (status = OK, body = HealthResponse, description = "Service is healthy"),
     ),
+    security(()),
     summary = "Check service health"
 )]
 pub async fn get_health() -> Json<HealthResponse> {

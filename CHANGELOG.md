@@ -1,3 +1,9 @@
+## [0.3.1](https://github.com/Mnemorium/mnemorium/compare/v0.3.0...v0.3.1) (2026-10-01)
+
+### Bug Fixes
+
+* **api:** declare explicit security for public endpoints ([#48](https://github.com/Mnemorium/mnemorium/issues/48)) ([65e9e5a](https://github.com/Mnemorium/mnemorium/commit/65e9e5aa2b51e424f156f53c382322a6a48c7c41))
+
 ## [0.3.0](https://github.com/Mnemorium/mnemorium/compare/v0.2.0...v0.3.0) (2026-09-29)
 
 ### Features
