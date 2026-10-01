@@ -604,6 +604,24 @@
             },
             "description": "Missing or invalid credentials"
           },
+          "405": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Method not allowed",
+            "headers": {
+              "Allow": {
+                "description": "HTTP methods accepted by this path",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
           "413": {
             "content": {
               "application/hal+json": {
@@ -701,6 +719,24 @@
               }
             },
             "description": "Unknown upload session"
+          },
+          "405": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Method not allowed",
+            "headers": {
+              "Allow": {
+                "description": "HTTP methods accepted by this path",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           },
           "410": {
             "content": {
@@ -830,6 +866,24 @@
             },
             "description": "Unknown upload session"
           },
+          "405": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Method not allowed",
+            "headers": {
+              "Allow": {
+                "description": "HTTP methods accepted by this path",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
           "409": {
             "content": {
               "application/hal+json": {
@@ -937,6 +991,24 @@
               }
             },
             "description": "Unknown upload session"
+          },
+          "405": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Method not allowed",
+            "headers": {
+              "Allow": {
+                "description": "HTTP methods accepted by this path",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           },
           "410": {
             "content": {

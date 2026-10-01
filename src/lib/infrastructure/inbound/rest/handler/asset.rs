@@ -84,10 +84,6 @@ mod tests {
     const TEST_SECRET: &str = "tmptmp";
 
     /// Build the asset router whose complete-upload use case succeeds.
-    #[expect(
-        clippy::single_call_fn,
-        reason = "the test router mirrors the asset routes"
-    )]
     fn router() -> Result<axum::Router, Box<dyn Error>> {
         let mut complete_upload = MockCompleteUploadUseCase::new();
         complete_upload
@@ -106,10 +102,6 @@ mod tests {
     }
 
     /// Mint a bearer token the test token provider accepts.
-    #[expect(
-        clippy::single_call_fn,
-        reason = "the test token factory mirrors the auth middleware"
-    )]
     async fn bearer() -> Result<String, Box<dyn Error>> {
         let provider = JwtTokenProvider::new(TEST_SECRET.to_owned(), 3600);
         Ok(provider.issue(3).await?.value().to_owned())
@@ -129,6 +121,28 @@ mod tests {
 
         // Assert
         assert_eq!(response.status(), StatusCode::OK);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn asset_routes_method_not_allowed_keeps_the_allow_header() -> Result<(), Box<dyn Error>>
+    {
+        // Arrange
+        let request = Request::builder()
+            .method("DELETE")
+            .uri("/upload/7")
+            .header(header::AUTHORIZATION, format!("Bearer {}", bearer().await?))
+            .body(Body::empty())?;
+
+        // Act
+        let response: Response = router()?.oneshot(request).await?;
+
+        // Assert
+        assert_eq!(response.status(), StatusCode::METHOD_NOT_ALLOWED);
+        assert!(
+            response.headers().get(header::ALLOW).is_some(),
+            "the 405 response must advertise the allowed method"
+        );
         Ok(())
     }
 }

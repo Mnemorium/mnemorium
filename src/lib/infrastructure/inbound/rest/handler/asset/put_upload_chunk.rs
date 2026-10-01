@@ -117,6 +117,15 @@ impl From<WriteUploadChunkError> for ApiError {
             description = "Unknown upload session"
         ),
         (
+            status = METHOD_NOT_ALLOWED,
+            body = ErrorBody,
+            content_type = "application/hal+json",
+            headers(
+                ("Allow" = String, description = "HTTP methods accepted by this path"),
+            ),
+            description = "Method not allowed"
+        ),
+        (
             status = CONFLICT,
             body = ErrorBody,
             content_type = "application/hal+json",

@@ -130,6 +130,15 @@ impl From<BeginUploadError> for ApiError {
             description = "Missing or invalid credentials"
         ),
         (
+            status = METHOD_NOT_ALLOWED,
+            body = ErrorBody,
+            content_type = "application/hal+json",
+            headers(
+                ("Allow" = String, description = "HTTP methods accepted by this path"),
+            ),
+            description = "Method not allowed"
+        ),
+        (
             status = PAYLOAD_TOO_LARGE,
             body = ErrorBody,
             content_type = "application/hal+json",
