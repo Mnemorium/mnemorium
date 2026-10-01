@@ -329,13 +329,15 @@ mod tests {
     use crate::domain::model::integrity_hash::IntegrityHash;
     use crate::domain::model::upload::ChunkBitmap;
     use crate::domain::model::upload::Upload;
+    use crate::domain::port::content_hasher::MockContentHasher;
+    use crate::domain::port::content_hasher::MockContentHasherSession;
+    use crate::domain::port::error::ContentHasherError;
     use crate::domain::port::error::RepositoryError;
     use crate::domain::port::error::StorageError;
     use crate::domain::port::file_repository::MockFileRepository;
     use crate::domain::port::file_storage::MockFileStorage;
     use crate::domain::port::mime_type_repository::MockMimeTypeRepository;
     use crate::domain::port::upload_repository::MockUploadRepository;
-    use crate::infrastructure::outbound::sha2::content_hasher::Sha2ContentHasher;
     use crate::test_helpers::TestUnitOfWorkFactory;
     use crate::test_helpers::asset_factory;
     use crate::test_helpers::asset_unit_of_work;
@@ -406,6 +408,20 @@ mod tests {
 
     #[tokio::test]
     async fn write_upload_chunk_valid_chunk_persists_bitmap() -> Result<(), Box<dyn Error>> {
+        let mut hasher = MockContentHasher::new();
+        hasher.expect_hasher().times(1).returning(|| {
+            let mut session = MockContentHasherSession::new();
+            session
+                .expect_update()
+                .times(1)
+                .withf(|bytes: &[u8]| bytes == b"1234")
+                .return_const(());
+            session
+                .expect_finalize()
+                .times(1)
+                .returning(|| Ok(hash(CHUNK_DIGEST)));
+            Box::new(session)
+        });
         // Arrange
         let mut uploads = MockUploadRepository::new();
         expect_upload(&mut uploads, upload(5, 3, 8, &[], false)?);
@@ -436,7 +452,7 @@ mod tests {
         let use_case = WriteUploadChunk::new(
             Arc::new(factory),
             Arc::new(file_storage),
-            Sha2ContentHasher,
+            hasher,
             TTL_SECONDS,
         );
         let command =
@@ -459,6 +475,20 @@ mod tests {
     #[tokio::test]
     async fn write_upload_chunk_vanished_upload_returns_no_such_upload()
     -> Result<(), Box<dyn Error>> {
+        let mut hasher = MockContentHasher::new();
+        hasher.expect_hasher().times(1).returning(|| {
+            let mut session = MockContentHasherSession::new();
+            session
+                .expect_update()
+                .times(1)
+                .withf(|bytes: &[u8]| bytes == b"1234")
+                .return_const(());
+            session
+                .expect_finalize()
+                .times(1)
+                .returning(|| Ok(hash(CHUNK_DIGEST)));
+            Box::new(session)
+        });
         // Arrange
         let mut uploads = MockUploadRepository::new();
         expect_upload(&mut uploads, upload(5, 3, 8, &[], false)?);
@@ -482,7 +512,7 @@ mod tests {
         let use_case = WriteUploadChunk::new(
             Arc::new(factory),
             Arc::new(file_storage),
-            Sha2ContentHasher,
+            hasher,
             TTL_SECONDS,
         );
         let command =
@@ -500,6 +530,7 @@ mod tests {
     #[tokio::test]
     async fn write_upload_chunk_unknown_upload_returns_no_such_upload() -> Result<(), Box<dyn Error>>
     {
+        let hasher = MockContentHasher::new();
         // Arrange
         let mut uploads = MockUploadRepository::new();
         uploads
@@ -517,7 +548,7 @@ mod tests {
         let use_case = WriteUploadChunk::new(
             Arc::new(factory),
             Arc::new(MockFileStorage::new()),
-            Sha2ContentHasher,
+            hasher,
             TTL_SECONDS,
         );
         let command =
@@ -534,6 +565,7 @@ mod tests {
 
     #[tokio::test]
     async fn write_upload_chunk_other_user_returns_no_such_upload() -> Result<(), Box<dyn Error>> {
+        let hasher = MockContentHasher::new();
         // Arrange
         let mut uploads = MockUploadRepository::new();
         expect_upload(&mut uploads, upload(5, 3, 8, &[], false)?);
@@ -548,7 +580,7 @@ mod tests {
         let use_case = WriteUploadChunk::new(
             Arc::new(factory),
             Arc::new(MockFileStorage::new()),
-            Sha2ContentHasher,
+            hasher,
             TTL_SECONDS,
         );
         let command =
@@ -564,6 +596,7 @@ mod tests {
 
     #[tokio::test]
     async fn write_upload_chunk_expired_upload_returns_expired() -> Result<(), Box<dyn Error>> {
+        let hasher = MockContentHasher::new();
         // Arrange
         let expired_at = chrono::Utc::now()
             .naive_utc()
@@ -611,7 +644,7 @@ mod tests {
         let use_case = WriteUploadChunk::new(
             Arc::new(factory),
             Arc::new(file_storage),
-            Sha2ContentHasher,
+            hasher,
             TTL_SECONDS,
         );
         let command =
@@ -630,6 +663,7 @@ mod tests {
     #[tokio::test]
     async fn write_upload_chunk_expiry_commit_failure_returns_unknown() -> Result<(), Box<dyn Error>>
     {
+        let hasher = MockContentHasher::new();
         // Arrange
         let expired_at = chrono::Utc::now()
             .naive_utc()
@@ -675,7 +709,7 @@ mod tests {
         let use_case = WriteUploadChunk::new(
             Arc::clone(&harness.factory),
             Arc::new(file_storage),
-            Sha2ContentHasher,
+            hasher,
             TTL_SECONDS,
         );
         let command =
@@ -694,6 +728,7 @@ mod tests {
     #[tokio::test]
     async fn write_upload_chunk_finished_upload_returns_already_finished()
     -> Result<(), Box<dyn Error>> {
+        let hasher = MockContentHasher::new();
         // Arrange
         let mut uploads = MockUploadRepository::new();
         expect_upload(&mut uploads, upload(5, 3, 4, &[0], true)?);
@@ -708,7 +743,7 @@ mod tests {
         let use_case = WriteUploadChunk::new(
             Arc::new(factory),
             Arc::new(MockFileStorage::new()),
-            Sha2ContentHasher,
+            hasher,
             TTL_SECONDS,
         );
         let command =
@@ -728,6 +763,7 @@ mod tests {
     #[tokio::test]
     async fn write_upload_chunk_out_of_range_returns_invalid_chunk_number()
     -> Result<(), Box<dyn Error>> {
+        let hasher = MockContentHasher::new();
         // Arrange
         let mut uploads = MockUploadRepository::new();
         expect_upload(&mut uploads, upload(5, 3, 4, &[], false)?);
@@ -742,7 +778,7 @@ mod tests {
         let use_case = WriteUploadChunk::new(
             Arc::new(factory),
             Arc::new(MockFileStorage::new()),
-            Sha2ContentHasher,
+            hasher,
             TTL_SECONDS,
         );
         let command =
@@ -762,6 +798,20 @@ mod tests {
     #[tokio::test]
     async fn write_upload_chunk_start_mismatch_returns_invalid_chunk_range()
     -> Result<(), Box<dyn Error>> {
+        let mut hasher = MockContentHasher::new();
+        hasher.expect_hasher().times(1).returning(|| {
+            let mut session = MockContentHasherSession::new();
+            session
+                .expect_update()
+                .times(1)
+                .withf(|bytes: &[u8]| bytes == b"1234")
+                .return_const(());
+            session
+                .expect_finalize()
+                .times(1)
+                .returning(|| Ok(hash(CHUNK_DIGEST)));
+            Box::new(session)
+        });
         // Arrange
         let mut uploads = MockUploadRepository::new();
         expect_upload(&mut uploads, upload(5, 3, 8, &[], false)?);
@@ -776,7 +826,7 @@ mod tests {
         let use_case = WriteUploadChunk::new(
             Arc::new(factory),
             Arc::new(MockFileStorage::new()),
-            Sha2ContentHasher,
+            hasher,
             TTL_SECONDS,
         );
         // Chunk `0` is persisted with a size of 4, so its start must be 0.
@@ -796,6 +846,7 @@ mod tests {
 
     #[tokio::test]
     async fn write_upload_chunk_wrong_size_returns_invalid_chunk() -> Result<(), Box<dyn Error>> {
+        let hasher = MockContentHasher::new();
         // Arrange
         let mut uploads = MockUploadRepository::new();
         expect_upload(&mut uploads, upload(5, 3, 8, &[], false)?);
@@ -810,7 +861,7 @@ mod tests {
         let use_case = WriteUploadChunk::new(
             Arc::new(factory),
             Arc::new(MockFileStorage::new()),
-            Sha2ContentHasher,
+            hasher,
             TTL_SECONDS,
         );
         let command = WriteUploadChunkCommand::new(5, 0, 0, b"12".to_vec(), hash(CHUNK_DIGEST), 3);
@@ -826,6 +877,20 @@ mod tests {
     #[tokio::test]
     async fn write_upload_chunk_wrong_digest_returns_invalid_content_digest()
     -> Result<(), Box<dyn Error>> {
+        let mut hasher = MockContentHasher::new();
+        hasher.expect_hasher().times(1).returning(|| {
+            let mut session = MockContentHasherSession::new();
+            session
+                .expect_update()
+                .times(1)
+                .withf(|bytes: &[u8]| bytes == b"1234")
+                .return_const(());
+            session
+                .expect_finalize()
+                .times(1)
+                .returning(|| Ok(hash(CHUNK_DIGEST)));
+            Box::new(session)
+        });
         // Arrange
         let mut uploads = MockUploadRepository::new();
         expect_upload(&mut uploads, upload(5, 3, 8, &[], false)?);
@@ -840,7 +905,7 @@ mod tests {
         let use_case = WriteUploadChunk::new(
             Arc::new(factory),
             Arc::new(MockFileStorage::new()),
-            Sha2ContentHasher,
+            hasher,
             TTL_SECONDS,
         );
         let command =
@@ -859,6 +924,20 @@ mod tests {
 
     #[tokio::test]
     async fn write_upload_chunk_storage_failure_returns_unknown() -> Result<(), Box<dyn Error>> {
+        let mut hasher = MockContentHasher::new();
+        hasher.expect_hasher().times(1).returning(|| {
+            let mut session = MockContentHasherSession::new();
+            session
+                .expect_update()
+                .times(1)
+                .withf(|bytes: &[u8]| bytes == b"1234")
+                .return_const(());
+            session
+                .expect_finalize()
+                .times(1)
+                .returning(|| Ok(hash(CHUNK_DIGEST)));
+            Box::new(session)
+        });
         // Arrange
         let mut uploads = MockUploadRepository::new();
         expect_upload(&mut uploads, upload(5, 3, 8, &[], false)?);
@@ -878,7 +957,7 @@ mod tests {
         let use_case = WriteUploadChunk::new(
             Arc::new(factory),
             Arc::new(file_storage),
-            Sha2ContentHasher,
+            hasher,
             TTL_SECONDS,
         );
         let command =
@@ -895,6 +974,20 @@ mod tests {
 
     #[tokio::test]
     async fn write_upload_chunk_cas_conflict_retries_and_succeeds() -> Result<(), Box<dyn Error>> {
+        let mut hasher = MockContentHasher::new();
+        hasher.expect_hasher().times(2).returning(|| {
+            let mut session = MockContentHasherSession::new();
+            session
+                .expect_update()
+                .times(1)
+                .withf(|bytes: &[u8]| bytes == b"1234")
+                .return_const(());
+            session
+                .expect_finalize()
+                .times(1)
+                .returning(|| Ok(hash(CHUNK_DIGEST)));
+            Box::new(session)
+        });
         // Arrange
         let mut first_uploads = MockUploadRepository::new();
         expect_upload(&mut first_uploads, upload(5, 3, 8, &[], false)?);
@@ -934,7 +1027,7 @@ mod tests {
         let use_case = WriteUploadChunk::new(
             Arc::new(factory),
             Arc::new(file_storage),
-            Sha2ContentHasher,
+            hasher,
             TTL_SECONDS,
         );
         let command =
@@ -957,6 +1050,20 @@ mod tests {
     #[tokio::test]
     async fn write_upload_chunk_cas_conflict_exhausts_retries_returns_unknown()
     -> Result<(), Box<dyn Error>> {
+        let mut hasher = MockContentHasher::new();
+        hasher.expect_hasher().times(3).returning(|| {
+            let mut session = MockContentHasherSession::new();
+            session
+                .expect_update()
+                .times(1)
+                .withf(|bytes: &[u8]| bytes == b"1234")
+                .return_const(());
+            session
+                .expect_finalize()
+                .times(1)
+                .returning(|| Ok(hash(CHUNK_DIGEST)));
+            Box::new(session)
+        });
         // Arrange
         let unit_of_works = repeat_with(|| -> Result<_, Box<dyn Error>> {
             let mut uploads = MockUploadRepository::new();
@@ -985,7 +1092,7 @@ mod tests {
         let use_case = WriteUploadChunk::new(
             Arc::new(factory),
             Arc::new(file_storage),
-            Sha2ContentHasher,
+            hasher,
             TTL_SECONDS,
         );
         let command =
@@ -996,6 +1103,51 @@ mod tests {
 
         // Assert
         assert!(matches!(result, Err(WriteUploadChunkError::Unknown(_))));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn write_upload_chunk_hasher_failure_returns_unknown() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let mut uploads = MockUploadRepository::new();
+        expect_upload(&mut uploads, upload(5, 3, 8, &[], false)?);
+        let (unit_of_work, _committed, rolled_back) = asset_unit_of_work(
+            uploads,
+            MockFileRepository::new(),
+            MockMimeTypeRepository::new(),
+        );
+        let factory = TestUnitOfWorkFactory {
+            unit_of_works: Mutex::new(vec![unit_of_work]),
+        };
+        let mut hasher = MockContentHasher::new();
+        hasher.expect_hasher().times(1).returning(|| {
+            let mut session = MockContentHasherSession::new();
+            session
+                .expect_update()
+                .times(1)
+                .withf(|bytes: &[u8]| bytes == b"1234")
+                .return_const(());
+            session
+                .expect_finalize()
+                .times(1)
+                .returning(|| Err(ContentHasherError::OperationFailed));
+            Box::new(session)
+        });
+        let use_case = WriteUploadChunk::new(
+            Arc::new(factory),
+            Arc::new(MockFileStorage::new()),
+            hasher,
+            TTL_SECONDS,
+        );
+        let command =
+            WriteUploadChunkCommand::new(5, 0, 0, b"1234".to_vec(), hash(CHUNK_DIGEST), 3);
+
+        // Act
+        let result = use_case.execute(command).await;
+
+        // Assert
+        assert!(matches!(result, Err(WriteUploadChunkError::Unknown(_))));
+        assert!(rolled_back.load(Ordering::SeqCst));
         Ok(())
     }
 }
