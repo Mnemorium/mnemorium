@@ -244,6 +244,8 @@ jobs:
         run: cargo build --bin server
       - name: No tests in domain/model
         run: script/no_domain_model_tests.sh
+      - name: No outward imports
+        run: script/no_outward_imports.sh
       - name: Verify OpenAPI spec is current
         run: |
           cargo run --bin openapi_gen
