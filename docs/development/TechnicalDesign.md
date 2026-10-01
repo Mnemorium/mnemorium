@@ -1878,7 +1878,8 @@ the flows the E2E suite covers come from the critical exception paths in [UseCas
 | `TEST-045` | E2E              | The Root Admin's password is random per container and obtained through the `default_password` fixture; the shared secret never applies to it.                                                                                                    | [§ E2E test](#e2e-test)                      |
 | `TEST-046` | Test helpers     | Shared Rust test helpers live **only** in the single `#[cfg(test)] mod test_helpers` in `src/lib/lib.rs`; never create a separate helper file or module (for example `test_helper.rs`).                                                          | [§ Test helpers](#test-helpers)              |
 | `TEST-047` | Test helpers     | Adding a new shared test helper, or changing the existing helper surface, requires the developer's explicit approval (their thumbs-up on the change).                                                                                            | [§ Test helpers](#test-helpers)              |
-| `TEST-048` | HTTP handler     | An endpoint test does not assert behaviour owned by middleware — authentication, body-size limits, the HAL error envelope, or cross-origin handling. Middleware the project owns is covered by its own middleware-level test module.             | [§ HTTP handler](#http-handler-strategy)     |
+| `TEST-048` | Factory          | Production factory structs need no dedicated test; they only wire use cases, adapters and transactions, so test the assembled parts, not the wiring.                                                                                             | [§ Factory](#factory-strategy)               |
+| `TEST-049` | HTTP handler     | An endpoint test does not assert behaviour owned by middleware — authentication, body-size limits, the HAL error envelope, or cross-origin handling. Middleware the project owns is covered by its own middleware-level test module.             | [§ HTTP handler](#http-handler-strategy)     |
 
 ---
 
@@ -1892,7 +1893,7 @@ Unit tests cover everything above the outbound ports; the adapters that implemen
 #### HTTP handler strategy
 
 Handler tests drive the axum router in-process, so they exercise routing, extraction and the handler together. They do
-not re-assert middleware-owned behaviour ([TEST-048](#http-handler-strategy)); middleware the project owns is covered by
+not re-assert middleware-owned behaviour ([TEST-049](#http-handler-strategy)); middleware the project owns is covered by
 its own middleware-level test module.
 
 ---
@@ -1909,6 +1910,19 @@ are covered here. `script/no_domain_model_tests.sh` enforces this in pre-commit 
 #### Domain service strategy
 
 Domain services are pure, so their tests need no doubles.
+
+---
+
+#### Factory strategy
+
+Production factory structs assemble use cases, adapters and transactions; they hold no business rule and no branching
+worth isolating, so they have no dedicated test module ([TEST-048](#factory-strategy)). This covers the per-context
+use-case factories (`RuntimeUserUseCaseFactory`, `RuntimeIdentityUseCaseFactory` in
+`src/lib/infrastructure/use_case_factory/`) and the unit-of-work factory (`SqlxUnitOfWorkFactory`); test the behavior
+where it lives instead — the use cases, and, for `SqlxUnitOfWorkFactory`, the repository integration tests.
+
+The test doubles in `crate::test_helpers` (`TestFactory`, `TestUnitOfWorkFactory`, ...) are scaffolding for other tests
+and are not covered by this rule.
 
 ---
 
