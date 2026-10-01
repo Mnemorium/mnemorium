@@ -680,6 +680,9 @@
             "description": "Service is healthy"
           }
         },
+        "security": [
+          {}
+        ],
         "servers": [
           {
             "description": "Root of the service, outside /api/v1",
@@ -839,6 +842,9 @@
             "description": "Unexpected error"
           }
         },
+        "security": [
+          {}
+        ],
         "summary": "Authenticate a user",
         "tags": [
           "identity"
