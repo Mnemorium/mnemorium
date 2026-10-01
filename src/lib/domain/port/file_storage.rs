@@ -28,7 +28,9 @@ pub trait FileStorage: Send + Sync {
     /// preallocated to `file_size` bytes.
     ///
     /// The adapter only touches the filesystem; the caller has already created
-    /// the upload row.
+    /// the upload row. A staging file that already exists at the upload's path
+    /// is a leftover from an interrupted begin and is reclaimed, so it cannot
+    /// wedge the identifier.
     fn create_upload_file(
         &self,
         upload_id: NumericID,

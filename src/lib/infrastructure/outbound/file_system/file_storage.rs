@@ -2,6 +2,7 @@ use std::future::Future;
 use std::io::Error;
 use std::io::ErrorKind;
 use std::io::SeekFrom;
+use std::path::Path;
 use std::path::PathBuf;
 
 use tokio::fs;
@@ -132,12 +133,18 @@ impl<H: ContentHasher> FileStorage for FileSystemStorage<H> {
         let path = self.staged_path(upload_id);
 
         async move {
-            let file = fs::OpenOptions::new()
-                .create_new(true)
-                .write(true)
-                .open(&path)
-                .await
-                .map_err(Self::map_io_error)?;
+            // The row was just inserted with an identifier unique among live
+            // rows, so a staging file that already exists here is a leftover
+            // from an interrupted begin. Reclaim it and retry once instead of
+            // failing, so the leftover cannot wedge this identifier.
+            let file = match open_new(&path).await {
+                Ok(file) => file,
+                Err(err) if err.kind() == ErrorKind::AlreadyExists => {
+                    fs::remove_file(&path).await.map_err(Self::map_io_error)?;
+                    open_new(&path).await.map_err(Self::map_io_error)?
+                }
+                Err(err) => return Err(Self::map_io_error(err)),
+            };
             file.set_len(file_size).await.map_err(Self::map_io_error)?;
             Ok(())
         }
@@ -227,6 +234,15 @@ impl<H: ContentHasher> FileStorage for FileSystemStorage<H> {
     }
 }
 
+/// Open `path` as a new write-only file, failing when it already exists.
+async fn open_new(path: &Path) -> Result<fs::File, Error> {
+    fs::OpenOptions::new()
+        .create_new(true)
+        .write(true)
+        .open(path)
+        .await
+}
+
 /// Return whether `file_name` is a safe single path segment.
 #[expect(
     clippy::single_call_fn,
@@ -267,17 +283,23 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn create_upload_file_existing_upload_returns_error() -> Result<(), Box<dyn Error>> {
+    async fn create_upload_file_reclaims_stale_staged_file() -> Result<(), Box<dyn Error>> {
         // Arrange
         let tmp = tempdir()?;
         let storage = FileSystemStorage::new(tmp.path().to_path_buf(), Sha2ContentHasher).await?;
         storage.create_upload_file(42, 4).await?;
+        storage.add_chunk(42, 0, b"stale".to_vec()).await?;
 
         // Act
-        let result = storage.create_upload_file(42, 4).await;
+        storage.create_upload_file(42, 12).await?;
 
         // Assert
-        assert!(result.is_err());
+        let metadata = fs::metadata(tmp.path().join("uploads/42")).await?;
+        assert_eq!(
+            metadata.len(),
+            12,
+            "reclaiming the stale file should reset it to the requested size"
+        );
         Ok(())
     }
 

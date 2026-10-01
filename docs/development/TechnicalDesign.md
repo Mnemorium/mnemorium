@@ -1441,6 +1441,8 @@ enforce invariants.
 | `PERS-012` | Entity-relationship diagram | Use only the markers `PK`, `FK`, `NN`, `UN`, `CC`, `DF`.                                                                                                                                                                                       | [§ Legend](#legend)                       |
 | `PERS-013` | Entity-relationship diagram | Put the FK marker on the child table and draw relationships from the "one" side to the "many" side.                                                                                                                                            | [§ Diagram](#entity-relationship-diagram) |
 | `PERS-014` | Datastore & migrations      | While the schema is unreleased, treat migrations as mutable: edit a migration in place, change its SQL, or delete its `.up.sql`/`.down.sql` pair. This exception ends when the schema is released and an Expand/Contract workflow replaces it. |                                           |
+| `PERS-015` | Invariants                  | Delete an upload's staging file on every path that does not commit the upload row; a failed begin-upload never leaves a staging file behind.                                                                                                   |                                           |
+| `PERS-016` | Invariants                  | Treat a staging file that already exists for a newly created upload identifier as a leftover from an interrupted begin and reclaim it, instead of failing the begin.                                                                           |                                           |
 
 ---
 

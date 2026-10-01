@@ -10,6 +10,7 @@ use crate::application::port::begin_upload::BeginUploadCommand;
 use crate::application::port::begin_upload::BeginUploadError;
 use crate::application::port::begin_upload::BeginUploadResponse;
 use crate::application::port::begin_upload::BeginUploadUseCase;
+use crate::domain::alias::NumericID;
 use crate::domain::model::upload::ChunkBitmap;
 use crate::domain::model::upload::MAX_TOTAL_CHUNKS;
 use crate::domain::model::upload::Upload;
@@ -92,6 +93,12 @@ where
                 .await
                 .map_err(|error| BeginUploadError::Unknown(error.into()))?;
 
+            // Once the upload row exists a staging file may be created; every
+            // path that does not commit the row must remove it. A leftover file
+            // otherwise collides with the rowid SQLite reuses after a rollback,
+            // which wedges every later upload.
+            let mut staged_upload_id: Option<NumericID> = None;
+
             let result = async {
                 let content_type_supported = unit_of_work
                     .mime_types()
@@ -137,9 +144,11 @@ where
                     .await
                     .map_err(|error| BeginUploadError::Unknown(error.into()))?;
 
-                // TODO(reaper): a commit failure after this point leaves an
-                // orphaned staging file behind. No reaper exists yet; delete it
-                // explicitly once one lands.
+                // From here on a staging file may exist on disk for this
+                // identifier; the cleanup below must remove it unless the unit
+                // of work commits.
+                staged_upload_id = Some(upload.upload_id());
+
                 file_storage
                     .create_upload_file(upload.upload_id(), upload.file_size())
                     .await
@@ -166,13 +175,16 @@ where
             .await;
 
             match result {
-                Ok(value) => {
-                    unit_of_work
-                        .commit()
-                        .await
-                        .map_err(|error| BeginUploadError::Unknown(error.into()))?;
-                    Ok(value)
-                }
+                Ok(value) => match unit_of_work.commit().await {
+                    Ok(()) => Ok(value),
+                    Err(error) => {
+                        // The commit outcome is ambiguous: the row may or may
+                        // not be persisted. Removing the staging file cannot
+                        // wedge later uploads, whereas leaving it behind can.
+                        discard_staging(file_storage.as_ref(), staged_upload_id).await;
+                        Err(BeginUploadError::Unknown(error.into()))
+                    }
+                },
                 Err(error) => {
                     if let Err(rollback_error) = unit_of_work.rollback().await {
                         error!(
@@ -180,10 +192,32 @@ where
                             "failed to roll back the begin upload unit of work"
                         );
                     }
+                    discard_staging(file_storage.as_ref(), staged_upload_id).await;
                     Err(error)
                 }
             }
         })
+    }
+}
+
+/// Best-effort remove the staging file of an upload whose row was not committed.
+///
+/// A missing staging file is success and an absent identifier is a no-op. A
+/// deletion failure is logged, never fatal: the caller already carries the
+/// error that aborted the begin. A staging file survives only a process death
+/// between creating it and committing the row; a future reaper covers that.
+async fn discard_staging<S>(file_storage: &S, upload_id: Option<NumericID>)
+where
+    S: FileStorage,
+{
+    let Some(staged) = upload_id else {
+        return;
+    };
+    if let Err(error) = file_storage.delete_upload_file(staged).await {
+        error!(
+            error = ?error,
+            "failed to delete the staged file of an uncommitted upload"
+        );
     }
 }
 
@@ -245,6 +279,8 @@ mod tests {
 
     /// A use case under test together with its transaction-lifecycle flags.
     struct Harness {
+        /// Set to force the unit of work commit to fail.
+        commit_fails: Arc<AtomicBool>,
         /// Set when the unit of work is committed.
         committed: Arc<AtomicBool>,
         /// Set when the unit of work is rolled back.
@@ -260,7 +296,7 @@ mod tests {
             &mut MockFileStorage,
         ) -> Result<(), Box<dyn Error>>,
     ) -> Result<Harness, Box<dyn Error>> {
-        use_case_with_max(setup, DEFAULT_MAX_FILE_SIZE)
+        use_case_with_all(setup, TTL_SECONDS, DEFAULT_MAX_FILE_SIZE)
     }
 
     /// Build a use case whose configured maximum file size is
@@ -273,6 +309,20 @@ mod tests {
         ) -> Result<(), Box<dyn Error>>,
         max_file_size_bytes: u64,
     ) -> Result<Harness, Box<dyn Error>> {
+        use_case_with_all(setup, TTL_SECONDS, max_file_size_bytes)
+    }
+
+    /// Build a use case configured with `expiry_seconds` and
+    /// `max_file_size_bytes`.
+    fn use_case_with_all(
+        setup: impl FnOnce(
+            &mut MockUploadRepository,
+            &mut MockMimeTypeRepository,
+            &mut MockFileStorage,
+        ) -> Result<(), Box<dyn Error>>,
+        expiry_seconds: u64,
+        max_file_size_bytes: u64,
+    ) -> Result<Harness, Box<dyn Error>> {
         let mut uploads = MockUploadRepository::new();
         let mut mime_types = MockMimeTypeRepository::new();
         let mut file_storage = MockFileStorage::new();
@@ -283,9 +333,10 @@ mod tests {
                 Arc::clone(&harness.factory),
                 Arc::new(file_storage),
                 CHUNK_SIZE,
-                TTL_SECONDS,
+                expiry_seconds,
                 max_file_size_bytes,
             ),
+            commit_fails: harness.commit_fails,
             committed: harness.committed,
             rolled_back: harness.rolled_back,
         })
@@ -503,6 +554,12 @@ mod tests {
                 .expect_create_upload_file()
                 .times(1)
                 .returning(|_, _| Box::pin(async { Err(StorageError::Unavailable) }));
+            // The failed create may have left a file behind, so the rollback
+            // must also discard the staging file of the created row.
+            file_storage
+                .expect_delete_upload_file()
+                .times(1)
+                .returning(|_| Box::pin(async { Ok(()) }));
             Ok(())
         })?;
         let command = command(10);
@@ -513,6 +570,76 @@ mod tests {
         // Assert
         assert!(matches!(result, Err(BeginUploadError::Unknown(_))));
         assert!(harness.rolled_back.load(Ordering::SeqCst));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn begin_upload_failure_after_staging_creation_deletes_staging_file()
+    -> Result<(), Box<dyn Error>> {
+        // Arrange
+        // An expiry that does not fit in `i64` aborts the begin after the row
+        // and the staging file exist, exercising the compensation path.
+        let harness = use_case_with_all(
+            |uploads, mime_types, file_storage| {
+                expect_mime_type(mime_types, true);
+                uploads
+                    .expect_create()
+                    .times(1)
+                    .returning(|upload| Box::pin(async move { Ok(upload) }));
+                file_storage
+                    .expect_create_upload_file()
+                    .times(1)
+                    .returning(|_, _| Box::pin(async { Ok(()) }));
+                file_storage
+                    .expect_delete_upload_file()
+                    .times(1)
+                    .returning(|_| Box::pin(async { Ok(()) }));
+                Ok(())
+            },
+            u64::MAX,
+            DEFAULT_MAX_FILE_SIZE,
+        )?;
+        let command = command(10);
+
+        // Act
+        let result = harness.use_case.execute(command).await;
+
+        // Assert
+        assert!(matches!(result, Err(BeginUploadError::Unknown(_))));
+        assert!(harness.rolled_back.load(Ordering::SeqCst));
+        assert!(!harness.committed.load(Ordering::SeqCst));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn begin_upload_commit_failure_deletes_staging_file() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let harness = use_case_with(|uploads, mime_types, file_storage| {
+            expect_mime_type(mime_types, true);
+            uploads
+                .expect_create()
+                .times(1)
+                .returning(|upload| Box::pin(async move { Ok(upload) }));
+            file_storage
+                .expect_create_upload_file()
+                .times(1)
+                .returning(|_, _| Box::pin(async { Ok(()) }));
+            file_storage
+                .expect_delete_upload_file()
+                .times(1)
+                .returning(|_| Box::pin(async { Ok(()) }));
+            Ok(())
+        })?;
+        harness.commit_fails.store(true, Ordering::SeqCst);
+        let command = command(10);
+
+        // Act
+        let result = harness.use_case.execute(command).await;
+
+        // Assert
+        assert!(matches!(result, Err(BeginUploadError::Unknown(_))));
+        assert!(harness.committed.load(Ordering::SeqCst));
+        assert!(!harness.rolled_back.load(Ordering::SeqCst));
         Ok(())
     }
 
