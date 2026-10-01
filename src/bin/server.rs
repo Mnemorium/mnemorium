@@ -47,8 +47,11 @@ async fn main() -> Result<(), anyhow::Error> {
 
     let _log_guard = logging::setup(configuration.load().logging())?;
 
-    if configuration.load().persistence().sqlite3() != &sqlite3 {
-        warn!("sqlite3 settings changed in the configuration; restart to apply them");
+    // The bootstrap sizes the pool before the configuration singleton is
+    // reachable, so `max_connections` is a startup-only setting and cannot be
+    // reconciled from the stored row; only the datastore path is compared here.
+    if configuration.load().persistence().sqlite3().path() != sqlite3.path() {
+        warn!("the sqlite3 datastore path changed in the configuration; restart to apply it");
     }
 
     let password_hasher = Arc::new(Argon2PasswordHasher::new(

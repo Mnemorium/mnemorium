@@ -1,7 +1,9 @@
 use std::fmt::Write as _;
 use std::future::Future;
+use std::num::NonZeroUsize;
 use std::pin::Pin;
 use std::sync::Arc;
+use std::thread::available_parallelism;
 
 use tracing::error;
 
@@ -35,12 +37,16 @@ pub(crate) const DEFAULT_LOG_LEVEL: &str = "debug,sqlx=warn";
 pub(crate) const DEFAULT_LOG_MAX_FILES: u32 = 7;
 /// Rotation period of the log file sink.
 pub(crate) const DEFAULT_LOG_ROTATION: Rotation = Rotation::Daily;
-/// Maximum number of connections to the database.
-pub(crate) const DEFAULT_SQLITE3_MAX_CONN: u32 = 1;
 /// Path to the `SQLite3` database file.
 pub(crate) const DEFAULT_SQLITE3_PATH: &str = "mnemorium.db";
 /// Length of each generated secret, in bytes.
 const SECRET_LENGTH: u32 = 32;
+/// Upper bound of the default database connection count.
+///
+/// The host's available parallelism over-provisions connections in a container
+/// without a CPU quota (it reports the physical host's cores), and `SQLite`
+/// serializes writers regardless, so the default is capped.
+const MAX_DEFAULT_SQLITE3_MAX_CONN: u32 = 8;
 
 /// Use case implementation for loading the configuration.
 pub struct LoadConfiguration<F, S, C> {
@@ -124,9 +130,8 @@ where
             .map_err(|error| LoadConfigurationError::InvalidConfiguration(error.into()))?;
         let security = Security::try_new(jwt, hex_encode(&pepper), true)
             .map_err(|error| LoadConfigurationError::InvalidConfiguration(error.into()))?;
-        let sqlite3 =
-            Sqlite3::try_new(DEFAULT_SQLITE3_PATH.to_owned(), DEFAULT_SQLITE3_MAX_CONN)
-                .map_err(|error| LoadConfigurationError::InvalidConfiguration(error.into()))?;
+        let sqlite3 = Sqlite3::try_new(DEFAULT_SQLITE3_PATH.to_owned(), default_sqlite3_max_conn())
+            .map_err(|error| LoadConfigurationError::InvalidConfiguration(error.into()))?;
         let persistence = Persistence::new(sqlite3);
         let logging = Logging::try_new(
             DEFAULT_LOG_ANSI,
@@ -221,6 +226,19 @@ where
             }
         })
     }
+}
+
+/// Default maximum number of connections to the database.
+///
+/// At least two, so a request holding a connection while another long
+/// operation is in flight cannot starve every other database-backed request,
+/// and at most [`MAX_DEFAULT_SQLITE3_MAX_CONN`]. Between those bounds it
+/// follows the host's available parallelism.
+pub(crate) fn default_sqlite3_max_conn() -> u32 {
+    let parallelism = available_parallelism().map_or(2, NonZeroUsize::get);
+    u32::try_from(parallelism).map_or(2, |connections| {
+        connections.clamp(2, MAX_DEFAULT_SQLITE3_MAX_CONN)
+    })
 }
 
 /// Hexadecimal-encode `bytes`.
@@ -578,5 +596,17 @@ mod tests {
             Rotation::Never
         );
         Ok(())
+    }
+
+    #[test]
+    fn default_sqlite3_max_conn_always_allows_a_concurrent_request() {
+        // Act
+        let connections = super::default_sqlite3_max_conn();
+
+        // Assert
+        assert!(
+            (2..=super::MAX_DEFAULT_SQLITE3_MAX_CONN).contains(&connections),
+            "the default pool must be bounded between two and the configured cap"
+        );
     }
 }

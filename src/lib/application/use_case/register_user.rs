@@ -131,10 +131,11 @@ where
                     }
                 }
 
-                // TODO: the Argon2 hash is computed while the unit of work holds the single
-                // pooled connection (default `max_connections = 1`), blocking other requests for
-                // its duration. Raise `max_connections` if this becomes a bottleneck; do not move
-                // the hash off the transaction without authorizing the caller first.
+                // The Argon2 hash is computed while the unit of work holds one pooled
+                // connection, blocking that connection for its duration. The pool defaults
+                // above one connection and SQLite runs in write-ahead logging mode, so
+                // other requests keep being served; do not move the hash off the
+                // transaction without authorizing the caller first.
                 let password_hash = password_hasher
                     .hash_password(command.password())
                     .await
