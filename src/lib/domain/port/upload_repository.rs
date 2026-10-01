@@ -38,21 +38,33 @@ pub trait UploadRepository: Send + Sync {
         id: NumericID,
     ) -> impl Future<Output = Result<bool, RepositoryError>> + Send;
 
-    /// Update the upload targeted by its identifier using a compare-and-swap on
-    /// its `version`.
+    /// Mark the upload identified by `id` finished under a guard on its pending
+    /// state.
     ///
-    /// Returns `Ok(Some(upload))` with the persisted upload when the stored
-    /// version matches and the row is updated. Returns `Ok(None)` when no
+    /// Returns `Ok(Some(upload))` with the persisted upload when a pending,
+    /// complete upload transitioned to finished. Returns `Ok(None)` when no
     /// upload carries the identifier: a missing upload is a valid outcome, not
     /// an error.
     ///
-    /// Fails with [`RepositoryError::ConcurrentModification`] when an upload
-    /// carries the identifier but its stored version no longer matches the
-    /// version carried by `upload`, meaning another writer won the race.
-    fn save(
+    /// Fails with [`RepositoryError::ConcurrencyConflict`] when an upload
+    /// carries the identifier and is already finished, meaning another writer
+    /// won the transition, and with [`RepositoryError::Conflict`] when it is
+    /// not complete yet.
+    fn finish(
         &mut self,
-        upload: Upload,
+        id: NumericID,
     ) -> impl Future<Output = Result<Option<Upload>, RepositoryError>> + Send;
+
+    /// Record `chunk_number` as received for the upload identified by `id`.
+    ///
+    /// Recording an already recorded chunk is a no-op (idempotent). Fails with
+    /// [`RepositoryError::Conflict`] when the upload is already finished: its
+    /// chunks are sealed once the upload completes.
+    fn record_chunk(
+        &mut self,
+        id: NumericID,
+        chunk_number: u64,
+    ) -> impl Future<Output = Result<(), RepositoryError>> + Send;
 
     /// Search uploads matching `filter`, returned as `Vec<Upload>`.
     ///
@@ -80,11 +92,19 @@ impl<T: UploadRepository + ?Sized> UploadRepository for &mut T {
         (**self).delete(id)
     }
 
-    fn save(
+    fn finish(
         &mut self,
-        upload: Upload,
+        id: NumericID,
     ) -> impl Future<Output = Result<Option<Upload>, RepositoryError>> + Send {
-        (**self).save(upload)
+        (**self).finish(id)
+    }
+
+    fn record_chunk(
+        &mut self,
+        id: NumericID,
+        chunk_number: u64,
+    ) -> impl Future<Output = Result<(), RepositoryError>> + Send {
+        (**self).record_chunk(id, chunk_number)
     }
 
     fn search(

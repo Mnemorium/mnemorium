@@ -123,7 +123,6 @@ where
                     integrity_hash,
                     chunk_bitmap,
                     false,
-                    0,
                     created_at,
                 )
                 .map_err(|error| match error {
@@ -389,7 +388,6 @@ mod tests {
                 .map_err(|_| RepositoryError::OperationFailed)?,
             bitmap,
             false,
-            0,
             chrono::Utc::now().naive_utc(),
         )
         .map_err(|_| RepositoryError::OperationFailed)

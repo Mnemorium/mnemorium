@@ -12,12 +12,6 @@ pub enum RepositoryError {
     /// entity (for example, optimistic locking failure).
     #[error("the operation failed due to a concurrent modification of the same entity")]
     ConcurrencyConflict,
-    /// The operation lost a compare-and-swap race against a concurrent
-    /// modification of the same entity.
-    #[error(
-        "the operation lost a compare-and-swap race against a concurrent modification of the same entity"
-    )]
-    ConcurrentModification,
     /// The operation cannot be completed because the current state of the data
     /// conflicts with the requested action.
     #[error(

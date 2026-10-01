@@ -7,8 +7,9 @@ use crate::domain::model::integrity_hash::SHA256_HEX_LENGTH;
 
 /// Hard upper bound on the number of chunks an upload may be split into.
 ///
-/// Bounds the `chunk_bitmap` blob to 8 MiB (`MAX_TOTAL_CHUNKS / 8`) regardless
-/// of configuration, as a backstop against an unbounded allocation.
+/// Bounds the number of `upload_chunk` rows, and the in-memory chunk bitmap
+/// reconstructed from them, to 8 MiB (`MAX_TOTAL_CHUNKS / 8`) regardless of
+/// configuration, as a backstop against an unbounded allocation.
 pub const MAX_TOTAL_CHUNKS: usize = 67_108_864;
 
 /// Error returned when initialising or updating a `ChunkBitmap`.
@@ -202,8 +203,6 @@ pub struct Upload {
     upload_id: NumericID,
     /// Identifier of the user owning the upload.
     user_id: NumericID,
-    /// Optimistic-concurrency version, bumped on every persisted change.
-    version: i64,
 }
 
 impl Upload {
@@ -284,16 +283,6 @@ impl Upload {
         &self.mime_type_id
     }
 
-    /// Update the persisted chunk bitmap.
-    pub fn set_chunk_bitmap(&mut self, chunk_bitmap: ChunkBitmap) {
-        self.chunk_bitmap = chunk_bitmap;
-    }
-
-    /// Update whether the upload has been finished.
-    pub fn set_is_finished(&mut self, is_finished: bool) {
-        self.is_finished = is_finished;
-    }
-
     /// Return the total number of chunks the upload is split into.
     ///
     /// The file size is always greater than zero and the chunk size always
@@ -326,7 +315,6 @@ impl Upload {
         integrity_hash: IntegrityHash<SHA256_HEX_LENGTH>,
         chunk_bitmap: ChunkBitmap,
         is_finished: bool,
-        version: i64,
         created_at: NaiveDateTime,
     ) -> Result<Self, UploadError> {
         let validated_file_name = Self::validate_file_name(file_name)?;
@@ -343,7 +331,6 @@ impl Upload {
             mime_type_id,
             upload_id,
             user_id,
-            version,
         })
     }
 
@@ -411,12 +398,6 @@ impl Upload {
             return Err(UploadError::InvalidFileSize);
         }
         Ok(file_size)
-    }
-
-    /// Return the optimistic-concurrency version.
-    #[must_use]
-    pub fn version(&self) -> i64 {
-        self.version
     }
 }
 

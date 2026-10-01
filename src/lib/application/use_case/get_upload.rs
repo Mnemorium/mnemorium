@@ -280,7 +280,6 @@ mod tests {
                 .map_err(|_| RepositoryError::OperationFailed)?,
             bitmap,
             is_finished,
-            0,
             created_at,
         )
         .map_err(|_| RepositoryError::OperationFailed)

@@ -230,12 +230,10 @@ where
                     Err(error) => return Flow::Failed(CompleteUploadError::Unknown(error.into())),
                 };
 
-                let mut finished = upload;
-                finished.finish();
-                match unit_of_work.uploads().save(finished).await {
+                match unit_of_work.uploads().finish(upload.upload_id()).await {
                     Ok(Some(_)) => Flow::Succeeded(CompleteUploadResponse::new(file.id(), true)),
                     Ok(None) => Flow::Failed(CompleteUploadError::NoSuchUpload),
-                    Err(RepositoryError::ConcurrentModification) => {
+                    Err(RepositoryError::ConcurrencyConflict) => {
                         Flow::Failed(CompleteUploadError::Unknown(anyhow::anyhow!(
                             "the upload was modified while completing"
                         )))
@@ -545,7 +543,6 @@ mod tests {
                 .map_err(|_| RepositoryError::OperationFailed)?,
             bitmap,
             is_finished,
-            0,
             timestamp(),
         )
         .map_err(|_| RepositoryError::OperationFailed)
@@ -574,7 +571,6 @@ mod tests {
                 .map_err(|_| RepositoryError::OperationFailed)?,
             bitmap,
             false,
-            0,
             expired_at,
         )
         .map_err(|_| RepositoryError::OperationFailed)
@@ -616,6 +612,7 @@ mod tests {
     async fn complete_upload_complete_upload_promotes_file() -> Result<(), Box<dyn Error>> {
         // Arrange
         let resolved = upload(5, 3, 4, &[0], false)?;
+        let finished = resolved.clone();
         let mut phase_one_uploads = MockUploadRepository::new();
         expect_upload(&mut phase_one_uploads, resolved.clone());
         let mut phase_two_uploads = MockUploadRepository::new();
@@ -633,9 +630,12 @@ mod tests {
                 Box::pin(async move { Ok(file) })
             });
         phase_two_uploads
-            .expect_save()
+            .expect_finish()
             .times(1)
-            .returning(|upload| Box::pin(async move { Ok(Some(upload)) }));
+            .returning(move |_| {
+                let stored = finished.clone();
+                Box::pin(async move { Ok(Some(stored)) })
+            });
         let mut file_storage = MockFileStorage::new();
         expect_integrity_hash(&mut file_storage, DIGEST);
         file_storage
@@ -673,7 +673,7 @@ mod tests {
         let mut phase_two_uploads = MockUploadRepository::new();
         expect_upload(&mut phase_two_uploads, resolved);
         phase_two_uploads
-            .expect_save()
+            .expect_finish()
             .times(1)
             .returning(|_| Box::pin(async { Ok(None) }));
         let mut phase_two_files = MockFileRepository::new();
@@ -954,6 +954,7 @@ mod tests {
     async fn complete_upload_dedup_is_scoped_to_caller() -> Result<(), Box<dyn Error>> {
         // Arrange
         let resolved = upload(5, 3, 4, &[0], false)?;
+        let finished = resolved.clone();
         let mut phase_one_uploads = MockUploadRepository::new();
         expect_upload(&mut phase_one_uploads, resolved.clone());
         let mut phase_two_uploads = MockUploadRepository::new();
@@ -975,9 +976,12 @@ mod tests {
             .times(1)
             .returning(|file| Box::pin(async move { Ok(file) }));
         phase_two_uploads
-            .expect_save()
+            .expect_finish()
             .times(1)
-            .returning(|upload| Box::pin(async move { Ok(Some(upload)) }));
+            .returning(move |_| {
+                let stored = finished.clone();
+                Box::pin(async move { Ok(Some(stored)) })
+            });
         let mut file_storage = MockFileStorage::new();
         expect_integrity_hash(&mut file_storage, DIGEST);
         file_storage
@@ -1168,7 +1172,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn complete_upload_save_conflict_returns_unknown() -> Result<(), Box<dyn Error>> {
+    async fn complete_upload_finish_conflict_returns_unknown() -> Result<(), Box<dyn Error>> {
         // Arrange
         let resolved = upload(5, 3, 4, &[0], false)?;
         let mut phase_one_uploads = MockUploadRepository::new();
@@ -1176,9 +1180,9 @@ mod tests {
         let mut phase_two_uploads = MockUploadRepository::new();
         expect_upload(&mut phase_two_uploads, resolved);
         phase_two_uploads
-            .expect_save()
+            .expect_finish()
             .times(1)
-            .returning(|_| Box::pin(async { Err(RepositoryError::ConcurrentModification) }));
+            .returning(|_| Box::pin(async { Err(RepositoryError::ConcurrencyConflict) }));
         let mut phase_two_files = MockFileRepository::new();
         phase_two_files
             .expect_search()
@@ -1265,14 +1269,18 @@ mod tests {
     async fn complete_upload_commit_failure_restores_staged_file() -> Result<(), Box<dyn Error>> {
         // Arrange
         let resolved = upload(5, 3, 4, &[0], false)?;
+        let finished = resolved.clone();
         let mut phase_one_uploads = MockUploadRepository::new();
         expect_upload(&mut phase_one_uploads, resolved.clone());
         let mut phase_two_uploads = MockUploadRepository::new();
         expect_upload(&mut phase_two_uploads, resolved);
         phase_two_uploads
-            .expect_save()
+            .expect_finish()
             .times(1)
-            .returning(|upload| Box::pin(async move { Ok(Some(upload)) }));
+            .returning(move |_| {
+                let stored = finished.clone();
+                Box::pin(async move { Ok(Some(stored)) })
+            });
         let mut phase_two_files = MockFileRepository::new();
         phase_two_files
             .expect_search()
@@ -1351,6 +1359,7 @@ mod tests {
         // The phase-2 search records that the hash ran before the mutating
         // phase touched the datastore.
         let mut phase_two_uploads = MockUploadRepository::new();
+        let finished = resolved.clone();
         let hash_called_by_search = Arc::clone(&hash_called);
         phase_two_uploads
             .expect_search()
@@ -1364,9 +1373,12 @@ mod tests {
                 Box::pin(async move { Ok(vec![stored]) })
             });
         phase_two_uploads
-            .expect_save()
+            .expect_finish()
             .times(1)
-            .returning(|upload| Box::pin(async move { Ok(Some(upload)) }));
+            .returning(move |_| {
+                let stored = finished.clone();
+                Box::pin(async move { Ok(Some(stored)) })
+            });
         let mut phase_two_files = MockFileRepository::new();
         phase_two_files
             .expect_search()

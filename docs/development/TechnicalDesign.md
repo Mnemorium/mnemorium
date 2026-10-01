@@ -708,6 +708,11 @@ pub trait UserRepository: Send + Sync {
 | `delete(id: DomainSpecificId)`         | Delete                                      |
 | `search(filter: &SomeFilter)`          | Query                                       |
 
+`save` is the default mutation when an aggregate is stored as one row. An aggregate may instead expose narrowly-scoped
+explicit mutators when a whole-row upsert would be wrong — for example `UploadRepository` records each received chunk as
+a child row (`record_chunk`) and transitions the upload to finished under a guard (`finish`), so no method rewrites a
+stale copy of the whole aggregate.
+
 ---
 
 ##### 8.2 Repository adapter
@@ -1637,10 +1642,13 @@ entity upload {
    * mime_type_id: TEXT <<FK, NN>>
    * chunk_size: INTEGER <<NN, CC(chunk_size > 0)>>
    * integrity_hash: CHAR(64) <<NN, CC(length(integrity_hash) = 64)>>
-   * chunk_bitmap: BLOB <<NN>>
    * is_finished: BOOLEAN <<NN, DF(0), CC(is_finished IN (0, 1))>>
-   * version: INTEGER <<NN, DF(0), CC(version >= 0)>>
    * created_at: TEXT <<NN, DF(CURRENT_TIMESTAMP)>>
+}
+
+entity upload_chunk {
+   * upload_id: INTEGER <<FK, PK>>
+   * chunk_number: INTEGER <<PK, CC(chunk_number >= 0)>>
 }
 
 entity mime_type {
@@ -1768,6 +1776,7 @@ user ||--|| credential
 user ||--o{ music_playlist
 user ||--o{ file
 user ||--o{ upload
+upload ||--o{ upload_chunk
 
 music_album ||--o{ music_medium
 music_album ||--o{ music_album_genre

@@ -21,9 +21,6 @@ use crate::domain::port::unit_of_work::UnitOfWorkFactory;
 use crate::domain::port::upload_repository::UploadFilter;
 use crate::domain::port::upload_repository::UploadRepository as _;
 
-/// Maximum number of attempts to persist a chunk bitmap before giving up.
-const MAX_CAS_ATTEMPTS: u8 = 3;
-
 /// Use case implementation for writing one chunk of an upload session.
 pub struct WriteUploadChunk<F, S, H> {
     /// Lifetime of an upload session, in seconds.
@@ -77,58 +74,39 @@ where
         let hasher = &self.hasher;
 
         Box::pin(async move {
-            let mut attempt = 0u8;
-            loop {
-                let result = execute_attempt(
-                    &unit_of_work_factory,
-                    &file_storage,
-                    hasher,
-                    &command,
-                    expiry_seconds,
-                )
-                .await;
-                match result {
-                    Err(AttemptError::ConcurrentModification) if attempt < MAX_CAS_ATTEMPTS - 1 => {
-                        attempt = attempt.saturating_add(1);
-                    }
-                    Err(AttemptError::ConcurrentModification) => {
-                        return Err(WriteUploadChunkError::Unknown(anyhow::anyhow!(
-                            "the chunk bitmap compare-and-swap kept losing after {MAX_CAS_ATTEMPTS} attempts"
-                        )));
-                    }
-                    Err(AttemptError::Expired) => {
-                        // `execute_attempt` commits the expiry cleanup and maps
-                        // the outcome to `Business`; this arm keeps the match
-                        // exhaustive and stays defensive.
-                        return Err(WriteUploadChunkError::Expired);
-                    }
-                    Ok(value) => return Ok(value),
-                    Err(AttemptError::Business(error)) => return Err(error),
-                }
+            match execute_attempt(
+                &unit_of_work_factory,
+                &file_storage,
+                hasher,
+                &command,
+                expiry_seconds,
+            )
+            .await
+            {
+                Ok(value) => Ok(value),
+                Err(AttemptError::Business(error)) => Err(error),
+                Err(AttemptError::Expired) => Err(WriteUploadChunkError::Expired),
             }
         })
     }
 }
 
-/// Outcome of one attempt at writing a chunk.
+/// Outcome of the attempt at writing a chunk.
 enum AttemptError {
     /// A business error the caller must see.
     Business(WriteUploadChunkError),
-    /// The bitmap compare-and-swap lost a race and may be retried.
-    ConcurrentModification,
     /// The upload expired: its row and staged file have been deleted, so the
     /// unit of work must be committed before returning `Expired`.
     Expired,
 }
 
-/// Run one chunk-write attempt inside its own unit of work.
+/// Run the chunk-write attempt inside its own unit of work.
 ///
 /// The attempt opens one transaction, persists the chunk, and closes the
-/// transaction according to the outcome. The caller retries the whole attempt
-/// when the bitmap compare-and-swap loses a race.
+/// transaction according to the outcome.
 #[expect(
     clippy::single_call_fn,
-    reason = "the retry loop body is extracted so the attempt owns its unit of work"
+    reason = "the attempt body is extracted so the attempt owns its unit of work"
 )]
 async fn execute_attempt<F, S, H>(
     unit_of_work_factory: &Arc<F>,
@@ -251,38 +229,54 @@ where
                 AttemptError::Business(WriteUploadChunkError::Unknown(error.into()))
             })?;
 
-        let mut updated = upload;
-        updated.mark_chunk_received(chunk_number).map_err(|error| {
-            AttemptError::Business(WriteUploadChunkError::Unknown(error.into()))
-        })?;
-
-        let save_result = unit_of_work.uploads().save(updated).await;
-        match save_result {
-            Ok(Some(saved)) => {
-                let bitmap = received_bitmap(&saved);
-                let chunk_count = saved.total_chunks();
-                let is_finished = saved.is_finished();
-                let file_id = caller_file_id(&mut unit_of_work, &saved, command.user_id())
-                    .await
-                    .map_err(|error| {
-                        AttemptError::Business(WriteUploadChunkError::Unknown(error.into()))
-                    })?;
-                Ok(WriteUploadChunkResponse::new(
-                    bitmap,
-                    expires_at,
-                    file_id,
-                    is_finished,
-                    chunk_count,
-                ))
+        match unit_of_work
+            .uploads()
+            .record_chunk(upload.upload_id(), command.chunk_number())
+            .await
+        {
+            Ok(()) => {}
+            Err(RepositoryError::Conflict) => {
+                return Err(AttemptError::Business(
+                    WriteUploadChunkError::AlreadyFinished,
+                ));
             }
-            Ok(None) => Err(AttemptError::Business(WriteUploadChunkError::NoSuchUpload)),
-            Err(RepositoryError::ConcurrentModification) => {
-                Err(AttemptError::ConcurrentModification)
+            Err(error) => {
+                return Err(AttemptError::Business(WriteUploadChunkError::Unknown(
+                    error.into(),
+                )));
             }
-            Err(error) => Err(AttemptError::Business(WriteUploadChunkError::Unknown(
-                error.into(),
-            ))),
         }
+
+        // Re-read the upload inside the same transaction so the response
+        // reports the authoritative bitmap, chunk count and status, including a
+        // concurrent completion that landed after the upload was read above.
+        let saved = unit_of_work
+            .uploads()
+            .search(&UploadFilter {
+                id: Some(upload.upload_id()),
+                ..UploadFilter::default()
+            })
+            .await
+            .map_err(|error| AttemptError::Business(WriteUploadChunkError::Unknown(error.into())))?
+            .into_iter()
+            .next()
+            .ok_or(AttemptError::Business(WriteUploadChunkError::NoSuchUpload))?;
+
+        let bitmap = received_bitmap(&saved);
+        let chunk_count = saved.total_chunks();
+        let is_finished = saved.is_finished();
+        let file_id = caller_file_id(&mut unit_of_work, &saved, command.user_id())
+            .await
+            .map_err(|error| {
+                AttemptError::Business(WriteUploadChunkError::Unknown(error.into()))
+            })?;
+        Ok(WriteUploadChunkResponse::new(
+            bitmap,
+            expires_at,
+            file_id,
+            is_finished,
+            chunk_count,
+        ))
     }
     .await;
 
@@ -317,10 +311,11 @@ where
 
 #[cfg(test)]
 mod tests {
+    use std::collections::VecDeque;
     use std::error::Error;
-    use std::iter::repeat_with;
     use std::sync::Arc;
     use std::sync::Mutex;
+    use std::sync::PoisonError;
     use std::sync::atomic::Ordering;
 
     use crate::application::port::write_upload_chunk::WriteUploadChunkCommand;
@@ -393,7 +388,6 @@ mod tests {
             hash(DIGEST),
             bitmap,
             is_finished,
-            0,
             timestamp(),
         )
         .map_err(|_| RepositoryError::OperationFailed)
@@ -403,6 +397,20 @@ mod tests {
         uploads.expect_search().times(1).returning(move |_| {
             let stored = upload.clone();
             Box::pin(async move { Ok(vec![stored]) })
+        });
+    }
+
+    /// Queue the results the use case's `search` calls return, in order: the
+    /// initial read and, after a successful `record_chunk`, the re-read.
+    fn expect_search_results(uploads: &mut MockUploadRepository, results: Vec<Vec<Upload>>) {
+        let queue = Arc::new(Mutex::new(VecDeque::from(results)));
+        uploads.expect_search().times(1..).returning(move |_| {
+            let next = queue
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .pop_front()
+                .unwrap_or_default();
+            Box::pin(async move { Ok(next) })
         });
     }
 
@@ -424,11 +432,17 @@ mod tests {
         });
         // Arrange
         let mut uploads = MockUploadRepository::new();
-        expect_upload(&mut uploads, upload(5, 3, 8, &[], false)?);
+        expect_search_results(
+            &mut uploads,
+            vec![
+                vec![upload(5, 3, 8, &[], false)?],
+                vec![upload(5, 3, 8, &[0], false)?],
+            ],
+        );
         uploads
-            .expect_save()
+            .expect_record_chunk()
             .times(1)
-            .returning(|upload| Box::pin(async move { Ok(Some(upload)) }));
+            .returning(|_, _| Box::pin(async { Ok(()) }));
         let mut file_repository = MockFileRepository::new();
         file_repository
             .expect_search()
@@ -491,11 +505,14 @@ mod tests {
         });
         // Arrange
         let mut uploads = MockUploadRepository::new();
-        expect_upload(&mut uploads, upload(5, 3, 8, &[], false)?);
+        expect_search_results(
+            &mut uploads,
+            vec![vec![upload(5, 3, 8, &[], false)?], Vec::new()],
+        );
         uploads
-            .expect_save()
+            .expect_record_chunk()
             .times(1)
-            .returning(|_| Box::pin(async { Ok(None) }));
+            .returning(|_, _| Box::pin(async { Ok(()) }));
         let mut file_storage = MockFileStorage::new();
         file_storage
             .expect_add_chunk()
@@ -618,7 +635,6 @@ mod tests {
             hash(DIGEST),
             bitmap,
             false,
-            0,
             expired_at,
         )
         .map_err(|_| RepositoryError::OperationFailed)?;
@@ -685,7 +701,6 @@ mod tests {
             hash(DIGEST),
             bitmap,
             false,
-            0,
             expired_at,
         )
         .map_err(|_| RepositoryError::OperationFailed)?;
@@ -973,9 +988,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn write_upload_chunk_cas_conflict_retries_and_succeeds() -> Result<(), Box<dyn Error>> {
+    async fn write_upload_chunk_finished_race_returns_already_finished()
+    -> Result<(), Box<dyn Error>> {
         let mut hasher = MockContentHasher::new();
-        hasher.expect_hasher().times(2).returning(|| {
+        hasher.expect_hasher().times(1).returning(|| {
             let mut session = MockContentHasherSession::new();
             session
                 .expect_update()
@@ -988,106 +1004,26 @@ mod tests {
                 .returning(|| Ok(hash(CHUNK_DIGEST)));
             Box::new(session)
         });
-        // Arrange
-        let mut first_uploads = MockUploadRepository::new();
-        expect_upload(&mut first_uploads, upload(5, 3, 8, &[], false)?);
-        first_uploads
-            .expect_save()
+        // Arrange: the finished-guard trigger rejects the chunk insert because a
+        // concurrent completion won the race.
+        let mut uploads = MockUploadRepository::new();
+        expect_upload(&mut uploads, upload(5, 3, 8, &[], false)?);
+        uploads
+            .expect_record_chunk()
             .times(1)
-            .returning(|_| Box::pin(async { Err(RepositoryError::ConcurrentModification) }));
-        let mut second_uploads = MockUploadRepository::new();
-        expect_upload(&mut second_uploads, upload(5, 3, 8, &[], false)?);
-        second_uploads
-            .expect_save()
-            .times(1)
-            .returning(|upload| Box::pin(async move { Ok(Some(upload)) }));
+            .returning(|_, _| Box::pin(async { Err(RepositoryError::Conflict) }));
         let mut file_storage = MockFileStorage::new();
         file_storage
             .expect_add_chunk()
-            .times(2)
+            .times(1)
             .returning(|_, _, _| Box::pin(async { Ok(()) }));
-        let (first_unit_of_work, first_committed, first_rolled_back) = asset_unit_of_work(
-            first_uploads,
+        let (unit_of_work, _committed, rolled_back) = asset_unit_of_work(
+            uploads,
             MockFileRepository::new(),
             MockMimeTypeRepository::new(),
         );
-        let mut second_file_repository = MockFileRepository::new();
-        second_file_repository
-            .expect_search()
-            .times(1)
-            .returning(|_| Box::pin(async { Ok(Vec::new()) }));
-        let (second_unit_of_work, second_committed, _second_rolled_back) = asset_unit_of_work(
-            second_uploads,
-            second_file_repository,
-            MockMimeTypeRepository::new(),
-        );
         let factory = TestUnitOfWorkFactory {
-            unit_of_works: Mutex::new(vec![first_unit_of_work, second_unit_of_work]),
-        };
-        let use_case = WriteUploadChunk::new(
-            Arc::new(factory),
-            Arc::new(file_storage),
-            hasher,
-            TTL_SECONDS,
-        );
-        let command =
-            WriteUploadChunkCommand::new(5, 0, 0, b"1234".to_vec(), hash(CHUNK_DIGEST), 3);
-
-        // Act
-        let response = use_case.execute(command).await?;
-
-        // Assert
-        assert_eq!(response.bitmap(), "10");
-        assert_eq!(response.total_chunks(), 2);
-        assert!(!response.is_finished());
-        assert_eq!(response.file_id(), None);
-        assert!(first_rolled_back.load(Ordering::SeqCst));
-        assert!(!first_committed.load(Ordering::SeqCst));
-        assert!(second_committed.load(Ordering::SeqCst));
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn write_upload_chunk_cas_conflict_exhausts_retries_returns_unknown()
-    -> Result<(), Box<dyn Error>> {
-        let mut hasher = MockContentHasher::new();
-        hasher.expect_hasher().times(3).returning(|| {
-            let mut session = MockContentHasherSession::new();
-            session
-                .expect_update()
-                .times(1)
-                .withf(|bytes: &[u8]| bytes == b"1234")
-                .return_const(());
-            session
-                .expect_finalize()
-                .times(1)
-                .returning(|| Ok(hash(CHUNK_DIGEST)));
-            Box::new(session)
-        });
-        // Arrange
-        let unit_of_works = repeat_with(|| -> Result<_, Box<dyn Error>> {
-            let mut uploads = MockUploadRepository::new();
-            expect_upload(&mut uploads, upload(5, 3, 8, &[], false)?);
-            uploads
-                .expect_save()
-                .times(1)
-                .returning(|_| Box::pin(async { Err(RepositoryError::ConcurrentModification) }));
-            let (unit_of_work, _committed, _rolled_back) = asset_unit_of_work(
-                uploads,
-                MockFileRepository::new(),
-                MockMimeTypeRepository::new(),
-            );
-            Ok(unit_of_work)
-        })
-        .take(3)
-        .collect::<Result<Vec<_>, _>>()?;
-        let mut file_storage = MockFileStorage::new();
-        file_storage
-            .expect_add_chunk()
-            .times(3)
-            .returning(|_, _, _| Box::pin(async { Ok(()) }));
-        let factory = TestUnitOfWorkFactory {
-            unit_of_works: Mutex::new(unit_of_works),
+            unit_of_works: Mutex::new(vec![unit_of_work]),
         };
         let use_case = WriteUploadChunk::new(
             Arc::new(factory),
@@ -1102,7 +1038,11 @@ mod tests {
         let result = use_case.execute(command).await;
 
         // Assert
-        assert!(matches!(result, Err(WriteUploadChunkError::Unknown(_))));
+        assert!(matches!(
+            result,
+            Err(WriteUploadChunkError::AlreadyFinished)
+        ));
+        assert!(rolled_back.load(Ordering::SeqCst));
         Ok(())
     }
 
