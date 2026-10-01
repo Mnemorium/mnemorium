@@ -9,13 +9,13 @@ use crate::application::port::complete_upload::CompleteUploadCommand;
 use crate::application::port::complete_upload::CompleteUploadError;
 use crate::application::port::complete_upload::CompleteUploadResponse;
 use crate::application::port::complete_upload::CompleteUploadUseCase;
+use crate::application::use_case::upload_session::caller_file_id;
 use crate::application::use_case::upload_session::expiry;
 use crate::domain::alias::NumericID;
 use crate::domain::model::file::File;
 use crate::domain::model::upload::Upload;
 use crate::domain::port::asset_unit_of_work::AssetUnitOfWork;
 use crate::domain::port::error::RepositoryError;
-use crate::domain::port::file_repository::FileFilter;
 use crate::domain::port::file_repository::FileRepository as _;
 use crate::domain::port::file_storage::FileStorage;
 use crate::domain::port::unit_of_work::UnitOfWork as _;
@@ -114,19 +114,20 @@ where
                     return expire(&mut unit_of_work, &file_storage, command.upload_id()).await;
                 }
 
-                let existing = find_file(&mut unit_of_work, &upload, command.user_id()).await;
-
                 // Idempotent completion: an already finished upload returns the
-                // caller's file for the same digest.
+                // caller's file for the same digest. The session is already
+                // finished, so there are no staged bytes left to verify; the
+                // lookup is scoped to the caller.
                 if upload.is_finished() {
-                    return match existing {
-                        Ok(Some(file)) => {
-                            Flow::Succeeded(CompleteUploadResponse::new(file.id(), true))
+                    return match caller_file_id(&mut unit_of_work, &upload, command.user_id()).await
+                    {
+                        Ok(Some(file_id)) => {
+                            Flow::Succeeded(CompleteUploadResponse::new(file_id, true))
                         }
                         Ok(None) => Flow::Failed(CompleteUploadError::Unknown(anyhow::anyhow!(
                             "the finished upload has no matching file"
                         ))),
-                        Err(error) => Flow::Failed(error),
+                        Err(error) => Flow::Failed(CompleteUploadError::Unknown(error.into())),
                     };
                 }
 
@@ -134,28 +135,25 @@ where
                     return Flow::Failed(CompleteUploadError::Incomplete);
                 }
 
-                // Deduplication is caller-scoped and resolved before the staged
-                // file is promoted, so a cross-user conflict never leaves a
-                // promoted orphan behind.
-                let matching_file = match existing {
-                    Ok(deduplicated) => deduplicated,
-                    Err(error) => return Flow::Failed(error),
-                };
-
-                if let Some(own_file) = matching_file {
-                    // The caller already owns a file with this digest, so no new
-                    // file is created and the session is left open. The staged
-                    // content is still verified so a completion never reports
-                    // success for bytes that do not match the declared digest;
-                    // the staged file is left for the reaper.
-                    if let Err(error) = verify_integrity(&file_storage, &upload).await {
-                        return Flow::Failed(error);
-                    }
-                    return Flow::Succeeded(CompleteUploadResponse::new(own_file.id(), false));
-                }
-
+                // The staged content is verified before any digest lookup, so a
+                // caller cannot probe the file table for a guessed hash without
+                // first proving it holds the matching content.
                 if let Err(error) = verify_integrity(&file_storage, &upload).await {
                     return Flow::Failed(error);
+                }
+
+                // Deduplication is caller-scoped: a caller who already owns a
+                // file with this digest gets that file back and no new copy is
+                // stored. The session is left unfinished and the staged file is
+                // left for the reaper.
+                match caller_file_id(&mut unit_of_work, &upload, command.user_id()).await {
+                    Ok(Some(file_id)) => {
+                        return Flow::Succeeded(CompleteUploadResponse::new(file_id, false));
+                    }
+                    Ok(None) => {}
+                    Err(error) => {
+                        return Flow::Failed(CompleteUploadError::Unknown(error.into()));
+                    }
                 }
 
                 let path = match file_storage
@@ -179,8 +177,28 @@ where
                     Ok(pending) => pending,
                     Err(error) => return Flow::Failed(CompleteUploadError::Unknown(error.into())),
                 };
-                let file = match unit_of_work.files().create(pending).await {
+                let created = unit_of_work.files().create(pending).await;
+                let file = match created {
                     Ok(file) => file,
+                    // A concurrent completion of the same digest by this caller
+                    // inserted the row first. Return that file and leave the
+                    // session unfinished, mirroring the non-concurrent duplicate
+                    // path; the promoted file is restored so it is not orphaned.
+                    Err(RepositoryError::AlreadyExist) => {
+                        restore_promoted(&file_storage, promoted.as_ref()).await;
+                        promoted = None;
+                        return match caller_file_id(&mut unit_of_work, &upload, command.user_id())
+                            .await
+                        {
+                            Ok(Some(file_id)) => {
+                                Flow::Succeeded(CompleteUploadResponse::new(file_id, false))
+                            }
+                            Ok(None) => Flow::Failed(CompleteUploadError::Unknown(
+                                anyhow::anyhow!("the duplicate file vanished while completing"),
+                            )),
+                            Err(error) => Flow::Failed(CompleteUploadError::Unknown(error.into())),
+                        };
+                    }
                     Err(error) => return Flow::Failed(CompleteUploadError::Unknown(error.into())),
                 };
 
@@ -261,46 +279,6 @@ where
     Flow::Expired
 }
 
-/// Find the caller's file matching the upload digest.
-///
-/// # Errors
-///
-/// Returns [`CompleteUploadError::Conflict`] when the digest is already owned by
-/// another user, and [`CompleteUploadError::Unknown`] on a repository failure.
-#[expect(
-    clippy::single_call_fn,
-    reason = "the caller-scoped deduplication lookup is named for readability"
-)]
-async fn find_file<U>(
-    unit_of_work: &mut U,
-    upload: &Upload,
-    user_id: i64,
-) -> Result<Option<File>, CompleteUploadError>
-where
-    U: AssetUnitOfWork,
-{
-    let files = unit_of_work
-        .files()
-        .search(&FileFilter {
-            integrity_hash: Some(upload.integrity_hash().as_str().to_owned()),
-            ..FileFilter::default()
-        })
-        .await
-        .map_err(|error| CompleteUploadError::Unknown(error.into()))?;
-
-    let mut own_file = None;
-    for file in files {
-        if file.user_id() == user_id {
-            if own_file.is_none() {
-                own_file = Some(file);
-            }
-        } else {
-            return Err(CompleteUploadError::Conflict);
-        }
-    }
-    Ok(own_file)
-}
-
 /// Recompute the staged file's integrity hash and compare it with the hash
 /// declared when the upload was initialized.
 ///
@@ -309,6 +287,10 @@ where
 /// Returns [`CompleteUploadError::IntegrityMismatch`] when the staged content
 /// does not hash to the declared digest, and [`CompleteUploadError::Unknown`]
 /// when the digest cannot be computed.
+#[expect(
+    clippy::single_call_fn,
+    reason = "the staged-content verification is named after the rule it enforces"
+)]
 async fn verify_integrity<S>(
     file_storage: &Arc<S>,
     upload: &Upload,
@@ -347,6 +329,7 @@ mod tests {
     use std::error::Error;
     use std::sync::Arc;
     use std::sync::atomic::AtomicBool;
+    use std::sync::atomic::AtomicUsize;
     use std::sync::atomic::Ordering;
 
     use chrono::NaiveDate;
@@ -559,11 +542,10 @@ mod tests {
         // Arrange
         let mut uploads = MockUploadRepository::new();
         expect_upload(&mut uploads, upload(5, 3, 4, &[0], false)?);
+        // The mismatch is detected before any digest lookup, so the file table
+        // is never probed.
         let mut files = MockFileRepository::new();
-        files
-            .expect_search()
-            .times(1)
-            .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+        files.expect_search().times(0);
         let mut file_storage = MockFileStorage::new();
         expect_integrity_hash(
             &mut file_storage,
@@ -730,11 +712,9 @@ mod tests {
         // Arrange
         let mut uploads = MockUploadRepository::new();
         expect_upload(&mut uploads, upload(5, 3, 8, &[0], false)?);
+        // The incomplete upload is rejected before any digest lookup.
         let mut files = MockFileRepository::new();
-        files
-            .expect_search()
-            .times(1)
-            .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+        files.expect_search().times(0);
         let harness = use_case_with(uploads, files, MockFileStorage::new());
         let command = CompleteUploadCommand::new(5, 3);
 
@@ -747,16 +727,15 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn complete_upload_incomplete_with_cross_user_digest_returns_incomplete()
+    async fn complete_upload_incomplete_with_cross_user_digest_does_not_probe()
     -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut uploads = MockUploadRepository::new();
         expect_upload(&mut uploads, upload(5, 3, 8, &[0], false)?);
+        // A cross-user digest must not be probed: the incomplete upload is
+        // rejected by can_finish before any file-table lookup happens.
         let mut files = MockFileRepository::new();
-        files.expect_search().times(1).returning(|_| {
-            let stored = stored_file(11, 42);
-            Box::pin(async move { stored.map(|file| vec![file]) })
-        });
+        files.expect_search().times(0);
         let harness = use_case_with(uploads, files, MockFileStorage::new());
         let command = CompleteUploadCommand::new(5, 3);
 
@@ -792,24 +771,43 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn complete_upload_cross_user_duplicate_returns_conflict() -> Result<(), Box<dyn Error>> {
+    async fn complete_upload_dedup_is_scoped_to_caller() -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut uploads = MockUploadRepository::new();
         expect_upload(&mut uploads, upload(5, 3, 4, &[0], false)?);
         let mut files = MockFileRepository::new();
-        files.expect_search().times(1).returning(|_| {
-            let stored = stored_file(11, 42);
-            Box::pin(async move { stored.map(|file| vec![file]) })
+        files.expect_search().times(1).returning(|filter| {
+            // The lookup is caller-scoped: another user's row is filtered out
+            // by the repository, so a cross-user duplicate never conflicts and
+            // the caller stores their own copy.
+            assert_eq!(filter.user_id, Some(3));
+            assert_eq!(filter.integrity_hash.as_deref(), Some(DIGEST));
+            Box::pin(async { Ok(Vec::new()) })
         });
-        let harness = use_case_with(uploads, files, MockFileStorage::new());
+        files
+            .expect_create()
+            .times(1)
+            .returning(|file| Box::pin(async move { Ok(file) }));
+        uploads
+            .expect_save()
+            .times(1)
+            .returning(|upload| Box::pin(async move { Ok(Some(upload)) }));
+        let mut file_storage = MockFileStorage::new();
+        expect_integrity_hash(&mut file_storage, DIGEST);
+        file_storage
+            .expect_promote()
+            .times(1)
+            .returning(|_, _| Box::pin(async { Ok("files/5_clip.mp4".to_owned()) }));
+        let harness = use_case_with(uploads, files, file_storage);
         let command = CompleteUploadCommand::new(5, 3);
 
         // Act
-        let result = harness.use_case.execute(command).await;
+        let response = harness.use_case.execute(command).await?;
 
         // Assert
-        assert!(matches!(result, Err(CompleteUploadError::Conflict)));
-        assert!(harness.rolled_back.load(Ordering::SeqCst));
+        assert_eq!(response.file_id(), 0);
+        assert!(response.is_finished());
+        assert!(harness.committed.load(Ordering::SeqCst));
         Ok(())
     }
 
@@ -840,16 +838,59 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn complete_upload_own_duplicate_integrity_mismatch_returns_integrity_mismatch()
+    async fn complete_upload_concurrent_duplicate_returns_existing_file()
     -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut uploads = MockUploadRepository::new();
         expect_upload(&mut uploads, upload(5, 3, 4, &[0], false)?);
         let mut files = MockFileRepository::new();
-        files.expect_search().times(1).returning(|_| {
-            let stored = stored_file(11, 3);
-            Box::pin(async move { stored.map(|file| vec![file]) })
+        let search_calls = Arc::new(AtomicUsize::new(0));
+        let next_call = Arc::clone(&search_calls);
+        files.expect_search().times(2).returning(move |_| {
+            let call = next_call.fetch_add(1, Ordering::SeqCst);
+            let result = if call == 0 {
+                Ok(Vec::new())
+            } else {
+                stored_file(11, 3).map(|file| vec![file])
+            };
+            Box::pin(async move { result })
         });
+        files
+            .expect_create()
+            .times(1)
+            .returning(|_| Box::pin(async { Err(RepositoryError::AlreadyExist) }));
+        let mut file_storage = MockFileStorage::new();
+        expect_integrity_hash(&mut file_storage, DIGEST);
+        file_storage
+            .expect_promote()
+            .times(1)
+            .returning(|_, _| Box::pin(async { Ok("files/5_clip.mp4".to_owned()) }));
+        file_storage
+            .expect_restore()
+            .times(1)
+            .returning(|_, _| Box::pin(async { Ok(()) }));
+        let harness = use_case_with(uploads, files, file_storage);
+        let command = CompleteUploadCommand::new(5, 3);
+
+        // Act
+        let response = harness.use_case.execute(command).await?;
+
+        // Assert
+        assert_eq!(response.file_id(), 11);
+        assert!(!response.is_finished());
+        assert!(harness.committed.load(Ordering::SeqCst));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn complete_upload_own_duplicate_integrity_mismatch_returns_integrity_mismatch()
+    -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let mut uploads = MockUploadRepository::new();
+        expect_upload(&mut uploads, upload(5, 3, 4, &[0], false)?);
+        // The mismatch is detected before the duplicate lookup.
+        let mut files = MockFileRepository::new();
+        files.expect_search().times(0);
         let mut file_storage = MockFileStorage::new();
         expect_integrity_hash(
             &mut file_storage,

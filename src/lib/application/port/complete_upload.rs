@@ -70,10 +70,6 @@ impl CompleteUploadResponse {
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum CompleteUploadError {
-    /// A file with this integrity hash already exists and is owned by another
-    /// user.
-    #[error("a file with this integrity hash already exists and is owned by another user")]
-    Conflict,
     /// The upload session has expired.
     #[error("the upload session has expired")]
     Expired,

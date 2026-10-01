@@ -54,7 +54,6 @@ impl From<CompleteUploadError> for ApiError {
             CompleteUploadError::Incomplete | CompleteUploadError::IntegrityMismatch => {
                 Self::BadRequest(err.to_string())
             }
-            CompleteUploadError::Conflict => Self::Conflict(err.to_string()),
             CompleteUploadError::Expired => Self::Gone(err.to_string()),
             CompleteUploadError::NoSuchUpload => Self::NotFound(err.to_string()),
             CompleteUploadError::Unknown(_) => Self::InternalServerError,
@@ -104,12 +103,6 @@ impl From<CompleteUploadError> for ApiError {
             body = ErrorBody,
             content_type = "application/hal+json",
             description = "Unknown upload session"
-        ),
-        (
-            status = CONFLICT,
-            body = ErrorBody,
-            content_type = "application/hal+json",
-            description = "The integrity hash is already owned by another user"
         ),
         (
             status = GONE,
@@ -315,25 +308,6 @@ mod tests {
         assert_eq!(
             payload,
             json!({ "error": "no upload session matches this identifier" })
-        );
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn post_upload_complete_cross_user_digest_returns_conflict() -> Result<(), Box<dyn Error>>
-    {
-        // Arrange
-        let mut use_case = MockCompleteUploadUseCase::new();
-        expect_error(&mut use_case, CompleteUploadError::Conflict);
-
-        // Act
-        let (status, payload) = into_parts(send(use_case, 3, "7").await?).await?;
-
-        // Assert
-        assert_eq!(status, StatusCode::CONFLICT);
-        assert_eq!(
-            payload,
-            json!({ "error": "a file with this integrity hash already exists and is owned by another user" })
         );
         Ok(())
     }

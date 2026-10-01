@@ -928,16 +928,6 @@
             },
             "description": "Unknown upload session"
           },
-          "409": {
-            "content": {
-              "application/hal+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "The integrity hash is already owned by another user"
-          },
           "410": {
             "content": {
               "application/hal+json": {

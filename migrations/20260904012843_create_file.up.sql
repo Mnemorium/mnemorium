@@ -8,7 +8,7 @@ CREATE TABLE file (
     integrity_hash CHAR(64) NOT NULL,
     CONSTRAINT pk_file_file_id PRIMARY KEY (file_id),
     CONSTRAINT uq_file_path UNIQUE (path),
-    CONSTRAINT uq_file_integrity_hash UNIQUE (integrity_hash),
+    CONSTRAINT uq_file_user_id_integrity_hash UNIQUE (user_id, integrity_hash),
     CONSTRAINT fk_file_user FOREIGN KEY (user_id) REFERENCES user (user_id),
     CONSTRAINT fk_file_mime_type FOREIGN KEY (
         mime_type_id

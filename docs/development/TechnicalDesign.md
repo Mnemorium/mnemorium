@@ -1587,7 +1587,7 @@ entity file {
    * is_public: BOOLEAN <<NN, DF(0)>>
    * mime_type_id: TEXT <<FK, NN>>
    * uploaded_at: DATE <<NN, DF(date('now'))>>
-   * integrity_hash: CHAR(64) <<NN, UN, CC(length(integrity_hash) = 64)>>
+   * integrity_hash: CHAR(64) <<NN, CC(length(integrity_hash) = 64)>>
 }
 
 entity upload {
@@ -1785,6 +1785,9 @@ gallery_video ||--|| video
 
 @enduml
 ```
+
+The `file` entity enforces a composite unique key on `(user_id, integrity_hash)`: a caller stores one file record per
+integrity hash, while different callers may each store their own copy.
 
 ---
 

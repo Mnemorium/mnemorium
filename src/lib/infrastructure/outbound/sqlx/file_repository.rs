@@ -275,7 +275,28 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn create_duplicate_digest_returns_already_exist() -> Result<(), Box<dyn Error>> {
+    async fn create_duplicate_digest_for_same_user_returns_already_exist()
+    -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let mut transaction = begin_transaction().await?;
+        seed_user(&mut transaction, 1).await?;
+        let mut repository = SqlxFileRepository::new(&mut transaction);
+        repository
+            .create(file(0, "files/1_clip.mp4", 1, DIGEST)?)
+            .await?;
+
+        // Act
+        let result = repository
+            .create(file(0, "files/1_other.mp4", 1, DIGEST)?)
+            .await;
+
+        // Assert
+        assert!(matches!(result, Err(RepositoryError::AlreadyExist)));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn create_duplicate_digest_for_different_user_is_allowed() -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut transaction = begin_transaction().await?;
         seed_user(&mut transaction, 1).await?;
@@ -286,12 +307,13 @@ mod tests {
             .await?;
 
         // Act
-        let result = repository
+        let stored = repository
             .create(file(0, "files/2_clip.mp4", 2, DIGEST)?)
-            .await;
+            .await?;
 
         // Assert
-        assert!(matches!(result, Err(RepositoryError::AlreadyExist)));
+        assert_eq!(stored.user_id(), 2);
+        assert_eq!(stored.integrity_hash().as_str(), DIGEST);
         Ok(())
     }
 

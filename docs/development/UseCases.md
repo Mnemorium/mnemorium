@@ -383,7 +383,8 @@ The upload flow is resumable and chunked, so it spans several requests.
   datastore.
 - The media type is determined from the file content, not from the file name or declared content type alone.
 - The stored file path is unique across files.
-- An integrity hash of the uploaded content is computed and stored with the file; it is unique across files.
+- An integrity hash of the uploaded content is computed and stored with the file; a caller's file records are unique by
+  integrity hash.
 - Duplicate content is deduplicated per caller: when the caller already owns a file with the same integrity hash, the
   uploaded content is verified against the declared hash and the existing file record is returned instead of storing a
   second copy. The upload session is left unfinished.
