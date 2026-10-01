@@ -90,7 +90,12 @@ impl Default for AssetStorage {
 }
 
 /// Upload-related settings of the Asset bounded context.
+///
+/// Deserialization is routed through `AssetUploadConfig` and [`TryFrom`] so
+/// that the layered configuration cannot bypass the validation performed by
+/// [`AssetUpload::try_new`].
 #[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+#[serde(try_from = "AssetUploadConfig")]
 #[non_exhaustive]
 pub struct AssetUpload {
     /// Size of every chunk except the last, in bytes.
@@ -99,6 +104,32 @@ pub struct AssetUpload {
     expiry_seconds: u64,
     /// Maximum size of a single uploaded file, in bytes.
     max_file_size_bytes: u64,
+}
+
+/// Unchecked deserialization mirror of [`AssetUpload`].
+///
+/// Serde builds this snapshot and hands it to the [`TryFrom`] implementation,
+/// which validates it through [`AssetUpload::try_new`].
+#[derive(serde::Deserialize)]
+struct AssetUploadConfig {
+    /// Size of every chunk except the last, in bytes.
+    chunk_size_bytes: u64,
+    /// Lifetime of an upload session, in seconds.
+    expiry_seconds: u64,
+    /// Maximum size of a single uploaded file, in bytes.
+    max_file_size_bytes: u64,
+}
+
+impl TryFrom<AssetUploadConfig> for AssetUpload {
+    type Error = AssetError;
+
+    fn try_from(config: AssetUploadConfig) -> Result<Self, Self::Error> {
+        Self::try_new(
+            config.chunk_size_bytes,
+            config.expiry_seconds,
+            config.max_file_size_bytes,
+        )
+    }
 }
 
 impl AssetUpload {

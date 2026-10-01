@@ -261,6 +261,7 @@ mod tests {
     use crate::application::port::load_configuration::LoadConfigurationError;
     use crate::application::port::load_configuration::LoadConfigurationUseCase as _;
     use crate::domain::model::asset::Asset;
+    use crate::domain::model::asset::AssetUpload;
     use crate::domain::model::configuration::Configuration;
     use crate::domain::model::jwt::Jwt;
     use crate::domain::model::logging::Logging;
@@ -595,6 +596,40 @@ mod tests {
             serde_json::from_str::<Rotation>("\"NEVER\"")?,
             Rotation::Never
         );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn asset_upload_deserialization_rejects_zero_chunk_size() {
+        // Arrange
+        let payload = r#"{"chunk_size_bytes":0,"expiry_seconds":3600,"max_file_size_bytes":1024}"#;
+
+        // Act
+        let message = serde_json::from_str::<AssetUpload>(payload)
+            .map_err(|error| error.to_string())
+            .err()
+            .unwrap_or_default();
+
+        // Assert
+        assert!(
+            message.contains("chunk_size_bytes must be greater than zero"),
+            "deserialization must reject a zero chunk size, got: {message:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn asset_upload_deserializes_valid_settings() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let payload =
+            r#"{"chunk_size_bytes":2048,"expiry_seconds":120,"max_file_size_bytes":4294967296}"#;
+
+        // Act
+        let upload = serde_json::from_str::<AssetUpload>(payload)?;
+
+        // Assert
+        assert_eq!(upload.chunk_size_bytes(), 2048);
+        assert_eq!(upload.expiry_seconds(), 120);
+        assert_eq!(upload.max_file_size_bytes(), 4_294_967_296);
         Ok(())
     }
 
