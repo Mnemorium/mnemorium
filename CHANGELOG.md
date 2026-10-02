@@ -1,3 +1,9 @@
+## [0.4.0](https://github.com/Mnemorium/mnemorium/compare/v0.3.1...v0.4.0) (2026-10-02)
+
+### Features
+
+* **api:** chunked upload ([#31](https://github.com/Mnemorium/mnemorium/issues/31)) ([a56e441](https://github.com/Mnemorium/mnemorium/commit/a56e4411b9a4a2ee678cbda1a3efb073db04371b))
+
 ## [0.3.1](https://github.com/Mnemorium/mnemorium/compare/v0.3.0...v0.3.1) (2026-10-01)
 
 ### Bug Fixes
