@@ -2051,7 +2051,8 @@ release comment when that comment sits on the same line as the SHA.
 
 Pinning a SHA strips the ref of the meaning the action gave it, so configuration carried by the ref moves into an input.
 `dtolnay/rust-toolchain` selects its toolchain from the ref: it is pinned to a SHA with the release tag in the comment,
-and the toolchain is supplied through `toolchain:`.
+and the toolchain is supplied through `toolchain:`. The CI table records the toolchain it installs (`1.98.0`), not the
+action's own release tag.
 
 ---
 
