@@ -72,9 +72,7 @@ against the file paths the diff adds or changes.
 | `api-architect`       | `src/lib/infrastructure/inbound/rest/**`, `docs/development/api/**`                              |
 | `system-architect`    | `src/**`                                                                                         |
 | `technical-writer`    | `docs/**`, `**/*.md`, `mkdocs.yml`, `.opencode/**`, `AGENTS.md`                                  |
-
-Known gap: files owned by `devops` (`.github/**`, `devenv.*`, `Dockerfile`) have
-no specialist in this panel. Record it as a scope note, not a finding.
+| `devops`              | `.github/**`, `devenv.*`, `Dockerfile`, `.dockerignore`, `mkdocs.yml`, `.yamllint`, `.markdownlint-cli2.jsonc`, `.prettierrc`, `.prettierignore`, `.ls-lint.yml`, `.taplo.toml`, `.betterleaks.toml`, `ruff.toml`, `pytest.ini`, `requirements.txt`, `.releaserc.json`, `.gitignore`, `script/**` |
 
 ## Process
 

@@ -16,6 +16,7 @@ permissions:
   - { action: subagent, resource: "api-architect", effect: allow }
   - { action: subagent, resource: "system-architect", effect: allow }
   - { action: subagent, resource: "technical-writer", effect: allow }
+  - { action: subagent, resource: "devops", effect: allow }
   - { action: skill, resource: "*", effect: deny }
   - { action: skill, resource: "mn-review", effect: allow }
   - { action: skill, resource: "create-issue", effect: allow }
