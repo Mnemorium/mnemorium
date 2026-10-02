@@ -69,8 +69,10 @@ A section presents its rules as a **rule table**:
   reference material; empty when the rule is self-contained.
 
 The numbered detail sections that follow the table carry everything non-normative: code, examples, tables and
-explanation. They are numbered `#### 1.`, `#### 2.`, nested `##### 2.1`, and so on, restarting at 1 within each `###`
-group; like rule IDs, detail numbers are append-only.
+explanation. A numbered detail sits one heading level below the heading that owns it: `#### 1.`, `#### 2.` under a `###`
+topic heading, or `### 1.`, `### 2.` directly under the section's `##` heading. Nest `##### 2.1`, and so on; numbering
+restarts at 1 within each `###` group — or within the section when it has none; like rule IDs, detail numbers are
+append-only.
 
 Only normative statements carry IDs; every section present in this document uses the table form. A newly added or
 migrated section follows the same shape.
@@ -84,7 +86,7 @@ Cite a rule as `TechnicalDesign.md § 1 (Code Style Guidelines), STY-RUST-001`, 
 
 1. Take the next number in the registry; numbers are never reused.
 2. Write the section following the [section anatomy](#section-anatomy), or mark it `linked` with a pointer to its
-   canonical source.
+   canonical source. Add the section to the `AGENTS.md` router, or refresh its existing entry, in the same change.
 3. To migrate: move the content, re-level its headings under the section, keep every existing anchor working, then
    delete the source document and update every reference — including `AGENTS.md` and `mkdocs.yml` — in the same change.
 4. Assign the section's rule-ID prefix in this file.
