@@ -1,4 +1,6 @@
 use std::future::Future;
+use std::path::Path;
+use std::path::PathBuf;
 use std::pin::Pin;
 use std::sync::Arc;
 
@@ -9,6 +11,7 @@ use crate::application::port::get_upload::GetUploadCommand;
 use crate::application::port::get_upload::GetUploadError;
 use crate::application::port::get_upload::GetUploadResponse;
 use crate::application::port::get_upload::GetUploadUseCase;
+use crate::application::use_case::upload_layout::staged_path;
 use crate::application::use_case::upload_session::caller_file_id;
 use crate::application::use_case::upload_session::expiry;
 use crate::application::use_case::upload_session::received_bitmap;
@@ -37,6 +40,8 @@ pub struct GetUpload<F, S> {
     expiry_seconds: u64,
     /// Storage adapter deleting the staged file of an expired upload.
     file_storage: Arc<S>,
+    /// Root directory holding the upload and file folders.
+    root: PathBuf,
     /// Factory opening the unit of work wrapping the read.
     unit_of_work_factory: Arc<F>,
 }
@@ -44,10 +49,16 @@ pub struct GetUpload<F, S> {
 impl<F: UnitOfWorkFactory, S: FileStorage> GetUpload<F, S> {
     /// Create a new use case.
     #[must_use]
-    pub fn new(unit_of_work_factory: Arc<F>, file_storage: Arc<S>, expiry_seconds: u64) -> Self {
+    pub fn new(
+        unit_of_work_factory: Arc<F>,
+        file_storage: Arc<S>,
+        root: PathBuf,
+        expiry_seconds: u64,
+    ) -> Self {
         Self {
             expiry_seconds,
             file_storage,
+            root,
             unit_of_work_factory,
         }
     }
@@ -66,6 +77,7 @@ where
     {
         let expiry_seconds = self.expiry_seconds;
         let file_storage = Arc::clone(&self.file_storage);
+        let root = self.root.clone();
         let unit_of_work_factory = Arc::clone(&self.unit_of_work_factory);
 
         Box::pin(async move {
@@ -100,7 +112,8 @@ where
                     Err(error) => return Flow::Failed(GetUploadError::Unknown(error)),
                 };
                 if !upload.is_finished() && Utc::now().naive_utc() > expires_at {
-                    return expire(&mut unit_of_work, &file_storage, command.upload_id()).await;
+                    return expire(&mut unit_of_work, &file_storage, &root, command.upload_id())
+                        .await;
                 }
 
                 let bitmap = received_bitmap(&upload);
@@ -172,6 +185,7 @@ where
 async fn expire<U, S>(
     unit_of_work: &mut U,
     file_storage: &Arc<S>,
+    root: &Path,
     upload_id: i64,
 ) -> Flow<GetUploadResponse, GetUploadError>
 where
@@ -180,7 +194,10 @@ where
 {
     // TODO(reaper): move the expiry cleanup to a background task; this lazy
     // delete keeps the row and the staged file only until the next access.
-    if let Err(error) = file_storage.delete_upload_file(upload_id).await {
+    if let Err(error) = file_storage
+        .delete_upload_file(&staged_path(root, upload_id))
+        .await
+    {
         error!(error = ?error, "failed to delete the expired upload staged file");
     }
     if let Err(error) = unit_of_work.uploads().delete(upload_id).await {
@@ -192,6 +209,7 @@ where
 #[cfg(test)]
 mod tests {
     use std::error::Error;
+    use std::path::PathBuf;
     use std::sync::Arc;
     use std::sync::atomic::AtomicBool;
     use std::sync::atomic::Ordering;
@@ -219,6 +237,8 @@ mod tests {
     const DIGEST: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
     const TTL_SECONDS: u64 = 3600;
     const CHUNK_SIZE: u64 = 4;
+    /// Storage root the use case composes paths against.
+    const ROOT: &str = "/storage";
 
     type UseCase = GetUpload<TestFactory, MockFileStorage>;
 
@@ -244,6 +264,7 @@ mod tests {
             use_case: GetUpload::new(
                 Arc::clone(&harness.factory),
                 Arc::new(file_storage),
+                PathBuf::from(ROOT),
                 TTL_SECONDS,
             ),
             committed: harness.committed,
