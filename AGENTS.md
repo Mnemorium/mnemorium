@@ -64,6 +64,11 @@ project uses.
 When adding a crate or tool: reuse an existing adapter before adding one, never
 use wildcard dependency versions, and keep `cargo deny` clean.
 
+## Repository Governance
+
+See `docs/development/TechnicalDesign.md` § 7 (Repository Governance), `GOV-001`
+for the commit and pull-request scope set and the paths each scope owns.
+
 ## Special Rules
 
 - Respect the hexagonal dependency direction: `domain` ← `application` ←
