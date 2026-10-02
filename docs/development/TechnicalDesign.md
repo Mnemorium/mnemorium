@@ -2030,6 +2030,31 @@ to be filled in.
 
 Columns: **Name**, **Description**, **Version**, **License**.
 
+| ID         | Section                 | Rule                                                                                                                                                                                                               | More info                             |
+| ---------- | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------- |
+| `DEPS-001` | GitHub Actions          | Pin every third-party GitHub Action to a full-length commit SHA and record the release in a same-line comment, for example `# v6` or `# v1.2.3`.                                                                   | [§ CI supply chain](#ci-supply-chain) |
+| `DEPS-002` | Untrusted pull requests | A `pull_request` job that builds, tests or otherwise executes files from the pull-request ref runs with a read-only `GITHUB_TOKEN`, `persist-credentials: false`, no repository secrets and GitHub-hosted runners. | [§ CI supply chain](#ci-supply-chain) |
+
+---
+
+### CI supply chain
+
+A GitHub Action referenced by a tag or branch is mutable: whoever controls the action repository can move the ref. Pin
+every third-party action to a full-length commit SHA and record the release beside it, so a human can read it and
+Dependabot can bump it:
+
+```yaml
+- uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+```
+
+Dependabot reads `.github/dependabot.yml` and opens a pull request when a pinned SHA falls behind; it only updates the
+release comment when that comment sits on the same line as the SHA.
+
+A job that runs on `pull_request` executes the pull request — the checked-out merge ref, its scripts and its build
+files. Such a job gets a read-only `GITHUB_TOKEN`, `persist-credentials: false` on checkout, no repository secrets and a
+GitHub-hosted runner, so a malicious pull request can neither write the repository nor leave anything behind. Work that
+pushes, publishes or needs a secret runs from the default branch on `push` instead.
+
 ---
 
 ### Rust
