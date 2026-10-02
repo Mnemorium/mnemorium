@@ -38,6 +38,7 @@
             │   ├── jwt
             │   ├── moka.rs
             │   ├── random
+            │   ├── sha2
             │   └── sqlx
             │       ├── model
             │       └── sqlite3.rs
