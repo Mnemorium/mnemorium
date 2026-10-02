@@ -345,7 +345,7 @@ Format: `{type}({scope})/{description}`, kebab-case.
 
 Examples:
 
-- `feat(core)/serve-media`
+- `feat(application)/serve-media`
 - `fix(devops)/fix-dockerfile`
 - `docs(agent)/spellcheck-dead`
 
@@ -355,12 +355,12 @@ Format: `{type}({scope}): {description}` — enforced by CI.
 
 For intentional breaking changes, add `!` after the type/scope:
 
-- `feat(core)!: rename endpoints`
-- `fix(core)!: change response schema`
+- `feat(api)!: rename endpoints`
+- `fix(api)!: change response schema`
 
 Examples:
 
-- `feat(core): serve media via streaming`
+- `feat(application): serve media via streaming`
 - `fix(devops): fix Dockerfile registry`
 - `perf(application): speed up library scan`
 
@@ -372,23 +372,9 @@ assets (`*.png` anywhere, or any file under `.github/assets/`). Anything else is
 
 ### Scopes
 
-A scope is an optional noun describing the area of the codebase affected. The allowed scopes are:
-
-| Scope       | Description                                       |
-| ----------- | ------------------------------------------------- |
-| config      | Repository, tooling, and lint configuration files |
-| agent       | opencode configuration, agents, and `AGENTS.md`   |
-| devenv      | devenv environment files                          |
-| github      | GitHub Actions workflows and configuration        |
-| test-e2e    | End-to-end tests                                  |
-| test-system | System tests                                      |
-| sqlite3     | SQLite3 datastore (migrations, sqlx SQLite layer) |
-| application | Application layer (use cases and ports)           |
-| development | Development documentation                         |
-| readme      | Repository `README.md` files                      |
-| api         | REST API and OpenAPI specification                |
-
-Other scopes may be added later as new areas emerge.
+A scope is an optional noun describing the area of the codebase a change touches; a title carries at most one. The
+allowed scopes and the paths each owns are the closed list in
+[TechnicalDesign.md § 7 (Repository Governance), GOV-001](TechnicalDesign.md#repository-governance).
 
 ### Type prefixes
 

@@ -49,8 +49,8 @@ caller's, the scope is yours.
 The surface you own:
 
 - `docs/development/TechnicalDesign.md` — the rulebook: the section registry,
-  the section-migration procedure, and the `STY-*`, `API-*`, `PERS-*`, `TEST-*`
-  and `DEPS-*` rule tables.
+  the section-migration procedure, and the `STY-*`, `API-*`, `PERS-*`, `TEST-*`,
+  `DEPS-*` and `GOV-*` rule tables.
 - `docs/development/Overview.md` — the source layout, the server lifecycle, the
   domain-model and release diagrams, and the branch, PR and versioning
   conventions.
@@ -93,7 +93,9 @@ Read the governing material at run time; never work from memory. Cite one of:
 - `docs/development/Overview.md` § "Docs-only PRs" — a `docs` PR may change
   only `docs/**`, any `*.md`, `mkdocs.yml`, or image assets.
 - `docs/development/Overview.md` § "Branch naming and PR title naming" — the
-  branch, PR-title and scope conventions.
+  branch and PR-title format.
+- `docs/development/TechnicalDesign.md` § 7 (Repository Governance), `GOV-001`
+  — the commit and PR scope set, its owning paths, and its enforcement.
 - `docs/development/UseCases.md` — a business use-case entry may be implemented
   by several application use cases under `src/lib/application/use_case/`; it is
   not a one-to-one file mapping.
@@ -104,9 +106,11 @@ Read the governing material at run time; never work from memory. Cite one of:
 - `.markdownlint-cli2.jsonc`, `.prettierrc` and `.ls-lint.yml` — Markdown lint
   and format, and the `PascalCase` file-name rule for `.md` files.
 
-**Never invent a rule.** The documentation surface has no numbered rule table;
-when a finding is not covered above, report it explicitly as a potential rule
-gap — never as a violation and never as an invented rule.
+**Never invent a rule.** No numbered rule table governs the documentation
+surface itself; the `STY-*`, `API-*`, `PERS-*`, `TEST-*`, `DEPS-*` and `GOV-*`
+tables in `TechnicalDesign.md` govern code, data and repository process. When a
+finding is not covered above, report it explicitly as a potential rule gap —
+never as a violation and never as an invented rule.
 
 # Operational Boundaries & Guardrails
 

@@ -31,8 +31,9 @@ written to be cited and checked.
 | 4   | Persistence                    | migrated | —                          | database-engineer                               |
 | 5   | Testing                        | migrated | —                          | rust-developer (unit/integration), qa-e2e (E2E) |
 | 6   | Dependencies & Dev Environment | migrated | —                          | devops                                          |
+| 7   | Repository Governance          | migrated | —                          | technical-writer (docs), devops (gates)         |
 
-Rule-ID prefixes: § 1 `STY-*`, § 2 `ARCH-*`, § 3 `API-*`, § 4 `PERS-*`, § 5 `TEST-*`, § 6 `DEPS-*`.
+Rule-ID prefixes: § 1 `STY-*`, § 2 `ARCH-*`, § 3 `API-*`, § 4 `PERS-*`, § 5 `TEST-*`, § 6 `DEPS-*`, § 7 `GOV-*`.
 
 - **migrated** — the content lives in this document.
 - **linked** — the section number is reserved; the canonical content still lives in the linked document and migrates
@@ -2171,3 +2172,88 @@ Source: `Dockerfile`.
 | [alpine](https://hub.docker.com/_/alpine)                  | Alpine Linux base image (runtime stage).         | 3.21            | TODO    |
 | [cargo-chef](https://github.com/LukeMathWalker/cargo-chef) | Caches Rust dependency builds for Docker layers. | latest          | TODO    |
 | [rust](https://hub.docker.com/_/rust)                      | Rust build image (build stage).                  | 1.98-alpine3.21 | TODO    |
+
+---
+
+## Repository Governance
+
+This section governs the conventions that bind a change to the repository itself, starting with the scope vocabulary a
+commit or pull-request title uses to name the area the change touches.
+
+| ID        | Section      | Rule                                                                                                                                                | More info       |
+| --------- | ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------- | --------------- |
+| `GOV-001` | Commit scope | A pull-request title carries at most one scope from the closed set in [§ 1](#1-scope); the scope is optional and names the area the change touches. | [§ 1](#1-scope) |
+
+---
+
+### 1. Scope
+
+A **scope** is an optional noun in a [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) title that
+names the area a change touches. It has two consumers: a maintainer routing the change to the area's owner, and the
+changelog, which groups entries by scope. A scope is not a bounded context — the
+[bounded contexts](Overview.md#bounded-context) are product vocabulary, while a scope is repository-area vocabulary.
+
+The set is **closed and exhaustive** over the tracked paths: every path is owned by exactly one scope, resolved by
+longest-prefix match, and every scope owns at least one path. Adding or removing a scope edits this table and the
+`scopes:` block of `.github/workflows/ci.yml` in the same change.
+
+| Group   | Scope            | Path                                      | Description                    |
+| ------- | ---------------- | ----------------------------------------- | ------------------------------ |
+| Code    | `domain`         | `src/lib/domain.rs`                       | Domain module root             |
+| Code    | `domain`         | `src/lib/domain/**`                       | Domain layer                   |
+| Code    | `application`    | `src/lib/application.rs`                  | Application module root        |
+| Code    | `application`    | `src/lib/application/**`                  | Application layer              |
+| Code    | `application`    | `src/lib/lib.rs`                          | Crate root and test helpers    |
+| Code    | `infrastructure` | `src/lib/infrastructure.rs`               | Infrastructure module root     |
+| Code    | `infrastructure` | `src/lib/infrastructure/**`               | Infrastructure layer           |
+| Code    | `api`            | `src/lib/infrastructure/inbound/rest.rs`  | REST module root               |
+| Code    | `api`            | `src/lib/infrastructure/inbound/rest/**`  | REST adapter                   |
+| Code    | `api`            | `docs/development/api/**`                 | OpenAPI spec and page          |
+| Code    | `persistence`    | `migrations/**`                           | Migrations                     |
+| Code    | `persistence`    | `src/lib/infrastructure/outbound/sqlx.rs` | SQLx module root               |
+| Code    | `persistence`    | `src/lib/infrastructure/outbound/sqlx/**` | SQLx SQLite layer              |
+| Code    | `server`         | `src/bin/**`                              | Server binaries                |
+| Tests   | `test-e2e`       | `test/**`                                 | Tests                          |
+| Docs    | `user`           | `README.md`                               | Repository README              |
+| Docs    | `user`           | `docs/index.md`                           | Documentation home page        |
+| Docs    | `user`           | `docs/assets/**`                          | Documentation theme assets     |
+| Docs    | `user`           | `mkdocs.yml`                              | MkDocs site configuration      |
+| Docs    | `development`    | `docs/development/**`                     | Development documentation      |
+| Repo    | `repo`           | `LICENSE`                                 | License                        |
+| Repo    | `repo`           | `THIRD_PARTY_NOTICES.txt`                 | Third-party notices            |
+| Tooling | `config`         | `Cargo.toml`                              | Rust manifest                  |
+| Tooling | `config`         | `Cargo.lock`                              | Rust lockfile                  |
+| Tooling | `config`         | `.betterleaks.toml`                       | Secret-scan configuration      |
+| Tooling | `config`         | `.gitignore`                              | Git ignore rules               |
+| Tooling | `config`         | `.ls-lint.yml`                            | Naming linter configuration    |
+| Tooling | `config`         | `.markdownlint-cli2.jsonc`                | Markdown lint configuration    |
+| Tooling | `config`         | `.prettierrc`                             | Prettier configuration         |
+| Tooling | `config`         | `.prettierignore`                         | Prettier ignore rules          |
+| Tooling | `config`         | `.releaserc.json`                         | semantic-release configuration |
+| Tooling | `config`         | `.taplo.toml`                             | TOML linter configuration      |
+| Tooling | `config`         | `.yamllint`                               | YAML linter configuration      |
+| Tooling | `config`         | `clippy.toml`                             | Clippy configuration           |
+| Tooling | `config`         | `deny.toml`                               | cargo-deny configuration       |
+| Tooling | `config`         | `pytest.ini`                              | pytest configuration           |
+| Tooling | `config`         | `requirements.txt`                        | Python dependencies            |
+| Tooling | `config`         | `ruff.toml`                               | Ruff configuration             |
+| Tooling | `config`         | `secretspec.toml`                         | SecretSpec configuration       |
+| Tooling | `agent`          | `.opencode/**`                            | opencode configuration         |
+| Tooling | `agent`          | `.agents/**`                              | Agent skills                   |
+| Tooling | `agent`          | `AGENTS.md`                               | Repository router              |
+| Tooling | `agent`          | `opencode.json`                           | opencode project configuration |
+| Tooling | `agent`          | `skills-lock.json`                        | Skill lockfile                 |
+| Tooling | `github`         | `.github/**`                              | GitHub workflows and assets    |
+| Tooling | `devenv`         | `devenv.nix`                              | devenv environment             |
+| Tooling | `devenv`         | `devenv.yaml`                             | devenv inputs                  |
+| Tooling | `devenv`         | `devenv.lock`                             | devenv lockfile                |
+| Tooling | `devops`         | `Dockerfile`                              | Container build                |
+| Tooling | `devops`         | `.dockerignore`                           | Build-context ignore rules     |
+| Tooling | `devops`         | `script/**`                               | Repository scripts             |
+
+Two things are exempt because the release tooling generates them and they bypass the pull-request gate: a bot commit
+(semantic-release, `github-actions[bot]`) and the generated `CHANGELOG.md`. Neither carries a scope.
+
+`script/check_scopes.sh` is the enforcement: it parses the table above, asserts it matches the `scopes:` list in
+`.github/workflows/ci.yml`, and verifies every tracked path maps to exactly one scope. It runs in pre-commit and in the
+CI `scopes` job; a failure cites `GOV-001`.
