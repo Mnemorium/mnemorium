@@ -75,8 +75,7 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      # v47.0.6
-      - uses: tj-actions/changed-files@9426d40962ed5378910ee2e21d5f8c6fcbf2dd96
+      - uses: tj-actions/changed-files@9426d40962ed5378910ee2e21d5f8c6fcbf2dd96  # v47.0.6
         id: filter
         with:
           files_yaml: |
@@ -134,8 +133,7 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      # v47.0.6
-      - uses: tj-actions/changed-files@9426d40962ed5378910ee2e21d5f8c6fcbf2dd96
+      - uses: tj-actions/changed-files@9426d40962ed5378910ee2e21d5f8c6fcbf2dd96  # v47.0.6
         id: changed
         with:
           files: |
@@ -165,9 +163,8 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      # v0.1.0
       - id: betterleaks
-        uses: dortort/betterleaks-action@cd0b905aa4befb8f42f8b1ab98150180c9e77515  # yamllint disable-line rule:line-length
+        uses: dortort/betterleaks-action@cd0b905aa4befb8f42f8b1ab98150180c9e77515  # v0.1.0
         with:
           version: v1.8.1
           scan-mode: git
