@@ -1992,7 +1992,8 @@ External service clients are exercised against a stubbed HTTP server.
 ### E2E test
 
 End-to-end tests drive the containerised server through its REST API as a black box. In CI they run against the image
-built from the repository `Dockerfile` (the `e2e` job in `.github/workflows/ci.yml`).
+built from the repository `Dockerfile` (the `e2e` job in `.github/workflows/ci.yml`). The `e2e` and `rust` jobs both
+trigger on a migration change, so a schema-only pull request is exercised.
 
 ---
 

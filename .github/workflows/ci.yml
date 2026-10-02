@@ -66,6 +66,7 @@ jobs:
       markdown: ${{ steps.filter.outputs.markdown_any_changed }}
       docs: ${{ steps.filter.outputs.docs_any_changed }}
       sql: ${{ steps.filter.outputs.sql_any_changed }}
+      migrations: ${{ steps.filter.outputs.migrations_any_changed }}
       shell: ${{ steps.filter.outputs.shell_any_changed }}
       nix: ${{ steps.filter.outputs.nix_any_changed }}
       deps: ${{ steps.filter.outputs.deps_any_changed }}
@@ -101,6 +102,8 @@ jobs:
             sql:
               - 'migrations/**/*.sql'
               - 'requirements.txt'
+            migrations:
+              - 'migrations/**/*.sql'
             shell:
               - '**/*.sh'
             nix:
@@ -240,7 +243,9 @@ jobs:
 
   rust:
     needs: [changes, betterleaks]
-    if: needs.changes.outputs.rust == 'true'
+    if: >-
+      needs.changes.outputs.rust == 'true' ||
+      needs.changes.outputs.migrations == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -303,7 +308,8 @@ jobs:
       (needs.rust.result == 'success' || needs.rust.result == 'skipped') &&
       (needs.changes.outputs.rust == 'true' ||
       needs.changes.outputs.python == 'true' ||
-      needs.changes.outputs.container == 'true')
+      needs.changes.outputs.container == 'true' ||
+      needs.changes.outputs.migrations == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
