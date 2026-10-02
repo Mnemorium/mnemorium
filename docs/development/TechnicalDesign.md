@@ -2050,6 +2050,10 @@ Dependabot can bump it:
 Dependabot reads `.github/dependabot.yml` and opens a pull request when a pinned SHA falls behind; it only updates the
 release comment when that comment sits on the same line as the SHA.
 
+Pinning a SHA strips the ref of the meaning the action gave it, so configuration carried by the ref moves into an input.
+`dtolnay/rust-toolchain` selects its toolchain from the ref: it is pinned to a SHA with the release tag in the comment,
+and the toolchain is supplied through `toolchain:`.
+
 A job that runs on `pull_request` executes the pull request — the checked-out merge ref, its scripts and its build
 files. Such a job gets a read-only `GITHUB_TOKEN`, `persist-credentials: false` on checkout, no repository secrets and a
 GitHub-hosted runner, so a malicious pull request can neither write the repository nor leave anything behind. Work that
