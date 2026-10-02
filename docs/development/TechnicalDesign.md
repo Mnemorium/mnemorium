@@ -726,6 +726,8 @@ stale copy of the whole aggregate.
 The implementation is named `<Tech><Aggregate>Repository`, e.g. `SqlxUserRepository`, and lives in
 `infrastructure/outbound/<tech>/`.
 
+A trigger abort (`RAISE(ABORT)`) maps to `RepositoryError::Conflict`; see `PERS-017`.
+
 ---
 
 ##### 8.3 Declaration order in a repository port file
@@ -1492,6 +1494,7 @@ enforce invariants.
 | `PERS-014` | Datastore & migrations      | While the schema is unreleased, treat migrations as mutable: edit a migration in place, change its SQL, or delete its `.up.sql`/`.down.sql` pair. This exception ends when the schema is released and an Expand/Contract workflow replaces it. |                                           |
 | `PERS-015` | Invariants                  | Delete an upload's staging file on every path that does not commit the upload row; a failed begin-upload never leaves a staging file behind.                                                                                                   |                                           |
 | `PERS-016` | Invariants                  | Treat a staging file that already exists for a newly created upload identifier as a leftover from an interrupted begin and reclaim it, instead of failing the begin.                                                                           |                                           |
+| `PERS-017` | Datastore & migrations      | Map SQLite's `SQLITE_CONSTRAINT_TRIGGER` extended result code (`1811`, a trigger `RAISE(ABORT)`) to `RepositoryError::Conflict` in `error_mapping.rs`; repositories must not test the extended result code themselves.                         | [§ 8.2](#82-repository-adapter)           |
 
 ---
 
