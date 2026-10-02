@@ -2168,6 +2168,7 @@ Source: `.github/workflows/*`.
 
 | Name                                                                                                                   | Description | Version | License |
 | ---------------------------------------------------------------------------------------------------------------------- | ----------- | ------- | ------- |
+| [@opencode/cli](https://www.npmjs.com/package/@opencode/cli)                                                           | TODO        | 2.0.22  | TODO    |
 | [@semantic-release-plus/docker](https://www.npmjs.com/package/@semantic-release-plus/docker)                           | TODO        | 3.1.3   | TODO    |
 | [@semantic-release/changelog](https://www.npmjs.com/package/@semantic-release/changelog)                               | TODO        | 7.0.0   | TODO    |
 | [@semantic-release/exec](https://www.npmjs.com/package/@semantic-release/exec)                                         | TODO        | 7.1.0   | TODO    |
@@ -2180,7 +2181,6 @@ Source: `.github/workflows/*`.
 | [actions/setup-python](https://github.com/actions/setup-python)                                                        | TODO        | v5      | TODO    |
 | [actions/upload-artifact](https://github.com/actions/upload-artifact)                                                  | TODO        | v7      | TODO    |
 | [amannn/action-semantic-pull-request](https://github.com/amannn/action-semantic-pull-request)                          | TODO        | v6      | TODO    |
-| [anomalyco/opencode/github](https://github.com/anomalyco/opencode)                                                     | TODO        | latest  | TODO    |
 | [cachix/install-nix-action](https://github.com/cachix/install-nix-action)                                              | TODO        | v31     | TODO    |
 | [conventional-changelog-conventionalcommits](https://www.npmjs.com/package/conventional-changelog-conventionalcommits) | TODO        | 9       | TODO    |
 | [DavidAnson/markdownlint-cli2-action](https://github.com/DavidAnson/markdownlint-cli2-action)                          | TODO        | v24     | TODO    |
