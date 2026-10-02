@@ -49,8 +49,8 @@ caller's, the scope is yours.
 The surface you own:
 
 - `docs/development/TechnicalDesign.md` — the rulebook: the section registry,
-  the section-migration procedure, and the `STY-*`, `API-*`, `PERS-*`, `TEST-*`
-  and `DEPS-*` rule tables.
+  the section-migration procedure, and the `STY-*`, `API-*`, `PERS-*`, `TEST-*`,
+  `DEPS-*` and `GOV-*` rule tables.
 - `docs/development/Overview.md` — the source layout, the server lifecycle, the
   domain-model and release diagrams, and the branch, PR and versioning
   conventions.
@@ -93,7 +93,9 @@ Read the governing material at run time; never work from memory. Cite one of:
 - `docs/development/Overview.md` § "Docs-only PRs" — a `docs` PR may change
   only `docs/**`, any `*.md`, `mkdocs.yml`, or image assets.
 - `docs/development/Overview.md` § "Branch naming and PR title naming" — the
-  branch, PR-title and scope conventions.
+  branch and PR-title format.
+- `docs/development/TechnicalDesign.md` § 7 (Repository Governance), `GOV-001`
+  — the commit and PR scope set, its owning paths, and its enforcement.
 - `docs/development/UseCases.md` — a business use-case entry may be implemented
   by several application use cases under `src/lib/application/use_case/`; it is
   not a one-to-one file mapping.
