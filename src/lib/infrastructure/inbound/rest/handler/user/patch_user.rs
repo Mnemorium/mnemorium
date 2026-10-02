@@ -96,26 +96,37 @@ impl From<UpdateUserError> for ApiError {
         (
             status = BAD_REQUEST,
             body = ErrorBody,
+            content_type = "application/hal+json",
             description = "Invalid user identifier or payload"
         ),
         (
             status = UNAUTHORIZED,
             body = ErrorBody,
+            content_type = "application/hal+json",
             description = "Missing or invalid credentials"
+        ),
+        (
+            status = PAYLOAD_TOO_LARGE,
+            body = ErrorBody,
+            content_type = "application/hal+json",
+            description = "The request body exceeds the maximum allowed size"
         ),
         (
             status = FORBIDDEN,
             body = ErrorBody,
+            content_type = "application/hal+json",
             description = "Caller is not an administrator, the target cannot be modified, or the role change is not allowed"
         ),
         (
             status = NOT_FOUND,
             body = ErrorBody,
+            content_type = "application/hal+json",
             description = "Unknown user"
         ),
         (
             status = INTERNAL_SERVER_ERROR,
             body = ErrorBody,
+            content_type = "application/hal+json",
             description = "Unexpected error"
         ),
     ),
@@ -176,6 +187,7 @@ mod tests {
     use crate::domain::model::user::Role;
     use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
     use crate::test_helpers::app_state_with_user;
+    use crate::test_helpers::error_message_of;
 
     /// Send `body` through the endpoint router on behalf of `caller_id`,
     /// targeting user `user_id`, injecting the caller the way the auth
@@ -350,14 +362,13 @@ mod tests {
         expect_error(&mut use_case, UpdateUserError::NotAdmin);
 
         // Act
-        let (status, payload) =
-            into_parts(send(use_case, 3, "2", Body::from(json!({}).to_string())).await?).await?;
+        let response = send(use_case, 3, "2", Body::from(json!({}).to_string())).await?;
 
         // Assert
-        assert_eq!(status, StatusCode::FORBIDDEN);
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
         assert_eq!(
-            payload,
-            json!({ "error": "only administrators may update users" })
+            error_message_of(&response).as_deref(),
+            Some("only administrators may update users")
         );
         Ok(())
     }
@@ -369,14 +380,13 @@ mod tests {
         expect_error(&mut use_case, UpdateUserError::NoSuchUser);
 
         // Act
-        let (status, payload) =
-            into_parts(send(use_case, 1, "2", Body::from(json!({}).to_string())).await?).await?;
+        let response = send(use_case, 1, "2", Body::from(json!({}).to_string())).await?;
 
         // Assert
-        assert_eq!(status, StatusCode::NOT_FOUND);
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
         assert_eq!(
-            payload,
-            json!({ "error": "a user with this identifier does not exist" })
+            error_message_of(&response).as_deref(),
+            Some("a user with this identifier does not exist")
         );
         Ok(())
     }
@@ -388,14 +398,13 @@ mod tests {
         expect_error(&mut use_case, UpdateUserError::NoSuchCaller);
 
         // Act
-        let (status, payload) =
-            into_parts(send(use_case, 999, "2", Body::from(json!({}).to_string())).await?).await?;
+        let response = send(use_case, 999, "2", Body::from(json!({}).to_string())).await?;
 
         // Assert
-        assert_eq!(status, StatusCode::UNAUTHORIZED);
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
         assert_eq!(
-            payload,
-            json!({ "error": "the authenticated user does not exist" })
+            error_message_of(&response).as_deref(),
+            Some("the authenticated user does not exist")
         );
         Ok(())
     }
@@ -407,14 +416,13 @@ mod tests {
         expect_error(&mut use_case, UpdateUserError::TargetNotModifiable);
 
         // Act
-        let (status, payload) =
-            into_parts(send(use_case, 0, "0", Body::from(json!({}).to_string())).await?).await?;
+        let response = send(use_case, 0, "0", Body::from(json!({}).to_string())).await?;
 
         // Assert
-        assert_eq!(status, StatusCode::FORBIDDEN);
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
         assert_eq!(
-            payload,
-            json!({ "error": "the targeted user cannot be modified by this caller" })
+            error_message_of(&response).as_deref(),
+            Some("the targeted user cannot be modified by this caller")
         );
         Ok(())
     }
@@ -426,22 +434,19 @@ mod tests {
         expect_error(&mut use_case, UpdateUserError::RoleChangeForbidden);
 
         // Act
-        let (status, payload) = into_parts(
-            send(
-                use_case,
-                1,
-                "2",
-                Body::from(json!({ "role": "STANDARD" }).to_string()),
-            )
-            .await?,
+        let response = send(
+            use_case,
+            1,
+            "2",
+            Body::from(json!({ "role": "STANDARD" }).to_string()),
         )
         .await?;
 
         // Assert
-        assert_eq!(status, StatusCode::FORBIDDEN);
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
         assert_eq!(
-            payload,
-            json!({ "error": "only the Root Admin may change the role of a user" })
+            error_message_of(&response).as_deref(),
+            Some("only the Root Admin may change the role of a user")
         );
         Ok(())
     }
@@ -453,22 +458,19 @@ mod tests {
         expect_error(&mut use_case, UpdateUserError::InvalidUsername);
 
         // Act
-        let (status, payload) = into_parts(
-            send(
-                use_case,
-                0,
-                "2",
-                Body::from(json!({ "username": "ap" }).to_string()),
-            )
-            .await?,
+        let response = send(
+            use_case,
+            0,
+            "2",
+            Body::from(json!({ "username": "ap" }).to_string()),
         )
         .await?;
 
         // Assert
-        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
         assert_eq!(
-            payload,
-            json!({ "error": "username must be at least 4 characters long" })
+            error_message_of(&response).as_deref(),
+            Some("username must be at least 4 characters long")
         );
         Ok(())
     }
@@ -480,20 +482,20 @@ mod tests {
         expect_error(&mut use_case, UpdateUserError::InvalidEmail);
 
         // Act
-        let (status, payload) = into_parts(
-            send(
-                use_case,
-                0,
-                "2",
-                Body::from(json!({ "email": "not-an-email" }).to_string()),
-            )
-            .await?,
+        let response = send(
+            use_case,
+            0,
+            "2",
+            Body::from(json!({ "email": "not-an-email" }).to_string()),
         )
         .await?;
 
         // Assert
-        assert_eq!(status, StatusCode::BAD_REQUEST);
-        assert_eq!(payload, json!({ "error": "email has an invalid format" }));
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(
+            error_message_of(&response).as_deref(),
+            Some("email has an invalid format")
+        );
         Ok(())
     }
 
@@ -508,12 +510,14 @@ mod tests {
         );
 
         // Act
-        let (status, payload) =
-            into_parts(send(use_case, 1, "2", Body::from(json!({}).to_string())).await?).await?;
+        let response = send(use_case, 1, "2", Body::from(json!({}).to_string())).await?;
 
         // Assert
-        assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
-        assert_eq!(payload, json!({ "error": "an unexpected error occurred" }));
+        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(
+            error_message_of(&response).as_deref(),
+            Some("an unexpected error occurred")
+        );
         Ok(())
     }
 
@@ -523,12 +527,14 @@ mod tests {
         let use_case = MockUpdateUserUseCase::new();
 
         // Act
-        let (status, payload) =
-            into_parts(send(use_case, 1, "abc", Body::from(json!({}).to_string())).await?).await?;
+        let response = send(use_case, 1, "abc", Body::from(json!({}).to_string())).await?;
 
         // Assert
-        assert_eq!(status, StatusCode::BAD_REQUEST);
-        assert_eq!(payload, json!({ "error": "invalid user identifier" }));
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(
+            error_message_of(&response).as_deref(),
+            Some("invalid user identifier")
+        );
         Ok(())
     }
 
@@ -538,21 +544,18 @@ mod tests {
         let use_case = MockUpdateUserUseCase::new();
 
         // Act
-        let (status, payload) = into_parts(
-            send(
-                use_case,
-                1,
-                "2",
-                Body::from(json!({ "username": 1i64 }).to_string()),
-            )
-            .await?,
+        let response = send(
+            use_case,
+            1,
+            "2",
+            Body::from(json!({ "username": 1i64 }).to_string()),
         )
         .await?;
 
         // Assert
-        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
         assert!(
-            payload.get("error").is_some(),
+            error_message_of(&response).is_some(),
             "a bad request must carry an error message"
         );
         Ok(())
@@ -564,13 +567,12 @@ mod tests {
         let use_case = MockUpdateUserUseCase::new();
 
         // Act
-        let (status, payload) =
-            into_parts(send(use_case, 1, "2", Body::from("not json")).await?).await?;
+        let response = send(use_case, 1, "2", Body::from("not json")).await?;
 
         // Assert
-        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
         assert!(
-            payload.get("error").is_some(),
+            error_message_of(&response).is_some(),
             "a bad request must carry an error message"
         );
         Ok(())

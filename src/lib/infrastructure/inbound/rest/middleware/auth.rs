@@ -2,14 +2,12 @@ use std::future::Future;
 use std::future::ready;
 use std::sync::Arc;
 
-use axum::Json;
 use axum::extract::FromRequestParts;
 use axum::extract::{Request, State};
+use axum::http::header;
 use axum::http::request::Parts;
-use axum::http::{StatusCode, header};
 use axum::middleware::Next;
 use axum::response::{IntoResponse as _, Response};
-use serde_json::json;
 use tracing::error;
 
 use crate::domain::alias::NumericID;
@@ -72,10 +70,7 @@ where
         .and_then(|value| value.split_once(' '))
         .and_then(|(scheme, token)| scheme.eq_ignore_ascii_case("bearer").then_some(token))
     else {
-        return (
-            StatusCode::UNAUTHORIZED,
-            Json(json!({ "error": "missing or malformed authorization header" })),
-        )
+        return ApiError::Unauthorized("missing or malformed authorization header".to_owned())
             .into_response();
     };
     let user_id = match token_provider.validate(token).await {
@@ -85,11 +80,7 @@ where
             | TokenProviderError::InvalidToken
             | TokenProviderError::TokenExpired,
         ) => {
-            return (
-                StatusCode::UNAUTHORIZED,
-                Json(json!({ "error": "invalid or expired token" })),
-            )
-                .into_response();
+            return ApiError::Unauthorized("invalid or expired token".to_owned()).into_response();
         }
         Err(error) => {
             error!(
@@ -133,6 +124,7 @@ mod tests {
     use crate::infrastructure::inbound::rest::app_state::AppState;
     use crate::infrastructure::outbound::jwt::token_provider::JwtTokenProvider;
     use crate::test_helpers::app_state;
+    use crate::test_helpers::error_message_of;
 
     /// Echo the caller identifier the extractor recovered from the request.
     async fn stub(caller: AuthenticatedUser) -> Json<Value> {
@@ -221,13 +213,13 @@ mod tests {
         let provider = MockTokenProvider::new();
 
         // Act
-        let (status, payload) = into_parts(send(router_with(provider)?, None).await?).await?;
+        let response = send(router_with(provider)?, None).await?;
 
         // Assert
-        assert_eq!(status, StatusCode::UNAUTHORIZED);
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
         assert_eq!(
-            payload,
-            json!({ "error": "missing or malformed authorization header" })
+            error_message_of(&response).as_deref(),
+            Some("missing or malformed authorization header")
         );
         Ok(())
     }
@@ -239,20 +231,17 @@ mod tests {
         let provider = MockTokenProvider::new();
 
         // Act
-        let (status, payload) = into_parts(
-            send(
-                router_with(provider)?,
-                Some(HeaderValue::from_static("Basic dXNlcjpwYXNz")),
-            )
-            .await?,
+        let response = send(
+            router_with(provider)?,
+            Some(HeaderValue::from_static("Basic dXNlcjpwYXNz")),
         )
         .await?;
 
         // Assert
-        assert_eq!(status, StatusCode::UNAUTHORIZED);
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
         assert_eq!(
-            payload,
-            json!({ "error": "missing or malformed authorization header" })
+            error_message_of(&response).as_deref(),
+            Some("missing or malformed authorization header")
         );
         Ok(())
     }
@@ -264,20 +253,17 @@ mod tests {
         let provider = MockTokenProvider::new();
 
         // Act
-        let (status, payload) = into_parts(
-            send(
-                router_with(provider)?,
-                Some(HeaderValue::from_static("Bearertoken")),
-            )
-            .await?,
+        let response = send(
+            router_with(provider)?,
+            Some(HeaderValue::from_static("Bearertoken")),
         )
         .await?;
 
         // Assert
-        assert_eq!(status, StatusCode::UNAUTHORIZED);
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
         assert_eq!(
-            payload,
-            json!({ "error": "missing or malformed authorization header" })
+            error_message_of(&response).as_deref(),
+            Some("missing or malformed authorization header")
         );
         Ok(())
     }
@@ -290,14 +276,13 @@ mod tests {
         let value = HeaderValue::from_bytes(&[b'B', b'e', b'a', b'r', b'e', b'r', b' ', 0xff])?;
 
         // Act
-        let (status, payload) =
-            into_parts(send(router_with(provider)?, Some(value)).await?).await?;
+        let response = send(router_with(provider)?, Some(value)).await?;
 
         // Assert
-        assert_eq!(status, StatusCode::UNAUTHORIZED);
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
         assert_eq!(
-            payload,
-            json!({ "error": "missing or malformed authorization header" })
+            error_message_of(&response).as_deref(),
+            Some("missing or malformed authorization header")
         );
         Ok(())
     }
@@ -340,18 +325,18 @@ mod tests {
             .return_once(move |_| Box::pin(async move { Err(error) }));
 
         // Act
-        let (status, payload) = into_parts(
-            send(
-                router_with(provider)?,
-                Some(HeaderValue::from_static("Bearer expired-token")),
-            )
-            .await?,
+        let response = send(
+            router_with(provider)?,
+            Some(HeaderValue::from_static("Bearer expired-token")),
         )
         .await?;
 
         // Assert
-        assert_eq!(status, StatusCode::UNAUTHORIZED);
-        assert_eq!(payload, json!({ "error": "invalid or expired token" }));
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        assert_eq!(
+            error_message_of(&response).as_deref(),
+            Some("invalid or expired token")
+        );
         Ok(())
     }
 
@@ -370,18 +355,18 @@ mod tests {
             .return_once(move |_| Box::pin(async move { Err(error) }));
 
         // Act
-        let (status, payload) = into_parts(
-            send(
-                router_with(provider)?,
-                Some(HeaderValue::from_static("Bearer valid-token")),
-            )
-            .await?,
+        let response = send(
+            router_with(provider)?,
+            Some(HeaderValue::from_static("Bearer valid-token")),
         )
         .await?;
 
         // Assert
-        assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
-        assert_eq!(payload, json!({ "error": "an unexpected error occurred" }));
+        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(
+            error_message_of(&response).as_deref(),
+            Some("an unexpected error occurred")
+        );
         Ok(())
     }
 
@@ -394,11 +379,14 @@ mod tests {
             .with_state(state()?);
 
         // Act
-        let (status, payload) = into_parts(send(router, None).await?).await?;
+        let response = send(router, None).await?;
 
         // Assert
-        assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
-        assert_eq!(payload, json!({ "error": "an unexpected error occurred" }));
+        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(
+            error_message_of(&response).as_deref(),
+            Some("an unexpected error occurred")
+        );
         Ok(())
     }
 
@@ -413,18 +401,18 @@ mod tests {
             .return_once(|_| Box::pin(async { Err(TokenProviderError::InvalidToken) }));
 
         // Act
-        let (status, payload) = into_parts(
-            send(
-                router_with(provider)?,
-                Some(HeaderValue::from_static("Bearer ")),
-            )
-            .await?,
+        let response = send(
+            router_with(provider)?,
+            Some(HeaderValue::from_static("Bearer ")),
         )
         .await?;
 
         // Assert
-        assert_eq!(status, StatusCode::UNAUTHORIZED);
-        assert_eq!(payload, json!({ "error": "invalid or expired token" }));
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        assert_eq!(
+            error_message_of(&response).as_deref(),
+            Some("invalid or expired token")
+        );
         Ok(())
     }
 }

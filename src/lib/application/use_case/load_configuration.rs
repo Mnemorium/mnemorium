@@ -1,13 +1,16 @@
 use std::fmt::Write as _;
 use std::future::Future;
+use std::num::NonZeroUsize;
 use std::pin::Pin;
 use std::sync::Arc;
+use std::thread::available_parallelism;
 
 use tracing::error;
 
 use crate::application::port::load_configuration::LoadConfigurationError;
 use crate::application::port::load_configuration::LoadConfigurationResponse;
 use crate::application::port::load_configuration::LoadConfigurationUseCase;
+use crate::domain::model::asset::Asset;
 use crate::domain::model::configuration::Configuration;
 use crate::domain::model::jwt::Jwt;
 use crate::domain::model::logging::Logging;
@@ -34,12 +37,16 @@ pub(crate) const DEFAULT_LOG_LEVEL: &str = "debug,sqlx=warn";
 pub(crate) const DEFAULT_LOG_MAX_FILES: u32 = 7;
 /// Rotation period of the log file sink.
 pub(crate) const DEFAULT_LOG_ROTATION: Rotation = Rotation::Daily;
-/// Maximum number of connections to the database.
-pub(crate) const DEFAULT_SQLITE3_MAX_CONN: u32 = 1;
 /// Path to the `SQLite3` database file.
 pub(crate) const DEFAULT_SQLITE3_PATH: &str = "mnemorium.db";
 /// Length of each generated secret, in bytes.
 const SECRET_LENGTH: u32 = 32;
+/// Upper bound of the default database connection count.
+///
+/// The host's available parallelism over-provisions connections in a container
+/// without a CPU quota (it reports the physical host's cores), and `SQLite`
+/// serializes writers regardless, so the default is capped.
+const MAX_DEFAULT_SQLITE3_MAX_CONN: u32 = 8;
 
 /// Use case implementation for loading the configuration.
 pub struct LoadConfiguration<F, S, C> {
@@ -123,9 +130,8 @@ where
             .map_err(|error| LoadConfigurationError::InvalidConfiguration(error.into()))?;
         let security = Security::try_new(jwt, hex_encode(&pepper), true)
             .map_err(|error| LoadConfigurationError::InvalidConfiguration(error.into()))?;
-        let sqlite3 =
-            Sqlite3::try_new(DEFAULT_SQLITE3_PATH.to_owned(), DEFAULT_SQLITE3_MAX_CONN)
-                .map_err(|error| LoadConfigurationError::InvalidConfiguration(error.into()))?;
+        let sqlite3 = Sqlite3::try_new(DEFAULT_SQLITE3_PATH.to_owned(), default_sqlite3_max_conn())
+            .map_err(|error| LoadConfigurationError::InvalidConfiguration(error.into()))?;
         let persistence = Persistence::new(sqlite3);
         let logging = Logging::try_new(
             DEFAULT_LOG_ANSI,
@@ -135,7 +141,12 @@ where
         )
         .map_err(|error| LoadConfigurationError::InvalidConfiguration(error.into()))?;
 
-        Ok(Configuration::new(persistence, security, logging))
+        Ok(Configuration::new(
+            persistence,
+            security,
+            logging,
+            Asset::default(),
+        ))
     }
 
     /// Create a new use case.
@@ -217,6 +228,19 @@ where
     }
 }
 
+/// Default maximum number of connections to the database.
+///
+/// At least two, so a request holding a connection while another long
+/// operation is in flight cannot starve every other database-backed request,
+/// and at most [`MAX_DEFAULT_SQLITE3_MAX_CONN`]. Between those bounds it
+/// follows the host's available parallelism.
+pub(crate) fn default_sqlite3_max_conn() -> u32 {
+    let parallelism = available_parallelism().map_or(2, NonZeroUsize::get);
+    u32::try_from(parallelism).map_or(2, |connections| {
+        connections.clamp(2, MAX_DEFAULT_SQLITE3_MAX_CONN)
+    })
+}
+
 /// Hexadecimal-encode `bytes`.
 fn hex_encode(bytes: &[u8]) -> String {
     let mut hex = String::with_capacity(bytes.len().saturating_mul(2));
@@ -231,12 +255,13 @@ mod tests {
     use std::error::Error;
     use std::iter::repeat_n;
     use std::sync::Arc;
-    use std::sync::Mutex;
     use std::sync::atomic::AtomicBool;
     use std::sync::atomic::Ordering;
 
     use crate::application::port::load_configuration::LoadConfigurationError;
     use crate::application::port::load_configuration::LoadConfigurationUseCase as _;
+    use crate::domain::model::asset::Asset;
+    use crate::domain::model::asset::AssetUpload;
     use crate::domain::model::configuration::Configuration;
     use crate::domain::model::jwt::Jwt;
     use crate::domain::model::logging::Logging;
@@ -253,20 +278,12 @@ mod tests {
     use crate::domain::port::error::SecretGeneratorError;
     use crate::domain::port::secret_generator::MockSecretGenerator;
     use crate::domain::port::user_repository::MockUserRepository;
-    use crate::test_helpers::TestUnitOfWork;
-    use crate::test_helpers::TestUnitOfWorkFactory;
+    use crate::test_helpers::TestFactory;
+    use crate::test_helpers::unit_of_work_factory;
 
     use super::LoadConfiguration;
 
-    type UseCase = LoadConfiguration<
-        TestUnitOfWorkFactory<
-            MockUserRepository,
-            MockCredentialRepository,
-            MockConfigurationRepository,
-        >,
-        MockSecretGenerator,
-        MockConfigurationSource,
-    >;
+    type UseCase = LoadConfiguration<TestFactory, MockSecretGenerator, MockConfigurationSource>;
 
     /// A use case under test together with its transaction-lifecycle flags.
     struct Harness {
@@ -304,15 +321,13 @@ mod tests {
 
         let committed = Arc::new(AtomicBool::new(false));
         let rolled_back = Arc::new(AtomicBool::new(false));
-        let factory = TestUnitOfWorkFactory {
-            unit_of_work: Mutex::new(Some(TestUnitOfWork {
-                committed: Arc::clone(&committed),
-                configuration: configuration_repository,
-                credentials: MockCredentialRepository::new(),
-                rolled_back: Arc::clone(&rolled_back),
-                users: MockUserRepository::new(),
-            })),
-        };
+        let factory = unit_of_work_factory(
+            MockUserRepository::new(),
+            MockCredentialRepository::new(),
+            configuration_repository,
+            Arc::clone(&committed),
+            Arc::clone(&rolled_back),
+        );
 
         Ok(Harness {
             use_case: LoadConfiguration::new(
@@ -331,7 +346,12 @@ mod tests {
         let sqlite3 = Sqlite3::try_new("mnemorium.db".to_owned(), 1)?;
         let persistence = Persistence::new(sqlite3);
         let logging = Logging::try_new(false, "debug,sqlx=warn".to_owned(), 7, Rotation::Daily)?;
-        Ok(Configuration::new(persistence, security, logging))
+        Ok(Configuration::new(
+            persistence,
+            security,
+            logging,
+            Asset::default(),
+        ))
     }
 
     #[tokio::test]
@@ -577,5 +597,51 @@ mod tests {
             Rotation::Never
         );
         Ok(())
+    }
+
+    #[tokio::test]
+    async fn asset_upload_deserialization_rejects_zero_chunk_size() {
+        // Arrange
+        let payload = r#"{"chunk_size_bytes":0,"expiry_seconds":3600,"max_file_size_bytes":1024}"#;
+
+        // Act
+        let message = serde_json::from_str::<AssetUpload>(payload)
+            .map_err(|error| error.to_string())
+            .err()
+            .unwrap_or_default();
+
+        // Assert
+        assert!(
+            message.contains("chunk_size_bytes must be greater than zero"),
+            "deserialization must reject a zero chunk size, got: {message:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn asset_upload_deserializes_valid_settings() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let payload =
+            r#"{"chunk_size_bytes":2048,"expiry_seconds":120,"max_file_size_bytes":4294967296}"#;
+
+        // Act
+        let upload = serde_json::from_str::<AssetUpload>(payload)?;
+
+        // Assert
+        assert_eq!(upload.chunk_size_bytes(), 2048);
+        assert_eq!(upload.expiry_seconds(), 120);
+        assert_eq!(upload.max_file_size_bytes(), 4_294_967_296);
+        Ok(())
+    }
+
+    #[test]
+    fn default_sqlite3_max_conn_always_allows_a_concurrent_request() {
+        // Act
+        let connections = super::default_sqlite3_max_conn();
+
+        // Assert
+        assert!(
+            (2..=super::MAX_DEFAULT_SQLITE3_MAX_CONN).contains(&connections),
+            "the default pool must be bounded between two and the configured cap"
+        );
     }
 }

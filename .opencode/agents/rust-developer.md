@@ -148,8 +148,9 @@ Read the governing material at run time; never work from memory.
   rule you cannot find is not a rule; when nothing covers a case, report it as a
   potential rule gap instead of inventing one.
 - **Use cases** — `docs/development/UseCases.md` is the catalog; `UC-###` IDs
-  are assigned there and never invented. `docs/development/Glossary.md` holds
-  the domain and actor vocabulary.
+  are assigned there and never invented. Business use cases group application
+  use cases: one entry may be implemented by several `use_case/*.rs` files.
+  `docs/development/Glossary.md` holds the domain and actor vocabulary.
 - **Dependencies** — `Cargo.toml` lists them and
   `docs/development/TechnicalDesign.md` § 6 documents their role. The core of
   the stack: `axum` (HTTP), `sqlx` on SQLite3 (datastore), `utoipa` (OpenAPI),

@@ -105,26 +105,37 @@ impl From<RegisterUserError> for ApiError {
         (
             status = BAD_REQUEST,
             body = ErrorBody,
+            content_type = "application/hal+json",
             description = "Invalid payload"
         ),
         (
             status = UNAUTHORIZED,
             body = ErrorBody,
+            content_type = "application/hal+json",
             description = "Missing or invalid credentials"
+        ),
+        (
+            status = PAYLOAD_TOO_LARGE,
+            body = ErrorBody,
+            content_type = "application/hal+json",
+            description = "The request body exceeds the maximum allowed size"
         ),
         (
             status = FORBIDDEN,
             body = ErrorBody,
+            content_type = "application/hal+json",
             description = "Insufficient privileges to register the requested role"
         ),
         (
             status = CONFLICT,
             body = ErrorBody,
+            content_type = "application/hal+json",
             description = "Username or email is already taken"
         ),
         (
             status = INTERNAL_SERVER_ERROR,
             body = ErrorBody,
+            content_type = "application/hal+json",
             description = "Unexpected error"
         ),
     ),
@@ -189,6 +200,7 @@ mod tests {
     use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
     use crate::test_helpers::SECRET_PASSWORD;
     use crate::test_helpers::app_state_with_identity;
+    use crate::test_helpers::error_message_of;
 
     /// Send `body` through the endpoint router on behalf of `caller_id`,
     /// injecting the caller identifier the way the auth middleware does.
@@ -437,28 +449,25 @@ mod tests {
         expect_error(&mut use_case, RegisterUserError::Forbidden);
 
         // Act
-        let (status, _, _, payload) = into_parts(
-            send(
-                use_case,
-                5,
-                Body::from(
-                    json!({
-                        "username": "erin",
-                        "password": SECRET_PASSWORD,
-                        "role": "ADMIN",
-                    })
-                    .to_string(),
-                ),
-            )
-            .await?,
+        let response = send(
+            use_case,
+            5,
+            Body::from(
+                json!({
+                    "username": "erin",
+                    "password": SECRET_PASSWORD,
+                    "role": "ADMIN",
+                })
+                .to_string(),
+            ),
         )
         .await?;
 
         // Assert
-        assert_eq!(status, StatusCode::FORBIDDEN);
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
         assert_eq!(
-            payload,
-            json!({ "error": "the caller is not allowed to register the requested role" })
+            error_message_of(&response).as_deref(),
+            Some("the caller is not allowed to register the requested role")
         );
         Ok(())
     }
@@ -470,21 +479,18 @@ mod tests {
         expect_error(&mut use_case, RegisterUserError::Forbidden);
 
         // Act
-        let (status, _, _, payload) = into_parts(
-            send(
-                use_case,
-                3,
-                Body::from(request_body("frank", None).to_string()),
-            )
-            .await?,
+        let response = send(
+            use_case,
+            3,
+            Body::from(request_body("frank", None).to_string()),
         )
         .await?;
 
         // Assert
-        assert_eq!(status, StatusCode::FORBIDDEN);
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
         assert_eq!(
-            payload,
-            json!({ "error": "the caller is not allowed to register the requested role" })
+            error_message_of(&response).as_deref(),
+            Some("the caller is not allowed to register the requested role")
         );
         Ok(())
     }
@@ -496,21 +502,18 @@ mod tests {
         expect_error(&mut use_case, RegisterUserError::Forbidden);
 
         // Act
-        let (status, _, _, payload) = into_parts(
-            send(
-                use_case,
-                999,
-                Body::from(request_body("grace", None).to_string()),
-            )
-            .await?,
+        let response = send(
+            use_case,
+            999,
+            Body::from(request_body("grace", None).to_string()),
         )
         .await?;
 
         // Assert
-        assert_eq!(status, StatusCode::FORBIDDEN);
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
         assert_eq!(
-            payload,
-            json!({ "error": "the caller is not allowed to register the requested role" })
+            error_message_of(&response).as_deref(),
+            Some("the caller is not allowed to register the requested role")
         );
         Ok(())
     }
@@ -522,26 +525,23 @@ mod tests {
         let use_case = MockRegisterUserUseCase::new();
 
         // Act
-        let (status, _, _, payload) = into_parts(
-            send(
-                use_case,
-                0,
-                Body::from(
-                    json!({
-                        "username": "heidi",
-                        "role": "STANDARD",
-                    })
-                    .to_string(),
-                ),
-            )
-            .await?,
+        let response = send(
+            use_case,
+            0,
+            Body::from(
+                json!({
+                    "username": "heidi",
+                    "role": "STANDARD",
+                })
+                .to_string(),
+            ),
         )
         .await?;
 
         // Assert
-        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
         assert!(
-            payload.get("error").is_some(),
+            error_message_of(&response).is_some(),
             "a bad request must carry an error message"
         );
         Ok(())
@@ -553,27 +553,24 @@ mod tests {
         let use_case = MockRegisterUserUseCase::new();
 
         // Act
-        let (status, _, _, payload) = into_parts(
-            send(
-                use_case,
-                0,
-                Body::from(
-                    json!({
-                        "username": "ivan",
-                        "password": 123i64,
-                        "role": "STANDARD",
-                    })
-                    .to_string(),
-                ),
-            )
-            .await?,
+        let response = send(
+            use_case,
+            0,
+            Body::from(
+                json!({
+                    "username": "ivan",
+                    "password": 123i64,
+                    "role": "STANDARD",
+                })
+                .to_string(),
+            ),
         )
         .await?;
 
         // Assert
-        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
         assert!(
-            payload.get("error").is_some(),
+            error_message_of(&response).is_some(),
             "a bad request must carry an error message"
         );
         Ok(())
@@ -585,27 +582,24 @@ mod tests {
         let use_case = MockRegisterUserUseCase::new();
 
         // Act
-        let (status, _, _, payload) = into_parts(
-            send(
-                use_case,
-                0,
-                Body::from(
-                    json!({
-                        "username": "judy",
-                        "password": SECRET_PASSWORD,
-                        "role": "SUPERADMIN",
-                    })
-                    .to_string(),
-                ),
-            )
-            .await?,
+        let response = send(
+            use_case,
+            0,
+            Body::from(
+                json!({
+                    "username": "judy",
+                    "password": SECRET_PASSWORD,
+                    "role": "SUPERADMIN",
+                })
+                .to_string(),
+            ),
         )
         .await?;
 
         // Assert
-        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
         assert!(
-            payload.get("error").is_some(),
+            error_message_of(&response).is_some(),
             "a bad request must carry an error message"
         );
         Ok(())
@@ -617,13 +611,12 @@ mod tests {
         let use_case = MockRegisterUserUseCase::new();
 
         // Act
-        let (status, _, _, payload) =
-            into_parts(send(use_case, 0, Body::from("not json")).await?).await?;
+        let response = send(use_case, 0, Body::from("not json")).await?;
 
         // Assert
-        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
         assert!(
-            payload.get("error").is_some(),
+            error_message_of(&response).is_some(),
             "a bad request must carry an error message"
         );
         Ok(())
@@ -636,21 +629,18 @@ mod tests {
         expect_error(&mut use_case, RegisterUserError::InvalidUsername);
 
         // Act
-        let (status, _, _, payload) = into_parts(
-            send(
-                use_case,
-                0,
-                Body::from(request_body("kevin", None).to_string()),
-            )
-            .await?,
+        let response = send(
+            use_case,
+            0,
+            Body::from(request_body("kevin", None).to_string()),
         )
         .await?;
 
         // Assert
-        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
         assert_eq!(
-            payload,
-            json!({ "error": "username must be at least 4 characters long" })
+            error_message_of(&response).as_deref(),
+            Some("username must be at least 4 characters long")
         );
         Ok(())
     }
@@ -662,19 +652,19 @@ mod tests {
         expect_error(&mut use_case, RegisterUserError::InvalidEmail);
 
         // Act
-        let (status, _, _, payload) = into_parts(
-            send(
-                use_case,
-                0,
-                Body::from(request_body("laura", Some("not-an-email")).to_string()),
-            )
-            .await?,
+        let response = send(
+            use_case,
+            0,
+            Body::from(request_body("laura", Some("not-an-email")).to_string()),
         )
         .await?;
 
         // Assert
-        assert_eq!(status, StatusCode::BAD_REQUEST);
-        assert_eq!(payload, json!({ "error": "email has an invalid format" }));
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(
+            error_message_of(&response).as_deref(),
+            Some("email has an invalid format")
+        );
         Ok(())
     }
 
@@ -685,21 +675,18 @@ mod tests {
         expect_error(&mut use_case, RegisterUserError::InvalidPassword);
 
         // Act
-        let (status, _, _, payload) = into_parts(
-            send(
-                use_case,
-                0,
-                Body::from(request_body("mark", None).to_string()),
-            )
-            .await?,
+        let response = send(
+            use_case,
+            0,
+            Body::from(request_body("mark", None).to_string()),
         )
         .await?;
 
         // Assert
-        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
         assert_eq!(
-            payload,
-            json!({ "error": "password does not satisfy the password policy" })
+            error_message_of(&response).as_deref(),
+            Some("password does not satisfy the password policy")
         );
         Ok(())
     }
@@ -711,21 +698,18 @@ mod tests {
         expect_error(&mut use_case, RegisterUserError::UserAlreadyExists);
 
         // Act
-        let (status, _, _, payload) = into_parts(
-            send(
-                use_case,
-                0,
-                Body::from(request_body("nina", None).to_string()),
-            )
-            .await?,
+        let response = send(
+            use_case,
+            0,
+            Body::from(request_body("nina", None).to_string()),
         )
         .await?;
 
         // Assert
-        assert_eq!(status, StatusCode::CONFLICT);
+        assert_eq!(response.status(), StatusCode::CONFLICT);
         assert_eq!(
-            payload,
-            json!({ "error": "a user with this username or email already exists" })
+            error_message_of(&response).as_deref(),
+            Some("a user with this username or email already exists")
         );
         Ok(())
     }
@@ -741,19 +725,19 @@ mod tests {
         );
 
         // Act
-        let (status, _, _, payload) = into_parts(
-            send(
-                use_case,
-                0,
-                Body::from(request_body("oscar", None).to_string()),
-            )
-            .await?,
+        let response = send(
+            use_case,
+            0,
+            Body::from(request_body("oscar", None).to_string()),
         )
         .await?;
 
         // Assert
-        assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
-        assert_eq!(payload, json!({ "error": "an unexpected error occurred" }));
+        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(
+            error_message_of(&response).as_deref(),
+            Some("an unexpected error occurred")
+        );
         Ok(())
     }
 }

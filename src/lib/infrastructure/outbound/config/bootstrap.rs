@@ -2,8 +2,8 @@ use config::Config;
 use config::Environment;
 use config::File;
 
-use crate::application::use_case::load_configuration::DEFAULT_SQLITE3_MAX_CONN;
 use crate::application::use_case::load_configuration::DEFAULT_SQLITE3_PATH;
+use crate::application::use_case::load_configuration::default_sqlite3_max_conn;
 use crate::domain::model::sqlite3::Sqlite3;
 use crate::infrastructure::outbound::config::configuration_source::USER_CONFIG_PATH;
 
@@ -46,6 +46,6 @@ pub fn bootstrap_sqlite3() -> anyhow::Result<Sqlite3> {
         .ok()
         .and_then(|value| u32::try_from(value).ok())
         .filter(|value| *value > 0)
-        .unwrap_or(DEFAULT_SQLITE3_MAX_CONN);
+        .unwrap_or_else(default_sqlite3_max_conn);
     Ok(Sqlite3::try_new(path, max_connections)?)
 }

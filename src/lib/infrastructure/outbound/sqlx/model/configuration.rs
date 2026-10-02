@@ -15,6 +15,10 @@ pub enum Rotation {
 /// Data model for the `configuration` table.
 #[derive(Debug, Clone, sqlx::FromRow)]
 pub struct Configuration {
+    pub asset_storage_root: String,
+    pub asset_upload_chunk_size_bytes: i64,
+    pub asset_upload_expiry_seconds: i64,
+    pub asset_upload_max_file_size_bytes: i64,
     #[sqlx(primary_key)]
     pub configuration_id: NumericID,
     pub is_log_ansi: bool,

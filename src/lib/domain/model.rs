@@ -1,8 +1,10 @@
+pub mod asset;
 pub mod audio;
 pub mod audio_channel;
 pub mod configuration;
 pub mod credential;
 pub mod file;
+pub mod integrity_hash;
 pub mod jwt;
 pub mod logging;
 pub mod music_album;
@@ -12,4 +14,5 @@ pub mod music_recording;
 pub mod persistence;
 pub mod security;
 pub mod sqlite3;
+pub mod upload;
 pub mod user;

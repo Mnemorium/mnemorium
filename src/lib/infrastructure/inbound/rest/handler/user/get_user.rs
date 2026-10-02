@@ -70,26 +70,31 @@ impl From<GetUserError> for ApiError {
         (
             status = BAD_REQUEST,
             body = ErrorBody,
+            content_type = "application/hal+json",
             description = "Invalid user identifier"
         ),
         (
             status = UNAUTHORIZED,
             body = ErrorBody,
+            content_type = "application/hal+json",
             description = "Missing or invalid credentials"
         ),
         (
             status = FORBIDDEN,
             body = ErrorBody,
+            content_type = "application/hal+json",
             description = "Caller is not an administrator"
         ),
         (
             status = NOT_FOUND,
             body = ErrorBody,
+            content_type = "application/hal+json",
             description = "Unknown user"
         ),
         (
             status = INTERNAL_SERVER_ERROR,
             body = ErrorBody,
+            content_type = "application/hal+json",
             description = "Unexpected error"
         ),
     ),
@@ -142,6 +147,7 @@ mod tests {
     use crate::domain::model::user::Role;
     use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
     use crate::test_helpers::app_state_with_user;
+    use crate::test_helpers::error_message_of;
 
     /// Send a GET to `/api/v1/user/{id}` on behalf of `caller_id`, injecting
     /// the caller identifier the way the auth middleware does.
@@ -264,13 +270,13 @@ mod tests {
         expect_error(&mut use_case, GetUserError::NotAdmin);
 
         // Act
-        let (status, _, payload) = into_parts(send(use_case, 3, "2").await?).await?;
+        let response = send(use_case, 3, "2").await?;
 
         // Assert
-        assert_eq!(status, StatusCode::FORBIDDEN);
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
         assert_eq!(
-            payload,
-            json!({ "error": "only administrators may fetch other users" })
+            error_message_of(&response).as_deref(),
+            Some("only administrators may fetch other users")
         );
         Ok(())
     }
@@ -282,13 +288,13 @@ mod tests {
         expect_error(&mut use_case, GetUserError::NoSuchUser);
 
         // Act
-        let (status, _, payload) = into_parts(send(use_case, 1, "2").await?).await?;
+        let response = send(use_case, 1, "2").await?;
 
         // Assert
-        assert_eq!(status, StatusCode::NOT_FOUND);
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
         assert_eq!(
-            payload,
-            json!({ "error": "a user with this identifier does not exist" })
+            error_message_of(&response).as_deref(),
+            Some("a user with this identifier does not exist")
         );
         Ok(())
     }
@@ -300,13 +306,13 @@ mod tests {
         expect_error(&mut use_case, GetUserError::NoSuchCaller);
 
         // Act
-        let (status, _, payload) = into_parts(send(use_case, 999, "2").await?).await?;
+        let response = send(use_case, 999, "2").await?;
 
         // Assert
-        assert_eq!(status, StatusCode::UNAUTHORIZED);
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
         assert_eq!(
-            payload,
-            json!({ "error": "the authenticated user does not exist" })
+            error_message_of(&response).as_deref(),
+            Some("the authenticated user does not exist")
         );
         Ok(())
     }
@@ -322,11 +328,14 @@ mod tests {
         );
 
         // Act
-        let (status, _, payload) = into_parts(send(use_case, 1, "2").await?).await?;
+        let response = send(use_case, 1, "2").await?;
 
         // Assert
-        assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
-        assert_eq!(payload, json!({ "error": "an unexpected error occurred" }));
+        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(
+            error_message_of(&response).as_deref(),
+            Some("an unexpected error occurred")
+        );
         Ok(())
     }
 
@@ -336,11 +345,14 @@ mod tests {
         let use_case = MockGetUserUseCase::new();
 
         // Act
-        let (status, _, payload) = into_parts(send(use_case, 1, "abc").await?).await?;
+        let response = send(use_case, 1, "abc").await?;
 
         // Assert
-        assert_eq!(status, StatusCode::BAD_REQUEST);
-        assert_eq!(payload, json!({ "error": "invalid user identifier" }));
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(
+            error_message_of(&response).as_deref(),
+            Some("invalid user identifier")
+        );
         Ok(())
     }
 }

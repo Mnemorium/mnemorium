@@ -2,17 +2,24 @@ use sqlx::Sqlite;
 use sqlx::SqlitePool;
 use sqlx::Transaction;
 
+use crate::domain::port::asset_unit_of_work::AssetUnitOfWork;
 use crate::domain::port::configuration_repository::ConfigurationRepository;
 use crate::domain::port::configuration_unit_of_work::ConfigurationUnitOfWork;
 use crate::domain::port::credential_repository::CredentialRepository;
 use crate::domain::port::error::UnitOfWorkError;
+use crate::domain::port::file_repository::FileRepository;
 use crate::domain::port::identity_unit_of_work::IdentityUnitOfWork;
+use crate::domain::port::mime_type_repository::MimeTypeRepository;
 use crate::domain::port::unit_of_work::UnitOfWork;
 use crate::domain::port::unit_of_work::UnitOfWorkFactory;
+use crate::domain::port::upload_repository::UploadRepository;
 use crate::domain::port::user_repository::UserRepository;
 use crate::domain::port::user_unit_of_work::UserUnitOfWork;
 use crate::infrastructure::outbound::sqlx::configuration_repository::SqlxConfigurationRepository;
 use crate::infrastructure::outbound::sqlx::credential_repository::SqlxCredentialRepository;
+use crate::infrastructure::outbound::sqlx::file_repository::SqlxFileRepository;
+use crate::infrastructure::outbound::sqlx::mime_type_repository::SqlxMimeTypeRepository;
+use crate::infrastructure::outbound::sqlx::upload_repository::SqlxUploadRepository;
 use crate::infrastructure::outbound::sqlx::user_repository::SqlxUserRepository;
 
 /// Unit of work backed by a single `SQLite` transaction.
@@ -31,6 +38,20 @@ impl SqlxUnitOfWork {
 impl ConfigurationUnitOfWork for SqlxUnitOfWork {
     fn configuration(&mut self) -> impl ConfigurationRepository + '_ {
         SqlxConfigurationRepository::new(self.transaction())
+    }
+}
+
+impl AssetUnitOfWork for SqlxUnitOfWork {
+    fn files(&mut self) -> impl FileRepository + '_ {
+        SqlxFileRepository::new(self.transaction())
+    }
+
+    fn mime_types(&mut self) -> impl MimeTypeRepository + '_ {
+        SqlxMimeTypeRepository::new(self.transaction())
+    }
+
+    fn uploads(&mut self) -> impl UploadRepository + '_ {
+        SqlxUploadRepository::new(self.transaction())
     }
 }
 

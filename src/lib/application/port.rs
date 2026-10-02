@@ -1,4 +1,8 @@
+pub mod asset_use_case_factory;
+pub mod begin_upload;
+pub mod complete_upload;
 pub mod get_current_user;
+pub mod get_upload;
 pub mod get_user;
 pub mod identity_use_case_factory;
 pub mod initialize_root_admin;
@@ -8,3 +12,4 @@ pub mod patch_credential;
 pub mod register_user;
 pub mod update_user;
 pub mod user_use_case_factory;
+pub mod write_upload_chunk;

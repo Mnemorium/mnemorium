@@ -1,3 +1,4 @@
+use crate::domain::model::asset::Asset;
 use crate::domain::model::logging::Logging;
 use crate::domain::model::persistence::Persistence;
 use crate::domain::model::security::Security;
@@ -6,6 +7,8 @@ use crate::domain::model::security::Security;
 #[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
 #[non_exhaustive]
 pub struct Configuration {
+    /// Asset-related settings.
+    asset: Asset,
     /// Logging-related settings.
     logging: Logging,
     /// Persistence-related settings.
@@ -15,6 +18,12 @@ pub struct Configuration {
 }
 
 impl Configuration {
+    /// Return the asset-related settings.
+    #[must_use]
+    pub fn asset(&self) -> &Asset {
+        &self.asset
+    }
+
     /// Return the logging-related settings.
     #[must_use]
     pub fn logging(&self) -> &Logging {
@@ -23,8 +32,14 @@ impl Configuration {
 
     /// Initialise a new `Configuration`.
     #[must_use]
-    pub fn new(persistence: Persistence, security: Security, logging: Logging) -> Self {
+    pub fn new(
+        persistence: Persistence,
+        security: Security,
+        logging: Logging,
+        asset: Asset,
+    ) -> Self {
         Self {
+            asset,
             logging,
             persistence,
             security,

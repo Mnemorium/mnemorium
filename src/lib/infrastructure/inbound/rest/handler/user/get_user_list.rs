@@ -62,21 +62,25 @@ pub struct ListUsersQuery {
         (
             status = BAD_REQUEST,
             body = ErrorBody,
+            content_type = "application/hal+json",
             description = "Invalid filter values"
         ),
         (
             status = UNAUTHORIZED,
             body = ErrorBody,
+            content_type = "application/hal+json",
             description = "Missing or invalid credentials"
         ),
         (
             status = FORBIDDEN,
             body = ErrorBody,
+            content_type = "application/hal+json",
             description = "Caller is not an administrator"
         ),
         (
             status = INTERNAL_SERVER_ERROR,
             body = ErrorBody,
+            content_type = "application/hal+json",
             description = "Unexpected error"
         ),
     ),

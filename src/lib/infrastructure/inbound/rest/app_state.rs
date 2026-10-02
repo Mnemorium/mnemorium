@@ -3,6 +3,7 @@ use std::sync::Arc;
 use arc_swap::ArcSwap;
 use axum::extract::FromRef;
 
+use crate::application::port::asset_use_case_factory::AssetUseCaseFactory;
 use crate::application::port::identity_use_case_factory::IdentityUseCaseFactory;
 use crate::application::port::user_use_case_factory::UserUseCaseFactory;
 use crate::domain::model::configuration::Configuration;
@@ -18,6 +19,8 @@ use crate::infrastructure::outbound::jwt::token_provider::JwtTokenProvider;
 /// directly from the router state.
 #[derive(Clone)]
 pub struct AppState {
+    /// Factory building the Asset use cases.
+    asset_use_case_factory: Arc<dyn AssetUseCaseFactory>,
     /// Live application configuration, swappable at runtime.
     configuration: Arc<ArcSwap<Configuration>>,
     /// Factory building the Identity use cases.
@@ -29,6 +32,12 @@ pub struct AppState {
 }
 
 impl AppState {
+    /// Return the factory building the Asset use cases.
+    #[must_use]
+    pub fn asset_use_case_factory(&self) -> Arc<dyn AssetUseCaseFactory> {
+        Arc::clone(&self.asset_use_case_factory)
+    }
+
     /// Return the live application configuration.
     #[must_use]
     pub fn configuration(&self) -> Arc<ArcSwap<Configuration>> {
@@ -44,12 +53,14 @@ impl AppState {
     /// Create a new application state.
     #[must_use]
     pub fn new(
+        asset_use_case_factory: Arc<dyn AssetUseCaseFactory>,
         configuration: Arc<ArcSwap<Configuration>>,
         identity_use_case_factory: Arc<dyn IdentityUseCaseFactory>,
         token_provider: Arc<JwtTokenProvider>,
         user_use_case_factory: Arc<dyn UserUseCaseFactory>,
     ) -> Self {
         Self {
+            asset_use_case_factory,
             configuration,
             identity_use_case_factory,
             token_provider,

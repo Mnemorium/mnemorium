@@ -136,7 +136,7 @@ own reasoning. Re-read the section that governs the layer you are working on.
   Rust integration (SQLite repository, moka cache, external service), and E2E.
 - Rust unit and integration tests live inside the file under test
   (`#[cfg(test)] mod tests`); E2E tests live under `test/e2e/`, one folder per
-  bounded context and one file per use case.
+  bounded context and one file per business use case.
 - Other agents implement production code; you own the tests for it.
 - Shared test helpers in `src/lib/lib.rs` are approval-gated: never add or change
   a shared helper on your own. See **Escalation**.

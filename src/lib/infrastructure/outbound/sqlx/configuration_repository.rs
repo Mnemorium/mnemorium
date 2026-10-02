@@ -1,6 +1,9 @@
 use sqlx::Sqlite;
 use sqlx::Transaction;
 
+use crate::domain::model::asset::Asset;
+use crate::domain::model::asset::AssetStorage;
+use crate::domain::model::asset::AssetUpload;
 use crate::domain::model::configuration::Configuration;
 use crate::domain::model::jwt::Jwt;
 use crate::domain::model::logging::Logging;
@@ -51,9 +54,13 @@ impl ConfigurationRepository for SqlxConfigurationRepository<'_> {
                 is_log_ansi,
                 log_level,
                 log_max_files,
-                log_rotation
+                log_rotation,
+                asset_storage_root,
+                asset_upload_chunk_size_bytes,
+                asset_upload_expiry_seconds,
+                asset_upload_max_file_size_bytes
             )
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)
             RETURNING
                 configuration_id,
                 jwt_secret,
@@ -65,7 +72,11 @@ impl ConfigurationRepository for SqlxConfigurationRepository<'_> {
                 is_log_ansi,
                 log_level,
                 log_max_files,
-                log_rotation",
+                log_rotation,
+                asset_storage_root,
+                asset_upload_chunk_size_bytes,
+                asset_upload_expiry_seconds,
+                asset_upload_max_file_size_bytes",
         )
         .bind(0i64)
         .bind(configuration.security().jwt().secret())
@@ -87,6 +98,19 @@ impl ConfigurationRepository for SqlxConfigurationRepository<'_> {
             "configuration log_max_files does not fit in i64",
         )?)
         .bind(log_rotation)
+        .bind(configuration.asset().storage().root())
+        .bind(to_i64(
+            configuration.asset().upload().chunk_size_bytes(),
+            "configuration asset_upload_chunk_size_bytes does not fit in i64",
+        )?)
+        .bind(to_i64(
+            configuration.asset().upload().expiry_seconds(),
+            "configuration asset_upload_expiry_seconds does not fit in i64",
+        )?)
+        .bind(to_i64(
+            configuration.asset().upload().max_file_size_bytes(),
+            "configuration asset_upload_max_file_size_bytes does not fit in i64",
+        )?)
         .fetch_one(&mut **self.transaction)
         .await?;
 
@@ -115,9 +139,13 @@ impl ConfigurationRepository for SqlxConfigurationRepository<'_> {
                 is_log_ansi,
                 log_level,
                 log_max_files,
-                log_rotation
+                log_rotation,
+                asset_storage_root,
+                asset_upload_chunk_size_bytes,
+                asset_upload_expiry_seconds,
+                asset_upload_max_file_size_bytes
             )
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)
             ON CONFLICT (configuration_id) DO UPDATE SET
                 jwt_secret = excluded.jwt_secret,
                 jwt_ttl = excluded.jwt_ttl,
@@ -128,7 +156,11 @@ impl ConfigurationRepository for SqlxConfigurationRepository<'_> {
                 is_log_ansi = excluded.is_log_ansi,
                 log_level = excluded.log_level,
                 log_max_files = excluded.log_max_files,
-                log_rotation = excluded.log_rotation
+                log_rotation = excluded.log_rotation,
+                asset_storage_root = excluded.asset_storage_root,
+                asset_upload_chunk_size_bytes = excluded.asset_upload_chunk_size_bytes,
+                asset_upload_expiry_seconds = excluded.asset_upload_expiry_seconds,
+                asset_upload_max_file_size_bytes = excluded.asset_upload_max_file_size_bytes
             RETURNING
                 configuration_id,
                 jwt_secret,
@@ -140,7 +172,11 @@ impl ConfigurationRepository for SqlxConfigurationRepository<'_> {
                 is_log_ansi,
                 log_level,
                 log_max_files,
-                log_rotation",
+                log_rotation,
+                asset_storage_root,
+                asset_upload_chunk_size_bytes,
+                asset_upload_expiry_seconds,
+                asset_upload_max_file_size_bytes",
         )
         .bind(0i64)
         .bind(configuration.security().jwt().secret())
@@ -162,6 +198,19 @@ impl ConfigurationRepository for SqlxConfigurationRepository<'_> {
             "configuration log_max_files does not fit in i64",
         )?)
         .bind(log_rotation)
+        .bind(configuration.asset().storage().root())
+        .bind(to_i64(
+            configuration.asset().upload().chunk_size_bytes(),
+            "configuration asset_upload_chunk_size_bytes does not fit in i64",
+        )?)
+        .bind(to_i64(
+            configuration.asset().upload().expiry_seconds(),
+            "configuration asset_upload_expiry_seconds does not fit in i64",
+        )?)
+        .bind(to_i64(
+            configuration.asset().upload().max_file_size_bytes(),
+            "configuration asset_upload_max_file_size_bytes does not fit in i64",
+        )?)
         .fetch_one(&mut **self.transaction)
         .await?;
 
@@ -181,7 +230,11 @@ impl ConfigurationRepository for SqlxConfigurationRepository<'_> {
                 is_log_ansi,
                 log_level,
                 log_max_files,
-                log_rotation
+                log_rotation,
+                asset_storage_root,
+                asset_upload_chunk_size_bytes,
+                asset_upload_expiry_seconds,
+                asset_upload_max_file_size_bytes
             FROM configuration
             WHERE configuration_id = 0",
         )
@@ -232,7 +285,32 @@ fn domain_configuration(row: SqlxConfiguration) -> Result<Configuration, Reposit
     let logging = Logging::try_new(row.is_log_ansi, row.log_level, log_max_files, rotation)
         .map_err(|_| RepositoryError::DataIntegrityViolation)?;
 
-    Ok(Configuration::new(persistence, security, logging))
+    let storage = AssetStorage::try_new(row.asset_storage_root)
+        .map_err(|_| RepositoryError::DataIntegrityViolation)?;
+    let chunk_size_bytes = u64::try_from(row.asset_upload_chunk_size_bytes).map_err(|error| {
+        RepositoryError::Unknown(
+            anyhow::anyhow!(error)
+                .context("configuration asset_upload_chunk_size_bytes does not fit in u64"),
+        )
+    })?;
+    let expiry_seconds = u64::try_from(row.asset_upload_expiry_seconds).map_err(|error| {
+        RepositoryError::Unknown(
+            anyhow::anyhow!(error)
+                .context("configuration asset_upload_expiry_seconds does not fit in u64"),
+        )
+    })?;
+    let max_file_size_bytes =
+        u64::try_from(row.asset_upload_max_file_size_bytes).map_err(|error| {
+            RepositoryError::Unknown(
+                anyhow::anyhow!(error)
+                    .context("configuration asset_upload_max_file_size_bytes does not fit in u64"),
+            )
+        })?;
+    let asset_upload = AssetUpload::try_new(chunk_size_bytes, expiry_seconds, max_file_size_bytes)
+        .map_err(|_| RepositoryError::DataIntegrityViolation)?;
+    let asset = Asset::new(storage, asset_upload);
+
+    Ok(Configuration::new(persistence, security, logging, asset))
 }
 
 #[cfg(test)]
@@ -245,6 +323,9 @@ mod tests {
     use sqlx::Transaction;
     use sqlx::sqlite::SqlitePoolOptions;
 
+    use crate::domain::model::asset::Asset;
+    use crate::domain::model::asset::AssetStorage;
+    use crate::domain::model::asset::AssetUpload;
     use crate::domain::model::configuration::Configuration;
     use crate::domain::model::jwt::Jwt;
     use crate::domain::model::logging::Logging;
@@ -277,7 +358,11 @@ mod tests {
         let sqlite3 = Sqlite3::try_new("mnemorium.db".to_owned(), 1)?;
         let persistence = Persistence::new(sqlite3);
         let logging = Logging::try_new(true, "info,sqlx=trace".to_owned(), 3, Rotation::Hourly)?;
-        Ok(Configuration::new(persistence, security, logging))
+        let asset = Asset::new(
+            AssetStorage::try_new("media".to_owned())?,
+            AssetUpload::try_new(2048, 120, 4_294_967_296)?,
+        );
+        Ok(Configuration::new(persistence, security, logging, asset))
     }
 
     #[tokio::test]
@@ -312,6 +397,29 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn create_then_search_round_trips_asset_settings() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let mut transaction = begin_transaction().await?;
+        let mut repository = SqlxConfigurationRepository::new(&mut transaction);
+        let expected = configuration()?;
+
+        // Act
+        let persisted = repository.create(expected.clone()).await?;
+        let found = repository.search().await?;
+
+        // Assert
+        assert_eq!(persisted.asset().storage().root(), "media");
+        assert_eq!(persisted.asset().upload().chunk_size_bytes(), 2048);
+        assert_eq!(persisted.asset().upload().expiry_seconds(), 120);
+        assert_eq!(
+            persisted.asset().upload().max_file_size_bytes(),
+            4_294_967_296
+        );
+        assert_eq!(found, Some(expected));
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn create_existing_configuration_returns_already_exist() -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut transaction = begin_transaction().await?;
@@ -336,6 +444,7 @@ mod tests {
             Persistence::new(Sqlite3::try_new("other.db".to_owned(), 3)?),
             Security::try_new(Jwt::try_new(hex64('c'), 60)?, hex64('d'), false)?,
             Logging::try_new(false, "warn".to_owned(), 0, Rotation::Never)?,
+            Asset::default(),
         );
 
         // Act
@@ -370,6 +479,7 @@ mod tests {
                 base.logging().max_files(),
                 rotation,
             )?,
+            base.asset().clone(),
         );
 
         // Act

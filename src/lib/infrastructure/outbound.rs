@@ -4,4 +4,5 @@ pub mod file_system;
 pub mod jwt;
 pub mod moka;
 pub mod random;
+pub mod sha2;
 pub mod sqlx;

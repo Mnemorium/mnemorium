@@ -2,8 +2,12 @@
   "components": {
     "schemas": {
       "ErrorBody": {
-        "description": "Standard error payload returned by every failed request.",
+        "description": "Standard error payload returned by every failed request.\n\nThe envelope is uniform across every error the server emits, including\nrouting fallbacks and extractor rejections (`API-039`). The `error_response`\nhelper builds it, and the root `hal_errors` middleware applies it to every\n`4xx`/`5xx` response.",
         "properties": {
+          "_links": {
+            "$ref": "#/components/schemas/SelfLinks",
+            "description": "Link to the request that produced the error."
+          },
           "error": {
             "description": "Human-readable description of the error.",
             "example": "An error message",
@@ -11,7 +15,8 @@
           }
         },
         "required": [
-          "error"
+          "error",
+          "_links"
         ],
         "type": "object"
       },
@@ -119,6 +124,27 @@
         },
         "required": [
           "status"
+        ],
+        "type": "object"
+      },
+      "Link": {
+        "description": "A single HAL link.",
+        "properties": {
+          "href": {
+            "description": "Target URI reference of the link.",
+            "type": "string"
+          },
+          "templated": {
+            "description": "Whether `href` is a URI template, per RFC 6570.",
+            "example": true,
+            "type": [
+              "boolean",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "href"
         ],
         "type": "object"
       },
@@ -247,68 +273,102 @@
         ],
         "type": "object"
       },
-      "PostAssetChunkRequest": {
-        "description": "Payload of a chunk upload, declared for the `OpenAPI` contract.",
+      "PostUploadCompleteResponse": {
+        "description": "File finalized by a successful completion.",
         "properties": {
-          "chunk": {
-            "description": "Raw bytes of the uploaded chunk.",
-            "format": "binary",
-            "type": "string"
-          }
-        },
-        "required": [
-          "chunk"
-        ],
-        "type": "object"
-      },
-      "PostAssetFinishResponse": {
-        "description": "File finalized by a successful upload.",
-        "properties": {
-          "file_name": {
-            "description": "Name of the media file that was uploaded.",
-            "type": "string"
+          "_links": {
+            "$ref": "#/components/schemas/SelfLinks",
+            "description": "Link to the completed upload session."
           },
-          "id": {
+          "file_id": {
             "$ref": "#/components/schemas/i64",
             "description": "Unique identifier of the stored file."
+          },
+          "is_finished": {
+            "description": "Whether the upload session has been finished.",
+            "type": "boolean"
           }
         },
         "required": [
-          "file_name",
-          "id"
+          "file_id",
+          "is_finished",
+          "_links"
         ],
         "type": "object"
       },
-      "PostAssetRequest": {
+      "PostUploadRequest": {
         "description": "Payload initializing an upload session.",
         "properties": {
           "content_type": {
-            "description": "Declared mime type of the file content.",
+            "description": "Declared media type of the file content.",
+            "example": "video/mp4",
             "type": "string"
           },
           "file_name": {
             "description": "Name of the file being uploaded.",
+            "example": "clip.mp4",
+            "minLength": 1,
+            "type": "string"
+          },
+          "file_size": {
+            "description": "Total size of the file being uploaded, in bytes.",
+            "example": 1048576,
+            "format": "int64",
+            "minimum": 1,
+            "type": "integer"
+          },
+          "integrity_hash": {
+            "description": "Integrity hash of the complete file, as a 64-character lowercase\nhexadecimal SHA-256 string.",
+            "example": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "maxLength": 64,
+            "minLength": 64,
+            "pattern": "^[0-9a-f]{64}$",
             "type": "string"
           }
         },
         "required": [
           "content_type",
-          "file_name"
+          "file_name",
+          "file_size",
+          "integrity_hash"
         ],
         "type": "object"
       },
-      "PostAssetResponse": {
+      "PostUploadResponse": {
         "description": "Upload session created by a successful initialization.",
         "properties": {
-          "id": {
+          "_links": {
+            "$ref": "#/components/schemas/UploadSessionLinks",
+            "description": "Links to the created upload session."
+          },
+          "chunk_size": {
+            "description": "Fixed size of every chunk except the last, in bytes.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "expires_at": {
+            "description": "Date and time at which the upload session expires, as\n`YYYY-MM-DDTHH:MM:SS`.",
+            "example": "2026-01-01T12:00:00",
+            "type": "string"
+          },
+          "upload_id": {
             "$ref": "#/components/schemas/i64",
             "description": "Unique identifier of the upload session."
           }
         },
         "required": [
-          "id"
+          "chunk_size",
+          "expires_at",
+          "_links",
+          "upload_id"
         ],
         "type": "object"
+      },
+      "PutUploadChunkRequest": {
+        "description": "Raw bytes of one chunk.\n\nThe handler extracts the body as raw bytes. It is declared as a binary\n`String` so the `OpenAPI` schema describes the raw `application/octet-stream`\npayload instead of the JSON array of integers a bare `Vec<u8>` would produce.",
+        "format": "binary",
+        "type": "string"
       },
       "RegisterRequest": {
         "description": "Payload to register a new user.\n\nThe requested `role` is granted only when the authenticated caller is\nallowed to create it: the Root Admin can register `Admin` or `Standard`\nusers, an `Admin` user can register `Standard` users only.",
@@ -385,6 +445,89 @@
         ],
         "type": "string"
       },
+      "SelfLinks": {
+        "description": "The `self` link of a HAL representation.\n\nEvery resource representation carries the URI it was served from, so clients\nnever construct or hardcode it themselves (`API-032`, `API-037`).",
+        "properties": {
+          "self": {
+            "$ref": "#/components/schemas/Link",
+            "description": "Link to the resource itself."
+          }
+        },
+        "required": [
+          "self"
+        ],
+        "type": "object"
+      },
+      "UploadSessionLinks": {
+        "description": "HAL links exposed by an upload-session representation.\n\nThe `self` link addresses the session itself; the templated `chunk` link\nlets clients discover where to store a chunk instead of building the URL\nfrom the identifiers (`API-037`); the `complete` link lets clients discover\nhow to finish the session.",
+        "properties": {
+          "chunk": {
+            "$ref": "#/components/schemas/Link",
+            "description": "URI template for storing one chunk of the upload session."
+          },
+          "complete": {
+            "$ref": "#/components/schemas/Link",
+            "description": "Link completing the upload session."
+          },
+          "self": {
+            "$ref": "#/components/schemas/Link",
+            "description": "Link to the upload-session resource itself."
+          }
+        },
+        "required": [
+          "chunk",
+          "complete",
+          "self"
+        ],
+        "type": "object"
+      },
+      "UploadSessionResponse": {
+        "description": "State of an upload session returned by a successful lookup or chunk store.",
+        "properties": {
+          "_links": {
+            "$ref": "#/components/schemas/UploadSessionLinks",
+            "description": "Links to the upload session, its chunk endpoint and its completion."
+          },
+          "bitmap": {
+            "description": "One character per chunk, `1` when received and `0` otherwise.",
+            "example": "110",
+            "type": "string"
+          },
+          "expires_at": {
+            "description": "Date and time at which the upload session expires, as\n`YYYY-MM-DDTHH:MM:SS`.",
+            "example": "2026-01-01T12:00:00",
+            "type": "string"
+          },
+          "file_id": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/i64",
+                "description": "Unique identifier of the caller's file for the session digest, when one\nexists."
+              }
+            ]
+          },
+          "is_finished": {
+            "description": "Whether the upload session has been finished.",
+            "type": "boolean"
+          },
+          "total_chunks": {
+            "description": "Total number of chunks the upload is split into.",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "bitmap",
+          "expires_at",
+          "is_finished",
+          "_links",
+          "total_chunks"
+        ],
+        "type": "object"
+      },
       "i64": {
         "format": "int64",
         "type": "integer"
@@ -408,15 +551,15 @@
   },
   "openapi": "3.1.0",
   "paths": {
-    "/asset": {
+    "/asset/upload": {
       "post": {
-        "description": "Validates that the declared content type is a supported media type and\nreturns the identifier of the created upload session.",
-        "operationId": "post_asset",
+        "description": "Validates the declared content type, file name, size and integrity hash,\ncreates the upload session and its staging file, and returns the session\nidentifier, the fixed chunk size and the expiry instant.",
+        "operationId": "post_upload",
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/PostAssetRequest"
+                "$ref": "#/components/schemas/PostUploadRequest"
               }
             }
           },
@@ -425,17 +568,25 @@
         "responses": {
           "201": {
             "content": {
-              "application/json": {
+              "application/hal+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/PostAssetResponse"
+                  "$ref": "#/components/schemas/PostUploadResponse"
                 }
               }
             },
-            "description": "Upload session created"
+            "description": "Upload session created",
+            "headers": {
+              "Location": {
+                "description": "Canonical URI of the created upload session",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           },
           "400": {
             "content": {
-              "application/json": {
+              "application/hal+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorBody"
                 }
@@ -445,7 +596,7 @@
           },
           "401": {
             "content": {
-              "application/json": {
+              "application/hal+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorBody"
                 }
@@ -453,9 +604,37 @@
             },
             "description": "Missing or invalid credentials"
           },
+          "405": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Method not allowed",
+            "headers": {
+              "Allow": {
+                "description": "HTTP methods accepted by this path",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "413": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The declared file size or the request body exceeds the maximum allowed size"
+          },
           "415": {
             "content": {
-              "application/json": {
+              "application/hal+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorBody"
                 }
@@ -465,7 +644,7 @@
           },
           "500": {
             "content": {
-              "application/json": {
+              "application/hal+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorBody"
                 }
@@ -485,38 +664,35 @@
         ]
       }
     },
-    "/asset/{id}": {
-      "post": {
-        "description": "Persists the raw bytes carried by the request body for the upload session\nidentified by `id`.",
-        "operationId": "post_asset_chunk",
+    "/asset/upload/{upload_id}": {
+      "get": {
+        "description": "Returns the received-chunk bitmap, the total number of chunks, the expiry\ninstant, whether the upload is finished and the identifier of the caller's\nfile for the session digest, when one exists. The file identifier is\nreported whether or not the session is finished: a caller-scoped duplicate\ncompletion leaves the session open and returns this same identifier.\n\nAn expired session is reported as `404`, exactly like an unknown one, so a\nretried read never changes the result. As a side effect the read lazily\ndeletes the expired session's row and staged file before answering.",
+        "operationId": "get_upload",
         "parameters": [
           {
             "description": "Identifier of the upload session",
             "in": "path",
-            "name": "id",
+            "name": "upload_id",
             "required": true,
             "schema": {
               "$ref": "#/components/schemas/i64"
             }
           }
         ],
-        "requestBody": {
-          "content": {
-            "application/octet-stream": {
-              "schema": {
-                "$ref": "#/components/schemas/PostAssetChunkRequest"
-              }
-            }
-          },
-          "required": true
-        },
         "responses": {
-          "204": {
-            "description": "Chunk stored"
+          "200": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UploadSessionResponse"
+                }
+              }
+            },
+            "description": "Upload session found"
           },
           "400": {
             "content": {
-              "application/json": {
+              "application/hal+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorBody"
                 }
@@ -526,7 +702,7 @@
           },
           "401": {
             "content": {
-              "application/json": {
+              "application/hal+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorBody"
                 }
@@ -536,7 +712,143 @@
           },
           "404": {
             "content": {
-              "application/json": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unknown or expired upload session"
+          },
+          "405": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Method not allowed",
+            "headers": {
+              "Allow": {
+                "description": "HTTP methods accepted by this path",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unexpected error"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ],
+        "summary": "Fetch the state of an upload session",
+        "tags": [
+          "asset"
+        ]
+      }
+    },
+    "/asset/upload/{upload_id}/chunk/{chunk_number}": {
+      "put": {
+        "description": "The request body carries the raw bytes of the chunk. The `Content-Range`\nheader declares the inclusive byte range as `bytes {start}-{end}/{total}` and\nthe `Content-Digest` header carries the SHA-256 digest of the body as an RFC\n9530 Byte Sequence, `sha-256=:<base64>:`. The chunk's `start` is validated\nagainst the chunk size persisted when the session began, not the current\nconfiguration. The chunk is idempotent: re-uploading it with the same digest\nsucceeds without changing the stored content.",
+        "operationId": "put_upload_chunk",
+        "parameters": [
+          {
+            "description": "Identifier of the upload session",
+            "in": "path",
+            "name": "upload_id",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/i64"
+            }
+          },
+          {
+            "description": "Zero-based number of the chunk",
+            "in": "path",
+            "name": "chunk_number",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Inclusive byte range, `bytes {start}-{end}/{total}`",
+            "in": "header",
+            "name": "Content-Range",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "RFC 9530 content digest of the chunk, `sha-256=:<base64 of the raw 32-byte digest>:`",
+            "example": "sha-256=:A6xnQhbz4Vx2HuGl4lXwZ5U2I8iziLRFnhP5eNfIRvQ=:",
+            "in": "header",
+            "name": "Content-Digest",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/octet-stream": {
+              "schema": {
+                "$ref": "#/components/schemas/PutUploadChunkRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UploadSessionResponse"
+                }
+              }
+            },
+            "description": "Chunk stored"
+          },
+          "400": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Invalid identifier, chunk number, range, digest or body"
+          },
+          "401": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid credentials"
+          },
+          "404": {
+            "content": {
+              "application/hal+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorBody"
                 }
@@ -544,19 +856,57 @@
             },
             "description": "Unknown upload session"
           },
-          "410": {
+          "405": {
             "content": {
-              "application/json": {
+              "application/hal+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorBody"
                 }
               }
             },
-            "description": "Upload session already finished or expired"
+            "description": "Method not allowed",
+            "headers": {
+              "Allow": {
+                "description": "HTTP methods accepted by this path",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Upload session already finished"
+          },
+          "410": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Upload session expired"
+          },
+          "413": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request body exceeds the maximum chunk size"
           },
           "500": {
             "content": {
-              "application/json": {
+              "application/hal+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorBody"
                 }
@@ -576,15 +926,15 @@
         ]
       }
     },
-    "/asset/{id}/finish": {
+    "/asset/upload/{upload_id}/complete": {
       "post": {
-        "description": "Marks the upload session identified by `id` as finished and returns the\nstored file.",
-        "operationId": "post_asset_finish",
+        "description": "The upload identifier is carried by the path; there is no request body. The\nstaged content's integrity hash is recomputed and verified against the hash\ndeclared when the upload was initialized. When the caller already owns a\nfile with that hash, no second copy is stored: the existing file's\nidentifier is returned and the upload session is left unfinished. Otherwise\nthe staged file is promoted, its record registered, and the upload marked\nfinished. Completion is idempotent: completing an already finished upload\nreturns the caller's file for the same digest.",
+        "operationId": "post_upload_complete",
         "parameters": [
           {
             "description": "Identifier of the upload session",
             "in": "path",
-            "name": "id",
+            "name": "upload_id",
             "required": true,
             "schema": {
               "$ref": "#/components/schemas/i64"
@@ -594,27 +944,27 @@
         "responses": {
           "200": {
             "content": {
-              "application/json": {
+              "application/hal+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/PostAssetFinishResponse"
+                  "$ref": "#/components/schemas/PostUploadCompleteResponse"
                 }
               }
             },
-            "description": "Upload finished"
+            "description": "Upload completed"
           },
           "400": {
             "content": {
-              "application/json": {
+              "application/hal+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorBody"
                 }
               }
             },
-            "description": "Invalid upload session identifier"
+            "description": "Invalid identifier, incomplete upload or integrity mismatch"
           },
           "401": {
             "content": {
-              "application/json": {
+              "application/hal+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorBody"
                 }
@@ -624,7 +974,7 @@
           },
           "404": {
             "content": {
-              "application/json": {
+              "application/hal+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorBody"
                 }
@@ -632,19 +982,37 @@
             },
             "description": "Unknown upload session"
           },
-          "410": {
+          "405": {
             "content": {
-              "application/json": {
+              "application/hal+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorBody"
                 }
               }
             },
-            "description": "Upload session already finished or expired"
+            "description": "Method not allowed",
+            "headers": {
+              "Allow": {
+                "description": "HTTP methods accepted by this path",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "410": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Upload session expired"
           },
           "500": {
             "content": {
-              "application/json": {
+              "application/hal+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorBody"
                 }
@@ -658,7 +1026,7 @@
             "bearer_auth": []
           }
         ],
-        "summary": "Finish an upload session",
+        "summary": "Complete an upload session",
         "tags": [
           "asset"
         ]
@@ -726,7 +1094,7 @@
           },
           "400": {
             "content": {
-              "application/json": {
+              "application/hal+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorBody"
                 }
@@ -736,7 +1104,7 @@
           },
           "401": {
             "content": {
-              "application/json": {
+              "application/hal+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorBody"
                 }
@@ -746,7 +1114,7 @@
           },
           "403": {
             "content": {
-              "application/json": {
+              "application/hal+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorBody"
                 }
@@ -756,7 +1124,7 @@
           },
           "404": {
             "content": {
-              "application/json": {
+              "application/hal+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorBody"
                 }
@@ -764,9 +1132,19 @@
             },
             "description": "Unknown credential"
           },
+          "413": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request body exceeds the maximum allowed size"
+          },
           "500": {
             "content": {
-              "application/json": {
+              "application/hal+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorBody"
                 }
@@ -813,7 +1191,7 @@
           },
           "400": {
             "content": {
-              "application/json": {
+              "application/hal+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorBody"
                 }
@@ -823,7 +1201,7 @@
           },
           "401": {
             "content": {
-              "application/json": {
+              "application/hal+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorBody"
                 }
@@ -831,9 +1209,19 @@
             },
             "description": "Invalid credentials"
           },
+          "413": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request body exceeds the maximum allowed size"
+          },
           "500": {
             "content": {
-              "application/json": {
+              "application/hal+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorBody"
                 }
@@ -886,7 +1274,7 @@
           },
           "400": {
             "content": {
-              "application/json": {
+              "application/hal+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorBody"
                 }
@@ -896,7 +1284,7 @@
           },
           "401": {
             "content": {
-              "application/json": {
+              "application/hal+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorBody"
                 }
@@ -906,7 +1294,7 @@
           },
           "403": {
             "content": {
-              "application/json": {
+              "application/hal+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorBody"
                 }
@@ -916,7 +1304,7 @@
           },
           "409": {
             "content": {
-              "application/json": {
+              "application/hal+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorBody"
                 }
@@ -924,9 +1312,19 @@
             },
             "description": "Username or email is already taken"
           },
+          "413": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request body exceeds the maximum allowed size"
+          },
           "500": {
             "content": {
-              "application/json": {
+              "application/hal+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorBody"
                 }
@@ -1011,7 +1409,7 @@
           },
           "400": {
             "content": {
-              "application/json": {
+              "application/hal+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorBody"
                 }
@@ -1021,7 +1419,7 @@
           },
           "401": {
             "content": {
-              "application/json": {
+              "application/hal+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorBody"
                 }
@@ -1031,7 +1429,7 @@
           },
           "403": {
             "content": {
-              "application/json": {
+              "application/hal+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorBody"
                 }
@@ -1041,7 +1439,7 @@
           },
           "500": {
             "content": {
-              "application/json": {
+              "application/hal+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorBody"
                 }
@@ -1078,7 +1476,7 @@
           },
           "401": {
             "content": {
-              "application/json": {
+              "application/hal+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorBody"
                 }
@@ -1088,7 +1486,7 @@
           },
           "500": {
             "content": {
-              "application/json": {
+              "application/hal+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorBody"
                 }
@@ -1136,7 +1534,7 @@
           },
           "400": {
             "content": {
-              "application/json": {
+              "application/hal+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorBody"
                 }
@@ -1146,7 +1544,7 @@
           },
           "401": {
             "content": {
-              "application/json": {
+              "application/hal+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorBody"
                 }
@@ -1156,7 +1554,7 @@
           },
           "403": {
             "content": {
-              "application/json": {
+              "application/hal+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorBody"
                 }
@@ -1166,7 +1564,7 @@
           },
           "404": {
             "content": {
-              "application/json": {
+              "application/hal+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorBody"
                 }
@@ -1176,7 +1574,7 @@
           },
           "500": {
             "content": {
-              "application/json": {
+              "application/hal+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorBody"
                 }
@@ -1232,7 +1630,7 @@
           },
           "400": {
             "content": {
-              "application/json": {
+              "application/hal+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorBody"
                 }
@@ -1242,7 +1640,7 @@
           },
           "401": {
             "content": {
-              "application/json": {
+              "application/hal+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorBody"
                 }
@@ -1252,7 +1650,7 @@
           },
           "403": {
             "content": {
-              "application/json": {
+              "application/hal+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorBody"
                 }
@@ -1262,7 +1660,7 @@
           },
           "404": {
             "content": {
-              "application/json": {
+              "application/hal+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorBody"
                 }
@@ -1270,9 +1668,19 @@
             },
             "description": "Unknown user"
           },
+          "413": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request body exceeds the maximum allowed size"
+          },
           "500": {
             "content": {
-              "application/json": {
+              "application/hal+json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorBody"
                 }

@@ -1,19 +1,17 @@
 use chrono::NaiveDate;
 
 use crate::domain::alias::NumericID;
-
-/// Required length of `File::md5_integrity`, mirroring the
-/// `chk_file_md5_integrity` check constraint.
-pub const MD5_INTEGRITY_LENGTH: usize = 128;
+use crate::domain::model::integrity_hash::IntegrityHash;
+use crate::domain::model::integrity_hash::IntegrityHashError;
+use crate::domain::model::integrity_hash::SHA256_HEX_LENGTH;
 
 /// Error returned when initialising or updating a `File`.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum FileError {
-    /// The `md5_integrity` is not exactly [`MD5_INTEGRITY_LENGTH`] characters
-    /// long.
-    #[error("md5_integrity must be exactly {MD5_INTEGRITY_LENGTH} characters long")]
-    Md5IntegrityInvalidLength,
+    /// The integrity hash is malformed.
+    #[error(transparent)]
+    IntegrityHash(#[from] IntegrityHashError),
     /// The path is empty.
     #[error("path must not be empty")]
     PathEmpty,
@@ -27,10 +25,10 @@ pub enum FileError {
 pub struct File {
     /// Unique identifier of the file.
     id: NumericID,
+    /// Integrity hash of the file content.
+    integrity_hash: IntegrityHash<SHA256_HEX_LENGTH>,
     /// Whether the file is publicly accessible.
     is_public: bool,
-    /// MD5 integrity digest of the file content.
-    md5_integrity: String,
     /// Identifier of the mime type of the file.
     mime_type_id: String,
     /// Path of the file on the storage backend.
@@ -48,16 +46,16 @@ impl File {
         self.id
     }
 
+    /// Return the integrity hash of the file content.
+    #[must_use]
+    pub fn integrity_hash(&self) -> &IntegrityHash<SHA256_HEX_LENGTH> {
+        &self.integrity_hash
+    }
+
     /// Return whether the file is publicly accessible.
     #[must_use]
     pub fn is_public(&self) -> bool {
         self.is_public
-    }
-
-    /// Return the MD5 integrity digest.
-    #[must_use]
-    pub fn md5_integrity(&self) -> &str {
-        &self.md5_integrity
     }
 
     /// Return the mime type identifier.
@@ -72,20 +70,14 @@ impl File {
         &self.path
     }
 
+    /// Update the `integrity_hash`.
+    pub fn set_integrity_hash(&mut self, integrity_hash: IntegrityHash<SHA256_HEX_LENGTH>) {
+        self.integrity_hash = integrity_hash;
+    }
+
     /// Update whether the file is publicly accessible.
     pub fn set_is_public(&mut self, is_public: bool) {
         self.is_public = is_public;
-    }
-
-    /// Update the `md5_integrity`.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`FileError::Md5IntegrityInvalidLength`] when `md5_integrity`
-    /// is not exactly [`MD5_INTEGRITY_LENGTH`] characters long.
-    pub fn set_md5_integrity(&mut self, md5_integrity: String) -> Result<(), FileError> {
-        self.md5_integrity = Self::validate_md5_integrity(md5_integrity)?;
-        Ok(())
     }
 
     /// Update the path.
@@ -98,13 +90,11 @@ impl File {
         Ok(())
     }
 
-    /// Initialise a new `File`, validating `path` and `md5_integrity`.
+    /// Initialise a new `File`, validating `path`.
     ///
     /// # Errors
     ///
-    /// Returns [`FileError::PathEmpty`] when `path` is empty, and
-    /// [`FileError::Md5IntegrityInvalidLength`] when `md5_integrity` is not
-    /// exactly [`MD5_INTEGRITY_LENGTH`] characters long.
+    /// Returns [`FileError::PathEmpty`] when `path` is empty.
     pub fn try_new(
         id: NumericID,
         path: String,
@@ -112,14 +102,13 @@ impl File {
         is_public: bool,
         mime_type_id: String,
         uploaded_at: NaiveDate,
-        md5_integrity: String,
+        integrity_hash: IntegrityHash<SHA256_HEX_LENGTH>,
     ) -> Result<Self, FileError> {
         let validated_path = Self::validate_path(path)?;
-        let validated_md5_integrity = Self::validate_md5_integrity(md5_integrity)?;
         Ok(Self {
             id,
+            integrity_hash,
             is_public,
-            md5_integrity: validated_md5_integrity,
             mime_type_id,
             path: validated_path,
             uploaded_at,
@@ -137,20 +126,6 @@ impl File {
     #[must_use]
     pub fn user_id(&self) -> NumericID {
         self.user_id
-    }
-
-    /// Validate and normalise `md5_integrity`.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`FileError::Md5IntegrityInvalidLength`] when `md5_integrity`
-    /// is not exactly [`MD5_INTEGRITY_LENGTH`] characters long.
-    fn validate_md5_integrity(md5_integrity: String) -> Result<String, FileError> {
-        if md5_integrity.chars().count() == MD5_INTEGRITY_LENGTH {
-            Ok(md5_integrity)
-        } else {
-            Err(FileError::Md5IntegrityInvalidLength)
-        }
     }
 
     /// Validate `path`.

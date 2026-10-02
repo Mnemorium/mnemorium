@@ -90,10 +90,13 @@ def assert_error_body() -> Callable[[requests.Response, int], None]:
         assert response.status_code == status_code, (
             f"expected {status_code}, got {response.status_code}: {response.text}"
         )
-        assert response.headers.get("Content-Type", "").startswith("application/json")
+        assert response.headers.get("Content-Type", "").startswith("application/hal+json")
         body = response.json()
-        assert set(body.keys()) == {"error"}
+        assert set(body.keys()) == {"error", "_links"}
         assert isinstance(body["error"], str) and body["error"]
+        links = body["_links"]
+        assert set(links.keys()) == {"self"}
+        assert isinstance(links["self"].get("href"), str) and links["self"]["href"]
 
     return _assert_error_body
 

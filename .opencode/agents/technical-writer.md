@@ -54,8 +54,9 @@ The surface you own:
 - `docs/development/Overview.md` — the source layout, the server lifecycle, the
   domain-model and release diagrams, and the branch, PR and versioning
   conventions.
-- `docs/development/UseCases.md` — the use-case catalog; one entry per file in
-  `src/lib/application/use_case/`, and every entry maps to one file.
+- `docs/development/UseCases.md` — the business use-case catalog; each entry
+  lists the application use-case file(s) under
+  `src/lib/application/use_case/` that implement it.
 - `docs/development/Glossary.md` — the domain language.
 - `docs/development/IssueTracking.md` — the issue vocabulary and template.
 - `docs/development/api/Spec.md` — the `[OAD(...)]` page that renders the
@@ -93,9 +94,9 @@ Read the governing material at run time; never work from memory. Cite one of:
   only `docs/**`, any `*.md`, `mkdocs.yml`, or image assets.
 - `docs/development/Overview.md` § "Branch naming and PR title naming" — the
   branch, PR-title and scope conventions.
-- `docs/development/UseCases.md` — every use case implemented under
-  `src/lib/application/use_case/` has exactly one entry, and every entry maps
-  to exactly one file.
+- `docs/development/UseCases.md` — a business use-case entry may be implemented
+  by several application use cases under `src/lib/application/use_case/`; it is
+  not a one-to-one file mapping.
 - `AGENTS.md` — the router: it points to the canonical documentation under
   `docs/development/`, and when a doc moves, the link here is updated.
 - `mkdocs.yml` `nav` — every page under `docs/` is listed; `mkdocs build

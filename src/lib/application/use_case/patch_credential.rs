@@ -175,6 +175,7 @@ mod tests {
     use crate::application::port::patch_credential::PatchCredentialCommand;
     use crate::application::port::patch_credential::PatchCredentialError;
     use crate::application::port::patch_credential::PatchCredentialUseCase as _;
+    use crate::domain::model::asset::Asset;
     use crate::domain::model::configuration::Configuration;
     use crate::domain::model::credential::Credential;
     use crate::domain::model::jwt::Jwt;
@@ -260,7 +261,12 @@ mod tests {
         let sqlite3 = Sqlite3::try_new("mnemorium.db".to_owned(), 1)?;
         let persistence = Persistence::new(sqlite3);
         let logging = Logging::try_new(false, "debug,sqlx=warn".to_owned(), 7, Rotation::Daily)?;
-        Ok(Configuration::new(persistence, security, logging))
+        Ok(Configuration::new(
+            persistence,
+            security,
+            logging,
+            Asset::default(),
+        ))
     }
 
     fn user(id: i64, username: &str, role: Role) -> Result<User, UserError> {
