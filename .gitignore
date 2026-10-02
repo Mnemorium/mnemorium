@@ -31,6 +31,7 @@ config.yaml
 
 # Logs
 logs/
+events.ndjson
 
 # Security scan artifacts
 .artifacts/
