@@ -105,10 +105,8 @@ impl GetUploadResponse {
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum GetUploadError {
-    /// The upload session has expired.
-    #[error("the upload session has expired")]
-    Expired,
-    /// No upload session matches the requested identifier.
+    /// No upload session matches the requested identifier. An expired session
+    /// is reported the same way, so a caller cannot tell the two apart.
     #[error("no upload session matches this identifier")]
     NoSuchUpload,
     /// An unexpected or unmapped error occurred.

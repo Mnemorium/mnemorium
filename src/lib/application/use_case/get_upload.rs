@@ -21,11 +21,12 @@ use crate::domain::port::upload_repository::UploadRepository as _;
 
 /// Outcome of the business logic wrapped by the unit-of-work lifecycle.
 enum Flow<T, E> {
-    /// The upload expired: its row and staged file have been deleted, so the
-    /// unit of work must be committed before returning the error.
-    Expired,
     /// The business logic failed and the unit of work must be rolled back.
     Failed(E),
+    /// The upload expired: its row and staged file have been lazily deleted, so
+    /// the unit of work must be committed before reporting the session as
+    /// unknown.
+    Reaped,
     /// The business logic succeeded.
     Succeeded(T),
 }
@@ -133,16 +134,16 @@ where
                         .map_err(|error| GetUploadError::Unknown(error.into()))?;
                     Ok(value)
                 }
-                Flow::Expired => {
+                Flow::Reaped => {
                     // The expired upload row and staged file were already
                     // deleted inside the transaction; commit so the deletion
-                    // survives, then report the expiry. A commit failure is a
-                    // server error and takes precedence.
+                    // survives, then report the session as unknown. A commit
+                    // failure is a server error and takes precedence.
                     unit_of_work
                         .commit()
                         .await
                         .map_err(|error| GetUploadError::Unknown(error.into()))?;
-                    Err(GetUploadError::Expired)
+                    Err(GetUploadError::NoSuchUpload)
                 }
                 Flow::Failed(error) => {
                     if let Err(rollback_error) = unit_of_work.rollback().await {
@@ -159,8 +160,10 @@ where
 }
 
 /// Best-effort delete the expired upload's staged file and row, then signal the
-/// caller to commit before returning the expiry error.
+/// caller to commit before reporting the session as unknown.
 ///
+/// The read path treats an expired session exactly like a missing one, so the
+/// caller never distinguishes the two; the deletion is an internal side effect.
 /// The row deletion is left to the reaper once one exists.
 #[expect(
     clippy::single_call_fn,
@@ -183,7 +186,7 @@ where
     if let Err(error) = unit_of_work.uploads().delete(upload_id).await {
         error!(error = ?error, "failed to delete the expired upload row");
     }
-    Flow::Expired
+    Flow::Reaped
 }
 
 #[cfg(test)]
@@ -424,7 +427,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn get_upload_expired_upload_returns_expired() -> Result<(), Box<dyn Error>> {
+    async fn get_upload_expired_upload_returns_no_such_upload() -> Result<(), Box<dyn Error>> {
         // Arrange
         let expired_at = chrono::Utc::now()
             .naive_utc()
@@ -450,7 +453,7 @@ mod tests {
         let result = harness.use_case.execute(command).await;
 
         // Assert
-        assert!(matches!(result, Err(GetUploadError::Expired)));
+        assert!(matches!(result, Err(GetUploadError::NoSuchUpload)));
         assert!(harness.committed.load(Ordering::SeqCst));
         assert!(!harness.rolled_back.load(Ordering::SeqCst));
         Ok(())

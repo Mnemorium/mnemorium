@@ -20,7 +20,6 @@ use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 impl From<GetUploadError> for ApiError {
     fn from(err: GetUploadError) -> Self {
         match err {
-            GetUploadError::Expired => Self::Gone(err.to_string()),
             GetUploadError::NoSuchUpload => Self::NotFound(err.to_string()),
             GetUploadError::Unknown(_) => Self::InternalServerError,
         }
@@ -34,6 +33,10 @@ impl From<GetUploadError> for ApiError {
 /// file for the session digest, when one exists. The file identifier is
 /// reported whether or not the session is finished: a caller-scoped duplicate
 /// completion leaves the session open and returns this same identifier.
+///
+/// An expired session is reported as `404`, exactly like an unknown one, so a
+/// retried read never changes the result. As a side effect the read lazily
+/// deletes the expired session's row and staged file before answering.
 #[utoipa::path(
     get,
     operation_id = "get_upload",
@@ -65,7 +68,7 @@ impl From<GetUploadError> for ApiError {
             status = NOT_FOUND,
             body = ErrorBody,
             content_type = "application/hal+json",
-            description = "Unknown upload session"
+            description = "Unknown or expired upload session"
         ),
         (
             status = METHOD_NOT_ALLOWED,
@@ -75,12 +78,6 @@ impl From<GetUploadError> for ApiError {
                 ("Allow" = String, description = "HTTP methods accepted by this path"),
             ),
             description = "Method not allowed"
-        ),
-        (
-            status = GONE,
-            body = ErrorBody,
-            content_type = "application/hal+json",
-            description = "Upload session expired"
         ),
         (
             status = INTERNAL_SERVER_ERROR,
@@ -326,24 +323,6 @@ mod tests {
         assert_eq!(
             payload,
             json!({ "error": "no upload session matches this identifier" })
-        );
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn get_upload_expired_upload_returns_gone() -> Result<(), Box<dyn Error>> {
-        // Arrange
-        let mut use_case = MockGetUploadUseCase::new();
-        expect_error(&mut use_case, GetUploadError::Expired);
-
-        // Act
-        let (status, payload) = into_parts(send(use_case, 3, "7").await?).await?;
-
-        // Assert
-        assert_eq!(status, StatusCode::GONE);
-        assert_eq!(
-            payload,
-            json!({ "error": "the upload session has expired" })
         );
         Ok(())
     }

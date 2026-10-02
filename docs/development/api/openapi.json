@@ -666,7 +666,7 @@
     },
     "/asset/upload/{upload_id}": {
       "get": {
-        "description": "Returns the received-chunk bitmap, the total number of chunks, the expiry\ninstant, whether the upload is finished and the identifier of the caller's\nfile for the session digest, when one exists. The file identifier is\nreported whether or not the session is finished: a caller-scoped duplicate\ncompletion leaves the session open and returns this same identifier.",
+        "description": "Returns the received-chunk bitmap, the total number of chunks, the expiry\ninstant, whether the upload is finished and the identifier of the caller's\nfile for the session digest, when one exists. The file identifier is\nreported whether or not the session is finished: a caller-scoped duplicate\ncompletion leaves the session open and returns this same identifier.\n\nAn expired session is reported as `404`, exactly like an unknown one, so a\nretried read never changes the result. As a side effect the read lazily\ndeletes the expired session's row and staged file before answering.",
         "operationId": "get_upload",
         "parameters": [
           {
@@ -718,7 +718,7 @@
                 }
               }
             },
-            "description": "Unknown upload session"
+            "description": "Unknown or expired upload session"
           },
           "405": {
             "content": {
@@ -737,16 +737,6 @@
                 }
               }
             }
-          },
-          "410": {
-            "content": {
-              "application/hal+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "Upload session expired"
           },
           "500": {
             "content": {
