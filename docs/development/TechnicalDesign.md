@@ -2030,10 +2030,9 @@ to be filled in.
 
 Columns: **Name**, **Description**, **Version**, **License**.
 
-| ID         | Section                 | Rule                                                                                                                                                                                                               | More info                             |
-| ---------- | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------- |
-| `DEPS-001` | GitHub Actions          | Pin every third-party GitHub Action to a full-length commit SHA and record the release in a same-line comment, for example `# v6` or `# v1.2.3`.                                                                   | [§ CI supply chain](#ci-supply-chain) |
-| `DEPS-002` | Untrusted pull requests | A `pull_request` job that builds, tests or otherwise executes files from the pull-request ref runs with a read-only `GITHUB_TOKEN`, `persist-credentials: false`, no repository secrets and GitHub-hosted runners. | [§ CI supply chain](#ci-supply-chain) |
+| ID         | Section        | Rule                                                                                                                                             | More info                             |
+| ---------- | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------- |
+| `DEPS-001` | GitHub Actions | Pin every third-party GitHub Action to a full-length commit SHA and record the release in a same-line comment, for example `# v6` or `# v1.2.3`. | [§ CI supply chain](#ci-supply-chain) |
 
 ---
 
@@ -2053,11 +2052,6 @@ release comment when that comment sits on the same line as the SHA.
 Pinning a SHA strips the ref of the meaning the action gave it, so configuration carried by the ref moves into an input.
 `dtolnay/rust-toolchain` selects its toolchain from the ref: it is pinned to a SHA with the release tag in the comment,
 and the toolchain is supplied through `toolchain:`.
-
-A job that runs on `pull_request` executes the pull request — the checked-out merge ref, its scripts and its build
-files. Such a job gets a read-only `GITHUB_TOKEN`, `persist-credentials: false` on checkout, no repository secrets and a
-GitHub-hosted runner, so a malicious pull request can neither write the repository nor leave anything behind. Work that
-pushes, publishes or needs a secret runs from the default branch on `push` instead.
 
 ---
 
