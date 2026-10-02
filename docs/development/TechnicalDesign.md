@@ -87,7 +87,7 @@ Cite a rule as `TechnicalDesign.md § 1 (Code Style Guidelines), STY-RUST-001`, 
 3. To migrate: move the content, re-level its headings under the section, keep every existing anchor working, then
    delete the source document and update every reference — including `AGENTS.md` and `mkdocs.yml` — in the same change.
 4. Assign the section's rule-ID prefix in this file.
-5. Run the Markdown gates: the `markdownlint` and `markdownfmt` tools.
+5. Run the Markdown gates: the `lint:md` and `fmt:md` devenv tasks.
 
 ---
 
@@ -2125,17 +2125,6 @@ Source: `requirements.txt`.
 | [pytest](https://pypi.org/project/pytest/)                   | Python testing framework used by the E2E suite.   | 9.1.1   | MIT          |
 | [requests](https://pypi.org/project/requests/)               | HTTP library for Python.                          | 2.34.2  | Apache-2.0   |
 | [ruff](https://pypi.org/project/ruff/)                       | Fast Python linter and formatter.                 | 0.16.5  | MIT          |
-
----
-
-#### Node
-
-Source: `.opencode/package.json`.
-
-| Name                                                                     | Description                                                                          | Version | License |
-| ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------ | ------- | ------- |
-| [@opencode-ai/plugin](https://www.npmjs.com/package/@opencode-ai/plugin) | OpenCode plugin SDK; provides the `tool` API used by the repository's tools.         | 1.18.29 | MIT     |
-| [@opencode/plugin](https://www.npmjs.com/package/@opencode/plugin)       | OpenCode plugin runtime; provides the `Plugin` API used by the repository's plugins. | 2.0.14  | MIT     |
 
 ---
 

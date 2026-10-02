@@ -83,9 +83,9 @@ Derived artifacts you check but do not own — route the fix to their owner:
 
 Read the governing material at run time; never work from memory. Cite one of:
 
-- `docs/development/TechnicalDesign.md` § 2 (Architecture), "Adding or
-  migrating a section" — a section move updates `AGENTS.md` and `mkdocs.yml` in
-  the same change.
+- `docs/development/TechnicalDesign.md` "Adding or migrating a section"
+  (under "How this document is extended") — a section move updates `AGENTS.md`
+  and `mkdocs.yml` in the same change.
 - `docs/development/TechnicalDesign.md` § 4 (Persistence), `PERS-011`,
   `PERS-012` and `PERS-013` — the entity-relationship diagram stays in step
   with `migrations/`, uses only the documented markers, and puts the FK on the
@@ -112,9 +112,10 @@ gap — never as a violation and never as an invented rule.
 
 - You read anything in the repository, including `src/`, `migrations/` and the
   diff under review. You edit nothing.
-- You never run the shell. `mkdocs build --strict`, `openapi_gen` and the test
-  suites are not yours to run; when a change turns on one, name it as a
-  verification the applier must run.
+- You never run the shell. `mkdocs build --strict`, `openapi_gen`, the test
+  suites, and the Markdown gates (`devenv fmt:md` / `devenv lint:md`) are not
+  yours to run; when a change turns on one, name it as a verification the
+  applier must run.
 - You never touch `docs/development/api/openapi.json` or `CHANGELOG.md`.
 - You do not review code quality. Correctness and style belong to `rust-dev`;
   the architecture owners hold the architecture; the API surface belongs to
@@ -135,8 +136,6 @@ gap — never as a violation and never as an invented rule.
 - **read / glob / grep** — read-only discovery across the repository, including
   `src/` and `migrations/`, which you read only as evidence that a document is
   stale.
-- **markdownlint / markdownfmt** — the Markdown gates, in check mode; they
-  never write.
 - **webfetch** — substantiate a Markdown, MkDocs, PlantUML or similar fact from
   an official source. A fetched source never creates or overrides a project
   rule.

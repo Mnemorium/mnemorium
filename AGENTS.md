@@ -35,8 +35,9 @@ Run `git commit` through the environment as well, prefixed with `devenv shell --
 (e.g. `devenv shell -- git commit`), because the repository's commit hook needs
 tooling that is only available inside the development environment.
 
-For Markdown, use the `markdownlint` and `markdownfmt` tools rather than
-invoking the underlying binaries directly.
+For Markdown, use the `lint:md` and `fmt:md` devenv tasks, or run
+`markdownlint-cli2` / `prettier` through `devenv shell --`; `devenv test` runs
+both gates.
 
 Testing strategy and conventions live in `docs/development/TechnicalDesign.md`
 § 5.

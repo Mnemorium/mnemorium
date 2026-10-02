@@ -331,13 +331,6 @@
     description = "Regenerate THIRD_PARTY_NOTICES.txt from the crate graph";
   };
 
-  # OpenCode
-
-  tasks."plugins:install" = {
-    exec = "npm ci --prefix .opencode";
-    description = "Install OpenCode plugin dependencies";
-  };
-
   # Scripts
 
   # Launch the Memorium server
