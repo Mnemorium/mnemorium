@@ -14,6 +14,7 @@ mod test_helpers {
     use std::sync::atomic::Ordering;
 
     use arc_swap::ArcSwap;
+    use axum::response::Response;
 
     use crate::application::port::asset_use_case_factory::AssetUseCaseFactory;
     use crate::application::port::asset_use_case_factory::MockAssetUseCaseFactory;
@@ -48,6 +49,7 @@ mod test_helpers {
     use crate::domain::port::user_repository::MockUserRepository;
     use crate::domain::port::user_repository::UserRepository;
     use crate::domain::port::user_unit_of_work::UserUnitOfWork;
+    use crate::infrastructure::inbound::rest::api_error::ApiErrorMessage;
     use crate::infrastructure::inbound::rest::app_state::AppState;
     use crate::infrastructure::outbound::jwt::token_provider::JwtTokenProvider;
 
@@ -355,10 +357,6 @@ mod test_helpers {
     /// # Errors
     ///
     /// Returns an error when the fixed configuration cannot be built.
-    #[expect(
-        clippy::single_call_fn,
-        reason = "only the auth middleware tests build an application state around a token provider"
-    )]
     pub fn app_state(token_provider: Arc<JwtTokenProvider>) -> Result<AppState, Box<dyn Error>> {
         let jwt = Jwt::try_new("0".repeat(64), 3600)?;
         let security = Security::try_new(jwt, "1".repeat(64), true)?;
@@ -467,5 +465,18 @@ mod test_helpers {
             Arc::new(JwtTokenProvider::new("tmptmp".to_owned(), 3600)),
             Arc::new(MockUserUseCaseFactory::new()),
         ))
+    }
+
+    /// Return the message an `ApiError` attached to `response`.
+    ///
+    /// The message travels in a response extension, so a handler test can assert
+    /// the handler-owned message without depending on the HAL error envelope
+    /// that the root middleware builds (`TEST-049`).
+    #[must_use]
+    pub fn error_message_of(response: &Response) -> Option<String> {
+        response
+            .extensions()
+            .get::<ApiErrorMessage>()
+            .map(|message| message.0.clone())
     }
 }

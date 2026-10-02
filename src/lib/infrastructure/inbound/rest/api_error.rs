@@ -1,26 +1,39 @@
 use axum::Json;
 use axum::extract::rejection::JsonRejection;
+use axum::http::HeaderValue;
 use axum::http::StatusCode;
+use axum::http::header;
 use axum::response::IntoResponse;
 use axum::response::Response;
-use serde_json::json;
 
+use crate::infrastructure::inbound::rest::hal::HAL_CONTENT_TYPE;
 use crate::infrastructure::inbound::rest::hal::SelfLinks;
 
 /// Standard error payload returned by every failed request.
 ///
 /// The envelope is uniform across every error the server emits, including
-/// routing fallbacks and extractor rejections (`API-039`).
+/// routing fallbacks and extractor rejections (`API-039`). The `error_response`
+/// helper builds it, and the root `hal_errors` middleware applies it to every
+/// `4xx`/`5xx` response.
 #[derive(Debug, serde::Deserialize, serde::Serialize, utoipa::ToSchema)]
 #[non_exhaustive]
 pub struct ErrorBody {
     /// Human-readable description of the error.
-    #[schema(example = json!("An error message"))]
+    #[schema(example = "An error message")]
     pub error: String,
     /// Link to the request that produced the error.
     #[serde(rename = "_links")]
     pub links: SelfLinks,
 }
+
+/// Internal carrier for an [`ApiError`] message.
+///
+/// `ApiError` cannot build the HAL error envelope itself: [`IntoResponse`] has
+/// no access to the request URI, so it cannot fill `_links.self` (`API-032`).
+/// It attaches only its message, and the root `hal_errors` middleware builds
+/// the one [`ErrorBody`] envelope from that message (`API-039`).
+#[derive(Clone, Debug)]
+pub(crate) struct ApiErrorMessage(pub String);
 
 /// HTTP error mapped to a status code and the standard error body.
 #[derive(Debug)]
@@ -70,7 +83,9 @@ impl ApiError {
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
         let (status, message) = self.status_and_message();
-        (status, Json(json!({ "error": message }))).into_response()
+        let mut response = status.into_response();
+        response.extensions_mut().insert(ApiErrorMessage(message));
+        response
     }
 }
 
@@ -87,4 +102,29 @@ impl From<JsonRejection> for ApiError {
         }
         Self::BadRequest(rejection.body_text())
     }
+}
+
+/// Build the one HAL error envelope every error response is served as
+/// (`API-039`): the message at the root (`API-033`) plus `_links.self` to the
+/// request URI (`API-032`), served as `application/hal+json` (`API-031`).
+///
+/// It is the single envelope builder by design: only the root `hal_errors`
+/// middleware calls it, and only after it has read the [`ApiErrorMessage`].
+#[expect(
+    clippy::single_call_fn,
+    reason = "centralising the envelope in one builder is the point, even when only the root middleware calls it"
+)]
+#[must_use]
+pub(crate) fn error_response(status: StatusCode, message: String, path: &str) -> Response {
+    let body = ErrorBody {
+        error: message,
+        links: SelfLinks::new(path),
+    };
+    let mut response = Json(body).into_response();
+    *response.status_mut() = status;
+    response.headers_mut().insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static(HAL_CONTENT_TYPE),
+    );
+    response
 }

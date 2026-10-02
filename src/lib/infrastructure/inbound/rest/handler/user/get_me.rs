@@ -118,6 +118,7 @@ mod tests {
     use crate::domain::model::user::Role;
     use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
     use crate::test_helpers::app_state_with_user;
+    use crate::test_helpers::error_message_of;
 
     /// Send a request through the endpoint router on behalf of `caller_id`,
     /// injecting the caller identifier the way the auth middleware does.
@@ -239,13 +240,13 @@ mod tests {
         expect_error(&mut use_case, GetCurrentUserError::NoSuchUser);
 
         // Act
-        let (status, _, payload) = into_parts(send(use_case, 999).await?).await?;
+        let response = send(use_case, 999).await?;
 
         // Assert
-        assert_eq!(status, StatusCode::UNAUTHORIZED);
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
         assert_eq!(
-            payload,
-            json!({ "error": "the authenticated user does not exist" })
+            error_message_of(&response).as_deref(),
+            Some("the authenticated user does not exist")
         );
         Ok(())
     }
@@ -261,11 +262,14 @@ mod tests {
         );
 
         // Act
-        let (status, _, payload) = into_parts(send(use_case, 1).await?).await?;
+        let response = send(use_case, 1).await?;
 
         // Assert
-        assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
-        assert_eq!(payload, json!({ "error": "an unexpected error occurred" }));
+        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(
+            error_message_of(&response).as_deref(),
+            Some("an unexpected error occurred")
+        );
         Ok(())
     }
 }

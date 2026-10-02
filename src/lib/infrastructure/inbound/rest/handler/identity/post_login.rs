@@ -138,6 +138,7 @@ mod tests {
     use crate::application::port::login_user::MockLoginUserUseCase;
     use crate::test_helpers::SECRET_PASSWORD;
     use crate::test_helpers::app_state_with_identity;
+    use crate::test_helpers::error_message_of;
 
     /// Send `body` through the endpoint router.
     async fn send(
@@ -164,6 +165,10 @@ mod tests {
 
     /// Split `response` into its status, `Content-Type` header and decoded
     /// JSON body.
+    #[expect(
+        clippy::single_call_fn,
+        reason = "the success test reads the decoded body through a named helper"
+    )]
     async fn into_parts(
         response: Response,
     ) -> Result<(StatusCode, Option<String>, Value), Box<dyn Error>> {
@@ -237,24 +242,21 @@ mod tests {
         let login_use_case = MockLoginUserUseCase::new();
 
         // Act
-        let (status, _, payload) = into_parts(
-            send(
-                login_use_case,
-                Body::from(
-                    json!({
-                        "username": "alice",
-                    })
-                    .to_string(),
-                ),
-            )
-            .await?,
+        let response = send(
+            login_use_case,
+            Body::from(
+                json!({
+                    "username": "alice",
+                })
+                .to_string(),
+            ),
         )
         .await?;
 
         // Assert
-        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
         assert!(
-            payload.get("error").is_some(),
+            error_message_of(&response).is_some(),
             "a bad request must carry an error message"
         );
         Ok(())
@@ -266,25 +268,22 @@ mod tests {
         let login_use_case = MockLoginUserUseCase::new();
 
         // Act
-        let (status, _, payload) = into_parts(
-            send(
-                login_use_case,
-                Body::from(
-                    json!({
-                        "username": "alice",
-                        "password": 123i64,
-                    })
-                    .to_string(),
-                ),
-            )
-            .await?,
+        let response = send(
+            login_use_case,
+            Body::from(
+                json!({
+                    "username": "alice",
+                    "password": 123i64,
+                })
+                .to_string(),
+            ),
         )
         .await?;
 
         // Assert
-        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
         assert!(
-            payload.get("error").is_some(),
+            error_message_of(&response).is_some(),
             "a bad request must carry an error message"
         );
         Ok(())
@@ -296,13 +295,12 @@ mod tests {
         let login_use_case = MockLoginUserUseCase::new();
 
         // Act
-        let (status, _, payload) =
-            into_parts(send(login_use_case, Body::from("not json")).await?).await?;
+        let response = send(login_use_case, Body::from("not json")).await?;
 
         // Assert
-        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
         assert!(
-            payload.get("error").is_some(),
+            error_message_of(&response).is_some(),
             "a bad request must carry an error message"
         );
         Ok(())
@@ -315,20 +313,17 @@ mod tests {
         expect_error(&mut login_use_case, LoginUserError::InvalidUsername);
 
         // Act
-        let (status, _, payload) = into_parts(
-            send(
-                login_use_case,
-                Body::from(request_body("ghost", SECRET_PASSWORD).to_string()),
-            )
-            .await?,
+        let response = send(
+            login_use_case,
+            Body::from(request_body("ghost", SECRET_PASSWORD).to_string()),
         )
         .await?;
 
         // Assert
-        assert_eq!(status, StatusCode::UNAUTHORIZED);
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
         assert_eq!(
-            payload,
-            json!({ "error": "no user matches the provided username" })
+            error_message_of(&response).as_deref(),
+            Some("no user matches the provided username")
         );
         Ok(())
     }
@@ -340,20 +335,17 @@ mod tests {
         expect_error(&mut login_use_case, LoginUserError::InvalidPassword);
 
         // Act
-        let (status, _, payload) = into_parts(
-            send(
-                login_use_case,
-                Body::from(request_body("alice", "wrong-password").to_string()),
-            )
-            .await?,
+        let response = send(
+            login_use_case,
+            Body::from(request_body("alice", "wrong-password").to_string()),
         )
         .await?;
 
         // Assert
-        assert_eq!(status, StatusCode::UNAUTHORIZED);
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
         assert_eq!(
-            payload,
-            json!({ "error": "the password does not match the stored hash" })
+            error_message_of(&response).as_deref(),
+            Some("the password does not match the stored hash")
         );
         Ok(())
     }
@@ -369,18 +361,18 @@ mod tests {
         );
 
         // Act
-        let (status, _, payload) = into_parts(
-            send(
-                login_use_case,
-                Body::from(request_body("alice", SECRET_PASSWORD).to_string()),
-            )
-            .await?,
+        let response = send(
+            login_use_case,
+            Body::from(request_body("alice", SECRET_PASSWORD).to_string()),
         )
         .await?;
 
         // Assert
-        assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
-        assert_eq!(payload, json!({ "error": "an unexpected error occurred" }));
+        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(
+            error_message_of(&response).as_deref(),
+            Some("an unexpected error occurred")
+        );
         Ok(())
     }
 }

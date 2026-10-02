@@ -228,6 +228,7 @@ mod tests {
     use crate::domain::model::integrity_hash::IntegrityHash;
     use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
     use crate::test_helpers::app_state_with_asset;
+    use crate::test_helpers::error_message_of;
 
     const DIGEST: &str = "d41d8cd98f00b204e9800998ecf8427ed41d8cd98f00b204e9800998ecf8427e";
 
@@ -260,6 +261,10 @@ mod tests {
     }
 
     /// Split `response` into its status and decoded JSON body.
+    #[expect(
+        clippy::single_call_fn,
+        reason = "the success test reads the decoded body through a named helper"
+    )]
     async fn into_parts(response: Response) -> Result<(StatusCode, Value), Box<dyn Error>> {
         let status = response.status();
         let bytes = to_bytes(response.into_body(), usize::MAX).await?;
@@ -355,13 +360,13 @@ mod tests {
         expect_error(&mut use_case, BeginUploadError::UnsupportedMediaType);
 
         // Act
-        let (status, payload) = into_parts(send(use_case, 3, request_body()?).await?).await?;
+        let response = send(use_case, 3, request_body()?).await?;
 
         // Assert
-        assert_eq!(status, StatusCode::UNSUPPORTED_MEDIA_TYPE);
+        assert_eq!(response.status(), StatusCode::UNSUPPORTED_MEDIA_TYPE);
         assert_eq!(
-            payload,
-            json!({ "error": "the declared content type is not a supported media type" })
+            error_message_of(&response).as_deref(),
+            Some("the declared content type is not a supported media type")
         );
         Ok(())
     }
@@ -373,13 +378,13 @@ mod tests {
         expect_error(&mut use_case, BeginUploadError::FileTooLarge);
 
         // Act
-        let (status, payload) = into_parts(send(use_case, 3, request_body()?).await?).await?;
+        let response = send(use_case, 3, request_body()?).await?;
 
         // Assert
-        assert_eq!(status, StatusCode::PAYLOAD_TOO_LARGE);
+        assert_eq!(response.status(), StatusCode::PAYLOAD_TOO_LARGE);
         assert_eq!(
-            payload,
-            json!({ "error": "the file size exceeds the maximum allowed size" })
+            error_message_of(&response).as_deref(),
+            Some("the file size exceeds the maximum allowed size")
         );
         Ok(())
     }
@@ -390,12 +395,11 @@ mod tests {
         let use_case = MockBeginUploadUseCase::new();
 
         // Act
-        let (status, payload) =
-            into_parts(send(use_case, 3, Body::from("not-json")).await?).await?;
+        let response = send(use_case, 3, Body::from("not-json")).await?;
 
         // Assert
-        assert_eq!(status, StatusCode::BAD_REQUEST);
-        assert!(payload.get("error").is_some());
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        assert!(error_message_of(&response).is_some());
         Ok(())
     }
 
@@ -412,11 +416,14 @@ mod tests {
         }))?);
 
         // Act
-        let (status, payload) = into_parts(send(use_case, 3, body).await?).await?;
+        let response = send(use_case, 3, body).await?;
 
         // Assert
-        assert_eq!(status, StatusCode::BAD_REQUEST);
-        assert_eq!(payload, json!({ "error": "the integrity hash is invalid" }));
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(
+            error_message_of(&response).as_deref(),
+            Some("the integrity hash is invalid")
+        );
         Ok(())
     }
 
@@ -433,11 +440,14 @@ mod tests {
         }))?);
 
         // Act
-        let (status, payload) = into_parts(send(use_case, 3, body).await?).await?;
+        let response = send(use_case, 3, body).await?;
 
         // Assert
-        assert_eq!(status, StatusCode::BAD_REQUEST);
-        assert_eq!(payload, json!({ "error": "the integrity hash is invalid" }));
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(
+            error_message_of(&response).as_deref(),
+            Some("the integrity hash is invalid")
+        );
         Ok(())
     }
 
@@ -452,11 +462,14 @@ mod tests {
         );
 
         // Act
-        let (status, payload) = into_parts(send(use_case, 3, request_body()?).await?).await?;
+        let response = send(use_case, 3, request_body()?).await?;
 
         // Assert
-        assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
-        assert_eq!(payload, json!({ "error": "an unexpected error occurred" }));
+        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(
+            error_message_of(&response).as_deref(),
+            Some("an unexpected error occurred")
+        );
         Ok(())
     }
 }

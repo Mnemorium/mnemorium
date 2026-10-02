@@ -151,6 +151,7 @@ mod tests {
     use crate::domain::alias::NumericID;
     use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
     use crate::test_helpers::app_state_with_asset;
+    use crate::test_helpers::error_message_of;
 
     /// Send a GET to `/api/v1/asset/upload/{upload_id}` on behalf of
     /// `caller_id`, injecting the caller the way the auth middleware does.
@@ -316,13 +317,13 @@ mod tests {
         expect_error(&mut use_case, GetUploadError::NoSuchUpload);
 
         // Act
-        let (status, payload) = into_parts(send(use_case, 3, "7").await?).await?;
+        let response = send(use_case, 3, "7").await?;
 
         // Assert
-        assert_eq!(status, StatusCode::NOT_FOUND);
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
         assert_eq!(
-            payload,
-            json!({ "error": "no upload session matches this identifier" })
+            error_message_of(&response).as_deref(),
+            Some("no upload session matches this identifier")
         );
         Ok(())
     }
@@ -333,13 +334,13 @@ mod tests {
         let use_case = MockGetUploadUseCase::new();
 
         // Act
-        let (status, payload) = into_parts(send(use_case, 3, "abc").await?).await?;
+        let response = send(use_case, 3, "abc").await?;
 
         // Assert
-        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
         assert_eq!(
-            payload,
-            json!({ "error": "invalid upload session identifier" })
+            error_message_of(&response).as_deref(),
+            Some("invalid upload session identifier")
         );
         Ok(())
     }
@@ -355,11 +356,14 @@ mod tests {
         );
 
         // Act
-        let (status, payload) = into_parts(send(use_case, 3, "7").await?).await?;
+        let response = send(use_case, 3, "7").await?;
 
         // Assert
-        assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
-        assert_eq!(payload, json!({ "error": "an unexpected error occurred" }));
+        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(
+            error_message_of(&response).as_deref(),
+            Some("an unexpected error occurred")
+        );
         Ok(())
     }
 }

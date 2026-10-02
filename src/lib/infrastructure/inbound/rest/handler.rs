@@ -19,6 +19,13 @@ use crate::infrastructure::inbound::rest::handler::user::user_routes;
 use crate::infrastructure::inbound::rest::middleware::hal_errors::hal_errors;
 use crate::infrastructure::inbound::rest::middleware::trace::tracing;
 
+/// Build the application router.
+///
+/// This is the single composition root: the server mounts only this router, and
+/// `hal_errors` is applied **last** so it is the outermost layer. It therefore
+/// rewraps every `4xx`/`5xx` the server emits, including the routing fallback
+/// (an unknown or malformed URL) and framework rejections, as the one HAL error
+/// envelope (`API-039`). It must remain outermost.
 pub fn setup_routes(state: &AppState) -> axum::Router {
     let v1 = axum::Router::new()
         .nest("/asset", asset_routes(state))
@@ -30,4 +37,189 @@ pub fn setup_routes(state: &AppState) -> axum::Router {
         .nest("/api/v1", v1)
         .layer(middleware::from_fn(tracing))
         .layer(middleware::from_fn(hal_errors))
+}
+
+#[cfg(test)]
+mod tests {
+    use std::error::Error;
+    use std::sync::Arc;
+
+    use axum::body::Body;
+    use axum::body::to_bytes;
+    use axum::extract::Request;
+    use axum::http::StatusCode;
+    use axum::http::header;
+    use axum::response::Response;
+    use serde_json::Value;
+    use serde_json::json;
+    use tower::ServiceExt as _;
+
+    use super::setup_routes;
+    use crate::application::port::identity_use_case_factory::MockIdentityUseCaseFactory;
+    use crate::application::port::login_user::LoginUserError;
+    use crate::application::port::login_user::LoginUserUseCase;
+    use crate::application::port::login_user::MockLoginUserUseCase;
+    use crate::infrastructure::outbound::jwt::token_provider::JwtTokenProvider;
+    use crate::test_helpers::SECRET_PASSWORD;
+    use crate::test_helpers::app_state;
+    use crate::test_helpers::app_state_with_identity;
+
+    /// Build a request with `method` and `uri`, optionally carrying a JSON body.
+    fn request(method: &str, uri: &str, body: Option<&str>) -> Result<Request, Box<dyn Error>> {
+        let mut builder = Request::builder().method(method).uri(uri);
+        if body.is_some() {
+            builder = builder.header(header::CONTENT_TYPE, "application/json");
+        }
+        let request_body = body.map_or_else(Body::empty, |text| Body::from(text.to_owned()));
+        Ok(builder.body(request_body)?)
+    }
+
+    /// Assert `response` is the HAL error envelope for `status` at `href` and
+    /// return the error message, so the caller can assert it.
+    async fn assert_envelope(
+        response: Response,
+        status: StatusCode,
+        href: &str,
+    ) -> Result<String, Box<dyn Error>> {
+        assert_eq!(response.status(), status);
+        assert_eq!(
+            response
+                .headers()
+                .get(header::CONTENT_TYPE)
+                .and_then(|value| value.to_str().ok()),
+            Some("application/hal+json"),
+            "every error must be served as the HAL media type (`API-031`)"
+        );
+        let bytes = to_bytes(response.into_body(), usize::MAX).await?;
+        let payload: Value = serde_json::from_slice(&bytes)?;
+        let object = payload
+            .as_object()
+            .ok_or_else(|| anyhow::anyhow!("the error envelope must be a JSON object"))?;
+        let mut keys: Vec<&str> = object.keys().map(String::as_str).collect();
+        keys.sort_unstable();
+        assert_eq!(
+            keys,
+            vec!["_links", "error"],
+            "the envelope must carry exactly `error` and `_links`"
+        );
+        let message = payload
+            .get("error")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        assert!(
+            !message.is_empty(),
+            "the envelope must carry a non-empty message"
+        );
+        let actual_href = payload
+            .get("_links")
+            .and_then(|links| links.get("self"))
+            .and_then(|self_link| self_link.get("href"))
+            .and_then(Value::as_str);
+        assert_eq!(actual_href, Some(href));
+        Ok(message.to_owned())
+    }
+
+    /// A router whose only token provider is the fixed test one.
+    fn plain_router() -> Result<axum::Router, Box<dyn Error>> {
+        Ok(setup_routes(&app_state(Arc::new(JwtTokenProvider::new(
+            "tmptmp".to_owned(),
+            3600,
+        )))?))
+    }
+
+    #[tokio::test]
+    async fn unknown_route_is_wrapped_and_keeps_the_query_string() -> Result<(), Box<dyn Error>> {
+        // Act
+        let response = plain_router()?
+            .oneshot(request("GET", "/api/v1/does-not-exist?x=1", None)?)
+            .await?;
+
+        // Assert
+        assert_eq!(
+            assert_envelope(
+                response,
+                StatusCode::NOT_FOUND,
+                "/api/v1/does-not-exist?x=1",
+            )
+            .await?,
+            "Not Found"
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn method_not_allowed_is_wrapped_and_keeps_allow() -> Result<(), Box<dyn Error>> {
+        // Act
+        let response = plain_router()?
+            .oneshot(request("DELETE", "/health", None)?)
+            .await?;
+
+        // Assert
+        assert!(
+            response.headers().get(header::ALLOW).is_some(),
+            "the Allow header must survive the rewrite"
+        );
+        assert_envelope(response, StatusCode::METHOD_NOT_ALLOWED, "/health").await?;
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn extractor_rejection_is_wrapped() -> Result<(), Box<dyn Error>> {
+        // Act
+        let response = plain_router()?
+            .oneshot(request("POST", "/api/v1/identity/login", Some("not json"))?)
+            .await?;
+
+        // Assert
+        assert_envelope(response, StatusCode::BAD_REQUEST, "/api/v1/identity/login").await?;
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn authentication_failure_is_wrapped() -> Result<(), Box<dyn Error>> {
+        // Act
+        let response = plain_router()?
+            .oneshot(request("GET", "/api/v1/user/me", None)?)
+            .await?;
+
+        // Assert
+        assert_eq!(
+            assert_envelope(response, StatusCode::UNAUTHORIZED, "/api/v1/user/me").await?,
+            "missing or malformed authorization header"
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn use_case_error_is_wrapped() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let mut login_use_case = MockLoginUserUseCase::new();
+        login_use_case
+            .expect_execute()
+            .times(1)
+            .return_once(|_| Box::pin(async { Err(LoginUserError::InvalidPassword) }));
+        let mut factory = MockIdentityUseCaseFactory::new();
+        factory
+            .expect_login_user()
+            .times(0..=1)
+            .return_once(move || Arc::new(login_use_case) as Arc<dyn LoginUserUseCase>);
+        let state = app_state_with_identity(Arc::new(factory))?;
+
+        // Act
+        let body = json!({
+            "username": "alice",
+            "password": SECRET_PASSWORD,
+        })
+        .to_string();
+        let response = setup_routes(&state)
+            .oneshot(request("POST", "/api/v1/identity/login", Some(&body))?)
+            .await?;
+
+        // Assert
+        assert_eq!(
+            assert_envelope(response, StatusCode::UNAUTHORIZED, "/api/v1/identity/login").await?,
+            "the password does not match the stored hash"
+        );
+        Ok(())
+    }
 }

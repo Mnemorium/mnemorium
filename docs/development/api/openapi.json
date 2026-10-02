@@ -2,7 +2,7 @@
   "components": {
     "schemas": {
       "ErrorBody": {
-        "description": "Standard error payload returned by every failed request.\n\nThe envelope is uniform across every error the server emits, including\nrouting fallbacks and extractor rejections (`API-039`).",
+        "description": "Standard error payload returned by every failed request.\n\nThe envelope is uniform across every error the server emits, including\nrouting fallbacks and extractor rejections (`API-039`). The `error_response`\nhelper builds it, and the root `hal_errors` middleware applies it to every\n`4xx`/`5xx` response.",
         "properties": {
           "_links": {
             "$ref": "#/components/schemas/SelfLinks",

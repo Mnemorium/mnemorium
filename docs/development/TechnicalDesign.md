@@ -276,7 +276,10 @@ impl From<CreateUserError> for ApiError {
 
 ##### 2.4 ApiError to axum response
 
-`ApiError` implements `IntoResponse`, converting to the corresponding HTTP status code and the standard error body.
+`ApiError` implements `IntoResponse`, converting to the corresponding HTTP status code and attaching its message to the
+response. It cannot build the error envelope itself — `IntoResponse` has no access to the request URI, so it cannot fill
+`_links.self` (`API-032`), and it never sees framework-generated errors. The root `hal_errors` middleware is the single
+envelope builder: it reads the attached message and serves the one `ErrorBody` for every `4xx`/`5xx` (`API-039`).
 
 ---
 

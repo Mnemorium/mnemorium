@@ -2,29 +2,27 @@
 
 use std::str::from_utf8;
 
-use axum::Json;
 use axum::body::to_bytes;
 use axum::extract::Request;
-use axum::http::HeaderValue;
 use axum::http::StatusCode;
 use axum::http::header;
+use axum::http::response::Parts;
 use axum::middleware::Next;
-use axum::response::IntoResponse as _;
 use axum::response::Response;
 use serde_json::Value;
 
-use crate::infrastructure::inbound::rest::api_error::ErrorBody;
-use crate::infrastructure::inbound::rest::hal::HAL_CONTENT_TYPE;
-use crate::infrastructure::inbound::rest::hal::SelfLinks;
+use crate::infrastructure::inbound::rest::api_error::ApiErrorMessage;
+use crate::infrastructure::inbound::rest::api_error::error_response;
 
 /// Rewrap every `4xx`/`5xx` response as the HAL error envelope (`API-039`).
 ///
 /// The envelope carries the extracted message at the root and a `_links.self`
-/// pointing at the request path. The original status is preserved; every
-/// original header except `Content-Type` and `Content-Length` is kept, so
-/// `Allow`, `Location` and `WWW-Authenticate` survive the rewrite.
+/// pointing at the request URI, including any query string. The original status
+/// is preserved; every original header except `Content-Type` and
+/// `Content-Length` is kept, so `Allow`, `Location` and `WWW-Authenticate`
+/// survive the rewrite.
 pub async fn hal_errors(request: Request, next: Next) -> Response {
-    let path = request.uri().path().to_owned();
+    let path = request.uri().to_string();
     let response = next.run(request).await;
     let status = response.status();
     if !status.is_client_error() && !status.is_server_error() {
@@ -33,36 +31,31 @@ pub async fn hal_errors(request: Request, next: Next) -> Response {
 
     let (parts, body) = response.into_parts();
     let bytes = to_bytes(body, usize::MAX).await.unwrap_or_default();
-    let error_body = ErrorBody {
-        error: error_message(status, &bytes),
-        links: SelfLinks::new(&path),
-    };
-
-    let mut wrapped = Json(error_body).into_response();
-    *wrapped.status_mut() = status;
+    let mut wrapped = error_response(status, error_message(&parts, status, &bytes), &path);
 
     let mut headers = parts.headers;
     headers.remove(header::CONTENT_TYPE);
     headers.remove(header::CONTENT_LENGTH);
     wrapped.headers_mut().extend(headers);
 
-    wrapped.headers_mut().insert(
-        header::CONTENT_TYPE,
-        HeaderValue::from_static(HAL_CONTENT_TYPE),
-    );
     wrapped
 }
 
 /// Extract the human-readable message of a failed response.
 ///
-/// A JSON body with a string `error` field is reused as-is; otherwise a
-/// non-empty UTF-8 body is used trimmed; otherwise the status reason phrase is
-/// synthesized, because the default `404`/`405` bodies are empty or textual.
+/// The message attached by [`ApiError`](crate::infrastructure::inbound::rest::api_error::ApiError)
+/// takes precedence; otherwise a JSON body with a string `error` field is
+/// reused as-is, then a non-empty UTF-8 body is used trimmed, and finally the
+/// status reason phrase is synthesized, because the default `404`/`405` bodies
+/// are empty or textual.
 #[expect(
     clippy::single_call_fn,
     reason = "the message extraction order is named for readability"
 )]
-fn error_message(status: StatusCode, body: &[u8]) -> String {
+fn error_message(parts: &Parts, status: StatusCode, body: &[u8]) -> String {
+    if let Some(message) = parts.extensions.get::<ApiErrorMessage>() {
+        return message.0.clone();
+    }
     if let Ok(value) = serde_json::from_slice::<Value>(body)
         && let Some(message) = value.get("error").and_then(Value::as_str)
     {
@@ -81,6 +74,7 @@ fn error_message(status: StatusCode, body: &[u8]) -> String {
 mod tests {
     use std::error::Error;
 
+    use axum::Json;
     use axum::Router;
     use axum::body::Body;
     use axum::body::to_bytes;
@@ -97,13 +91,22 @@ mod tests {
     use super::hal_errors;
     use crate::infrastructure::inbound::rest::api_error::ApiError;
 
-    /// Router exercising the middleware over a JSON error, a textual error, a
-    /// healthy route and a method restriction.
+    /// Router exercising the middleware over an `ApiError`, a raw JSON error, a
+    /// textual error, a healthy route and a method restriction.
     fn router() -> Router {
         Router::new()
             .route(
                 "/broken",
                 get(|| async { ApiError::BadRequest("bad request".to_owned()) }),
+            )
+            .route(
+                "/raw-json",
+                get(|| async {
+                    (
+                        StatusCode::BAD_REQUEST,
+                        Json(json!({ "error": "raw json" })),
+                    )
+                }),
             )
             .route(
                 "/plain",
@@ -138,7 +141,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn hal_errors_reuses_a_handler_json_error() -> Result<(), Box<dyn Error>> {
+    async fn hal_errors_wraps_an_api_error() -> Result<(), Box<dyn Error>> {
         // Act
         let response = send(router(), "GET", "/broken").await?;
 
@@ -151,6 +154,43 @@ mod tests {
             json!({
                 "error": "bad request",
                 "_links": { "self": { "href": "/broken" } },
+            })
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn hal_errors_reuses_a_handler_json_error() -> Result<(), Box<dyn Error>> {
+        // Act
+        let response = send(router(), "GET", "/raw-json").await?;
+
+        // Assert
+        assert_eq!(content_type(&response), Some("application/hal+json"));
+        let (status, payload) = into_parts(response).await?;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(
+            payload,
+            json!({
+                "error": "raw json",
+                "_links": { "self": { "href": "/raw-json" } },
+            })
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn hal_errors_keeps_the_query_string_in_the_self_link() -> Result<(), Box<dyn Error>> {
+        // Act
+        let response = send(router(), "GET", "/broken?page=2&size=10").await?;
+
+        // Assert
+        let (status, payload) = into_parts(response).await?;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(
+            payload,
+            json!({
+                "error": "bad request",
+                "_links": { "self": { "href": "/broken?page=2&size=10" } },
             })
         );
         Ok(())

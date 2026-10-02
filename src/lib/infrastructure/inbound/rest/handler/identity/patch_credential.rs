@@ -148,6 +148,7 @@ mod tests {
     use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
     use crate::test_helpers::SECRET_PASSWORD;
     use crate::test_helpers::app_state_with_identity;
+    use crate::test_helpers::error_message_of;
 
     /// Send `body` through the endpoint router on behalf of `caller_id`,
     /// targeting credential `credential_id`, injecting the caller the way the
@@ -190,11 +191,6 @@ mod tests {
             Some(serde_json::from_slice(&bytes)?)
         };
         Ok((status, body))
-    }
-
-    /// Unwrap the JSON body of a response known to carry one.
-    fn payload(body: Option<Value>) -> Result<Value, Box<dyn Error>> {
-        Ok(body.ok_or_else(|| anyhow::anyhow!("expected a json body"))?)
     }
 
     /// Build a valid JSON request body carrying `password`.
@@ -261,16 +257,13 @@ mod tests {
         expect_error(&mut use_case, PatchCredentialError::Forbidden);
 
         // Act
-        let (status, body) =
-            into_parts(send(use_case, 3, 1, Body::from(request_body(SECRET_PASSWORD))).await?)
-                .await?;
-        let payload = payload(body)?;
+        let response = send(use_case, 3, 1, Body::from(request_body(SECRET_PASSWORD))).await?;
 
         // Assert
-        assert_eq!(status, StatusCode::FORBIDDEN);
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
         assert_eq!(
-            payload,
-            json!({ "error": "only the Root Admin may change a credential password" })
+            error_message_of(&response).as_deref(),
+            Some("only the Root Admin may change a credential password")
         );
         Ok(())
     }
@@ -282,16 +275,13 @@ mod tests {
         expect_error(&mut use_case, PatchCredentialError::UnknownCredential);
 
         // Act
-        let (status, body) =
-            into_parts(send(use_case, 0, 42, Body::from(request_body(SECRET_PASSWORD))).await?)
-                .await?;
-        let payload = payload(body)?;
+        let response = send(use_case, 0, 42, Body::from(request_body(SECRET_PASSWORD))).await?;
 
         // Assert
-        assert_eq!(status, StatusCode::NOT_FOUND);
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
         assert_eq!(
-            payload,
-            json!({ "error": "no credential matches the provided identifier" })
+            error_message_of(&response).as_deref(),
+            Some("no credential matches the provided identifier")
         );
         Ok(())
     }
@@ -303,16 +293,13 @@ mod tests {
         expect_error(&mut use_case, PatchCredentialError::InvalidPassword);
 
         // Act
-        let (status, body) =
-            into_parts(send(use_case, 0, 0, Body::from(request_body("password123"))).await?)
-                .await?;
-        let payload = payload(body)?;
+        let response = send(use_case, 0, 0, Body::from(request_body("password123"))).await?;
 
         // Assert
-        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
         assert_eq!(
-            payload,
-            json!({ "error": "password does not satisfy the password policy" })
+            error_message_of(&response).as_deref(),
+            Some("password does not satisfy the password policy")
         );
         Ok(())
     }
@@ -328,14 +315,14 @@ mod tests {
         );
 
         // Act
-        let (status, body) =
-            into_parts(send(use_case, 0, 0, Body::from(request_body(SECRET_PASSWORD))).await?)
-                .await?;
-        let payload = payload(body)?;
+        let response = send(use_case, 0, 0, Body::from(request_body(SECRET_PASSWORD))).await?;
 
         // Assert
-        assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
-        assert_eq!(payload, json!({ "error": "an unexpected error occurred" }));
+        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(
+            error_message_of(&response).as_deref(),
+            Some("an unexpected error occurred")
+        );
         Ok(())
     }
 
@@ -346,14 +333,12 @@ mod tests {
         let use_case = MockPatchCredentialUseCase::new();
 
         // Act
-        let (status, body) =
-            into_parts(send(use_case, 0, 0, Body::from(json!({}).to_string())).await?).await?;
-        let payload = payload(body)?;
+        let response = send(use_case, 0, 0, Body::from(json!({}).to_string())).await?;
 
         // Assert
-        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
         assert!(
-            payload.get("error").is_some(),
+            error_message_of(&response).is_some(),
             "a bad request must carry an error message"
         );
         Ok(())
@@ -365,22 +350,18 @@ mod tests {
         let use_case = MockPatchCredentialUseCase::new();
 
         // Act
-        let (status, body) = into_parts(
-            send(
-                use_case,
-                0,
-                0,
-                Body::from(json!({ "password": 1i64 }).to_string()),
-            )
-            .await?,
+        let response = send(
+            use_case,
+            0,
+            0,
+            Body::from(json!({ "password": 1i64 }).to_string()),
         )
         .await?;
-        let payload = payload(body)?;
 
         // Assert
-        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
         assert!(
-            payload.get("error").is_some(),
+            error_message_of(&response).is_some(),
             "a bad request must carry an error message"
         );
         Ok(())
@@ -392,14 +373,12 @@ mod tests {
         let use_case = MockPatchCredentialUseCase::new();
 
         // Act
-        let (status, body) =
-            into_parts(send(use_case, 0, 0, Body::from("not json")).await?).await?;
-        let payload = payload(body)?;
+        let response = send(use_case, 0, 0, Body::from("not json")).await?;
 
         // Assert
-        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
         assert!(
-            payload.get("error").is_some(),
+            error_message_of(&response).is_some(),
             "a bad request must carry an error message"
         );
         Ok(())
@@ -415,16 +394,13 @@ mod tests {
         expect_error(&mut use_case, PatchCredentialError::UnknownCredential);
 
         // Act
-        let (status, body) =
-            into_parts(send(use_case, 0, 404, Body::from(request_body(SECRET_PASSWORD))).await?)
-                .await?;
-        let payload = payload(body)?;
+        let response = send(use_case, 0, 404, Body::from(request_body(SECRET_PASSWORD))).await?;
 
         // Assert
-        assert_eq!(status, StatusCode::NOT_FOUND);
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
         assert_eq!(
-            payload,
-            json!({ "error": "no credential matches the provided identifier" })
+            error_message_of(&response).as_deref(),
+            Some("no credential matches the provided identifier")
         );
         Ok(())
     }
