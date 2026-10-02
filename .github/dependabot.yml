@@ -8,6 +8,8 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    commit-message:
+      prefix: "chore(github)"
     groups:
       github-actions:
         patterns:
