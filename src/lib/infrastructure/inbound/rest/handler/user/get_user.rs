@@ -1,6 +1,6 @@
-use axum::Json;
 use axum::extract::Path;
 use axum::extract::State;
+use axum::response::Response;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
@@ -12,6 +12,9 @@ use crate::domain::model::user::Role;
 use crate::infrastructure::inbound::rest::api_error::ApiError;
 use crate::infrastructure::inbound::rest::api_error::ErrorBody;
 use crate::infrastructure::inbound::rest::app_state::AppState;
+use crate::infrastructure::inbound::rest::hal::SelfLinks;
+use crate::infrastructure::inbound::rest::hal::hal_json;
+use crate::infrastructure::inbound::rest::handler::user::user_self_href;
 use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 
 /// User returned by a successful lookup.
@@ -23,6 +26,9 @@ pub struct GetUserResponse {
     pub email: Option<String>,
     /// Unique identifier of the user.
     pub id: NumericID,
+    /// Link to the user resource itself.
+    #[serde(rename = "_links")]
+    pub links: SelfLinks,
     /// Role of the user.
     pub role: Role,
     /// Username of the user.
@@ -35,6 +41,7 @@ impl From<GetUserResponseData> for GetUserResponse {
         Self {
             email: response.email().map(str::to_owned),
             id: response.id(),
+            links: SelfLinks::new(&user_self_href(response.id())),
             role: response.role(),
             username: response.username().to_owned(),
         }
@@ -66,7 +73,7 @@ impl From<GetUserError> for ApiError {
         ("id" = NumericID, Path, description = "Identifier of the user to fetch"),
     ),
     responses(
-        (status = OK, body = GetUserResponse, description = "User found"),
+        (status = OK, body = GetUserResponse, content_type = "application/hal+json", description = "User found"),
         (
             status = BAD_REQUEST,
             body = ErrorBody,
@@ -107,7 +114,7 @@ pub async fn get_user(
     Path(id): Path<String>,
     State(state): State<AppState>,
     caller: AuthenticatedUser,
-) -> Result<Json<GetUserResponse>, ApiError> {
+) -> Result<Response, ApiError> {
     let Ok(user_id) = id.parse::<NumericID>() else {
         return Err(ApiError::BadRequest("invalid user identifier".to_owned()));
     };
@@ -116,7 +123,7 @@ pub async fn get_user(
         .get_user()
         .execute(GetUserCommand::new(caller.user_id(), user_id))
         .await?;
-    Ok(Json(GetUserResponse::from(response)))
+    Ok(hal_json(GetUserResponse::from(response)))
 }
 
 #[cfg(test)]
@@ -222,7 +229,7 @@ mod tests {
 
         // Assert
         assert_eq!(status, StatusCode::OK);
-        assert_eq!(content_type.as_deref(), Some("application/json"));
+        assert_eq!(content_type.as_deref(), Some("application/hal+json"));
         assert_eq!(
             payload,
             json!({
@@ -230,6 +237,7 @@ mod tests {
                 "email": "brad@example.com",
                 "role": "STANDARD",
                 "id": 2i64,
+                "_links": { "self": { "href": "/api/v1/user/2" } },
             })
         );
         Ok(())
@@ -258,6 +266,7 @@ mod tests {
                 "email": null,
                 "role": "ADMIN",
                 "id": 2i64,
+                "_links": { "self": { "href": "/api/v1/user/2" } },
             })
         );
         Ok(())

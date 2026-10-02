@@ -2,6 +2,11 @@
 //!
 //! See `docs/development/TechnicalDesign.md` § HAL payload guidelines.
 
+use axum::Json;
+use axum::http::HeaderValue;
+use axum::http::header;
+use axum::response::IntoResponse as _;
+use axum::response::Response;
 use serde::Deserialize;
 use serde::Serialize;
 use utoipa::ToSchema;
@@ -61,4 +66,19 @@ impl SelfLinks {
             self_link: Link::new(href),
         }
     }
+}
+
+/// Wrap `body` in a HAL JSON response, served as `application/hal+json`
+/// (`API-031`).
+#[must_use]
+pub fn hal_json<T>(body: T) -> Response
+where
+    T: Serialize,
+{
+    let mut response = Json(body).into_response();
+    response.headers_mut().insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static(HAL_CONTENT_TYPE),
+    );
+    response
 }

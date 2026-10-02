@@ -1,9 +1,10 @@
 use axum::Json;
 use axum::extract::State;
 use axum::extract::rejection::JsonRejection;
+use axum::http::HeaderValue;
 use axum::http::StatusCode;
 use axum::http::header;
-use axum::response::IntoResponse;
+use axum::response::Response;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
@@ -15,6 +16,9 @@ use crate::domain::model::user::Role;
 use crate::infrastructure::inbound::rest::api_error::ApiError;
 use crate::infrastructure::inbound::rest::api_error::ErrorBody;
 use crate::infrastructure::inbound::rest::app_state::AppState;
+use crate::infrastructure::inbound::rest::hal::SelfLinks;
+use crate::infrastructure::inbound::rest::hal::hal_json;
+use crate::infrastructure::inbound::rest::handler::user::user_self_href;
 use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 
 /// Payload to register a new user.
@@ -50,6 +54,9 @@ pub struct RegisterResponse {
     pub email: Option<String>,
     /// Unique identifier of the newly registered user.
     pub id: NumericID,
+    /// Link to the newly registered user resource.
+    #[serde(rename = "_links")]
+    pub links: SelfLinks,
     /// Role granted to the newly registered user.
     pub role: Role,
     /// Username of the newly registered user.
@@ -62,6 +69,7 @@ impl From<RegisterUserResponse> for RegisterResponse {
         Self {
             email: response.email().map(str::to_owned),
             id: response.id(),
+            links: SelfLinks::new(&user_self_href(response.id())),
             role: response.role(),
             username: response.username().to_owned(),
         }
@@ -97,6 +105,7 @@ impl From<RegisterUserError> for ApiError {
         (
             status = CREATED,
             body = RegisterResponse,
+            content_type = "application/hal+json",
             headers(
                 ("Location" = String, description = "URI of the newly registered user"),
             ),
@@ -148,7 +157,7 @@ pub async fn post_register(
     State(state): State<AppState>,
     caller: AuthenticatedUser,
     payload: Result<Json<RegisterRequest>, JsonRejection>,
-) -> Result<impl IntoResponse, ApiError> {
+) -> Result<Response, ApiError> {
     let Json(request) = payload.map_err(ApiError::from)?;
     let response = state
         .identity_use_case_factory()
@@ -161,14 +170,15 @@ pub async fn post_register(
             request.role,
         ))
         .await?;
-    Ok((
-        StatusCode::CREATED,
-        [(
-            header::LOCATION,
-            format!("/api/v1/identity/users/{}", response.id()),
-        )],
-        Json(RegisterResponse::from(response)),
-    ))
+    let body = RegisterResponse::from(response);
+    let location = body.links.self_link.href.clone();
+    let mut http_response = hal_json(body);
+    *http_response.status_mut() = StatusCode::CREATED;
+    http_response.headers_mut().insert(
+        header::LOCATION,
+        HeaderValue::from_str(&location).map_err(|_| ApiError::InternalServerError)?,
+    );
+    Ok(http_response)
 }
 
 #[cfg(test)]
@@ -305,8 +315,8 @@ mod tests {
 
         // Assert
         assert_eq!(status, StatusCode::CREATED);
-        assert_eq!(location.as_deref(), Some("/api/v1/identity/users/1"));
-        assert_eq!(content_type.as_deref(), Some("application/json"));
+        assert_eq!(location.as_deref(), Some("/api/v1/user/1"));
+        assert_eq!(content_type.as_deref(), Some("application/hal+json"));
         assert_eq!(
             payload,
             json!({
@@ -314,6 +324,7 @@ mod tests {
                 "email": "alice@example.com",
                 "role": "STANDARD",
                 "id": 1i64,
+                "_links": { "self": { "href": "/api/v1/user/1" } },
             })
         );
         Ok(())
@@ -338,7 +349,7 @@ mod tests {
             .return_once(|_| Box::pin(async { Ok(registered_user) }));
 
         // Act
-        let (status, location, _, payload) = into_parts(
+        let (status, location, content_type, payload) = into_parts(
             send(
                 use_case,
                 0,
@@ -350,7 +361,8 @@ mod tests {
 
         // Assert
         assert_eq!(status, StatusCode::CREATED);
-        assert_eq!(location.as_deref(), Some("/api/v1/identity/users/2"));
+        assert_eq!(location.as_deref(), Some("/api/v1/user/2"));
+        assert_eq!(content_type.as_deref(), Some("application/hal+json"));
         assert_eq!(
             payload,
             json!({
@@ -358,6 +370,7 @@ mod tests {
                 "email": null,
                 "role": "STANDARD",
                 "id": 2i64,
+                "_links": { "self": { "href": "/api/v1/user/2" } },
             })
         );
         Ok(())
@@ -384,7 +397,7 @@ mod tests {
             .return_once(|_| Box::pin(async { Ok(registered_user) }));
 
         // Act
-        let (status, _, _, payload) = into_parts(
+        let (status, location, content_type, payload) = into_parts(
             send(
                 use_case,
                 0,
@@ -403,6 +416,8 @@ mod tests {
 
         // Assert
         assert_eq!(status, StatusCode::CREATED);
+        assert_eq!(location.as_deref(), Some("/api/v1/user/3"));
+        assert_eq!(content_type.as_deref(), Some("application/hal+json"));
         assert_eq!(
             payload,
             json!({
@@ -410,6 +425,7 @@ mod tests {
                 "email": null,
                 "role": "ADMIN",
                 "id": 3i64,
+                "_links": { "self": { "href": "/api/v1/user/3" } },
             })
         );
         Ok(())

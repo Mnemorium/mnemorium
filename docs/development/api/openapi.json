@@ -54,6 +54,10 @@
       "GetMeResponse": {
         "description": "Current user returned by a successful lookup.",
         "properties": {
+          "_links": {
+            "$ref": "#/components/schemas/SelfLinks",
+            "description": "Link to the caller's user resource."
+          },
           "email": {
             "description": "Email address of the caller, when one was provided.",
             "format": "email",
@@ -77,6 +81,7 @@
         },
         "required": [
           "id",
+          "_links",
           "role",
           "username"
         ],
@@ -85,6 +90,10 @@
       "GetUserResponse": {
         "description": "User returned by a successful lookup.",
         "properties": {
+          "_links": {
+            "$ref": "#/components/schemas/SelfLinks",
+            "description": "Link to the user resource itself."
+          },
           "email": {
             "description": "Email address of the user, when one was provided.",
             "format": "email",
@@ -108,6 +117,7 @@
         },
         "required": [
           "id",
+          "_links",
           "role",
           "username"
         ],
@@ -245,6 +255,10 @@
       "PatchUserResponse": {
         "description": "Updated user returned by a successful update.",
         "properties": {
+          "_links": {
+            "$ref": "#/components/schemas/SelfLinks",
+            "description": "Link to the updated user resource."
+          },
           "email": {
             "description": "Email address of the user, when one was provided.",
             "format": "email",
@@ -268,6 +282,7 @@
         },
         "required": [
           "id",
+          "_links",
           "role",
           "username"
         ],
@@ -409,6 +424,10 @@
       "RegisterResponse": {
         "description": "User created by a successful registration.",
         "properties": {
+          "_links": {
+            "$ref": "#/components/schemas/SelfLinks",
+            "description": "Link to the newly registered user resource."
+          },
           "email": {
             "description": "Email address of the newly registered user, when one was provided.",
             "format": "email",
@@ -432,6 +451,7 @@
         },
         "required": [
           "id",
+          "_links",
           "role",
           "username"
         ],
@@ -1256,7 +1276,7 @@
         "responses": {
           "201": {
             "content": {
-              "application/json": {
+              "application/hal+json": {
                 "schema": {
                   "$ref": "#/components/schemas/RegisterResponse"
                 }
@@ -1466,7 +1486,7 @@
         "responses": {
           "200": {
             "content": {
-              "application/json": {
+              "application/hal+json": {
                 "schema": {
                   "$ref": "#/components/schemas/GetMeResponse"
                 }
@@ -1524,7 +1544,7 @@
         "responses": {
           "200": {
             "content": {
-              "application/json": {
+              "application/hal+json": {
                 "schema": {
                   "$ref": "#/components/schemas/GetUserResponse"
                 }
@@ -1620,7 +1640,7 @@
         "responses": {
           "200": {
             "content": {
-              "application/json": {
+              "application/hal+json": {
                 "schema": {
                   "$ref": "#/components/schemas/PatchUserResponse"
                 }

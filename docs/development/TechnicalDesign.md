@@ -885,7 +885,7 @@ are documented inline, at the source, with `#[utoipa::path(...)]` macros.
 | `API-029` | Responses                 | Declare `link` to another operation through its `operation_id` (optional).                                                                                                                                                                                                    | [§ 6](#6-response-example)                  |
 | `API-030` | Responses                 | Declare every possible response, the success case as well as every error.                                                                                                                                                                                                     | [§ 6](#6-response-example)                  |
 | `API-031` | HAL payload               | Use `application/hal+json` for HAL responses.                                                                                                                                                                                                                                 | [§ HAL payload](#hal-payload-guidelines)    |
-| `API-032` | HAL payload               | Always include `_links.self` on resource representations.                                                                                                                                                                                                                     | [§ HAL payload](#hal-payload-guidelines)    |
+| `API-032` | HAL payload               | Always include `_links.self`, a relative URI reference, on resource representations. A resource representation carries an addressable business resource (single or collection); token issues, probes and `204` responses are not representations.                             | [§ HAL payload](#hal-payload-guidelines)    |
 | `API-033` | HAL payload               | Keep business data at the root of the payload.                                                                                                                                                                                                                                | [§ HAL payload](#hal-payload-guidelines)    |
 | `API-034` | HAL payload               | Reserve `_links` for navigation and related resources.                                                                                                                                                                                                                        | [§ HAL payload](#hal-payload-guidelines)    |
 | `API-035` | HAL payload               | Do not use `_embedded` unless there is a proven performance need.                                                                                                                                                                                                             | [§ HAL payload](#hal-payload-guidelines)    |
@@ -1288,6 +1288,11 @@ The plugin loads the OAS from the generated JSON, so shipping the documentation 
 
 The examples below use `/orders` as the resource and show how each HTTP method maps onto HAL. Errors use the same
 representation format; their body is defined in [§ 2.5](#25-error-public-payload) and governed by `API-039`.
+
+A **resource representation** is a success response that carries an addressable business resource — a single item or a
+collection. Every resource representation includes `_links.self`, a relative URI reference to the resource (`API-032`).
+Token-issuing responses, liveness probes and `204 No Content` responses are not resource representations and keep their
+plain `application/json` representation.
 
 ---
 
