@@ -106,9 +106,11 @@ Read the governing material at run time; never work from memory. Cite one of:
 - `.markdownlint-cli2.jsonc`, `.prettierrc` and `.ls-lint.yml` — Markdown lint
   and format, and the `PascalCase` file-name rule for `.md` files.
 
-**Never invent a rule.** The documentation surface has no numbered rule table;
-when a finding is not covered above, report it explicitly as a potential rule
-gap — never as a violation and never as an invented rule.
+**Never invent a rule.** No numbered rule table governs the documentation
+surface itself; the `STY-*`, `API-*`, `PERS-*`, `TEST-*`, `DEPS-*` and `GOV-*`
+tables in `TechnicalDesign.md` govern code, data and repository process. When a
+finding is not covered above, report it explicitly as a potential rule gap —
+never as a violation and never as an invented rule.
 
 # Operational Boundaries & Guardrails
 
