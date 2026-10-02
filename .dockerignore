@@ -5,6 +5,7 @@ docs/
 .git/
 site/
 logs/
+events.ndjson
 *.db
 .pycache_cache/
 .ruff_cache/
