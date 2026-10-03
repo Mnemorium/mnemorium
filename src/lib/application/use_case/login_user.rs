@@ -71,7 +71,7 @@ where
                 .map_err(|error| LoginUserError::Unknown(error.into()))?;
 
             let result = async {
-                let user = unit_of_work
+                let Some(user) = unit_of_work
                     .users()
                     .search(&UserFilter {
                         username: Some(username),
@@ -81,7 +81,13 @@ where
                     .map_err(|error| LoginUserError::Unknown(error.into()))?
                     .into_iter()
                     .next()
-                    .ok_or(LoginUserError::InvalidUsername)?;
+                else {
+                    // Spend the same password work as a real verification on
+                    // the absent-user branch, then discard the result, so an
+                    // unknown username is indistinguishable by response time.
+                    drop(password_hasher.hash_password(&password).await);
+                    return Err(LoginUserError::InvalidUsername);
+                };
 
                 let credential = unit_of_work
                     .credentials()
@@ -298,11 +304,41 @@ mod tests {
     #[tokio::test]
     async fn login_user_unknown_username_returns_invalid_username() -> Result<(), Box<dyn Error>> {
         // Arrange
-        let harness = use_case_with(|user_repository, _, _, _| {
+        let harness = use_case_with(|user_repository, _, password_hasher, _| {
             user_repository
                 .expect_search()
                 .times(1)
                 .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+            password_hasher
+                .expect_hash_password()
+                .times(1)
+                .returning(|_| Box::pin(async { Ok("decoy-hash".to_owned()) }));
+            Ok(())
+        })?;
+        let command = command("ghost", SECRET_PASSWORD);
+
+        // Act
+        let result = harness.use_case.execute(command).await;
+
+        // Assert
+        assert!(matches!(result, Err(LoginUserError::InvalidUsername)));
+        assert!(harness.rolled_back.load(Ordering::SeqCst));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn login_user_unknown_username_with_failing_hasher_returns_invalid_username()
+    -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let harness = use_case_with(|user_repository, _, password_hasher, _| {
+            user_repository
+                .expect_search()
+                .times(1)
+                .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+            password_hasher
+                .expect_hash_password()
+                .times(1)
+                .returning(|_| Box::pin(async { Err(PasswordHasherError::OperationFailed) }));
             Ok(())
         })?;
         let command = command("ghost", SECRET_PASSWORD);
