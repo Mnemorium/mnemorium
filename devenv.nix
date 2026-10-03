@@ -97,6 +97,14 @@
       language = "system";
       pass_filenames = false;
     };
+    # === repository governance (GOV-001)
+    scopes = {
+      enable = true;
+      name = "Commit scope taxonomy";
+      entry = "script/check_scopes.sh";
+      language = "system";
+      pass_filenames = false;
+    };
     # === python
     ruff.enable = true;
     ruff-format.enable = true;

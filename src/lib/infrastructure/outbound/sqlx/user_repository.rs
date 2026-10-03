@@ -440,7 +440,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn trigger_blocks_deleting_root_admin() -> Result<(), Box<dyn Error>> {
+    async fn delete_root_admin_returns_conflict() -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut transaction = begin_transaction().await?;
         seed_credential(&mut transaction, 1).await?;
@@ -453,12 +453,12 @@ mod tests {
         let result = repository.delete(0).await;
 
         // Assert
-        assert!(matches!(result, Err(RepositoryError::OperationFailed)));
+        assert!(matches!(result, Err(RepositoryError::Conflict)));
         Ok(())
     }
 
     #[tokio::test]
-    async fn trigger_blocks_updating_root_admin() -> Result<(), Box<dyn Error>> {
+    async fn update_root_admin_returns_conflict() -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut transaction = begin_transaction().await?;
         seed_credential(&mut transaction, 1).await?;
@@ -479,7 +479,7 @@ mod tests {
             .await;
 
         // Assert
-        assert!(matches!(result, Err(RepositoryError::OperationFailed)));
+        assert!(matches!(result, Err(RepositoryError::Conflict)));
         Ok(())
     }
 

@@ -129,7 +129,7 @@ impl UploadRepository for SqlxUploadRepository<'_> {
     ) -> Result<(), RepositoryError> {
         let persisted_chunk_number =
             to_i64(chunk_number, "upload chunk_number does not fit in i64")?;
-        let result = sqlx::query(
+        sqlx::query(
             "INSERT INTO upload_chunk (upload_id, chunk_number)
             VALUES (?1, ?2)
             ON CONFLICT (upload_id, chunk_number) DO NOTHING",
@@ -137,18 +137,9 @@ impl UploadRepository for SqlxUploadRepository<'_> {
         .bind(id)
         .bind(persisted_chunk_number)
         .execute(&mut **self.transaction)
-        .await;
+        .await?;
 
-        match result {
-            Ok(_) => Ok(()),
-            // `SQLITE_CONSTRAINT_TRIGGER` (1811): the finished-guard trigger
-            // rejected the insert because the upload was completed. This is a
-            // state conflict, not an operational failure.
-            Err(sqlx::Error::Database(db)) if db.code().as_deref() == Some("1811") => {
-                Err(RepositoryError::Conflict)
-            }
-            Err(error) => Err(RepositoryError::from(error)),
-        }
+        Ok(())
     }
 
     async fn search(&mut self, filter: &UploadFilter) -> Result<Vec<Upload>, RepositoryError> {
