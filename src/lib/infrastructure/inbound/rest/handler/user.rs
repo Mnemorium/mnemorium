@@ -8,6 +8,7 @@ use axum::middleware;
 use axum::routing::get;
 use axum::routing::patch;
 
+use crate::domain::alias::NumericID;
 use crate::infrastructure::inbound::rest::app_state::AppState;
 use crate::infrastructure::inbound::rest::handler::user::get_me::get_me;
 use crate::infrastructure::inbound::rest::handler::user::get_user::get_user;
@@ -15,6 +16,15 @@ use crate::infrastructure::inbound::rest::handler::user::get_user_list::get_user
 use crate::infrastructure::inbound::rest::handler::user::patch_user::patch_user;
 use crate::infrastructure::inbound::rest::middleware::auth::authenticate;
 use crate::infrastructure::outbound::jwt::token_provider::JwtTokenProvider;
+
+/// Canonical URI reference of the user resource identified by `id`.
+///
+/// Shared by the user representations and the registration response so the
+/// `_links.self` target and the `Location` header cannot drift (`API-032`).
+#[must_use]
+pub(crate) fn user_self_href(id: NumericID) -> String {
+    format!("/api/v1/user/{id}")
+}
 
 /// Routes of the user bounded context.
 ///

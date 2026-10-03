@@ -41,6 +41,7 @@ def test_uc002_user_authentication_happy_path(
     assert profile["username"] == _STANDARD_USER_USERNAME
     assert profile["role"] == _STANDARD_USER_ROLE
     assert profile["email"] == "alice@example.com"
+    assert profile["_links"]["self"]["href"] == f"/api/v1/user/{profile['id']}"
 
     # The provisioned token must authenticate for the same user.
     response = me(standard_user_token)

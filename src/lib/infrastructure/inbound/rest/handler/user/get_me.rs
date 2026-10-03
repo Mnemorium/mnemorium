@@ -1,5 +1,5 @@
-use axum::Json;
 use axum::extract::State;
+use axum::response::Response;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
@@ -11,6 +11,9 @@ use crate::domain::model::user::Role;
 use crate::infrastructure::inbound::rest::api_error::ApiError;
 use crate::infrastructure::inbound::rest::api_error::ErrorBody;
 use crate::infrastructure::inbound::rest::app_state::AppState;
+use crate::infrastructure::inbound::rest::hal::SelfLinks;
+use crate::infrastructure::inbound::rest::hal::hal_json;
+use crate::infrastructure::inbound::rest::handler::user::user_self_href;
 use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 
 /// Current user returned by a successful lookup.
@@ -22,6 +25,9 @@ pub struct GetMeResponse {
     pub email: Option<String>,
     /// Unique identifier of the caller.
     pub id: NumericID,
+    /// Link to the caller's user resource.
+    #[serde(rename = "_links")]
+    pub links: SelfLinks,
     /// Role of the caller.
     pub role: Role,
     /// Username of the caller.
@@ -34,6 +40,7 @@ impl From<GetCurrentUserResponse> for GetMeResponse {
         Self {
             email: response.email().map(str::to_owned),
             id: response.id(),
+            links: SelfLinks::new(&user_self_href(response.id())),
             role: response.role(),
             username: response.username().to_owned(),
         }
@@ -59,7 +66,7 @@ impl From<GetCurrentUserError> for ApiError {
     path = "/user/me",
     tag = "user",
     responses(
-        (status = OK, body = GetMeResponse, description = "Current user"),
+        (status = OK, body = GetMeResponse, content_type = "application/hal+json", description = "Current user"),
         (
             status = UNAUTHORIZED,
             body = ErrorBody,
@@ -81,13 +88,13 @@ impl From<GetCurrentUserError> for ApiError {
 pub async fn get_me(
     State(state): State<AppState>,
     caller: AuthenticatedUser,
-) -> Result<Json<GetMeResponse>, ApiError> {
+) -> Result<Response, ApiError> {
     let response = state
         .user_use_case_factory()
         .get_current_user()
         .execute(GetCurrentUserCommand::new(caller.user_id()))
         .await?;
-    Ok(Json(GetMeResponse::from(response)))
+    Ok(hal_json(GetMeResponse::from(response)))
 }
 
 #[cfg(test)]
@@ -192,7 +199,7 @@ mod tests {
 
         // Assert
         assert_eq!(status, StatusCode::OK);
-        assert_eq!(content_type.as_deref(), Some("application/json"));
+        assert_eq!(content_type.as_deref(), Some("application/hal+json"));
         assert_eq!(
             payload,
             json!({
@@ -200,6 +207,7 @@ mod tests {
                 "email": "alice@example.com",
                 "role": "STANDARD",
                 "id": 1i64,
+                "_links": { "self": { "href": "/api/v1/user/1" } },
             })
         );
         Ok(())
@@ -228,6 +236,7 @@ mod tests {
                 "email": null,
                 "role": "ADMIN",
                 "id": 2i64,
+                "_links": { "self": { "href": "/api/v1/user/2" } },
             })
         );
         Ok(())

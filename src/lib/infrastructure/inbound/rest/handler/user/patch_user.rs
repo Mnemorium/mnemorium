@@ -2,6 +2,7 @@ use axum::Json;
 use axum::extract::Path;
 use axum::extract::State;
 use axum::extract::rejection::JsonRejection;
+use axum::response::Response;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
@@ -13,6 +14,9 @@ use crate::domain::model::user::Role;
 use crate::infrastructure::inbound::rest::api_error::ApiError;
 use crate::infrastructure::inbound::rest::api_error::ErrorBody;
 use crate::infrastructure::inbound::rest::app_state::AppState;
+use crate::infrastructure::inbound::rest::hal::SelfLinks;
+use crate::infrastructure::inbound::rest::hal::hal_json;
+use crate::infrastructure::inbound::rest::handler::user::user_self_href;
 use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 
 /// Payload to update the profile of a user.
@@ -41,6 +45,9 @@ pub struct PatchUserResponse {
     pub email: Option<String>,
     /// Unique identifier of the user.
     pub id: NumericID,
+    /// Link to the updated user resource.
+    #[serde(rename = "_links")]
+    pub links: SelfLinks,
     /// Role of the user.
     pub role: Role,
     /// Username of the user.
@@ -53,6 +60,7 @@ impl From<UpdateUserResponseData> for PatchUserResponse {
         Self {
             email: response.email().map(str::to_owned),
             id: response.id(),
+            links: SelfLinks::new(&user_self_href(response.id())),
             role: response.role(),
             username: response.username().to_owned(),
         }
@@ -92,7 +100,7 @@ impl From<UpdateUserError> for ApiError {
         ("id" = NumericID, Path, description = "Identifier of the user to update"),
     ),
     responses(
-        (status = OK, body = PatchUserResponse, description = "User updated"),
+        (status = OK, body = PatchUserResponse, content_type = "application/hal+json", description = "User updated"),
         (
             status = BAD_REQUEST,
             body = ErrorBody,
@@ -140,7 +148,7 @@ pub async fn patch_user(
     caller: AuthenticatedUser,
     Path(id): Path<String>,
     payload: Result<Json<PatchUserRequest>, JsonRejection>,
-) -> Result<Json<PatchUserResponse>, ApiError> {
+) -> Result<Response, ApiError> {
     let Ok(user_id) = id.parse::<NumericID>() else {
         return Err(ApiError::BadRequest("invalid user identifier".to_owned()));
     };
@@ -156,7 +164,7 @@ pub async fn patch_user(
             request.role,
         ))
         .await?;
-    Ok(Json(PatchUserResponse::from(response)))
+    Ok(hal_json(PatchUserResponse::from(response)))
 }
 
 #[cfg(test)]
@@ -219,12 +227,20 @@ mod tests {
         Ok(router.oneshot(request).await?)
     }
 
-    /// Split `response` into its status and decoded JSON body.
-    async fn into_parts(response: Response) -> Result<(StatusCode, Value), Box<dyn Error>> {
+    /// Split `response` into its status, `Content-Type` header and decoded
+    /// JSON body.
+    async fn into_parts(
+        response: Response,
+    ) -> Result<(StatusCode, Option<String>, Value), Box<dyn Error>> {
         let status = response.status();
+        let content_type = response
+            .headers()
+            .get(header::CONTENT_TYPE)
+            .and_then(|value| value.to_str().ok())
+            .map(str::to_owned);
         let bytes = to_bytes(response.into_body(), usize::MAX).await?;
         let body = serde_json::from_slice(&bytes)?;
-        Ok((status, body))
+        Ok((status, content_type, body))
     }
 
     /// Make the mocked use case fail with `error`.
@@ -259,7 +275,7 @@ mod tests {
             .return_once(|_| Box::pin(async { Ok(updated_user) }));
 
         // Act
-        let (status, payload) = into_parts(
+        let (status, content_type, payload) = into_parts(
             send(
                 use_case,
                 0,
@@ -279,6 +295,7 @@ mod tests {
 
         // Assert
         assert_eq!(status, StatusCode::OK);
+        assert_eq!(content_type.as_deref(), Some("application/hal+json"));
         assert_eq!(
             payload,
             json!({
@@ -286,6 +303,7 @@ mod tests {
                 "email": "new@example.com",
                 "role": "ADMIN",
                 "id": 2i64,
+                "_links": { "self": { "href": "/api/v1/user/2" } },
             })
         );
         Ok(())
@@ -305,11 +323,12 @@ mod tests {
             .return_once(|_| Box::pin(async { Ok(fetched_user) }));
 
         // Act
-        let (status, payload) =
+        let (status, content_type, payload) =
             into_parts(send(use_case, 1, "2", Body::from(json!({}).to_string())).await?).await?;
 
         // Assert
         assert_eq!(status, StatusCode::OK);
+        assert_eq!(content_type.as_deref(), Some("application/hal+json"));
         assert_eq!(
             payload,
             json!({
@@ -317,6 +336,7 @@ mod tests {
                 "email": null,
                 "role": "STANDARD",
                 "id": 2i64,
+                "_links": { "self": { "href": "/api/v1/user/2" } },
             })
         );
         Ok(())
@@ -339,7 +359,7 @@ mod tests {
             .return_once(|_| Box::pin(async { Ok(fetched_user) }));
 
         // Act
-        let (status, _) = into_parts(
+        let (status, _, _) = into_parts(
             send(
                 use_case,
                 1,

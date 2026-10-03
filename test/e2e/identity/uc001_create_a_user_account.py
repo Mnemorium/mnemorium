@@ -31,13 +31,15 @@ def test_uc001_create_user_account_happy_path(
 
     response = register(root_admin_token, username, email, SECRET_PASSWORD, _VALID_ROLE)
     assert response.status_code == 201, f"register failed: {response.status_code} {response.text}"
-    assert response.headers.get("Location")
-    assert response.headers.get("Content-Type", "").startswith("application/json")
+    assert response.headers.get("Content-Type", "").startswith("application/hal+json")
     body = response.json()
     assert body["username"] == username
     assert body["role"] == _VALID_ROLE
     assert body["email"] == email
     assert isinstance(body["id"], int) and body["id"] > 0
+    self_href = f"/api/v1/user/{body['id']}"
+    assert body["_links"]["self"]["href"] == self_href
+    assert response.headers.get("Location") == self_href
 
 
 def test_uc001_create_user_account_invalid_payload(
