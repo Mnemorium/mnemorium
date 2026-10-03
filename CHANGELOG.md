@@ -1,3 +1,9 @@
+## [0.6.1](https://github.com/Mnemorium/mnemorium/compare/v0.6.0...v0.6.1) (2026-10-03)
+
+### Bug Fixes
+
+* **api:** sanitize JSON extractor rejections and map 415/422 ([#127](https://github.com/Mnemorium/mnemorium/issues/127)) ([3600972](https://github.com/Mnemorium/mnemorium/commit/36009726c0d66e6ae45ba39f0cdd3532f702a6e7))
+
 ## [0.6.0](https://github.com/Mnemorium/mnemorium/compare/v0.5.2...v0.6.0) (2026-10-03)
 
 ### Features
