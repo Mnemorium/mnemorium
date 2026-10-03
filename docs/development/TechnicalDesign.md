@@ -230,12 +230,13 @@ Drawn from `src/lib/domain/model/user.rs`:
 
 ```rust
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum UserError {
     #[error("email has an invalid format")]
     InvalidEmail(#[from] email_address::Error),
-    // [...]
     #[error("an unknown error occurred: {0}")]
     Unknown(#[source] anyhow::Error),
+    // [...]
 }
 
 pub struct User {
@@ -256,14 +257,17 @@ Drawn from `src/lib/application/port/register_user.rs`:
 
 ```rust
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum RegisterUserError {
-    #[error("a user with this username or email already exists")]
-    UserAlreadyExists,
+    #[error("the caller is not allowed to register the requested role")]
+    Forbidden,
     #[error("email has an invalid format")]
     InvalidEmail,
     // [...]
     #[error("an unknown error occurred: {0}")]
     Unknown(#[source] anyhow::Error),
+    #[error("a user with this username or email already exists")]
+    UserAlreadyExists,
 }
 ```
 
@@ -283,10 +287,12 @@ Drawn from `src/lib/infrastructure/inbound/rest/handler/identity/post_register.r
 impl From<RegisterUserError> for ApiError {
     fn from(err: RegisterUserError) -> Self {
         match err {
-            RegisterUserError::UserAlreadyExists => ApiError::Conflict(err.to_string()),
-            RegisterUserError::InvalidEmail => ApiError::BadRequest(err.to_string()),
+            RegisterUserError::Forbidden => ApiError::Forbidden(err.to_string()),
+            RegisterUserError::InvalidEmail
+            | RegisterUserError::InvalidPassword
+            | RegisterUserError::InvalidUsername => ApiError::BadRequest(err.to_string()),
             RegisterUserError::Unknown(_) => ApiError::InternalServerError,
-            // [...]
+            RegisterUserError::UserAlreadyExists => ApiError::Conflict(err.to_string()),
         }
     }
 }
@@ -476,9 +482,14 @@ surface through the existing domain error enum, so the caller maps them the same
 For a column backed by a SQL `CHECK (... IN (...))` constraint, declare the Rust enum **before** the model struct, in
 the same file.
 
+Drawn from `src/lib/infrastructure/outbound/sqlx/model/user.rs`:
+
 ```rust
+use crate::domain::alias::NumericID;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, sqlx::Type)]
 #[sqlx(rename_all = "UPPERCASE")]
+#[non_exhaustive]
 pub enum Role {
     Admin,
     Standard,
@@ -486,10 +497,11 @@ pub enum Role {
 
 #[derive(Debug, Clone, sqlx::FromRow)]
 pub struct User {
+    // [...]
+    pub role: Role,
     #[sqlx(primary_key)]
     pub user_id: NumericID,
-    pub role: Role,
-    // ...
+    // [...]
 }
 ```
 
@@ -500,14 +512,17 @@ pub struct User {
 Use the `NumericID` alias from `domain/alias.rs` for all numeric table columns that are identifiers (primary keys,
 foreign keys) rather than a raw integer type.
 
+Drawn from `src/lib/infrastructure/outbound/sqlx/model/user.rs`:
+
 ```rust
 use crate::domain::alias::NumericID;
 
 #[derive(Debug, Clone, sqlx::FromRow)]
 pub struct User {
-    pub user_id: NumericID,
     pub credential_id: NumericID,
-    // ...
+    // [...]
+    pub user_id: NumericID,
+    // [...]
 }
 ```
 
@@ -564,11 +579,14 @@ work, the configuration source, the password hasher, and so on.
 
 ##### 6.1 Port traits are `Send` and `Sync`
 
-Always declare outbound port traits as `Send + Sync`:
+Always declare outbound port traits as `Send + Sync`.
+
+Drawn from `src/lib/domain/port/user_repository.rs`:
 
 ```rust
+#[cfg_attr(test, mockall::automock)]
 pub trait UserRepository: Send + Sync {
-    // ...
+    // [...]
 }
 ```
 
@@ -726,7 +744,9 @@ pub trait UserUnitOfWork: UnitOfWork {
 
 ##### 7.3 Cross-context use cases
 
-A use case that spans bounded contexts declares every context view it needs as an `execute` bound:
+A use case that spans bounded contexts declares every context view it needs as an `execute` bound.
+
+Drawn from `src/lib/application/use_case/register_user.rs`:
 
 ```rust
 impl<F, P> RegisterUserUseCase for RegisterUser<F, P>
@@ -735,7 +755,7 @@ where
     F::Uow: IdentityUnitOfWork + UserUnitOfWork,
     P: PasswordHasher,
 {
-    // ...
+    // [...]
 }
 ```
 
@@ -761,13 +781,15 @@ transaction.
 ##### 8.1 Repository port
 
 The port trait is named `<Aggregate>Repository` and declared in `domain/port/<aggregate>_repository.rs`. Methods take
-`&mut self` and return `impl Future<...> + Send`:
+`&mut self` and return `impl Future<...> + Send`.
+
+Drawn from `src/lib/domain/port/user_repository.rs`:
 
 ```rust
 #[cfg_attr(test, mockall::automock)]
 pub trait UserRepository: Send + Sync {
     fn create(&mut self, user: User) -> impl Future<Output = Result<User, RepositoryError>> + Send;
-    // ...
+    // [...]
 }
 ```
 
@@ -2410,17 +2432,19 @@ A code example drawn from production code has two duties and one allowance:
   block.
 - **Track the source.** When the named file changes, update the example in the same change. Never let the example and
   the code disagree.
-- **Elide, don't paraphrase.** Mark omitted regions with `// [...]` and keep the shape of the parts that remain.
+- **Elide, don't paraphrase.** Mark each run of omitted lines with `// [...]`, keep the lines that remain in the
+  source's order, and keep their attributes. Doc comments may be dropped without a marker.
 
 For example, drawn from `src/lib/domain/model/user.rs`:
 
 ```rust
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum UserError {
     #[error("email has an invalid format")]
     InvalidEmail(#[from] email_address::Error),
-    // [...]
     #[error("an unknown error occurred: {0}")]
     Unknown(#[source] anyhow::Error),
+    // [...]
 }
 ```
