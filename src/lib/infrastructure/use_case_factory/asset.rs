@@ -1,3 +1,4 @@
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use arc_swap::ArcSwap;
@@ -20,27 +21,33 @@ use crate::infrastructure::outbound::sqlx::unit_of_work::SqlxUnitOfWorkFactory;
 ///
 /// Every accessor reads the current configuration for the chunk size and the
 /// upload expiry, so a runtime configuration change is picked up by the next
-/// request.
+/// request. The file storage adapter is stateless and rebuilt per accessor from
+/// the startup-captured storage root.
 pub struct RuntimeAssetUseCaseFactory {
     /// Live application configuration.
     configuration: Arc<ArcSwap<Configuration>>,
-    /// Storage adapter backing the chunked upload flow.
-    file_storage: Arc<FileSystemStorage<Sha2ContentHasher>>,
+    /// Root directory holding the upload and file folders.
+    storage_root: PathBuf,
     /// Factory opening the unit of work wrapping the Asset use cases.
     unit_of_work_factory: Arc<SqlxUnitOfWorkFactory>,
 }
 
 impl RuntimeAssetUseCaseFactory {
+    /// Build a fresh file storage adapter for one use case.
+    fn file_storage() -> Arc<FileSystemStorage> {
+        Arc::new(FileSystemStorage::new())
+    }
+
     /// Create a new factory.
     #[must_use]
     pub fn new(
         configuration: Arc<ArcSwap<Configuration>>,
-        file_storage: Arc<FileSystemStorage<Sha2ContentHasher>>,
+        storage_root: PathBuf,
         unit_of_work_factory: Arc<SqlxUnitOfWorkFactory>,
     ) -> Self {
         Self {
             configuration,
-            file_storage,
+            storage_root,
             unit_of_work_factory,
         }
     }
@@ -51,7 +58,8 @@ impl AssetUseCaseFactory for RuntimeAssetUseCaseFactory {
         let live = self.configuration.load();
         Arc::new(BeginUpload::new(
             Arc::clone(&self.unit_of_work_factory),
-            Arc::clone(&self.file_storage),
+            Self::file_storage(),
+            self.storage_root.clone(),
             live.asset().upload().chunk_size_bytes(),
             live.asset().upload().expiry_seconds(),
             live.asset().upload().max_file_size_bytes(),
@@ -62,7 +70,8 @@ impl AssetUseCaseFactory for RuntimeAssetUseCaseFactory {
         let live = self.configuration.load();
         Arc::new(CompleteUpload::new(
             Arc::clone(&self.unit_of_work_factory),
-            Arc::clone(&self.file_storage),
+            Self::file_storage(),
+            self.storage_root.clone(),
             live.asset().upload().expiry_seconds(),
         ))
     }
@@ -71,7 +80,8 @@ impl AssetUseCaseFactory for RuntimeAssetUseCaseFactory {
         let live = self.configuration.load();
         Arc::new(GetUpload::new(
             Arc::clone(&self.unit_of_work_factory),
-            Arc::clone(&self.file_storage),
+            Self::file_storage(),
+            self.storage_root.clone(),
             live.asset().upload().expiry_seconds(),
         ))
     }
@@ -80,8 +90,9 @@ impl AssetUseCaseFactory for RuntimeAssetUseCaseFactory {
         let live = self.configuration.load();
         Arc::new(WriteUploadChunk::new(
             Arc::clone(&self.unit_of_work_factory),
-            Arc::clone(&self.file_storage),
+            Self::file_storage(),
             Sha2ContentHasher,
+            self.storage_root.clone(),
             live.asset().upload().expiry_seconds(),
         ))
     }

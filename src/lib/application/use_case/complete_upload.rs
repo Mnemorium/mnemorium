@@ -1,4 +1,6 @@
 use std::future::Future;
+use std::path::Path;
+use std::path::PathBuf;
 use std::pin::Pin;
 use std::sync::Arc;
 
@@ -9,6 +11,10 @@ use crate::application::port::complete_upload::CompleteUploadCommand;
 use crate::application::port::complete_upload::CompleteUploadError;
 use crate::application::port::complete_upload::CompleteUploadResponse;
 use crate::application::port::complete_upload::CompleteUploadUseCase;
+use crate::application::use_case::upload_layout::final_path;
+use crate::application::use_case::upload_layout::is_path_safe;
+use crate::application::use_case::upload_layout::relative_final;
+use crate::application::use_case::upload_layout::staged_path;
 use crate::application::use_case::upload_session::caller_file_id;
 use crate::application::use_case::upload_session::expiry;
 use crate::domain::alias::NumericID;
@@ -55,12 +61,22 @@ enum Resolution {
     Ready(Box<Upload>),
 }
 
+/// Paths of a promoted file, so a failed completion can restore it.
+struct Promoted {
+    /// Absolute path of the promoted file.
+    final_path: PathBuf,
+    /// Absolute path of the staging file to restore to.
+    staged_path: PathBuf,
+}
+
 /// Use case implementation for completing an upload session.
 pub struct CompleteUpload<F, S> {
     /// Lifetime of an upload session, in seconds.
     expiry_seconds: u64,
     /// Storage adapter promoting the staged file.
     file_storage: Arc<S>,
+    /// Root directory holding the upload and file folders.
+    root: PathBuf,
     /// Factory opening the unit of work wrapping the completion.
     unit_of_work_factory: Arc<F>,
 }
@@ -68,10 +84,16 @@ pub struct CompleteUpload<F, S> {
 impl<F: UnitOfWorkFactory, S: FileStorage> CompleteUpload<F, S> {
     /// Create a new use case.
     #[must_use]
-    pub fn new(unit_of_work_factory: Arc<F>, file_storage: Arc<S>, expiry_seconds: u64) -> Self {
+    pub fn new(
+        unit_of_work_factory: Arc<F>,
+        file_storage: Arc<S>,
+        root: PathBuf,
+        expiry_seconds: u64,
+    ) -> Self {
         Self {
             expiry_seconds,
             file_storage,
+            root,
             unit_of_work_factory,
         }
     }
@@ -95,6 +117,7 @@ where
     > {
         let expiry_seconds = self.expiry_seconds;
         let file_storage = Arc::clone(&self.file_storage);
+        let root = self.root.clone();
         let unit_of_work_factory = Arc::clone(&self.unit_of_work_factory);
 
         Box::pin(async move {
@@ -107,7 +130,15 @@ where
                     .begin()
                     .await
                     .map_err(|error| CompleteUploadError::Unknown(error.into()))?;
-                match resolve(&mut unit_of_work, &file_storage, &command, expiry_seconds).await {
+                match resolve(
+                    &mut unit_of_work,
+                    &file_storage,
+                    &root,
+                    &command,
+                    expiry_seconds,
+                )
+                .await
+                {
                     Resolution::Ready(_) => {
                         // Nothing was written on this path: roll back to release
                         // the connection before hashing.
@@ -140,7 +171,8 @@ where
             // The staged content is hashed with no unit of work open, so the
             // pooled connection is free and a concurrent writer cannot
             // invalidate a read snapshot underneath the hash.
-            let computed = compute_integrity_hash(&file_storage, command.upload_id()).await?;
+            let computed =
+                compute_integrity_hash(&file_storage, &root, command.upload_id()).await?;
 
             // Phase 2: a fresh mutating unit of work. The upload is re-read and
             // re-validated (a time-of-check/time-of-use re-check) before the
@@ -149,19 +181,25 @@ where
                 .begin()
                 .await
                 .map_err(|error| CompleteUploadError::Unknown(error.into()))?;
-            let mut promoted: Option<(NumericID, String)> = None;
+            let mut promoted: Option<Promoted> = None;
 
             let flow = async {
-                let upload =
-                    match resolve(&mut unit_of_work, &file_storage, &command, expiry_seconds).await
-                    {
-                        Resolution::Ready(upload) => *upload,
-                        Resolution::Finished(file_id) => {
-                            return Flow::Succeeded(CompleteUploadResponse::new(file_id, true));
-                        }
-                        Resolution::Expired => return Flow::Expired,
-                        Resolution::Failed(error) => return Flow::Failed(error),
-                    };
+                let upload = match resolve(
+                    &mut unit_of_work,
+                    &file_storage,
+                    &root,
+                    &command,
+                    expiry_seconds,
+                )
+                .await
+                {
+                    Resolution::Ready(upload) => *upload,
+                    Resolution::Finished(file_id) => {
+                        return Flow::Succeeded(CompleteUploadResponse::new(file_id, true));
+                    }
+                    Resolution::Expired => return Flow::Expired,
+                    Resolution::Failed(error) => return Flow::Failed(error),
+                };
 
                 // The computed digest is compared before any file-table lookup,
                 // so a caller cannot probe the file table for a guessed hash
@@ -184,18 +222,28 @@ where
                     }
                 }
 
-                let path = match file_storage
-                    .promote(upload.upload_id(), upload.file_name())
-                    .await
-                {
-                    Ok(path) => path,
+                if !is_path_safe(upload.file_name()) {
+                    return Flow::Failed(CompleteUploadError::Unknown(anyhow::anyhow!(
+                        "the upload file name is not a safe path segment"
+                    )));
+                }
+                let staged = staged_path(&root, upload.upload_id());
+                let final_file = final_path(&root, upload.upload_id(), upload.file_name());
+                match file_storage.promote(&staged, &final_file).await {
+                    Ok(()) => {}
                     Err(error) => return Flow::Failed(CompleteUploadError::Unknown(error.into())),
-                };
-                promoted = Some((upload.upload_id(), upload.file_name().to_owned()));
+                }
+                promoted = Some(Promoted {
+                    final_path: final_file,
+                    staged_path: staged,
+                });
 
+                let relative = relative_final(upload.upload_id(), upload.file_name())
+                    .to_string_lossy()
+                    .into_owned();
                 let pending = match File::try_new(
                     0,
-                    path,
+                    relative,
                     command.user_id(),
                     false,
                     upload.mime_type_id().to_owned(),
@@ -281,6 +329,7 @@ where
 async fn resolve<U, S>(
     unit_of_work: &mut U,
     file_storage: &Arc<S>,
+    root: &Path,
     command: &CompleteUploadCommand,
     expiry_seconds: u64,
 ) -> Resolution
@@ -313,7 +362,7 @@ where
         Err(error) => return Resolution::Failed(CompleteUploadError::Unknown(error)),
     };
     if !upload.is_finished() && Utc::now().naive_utc() > expires_at {
-        return expire(unit_of_work, file_storage, command.upload_id()).await;
+        return expire(unit_of_work, file_storage, root, command.upload_id()).await;
     }
 
     // Idempotent completion: an already finished upload returns the caller's
@@ -344,14 +393,22 @@ where
     clippy::single_call_fn,
     reason = "the expiry cleanup is named after the rule it enforces"
 )]
-async fn expire<U, S>(unit_of_work: &mut U, file_storage: &Arc<S>, upload_id: i64) -> Resolution
+async fn expire<U, S>(
+    unit_of_work: &mut U,
+    file_storage: &Arc<S>,
+    root: &Path,
+    upload_id: i64,
+) -> Resolution
 where
     U: AssetUnitOfWork,
     S: FileStorage,
 {
     // TODO(reaper): move the expiry cleanup to a background task; this lazy
     // delete keeps the row and the staged file only until the next access.
-    if let Err(error) = file_storage.delete_upload_file(upload_id).await {
+    if let Err(error) = file_storage
+        .delete_upload_file(&staged_path(root, upload_id))
+        .await
+    {
         error!(error = ?error, "failed to delete the expired upload staged file");
     }
     if let Err(error) = unit_of_work.uploads().delete(upload_id).await {
@@ -375,13 +432,14 @@ where
 )]
 async fn compute_integrity_hash<S>(
     file_storage: &Arc<S>,
+    root: &Path,
     upload_id: i64,
 ) -> Result<IntegrityHash<SHA256_HEX_LENGTH>, CompleteUploadError>
 where
     S: FileStorage,
 {
     file_storage
-        .integrity_hash(upload_id)
+        .integrity_hash(&staged_path(root, upload_id))
         .await
         .map_err(|error| CompleteUploadError::Unknown(error.into()))
 }
@@ -404,14 +462,17 @@ where
 
 /// Best-effort move a promoted file back to its staging path after a failed
 /// completion, so the upload can be retried and no final file is orphaned.
-async fn restore_promoted<S>(file_storage: &Arc<S>, promoted: Option<&(NumericID, String)>)
+async fn restore_promoted<S>(file_storage: &Arc<S>, promoted: Option<&Promoted>)
 where
     S: FileStorage,
 {
-    let Some(identity) = promoted else {
+    let Some(promoted_paths) = promoted else {
         return;
     };
-    if let Err(error) = file_storage.restore(identity.0, identity.1.as_str()).await {
+    if let Err(error) = file_storage
+        .restore(&promoted_paths.final_path, &promoted_paths.staged_path)
+        .await
+    {
         // TODO(reaper): a failed restore leaves the final file orphaned; delete
         // it once a background reaper exists.
         error!(error = ?error, "failed to restore the promoted file of an incomplete upload");
@@ -421,6 +482,7 @@ where
 #[cfg(test)]
 mod tests {
     use std::error::Error;
+    use std::path::PathBuf;
     use std::sync::Arc;
     use std::sync::Mutex;
     use std::sync::atomic::AtomicBool;
@@ -453,6 +515,8 @@ mod tests {
     const WRONG_DIGEST: &str = "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff";
     const TTL_SECONDS: u64 = 3600;
     const CHUNK_SIZE: u64 = 4;
+    /// Storage root the use case composes paths against.
+    const ROOT: &str = "/storage";
 
     type UseCase = CompleteUpload<TestFactory, MockFileStorage>;
 
@@ -509,7 +573,12 @@ mod tests {
             phase_two_commit_fails,
             phase_two_committed,
             phase_two_rolled_back,
-            use_case: CompleteUpload::new(Arc::new(factory), Arc::new(file_storage), TTL_SECONDS),
+            use_case: CompleteUpload::new(
+                Arc::new(factory),
+                Arc::new(file_storage),
+                PathBuf::from(ROOT),
+                TTL_SECONDS,
+            ),
         }
     }
 
@@ -641,7 +710,7 @@ mod tests {
         file_storage
             .expect_promote()
             .times(1)
-            .returning(|_, _| Box::pin(async { Ok("files/5_clip.mp4".to_owned()) }));
+            .returning(|_, _| Box::pin(async { Ok(()) }));
         let harness = use_case_with(
             phase_one_uploads,
             MockFileRepository::new(),
@@ -690,7 +759,7 @@ mod tests {
         file_storage
             .expect_promote()
             .times(1)
-            .returning(|_, _| Box::pin(async { Ok("files/5_clip.mp4".to_owned()) }));
+            .returning(|_, _| Box::pin(async { Ok(()) }));
         file_storage
             .expect_restore()
             .times(1)
@@ -987,7 +1056,7 @@ mod tests {
         file_storage
             .expect_promote()
             .times(1)
-            .returning(|_, _| Box::pin(async { Ok("files/5_clip.mp4".to_owned()) }));
+            .returning(|_, _| Box::pin(async { Ok(()) }));
         let harness = use_case_with(
             phase_one_uploads,
             MockFileRepository::new(),
@@ -1075,7 +1144,7 @@ mod tests {
         file_storage
             .expect_promote()
             .times(1)
-            .returning(|_, _| Box::pin(async { Ok("files/5_clip.mp4".to_owned()) }));
+            .returning(|_, _| Box::pin(async { Ok(()) }));
         file_storage
             .expect_restore()
             .times(1)
@@ -1197,7 +1266,7 @@ mod tests {
         file_storage
             .expect_promote()
             .times(1)
-            .returning(|_, _| Box::pin(async { Ok("files/5_clip.mp4".to_owned()) }));
+            .returning(|_, _| Box::pin(async { Ok(()) }));
         file_storage
             .expect_restore()
             .times(1)
@@ -1242,7 +1311,7 @@ mod tests {
         file_storage
             .expect_promote()
             .times(1)
-            .returning(|_, _| Box::pin(async { Ok("files/5_clip.mp4".to_owned()) }));
+            .returning(|_, _| Box::pin(async { Ok(()) }));
         file_storage
             .expect_restore()
             .times(1)
@@ -1295,7 +1364,7 @@ mod tests {
         file_storage
             .expect_promote()
             .times(1)
-            .returning(|_, _| Box::pin(async { Ok("files/5_clip.mp4".to_owned()) }));
+            .returning(|_, _| Box::pin(async { Ok(()) }));
         file_storage
             .expect_restore()
             .times(1)
@@ -1354,7 +1423,7 @@ mod tests {
         file_storage
             .expect_promote()
             .times(1)
-            .returning(|_, _| Box::pin(async { Ok("files/5_clip.mp4".to_owned()) }));
+            .returning(|_, _| Box::pin(async { Ok(()) }));
 
         // The phase-2 search records that the hash ran before the mutating
         // phase touched the datastore.
@@ -1396,7 +1465,12 @@ mod tests {
         let factory = TestUnitOfWorkFactory {
             unit_of_works: Mutex::new(vec![phase_one, phase_two]),
         };
-        let use_case = CompleteUpload::new(Arc::new(factory), Arc::new(file_storage), TTL_SECONDS);
+        let use_case = CompleteUpload::new(
+            Arc::new(factory),
+            Arc::new(file_storage),
+            PathBuf::from(ROOT),
+            TTL_SECONDS,
+        );
         let command = CompleteUploadCommand::new(5, 3);
 
         // Act
