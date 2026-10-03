@@ -95,6 +95,11 @@ one:
 5. **Generated spec** — `docs/development/api/openapi.json`, regenerated with
    `cargo run --bin openapi_gen` (never hand-edited).
 
+The aggregation also carries document-scoped members that do not change when an
+endpoint is added — notably `modifiers(&SecurityAddon)`, which registers the
+`bearer_auth` scheme that `API-011`'s per-operation `security(...)` requirement
+resolves against. Touch it only when the scheme set is introduced or changes.
+
 A change is incomplete if any of the five is out of step.
 
 # Modes
