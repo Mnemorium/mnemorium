@@ -20,37 +20,6 @@
         ],
         "type": "object"
       },
-      "GetListUserResponse": {
-        "description": "User returned by a successful lookup.",
-        "properties": {
-          "email": {
-            "description": "Email address of the user, when one was provided.",
-            "format": "email",
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "id": {
-            "$ref": "#/components/schemas/i64",
-            "description": "Unique identifier of the user."
-          },
-          "role": {
-            "$ref": "#/components/schemas/Role",
-            "description": "Role of the user."
-          },
-          "username": {
-            "description": "Username of the user.",
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "role",
-          "username"
-        ],
-        "type": "object"
-      },
       "GetMeResponse": {
         "description": "Current user returned by a successful lookup.",
         "properties": {
@@ -84,6 +53,27 @@
           "_links",
           "role",
           "username"
+        ],
+        "type": "object"
+      },
+      "GetUserListResponse": {
+        "description": "Users matching the requested filters.",
+        "properties": {
+          "_links": {
+            "$ref": "#/components/schemas/UserListLinks",
+            "description": "Navigation links of the collection."
+          },
+          "items": {
+            "description": "The users matching the filters.",
+            "items": {
+              "$ref": "#/components/schemas/GetUserResponse"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "items",
+          "_links"
         ],
         "type": "object"
       },
@@ -545,6 +535,24 @@
           "is_finished",
           "_links",
           "total_chunks"
+        ],
+        "type": "object"
+      },
+      "UserListLinks": {
+        "description": "HAL links of a user collection representation.",
+        "properties": {
+          "search": {
+            "$ref": "#/components/schemas/Link",
+            "description": "Templated link exposing the collection's search filters."
+          },
+          "self": {
+            "$ref": "#/components/schemas/Link",
+            "description": "Link to the collection itself."
+          }
+        },
+        "required": [
+          "search",
+          "self"
         ],
         "type": "object"
       },
@@ -1366,7 +1374,7 @@
     },
     "/user": {
       "get": {
-        "description": "Requires an `Admin` caller. Returns the profiles of every user matching\nthe optional filters. An empty list is a valid outcome.",
+        "description": "Requires an `Admin` caller. Returns the profiles of every user matching\nthe optional filters as a HAL collection. An empty list is a valid outcome.",
         "operationId": "list_users",
         "parameters": [
           {
@@ -1416,12 +1424,9 @@
         "responses": {
           "200": {
             "content": {
-              "application/json": {
+              "application/hal+json": {
                 "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/GetListUserResponse"
-                  },
-                  "type": "array"
+                  "$ref": "#/components/schemas/GetUserListResponse"
                 }
               }
             },

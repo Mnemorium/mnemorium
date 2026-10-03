@@ -7,6 +7,7 @@ pub mod get_upload;
 pub mod get_user;
 pub mod identity_use_case_factory;
 pub mod initialize_root_admin;
+pub mod list_users;
 pub mod load_configuration;
 pub mod login_user;
 pub mod patch_credential;

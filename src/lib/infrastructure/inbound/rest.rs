@@ -34,6 +34,8 @@ use crate::infrastructure::inbound::rest::handler::identity::post_register::Regi
 use crate::infrastructure::inbound::rest::handler::identity::post_register::RegisterResponse;
 use crate::infrastructure::inbound::rest::handler::user::get_me::GetMeResponse;
 use crate::infrastructure::inbound::rest::handler::user::get_user::GetUserResponse;
+use crate::infrastructure::inbound::rest::handler::user::get_user_list::GetUserListResponse;
+use crate::infrastructure::inbound::rest::handler::user::get_user_list::UserListLinks;
 use crate::infrastructure::inbound::rest::handler::user::patch_user::PatchUserRequest;
 use crate::infrastructure::inbound::rest::handler::user::patch_user::PatchUserResponse;
 
@@ -68,7 +70,7 @@ impl utoipa::Modify for SecurityAddon {
         (url = "http://0.0.0.0:4080/api/v1", description = "Local development server")
     ),
     paths(get_health, get_upload, patch_credential, post_login, post_register, post_upload, post_upload_complete, put_upload_chunk, get_me, get_user, get_user_list, patch_user),
-    components(schemas(ErrorBody, GetMeResponse, GetUserResponse, Link, LoginRequest, LoginResponse, PatchCredentialRequest, PatchUserRequest, PatchUserResponse, PostUploadCompleteResponse, PostUploadRequest, PostUploadResponse, PutUploadChunkRequest, RegisterRequest, RegisterResponse, Role, SelfLinks, UploadSessionLinks, UploadSessionResponse)),
+    components(schemas(ErrorBody, GetMeResponse, GetUserListResponse, GetUserResponse, Link, LoginRequest, LoginResponse, PatchCredentialRequest, PatchUserRequest, PatchUserResponse, PostUploadCompleteResponse, PostUploadRequest, PostUploadResponse, PutUploadChunkRequest, RegisterRequest, RegisterResponse, Role, SelfLinks, UploadSessionLinks, UploadSessionResponse, UserListLinks)),
     tags(
         (name = "system", description = "System-level endpoints"),
         (name = "asset", description = "Asset bounded context"),
