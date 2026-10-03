@@ -28,7 +28,7 @@
         [
             "@semantic-release/exec",
             {
-                "prepareCmd": "sed -i '0,/^version = \".*\"$/s//version = \"${nextRelease.version}\"/' Cargo.toml && docker build -t wpelletier/mnemorium ."
+                "prepareCmd": "sed -i '0,/^version = \".*\"$/s//version = \"${nextRelease.version}\"/' Cargo.toml && cargo update --workspace && docker build -t wpelletier/mnemorium ."
             }
         ],
         [
