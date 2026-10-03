@@ -26,7 +26,7 @@ jobs:
   gatekeeper:
     runs-on: ubuntu-slim
     steps:
-      - uses: amannn/action-semantic-pull-request@v6
+      - uses: amannn/action-semantic-pull-request@48f256284bd46cdaab1048c3721360e808335d50  # v6
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -71,11 +71,11 @@ jobs:
       deps: ${{ steps.filter.outputs.deps_any_changed }}
       lint: ${{ steps.filter.outputs.lint_any_changed }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
         with:
           fetch-depth: 0
-      # v47.0.6
-      - uses: tj-actions/changed-files@9426d40962ed5378910ee2e21d5f8c6fcbf2dd96
+          persist-credentials: false
+      - uses: tj-actions/changed-files@9426d40962ed5378910ee2e21d5f8c6fcbf2dd96  # v47.0.6
         id: filter
         with:
           files_yaml: |
@@ -115,7 +115,9 @@ jobs:
     if: needs.changes.outputs.lint == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
+        with:
+          persist-credentials: false
       - name: Check commit scope taxonomy
         run: script/check_scopes.sh
 
@@ -127,11 +129,11 @@ jobs:
       startsWith(github.event.pull_request.title, 'docs(')
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
         with:
           fetch-depth: 0
-      # v47.0.6
-      - uses: tj-actions/changed-files@9426d40962ed5378910ee2e21d5f8c6fcbf2dd96
+          persist-credentials: false
+      - uses: tj-actions/changed-files@9426d40962ed5378910ee2e21d5f8c6fcbf2dd96  # v47.0.6
         id: changed
         with:
           files: |
@@ -157,12 +159,12 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
         with:
           fetch-depth: 0
-      # v0.1.0
+          persist-credentials: false
       - id: betterleaks
-        uses: dortort/betterleaks-action@cd0b905aa4befb8f42f8b1ab98150180c9e77515  # yamllint disable-line rule:line-length
+        uses: dortort/betterleaks-action@cd0b905aa4befb8f42f8b1ab98150180c9e77515  # v0.1.0
         with:
           version: v1.8.1
           scan-mode: git
@@ -171,7 +173,7 @@ jobs:
           validation: "false"
           redact: true
           github-token: ${{ secrets.GITHUB_TOKEN }}
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
         if: always()
         with:
           name: betterleaks-report
@@ -181,10 +183,11 @@ jobs:
     needs: [gatekeeper]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
         with:
           fetch-depth: 0
-      - uses: actions/setup-python@v5
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
         with:
           python-version: "3.14"
       - name: Install Semgrep
@@ -227,7 +230,7 @@ jobs:
               sys.exit(1)
           print("No semgrep ERROR findings.")
           PY
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
         if: always()
         with:
           name: semgrep-sarif
@@ -239,14 +242,19 @@ jobs:
     if: needs.changes.outputs.rust == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
-      - uses: dtolnay/rust-toolchain@1.98.0
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
         with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067  # v1
+        with:
+          toolchain: "1.98.0"
           components: rustfmt, clippy, llvm-tools-preview
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6  # v2
         with:
           cache-on-failure: true
-      - uses: taiki-e/install-action@cargo-llvm-cov
+      - uses: taiki-e/install-action@83ac0ad63c0167e6f06796fab0fce28db1bf3db0  # v2
+        with:
+          tool: cargo-llvm-cov
       - name: Format
         run: cargo fmt --all -- --check
       - name: Clippy
@@ -283,7 +291,7 @@ jobs:
           cargo llvm-cov report > .artifacts/coverage/summary.txt
       - name: Upload coverage report
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
         with:
           name: coverage-report
           path: .artifacts/coverage
@@ -295,9 +303,13 @@ jobs:
     if: needs.changes.outputs.deps == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
-      - uses: dtolnay/rust-toolchain@1.98.0
-      - uses: taiki-e/install-action@v2
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067  # v1
+        with:
+          toolchain: "1.98.0"
+      - uses: taiki-e/install-action@83ac0ad63c0167e6f06796fab0fce28db1bf3db0  # v2
         with:
           tool: cargo-deny@0.20,cargo-bundle-licenses
       - name: Check dependencies
@@ -312,8 +324,10 @@ jobs:
     if: needs.changes.outputs.python == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
         with:
           python-version: "3.14"
       - name: Install dependencies
@@ -330,11 +344,13 @@ jobs:
       needs.changes.outputs.docs == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
         with:
           python-version: "3.14"
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4
         with:
           node-version: "24.19.0"
       - name: Install documentation dependencies
@@ -342,7 +358,7 @@ jobs:
       - name: Prettier format check
         run: npx --yes prettier@3.8.3 --check "**/*.md"
       - name: Markdown lint
-        uses: DavidAnson/markdownlint-cli2-action@v24
+        uses: DavidAnson/markdownlint-cli2-action@21c1be1b93ad9ed58fa840aacc3f279cde2a72ff  # v24
         with:
           globs: "**/*.md"
       - name: Build documentation
@@ -354,8 +370,10 @@ jobs:
     if: needs.changes.outputs.sql == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
         with:
           python-version: "3.14"
       - name: Install sqlfluff
@@ -368,8 +386,10 @@ jobs:
     if: needs.changes.outputs.shell == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
-      - uses: taiki-e/install-action@v2
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
+        with:
+          persist-credentials: false
+      - uses: taiki-e/install-action@83ac0ad63c0167e6f06796fab0fce28db1bf3db0  # v2
         with:
           tool: shellcheck,shfmt
       - name: ShellCheck
@@ -382,8 +402,10 @@ jobs:
     if: needs.changes.outputs.nix == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
-      - uses: cachix/install-nix-action@v31
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
+        with:
+          persist-credentials: false
+      - uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24  # v31
       - name: nixfmt
         run: nix run nixpkgs#nixfmt -- --check devenv.nix
 
@@ -392,10 +414,14 @@ jobs:
     if: needs.changes.outputs.lint == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
-      - uses: ls-lint/action@v2
-      - uses: taiki-e/install-action@taplo
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
+        with:
+          persist-credentials: false
+      - uses: ls-lint/action@02e380fe8733d499cbfc9e22276de5085508a5bd  # v2
+      - uses: taiki-e/install-action@83ac0ad63c0167e6f06796fab0fce28db1bf3db0  # v2
+        with:
+          tool: taplo
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
         with:
           python-version: "3.14"
       - name: Install yamllint
@@ -414,21 +440,21 @@ jobs:
       pull-requests: write
       issues: write
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
         with:
           fetch-depth: 1
           persist-credentials: false
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131  # v7
         continue-on-error: true
         with:
           name: semgrep-sarif
           path: .artifacts
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131  # v7
         continue-on-error: true
         with:
           name: coverage-report
           path: .artifacts/coverage
-      - run: npm install --global @opencode/cli
+      - run: npm install --global @opencode/cli@2.0.22
       - name: Check the GitHub MCP server connection
         env:
           GITHUB_MCP_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -476,7 +502,7 @@ jobs:
           </pull_request>" > events.ndjson
       - name: Upload review event log
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
         with:
           name: opencode-review-events
           path: events.ndjson

@@ -2035,6 +2035,30 @@ to be filled in.
 
 Columns: **Name**, **Description**, **Version**, **License**.
 
+| ID         | Section        | Rule                                                                                                                                             | More info                             |
+| ---------- | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------- |
+| `DEPS-001` | GitHub Actions | Pin every third-party GitHub Action to a full-length commit SHA and record the release in a same-line comment, for example `# v6` or `# v1.2.3`. | [§ CI supply chain](#ci-supply-chain) |
+
+---
+
+### CI supply chain
+
+A GitHub Action referenced by a tag or branch is mutable: whoever controls the action repository can move the ref. Pin
+every third-party action to a full-length commit SHA and record the release beside it, so a human can read it and
+Dependabot can bump it:
+
+```yaml
+- uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+```
+
+Dependabot reads `.github/dependabot.yml` and opens a pull request when a pinned SHA falls behind; it only updates the
+release comment when that comment sits on the same line as the SHA.
+
+Pinning a SHA strips the ref of the meaning the action gave it, so configuration carried by the ref moves into an input.
+`dtolnay/rust-toolchain` selects its toolchain from the ref: it is pinned to a SHA with the release tag in the comment,
+and the toolchain is supplied through `toolchain:`. The CI table records the toolchain it installs (`1.98.0`), not the
+action's own release tag.
+
 ---
 
 ### Rust
@@ -2149,6 +2173,7 @@ Source: `.github/workflows/*`.
 
 | Name                                                                                                                   | Description | Version | License |
 | ---------------------------------------------------------------------------------------------------------------------- | ----------- | ------- | ------- |
+| [@opencode/cli](https://www.npmjs.com/package/@opencode/cli)                                                           | TODO        | 2.0.22  | TODO    |
 | [@semantic-release-plus/docker](https://www.npmjs.com/package/@semantic-release-plus/docker)                           | TODO        | 3.1.3   | TODO    |
 | [@semantic-release/changelog](https://www.npmjs.com/package/@semantic-release/changelog)                               | TODO        | 7.0.0   | TODO    |
 | [@semantic-release/exec](https://www.npmjs.com/package/@semantic-release/exec)                                         | TODO        | 7.1.0   | TODO    |
@@ -2161,7 +2186,6 @@ Source: `.github/workflows/*`.
 | [actions/setup-python](https://github.com/actions/setup-python)                                                        | TODO        | v5      | TODO    |
 | [actions/upload-artifact](https://github.com/actions/upload-artifact)                                                  | TODO        | v7      | TODO    |
 | [amannn/action-semantic-pull-request](https://github.com/amannn/action-semantic-pull-request)                          | TODO        | v6      | TODO    |
-| [anomalyco/opencode/github](https://github.com/anomalyco/opencode)                                                     | TODO        | latest  | TODO    |
 | [cachix/install-nix-action](https://github.com/cachix/install-nix-action)                                              | TODO        | v31     | TODO    |
 | [conventional-changelog-conventionalcommits](https://www.npmjs.com/package/conventional-changelog-conventionalcommits) | TODO        | 9       | TODO    |
 | [DavidAnson/markdownlint-cli2-action](https://github.com/DavidAnson/markdownlint-cli2-action)                          | TODO        | v24     | TODO    |
