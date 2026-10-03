@@ -42,7 +42,7 @@ die() {
 scope_rows() {
 	awk '
 		/^### 1\. Scope$/ { in_section = 1; next }
-		in_section && /^### / { in_section = 0 }
+		in_section && /^##/ { in_section = 0 }
 		in_section && /^\|/ {
 			rows++
 			if (rows <= 2) next
