@@ -36,11 +36,11 @@ pub fn user_routes(state: &AppState) -> Router {
 
     let patch_by_id: Router<AppState> = Router::new().route("/{id}", patch(patch_user));
 
-    let stubs = Router::new().route("/", get(get_user_list));
+    let list_users: Router<AppState> = Router::new().route("/", get(get_user_list));
 
     me.merge(by_id)
         .merge(patch_by_id)
-        .merge(stubs)
+        .merge(list_users)
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
             authenticate::<JwtTokenProvider>,
