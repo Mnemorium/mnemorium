@@ -84,6 +84,18 @@ impl From<LoginUserError> for ApiError {
             description = "Invalid credentials"
         ),
         (
+            status = UNSUPPORTED_MEDIA_TYPE,
+            body = ErrorBody,
+            content_type = "application/hal+json",
+            description = "The request body media type is not application/json"
+        ),
+        (
+            status = UNPROCESSABLE_ENTITY,
+            body = ErrorBody,
+            content_type = "application/hal+json",
+            description = "The request body does not match the expected schema"
+        ),
+        (
             status = PAYLOAD_TOO_LARGE,
             body = ErrorBody,
             content_type = "application/hal+json",
@@ -237,7 +249,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn post_login_missing_required_field_returns_bad_request() -> Result<(), Box<dyn Error>> {
+    async fn post_login_missing_required_field_returns_unprocessable_entity()
+    -> Result<(), Box<dyn Error>> {
         // Arrange
         let login_use_case = MockLoginUserUseCase::new();
 
@@ -254,16 +267,16 @@ mod tests {
         .await?;
 
         // Assert
-        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
         assert!(
             error_message_of(&response).is_some(),
-            "a bad request must carry an error message"
+            "an unprocessable entity must carry an error message"
         );
         Ok(())
     }
 
     #[tokio::test]
-    async fn post_login_wrong_type_returns_bad_request() -> Result<(), Box<dyn Error>> {
+    async fn post_login_wrong_type_returns_unprocessable_entity() -> Result<(), Box<dyn Error>> {
         // Arrange
         let login_use_case = MockLoginUserUseCase::new();
 
@@ -281,10 +294,10 @@ mod tests {
         .await?;
 
         // Assert
-        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
         assert!(
             error_message_of(&response).is_some(),
-            "a bad request must carry an error message"
+            "an unprocessable entity must carry an error message"
         );
         Ok(())
     }
