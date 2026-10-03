@@ -98,32 +98,44 @@ impl From<JsonRejection> for ApiError {
     fn from(rejection: JsonRejection) -> Self {
         // The client receives a stable, server-authored message only
         // (`API-040`): the framework rejection text carries deserialization and
-        // parser detail, so it is logged and never echoed (`API-039`, § 2.5).
-        match rejection {
-            JsonRejection::MissingJsonContentType(_) => Self::UnsupportedMediaType(
-                "the request body must use Content-Type: application/json".to_owned(),
+        // parser detail and the offending value, so only its classification is
+        // logged (`OBS-003`) and it is never echoed (`API-039`, § 2.5).
+        let (event, reason, mapped) = match rejection {
+            JsonRejection::BytesRejection(bytes_rejection) => {
+                return Self::from_bytes_rejection(&bytes_rejection);
+            }
+            JsonRejection::MissingJsonContentType(_) => (
+                "input_validation_failed",
+                "missing_content_type",
+                Self::UnsupportedMediaType(
+                    "the request body must use Content-Type: application/json".to_owned(),
+                ),
             ),
-            JsonRejection::JsonDataError(error) => {
-                warn!(
-                    error = %error,
-                    "rejected a JSON request body that does not match the expected schema"
-                );
+            JsonRejection::JsonDataError(_) => (
+                "deserialization_failed",
+                "schema_mismatch",
                 Self::UnprocessableEntity(
                     "the request body does not match the expected schema".to_owned(),
-                )
-            }
-            JsonRejection::JsonSyntaxError(error) => {
-                warn!(error = %error, "rejected a JSON request body that is not valid JSON");
-                Self::BadRequest("the request body is not valid JSON".to_owned())
-            }
-            JsonRejection::BytesRejection(bytes_rejection) => {
-                Self::from_bytes_rejection(&bytes_rejection)
-            }
-            unknown => {
-                warn!(error = %unknown, "rejected a request body");
-                Self::BadRequest("the request body is invalid".to_owned())
-            }
-        }
+                ),
+            ),
+            JsonRejection::JsonSyntaxError(_) => (
+                "deserialization_failed",
+                "syntax",
+                Self::BadRequest("the request body is not valid JSON".to_owned()),
+            ),
+            _unknown => (
+                "deserialization_failed",
+                "unknown",
+                Self::BadRequest("the request body is invalid".to_owned()),
+            ),
+        };
+        warn!(
+            event = event,
+            source = "json_body",
+            reason = reason,
+            "rejected a request body"
+        );
+        mapped
     }
 }
 
@@ -140,7 +152,12 @@ impl ApiError {
                 "the request body exceeds the maximum allowed size".to_owned(),
             );
         }
-        warn!(error = %rejection, "failed to buffer the request body");
+        warn!(
+            event = "input_validation_failed",
+            source = "request_body",
+            reason = "buffer_failed",
+            "failed to buffer the request body"
+        );
         Self::BadRequest("the request body could not be read".to_owned())
     }
 }
