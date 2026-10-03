@@ -1,3 +1,9 @@
+## [0.6.3](https://github.com/Mnemorium/mnemorium/compare/v0.6.2...v0.6.3) (2026-10-03)
+
+### Bug Fixes
+
+* **api:** prevent username enumeration on login ([#138](https://github.com/Mnemorium/mnemorium/issues/138)) ([67ba916](https://github.com/Mnemorium/mnemorium/commit/67ba916ead78fd2a37d20869720ef6be55b3c5ea))
+
 ## [0.6.2](https://github.com/Mnemorium/mnemorium/compare/v0.6.1...v0.6.2) (2026-10-03)
 
 ### Bug Fixes
