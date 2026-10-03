@@ -112,8 +112,10 @@ Cover all of these; none is optional:
 - SSRF on any remote-URL fetch.
 - SQL and command injection.
 - Upload and transcode paths, and any `unsafe` or FFI decode code.
-- Secrets, keys, or tokens in code or committed files, and secrets in logs.
-- Sensitive data in error payloads or logs.
+- Secrets, keys, or tokens in code or committed files, and secrets in logs
+  (`docs/development/TechnicalDesign.md` § 9 (Logging & Observability),
+  `OBS-004`).
+- Sensitive data in error payloads or logs (`OBS-003`, `OBS-004`).
 - Dependency advisories the change introduces or relies on.
 
 For a design input, additionally name the asset, the trust boundary, the attack

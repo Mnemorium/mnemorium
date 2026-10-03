@@ -4,9 +4,10 @@ Catalog of the **business use cases** of Mnemorium. Each entry describes a capab
 business-level view, not a one-to-one list of the application's implementation units.
 
 A business use case is implemented by one or more **application use cases** — the `port/<name>.rs` /
-`use_case/<name>.rs` pair governed by [TechnicalDesign.md](TechnicalDesign.md) § 9. Each entry lists the application use
-cases that implement it, so several application use cases may appear under a single entry. Application use cases not yet
-grouped under a catalogued business use case may exist; this catalog does not enumerate every one.
+`use_case/<name>.rs` pair governed by [TechnicalDesign.md](TechnicalDesign.md) § 1 (Code Style Guidelines), § 9 (Use
+cases). Each entry lists the application use cases that implement it, so several application use cases may appear under
+a single entry. Application use cases not yet grouped under a catalogued business use case may exist; this catalog does
+not enumerate every one.
 
 IDs are sequential across the whole catalog: `UC-001`, `UC-002`, …
 

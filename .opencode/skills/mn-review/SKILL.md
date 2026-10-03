@@ -77,6 +77,7 @@ against the file paths the diff adds or changes.
 | `database-engineer`   | `migrations/**`, `**/*.sql`, `src/lib/infrastructure/outbound/sqlx/**`                           |
 | `api-architect`       | `src/lib/infrastructure/inbound/rest/**`, `docs/development/api/**`                              |
 | `system-architect`    | `src/**`                                                                                         |
+| `logging-specialist`  | a changed `**/*.rs` file that adds or changes a `tracing` macro, `src/lib/infrastructure/logging.rs`, or the `OBS-*` rules in `docs/development/TechnicalDesign.md` |
 | `technical-writer`    | `docs/**`, `**/*.md`, `mkdocs.yml`, `.opencode/**`, `AGENTS.md`                                  |
 | `devops`              | `.github/**`, `devenv.*`, `Dockerfile`, `.dockerignore`, `mkdocs.yml`, `.yamllint`, `.markdownlint-cli2.jsonc`, `.prettierrc`, `.prettierignore`, `.ls-lint.yml`, `.taplo.toml`, `.betterleaks.toml`, `ruff.toml`, `pytest.ini`, `requirements.txt`, `.releaserc.json`, `.gitignore`, `script/**` |
 

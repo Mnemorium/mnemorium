@@ -33,9 +33,10 @@ written to be cited and checked.
 | 6   | Dependencies & Dev Environment | migrated | —                          | devops                                          |
 | 7   | Repository Governance          | migrated | —                          | technical-writer (docs), devops (gates)         |
 | 8   | Documentation                  | migrated | —                          | technical-writer                                |
+| 9   | Logging & Observability        | migrated | —                          | logging-specialist                              |
 
 Rule-ID prefixes: § 1 `STY-*`, § 2 `ARCH-*`, § 3 `API-*`, § 4 `PERS-*`, § 5 `TEST-*`, § 6 `DEPS-*`, § 7 `GOV-*`, § 8
-`DOC-*`.
+`DOC-*`, § 9 `OBS-*`.
 
 - **migrated** — the content lives in this document.
 - **linked** — the section number is reserved; the canonical content still lives in the linked document and migrates
@@ -132,7 +133,7 @@ material. The `#[utoipa::path(...)]` declaration contract lives in the [API sect
 | `STY-RUST-020` | Error handling    | **Port errors** (Repository, External Service) are declared in `src/lib/domain/port/error.rs`. They do **not** map directly to a use-case error; the use case translates them.                                                                                                                                                                                                                                                                                                                                                         | [§ 2.6](#26-port-errors)                                         |
 | `STY-RUST-021` | Error handling    | **A missing entity is not an outbound-port error.** At an outbound port (Repository, External Service, File Storage, and any other outbound-port family), a missing entity is a valid outcome: return `Option`/`None` (or a corresponding non-error type) — never a port error variant. A repository expresses absence as an empty `search` result or `Ok(false)` from `delete`; a path-addressed port expresses a missing target as `Ok(false)` or `Ok(None)`; see [Repository](#8-repository) and [File Storage](#265-file-storage). | [§ 2.6](#26-port-errors)                                         |
 | `STY-RUST-022` | Error handling    | **Use-case errors may model absence.** Above the outbound port, a use case may legitimately report a missing entity as an error variant (e.g. `NoSuchUser`, `UnknownCredential`) so the inbound boundary can map it to a transport status such as `404 Not Found`. The "not an error" rule applies to outbound ports only, not to use-case errors.                                                                                                                                                                                     | [§ 2.6](#26-port-errors)                                         |
-| `STY-RUST-026` | Error handling    | Map only the variants that mean _the caller is unauthenticated_ (for example `InvalidClaims`, `InvalidToken`, `TokenExpired`) to a client error. Every other variant — including `OperationFailed` and `Unknown` — maps to `500` and is logged at `error`.                                                                                                                                                                                                                                                                             | [§ 2.7](#27-inbound-middleware)                                  |
+| `STY-RUST-026` | Error handling    | Map only the variants that mean _the caller is unauthenticated_ (for example `InvalidClaims`, `InvalidToken`, `TokenExpired`) to a client error. Every other variant — including `OperationFailed` and `Unknown` — maps to `500`.                                                                                                                                                                                                                                                                                                      | [§ 2.7](#27-inbound-middleware)                                  |
 | `STY-RUST-027` | Error handling    | Match the port error exhaustively. Port errors are `#[non_exhaustive]`, so end the match with a catch-all arm that defaults to `500`; never let a wildcard arm collapse a server-side failure into a misleading `401`.                                                                                                                                                                                                                                                                                                                 | [§ 2.7](#27-inbound-middleware)                                  |
 | `STY-RUST-023` | Domain models     | **Constructor**: `new` when infallible, `try_new` when it can fail; it returns `Result<Self, _>` and performs validation.                                                                                                                                                                                                                                                                                                                                                                                                              | [§ 3.1](#31-getter-and-setter)                                   |
 | `STY-RUST-083` | Domain models     | **Validated deserialization**: a domain model that validates in `try_new` must not derive a `Deserialize` that bypasses it. Route serde through the validating constructor (`#[serde(try_from = "…")]` plus `TryFrom`, or a custom `Deserialize`) so every construction path enforces the same invariant.                                                                                                                                                                                                                              | [§ 3.2](#32-validated-deserialization)                           |
@@ -154,7 +155,7 @@ material. The `#[utoipa::path(...)]` declaration contract lives in the [API sect
 | `STY-RUST-079` | Ports             | Prefer sharing long-lived adapters through `Arc<T>` over adding `Clone`.                                                                                                                                                                                                                                                                                                                                                                                                                                                               | [§ 6.5](#65-prefer-arc-over-clone)                               |
 | `STY-RUST-081` | Ports             | A use case reaches a third-party dependency only through an outbound port, never by calling it directly; the dependencies listed in [§ 6.6](#66-third-party-dependencies-sit-behind-a-port) are the only exceptions.                                                                                                                                                                                                                                                                                                                   | [§ 6.6](#66-third-party-dependencies-sit-behind-a-port)          |
 | `STY-RUST-037` | Unit of Work      | `commit` and `rollback` consume the unit of work.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | [§ 7.1](#71-lifecycle)                                           |
-| `STY-RUST-038` | Unit of Work      | A rollback failure is logged and the **original** business error is returned.                                                                                                                                                                                                                                                                                                                                                                                                                                                          | [§ 7.1](#71-lifecycle)                                           |
+| `STY-RUST-038` | Unit of Work      | A rollback failure returns the **original** business error.                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | [§ 7.1](#71-lifecycle)                                           |
 | `STY-RUST-039` | Unit of Work      | A commit failure maps to the use-case `Unknown(_)`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | [§ 7.1](#71-lifecycle)                                           |
 | `STY-RUST-040` | Unit of Work      | Repository views borrow the unit of work mutably; drop them before `commit`/`rollback`.                                                                                                                                                                                                                                                                                                                                                                                                                                                | [§ 7.1](#71-lifecycle)                                           |
 | `STY-RUST-041` | Unit of Work      | Repository accessors return a short-lived view that borrows the unit of work.                                                                                                                                                                                                                                                                                                                                                                                                                                                          | [§ 7.2](#72-context-views)                                       |
@@ -218,6 +219,10 @@ process lifetime; the per-use adapters a factory accessor or an adapter needs ar
 
 Errors follow a layered model: one error type per role, each translating to the next as it crosses an architectural
 boundary.
+
+Where each error is logged, at what severity, and what may never reach a log sink is a separate concern, governed by
+[§ 9 (Logging & Observability)](#logging--observability). No rule in this section restates a logging obligation; it
+cites an `OBS-*` rule instead.
 
 ---
 
@@ -676,7 +681,8 @@ documentation change:
 - `anyhow` — error plumbing: `Unknown(#[source] anyhow::Error)` is the mandated use-case error shape
   ([§ 2.2](#22-use-case-error), [§ 2.6](#26-port-errors)).
 - `chrono` — date and time: use cases read the current time and carry date-time types.
-- `tracing` — logging: `STY-RUST-038` mandates logging a rollback failure.
+- `tracing` — logging: use cases and infrastructure adapters emit the events required by
+  [§ 9 (Logging & Observability)](#logging--observability), `OBS-002` and `OBS-006`.
 
 ---
 
@@ -708,9 +714,9 @@ match result {
         Ok(value)
     }
     Err(error) => {
-        if let Err(rollback_error) = unit_of_work.rollback().await {
-            error!(error = ?rollback_error, "failed to roll back the unit of work");
-        }
+        // The unit-of-work adapter logs a rollback failure (OBS-002); the use
+        // case returns the original business error (STY-RUST-038).
+        let _ = unit_of_work.rollback().await;
         Err(error)
     }
 }
@@ -889,7 +895,9 @@ The configuration also carries the logging settings (`logging.level`, `logging.r
 configuration **after** `LoadConfiguration` returns: anything logged during bootstrap, `init_db` and `LoadConfiguration`
 itself is discarded, and a startup failure reaches the operator through the error `main` returns. `logging::setup`
 (`src/lib/infrastructure/logging.rs`) fails fast on invalid filter directives and returns the `WorkerGuard` the
-composition root holds for the lifetime of the process.
+composition root holds for the lifetime of the process. Security events emit on the reserved `security` target with a
+`warn` floor that `logging.level` cannot suppress (see [§ 9 (Logging & Observability)](#logging--observability),
+`OBS-007`); `logging::setup` rejects `off`/`none` and any filter directive that targets `security`.
 
 Runtime write-guarding of the configuration is deferred; until it lands, the startup-only settings in § 10.1 are the
 only configuration values a running process holds from startup.
@@ -906,6 +914,7 @@ are the **startup-only settings**; this table is their registry.
 | `persistence.sqlite3.max_connections` | The pool sizing in the same bootstrap.                                                                                                                 | None.                                                                  |
 | `asset.upload.chunk_size_bytes`       | The axum body limit fixed when the router is built (`src/lib/infrastructure/inbound/rest/handler/asset.rs`); the upload use cases read the live value. | None (`TODO(hot-reload)` in the same handler).                         |
 | `asset.storage.root`                  | The `FileSystemStorage` adapter built per use from the root captured in `src/bin/server.rs`.                                                           | None.                                                                  |
+| `logging.level`                       | `logging::setup` (`src/lib/infrastructure/logging.rs`) when the `tracing` subscriber is installed.                                                     | None.                                                                  |
 
 The registry is **extensible**: a setting becomes startup-only by being added here. Adding one records, in the same
 change, how a change to the stored value is surfaced to the operator (a startup warning, or an explicit `None`).
@@ -2457,3 +2466,145 @@ pub enum UserError {
     // [...]
 }
 ```
+
+---
+
+## Logging & Observability
+
+This section governs what the server logs, from which layer, at what severity, and what must never reach a log sink. It
+complements the error model in [§ 1 (Code Style Guidelines)](#2-error-handling): that detail describes how an error is
+abstracted as it crosses a boundary; this section describes where it is logged on the way up. A logging obligation lives
+only here — a rule in another section cites an `OBS-*` rule, it never restates one.
+
+| ID        | Section     | Rule                                                                                                                                                                                                                                                            | More info                                  |
+| --------- | ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ |
+| `OBS-001` | Layers      | Emit log events only from the application and infrastructure layers. The domain returns errors as values and never logs; the composition root is infrastructure and may log lifecycle events.                                                                   | [§ 1](#1-logging-layers)                   |
+| `OBS-002` | Ownership   | Log each error or security event exactly once, at the layer that owns the decision that produced it or that still holds its detail; every layer above maps it to a coarser form and never logs it again.                                                        | [§ 2](#2-log-once-at-the-owning-layer)     |
+| `OBS-003` | Content     | Log a stable classification — an event code or a `kind()` — never the `Display`/`Debug` of an extractor, deserializer, database, filesystem or framework error, and never a raw client-supplied value such as a query string, file name or request-body field.  | [§ 3](#3-log-content)                      |
+| `OBS-004` | Redaction   | Never log application source, session identifiers, access or JWT tokens, passwords or password material, database connection strings, the pepper or JWT signing secret, or personal data; a type that holds a secret must not derive a `Debug` that exposes it. | [§ 4](#4-redaction)                        |
+| `OBS-005` | Severity    | Use only the levels `error`, `warn`, `info`, `debug` and `trace`, assigned per [§ 5](#5-severity); `error` is an operator-actionable fault, `warn` a reviewable security event, `info` a security success or lifecycle event.                                   | [§ 5](#5-severity)                         |
+| `OBS-006` | Catalog     | Emit every event in the catalog in [§ 6](#6-security-event-catalog) at its declared level and with its declared fields.                                                                                                                                         | [§ 6](#6-security-event-catalog)           |
+| `OBS-007` | Suppression | Security events target the reserved `security` target and carry a `warn` floor that `logging.level` cannot suppress.                                                                                                                                            | [§ 7](#7-non-suppressible-security-events) |
+
+---
+
+### 1. Logging layers
+
+The **application** (`src/lib/application/**`) and **infrastructure** (`src/lib/infrastructure/**`) layers emit log
+events. The **domain** (`src/lib/domain/**`) does not: it returns errors as values and must not depend on a logging
+facade. The composition root (`src/bin/server.rs`) is part of the infrastructure layer and logs lifecycle events.
+
+`tracing` is the single logging facade; it is a direct dependency of the application layer under the exemption in
+[§ 6.6](#66-third-party-dependencies-sit-behind-a-port).
+
+---
+
+### 2. Log-once at the owning layer
+
+Each error or security event is logged exactly once, by the layer that owns the decision that produced it — or, for an
+error received from below, the last layer that still holds its detail. Every layer above maps the error to a coarser,
+more abstract form and never logs it again.
+
+| Error or event                                                                                      | Owning layer          | Level                                         | Logged                             | Upper layers                                                   |
+| --------------------------------------------------------------------------------------------------- | --------------------- | --------------------------------------------- | ---------------------------------- | -------------------------------------------------------------- |
+| Port failure (repository, file storage, external service; unit-of-work `begin`/`commit`/`rollback`) | outbound adapter      | `error`, or `warn` for an expected constraint | the failure's `kind` and operation | application maps it and logs nothing; the handler logs nothing |
+| `Unknown` a use case originates (no port produced it)                                               | application use case  | `error`                                       | its `kind`, never a source chain   | the handler logs nothing                                       |
+| Security decision (authentication failure, authorization denial, out-of-order action)               | application use case  | `warn`                                        | the actor and a reason code        | the handler maps it to `401`/`403` and logs nothing            |
+| Token-boundary rejection                                                                            | inbound middleware    | `warn`, or `error` for a provider fault       | the rejection's kind               | —                                                              |
+| Domain rule violation                                                                               | — (returned as value) | —                                             | nothing                            | the use case that invoked it logs it once                      |
+
+The owning layer is the only one that can log something useful: the raw cause of a port failure exists only inside the
+adapter, and the actor and the reason of an authentication decision exist only inside the use case. By the time the
+error reaches the handler it is an opaque `Unknown`, so logging it there would emit a content-free duplicate. Logging an
+error in more than one layer, or logging a chain already classified below, violates this rule.
+
+---
+
+### 3. Log content
+
+An event logs a stable classification — an event code, or a `kind()` that names a variant — and structured identifiers.
+It never logs the `Display` or `Debug` of an extractor, deserializer, database, filesystem or framework error, because
+those strings embed the offending input value and internal detail. It never logs a raw client-supplied value either: not
+a query string, not a file name, not a request-body field. Where a client value must be correlated across events, log a
+generated request identifier instead.
+
+For example, the trace middleware logs the request method and path; it never logs the full `Uri`, whose query string is
+client-controlled and may carry personal data or a token. A file-storage failure logs its classification; it never logs
+the user-supplied file name.
+
+---
+
+### 4. Redaction
+
+Never log:
+
+- application source code;
+- session identifiers, access tokens or JWT tokens;
+- passwords or any password material;
+- database connection strings;
+- the pepper or the JWT signing secret;
+- personal data.
+
+A type that holds a secret must not derive a `Debug` that exposes it. `Security`, `Jwt`, `Configuration` and
+`Credential` (`src/lib/domain/model/`) carry a pepper, a signing secret, a configuration dump and a password hash; each
+must implement `Debug` by redaction, or hold its secret in a type whose `Debug` prints a placeholder.
+
+---
+
+### 5. Severity
+
+| Level   | Use                                                   | Examples                                                                                                                                                                                                |
+| ------- | ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `error` | An operator-actionable fault the caller cannot fix.   | datastore or filesystem unavailable, a commit or rollback failure, a token-provider operational failure, an unhandled `500`.                                                                            |
+| `warn`  | A reviewable security event; not necessarily a fault. | input or output validation failure, discrete-list rejection, authentication or authorization failure, an invalid or expired token, a deserialization failure, a limit exceeded, an out-of-order action. |
+| `info`  | A security success or a lifecycle event.              | startup, shutdown, logging initialization, authentication success, a user-administration or credential change, an accepted upload, a generated secret.                                                  |
+| `debug` | Diagnostics with no security relevance.               | request tracing, internal state.                                                                                                                                                                        |
+| `trace` | Driver or framework detail.                           | —                                                                                                                                                                                                       |
+
+`error` is reserved for faults an operator must act on; an expected business-rule violation is not an `error`.
+
+---
+
+### 6. Security-event catalog
+
+These events are normative: each is emitted at its declared level with its declared fields. A field is an identifier, a
+code or a classification — never a value.
+
+| Event                       | Level   | Fields                       | Emitted when                                                                                |
+| --------------------------- | ------- | ---------------------------- | ------------------------------------------------------------------------------------------- |
+| `input_validation_failed`   | `warn`  | `field`, `reason`            | a client-supplied value fails validation in a handler or use case                           |
+| `enum_validation_failed`    | `warn`  | `field`, `reason`            | a discrete, finite list (for example `Role`) rejects a value                                |
+| `output_validation_failed`  | `warn`  | `reason`                     | stored data fails to decode, or an integrity check fails                                    |
+| `authn_succeeded`           | `info`  | `actor`                      | a credential is accepted                                                                    |
+| `authn_failed`              | `warn`  | `claimed_identity`, `reason` | a credential is rejected; one reason, never distinguishing a bad identity from a bad secret |
+| `authz_failed`              | `warn`  | `actor`, `action`, `target`  | an authorization decision denies an action                                                  |
+| `session_validation_failed` | `warn`  | `reason`                     | a token is missing, invalid or expired                                                      |
+| `deserialization_failed`    | `warn`  | `source`, `reason`           | a JSON body or the configuration fails to deserialize                                       |
+| `application_error`         | `error` | `operation`                  | a use case originates an internal `Unknown`                                                 |
+| `port_fault`                | `error` | `kind`, `operation`          | an outbound adapter maps a dependency failure                                               |
+| `lifecycle`                 | `info`  | `component`, `outcome`       | startup, shutdown or logging initialization                                                 |
+| `user_admin`                | `info`  | `actor`, `action`, `target`  | a user is created or updated, a role or credential changes                                  |
+| `secret_initialized`        | `info`  | `component`                  | the pepper or the JWT signing secret is generated at startup                                |
+| `credential_rotated`        | `info`  | `actor`                      | a password is replaced or rehashed                                                          |
+| `upload`                    | `info`  | `actor`, `upload`, `outcome` | an upload is accepted, a chunk written, or an upload completed                              |
+| `suspicious_business_logic` | `warn`  | `actor`, `action`, `reason`  | an action is out of order, nonsensical in context, or exceeds a limit                       |
+| `sensitive_data_access`     | `debug` | `actor`, `object`            | a request reads personal data                                                               |
+| `system_object`             | `info`  | `object`, `action`           | a system-level object is created (the configuration singleton, the Root Admin)              |
+| `unexpected_http_method`    | `warn`  | `method`, `path`             | a request uses a method the route does not support                                          |
+
+Events with no surface in this server are deliberately absent: import/export, network and TLS failures, payment,
+geolocation and consent, fraud, rate-limit and excessive-use, and key rotation.
+
+---
+
+### 7. Non-suppressible security events
+
+Catalog events emit on the reserved `security` target. `logging::setup` (`src/lib/infrastructure/logging.rs`) builds the
+filter so a `warn` floor for that target survives any `logging.level`: it rejects `off`/`none` as a whole-level value
+and rejects a directive that targets `security`, so `logging.level` tunes operational verbosity only and can never
+suppress a security event. `logging.level` is startup-only (`STY-RUST-082`; see [§ 10.1](#101-startup-only-settings)).
+
+---
+
+**Reference** — [OWASP Logging Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Logging_Cheat_Sheet.html),
+filtered to the events this server can emit.
