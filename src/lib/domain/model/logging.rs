@@ -23,7 +23,12 @@ pub enum Rotation {
 }
 
 /// Logging settings.
+///
+/// Deserialization is routed through `LoggingConfig` and [`TryFrom`] so that the
+/// layered configuration cannot bypass the validation performed by
+/// [`Logging::try_new`].
 #[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+#[serde(try_from = "LoggingConfig")]
 #[non_exhaustive]
 pub struct Logging {
     /// Whether to colour the standard-output sink with ANSI escape codes.
@@ -34,6 +39,30 @@ pub struct Logging {
     max_files: u32,
     /// Rotation period of the file sink.
     rotation: Rotation,
+}
+
+/// Unchecked deserialization mirror of [`Logging`].
+///
+/// Serde builds this snapshot and hands it to the [`TryFrom`] implementation,
+/// which validates it through [`Logging::try_new`].
+#[derive(serde::Deserialize)]
+struct LoggingConfig {
+    /// Whether to colour the standard-output sink with ANSI escape codes.
+    ansi: bool,
+    /// Verbosity filter applied to the `tracing` instrumentation.
+    level: String,
+    /// Maximum number of rotated log files to keep; `0` keeps every file.
+    max_files: u32,
+    /// Rotation period of the file sink.
+    rotation: Rotation,
+}
+
+impl TryFrom<LoggingConfig> for Logging {
+    type Error = LoggingError;
+
+    fn try_from(config: LoggingConfig) -> Result<Self, Self::Error> {
+        Self::try_new(config.ansi, config.level, config.max_files, config.rotation)
+    }
 }
 
 impl Logging {

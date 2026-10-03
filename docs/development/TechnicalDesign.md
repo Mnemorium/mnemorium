@@ -133,6 +133,7 @@ material. The `#[utoipa::path(...)]` declaration contract lives in the [API sect
 | `STY-RUST-026` | Error handling    | Map only the variants that mean _the caller is unauthenticated_ (for example `InvalidClaims`, `InvalidToken`, `TokenExpired`) to a client error. Every other variant — including `OperationFailed` and `Unknown` — maps to `500` and is logged at `error`.                                                                                                                                                              | [§ 2.7](#27-inbound-middleware)                                  |
 | `STY-RUST-027` | Error handling    | Match the port error exhaustively. Port errors are `#[non_exhaustive]`, so end the match with a catch-all arm that defaults to `500`; never let a wildcard arm collapse a server-side failure into a misleading `401`.                                                                                                                                                                                                  | [§ 2.7](#27-inbound-middleware)                                  |
 | `STY-RUST-023` | Domain models     | **Constructor**: `new` when infallible, `try_new` when it can fail; it returns `Result<Self, _>` and performs validation.                                                                                                                                                                                                                                                                                               | [§ 3.1](#31-getter-and-setter)                                   |
+| `STY-RUST-083` | Domain models     | **Validated deserialization**: a domain model that validates in `try_new` must not derive a `Deserialize` that bypasses it. Route serde through the validating constructor (`#[serde(try_from = "…")]` plus `TryFrom`, or a custom `Deserialize`) so every construction path enforces the same invariant.                                                                                                               | [§ 3.2](#32-validated-deserialization)                           |
 | `STY-RUST-024` | Domain models     | **Getter**: `<field>(&self) -> <field type>`. Return a borrowed reference (`&str`, `Option<&str>`) or a `Copy` value type — never an owned clone.                                                                                                                                                                                                                                                                       | [§ 3.1](#31-getter-and-setter)                                   |
 | `STY-RUST-025` | Domain models     | **Setter**: `set_<field>(&mut self, <value>)`. Return `Result<(), _>` when the field is validated, `()` otherwise.                                                                                                                                                                                                                                                                                                      | [§ 3.1](#31-getter-and-setter)                                   |
 | `STY-RUST-028` | SQL data models   | Name the enum after the attribute it represents, in `UpperCamelCase`, e.g. `Role` for the `role` column of table `user` used in model `User`.                                                                                                                                                                                                                                                                           | [§ 4.1](#41-enum-for-a-check-constraint)                         |
@@ -405,6 +406,39 @@ impl User {
 
 Note: reject-invalid-then-assign. A setter validates the new value, assigns only on success, and reports the cause
 through the domain error enum when it fails.
+
+---
+
+##### 3.2 Validated deserialization
+
+A domain model that validates in `try_new` must enforce the same invariant on every deserialization path. A derived
+`Deserialize` constructs the fields directly and bypasses the constructor, so a layered configuration (file,
+environment) can produce a value the model would reject. Route serde through the validating constructor instead: declare
+a private unchecked mirror struct and deserialize through it with `#[serde(try_from = "…")]` and `TryFrom`.
+
+```rust
+#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+#[serde(try_from = "UserConfig")]
+pub struct User {
+    username: String,
+}
+
+#[derive(serde::Deserialize)]
+struct UserConfig {
+    username: String,
+}
+
+impl TryFrom<UserConfig> for User {
+    type Error = UserError;
+
+    fn try_from(config: UserConfig) -> Result<Self, Self::Error> {
+        Self::try_new(config.username)
+    }
+}
+```
+
+A `#[serde(default = "…")]` attribute on a field moves to the mirror struct with the field itself. Validation errors
+surface through the existing domain error enum, so the caller maps them the same way as a `try_new` failure.
 
 ---
 

@@ -261,6 +261,7 @@ mod tests {
     use crate::application::port::load_configuration::LoadConfigurationError;
     use crate::application::port::load_configuration::LoadConfigurationUseCase as _;
     use crate::domain::model::asset::Asset;
+    use crate::domain::model::asset::AssetStorage;
     use crate::domain::model::asset::AssetUpload;
     use crate::domain::model::configuration::Configuration;
     use crate::domain::model::jwt::Jwt;
@@ -630,6 +631,216 @@ mod tests {
         assert_eq!(upload.chunk_size_bytes(), 2048);
         assert_eq!(upload.expiry_seconds(), 120);
         assert_eq!(upload.max_file_size_bytes(), 4_294_967_296);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn logging_deserialization_rejects_empty_level() {
+        // Arrange
+        let payload = r#"{"ansi":false,"level":"","max_files":7,"rotation":"DAILY"}"#;
+
+        // Act
+        let message = serde_json::from_str::<Logging>(payload)
+            .map_err(|error| error.to_string())
+            .err()
+            .unwrap_or_default();
+
+        // Assert
+        assert!(
+            message.contains("logging level must not be empty"),
+            "deserialization must reject an empty level, got: {message:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn logging_deserializes_valid_settings() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let payload =
+            r#"{"ansi":true,"level":"info,sqlx=trace","max_files":3,"rotation":"HOURLY"}"#;
+
+        // Act
+        let logging = serde_json::from_str::<Logging>(payload)?;
+
+        // Assert
+        assert!(logging.ansi());
+        assert_eq!(logging.level(), "info,sqlx=trace");
+        assert_eq!(logging.max_files(), 3);
+        assert_eq!(logging.rotation(), Rotation::Hourly);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn security_deserialization_rejects_invalid_pepper() {
+        // Arrange
+        let payload = format!(
+            r#"{{"jwt":{{"secret":"{}","ttl":3600}},"pepper":"not-a-pepper"}}"#,
+            hex64('a')
+        );
+
+        // Act
+        let message = serde_json::from_str::<Security>(&payload)
+            .map_err(|error| error.to_string())
+            .err()
+            .unwrap_or_default();
+
+        // Assert
+        assert!(
+            message.contains("pepper must be a"),
+            "deserialization must reject an invalid pepper, got: {message:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn security_deserializes_valid_settings() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let payload = format!(
+            r#"{{"jwt":{{"secret":"{}","ttl":3600}},"pepper":"{}"}}"#,
+            hex64('a'),
+            hex64('b')
+        );
+
+        // Act
+        let security = serde_json::from_str::<Security>(&payload)?;
+
+        // Assert
+        assert_eq!(security.jwt().secret(), hex64('a'));
+        assert_eq!(security.jwt().ttl(), 3600);
+        assert_eq!(security.pepper(), hex64('b'));
+        assert!(
+            security.log_root_admin_password(),
+            "log_root_admin_password must default to true when omitted"
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn jwt_deserialization_rejects_invalid_secret() {
+        // Arrange
+        let payload = r#"{"secret":"not-a-secret","ttl":3600}"#;
+
+        // Act
+        let message = serde_json::from_str::<Jwt>(payload)
+            .map_err(|error| error.to_string())
+            .err()
+            .unwrap_or_default();
+
+        // Assert
+        assert!(
+            message.contains("jwt secret must be a"),
+            "deserialization must reject an invalid secret, got: {message:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn jwt_deserialization_rejects_zero_ttl() {
+        // Arrange
+        let payload = format!(r#"{{"secret":"{}","ttl":0}}"#, hex64('a'));
+
+        // Act
+        let message = serde_json::from_str::<Jwt>(&payload)
+            .map_err(|error| error.to_string())
+            .err()
+            .unwrap_or_default();
+
+        // Assert
+        assert!(
+            message.contains("jwt ttl must be greater than zero"),
+            "deserialization must reject a zero ttl, got: {message:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn jwt_deserializes_valid_settings() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let payload = format!(r#"{{"secret":"{}","ttl":3600}}"#, hex64('a'));
+
+        // Act
+        let jwt = serde_json::from_str::<Jwt>(&payload)?;
+
+        // Assert
+        assert_eq!(jwt.secret(), hex64('a'));
+        assert_eq!(jwt.ttl(), 3600);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn sqlite3_deserialization_rejects_empty_path() {
+        // Arrange
+        let payload = r#"{"max_connections":4,"path":""}"#;
+
+        // Act
+        let message = serde_json::from_str::<Sqlite3>(payload)
+            .map_err(|error| error.to_string())
+            .err()
+            .unwrap_or_default();
+
+        // Assert
+        assert!(
+            message.contains("sqlite3 path must not be empty"),
+            "deserialization must reject an empty path, got: {message:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn sqlite3_deserialization_rejects_zero_max_connections() {
+        // Arrange
+        let payload = r#"{"max_connections":0,"path":"mnemorium.db"}"#;
+
+        // Act
+        let message = serde_json::from_str::<Sqlite3>(payload)
+            .map_err(|error| error.to_string())
+            .err()
+            .unwrap_or_default();
+
+        // Assert
+        assert!(
+            message.contains("sqlite3 max_connections must be greater than zero"),
+            "deserialization must reject zero max connections, got: {message:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn sqlite3_deserializes_valid_settings() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let payload = r#"{"max_connections":4,"path":"mnemorium.db"}"#;
+
+        // Act
+        let sqlite3 = serde_json::from_str::<Sqlite3>(payload)?;
+
+        // Assert
+        assert_eq!(sqlite3.max_connections(), 4);
+        assert_eq!(sqlite3.path(), "mnemorium.db");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn asset_storage_deserialization_rejects_empty_root() {
+        // Arrange
+        let payload = r#"{"root":""}"#;
+
+        // Act
+        let message = serde_json::from_str::<AssetStorage>(payload)
+            .map_err(|error| error.to_string())
+            .err()
+            .unwrap_or_default();
+
+        // Assert
+        assert!(
+            message.contains("asset storage root must not be empty"),
+            "deserialization must reject an empty root, got: {message:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn asset_storage_deserializes_valid_root() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let payload = r#"{"root":"media"}"#;
+
+        // Act
+        let storage = serde_json::from_str::<AssetStorage>(payload)?;
+
+        // Assert
+        assert_eq!(storage.root(), "media");
         Ok(())
     }
 

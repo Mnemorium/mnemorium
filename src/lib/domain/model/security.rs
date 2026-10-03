@@ -17,7 +17,12 @@ pub enum SecurityError {
 }
 
 /// Security-related settings.
+///
+/// Deserialization is routed through `SecurityConfig` and [`TryFrom`] so that
+/// the layered configuration cannot bypass the validation performed by
+/// [`Security::try_new`].
 #[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+#[serde(try_from = "SecurityConfig")]
 #[non_exhaustive]
 pub struct Security {
     /// `JWT` settings.
@@ -28,6 +33,30 @@ pub struct Security {
     log_root_admin_password: bool,
     /// Site-wide secret mixed into password hashes.
     pepper: String,
+}
+
+/// Unchecked deserialization mirror of [`Security`].
+///
+/// Serde builds this snapshot and hands it to the [`TryFrom`] implementation,
+/// which validates it through [`Security::try_new`].
+#[derive(serde::Deserialize)]
+struct SecurityConfig {
+    /// `JWT` settings.
+    jwt: Jwt,
+    /// Whether the Root Admin default password is still logged to standard
+    /// output on runtime start.
+    #[serde(default = "default_log_root_admin_password")]
+    log_root_admin_password: bool,
+    /// Site-wide secret mixed into password hashes.
+    pepper: String,
+}
+
+impl TryFrom<SecurityConfig> for Security {
+    type Error = SecurityError;
+
+    fn try_from(config: SecurityConfig) -> Result<Self, Self::Error> {
+        Self::try_new(config.jwt, config.pepper, config.log_root_admin_password)
+    }
 }
 
 impl Security {
