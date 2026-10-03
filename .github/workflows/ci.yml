@@ -70,6 +70,8 @@ jobs:
       nix: ${{ steps.filter.outputs.nix_any_changed }}
       deps: ${{ steps.filter.outputs.deps_any_changed }}
       lint: ${{ steps.filter.outputs.lint_any_changed }}
+      container: ${{ steps.filter.outputs.container_any_changed }}
+      ci: ${{ steps.filter.outputs.ci_any_changed }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
@@ -109,6 +111,11 @@ jobs:
               - 'Cargo.lock'
             lint:
               - '**'
+            container:
+              - 'Dockerfile'
+              - '.dockerignore'
+            ci:
+              - '.github/workflows/**'
 
   scopes:
     needs: [changes, betterleaks]
@@ -239,7 +246,9 @@ jobs:
 
   rust:
     needs: [changes, betterleaks]
-    if: needs.changes.outputs.rust == 'true'
+    if: >-
+      needs.changes.outputs.rust == 'true' ||
+      needs.changes.outputs.sql == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
@@ -297,6 +306,73 @@ jobs:
           path: .artifacts/coverage
           retention-days: 14
           if-no-files-found: ignore
+
+  e2e:
+    needs: [changes, betterleaks, rust]
+    if: >-
+      always() &&
+      needs.changes.result == 'success' &&
+      needs.betterleaks.result == 'success' &&
+      (needs.rust.result == 'success' || needs.rust.result == 'skipped') &&
+      (needs.changes.outputs.rust == 'true' ||
+      needs.changes.outputs.python == 'true' ||
+      needs.changes.outputs.container == 'true' ||
+      needs.changes.outputs.sql == 'true' ||
+      needs.changes.outputs.ci == 'true')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+        with:
+          python-version: "3.14"
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069  # v4
+      - name: Build image
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc  # v7
+        with:
+          context: .
+          load: true
+          tags: mnemorium
+          cache-from: type=gha,scope=e2e-image
+          cache-to: type=gha,mode=max,scope=e2e-image
+      - name: Start container
+        run: |
+          docker rm -f mnemorium-e2e || true
+          docker run -d --name mnemorium-e2e -p 4080:4080 mnemorium
+      - name: Wait for health
+        run: |
+          for _ in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:4080/health >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "server not healthy within 60s" >&2
+          exit 1
+      - name: Run E2E tests
+        env:
+          PYTHONPATH: ${{ github.workspace }}/test/e2e
+          MNEMORIUM_E2E_BASE_URL: http://127.0.0.1:4080
+        run: >-
+          pytest -p no:cacheprovider -ra --tb=short
+          --junitxml=.artifacts/e2e/junit.xml test/e2e
+      - name: Upload E2E artifacts
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
+        with:
+          name: e2e-report
+          path: .artifacts/e2e
+          retention-days: 14
+          if-no-files-found: ignore
+      - name: Stop container
+        if: always()
+        run: docker rm -f mnemorium-e2e || true
 
   security:
     needs: [changes, betterleaks]
@@ -432,7 +508,7 @@ jobs:
         run: yamllint -c .yamllint .
 
   review:
-    needs: [semgrep, rust]
+    needs: [semgrep, rust, e2e]
     if: always()
     runs-on: ubuntu-latest
     permissions:
@@ -454,6 +530,11 @@ jobs:
         with:
           name: coverage-report
           path: .artifacts/coverage
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
+        continue-on-error: true
+        with:
+          name: e2e-report
+          path: .artifacts/e2e
       - run: npm install --global @opencode/cli@2.0.22
       - name: Check the GitHub MCP server connection
         env:
