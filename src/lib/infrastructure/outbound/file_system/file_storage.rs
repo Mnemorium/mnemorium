@@ -8,6 +8,7 @@ use tokio::fs;
 use tokio::io::AsyncReadExt as _;
 use tokio::io::AsyncSeekExt as _;
 use tokio::io::AsyncWriteExt as _;
+use tracing::error;
 
 use crate::domain::model::integrity_hash::IntegrityHash;
 use crate::domain::model::integrity_hash::SHA256_HEX_LENGTH;
@@ -185,7 +186,28 @@ impl FileStorage for FileSystemStorage {
         async move {
             match fs::rename(&owned_staged, &owned_final).await {
                 Ok(()) => Ok(true),
-                Err(err) if err.kind() == ErrorKind::NotFound => Ok(false),
+                // `rename` reports `NotFound` both when the source is missing
+                // and when a component of the destination path is missing.
+                // Probe the source to tell the two apart: only a staged file
+                // that is genuinely absent is a value, whereas a missing
+                // destination directory is a layout failure, not absence.
+                Err(err) if err.kind() == ErrorKind::NotFound => {
+                    match fs::metadata(&owned_staged).await {
+                        Err(metadata_err) if metadata_err.kind() == ErrorKind::NotFound => {
+                            Ok(false)
+                        }
+                        Ok(_) => {
+                            error!(
+                                error = ?err,
+                                staged = %owned_staged.display(),
+                                final_path = %owned_final.display(),
+                                "cannot promote the staged file: a destination directory is missing"
+                            );
+                            Err(StorageError::OperationFailed)
+                        }
+                        Err(metadata_err) => Err(Self::map_io_error(metadata_err)),
+                    }
+                }
                 Err(err) => Err(Self::map_io_error(err)),
             }
         }
@@ -226,6 +248,7 @@ mod tests {
     use tokio::fs;
 
     use super::FileSystemStorage;
+    use crate::domain::port::error::StorageError;
     use crate::domain::port::file_storage::FileStorage as _;
 
     #[tokio::test]
@@ -446,12 +469,41 @@ mod tests {
         let storage = FileSystemStorage::new();
         let staged = tmp.path().join("uploads").join("42");
         let final_path = tmp.path().join("files").join("42_clip.mp4");
+        // The destination directory exists, so the only missing component is
+        // the staged file itself.
+        storage.create_directory(&tmp.path().join("files")).await?;
 
         // Act
         let result = storage.promote(&staged, &final_path).await;
 
         // Assert
         assert!(!result?);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn promote_staged_file_missing_destination_directory_returns_operation_failed()
+    -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let tmp = tempdir()?;
+        let storage = FileSystemStorage::new();
+        let staged = tmp.path().join("uploads").join("42");
+        let final_path = tmp.path().join("files").join("42_clip.mp4");
+        storage
+            .create_directory(&tmp.path().join("uploads"))
+            .await?;
+        storage.create_upload_file(&staged, 4).await?;
+        storage.add_chunk(&staged, 0, b"1234".to_vec()).await?;
+
+        // Act
+        let result = storage.promote(&staged, &final_path).await;
+
+        // Assert
+        assert!(matches!(result, Err(StorageError::OperationFailed)));
+        assert!(
+            staged.is_file(),
+            "a failed promote must leave the staged file in place"
+        );
         Ok(())
     }
 
