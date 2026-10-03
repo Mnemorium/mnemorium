@@ -1,8 +1,8 @@
 # Technical Design Document
 
 **Status** — living document. This is the canonical reference for how Mnemorium is designed and built: code style,
-architecture, API contract, persistence, testing, and dependencies. It binds production code, tests, migrations, and
-documentation.
+architecture, API contract, persistence, testing, dependencies, and documentation. It binds production code, tests,
+migrations, and documentation.
 
 This is not a feature specification: what a feature _does_ belongs in an issue or a use case (see
 [UseCases.md](UseCases.md)); how the codebase _must be shaped_ belongs here. When code and this document disagree, fix
@@ -32,8 +32,10 @@ written to be cited and checked.
 | 5   | Testing                        | migrated | —                          | rust-developer (unit/integration), qa-e2e (E2E) |
 | 6   | Dependencies & Dev Environment | migrated | —                          | devops                                          |
 | 7   | Repository Governance          | migrated | —                          | technical-writer (docs), devops (gates)         |
+| 8   | Documentation                  | migrated | —                          | technical-writer                                |
 
-Rule-ID prefixes: § 1 `STY-*`, § 2 `ARCH-*`, § 3 `API-*`, § 4 `PERS-*`, § 5 `TEST-*`, § 6 `DEPS-*`, § 7 `GOV-*`.
+Rule-ID prefixes: § 1 `STY-*`, § 2 `ARCH-*`, § 3 `API-*`, § 4 `PERS-*`, § 5 `TEST-*`, § 6 `DEPS-*`, § 7 `GOV-*`, § 8
+`DOC-*`.
 
 - **migrated** — the content lives in this document.
 - **linked** — the section number is reserved; the canonical content still lives in the linked document and migrates
@@ -224,17 +226,20 @@ boundary.
 Declare the error enum before the model struct, in the same file. It reports failures when initialising or updating a
 domain model.
 
+Drawn from `src/lib/domain/model/user.rs`:
+
 ```rust
 #[derive(Debug, thiserror::Error)]
-pub enum CreateUserError {
+pub enum UserError {
     #[error("email has an invalid format")]
-    InvalidEmail,
+    InvalidEmail(#[from] email_address::Error),
+    // [...]
     #[error("an unknown error occurred: {0}")]
     Unknown(#[source] anyhow::Error),
 }
 
 pub struct User {
-    // ...
+    // [...]
 }
 ```
 
@@ -247,13 +252,16 @@ client-supplied parameter the use case validates (for example a raw integrity ha
 that never reaches the use case — a path or JSON field rejected at the inbound boundary — needs no variant, so a command
 whose fields are already-validated types (such as `NumericID`) may expose only `Unknown(_)` and its business variants.
 
+Drawn from `src/lib/application/port/register_user.rs`:
+
 ```rust
 #[derive(Debug, thiserror::Error)]
-pub enum CreateUserError {
-    #[error("a user with this email already exists")]
+pub enum RegisterUserError {
+    #[error("a user with this username or email already exists")]
     UserAlreadyExists,
     #[error("email has an invalid format")]
     InvalidEmail,
+    // [...]
     #[error("an unknown error occurred: {0}")]
     Unknown(#[source] anyhow::Error),
 }
@@ -267,15 +275,18 @@ to `ApiError::NotFound`; only outbound ports must express absence as a value, no
 
 ##### 2.3 Mapping use-case error to API error
 
-Each rest handler file declares the mapping from its use-case error to the `ApiError`:
+Each rest handler file declares the mapping from its use-case error to the `ApiError`.
+
+Drawn from `src/lib/infrastructure/inbound/rest/handler/identity/post_register.rs`:
 
 ```rust
-impl From<CreateUserError> for ApiError {
-    fn from(err: CreateUserError) -> Self {
+impl From<RegisterUserError> for ApiError {
+    fn from(err: RegisterUserError) -> Self {
         match err {
-            CreateUserError::UserAlreadyExists => ApiError::Conflict,
-            CreateUserError::InvalidEmail => ApiError::BadRequest,
-            CreateUserError::Unknown(_) => ApiError::InternalServerError,
+            RegisterUserError::UserAlreadyExists => ApiError::Conflict(err.to_string()),
+            RegisterUserError::InvalidEmail => ApiError::BadRequest(err.to_string()),
+            RegisterUserError::Unknown(_) => ApiError::InternalServerError,
+            // [...]
         }
     }
 }
@@ -2377,3 +2388,39 @@ Two things are exempt because the release tooling generates them and they bypass
 `script/check_scopes.sh` is the enforcement: it parses the table above, asserts it matches the `scopes:` list in
 `.github/workflows/ci.yml`, and verifies every tracked path maps to exactly one scope. It runs in pre-commit and in the
 CI `scopes` job; a failure cites `GOV-001`.
+
+---
+
+## Documentation
+
+This section governs the examples and excerpts the documentation publishes. It keeps every published example traceable
+to the code it restates, so a reader can verify it and a reviewer can catch it going stale.
+
+| ID        | Section       | Rule                                                                                                                                                                                 | More info               |
+| --------- | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------- |
+| `DOC-001` | Code examples | An example that restates production code names the source path it is drawn from, is updated in the same change as that code, and may elide omitted regions with a `// [...]` marker. | [§ 1](#1-code-examples) |
+
+---
+
+### 1. Code examples
+
+A code example drawn from production code has two duties and one allowance:
+
+- **Cite the source.** Name the path it is drawn from, in an inline code span on the line immediately before the fenced
+  block.
+- **Track the source.** When the named file changes, update the example in the same change. Never let the example and
+  the code disagree.
+- **Elide, don't paraphrase.** Mark omitted regions with `// [...]` and keep the shape of the parts that remain.
+
+For example, drawn from `src/lib/domain/model/user.rs`:
+
+```rust
+#[derive(Debug, thiserror::Error)]
+pub enum UserError {
+    #[error("email has an invalid format")]
+    InvalidEmail(#[from] email_address::Error),
+    // [...]
+    #[error("an unknown error occurred: {0}")]
+    Unknown(#[source] anyhow::Error),
+}
+```

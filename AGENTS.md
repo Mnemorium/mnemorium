@@ -69,6 +69,12 @@ use wildcard dependency versions, and keep `cargo deny` clean.
 See `docs/development/TechnicalDesign.md` § 7 (Repository Governance), `GOV-001`
 for the commit and pull-request scope set and the paths each scope owns.
 
+## Documentation
+
+See `docs/development/TechnicalDesign.md` § 8 (Documentation), `DOC-001` for the
+code-example conventions: an example cites the source it restates, tracks that
+code, and marks elided regions with `// [...]`.
+
 ## Special Rules
 
 - Respect the hexagonal dependency direction: `domain` ← `application` ←

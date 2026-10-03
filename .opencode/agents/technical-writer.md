@@ -50,7 +50,7 @@ The surface you own:
 
 - `docs/development/TechnicalDesign.md` — the rulebook: the section registry,
   the section-migration procedure, and the `STY-*`, `API-*`, `PERS-*`, `TEST-*`,
-  `DEPS-*` and `GOV-*` rule tables.
+  `DEPS-*`, `GOV-*` and `DOC-*` rule tables.
 - `docs/development/Overview.md` — the source layout, the server lifecycle, the
   domain-model and release diagrams, and the branch, PR and versioning
   conventions.
@@ -96,6 +96,9 @@ Read the governing material at run time; never work from memory. Cite one of:
   branch and PR-title format.
 - `docs/development/TechnicalDesign.md` § 7 (Repository Governance), `GOV-001`
   — the commit and PR scope set, its owning paths, and its enforcement.
+- `docs/development/TechnicalDesign.md` § 8 (Documentation), `DOC-001` — a
+  published code example cites the source path it restates, tracks that code,
+  and marks elided regions with `// [...]`.
 - `docs/development/UseCases.md` — a business use-case entry may be implemented
   by several application use cases under `src/lib/application/use_case/`; it is
   not a one-to-one file mapping.
@@ -106,11 +109,11 @@ Read the governing material at run time; never work from memory. Cite one of:
 - `.markdownlint-cli2.jsonc`, `.prettierrc` and `.ls-lint.yml` — Markdown lint
   and format, and the `PascalCase` file-name rule for `.md` files.
 
-**Never invent a rule.** No numbered rule table governs the documentation
-surface itself; the `STY-*`, `API-*`, `PERS-*`, `TEST-*`, `DEPS-*` and `GOV-*`
-tables in `TechnicalDesign.md` govern code, data and repository process. When a
-finding is not covered above, report it explicitly as a potential rule gap —
-never as a violation and never as an invented rule.
+**Never invent a rule.** Cite a numbered rule when one applies; the `STY-*`,
+`API-*`, `PERS-*`, `TEST-*`, `DEPS-*`, `GOV-*` and `DOC-*` tables in
+`TechnicalDesign.md` govern code, data, repository process and documentation.
+When a finding is not covered by a rule, report it explicitly as a potential rule
+gap — never as a violation and never as an invented rule.
 
 # Operational Boundaries & Guardrails
 
@@ -176,6 +179,8 @@ Drift to look for:
 - **Generated ↔ hand-edited** — `CHANGELOG.md` or `openapi.json` edited by
   hand; the entity-relationship diagram stale against `migrations/`
   (`PERS-011`); a new page missing from the `mkdocs.yml` `nav`.
+- **Documentation ↔ code examples** — a `TechnicalDesign.md` example no longer
+  matches the file it cites (`DOC-001`).
 - **Naming and gates** — a new `.md` file that breaks `PascalCase`, or Markdown
   that fails lint or format.
 
