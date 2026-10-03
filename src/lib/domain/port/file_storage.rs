@@ -18,13 +18,14 @@ use crate::domain::port::error::StorageError;
 pub trait FileStorage: Send + Sync {
     /// Write `chunk` at `offset` bytes from the start of the file at `path`.
     ///
-    /// Writing the same chunk at the same offset is idempotent.
+    /// Writing the same chunk at the same offset is idempotent. A file that does
+    /// not exist at `path` is a valid outcome, reported as `Ok(false)`.
     fn add_chunk(
         &self,
         path: &Path,
         offset: u64,
         chunk: Vec<u8>,
-    ) -> impl Future<Output = Result<(), StorageError>> + Send;
+    ) -> impl Future<Output = Result<bool, StorageError>> + Send;
 
     /// Create the directory at `path`, including any missing parent.
     ///
@@ -65,18 +66,22 @@ pub trait FileStorage: Send + Sync {
     /// Stream the file at `path` and return its integrity hash.
     ///
     /// The adapter reads the file in bounded chunks; the whole content is never
-    /// loaded into memory.
+    /// loaded into memory. A file that does not exist at `path` is a valid
+    /// outcome, reported as `Ok(None)`.
     fn integrity_hash(
         &self,
         path: &Path,
-    ) -> impl Future<Output = Result<IntegrityHash<SHA256_HEX_LENGTH>, StorageError>> + Send;
+    ) -> impl Future<Output = Result<Option<IntegrityHash<SHA256_HEX_LENGTH>>, StorageError>> + Send;
 
     /// Move the file at `staged` to `final_path`.
+    ///
+    /// A staged file that does not exist is a valid outcome, reported as
+    /// `Ok(false)`.
     fn promote(
         &self,
         staged: &Path,
         final_path: &Path,
-    ) -> impl Future<Output = Result<(), StorageError>> + Send;
+    ) -> impl Future<Output = Result<bool, StorageError>> + Send;
 
     /// Move the file at `final_path` back to `staged`.
     ///

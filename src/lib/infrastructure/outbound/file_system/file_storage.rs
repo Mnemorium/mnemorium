@@ -29,11 +29,12 @@ pub struct FileSystemStorage;
 
 impl FileSystemStorage {
     /// Map an I/O error onto a storage error.
+    ///
+    /// A missing entity is never mapped here: the operations for which absence
+    /// is a valid outcome handle `NotFound` themselves and return a value.
     fn map_io_error(err: Error) -> StorageError {
         let kind = err.kind();
-        if kind == ErrorKind::NotFound {
-            StorageError::Conflict
-        } else if kind == ErrorKind::PermissionDenied {
+        if kind == ErrorKind::PermissionDenied {
             StorageError::Unavailable
         } else {
             StorageError::Unknown(err.into())
@@ -53,21 +54,21 @@ impl FileStorage for FileSystemStorage {
         path: &Path,
         offset: u64,
         chunk: Vec<u8>,
-    ) -> impl Future<Output = Result<(), StorageError>> + Send {
+    ) -> impl Future<Output = Result<bool, StorageError>> + Send {
         let owned_path = path.to_path_buf();
 
         async move {
-            let mut file = fs::OpenOptions::new()
-                .write(true)
-                .open(&owned_path)
-                .await
-                .map_err(Self::map_io_error)?;
+            let mut file = match fs::OpenOptions::new().write(true).open(&owned_path).await {
+                Ok(file) => file,
+                Err(err) if err.kind() == ErrorKind::NotFound => return Ok(false),
+                Err(err) => return Err(Self::map_io_error(err)),
+            };
             file.seek(SeekFrom::Start(offset))
                 .await
                 .map_err(Self::map_io_error)?;
             file.write_all(&chunk).await.map_err(Self::map_io_error)?;
             file.flush().await.map_err(Self::map_io_error)?;
-            Ok(())
+            Ok(true)
         }
     }
 
@@ -144,16 +145,19 @@ impl FileStorage for FileSystemStorage {
     fn integrity_hash(
         &self,
         path: &Path,
-    ) -> impl Future<Output = Result<IntegrityHash<SHA256_HEX_LENGTH>, StorageError>> + Send {
+    ) -> impl Future<Output = Result<Option<IntegrityHash<SHA256_HEX_LENGTH>>, StorageError>> + Send
+    {
         let owned_path = path.to_path_buf();
         // The stateless hasher is built here, at the point of use, and never
         // stored by the long-lived storage adapter.
         let mut session = Sha2ContentHasher.hasher();
 
         async move {
-            let mut file = fs::File::open(&owned_path)
-                .await
-                .map_err(Self::map_io_error)?;
+            let mut file = match fs::File::open(&owned_path).await {
+                Ok(file) => file,
+                Err(err) if err.kind() == ErrorKind::NotFound => return Ok(None),
+                Err(err) => return Err(Self::map_io_error(err)),
+            };
             let mut buffer = vec![0u8; HASH_BUFFER_SIZE];
             loop {
                 let read = file.read(&mut buffer).await.map_err(Self::map_io_error)?;
@@ -165,6 +169,7 @@ impl FileStorage for FileSystemStorage {
             }
             session
                 .finalize()
+                .map(Some)
                 .map_err(|error| StorageError::Unknown(error.into()))
         }
     }
@@ -173,14 +178,16 @@ impl FileStorage for FileSystemStorage {
         &self,
         staged: &Path,
         final_path: &Path,
-    ) -> impl Future<Output = Result<(), StorageError>> + Send {
+    ) -> impl Future<Output = Result<bool, StorageError>> + Send {
         let owned_staged = staged.to_path_buf();
         let owned_final = final_path.to_path_buf();
 
         async move {
-            fs::rename(&owned_staged, &owned_final)
-                .await
-                .map_err(Self::map_io_error)
+            match fs::rename(&owned_staged, &owned_final).await {
+                Ok(()) => Ok(true),
+                Err(err) if err.kind() == ErrorKind::NotFound => Ok(false),
+                Err(err) => Err(Self::map_io_error(err)),
+            }
         }
     }
 
@@ -219,7 +226,6 @@ mod tests {
     use tokio::fs;
 
     use super::FileSystemStorage;
-    use crate::domain::port::error::StorageError;
     use crate::domain::port::file_storage::FileStorage as _;
 
     #[tokio::test]
@@ -305,7 +311,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn add_chunk_unknown_file_returns_conflict() -> Result<(), Box<dyn Error>> {
+    async fn add_chunk_missing_file_returns_false() -> Result<(), Box<dyn Error>> {
         // Arrange
         let tmp = tempdir()?;
         let storage = FileSystemStorage::new();
@@ -315,7 +321,7 @@ mod tests {
         let result = storage.add_chunk(&path, 0, b"bytes".to_vec()).await;
 
         // Assert
-        assert!(matches!(result, Err(StorageError::Conflict)));
+        assert!(!result?);
         Ok(())
     }
 
@@ -335,7 +341,7 @@ mod tests {
 
         // Assert
         assert_eq!(
-            digest.as_str(),
+            digest.ok_or("the staged file should exist")?.as_str(),
             "03ac674216f3e15c761ee1a5e255f067953623c8b388b4459e13f978d7c846f4"
         );
         Ok(())
@@ -356,14 +362,14 @@ mod tests {
 
         // Assert
         assert_eq!(
-            digest.as_str(),
+            digest.ok_or("the staged file should exist")?.as_str(),
             "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
         );
         Ok(())
     }
 
     #[tokio::test]
-    async fn integrity_hash_missing_file_returns_conflict() -> Result<(), Box<dyn Error>> {
+    async fn integrity_hash_missing_file_returns_none() -> Result<(), Box<dyn Error>> {
         // Arrange
         let tmp = tempdir()?;
         let storage = FileSystemStorage::new();
@@ -373,7 +379,7 @@ mod tests {
         let result = storage.integrity_hash(&path).await;
 
         // Assert
-        assert!(matches!(result, Err(StorageError::Conflict)));
+        assert!(result?.is_none());
         Ok(())
     }
 
@@ -434,7 +440,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn promote_unknown_staged_file_returns_conflict() -> Result<(), Box<dyn Error>> {
+    async fn promote_missing_staged_file_returns_false() -> Result<(), Box<dyn Error>> {
         // Arrange
         let tmp = tempdir()?;
         let storage = FileSystemStorage::new();
@@ -445,7 +451,7 @@ mod tests {
         let result = storage.promote(&staged, &final_path).await;
 
         // Assert
-        assert!(matches!(result, Err(StorageError::Conflict)));
+        assert!(!result?);
         Ok(())
     }
 
