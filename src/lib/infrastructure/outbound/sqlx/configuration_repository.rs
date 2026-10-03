@@ -639,6 +639,64 @@ mod tests {
         Ok(())
     }
 
+    #[rstest]
+    #[case::jwt_secret(
+        "INSERT INTO configuration (
+            configuration_id, jwt_secret, jwt_ttl, pepper, sqlite3_path, sqlite3_max_connections
+         ) VALUES (
+            0, NULL, 3600,
+            'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', 'mnemorium.db', 1
+         )"
+    )]
+    #[case::jwt_ttl(
+        "INSERT INTO configuration (
+            configuration_id, jwt_secret, jwt_ttl, pepper, sqlite3_path, sqlite3_max_connections
+         ) VALUES (
+            0, 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', NULL,
+            'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', 'mnemorium.db', 1
+         )"
+    )]
+    #[case::pepper(
+        "INSERT INTO configuration (
+            configuration_id, jwt_secret, jwt_ttl, pepper, sqlite3_path, sqlite3_max_connections
+         ) VALUES (
+            0, 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 3600,
+            NULL, 'mnemorium.db', 1
+         )"
+    )]
+    #[case::sqlite3_path(
+        "INSERT INTO configuration (
+            configuration_id, jwt_secret, jwt_ttl, pepper, sqlite3_path, sqlite3_max_connections
+         ) VALUES (
+            0, 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 3600,
+            'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', NULL, 1
+         )"
+    )]
+    #[case::sqlite3_max_connections(
+        "INSERT INTO configuration (
+            configuration_id, jwt_secret, jwt_ttl, pepper, sqlite3_path, sqlite3_max_connections
+         ) VALUES (
+            0, 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 3600,
+            'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', 'mnemorium.db', NULL
+         )"
+    )]
+    #[tokio::test]
+    async fn insert_null_required_column_returns_data_integrity_violation(
+        #[case] statement: &'static str,
+    ) -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let mut transaction = begin_transaction().await?;
+
+        // Act & Assert
+        let result = sqlx::query(statement).execute(&mut *transaction).await;
+        let mapped = result.map_err(RepositoryError::from);
+        assert!(
+            matches!(mapped, Err(RepositoryError::DataIntegrityViolation)),
+            "statement must violate a not-null constraint: {statement}"
+        );
+        Ok(())
+    }
+
     #[tokio::test]
     async fn delete_configuration_returns_conflict() -> Result<(), Box<dyn Error>> {
         // Arrange
