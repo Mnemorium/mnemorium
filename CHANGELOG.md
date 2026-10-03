@@ -1,3 +1,13 @@
+## [0.6.0](https://github.com/Mnemorium/mnemorium/compare/v0.5.2...v0.6.0) (2026-10-03)
+
+### Features
+
+* **api:** implement the list users endpoint ([#108](https://github.com/Mnemorium/mnemorium/issues/108)) ([1af11a5](https://github.com/Mnemorium/mnemorium/commit/1af11a56e953a3ac368fd7b33d1afc50c1ccf682))
+
+### Bug Fixes
+
+* **infrastructure:** model a missing file as a value, not a port error ([#109](https://github.com/Mnemorium/mnemorium/issues/109)) ([45e5780](https://github.com/Mnemorium/mnemorium/commit/45e57807bc6ce4ab604588391c6427e68d1bad0a))
+
 ## [0.5.2](https://github.com/Mnemorium/mnemorium/compare/v0.5.1...v0.5.2) (2026-10-03)
 
 ### Bug Fixes
