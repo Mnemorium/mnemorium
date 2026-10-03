@@ -678,7 +678,7 @@
                 }
               }
             },
-            "description": "The request body does not match the expected schema"
+            "description": "The request body does not match the expected schema, or the file name or size fails validation"
           },
           "500": {
             "content": {
@@ -872,7 +872,7 @@
                 }
               }
             },
-            "description": "Malformed identifier, chunk number, Content-Range or Content-Digest header"
+            "description": "Malformed identifier, chunk number or header syntax"
           },
           "401": {
             "content": {
@@ -1208,7 +1208,7 @@
                 }
               }
             },
-            "description": "The request body media type is not application/json"
+            "description": "The request body is not application/json"
           },
           "422": {
             "content": {
@@ -1218,7 +1218,7 @@
                 }
               }
             },
-            "description": "The request body does not match the expected schema"
+            "description": "The request body does not match the expected schema, or the new password violates the password policy"
           },
           "500": {
             "content": {
@@ -1305,7 +1305,7 @@
                 }
               }
             },
-            "description": "The request body media type is not application/json"
+            "description": "The request body is not application/json"
           },
           "422": {
             "content": {
@@ -1428,7 +1428,7 @@
                 }
               }
             },
-            "description": "The request body media type is not application/json"
+            "description": "The request body is not application/json"
           },
           "422": {
             "content": {
@@ -1438,7 +1438,7 @@
                 }
               }
             },
-            "description": "The request body does not match the expected schema"
+            "description": "The request body does not match the expected schema, or the username, email or password fails validation"
           },
           "500": {
             "content": {
@@ -1801,7 +1801,7 @@
                 }
               }
             },
-            "description": "The request body media type is not application/json"
+            "description": "The request body is not application/json"
           },
           "422": {
             "content": {
@@ -1811,7 +1811,7 @@
                 }
               }
             },
-            "description": "The request body does not match the expected schema"
+            "description": "The request body does not match the expected schema, or the username or email fails validation"
           },
           "500": {
             "content": {

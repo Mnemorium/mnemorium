@@ -67,18 +67,6 @@ impl From<PatchCredentialError> for ApiError {
             description = "Malformed request body"
         ),
         (
-            status = UNSUPPORTED_MEDIA_TYPE,
-            body = ErrorBody,
-            content_type = "application/hal+json",
-            description = "The request body is not application/json"
-        ),
-        (
-            status = UNPROCESSABLE_ENTITY,
-            body = ErrorBody,
-            content_type = "application/hal+json",
-            description = "The new password violates the password policy"
-        ),
-        (
             status = UNAUTHORIZED,
             body = ErrorBody,
             content_type = "application/hal+json",
@@ -94,13 +82,13 @@ impl From<PatchCredentialError> for ApiError {
             status = UNSUPPORTED_MEDIA_TYPE,
             body = ErrorBody,
             content_type = "application/hal+json",
-            description = "The request body media type is not application/json"
+            description = "The request body is not application/json"
         ),
         (
             status = UNPROCESSABLE_ENTITY,
             body = ErrorBody,
             content_type = "application/hal+json",
-            description = "The request body does not match the expected schema"
+            description = "The request body does not match the expected schema, or the new password violates the password policy"
         ),
         (
             status = FORBIDDEN,

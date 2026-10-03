@@ -98,7 +98,7 @@ impl From<WriteUploadChunkError> for ApiError {
             status = BAD_REQUEST,
             body = ErrorBody,
             content_type = "application/hal+json",
-            description = "Malformed identifier, chunk number, Content-Range or Content-Digest header"
+            description = "Malformed identifier, chunk number or header syntax"
         ),
         (
             status = UNPROCESSABLE_ENTITY,
@@ -179,7 +179,7 @@ pub async fn put_upload_chunk(
     let body_len = u64::try_from(body.len())
         .map_err(|_| ApiError::BadRequest("invalid chunk length".to_owned()))?;
     if end.saturating_sub(start).saturating_add(1) != body_len {
-        return Err(ApiError::BadRequest(
+        return Err(ApiError::UnprocessableEntity(
             "the declared range does not match the body length".to_owned(),
         ));
     }
@@ -246,8 +246,8 @@ fn parse_content_range(headers: &HeaderMap) -> Result<(u64, u64), ApiError> {
         .map_err(|_| ApiError::BadRequest("malformed Content-Range header".to_owned()))?;
 
     if end < start {
-        return Err(ApiError::BadRequest(
-            "malformed Content-Range header".to_owned(),
+        return Err(ApiError::UnprocessableEntity(
+            "the Content-Range end precedes its start".to_owned(),
         ));
     }
     Ok((start, end))
@@ -598,7 +598,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn put_upload_chunk_range_length_mismatch_returns_bad_request()
+    async fn put_upload_chunk_range_length_mismatch_returns_unprocessable_entity()
     -> Result<(), Box<dyn Error>> {
         // Arrange
         let use_case = MockWriteUploadChunkUseCase::new();
@@ -615,10 +615,36 @@ mod tests {
         .await?;
 
         // Assert
-        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
         assert_eq!(
             error_message_of(&response).as_deref(),
             Some("the declared range does not match the body length")
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn put_upload_chunk_reversed_range_returns_unprocessable_entity()
+    -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let use_case = MockWriteUploadChunkUseCase::new();
+
+        // Act
+        let response = send(
+            use_case,
+            3,
+            "/api/v1/asset/upload/7/chunk/0",
+            Some("bytes 9-0/12"),
+            Some(&chunk_content_digest()),
+            Body::from(CHUNK),
+        )
+        .await?;
+
+        // Assert
+        assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+        assert_eq!(
+            error_message_of(&response).as_deref(),
+            Some("the Content-Range end precedes its start")
         );
         Ok(())
     }

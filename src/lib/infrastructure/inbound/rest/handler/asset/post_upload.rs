@@ -124,12 +124,6 @@ impl From<BeginUploadError> for ApiError {
             description = "Malformed request body or invalid integrity hash"
         ),
         (
-            status = UNPROCESSABLE_ENTITY,
-            body = ErrorBody,
-            content_type = "application/hal+json",
-            description = "The file name or size fails validation"
-        ),
-        (
             status = UNAUTHORIZED,
             body = ErrorBody,
             content_type = "application/hal+json",
@@ -160,7 +154,7 @@ impl From<BeginUploadError> for ApiError {
             status = UNPROCESSABLE_ENTITY,
             body = ErrorBody,
             content_type = "application/hal+json",
-            description = "The request body does not match the expected schema"
+            description = "The request body does not match the expected schema, or the file name or size fails validation"
         ),
         (
             status = INTERNAL_SERVER_ERROR,

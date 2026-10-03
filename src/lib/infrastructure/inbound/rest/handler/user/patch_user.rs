@@ -108,18 +108,6 @@ impl From<UpdateUserError> for ApiError {
             description = "Invalid user identifier or malformed request body"
         ),
         (
-            status = UNSUPPORTED_MEDIA_TYPE,
-            body = ErrorBody,
-            content_type = "application/hal+json",
-            description = "The request body is not application/json"
-        ),
-        (
-            status = UNPROCESSABLE_ENTITY,
-            body = ErrorBody,
-            content_type = "application/hal+json",
-            description = "The username or email fails validation"
-        ),
-        (
             status = UNAUTHORIZED,
             body = ErrorBody,
             content_type = "application/hal+json",
@@ -135,13 +123,13 @@ impl From<UpdateUserError> for ApiError {
             status = UNSUPPORTED_MEDIA_TYPE,
             body = ErrorBody,
             content_type = "application/hal+json",
-            description = "The request body media type is not application/json"
+            description = "The request body is not application/json"
         ),
         (
             status = UNPROCESSABLE_ENTITY,
             body = ErrorBody,
             content_type = "application/hal+json",
-            description = "The request body does not match the expected schema"
+            description = "The request body does not match the expected schema, or the username or email fails validation"
         ),
         (
             status = FORBIDDEN,
