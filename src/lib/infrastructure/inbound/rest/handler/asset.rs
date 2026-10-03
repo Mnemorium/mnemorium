@@ -78,10 +78,8 @@ mod tests {
     use crate::domain::port::token_provider::TokenProvider as _;
     use crate::infrastructure::inbound::rest::handler::asset::asset_routes;
     use crate::infrastructure::outbound::jwt::token_provider::JwtTokenProvider;
+    use crate::test_helpers::TEST_JWT_SECRET;
     use crate::test_helpers::app_state_with_asset;
-
-    /// Secret the test `AppState` token provider is built with.
-    const TEST_SECRET: &str = "tmptmp";
 
     /// Build the asset router whose complete-upload use case succeeds.
     fn router() -> Result<axum::Router, Box<dyn Error>> {
@@ -103,7 +101,7 @@ mod tests {
 
     /// Mint a bearer token the test token provider accepts.
     async fn bearer() -> Result<String, Box<dyn Error>> {
-        let provider = JwtTokenProvider::new(TEST_SECRET.to_owned(), 3600);
+        let provider = JwtTokenProvider::new(TEST_JWT_SECRET.to_owned(), 3600);
         Ok(provider.issue(3).await?.value().to_owned())
     }
 

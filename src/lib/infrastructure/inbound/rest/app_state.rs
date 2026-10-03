@@ -11,12 +11,11 @@ use crate::infrastructure::outbound::jwt::token_provider::JwtTokenProvider;
 
 /// Application state injected into routers and middleware.
 ///
-/// Holds the live configuration, the per-context use-case factories the inbound
-/// layer builds its use cases from, and the token provider the auth middleware
-/// validates with.
-///
-/// The `FromRef` impl lets the auth middleware pull the token provider
-/// directly from the router state.
+/// Holds the live configuration and the per-context use-case factories the
+/// inbound layer builds its use cases from. It deliberately does not cache a
+/// token provider: the `FromRef` impl builds one from the live configuration,
+/// so the auth middleware validates with the same secret and TTL the Identity
+/// use cases issue with.
 #[derive(Clone)]
 pub struct AppState {
     /// Factory building the Asset use cases.
@@ -25,8 +24,6 @@ pub struct AppState {
     configuration: Arc<ArcSwap<Configuration>>,
     /// Factory building the Identity use cases.
     identity_use_case_factory: Arc<dyn IdentityUseCaseFactory>,
-    /// Provider issuing and validating bearer tokens.
-    token_provider: Arc<JwtTokenProvider>,
     /// Factory building the User use cases.
     user_use_case_factory: Arc<dyn UserUseCaseFactory>,
 }
@@ -56,14 +53,12 @@ impl AppState {
         asset_use_case_factory: Arc<dyn AssetUseCaseFactory>,
         configuration: Arc<ArcSwap<Configuration>>,
         identity_use_case_factory: Arc<dyn IdentityUseCaseFactory>,
-        token_provider: Arc<JwtTokenProvider>,
         user_use_case_factory: Arc<dyn UserUseCaseFactory>,
     ) -> Self {
         Self {
             asset_use_case_factory,
             configuration,
             identity_use_case_factory,
-            token_provider,
             user_use_case_factory,
         }
     }
@@ -77,6 +72,39 @@ impl AppState {
 
 impl FromRef<AppState> for Arc<JwtTokenProvider> {
     fn from_ref(input: &AppState) -> Self {
-        Arc::clone(&input.token_provider)
+        let live = input.configuration.load();
+        Arc::new(JwtTokenProvider::new(
+            live.security().jwt().secret().to_owned(),
+            live.security().jwt().ttl(),
+        ))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::error::Error;
+    use std::sync::Arc;
+
+    use axum::extract::FromRef as _;
+
+    use crate::domain::port::token_provider::TokenProvider as _;
+    use crate::infrastructure::outbound::jwt::token_provider::JwtTokenProvider;
+    use crate::test_helpers::TEST_JWT_SECRET;
+    use crate::test_helpers::app_state;
+
+    #[tokio::test]
+    async fn from_ref_builds_the_provider_from_the_configuration() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let state = app_state()?;
+        let provider = Arc::<JwtTokenProvider>::from_ref(&state);
+        let fixture = JwtTokenProvider::new(TEST_JWT_SECRET.to_owned(), 3600);
+
+        // Act: a token minted with the configured secret.
+        let token = fixture.issue(11).await?.value().to_owned();
+
+        // Assert: the extracted provider is built from the live configuration,
+        // not from a startup-cached provider.
+        assert_eq!(provider.validate(&token).await?, 11);
+        Ok(())
     }
 }

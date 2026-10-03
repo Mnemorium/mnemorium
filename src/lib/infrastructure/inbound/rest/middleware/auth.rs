@@ -122,7 +122,6 @@ mod tests {
     use crate::domain::port::error::TokenProviderError;
     use crate::domain::port::token_provider::MockTokenProvider;
     use crate::infrastructure::inbound::rest::app_state::AppState;
-    use crate::infrastructure::outbound::jwt::token_provider::JwtTokenProvider;
     use crate::test_helpers::app_state;
     use crate::test_helpers::error_message_of;
 
@@ -131,10 +130,10 @@ mod tests {
         Json(json!({ "user_id": caller.user_id() }))
     }
 
-    /// Application state with a real token provider that is never consulted
-    /// (the middleware layer carries its own mock).
+    /// Application state with the fixture token provider that is never
+    /// consulted (the middleware layer carries its own mock).
     fn state() -> Result<AppState, Box<dyn Error>> {
-        app_state(Arc::new(JwtTokenProvider::new("tmptmp".to_owned(), 3600)))
+        app_state()
     }
 
     /// Router guarding `stub` with `authenticate` over a mocked provider.
