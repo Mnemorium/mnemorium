@@ -9,6 +9,7 @@ use axum::http::request::Parts;
 use axum::middleware::Next;
 use axum::response::{IntoResponse as _, Response};
 use tracing::error;
+use tracing::warn;
 
 use crate::domain::alias::NumericID;
 use crate::domain::port::error::TokenProviderError;
@@ -70,6 +71,11 @@ where
         .and_then(|value| value.split_once(' '))
         .and_then(|(scheme, token)| scheme.eq_ignore_ascii_case("bearer").then_some(token))
     else {
+        warn!(
+            event = "session_validation_failed",
+            reason = "missing_authorization_header",
+            "rejected a request without a bearer token"
+        );
         return ApiError::Unauthorized("missing or malformed authorization header".to_owned())
             .into_response();
     };
@@ -80,11 +86,23 @@ where
             | TokenProviderError::InvalidToken
             | TokenProviderError::TokenExpired,
         ) => {
+            warn!(
+                event = "session_validation_failed",
+                reason = "invalid_or_expired_token",
+                "rejected an invalid or expired bearer token"
+            );
             return ApiError::Unauthorized("invalid or expired token".to_owned()).into_response();
         }
         Err(error) => {
+            let reason = match error {
+                TokenProviderError::InvalidClaims => "invalid_claims",
+                TokenProviderError::InvalidToken => "invalid_token",
+                TokenProviderError::OperationFailed => "operation_failed",
+                TokenProviderError::TokenExpired => "token_expired",
+                TokenProviderError::Unknown(_) => "unknown",
+            };
             error!(
-                error = ?error,
+                error.kind = %reason,
                 "token provider failed to validate a token"
             );
             return ApiError::InternalServerError.into_response();
