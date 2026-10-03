@@ -199,9 +199,10 @@ pub enum ConfigurationSourceError {
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum StorageError {
-    /// The upload targeted by the given identifier no longer exists: it was
-    /// never begun, already committed, or expired.
-    #[error("the upload does not exist, was already committed, or expired")]
+    /// The requested operation conflicts with the current state of the stored
+    /// file, for example when a target that must not exist already does. A
+    /// missing file is not a conflict: operations report absence as a value.
+    #[error("the file storage is in a state that conflicts with the requested operation")]
     Conflict,
     /// The storage backend could not complete the requested operation for a
     /// non-specific reason.

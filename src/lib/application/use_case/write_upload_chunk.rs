@@ -235,16 +235,27 @@ where
             ));
         }
 
-        file_storage
+        match file_storage
             .add_chunk(
                 &staged_path(root, upload.upload_id()),
                 offset,
                 command.chunk().to_vec(),
             )
             .await
-            .map_err(|error| {
-                AttemptError::Business(WriteUploadChunkError::Unknown(error.into()))
-            })?;
+        {
+            // The staged file vanished between reading the upload row and
+            // writing the chunk: report the upload as absent so the caller gets
+            // the same response as the repository's missing-entity outcome.
+            Ok(false) => {
+                return Err(AttemptError::Business(WriteUploadChunkError::NoSuchUpload));
+            }
+            Ok(true) => {}
+            Err(error) => {
+                return Err(AttemptError::Business(WriteUploadChunkError::Unknown(
+                    error.into(),
+                )));
+            }
+        }
 
         match unit_of_work
             .uploads()
@@ -475,7 +486,7 @@ mod tests {
             .returning(|_, offset, _| {
                 Box::pin(async move {
                     assert_eq!(offset, 0);
-                    Ok(())
+                    Ok(true)
                 })
             });
         let (unit_of_work, committed, rolled_back) =
@@ -538,7 +549,7 @@ mod tests {
         file_storage
             .expect_add_chunk()
             .times(1)
-            .returning(|_, _, _| Box::pin(async { Ok(()) }));
+            .returning(|_, _, _| Box::pin(async { Ok(true) }));
         let (unit_of_work, _committed, rolled_back) = asset_unit_of_work(
             uploads,
             MockFileRepository::new(),
@@ -1020,6 +1031,58 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn write_upload_chunk_vanished_staged_file_returns_no_such_upload()
+    -> Result<(), Box<dyn Error>> {
+        let mut hasher = MockContentHasher::new();
+        hasher.expect_hasher().times(1).returning(|| {
+            let mut session = MockContentHasherSession::new();
+            session
+                .expect_update()
+                .times(1)
+                .withf(|bytes: &[u8]| bytes == b"1234")
+                .return_const(());
+            session
+                .expect_finalize()
+                .times(1)
+                .returning(|| Ok(hash(CHUNK_DIGEST)));
+            Box::new(session)
+        });
+        // Arrange: the staged file is gone, so the adapter reports absence.
+        let mut uploads = MockUploadRepository::new();
+        expect_upload(&mut uploads, upload(5, 3, 8, &[], false)?);
+        let mut file_storage = MockFileStorage::new();
+        file_storage
+            .expect_add_chunk()
+            .times(1)
+            .returning(|_, _, _| Box::pin(async { Ok(false) }));
+        let (unit_of_work, _committed, rolled_back) = asset_unit_of_work(
+            uploads,
+            MockFileRepository::new(),
+            MockMimeTypeRepository::new(),
+        );
+        let factory = TestUnitOfWorkFactory {
+            unit_of_works: Mutex::new(vec![unit_of_work]),
+        };
+        let use_case = WriteUploadChunk::new(
+            Arc::new(factory),
+            Arc::new(file_storage),
+            hasher,
+            PathBuf::from(ROOT),
+            TTL_SECONDS,
+        );
+        let command =
+            WriteUploadChunkCommand::new(5, 0, 0, b"1234".to_vec(), hash(CHUNK_DIGEST), 3);
+
+        // Act
+        let result = use_case.execute(command).await;
+
+        // Assert
+        assert!(matches!(result, Err(WriteUploadChunkError::NoSuchUpload)));
+        assert!(rolled_back.load(Ordering::SeqCst));
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn write_upload_chunk_finished_race_returns_already_finished()
     -> Result<(), Box<dyn Error>> {
         let mut hasher = MockContentHasher::new();
@@ -1048,7 +1111,7 @@ mod tests {
         file_storage
             .expect_add_chunk()
             .times(1)
-            .returning(|_, _, _| Box::pin(async { Ok(()) }));
+            .returning(|_, _, _| Box::pin(async { Ok(true) }));
         let (unit_of_work, _committed, rolled_back) = asset_unit_of_work(
             uploads,
             MockFileRepository::new(),

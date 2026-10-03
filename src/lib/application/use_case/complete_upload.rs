@@ -230,7 +230,11 @@ where
                 let staged = staged_path(&root, upload.upload_id());
                 let final_file = final_path(&root, upload.upload_id(), upload.file_name());
                 match file_storage.promote(&staged, &final_file).await {
-                    Ok(()) => {}
+                    // The staged file vanished after it was hashed: the upload
+                    // is absent, mirroring the repository's missing-entity
+                    // outcome rather than a storage failure.
+                    Ok(false) => return Flow::Failed(CompleteUploadError::NoSuchUpload),
+                    Ok(true) => {}
                     Err(error) => return Flow::Failed(CompleteUploadError::Unknown(error.into())),
                 }
                 promoted = Some(Promoted {
@@ -421,11 +425,13 @@ where
 ///
 /// The hash is computed with no unit of work open, so it neither holds the
 /// pooled connection nor sits inside a transaction a concurrent writer could
-/// invalidate.
+/// invalidate. A staged file that no longer exists is reported as
+/// [`CompleteUploadError::NoSuchUpload`]: it is absent, not a storage failure.
 ///
 /// # Errors
 ///
-/// Returns [`CompleteUploadError::Unknown`] when the digest cannot be computed.
+/// Returns [`CompleteUploadError::NoSuchUpload`] when the staged file is absent,
+/// and [`CompleteUploadError::Unknown`] when the digest cannot be computed.
 #[expect(
     clippy::single_call_fn,
     reason = "the staged-content hashing is named after the step it performs"
@@ -438,10 +444,14 @@ async fn compute_integrity_hash<S>(
 where
     S: FileStorage,
 {
-    file_storage
+    match file_storage
         .integrity_hash(&staged_path(root, upload_id))
         .await
-        .map_err(|error| CompleteUploadError::Unknown(error.into()))
+    {
+        Ok(Some(digest)) => Ok(digest),
+        Ok(None) => Err(CompleteUploadError::NoSuchUpload),
+        Err(error) => Err(CompleteUploadError::Unknown(error.into())),
+    }
 }
 
 /// Best-effort roll back a unit of work, logging a failure.
@@ -672,6 +682,7 @@ mod tests {
             .times(1)
             .returning(move |_| {
                 let hash = IntegrityHash::try_new(digest.to_owned())
+                    .map(Some)
                     .map_err(|_| StorageError::OperationFailed);
                 Box::pin(async move { hash })
             });
@@ -710,7 +721,7 @@ mod tests {
         file_storage
             .expect_promote()
             .times(1)
-            .returning(|_, _| Box::pin(async { Ok(()) }));
+            .returning(|_, _| Box::pin(async { Ok(true) }));
         let harness = use_case_with(
             phase_one_uploads,
             MockFileRepository::new(),
@@ -759,7 +770,7 @@ mod tests {
         file_storage
             .expect_promote()
             .times(1)
-            .returning(|_, _| Box::pin(async { Ok(()) }));
+            .returning(|_, _| Box::pin(async { Ok(true) }));
         file_storage
             .expect_restore()
             .times(1)
@@ -1056,7 +1067,7 @@ mod tests {
         file_storage
             .expect_promote()
             .times(1)
-            .returning(|_, _| Box::pin(async { Ok(()) }));
+            .returning(|_, _| Box::pin(async { Ok(true) }));
         let harness = use_case_with(
             phase_one_uploads,
             MockFileRepository::new(),
@@ -1144,7 +1155,7 @@ mod tests {
         file_storage
             .expect_promote()
             .times(1)
-            .returning(|_, _| Box::pin(async { Ok(()) }));
+            .returning(|_, _| Box::pin(async { Ok(true) }));
         file_storage
             .expect_restore()
             .times(1)
@@ -1221,7 +1232,7 @@ mod tests {
         file_storage
             .expect_promote()
             .times(1)
-            .returning(|_, _| Box::pin(async { Err(StorageError::Conflict) }));
+            .returning(|_, _| Box::pin(async { Err(StorageError::Unavailable) }));
         let harness = use_case_with(
             phase_one_uploads,
             MockFileRepository::new(),
@@ -1266,7 +1277,7 @@ mod tests {
         file_storage
             .expect_promote()
             .times(1)
-            .returning(|_, _| Box::pin(async { Ok(()) }));
+            .returning(|_, _| Box::pin(async { Ok(true) }));
         file_storage
             .expect_restore()
             .times(1)
@@ -1311,7 +1322,7 @@ mod tests {
         file_storage
             .expect_promote()
             .times(1)
-            .returning(|_, _| Box::pin(async { Ok(()) }));
+            .returning(|_, _| Box::pin(async { Ok(true) }));
         file_storage
             .expect_restore()
             .times(1)
@@ -1364,7 +1375,7 @@ mod tests {
         file_storage
             .expect_promote()
             .times(1)
-            .returning(|_, _| Box::pin(async { Ok(()) }));
+            .returning(|_, _| Box::pin(async { Ok(true) }));
         file_storage
             .expect_restore()
             .times(1)
@@ -1417,13 +1428,14 @@ mod tests {
                 );
                 hash_called_by_hash.store(true, Ordering::SeqCst);
                 let hash = IntegrityHash::try_new(DIGEST.to_owned())
+                    .map(Some)
                     .map_err(|_| StorageError::OperationFailed);
                 Box::pin(async move { hash })
             });
         file_storage
             .expect_promote()
             .times(1)
-            .returning(|_, _| Box::pin(async { Ok(()) }));
+            .returning(|_, _| Box::pin(async { Ok(true) }));
 
         // The phase-2 search records that the hash ran before the mutating
         // phase touched the datastore.
@@ -1585,6 +1597,37 @@ mod tests {
 
         // Assert
         assert!(matches!(result, Err(CompleteUploadError::Unknown(_))));
+        assert!(harness.phase_one_rolled_back.load(Ordering::SeqCst));
+        assert!(!harness.phase_two_committed.load(Ordering::SeqCst));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn complete_upload_vanished_staged_file_returns_no_such_upload()
+    -> Result<(), Box<dyn Error>> {
+        // Arrange: the staged file no longer exists, so the adapter reports
+        // absence while the phase-1 resolve still finds the upload row.
+        let mut phase_one_uploads = MockUploadRepository::new();
+        expect_upload(&mut phase_one_uploads, upload(5, 3, 4, &[0], false)?);
+        let mut file_storage = MockFileStorage::new();
+        file_storage
+            .expect_integrity_hash()
+            .times(1)
+            .returning(|_| Box::pin(async { Ok(None) }));
+        let harness = use_case_with(
+            phase_one_uploads,
+            MockFileRepository::new(),
+            MockUploadRepository::new(),
+            MockFileRepository::new(),
+            file_storage,
+        );
+        let command = CompleteUploadCommand::new(5, 3);
+
+        // Act
+        let result = harness.use_case.execute(command).await;
+
+        // Assert
+        assert!(matches!(result, Err(CompleteUploadError::NoSuchUpload)));
         assert!(harness.phase_one_rolled_back.load(Ordering::SeqCst));
         assert!(!harness.phase_two_committed.load(Ordering::SeqCst));
         Ok(())
