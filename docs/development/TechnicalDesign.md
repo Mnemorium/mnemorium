@@ -239,6 +239,7 @@ pub enum UserError {
     // [...]
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct User {
     // [...]
 }
@@ -521,6 +522,7 @@ use crate::domain::alias::NumericID;
 pub struct User {
     pub credential_id: NumericID,
     // [...]
+    #[sqlx(primary_key)]
     pub user_id: NumericID,
     // [...]
 }
@@ -2428,8 +2430,8 @@ to the code it restates, so a reader can verify it and a reviewer can catch it g
 
 A code example drawn from production code has two duties and one allowance:
 
-- **Cite the source.** Name the path it is drawn from, in an inline code span on the line immediately before the fenced
-  block.
+- **Cite the source.** Name the path it is drawn from, in an inline code span in the paragraph immediately before the
+  fenced block.
 - **Track the source.** When the named file changes, update the example in the same change. Never let the example and
   the code disagree.
 - **Elide, don't paraphrase.** Mark each run of omitted lines with `// [...]`, keep the lines that remain in the
