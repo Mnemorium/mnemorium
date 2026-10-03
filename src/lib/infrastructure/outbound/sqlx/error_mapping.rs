@@ -7,6 +7,10 @@ use tracing::error;
 use crate::domain::port::error::RepositoryError;
 use crate::domain::port::error::UnitOfWorkError;
 
+/// `SQLite` extended result code for a trigger `RAISE(ABORT)`
+/// (`SQLITE_CONSTRAINT_TRIGGER`), which `sqlx` collapses into `ErrorKind::Other`.
+const SQLITE_CONSTRAINT_TRIGGER: &str = "1811";
+
 impl From<Error> for RepositoryError {
     fn from(err: Error) -> Self {
         error!(
@@ -20,6 +24,11 @@ impl From<Error> for RepositoryError {
                 | ErrorKind::NotNullViolation
                 | ErrorKind::CheckViolation
                 | ErrorKind::ExclusionViolation => Self::DataIntegrityViolation,
+                // A trigger `RAISE(ABORT)` guards the current state: the
+                // requested write conflicts with the persisted row.
+                ErrorKind::Other if db.code().as_deref() == Some(SQLITE_CONSTRAINT_TRIGGER) => {
+                    Self::Conflict
+                }
                 ErrorKind::Other | _ => Self::OperationFailed,
             },
             Error::PoolTimedOut => Self::Timeout,
@@ -79,5 +88,89 @@ impl From<Error> for UnitOfWorkError {
             | Error::BeginFailed
             | _ => Self::OperationFailed,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::error::Error;
+
+    use sqlx::SqlitePool;
+    use sqlx::sqlite::SqlitePoolOptions;
+
+    use crate::domain::port::error::RepositoryError;
+
+    /// Build an in-memory `SQLite` pool holding `schema`.
+    async fn probe_pool(schema: &'static str) -> Result<SqlitePool, Box<dyn Error>> {
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await?;
+        sqlx::raw_sql(schema).execute(&pool).await?;
+        Ok(pool)
+    }
+
+    #[tokio::test]
+    async fn constraint_trigger_abort_returns_conflict() -> Result<(), Box<dyn Error>> {
+        // Arrange: a guard trigger whose `RAISE(ABORT)` reports extended code 1811.
+        let pool = probe_pool(
+            "CREATE TABLE probe (value INTEGER);
+             CREATE TRIGGER tg_probe_abort
+             BEFORE INSERT ON probe
+             FOR EACH ROW
+             WHEN new.value = 0
+             BEGIN
+                 SELECT RAISE(ABORT, 'probe rejects zero');
+             END;",
+        )
+        .await?;
+
+        // Act
+        let mapped = sqlx::query("INSERT INTO probe (value) VALUES (0)")
+            .execute(&pool)
+            .await
+            .map_err(RepositoryError::from);
+
+        // Assert
+        assert!(matches!(mapped, Err(RepositoryError::Conflict)));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn check_violation_returns_data_integrity_violation() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let pool = probe_pool("CREATE TABLE probe (value INTEGER CHECK (value > 0));").await?;
+
+        // Act
+        let mapped = sqlx::query("INSERT INTO probe (value) VALUES (0)")
+            .execute(&pool)
+            .await
+            .map_err(RepositoryError::from);
+
+        // Assert
+        assert!(matches!(
+            mapped,
+            Err(RepositoryError::DataIntegrityViolation)
+        ));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn unique_violation_returns_already_exist() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let pool = probe_pool("CREATE TABLE probe (value INTEGER UNIQUE);").await?;
+        sqlx::query("INSERT INTO probe (value) VALUES (1)")
+            .execute(&pool)
+            .await?;
+
+        // Act
+        let mapped = sqlx::query("INSERT INTO probe (value) VALUES (1)")
+            .execute(&pool)
+            .await
+            .map_err(RepositoryError::from);
+
+        // Assert
+        assert!(matches!(mapped, Err(RepositoryError::AlreadyExist)));
+        Ok(())
     }
 }

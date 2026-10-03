@@ -3,8 +3,11 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use arc_swap::ArcSwap;
+use mnemorium::application::port::ensure_storage_directories::EnsureStorageDirectoriesCommand;
+use mnemorium::application::port::ensure_storage_directories::EnsureStorageDirectoriesUseCase as _;
 use mnemorium::application::port::initialize_root_admin::InitializeRootAdminUseCase as _;
 use mnemorium::application::port::load_configuration::LoadConfigurationUseCase as _;
+use mnemorium::application::use_case::ensure_storage_directories::EnsureStorageDirectories;
 use mnemorium::application::use_case::initialize_root_admin::InitializeRootAdmin;
 use mnemorium::application::use_case::load_configuration::LoadConfiguration;
 use mnemorium::infrastructure::inbound::rest::app_state::AppState;
@@ -17,7 +20,6 @@ use mnemorium::infrastructure::outbound::file_system::file_storage::FileSystemSt
 use mnemorium::infrastructure::outbound::jwt::token_provider::JwtTokenProvider;
 use mnemorium::infrastructure::outbound::random::password_generator::RandomPasswordGenerator;
 use mnemorium::infrastructure::outbound::random::secret_generator::ChaChaSecretGenerator;
-use mnemorium::infrastructure::outbound::sha2::content_hasher::Sha2ContentHasher;
 use mnemorium::infrastructure::outbound::sqlx::sqlite3::init_db;
 use mnemorium::infrastructure::outbound::sqlx::unit_of_work::SqlxUnitOfWorkFactory;
 use mnemorium::infrastructure::use_case_factory::asset::RuntimeAssetUseCaseFactory;
@@ -99,16 +101,15 @@ async fn main() -> Result<(), anyhow::Error> {
         &unit_of_work_factory,
     )));
 
-    let file_storage = Arc::new(
-        FileSystemStorage::new(
-            PathBuf::from(configuration.load().asset().storage().root()),
-            Sha2ContentHasher,
-        )
-        .await?,
-    );
+    let storage_root = PathBuf::from(configuration.load().asset().storage().root());
+    let file_storage = Arc::new(FileSystemStorage::new());
+    EnsureStorageDirectories::new(Arc::clone(&file_storage), storage_root.clone())
+        .execute(EnsureStorageDirectoriesCommand::new())
+        .await?;
+
     let asset_use_case_factory = Arc::new(RuntimeAssetUseCaseFactory::new(
         Arc::clone(&configuration),
-        file_storage,
+        storage_root,
         Arc::clone(&unit_of_work_factory),
     ));
 

@@ -1,5 +1,6 @@
 pub mod begin_upload;
 pub mod complete_upload;
+pub mod ensure_storage_directories;
 pub mod get_current_user;
 pub mod get_upload;
 pub mod get_user;
@@ -9,5 +10,6 @@ pub mod login_user;
 pub mod patch_credential;
 pub mod register_user;
 pub mod update_user;
+pub(crate) mod upload_layout;
 pub(crate) mod upload_session;
 pub mod write_upload_chunk;

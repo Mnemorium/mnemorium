@@ -4,6 +4,8 @@ extends: default
 rules:
   trailing-spaces: disable
   truthy: disable
+  line-length:
+    max: 120
 ignore: |
   .devenv/
   .opencode/node_modules/

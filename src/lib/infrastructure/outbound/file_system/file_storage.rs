@@ -3,61 +3,31 @@ use std::io::Error;
 use std::io::ErrorKind;
 use std::io::SeekFrom;
 use std::path::Path;
-use std::path::PathBuf;
 
 use tokio::fs;
 use tokio::io::AsyncReadExt as _;
 use tokio::io::AsyncSeekExt as _;
 use tokio::io::AsyncWriteExt as _;
 
-use crate::domain::alias::NumericID;
 use crate::domain::model::integrity_hash::IntegrityHash;
 use crate::domain::model::integrity_hash::SHA256_HEX_LENGTH;
-use crate::domain::port::content_hasher::ContentHasher;
+use crate::domain::port::content_hasher::ContentHasher as _;
 use crate::domain::port::error::StorageError;
 use crate::domain::port::file_storage::FileStorage;
+use crate::infrastructure::outbound::sha2::content_hasher::Sha2ContentHasher;
 
-/// Name of the subfolder holding the files being uploaded.
-const UPLOADS_FOLDER: &str = "uploads";
-
-/// Name of the subfolder holding the finished files.
-const FILES_FOLDER: &str = "files";
-
-/// Size of the buffer used to stream a staged file, in bytes.
+/// Size of the buffer used to stream a file, in bytes.
 const HASH_BUFFER_SIZE: usize = 64 * 1024;
 
 /// File storage storing uploaded content on the local filesystem.
 ///
-/// Files being uploaded live inside the `uploads` subfolder of the root
-/// directory, named after the upload identifier. Finished files are moved into
-/// the `files` subfolder, named `<upload_id>_<file_name>`.
-pub struct FileSystemStorage<H> {
-    /// Content hasher computing the whole-file digest.
-    hasher: H,
-    /// Root directory holding the upload and file folders.
-    root: PathBuf,
-}
+/// The adapter performs raw filesystem I/O on the paths it is given; it holds no
+/// layout knowledge and no long-lived adapter. The media-library layout lives in
+/// the application layer.
+#[derive(Debug, Default)]
+pub struct FileSystemStorage;
 
-impl<H> FileSystemStorage<H> {
-    /// Return the path of the finished files folder.
-    fn files_path(&self) -> PathBuf {
-        self.root.join(FILES_FOLDER)
-    }
-
-    /// Return the relative path of the finished files folder.
-    #[expect(
-        clippy::single_call_fn,
-        reason = "the relative path is a named constant of the adapter layout"
-    )]
-    fn files_relative() -> PathBuf {
-        PathBuf::from(FILES_FOLDER)
-    }
-
-    /// Return the path of the finished file of `upload_id`.
-    fn final_path(&self, upload_id: NumericID, file_name: &str) -> PathBuf {
-        self.files_path().join(format!("{upload_id}_{file_name}"))
-    }
-
+impl FileSystemStorage {
     /// Map an I/O error onto a storage error.
     fn map_io_error(err: Error) -> StorageError {
         let kind = err.kind();
@@ -70,50 +40,26 @@ impl<H> FileSystemStorage<H> {
         }
     }
 
-    /// Create a new file system storage rooted at `root`, hashing content with
-    /// `hasher`.
-    ///
-    /// The `uploads` and `files` subfolders are created when they do not exist.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`StorageError`] when the root or either subfolder cannot be
-    /// created.
-    pub async fn new(root: PathBuf, hasher: H) -> Result<Self, StorageError> {
-        let storage = Self { hasher, root };
-        fs::create_dir_all(storage.files_path())
-            .await
-            .map_err(Self::map_io_error)?;
-        fs::create_dir_all(storage.uploads_path())
-            .await
-            .map_err(Self::map_io_error)?;
-        Ok(storage)
-    }
-
-    /// Return the path of the staging file of `upload_id`.
-    fn staged_path(&self, upload_id: NumericID) -> PathBuf {
-        self.uploads_path().join(upload_id.to_string())
-    }
-
-    /// Return the path of the uploads staging folder.
-    fn uploads_path(&self) -> PathBuf {
-        self.root.join(UPLOADS_FOLDER)
+    /// Create a new file system storage.
+    #[must_use]
+    pub fn new() -> Self {
+        Self
     }
 }
 
-impl<H: ContentHasher> FileStorage for FileSystemStorage<H> {
+impl FileStorage for FileSystemStorage {
     fn add_chunk(
         &self,
-        upload_id: NumericID,
+        path: &Path,
         offset: u64,
         chunk: Vec<u8>,
     ) -> impl Future<Output = Result<(), StorageError>> + Send {
-        let path = self.staged_path(upload_id);
+        let owned_path = path.to_path_buf();
 
         async move {
             let mut file = fs::OpenOptions::new()
                 .write(true)
-                .open(&path)
+                .open(&owned_path)
                 .await
                 .map_err(Self::map_io_error)?;
             file.seek(SeekFrom::Start(offset))
@@ -125,23 +71,38 @@ impl<H: ContentHasher> FileStorage for FileSystemStorage<H> {
         }
     }
 
+    fn create_directory(
+        &self,
+        path: &Path,
+    ) -> impl Future<Output = Result<(), StorageError>> + Send {
+        let owned_path = path.to_path_buf();
+
+        async move {
+            fs::create_dir_all(&owned_path)
+                .await
+                .map_err(Self::map_io_error)
+        }
+    }
+
     fn create_upload_file(
         &self,
-        upload_id: NumericID,
+        path: &Path,
         file_size: u64,
     ) -> impl Future<Output = Result<(), StorageError>> + Send {
-        let path = self.staged_path(upload_id);
+        let owned_path = path.to_path_buf();
 
         async move {
             // The row was just inserted with an identifier unique among live
-            // rows, so a staging file that already exists here is a leftover
-            // from an interrupted begin. Reclaim it and retry once instead of
-            // failing, so the leftover cannot wedge this identifier.
-            let file = match open_new(&path).await {
+            // rows, so a file that already exists here is a leftover from an
+            // interrupted begin. Reclaim it and retry once instead of failing,
+            // so the leftover cannot wedge this identifier.
+            let file = match open_new(&owned_path).await {
                 Ok(file) => file,
                 Err(err) if err.kind() == ErrorKind::AlreadyExists => {
-                    fs::remove_file(&path).await.map_err(Self::map_io_error)?;
-                    open_new(&path).await.map_err(Self::map_io_error)?
+                    fs::remove_file(&owned_path)
+                        .await
+                        .map_err(Self::map_io_error)?;
+                    open_new(&owned_path).await.map_err(Self::map_io_error)?
                 }
                 Err(err) => return Err(Self::map_io_error(err)),
             };
@@ -152,12 +113,12 @@ impl<H: ContentHasher> FileStorage for FileSystemStorage<H> {
 
     fn delete_upload_file(
         &self,
-        upload_id: NumericID,
+        path: &Path,
     ) -> impl Future<Output = Result<(), StorageError>> + Send {
-        let path = self.staged_path(upload_id);
+        let owned_path = path.to_path_buf();
 
         async move {
-            match fs::remove_file(&path).await {
+            match fs::remove_file(&owned_path).await {
                 Ok(()) => Ok(()),
                 Err(err) if err.kind() == ErrorKind::NotFound => Ok(()),
                 Err(err) => Err(Self::map_io_error(err)),
@@ -165,15 +126,34 @@ impl<H: ContentHasher> FileStorage for FileSystemStorage<H> {
         }
     }
 
-    fn integrity_hash(
+    fn directory_exist(
         &self,
-        upload_id: NumericID,
-    ) -> impl Future<Output = Result<IntegrityHash<SHA256_HEX_LENGTH>, StorageError>> + Send {
-        let path = self.staged_path(upload_id);
-        let mut session = self.hasher.hasher();
+        path: &Path,
+    ) -> impl Future<Output = Result<bool, StorageError>> + Send {
+        let owned_path = path.to_path_buf();
 
         async move {
-            let mut file = fs::File::open(&path).await.map_err(Self::map_io_error)?;
+            match fs::metadata(&owned_path).await {
+                Ok(metadata) => Ok(metadata.is_dir()),
+                Err(err) if err.kind() == ErrorKind::NotFound => Ok(false),
+                Err(err) => Err(Self::map_io_error(err)),
+            }
+        }
+    }
+
+    fn integrity_hash(
+        &self,
+        path: &Path,
+    ) -> impl Future<Output = Result<IntegrityHash<SHA256_HEX_LENGTH>, StorageError>> + Send {
+        let owned_path = path.to_path_buf();
+        // The stateless hasher is built here, at the point of use, and never
+        // stored by the long-lived storage adapter.
+        let mut session = Sha2ContentHasher.hasher();
+
+        async move {
+            let mut file = fs::File::open(&owned_path)
+                .await
+                .map_err(Self::map_io_error)?;
             let mut buffer = vec![0u8; HASH_BUFFER_SIZE];
             loop {
                 let read = file.read(&mut buffer).await.map_err(Self::map_io_error)?;
@@ -191,41 +171,29 @@ impl<H: ContentHasher> FileStorage for FileSystemStorage<H> {
 
     fn promote(
         &self,
-        upload_id: NumericID,
-        file_name: &str,
-    ) -> impl Future<Output = Result<String, StorageError>> + Send {
-        let staged = self.staged_path(upload_id);
-        let final_path = self.final_path(upload_id, file_name);
-        let files_relative = Self::files_relative();
-        let final_name = format!("{upload_id}_{file_name}");
-        let owned_file_name = file_name.to_owned();
+        staged: &Path,
+        final_path: &Path,
+    ) -> impl Future<Output = Result<(), StorageError>> + Send {
+        let owned_staged = staged.to_path_buf();
+        let owned_final = final_path.to_path_buf();
 
         async move {
-            let is_safe_name = is_path_safe(&owned_file_name);
-            if !is_safe_name {
-                return Err(StorageError::OperationFailed);
-            }
-            fs::rename(&staged, final_path)
+            fs::rename(&owned_staged, &owned_final)
                 .await
-                .map_err(Self::map_io_error)?;
-            let relative = files_relative.join(final_name);
-            relative
-                .to_str()
-                .map(str::to_owned)
-                .ok_or(StorageError::OperationFailed)
+                .map_err(Self::map_io_error)
         }
     }
 
     fn restore(
         &self,
-        upload_id: NumericID,
-        file_name: &str,
+        final_path: &Path,
+        staged: &Path,
     ) -> impl Future<Output = Result<(), StorageError>> + Send {
-        let staged = self.staged_path(upload_id);
-        let final_path = self.final_path(upload_id, file_name);
+        let owned_final = final_path.to_path_buf();
+        let owned_staged = staged.to_path_buf();
 
         async move {
-            match fs::rename(&final_path, &staged).await {
+            match fs::rename(&owned_final, &owned_staged).await {
                 Ok(()) => Ok(()),
                 Err(err) if err.kind() == ErrorKind::NotFound => Ok(()),
                 Err(err) => Err(Self::map_io_error(err)),
@@ -243,18 +211,6 @@ async fn open_new(path: &Path) -> Result<fs::File, Error> {
         .await
 }
 
-/// Return whether `file_name` is a safe single path segment.
-#[expect(
-    clippy::single_call_fn,
-    reason = "the safety rule is named for readability and reused by the domain model"
-)]
-fn is_path_safe(file_name: &str) -> bool {
-    !file_name.is_empty()
-        && !file_name.starts_with('.')
-        && !file_name.contains(['/', '\\'])
-        && !file_name.contains("..")
-}
-
 #[cfg(test)]
 mod tests {
     use std::error::Error;
@@ -265,19 +221,21 @@ mod tests {
     use super::FileSystemStorage;
     use crate::domain::port::error::StorageError;
     use crate::domain::port::file_storage::FileStorage as _;
-    use crate::infrastructure::outbound::sha2::content_hasher::Sha2ContentHasher;
 
     #[tokio::test]
     async fn create_upload_file_creates_preallocated_staged_file() -> Result<(), Box<dyn Error>> {
         // Arrange
         let tmp = tempdir()?;
-        let storage = FileSystemStorage::new(tmp.path().to_path_buf(), Sha2ContentHasher).await?;
+        let storage = FileSystemStorage::new();
+        let path = tmp.path().join("uploads").join("42");
+        let uploads = tmp.path().join("uploads");
+        storage.create_directory(&uploads).await?;
 
         // Act
-        storage.create_upload_file(42, 12).await?;
+        storage.create_upload_file(&path, 12).await?;
 
         // Assert
-        let metadata = fs::metadata(tmp.path().join("uploads/42")).await?;
+        let metadata = fs::metadata(&path).await?;
         assert_eq!(metadata.len(), 12, "the staged file should be preallocated");
         Ok(())
     }
@@ -286,15 +244,18 @@ mod tests {
     async fn create_upload_file_reclaims_stale_staged_file() -> Result<(), Box<dyn Error>> {
         // Arrange
         let tmp = tempdir()?;
-        let storage = FileSystemStorage::new(tmp.path().to_path_buf(), Sha2ContentHasher).await?;
-        storage.create_upload_file(42, 4).await?;
-        storage.add_chunk(42, 0, b"stale".to_vec()).await?;
+        let storage = FileSystemStorage::new();
+        let path = tmp.path().join("uploads").join("42");
+        let uploads = tmp.path().join("uploads");
+        storage.create_directory(&uploads).await?;
+        storage.create_upload_file(&path, 4).await?;
+        storage.add_chunk(&path, 0, b"stale".to_vec()).await?;
 
         // Act
-        storage.create_upload_file(42, 12).await?;
+        storage.create_upload_file(&path, 12).await?;
 
         // Assert
-        let metadata = fs::metadata(tmp.path().join("uploads/42")).await?;
+        let metadata = fs::metadata(&path).await?;
         assert_eq!(
             metadata.len(),
             12,
@@ -307,15 +268,18 @@ mod tests {
     async fn add_chunk_writes_bytes_at_their_offset() -> Result<(), Box<dyn Error>> {
         // Arrange
         let tmp = tempdir()?;
-        let storage = FileSystemStorage::new(tmp.path().to_path_buf(), Sha2ContentHasher).await?;
-        storage.create_upload_file(42, 8).await?;
+        let storage = FileSystemStorage::new();
+        let path = tmp.path().join("uploads").join("42");
+        let uploads = tmp.path().join("uploads");
+        storage.create_directory(&uploads).await?;
+        storage.create_upload_file(&path, 8).await?;
 
         // Act
-        storage.add_chunk(42, 4, b"5678".to_vec()).await?;
-        storage.add_chunk(42, 0, b"1234".to_vec()).await?;
+        storage.add_chunk(&path, 4, b"5678".to_vec()).await?;
+        storage.add_chunk(&path, 0, b"1234".to_vec()).await?;
 
         // Assert
-        let content = fs::read(tmp.path().join("uploads/42")).await?;
+        let content = fs::read(&path).await?;
         assert_eq!(content, b"12345678");
         Ok(())
     }
@@ -324,27 +288,31 @@ mod tests {
     async fn add_chunk_rewriting_same_offset_is_idempotent() -> Result<(), Box<dyn Error>> {
         // Arrange
         let tmp = tempdir()?;
-        let storage = FileSystemStorage::new(tmp.path().to_path_buf(), Sha2ContentHasher).await?;
-        storage.create_upload_file(42, 4).await?;
+        let storage = FileSystemStorage::new();
+        let path = tmp.path().join("uploads").join("42");
+        let uploads = tmp.path().join("uploads");
+        storage.create_directory(&uploads).await?;
+        storage.create_upload_file(&path, 4).await?;
 
         // Act
-        storage.add_chunk(42, 0, b"1234".to_vec()).await?;
-        storage.add_chunk(42, 0, b"1234".to_vec()).await?;
+        storage.add_chunk(&path, 0, b"1234".to_vec()).await?;
+        storage.add_chunk(&path, 0, b"1234".to_vec()).await?;
 
         // Assert
-        let content = fs::read(tmp.path().join("uploads/42")).await?;
+        let content = fs::read(&path).await?;
         assert_eq!(content, b"1234");
         Ok(())
     }
 
     #[tokio::test]
-    async fn add_chunk_unknown_upload_returns_conflict() -> Result<(), Box<dyn Error>> {
+    async fn add_chunk_unknown_file_returns_conflict() -> Result<(), Box<dyn Error>> {
         // Arrange
         let tmp = tempdir()?;
-        let storage = FileSystemStorage::new(tmp.path().to_path_buf(), Sha2ContentHasher).await?;
+        let storage = FileSystemStorage::new();
+        let path = tmp.path().join("uploads").join("42");
 
         // Act
-        let result = storage.add_chunk(42, 0, b"bytes".to_vec()).await;
+        let result = storage.add_chunk(&path, 0, b"bytes".to_vec()).await;
 
         // Assert
         assert!(matches!(result, Err(StorageError::Conflict)));
@@ -355,12 +323,15 @@ mod tests {
     async fn integrity_hash_streams_staged_file_and_returns_hex() -> Result<(), Box<dyn Error>> {
         // Arrange
         let tmp = tempdir()?;
-        let storage = FileSystemStorage::new(tmp.path().to_path_buf(), Sha2ContentHasher).await?;
-        storage.create_upload_file(42, 4).await?;
-        storage.add_chunk(42, 0, b"1234".to_vec()).await?;
+        let storage = FileSystemStorage::new();
+        let path = tmp.path().join("uploads").join("42");
+        let uploads = tmp.path().join("uploads");
+        storage.create_directory(&uploads).await?;
+        storage.create_upload_file(&path, 4).await?;
+        storage.add_chunk(&path, 0, b"1234".to_vec()).await?;
 
         // Act
-        let digest = storage.integrity_hash(42).await?;
+        let digest = storage.integrity_hash(&path).await?;
 
         // Assert
         assert_eq!(
@@ -374,11 +345,14 @@ mod tests {
     async fn integrity_hash_empty_staged_file_returns_empty_digest() -> Result<(), Box<dyn Error>> {
         // Arrange
         let tmp = tempdir()?;
-        let storage = FileSystemStorage::new(tmp.path().to_path_buf(), Sha2ContentHasher).await?;
-        storage.create_upload_file(42, 0).await?;
+        let storage = FileSystemStorage::new();
+        let path = tmp.path().join("uploads").join("42");
+        let uploads = tmp.path().join("uploads");
+        storage.create_directory(&uploads).await?;
+        storage.create_upload_file(&path, 0).await?;
 
         // Act
-        let digest = storage.integrity_hash(42).await?;
+        let digest = storage.integrity_hash(&path).await?;
 
         // Assert
         assert_eq!(
@@ -389,13 +363,14 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn integrity_hash_missing_upload_returns_conflict() -> Result<(), Box<dyn Error>> {
+    async fn integrity_hash_missing_file_returns_conflict() -> Result<(), Box<dyn Error>> {
         // Arrange
         let tmp = tempdir()?;
-        let storage = FileSystemStorage::new(tmp.path().to_path_buf(), Sha2ContentHasher).await?;
+        let storage = FileSystemStorage::new();
+        let path = tmp.path().join("uploads").join("42");
 
         // Act
-        let result = storage.integrity_hash(42).await;
+        let result = storage.integrity_hash(&path).await;
 
         // Assert
         assert!(matches!(result, Err(StorageError::Conflict)));
@@ -406,14 +381,17 @@ mod tests {
     async fn delete_upload_file_removes_staged_file() -> Result<(), Box<dyn Error>> {
         // Arrange
         let tmp = tempdir()?;
-        let storage = FileSystemStorage::new(tmp.path().to_path_buf(), Sha2ContentHasher).await?;
-        storage.create_upload_file(42, 4).await?;
+        let storage = FileSystemStorage::new();
+        let path = tmp.path().join("uploads").join("42");
+        let uploads = tmp.path().join("uploads");
+        storage.create_directory(&uploads).await?;
+        storage.create_upload_file(&path, 4).await?;
 
         // Act
-        storage.delete_upload_file(42).await?;
+        storage.delete_upload_file(&path).await?;
 
         // Assert
-        assert!(!tmp.path().join("uploads/42").exists());
+        assert!(!path.exists());
         Ok(())
     }
 
@@ -421,10 +399,11 @@ mod tests {
     async fn delete_upload_file_missing_file_succeeds() -> Result<(), Box<dyn Error>> {
         // Arrange
         let tmp = tempdir()?;
-        let storage = FileSystemStorage::new(tmp.path().to_path_buf(), Sha2ContentHasher).await?;
+        let storage = FileSystemStorage::new();
+        let path = tmp.path().join("uploads").join("42");
 
         // Act
-        let result = storage.delete_upload_file(42).await;
+        let result = storage.delete_upload_file(&path).await;
 
         // Assert
         assert!(result.is_ok());
@@ -432,46 +411,38 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn promote_moves_staged_file_and_returns_relative_path() -> Result<(), Box<dyn Error>> {
+    async fn promote_moves_staged_file_to_final_path() -> Result<(), Box<dyn Error>> {
         // Arrange
         let tmp = tempdir()?;
-        let storage = FileSystemStorage::new(tmp.path().to_path_buf(), Sha2ContentHasher).await?;
-        storage.create_upload_file(42, 4).await?;
-        storage.add_chunk(42, 0, b"1234".to_vec()).await?;
+        let storage = FileSystemStorage::new();
+        let staged = tmp.path().join("uploads").join("42");
+        let final_path = tmp.path().join("files").join("42_clip.mp4");
+        storage
+            .create_directory(&tmp.path().join("uploads"))
+            .await?;
+        storage.create_directory(&tmp.path().join("files")).await?;
+        storage.create_upload_file(&staged, 4).await?;
+        storage.add_chunk(&staged, 0, b"1234".to_vec()).await?;
 
         // Act
-        let relative = storage.promote(42, "clip.mp4").await?;
+        storage.promote(&staged, &final_path).await?;
 
         // Assert
-        assert_eq!(relative, "files/42_clip.mp4");
-        assert!(tmp.path().join("files/42_clip.mp4").is_file());
-        assert!(!tmp.path().join("uploads/42").exists());
+        assert!(final_path.is_file());
+        assert!(!staged.exists());
         Ok(())
     }
 
     #[tokio::test]
-    async fn promote_path_traversal_file_name_returns_error() -> Result<(), Box<dyn Error>> {
+    async fn promote_unknown_staged_file_returns_conflict() -> Result<(), Box<dyn Error>> {
         // Arrange
         let tmp = tempdir()?;
-        let storage = FileSystemStorage::new(tmp.path().to_path_buf(), Sha2ContentHasher).await?;
-        storage.create_upload_file(42, 4).await?;
+        let storage = FileSystemStorage::new();
+        let staged = tmp.path().join("uploads").join("42");
+        let final_path = tmp.path().join("files").join("42_clip.mp4");
 
         // Act
-        let result = storage.promote(42, "../escape.mp4").await;
-
-        // Assert
-        assert!(matches!(result, Err(StorageError::OperationFailed)));
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn promote_unknown_upload_returns_conflict() -> Result<(), Box<dyn Error>> {
-        // Arrange
-        let tmp = tempdir()?;
-        let storage = FileSystemStorage::new(tmp.path().to_path_buf(), Sha2ContentHasher).await?;
-
-        // Act
-        let result = storage.promote(42, "clip.mp4").await;
+        let result = storage.promote(&staged, &final_path).await;
 
         // Assert
         assert!(matches!(result, Err(StorageError::Conflict)));
@@ -482,18 +453,23 @@ mod tests {
     async fn restore_moves_final_file_back_to_staging() -> Result<(), Box<dyn Error>> {
         // Arrange
         let tmp = tempdir()?;
-        let storage = FileSystemStorage::new(tmp.path().to_path_buf(), Sha2ContentHasher).await?;
-        storage.create_upload_file(42, 4).await?;
-        storage.add_chunk(42, 0, b"1234".to_vec()).await?;
-        let relative = storage.promote(42, "clip.mp4").await?;
-        assert_eq!(relative, "files/42_clip.mp4");
+        let storage = FileSystemStorage::new();
+        let staged = tmp.path().join("uploads").join("42");
+        let final_path = tmp.path().join("files").join("42_clip.mp4");
+        storage
+            .create_directory(&tmp.path().join("uploads"))
+            .await?;
+        storage.create_directory(&tmp.path().join("files")).await?;
+        storage.create_upload_file(&staged, 4).await?;
+        storage.add_chunk(&staged, 0, b"1234".to_vec()).await?;
+        storage.promote(&staged, &final_path).await?;
 
         // Act
-        storage.restore(42, "clip.mp4").await?;
+        storage.restore(&final_path, &staged).await?;
 
         // Assert
-        assert_eq!(fs::read(tmp.path().join("uploads/42")).await?, b"1234");
-        assert!(!tmp.path().join("files/42_clip.mp4").exists());
+        assert_eq!(fs::read(&staged).await?, b"1234");
+        assert!(!final_path.exists());
         Ok(())
     }
 
@@ -501,13 +477,49 @@ mod tests {
     async fn restore_missing_final_file_succeeds() -> Result<(), Box<dyn Error>> {
         // Arrange
         let tmp = tempdir()?;
-        let storage = FileSystemStorage::new(tmp.path().to_path_buf(), Sha2ContentHasher).await?;
+        let storage = FileSystemStorage::new();
+        let staged = tmp.path().join("uploads").join("42");
+        let final_path = tmp.path().join("files").join("42_clip.mp4");
 
         // Act
-        let result = storage.restore(42, "clip.mp4").await;
+        let result = storage.restore(&final_path, &staged).await;
 
         // Assert
         assert!(result.is_ok());
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn directory_exist_reports_missing_then_existing() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let tmp = tempdir()?;
+        let storage = FileSystemStorage::new();
+        let path = tmp.path().join("uploads");
+
+        // Act
+        let before = storage.directory_exist(&path).await?;
+        storage.create_directory(&path).await?;
+        let after = storage.directory_exist(&path).await?;
+
+        // Assert
+        assert!(!before);
+        assert!(after);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn create_directory_creates_nested_and_is_idempotent() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let tmp = tempdir()?;
+        let storage = FileSystemStorage::new();
+        let path = tmp.path().join("files").join("nested");
+
+        // Act
+        storage.create_directory(&path).await?;
+        storage.create_directory(&path).await?;
+
+        // Assert
+        assert!(path.is_dir());
         Ok(())
     }
 }

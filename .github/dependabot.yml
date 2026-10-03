@@ -1,0 +1,16 @@
+---
+# Keep the commit-SHA pins in .github/workflows/*.yml current. Dependabot only
+# rewrites a pinned SHA when the release comment is on the same line; see
+# docs/development/TechnicalDesign.md § 6 (Dependencies & Dev Environment), DEPS-001.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "chore(github)"
+    groups:
+      github-actions:
+        patterns:
+          - "*"
