@@ -286,6 +286,10 @@ jobs:
       - name: Verify OpenAPI spec is current
         run: |
           cargo run --bin openapi_gen
+          if [ "$(tail -c1 docs/development/api/openapi.json | od -An -t x1 | tr -d ' \n')" != "0a" ]; then
+            echo "docs/development/api/openapi.json must end with exactly one trailing newline." >&2
+            exit 1
+          fi
           if ! git diff --exit-code -- docs/development/api/openapi.json; then
             echo "docs/development/api/openapi.json is stale." >&2
             echo "Run 'cargo run --bin openapi_gen' and commit the result." >&2

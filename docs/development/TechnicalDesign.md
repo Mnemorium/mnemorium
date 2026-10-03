@@ -1332,7 +1332,10 @@ same folder this documentation lives in — so the spec always stays in sync wit
 use std::fs;
 
 fn main() {
-    let spec = serde_json::to_string_pretty(&ApiDoc::openapi()).expect("serialize spec");
+    let mut spec = serde_json::to_string_pretty(&ApiDoc::openapi()).expect("serialize spec");
+    // End the file with a single newline so the committed spec matches what
+    // the release tooling and the CI currency check produce.
+    spec.push('\n');
 
     fs::create_dir_all("docs/development/api").expect("create docs/development/api");
     fs::write("docs/development/api/openapi.json", spec)
@@ -2276,7 +2279,6 @@ Source: `.github/workflows/*`.
 | [dtolnay/rust-toolchain](https://github.com/dtolnay/rust-toolchain)                                                    | TODO                                            | 1.98.0  | TODO       |
 | [ls-lint/action](https://github.com/ls-lint/action)                                                                    | TODO                                            | v2      | TODO       |
 | [semantic-release](https://www.npmjs.com/package/semantic-release)                                                     | TODO                                            | 25.0.9  | TODO       |
-| [semantic-release-openapi](https://www.npmjs.com/package/semantic-release-openapi)                                     | TODO                                            | 2.3.6   | TODO       |
 | [Swatinem/rust-cache](https://github.com/Swatinem/rust-cache)                                                          | TODO                                            | v2      | TODO       |
 | [taiki-e/install-action](https://github.com/taiki-e/install-action)                                                    | TODO                                            | v2      | TODO       |
 | [tj-actions/changed-files](https://github.com/tj-actions/changed-files)                                                | TODO                                            | v47.0.6 | TODO       |

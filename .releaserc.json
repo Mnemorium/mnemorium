@@ -20,15 +20,9 @@
             }
         ],
         [
-            "semantic-release-openapi",
-            {
-                "apiSpecFiles": ["docs/development/api/openapi.json"]
-            }
-        ],
-        [
             "@semantic-release/exec",
             {
-                "prepareCmd": "sed -i '0,/^version = \".*\"$/s//version = \"${nextRelease.version}\"/' Cargo.toml && cargo update --workspace && docker build -t wpelletier/mnemorium ."
+                "prepareCmd": "script/version.sh set \"${nextRelease.version}\" && cargo update --workspace && docker build -t wpelletier/mnemorium ."
             }
         ],
         [
