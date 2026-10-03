@@ -1,6 +1,7 @@
 """E2E tests for UC-002 - User Authentication."""
 
 from collections.abc import Callable
+from uuid import uuid4
 
 import requests
 from conftest import SECRET_PASSWORD
@@ -50,11 +51,37 @@ def test_uc002_user_authentication_happy_path(
 
 def test_uc002_user_authentication_wrong_password(
     server_url: str,
+    standard_user_token: str,
     assert_error_body: Callable[[requests.Response, int], None],
 ) -> None:
+    # Depends on the fixture so "alice" exists and this exercises the
+    # wrong-password branch rather than the unknown-username branch.
     response = requests.post(
         f"{server_url}{_LOGIN_PATH}",
         json={"username": _STANDARD_USER_USERNAME, "password": _WRONG_PASSWORD},
         timeout=10,
     )
     assert_error_body(response, 401)
+
+
+def test_uc002_user_authentication_bad_credentials_are_indistinguishable(
+    server_url: str,
+    standard_user_token: str,
+    assert_error_body: Callable[[requests.Response, int], None],
+) -> None:
+    # An unknown account and a wrong password must be indistinguishable to an
+    # anonymous caller: same status and the same error message.
+    wrong_password = requests.post(
+        f"{server_url}{_LOGIN_PATH}",
+        json={"username": _STANDARD_USER_USERNAME, "password": _WRONG_PASSWORD},
+        timeout=10,
+    )
+    unknown_username = requests.post(
+        f"{server_url}{_LOGIN_PATH}",
+        json={"username": f"ghost-{uuid4().hex}", "password": _WRONG_PASSWORD},
+        timeout=10,
+    )
+
+    assert_error_body(wrong_password, 401)
+    assert_error_body(unknown_username, 401)
+    assert wrong_password.json()["error"] == unknown_username.json()["error"]

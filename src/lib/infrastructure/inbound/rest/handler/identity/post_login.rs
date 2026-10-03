@@ -51,7 +51,7 @@ impl From<LoginUserError> for ApiError {
     fn from(err: LoginUserError) -> Self {
         match err {
             LoginUserError::InvalidPassword | LoginUserError::InvalidUsername => {
-                Self::Unauthorized(err.to_string())
+                Self::Unauthorized("invalid credentials".to_owned())
             }
             LoginUserError::Unknown(_) => Self::InternalServerError,
         }
@@ -137,6 +137,7 @@ mod tests {
     use axum::response::Response;
     use axum::routing::post;
     use mockall::predicate::eq;
+    use rstest::rstest;
     use serde_json::Value;
     use serde_json::json;
     use tower::ServiceExt as _;
@@ -319,16 +320,23 @@ mod tests {
         Ok(())
     }
 
+    #[rstest]
+    #[case::unknown_username(LoginUserError::InvalidUsername, "ghost", SECRET_PASSWORD)]
+    #[case::wrong_password(LoginUserError::InvalidPassword, "alice", "wrong-password")]
     #[tokio::test]
-    async fn post_login_unknown_username_returns_unauthorized() -> Result<(), Box<dyn Error>> {
+    async fn post_login_invalid_credentials_returns_uniform_unauthorized(
+        #[case] error: LoginUserError,
+        #[case] username: &str,
+        #[case] password: &str,
+    ) -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut login_use_case = MockLoginUserUseCase::new();
-        expect_error(&mut login_use_case, LoginUserError::InvalidUsername);
+        expect_error(&mut login_use_case, error);
 
         // Act
         let response = send(
             login_use_case,
-            Body::from(request_body("ghost", SECRET_PASSWORD).to_string()),
+            Body::from(request_body(username, password).to_string()),
         )
         .await?;
 
@@ -336,29 +344,7 @@ mod tests {
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
         assert_eq!(
             error_message_of(&response).as_deref(),
-            Some("no user matches the provided username")
-        );
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn post_login_wrong_password_returns_unauthorized() -> Result<(), Box<dyn Error>> {
-        // Arrange
-        let mut login_use_case = MockLoginUserUseCase::new();
-        expect_error(&mut login_use_case, LoginUserError::InvalidPassword);
-
-        // Act
-        let response = send(
-            login_use_case,
-            Body::from(request_body("alice", "wrong-password").to_string()),
-        )
-        .await?;
-
-        // Assert
-        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
-        assert_eq!(
-            error_message_of(&response).as_deref(),
-            Some("the password does not match the stored hash")
+            Some("invalid credentials")
         );
         Ok(())
     }
