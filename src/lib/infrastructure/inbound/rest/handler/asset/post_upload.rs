@@ -151,6 +151,12 @@ impl From<BeginUploadError> for ApiError {
             description = "The declared content type is not a supported media type"
         ),
         (
+            status = UNPROCESSABLE_ENTITY,
+            body = ErrorBody,
+            content_type = "application/hal+json",
+            description = "The request body does not match the expected schema"
+        ),
+        (
             status = INTERNAL_SERVER_ERROR,
             body = ErrorBody,
             content_type = "application/hal+json",

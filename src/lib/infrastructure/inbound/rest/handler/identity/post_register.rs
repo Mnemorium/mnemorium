@@ -130,6 +130,18 @@ impl From<RegisterUserError> for ApiError {
             description = "The request body exceeds the maximum allowed size"
         ),
         (
+            status = UNSUPPORTED_MEDIA_TYPE,
+            body = ErrorBody,
+            content_type = "application/hal+json",
+            description = "The request body media type is not application/json"
+        ),
+        (
+            status = UNPROCESSABLE_ENTITY,
+            body = ErrorBody,
+            content_type = "application/hal+json",
+            description = "The request body does not match the expected schema"
+        ),
+        (
             status = FORBIDDEN,
             body = ErrorBody,
             content_type = "application/hal+json",
@@ -535,8 +547,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn post_register_missing_required_field_returns_bad_request() -> Result<(), Box<dyn Error>>
-    {
+    async fn post_register_missing_required_field_returns_unprocessable_entity()
+    -> Result<(), Box<dyn Error>> {
         // Arrange
         let use_case = MockRegisterUserUseCase::new();
 
@@ -555,16 +567,16 @@ mod tests {
         .await?;
 
         // Assert
-        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
         assert!(
             error_message_of(&response).is_some(),
-            "a bad request must carry an error message"
+            "an unprocessable entity must carry an error message"
         );
         Ok(())
     }
 
     #[tokio::test]
-    async fn post_register_wrong_type_returns_bad_request() -> Result<(), Box<dyn Error>> {
+    async fn post_register_wrong_type_returns_unprocessable_entity() -> Result<(), Box<dyn Error>> {
         // Arrange
         let use_case = MockRegisterUserUseCase::new();
 
@@ -584,16 +596,17 @@ mod tests {
         .await?;
 
         // Assert
-        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
         assert!(
             error_message_of(&response).is_some(),
-            "a bad request must carry an error message"
+            "an unprocessable entity must carry an error message"
         );
         Ok(())
     }
 
     #[tokio::test]
-    async fn post_register_invalid_role_value_returns_bad_request() -> Result<(), Box<dyn Error>> {
+    async fn post_register_invalid_role_value_returns_unprocessable_entity()
+    -> Result<(), Box<dyn Error>> {
         // Arrange
         let use_case = MockRegisterUserUseCase::new();
 
@@ -613,10 +626,10 @@ mod tests {
         .await?;
 
         // Assert
-        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
         assert!(
             error_message_of(&response).is_some(),
-            "a bad request must carry an error message"
+            "an unprocessable entity must carry an error message"
         );
         Ok(())
     }
