@@ -11,6 +11,11 @@ on:
       - synchronize
       - reopened
       - ready_for_review
+  merge_group:
+    types:
+      - checks_requested
+    branches:
+      - main
 
 permissions:
   contents: read
@@ -27,6 +32,7 @@ jobs:
     runs-on: ubuntu-slim
     steps:
       - uses: amannn/action-semantic-pull-request@48f256284bd46cdaab1048c3721360e808335d50  # v6
+        if: github.event_name == 'pull_request'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -131,9 +137,10 @@ jobs:
   docs-only:
     needs: [gatekeeper]
     if: >-
-      startsWith(github.event.pull_request.title, 'docs:') ||
+      github.event_name == 'pull_request' &&
+      (startsWith(github.event.pull_request.title, 'docs:') ||
       startsWith(github.event.pull_request.title, 'docs!') ||
-      startsWith(github.event.pull_request.title, 'docs(')
+      startsWith(github.event.pull_request.title, 'docs('))
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
@@ -206,7 +213,7 @@ jobs:
             --config p/rust \
             --config p/security-audit \
             --config p/cwe-top-25 \
-            --baseline-commit "${{ github.event.pull_request.base.sha }}" \
+            --baseline-commit "${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}" \
             --metrics=off \
             --sarif \
             --output .artifacts/semgrep.sarif
@@ -509,7 +516,9 @@ jobs:
 
   review:
     needs: [semgrep, rust, e2e]
-    if: always()
+    if: >-
+      always() &&
+      github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     permissions:
       contents: read

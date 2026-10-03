@@ -415,7 +415,9 @@ When a release is needed, the release workflow (`.github/workflows/cd.yml`) runs
 
 ### Release process
 
-The release workflow (`.github/workflows/cd.yml`) runs when a pull request is merged into `main`:
+The release workflow (`.github/workflows/cd.yml`) runs when a pull request is merged into `main`. Before the merge, the
+merge queue validates the queued pull request(s) by running the required checks from `.github/workflows/ci.yml` on the
+`merge_group` event:
 
 ```puml
 @startuml
@@ -424,6 +426,12 @@ skinparam activityDiamondBackgroundColor #FFFFFF
 
 |Developer|
 start
+:Queue the pull request for merging;
+
+|CI|
+:Run required checks on merge_group;
+
+|Developer|
 :Merge the pull request into main;
 
 |CD|
