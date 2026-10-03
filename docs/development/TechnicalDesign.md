@@ -2016,7 +2016,11 @@ External service clients are exercised against a stubbed HTTP server.
 
 ### E2E test
 
-End-to-end tests drive the containerised server through its REST API as a black box.
+End-to-end tests drive the containerised server through its REST API as a black box. In CI they run against the image
+built from the repository `Dockerfile` (the `e2e` job in `.github/workflows/ci.yml`). That job triggers on changes to
+Rust sources, Python tests, the container inputs, SQL migrations, or the workflows themselves, so a schema-only pull
+request is exercised by the black-box suite as well as by the repository integration tests (`rust`). Its report
+(`junit.xml`, best-effort) is an optional, untrusted review input, not a gate on its own.
 
 ---
 
@@ -2191,33 +2195,36 @@ Source: `requirements.txt`.
 
 Source: `.github/workflows/*`.
 
-| Name                                                                                                                   | Description | Version | License |
-| ---------------------------------------------------------------------------------------------------------------------- | ----------- | ------- | ------- |
-| [@opencode/cli](https://www.npmjs.com/package/@opencode/cli)                                                           | TODO        | 2.0.22  | TODO    |
-| [@semantic-release-plus/docker](https://www.npmjs.com/package/@semantic-release-plus/docker)                           | TODO        | 3.1.3   | TODO    |
-| [@semantic-release/changelog](https://www.npmjs.com/package/@semantic-release/changelog)                               | TODO        | 7.0.0   | TODO    |
-| [@semantic-release/exec](https://www.npmjs.com/package/@semantic-release/exec)                                         | TODO        | 7.1.0   | TODO    |
-| [@semantic-release/git](https://www.npmjs.com/package/@semantic-release/git)                                           | TODO        | 11.0.1  | TODO    |
-| [actions/checkout](https://github.com/actions/checkout)                                                                | TODO        | v6      | TODO    |
-| [actions/create-github-app-token](https://github.com/actions/create-github-app-token)                                  | TODO        | v3.2.0  | TODO    |
-| [actions/download-artifact](https://github.com/actions/download-artifact)                                              | TODO        | v7      | TODO    |
-| [actions/setup-node](https://github.com/actions/setup-node)                                                            | TODO        | v4      | TODO    |
-| [actions/setup-node](https://github.com/actions/setup-node)                                                            | TODO        | v7      | TODO    |
-| [actions/setup-python](https://github.com/actions/setup-python)                                                        | TODO        | v5      | TODO    |
-| [actions/upload-artifact](https://github.com/actions/upload-artifact)                                                  | TODO        | v7      | TODO    |
-| [amannn/action-semantic-pull-request](https://github.com/amannn/action-semantic-pull-request)                          | TODO        | v6      | TODO    |
-| [cachix/install-nix-action](https://github.com/cachix/install-nix-action)                                              | TODO        | v31     | TODO    |
-| [conventional-changelog-conventionalcommits](https://www.npmjs.com/package/conventional-changelog-conventionalcommits) | TODO        | 9       | TODO    |
-| [DavidAnson/markdownlint-cli2-action](https://github.com/DavidAnson/markdownlint-cli2-action)                          | TODO        | v24     | TODO    |
-| [docker/login-action](https://github.com/docker/login-action)                                                          | TODO        | v4      | TODO    |
-| [dortort/betterleaks-action](https://github.com/dortort/betterleaks-action)                                            | TODO        | v0.1.0  | TODO    |
-| [dtolnay/rust-toolchain](https://github.com/dtolnay/rust-toolchain)                                                    | TODO        | 1.98.0  | TODO    |
-| [ls-lint/action](https://github.com/ls-lint/action)                                                                    | TODO        | v2      | TODO    |
-| [semantic-release](https://www.npmjs.com/package/semantic-release)                                                     | TODO        | 25.0.9  | TODO    |
-| [semantic-release-openapi](https://www.npmjs.com/package/semantic-release-openapi)                                     | TODO        | 2.3.6   | TODO    |
-| [Swatinem/rust-cache](https://github.com/Swatinem/rust-cache)                                                          | TODO        | v2      | TODO    |
-| [taiki-e/install-action](https://github.com/taiki-e/install-action)                                                    | TODO        | v2      | TODO    |
-| [tj-actions/changed-files](https://github.com/tj-actions/changed-files)                                                | TODO        | v47.0.6 | TODO    |
+| Name                                                                                                                   | Description                                     | Version | License    |
+| ---------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------- | ------- | ---------- |
+| [@opencode/cli](https://www.npmjs.com/package/@opencode/cli)                                                           | TODO                                            | 2.0.22  | TODO       |
+| [@semantic-release-plus/docker](https://www.npmjs.com/package/@semantic-release-plus/docker)                           | TODO                                            | 3.1.3   | TODO       |
+| [@semantic-release/changelog](https://www.npmjs.com/package/@semantic-release/changelog)                               | TODO                                            | 7.0.0   | TODO       |
+| [@semantic-release/exec](https://www.npmjs.com/package/@semantic-release/exec)                                         | TODO                                            | 7.1.0   | TODO       |
+| [@semantic-release/git](https://www.npmjs.com/package/@semantic-release/git)                                           | TODO                                            | 11.0.1  | TODO       |
+| [actions/checkout](https://github.com/actions/checkout)                                                                | TODO                                            | v6      | TODO       |
+| [actions/create-github-app-token](https://github.com/actions/create-github-app-token)                                  | TODO                                            | v3.2.0  | TODO       |
+| [actions/download-artifact](https://github.com/actions/download-artifact)                                              | TODO                                            | v7      | TODO       |
+| [actions/setup-node](https://github.com/actions/setup-node)                                                            | TODO                                            | v4      | TODO       |
+| [actions/setup-node](https://github.com/actions/setup-node)                                                            | TODO                                            | v7      | TODO       |
+| [actions/setup-python](https://github.com/actions/setup-python)                                                        | TODO                                            | v5      | TODO       |
+| [actions/upload-artifact](https://github.com/actions/upload-artifact)                                                  | TODO                                            | v7      | TODO       |
+| [amannn/action-semantic-pull-request](https://github.com/amannn/action-semantic-pull-request)                          | TODO                                            | v6      | TODO       |
+| [anomalyco/opencode/github](https://github.com/anomalyco/opencode)                                                     | TODO                                            | latest  | TODO       |
+| [cachix/install-nix-action](https://github.com/cachix/install-nix-action)                                              | TODO                                            | v31     | TODO       |
+| [conventional-changelog-conventionalcommits](https://www.npmjs.com/package/conventional-changelog-conventionalcommits) | TODO                                            | 9       | TODO       |
+| [DavidAnson/markdownlint-cli2-action](https://github.com/DavidAnson/markdownlint-cli2-action)                          | TODO                                            | v24     | TODO       |
+| [docker/build-push-action](https://github.com/docker/build-push-action)                                                | Builds the production image with the GHA cache. | v7      | Apache-2.0 |
+| [docker/login-action](https://github.com/docker/login-action)                                                          | TODO                                            | v4      | TODO       |
+| [docker/setup-buildx-action](https://github.com/docker/setup-buildx-action)                                            | BuildKit builder setup for cached image builds. | v4      | Apache-2.0 |
+| [dortort/betterleaks-action](https://github.com/dortort/betterleaks-action)                                            | TODO                                            | v0.1.0  | TODO       |
+| [dtolnay/rust-toolchain](https://github.com/dtolnay/rust-toolchain)                                                    | TODO                                            | 1.98.0  | TODO       |
+| [ls-lint/action](https://github.com/ls-lint/action)                                                                    | TODO                                            | v2      | TODO       |
+| [semantic-release](https://www.npmjs.com/package/semantic-release)                                                     | TODO                                            | 25.0.9  | TODO       |
+| [semantic-release-openapi](https://www.npmjs.com/package/semantic-release-openapi)                                     | TODO                                            | 2.3.6   | TODO       |
+| [Swatinem/rust-cache](https://github.com/Swatinem/rust-cache)                                                          | TODO                                            | v2      | TODO       |
+| [taiki-e/install-action](https://github.com/taiki-e/install-action)                                                    | TODO                                            | v2      | TODO       |
+| [tj-actions/changed-files](https://github.com/tj-actions/changed-files)                                                | TODO                                            | v47.0.6 | TODO       |
 
 ---
 
