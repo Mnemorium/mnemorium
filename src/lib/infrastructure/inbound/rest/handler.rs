@@ -59,7 +59,6 @@ mod tests {
     use crate::application::port::login_user::LoginUserError;
     use crate::application::port::login_user::LoginUserUseCase;
     use crate::application::port::login_user::MockLoginUserUseCase;
-    use crate::infrastructure::outbound::jwt::token_provider::JwtTokenProvider;
     use crate::test_helpers::SECRET_PASSWORD;
     use crate::test_helpers::app_state;
     use crate::test_helpers::app_state_with_identity;
@@ -119,12 +118,9 @@ mod tests {
         Ok(message.to_owned())
     }
 
-    /// A router whose only token provider is the fixed test one.
+    /// A router whose token provider is built from the fixture configuration.
     fn plain_router() -> Result<axum::Router, Box<dyn Error>> {
-        Ok(setup_routes(&app_state(Arc::new(JwtTokenProvider::new(
-            "tmptmp".to_owned(),
-            3600,
-        )))?))
+        Ok(setup_routes(&app_state()?))
     }
 
     #[tokio::test]

@@ -199,12 +199,13 @@ HTTP layer shares.
 `AppState` lives in `src/lib/infrastructure/inbound/rest/app_state.rs` and holds:
 
 - the live configuration (`Arc<ArcSwap<Configuration>>`),
-- the per-context use-case factories (see [Use cases](#9-use-cases)),
-- the token provider the auth middleware validates with.
+- the per-context use-case factories (see [Use cases](#9-use-cases)).
 
-`AppState` is the single router state; `FromRef` impls expose exactly what middleware extracts from it. Getters return
-`Arc` clones, never borrows of the shared state. Nothing outside the composition root builds an adapter that lives for
-the process lifetime; the per-use adapters a factory accessor or an adapter needs are built where they are used (see
+`AppState` is the single router state; `FromRef` impls expose exactly what middleware extracts from it. The auth
+middleware does not get a cached token provider: `FromRef<AppState> for Arc<JwtTokenProvider>` builds one from the live
+configuration, so it validates with the same secret and TTL the Identity use cases issue with. Getters return `Arc`
+clones, never borrows of the shared state. Nothing outside the composition root builds an adapter that lives for the
+process lifetime; the per-use adapters a factory accessor or an adapter needs are built where they are used (see
 [§ 9.2](#92-use-case-factory)).
 
 ---
@@ -526,8 +527,9 @@ Only use-case traits are object-safe: their `execute` returns `Pin<Box<dyn Futur
 a factory can return `Arc<dyn <UseCaseName>UseCase>`.
 
 Outbound ports that return `impl Future` (RPITIT) are **not** dyn-safe. `AppState` and the use-case factories therefore
-hold concrete adapters (`Arc<SqlxUnitOfWorkFactory>`, `Arc<JwtTokenProvider>`, ...) and `Arc<dyn <UseCaseName>UseCase>`
-trait objects — never `Arc<dyn UnitOfWorkFactory>` or `Arc<dyn TokenProvider>`.
+hold concrete adapters (`Arc<SqlxUnitOfWorkFactory>`, ...) and build concrete per-use adapters
+(`Arc<JwtTokenProvider>`), while the use cases they hand back are `Arc<dyn <UseCaseName>UseCase>` trait objects — never
+`Arc<dyn UnitOfWorkFactory>` or `Arc<dyn TokenProvider>`.
 
 ---
 
@@ -785,7 +787,9 @@ A factory port file declares the trait only: no `Command`, `Response` or `Error`
 
 `LoadConfiguration` runs once at startup; the resulting `Configuration` is stored as `Arc<ArcSwap<Configuration>>` in
 `AppState`. Never cache a configuration-derived value (pepper, `JWT` secret, TTL) in a long-lived adapter built at
-startup.
+startup. `security.jwt.secret` is static: it is established at startup and never changes while the process runs. The
+auth middleware builds its `JwtTokenProvider` from the live configuration through `FromRef`, and the Identity use cases
+build theirs the same way, so the key used to issue a token is always the key used to validate it.
 
 The datastore path is needed before the pool exists, but the configuration singleton row lives behind that pool.
 `bootstrap_sqlite3` (`src/lib/infrastructure/outbound/config/bootstrap.rs`) therefore reads the file and the environment
@@ -808,13 +812,12 @@ A few settings are read once while the process starts — before the live config
 component that consumes them is built — and a change to their stored value has no effect until the server restarts. They
 are the **startup-only settings**; this table is their registry.
 
-| Setting                                   | Consumed at startup by                                                                                                                                          | Restart feedback                                                       |
-| ----------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
-| `persistence.sqlite3.path`                | The bootstrap that opens the pool (`src/lib/infrastructure/outbound/config/bootstrap.rs`).                                                                      | A startup warning when the stored value differs (`src/bin/server.rs`). |
-| `persistence.sqlite3.max_connections`     | The pool sizing in the same bootstrap.                                                                                                                          | None.                                                                  |
-| `security.jwt.secret`, `security.jwt.ttl` | The auth middleware's `JwtTokenProvider` (`src/bin/server.rs`); the Identity use cases read the live value, so a change makes newly issued tokens unverifiable. | None (`TODO(hot-reload)` in `src/bin/server.rs`).                      |
-| `asset.upload.chunk_size_bytes`           | The axum body limit fixed when the router is built (`src/lib/infrastructure/inbound/rest/handler/asset.rs`); the upload use cases read the live value.          | None (`TODO(hot-reload)` in the same handler).                         |
-| `asset.storage.root`                      | The `FileSystemStorage` adapter built per use from the root captured in `src/bin/server.rs`.                                                                    | None.                                                                  |
+| Setting                               | Consumed at startup by                                                                                                                                 | Restart feedback                                                       |
+| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------- |
+| `persistence.sqlite3.path`            | The bootstrap that opens the pool (`src/lib/infrastructure/outbound/config/bootstrap.rs`).                                                             | A startup warning when the stored value differs (`src/bin/server.rs`). |
+| `persistence.sqlite3.max_connections` | The pool sizing in the same bootstrap.                                                                                                                 | None.                                                                  |
+| `asset.upload.chunk_size_bytes`       | The axum body limit fixed when the router is built (`src/lib/infrastructure/inbound/rest/handler/asset.rs`); the upload use cases read the live value. | None (`TODO(hot-reload)` in the same handler).                         |
+| `asset.storage.root`                  | The `FileSystemStorage` adapter built per use from the root captured in `src/bin/server.rs`.                                                           | None.                                                                  |
 
 The registry is **extensible**: a setting becomes startup-only by being added here. Adding one records, in the same
 change, how a change to the stored value is surfaced to the operator (a startup warning, or an explicit `None`).

@@ -17,7 +17,6 @@ use mnemorium::infrastructure::outbound::argon2::password_hasher::Argon2Password
 use mnemorium::infrastructure::outbound::config::bootstrap::bootstrap_sqlite3;
 use mnemorium::infrastructure::outbound::config::configuration_source::ConfigConfigurationSource;
 use mnemorium::infrastructure::outbound::file_system::file_storage::FileSystemStorage;
-use mnemorium::infrastructure::outbound::jwt::token_provider::JwtTokenProvider;
 use mnemorium::infrastructure::outbound::random::password_generator::RandomPasswordGenerator;
 use mnemorium::infrastructure::outbound::random::secret_generator::ChaChaSecretGenerator;
 use mnemorium::infrastructure::outbound::sqlx::sqlite3::init_db;
@@ -84,15 +83,6 @@ async fn main() -> Result<(), anyhow::Error> {
         Err(error) => return Err(error.into()),
     }
 
-    // TODO(hot-reload): the auth middleware holds a `JwtTokenProvider` built from
-    // the startup configuration. When the runtime configuration update lands, the
-    // middleware must read the live configuration too (config-aware provider or a
-    // per-request build), otherwise issued and validated secrets diverge.
-    let token_provider = Arc::new(JwtTokenProvider::new(
-        configuration.load().security().jwt().secret().to_owned(),
-        configuration.load().security().jwt().ttl(),
-    ));
-
     let identity_use_case_factory = Arc::new(RuntimeIdentityUseCaseFactory::new(
         Arc::clone(&configuration),
         Arc::clone(&unit_of_work_factory),
@@ -117,7 +107,6 @@ async fn main() -> Result<(), anyhow::Error> {
         asset_use_case_factory,
         configuration,
         identity_use_case_factory,
-        token_provider,
         user_use_case_factory,
     );
 

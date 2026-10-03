@@ -51,7 +51,6 @@ mod test_helpers {
     use crate::domain::port::user_unit_of_work::UserUnitOfWork;
     use crate::infrastructure::inbound::rest::api_error::ApiErrorMessage;
     use crate::infrastructure::inbound::rest::app_state::AppState;
-    use crate::infrastructure::outbound::jwt::token_provider::JwtTokenProvider;
 
     /// A password that satisfies the password policy.
     ///
@@ -60,6 +59,13 @@ mod test_helpers {
     /// password behaviour (policy validation, wrong-password rejection,
     /// change-password, hashing, verification) keep an explicit password.
     pub const SECRET_PASSWORD: &str = "C0rrect!Horse";
+
+    /// JWT secret the test `AppState` fixtures are built with.
+    ///
+    /// The auth middleware builds its token provider from the live
+    /// configuration, so tests mint tokens with this value.
+    pub const TEST_JWT_SECRET: &str =
+        "0000000000000000000000000000000000000000000000000000000000000000";
 
     /// Fake unit of work wiring mocked repositories and recording its outcome.
     ///
@@ -348,39 +354,52 @@ mod test_helpers {
         }
     }
 
-    /// Build an application state whose use-case factories are mocks and whose
-    /// configuration is a fixed valid snapshot.
+    /// Build a configuration whose JWT settings use `jwt_secret`.
     ///
-    /// Only the token provider is exercised by the callers; the factories are
-    /// never reached.
+    /// All other settings are fixed valid values, and the pepper is `"1"`
+    /// repeated 64 times.
     ///
     /// # Errors
     ///
     /// Returns an error when the fixed configuration cannot be built.
-    pub fn app_state(token_provider: Arc<JwtTokenProvider>) -> Result<AppState, Box<dyn Error>> {
-        let jwt = Jwt::try_new("0".repeat(64), 3600)?;
+    pub fn configuration_with_jwt_secret(
+        jwt_secret: &str,
+    ) -> Result<Configuration, Box<dyn Error>> {
+        let jwt = Jwt::try_new(jwt_secret.to_owned(), 3600)?;
         let security = Security::try_new(jwt, "1".repeat(64), true)?;
         let sqlite3 = Sqlite3::try_new(":memory:".to_owned(), 1)?;
         let logging = Logging::try_new(false, "debug,sqlx=warn".to_owned(), 7, Rotation::Daily)?;
-        let configuration = Configuration::new(
+        Ok(Configuration::new(
             Persistence::new(sqlite3),
             security,
             logging,
             Asset::default(),
-        );
+        ))
+    }
+
+    /// Build an application state whose use-case factories are mocks and whose
+    /// configuration is a fixed valid snapshot.
+    ///
+    /// The auth middleware builds its token provider from that configuration,
+    /// so tests mint tokens with [`TEST_JWT_SECRET`].
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the fixed configuration cannot be built.
+    pub fn app_state() -> Result<AppState, Box<dyn Error>> {
         Ok(AppState::new(
             Arc::new(MockAssetUseCaseFactory::new()),
-            Arc::new(ArcSwap::from_pointee(configuration)),
+            Arc::new(ArcSwap::from_pointee(configuration_with_jwt_secret(
+                TEST_JWT_SECRET,
+            )?)),
             Arc::new(MockIdentityUseCaseFactory::new()),
-            token_provider,
             Arc::new(MockUserUseCaseFactory::new()),
         ))
     }
 
     /// Build an application state around a mocked Identity use-case factory.
     ///
-    /// The token provider and the User factory are mocks the callers never
-    /// reach.
+    /// The User factory is a mock the callers never reach.
     ///
     /// # Errors
     ///
@@ -388,29 +407,19 @@ mod test_helpers {
     pub fn app_state_with_identity(
         identity_use_case_factory: Arc<dyn IdentityUseCaseFactory>,
     ) -> Result<AppState, Box<dyn Error>> {
-        let jwt = Jwt::try_new("0".repeat(64), 3600)?;
-        let security = Security::try_new(jwt, "1".repeat(64), true)?;
-        let sqlite3 = Sqlite3::try_new(":memory:".to_owned(), 1)?;
-        let logging = Logging::try_new(false, "debug,sqlx=warn".to_owned(), 7, Rotation::Daily)?;
-        let configuration = Configuration::new(
-            Persistence::new(sqlite3),
-            security,
-            logging,
-            Asset::default(),
-        );
         Ok(AppState::new(
             Arc::new(MockAssetUseCaseFactory::new()),
-            Arc::new(ArcSwap::from_pointee(configuration)),
+            Arc::new(ArcSwap::from_pointee(configuration_with_jwt_secret(
+                TEST_JWT_SECRET,
+            )?)),
             identity_use_case_factory,
-            Arc::new(JwtTokenProvider::new("tmptmp".to_owned(), 3600)),
             Arc::new(MockUserUseCaseFactory::new()),
         ))
     }
 
     /// Build an application state around a mocked User use-case factory.
     ///
-    /// The token provider and the Identity factory are mocks the callers never
-    /// reach.
+    /// The Identity factory is a mock the callers never reach.
     ///
     /// # Errors
     ///
@@ -418,29 +427,19 @@ mod test_helpers {
     pub fn app_state_with_user(
         user_use_case_factory: Arc<dyn UserUseCaseFactory>,
     ) -> Result<AppState, Box<dyn Error>> {
-        let jwt = Jwt::try_new("0".repeat(64), 3600)?;
-        let security = Security::try_new(jwt, "1".repeat(64), true)?;
-        let sqlite3 = Sqlite3::try_new(":memory:".to_owned(), 1)?;
-        let logging = Logging::try_new(false, "debug,sqlx=warn".to_owned(), 7, Rotation::Daily)?;
-        let configuration = Configuration::new(
-            Persistence::new(sqlite3),
-            security,
-            logging,
-            Asset::default(),
-        );
         Ok(AppState::new(
             Arc::new(MockAssetUseCaseFactory::new()),
-            Arc::new(ArcSwap::from_pointee(configuration)),
+            Arc::new(ArcSwap::from_pointee(configuration_with_jwt_secret(
+                TEST_JWT_SECRET,
+            )?)),
             Arc::new(MockIdentityUseCaseFactory::new()),
-            Arc::new(JwtTokenProvider::new("tmptmp".to_owned(), 3600)),
             user_use_case_factory,
         ))
     }
 
     /// Build an application state around a mocked Asset use-case factory.
     ///
-    /// The token provider and the Identity and User factories are mocks the
-    /// callers never reach.
+    /// The Identity and User factories are mocks the callers never reach.
     ///
     /// # Errors
     ///
@@ -448,21 +447,12 @@ mod test_helpers {
     pub fn app_state_with_asset(
         asset_use_case_factory: Arc<dyn AssetUseCaseFactory>,
     ) -> Result<AppState, Box<dyn Error>> {
-        let jwt = Jwt::try_new("0".repeat(64), 3600)?;
-        let security = Security::try_new(jwt, "1".repeat(64), true)?;
-        let sqlite3 = Sqlite3::try_new(":memory:".to_owned(), 1)?;
-        let logging = Logging::try_new(false, "debug,sqlx=warn".to_owned(), 7, Rotation::Daily)?;
-        let configuration = Configuration::new(
-            Persistence::new(sqlite3),
-            security,
-            logging,
-            Asset::default(),
-        );
         Ok(AppState::new(
             asset_use_case_factory,
-            Arc::new(ArcSwap::from_pointee(configuration)),
+            Arc::new(ArcSwap::from_pointee(configuration_with_jwt_secret(
+                TEST_JWT_SECRET,
+            )?)),
             Arc::new(MockIdentityUseCaseFactory::new()),
-            Arc::new(JwtTokenProvider::new("tmptmp".to_owned(), 3600)),
             Arc::new(MockUserUseCaseFactory::new()),
         ))
     }

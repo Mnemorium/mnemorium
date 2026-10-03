@@ -18,6 +18,11 @@ pub enum JwtError {
 #[non_exhaustive]
 pub struct Jwt {
     /// Secret key used to sign and verify tokens.
+    ///
+    /// This is a static setting: `security.jwt.secret` is established at
+    /// startup and cannot change while the process runs. The auth middleware
+    /// and the Identity use cases both read it from the live configuration,
+    /// so the key used to issue a token is always the key used to validate it.
     secret: String,
     /// Lifetime of a token, in seconds.
     ttl: u64,
