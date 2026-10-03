@@ -270,6 +270,7 @@ mod tests {
     use crate::domain::model::persistence::Persistence;
     use crate::domain::model::security::Security;
     use crate::domain::model::sqlite3::Sqlite3;
+    use crate::domain::model::sqlite3::Sqlite3Error;
     use crate::domain::port::configuration_repository::MockConfigurationRepository;
     use crate::domain::port::configuration_source::MockConfigurationSource;
     use crate::domain::port::credential_repository::MockCredentialRepository;
@@ -569,6 +570,24 @@ mod tests {
 
         // Assert
         assert!(matches!(result, Err(LoggingError::LevelEmpty)));
+    }
+
+    #[tokio::test]
+    async fn sqlite3_rejects_zero_max_connections() {
+        // Act
+        let result = Sqlite3::try_new("mnemorium.db".to_owned(), 0);
+
+        // Assert
+        assert!(matches!(result, Err(Sqlite3Error::InvalidMaxConnections)));
+    }
+
+    #[tokio::test]
+    async fn sqlite3_rejects_empty_path() {
+        // Act
+        let result = Sqlite3::try_new(String::new(), 1);
+
+        // Assert
+        assert!(matches!(result, Err(Sqlite3Error::PathEmpty)));
     }
 
     #[tokio::test]
