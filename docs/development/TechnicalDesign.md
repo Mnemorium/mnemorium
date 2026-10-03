@@ -2018,8 +2018,7 @@ End-to-end tests drive the containerised server through its REST API as a black 
 built from the repository `Dockerfile` (the `e2e` job in `.github/workflows/ci.yml`). That job triggers on changes to
 Rust sources, Python tests, the container inputs, SQL migrations, or the workflows themselves, so a schema-only pull
 request is exercised by the black-box suite as well as by the repository integration tests (`rust`). Its report
-(`junit.xml` plus the run container's merged stdout/stderr with the default-password line redacted, best-effort) is an
-optional, untrusted review input, not a gate on its own.
+(`junit.xml`, best-effort) is an optional, untrusted review input, not a gate on its own.
 
 ---
 

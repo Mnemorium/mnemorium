@@ -362,17 +362,6 @@ jobs:
         run: >-
           pytest -p no:cacheprovider -ra --tb=short
           --junitxml=.artifacts/e2e/junit.xml test/e2e
-      - name: Collect container log
-        if: always()
-        run: |
-          mkdir -p .artifacts/e2e
-          docker logs mnemorium-e2e 2>&1 \
-            | sed -E "s/(default password[^']*')[^']+/\1REDACTED/" \
-            > .artifacts/e2e/container.log
-          if grep -qE "default password[^']*'[^R]" .artifacts/e2e/container.log; then
-            echo "credential pattern survived redaction" >&2
-            exit 1
-          fi
       - name: Upload E2E artifacts
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
