@@ -1,3 +1,9 @@
+## [0.5.1](https://github.com/Mnemorium/mnemorium/compare/v0.5.0...v0.5.1) (2026-10-03)
+
+### Bug Fixes
+
+* **domain:** validate configuration deserialization ([#103](https://github.com/Mnemorium/mnemorium/issues/103)) ([9b8392b](https://github.com/Mnemorium/mnemorium/commit/9b8392bd85620b40b56f421379771e7e3ec2da54))
+
 ## [0.5.0](https://github.com/Mnemorium/mnemorium/compare/v0.4.1...v0.5.0) (2026-10-03)
 
 ### Features
