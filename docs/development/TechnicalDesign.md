@@ -2341,7 +2341,7 @@ Source: `Dockerfile`.
 | Name                                                       | Description                                      | Version         | License |
 | ---------------------------------------------------------- | ------------------------------------------------ | --------------- | ------- |
 | [alpine](https://hub.docker.com/_/alpine)                  | Alpine Linux base image (runtime stage).         | 3.21            | TODO    |
-| [cargo-chef](https://github.com/LukeMathWalker/cargo-chef) | Caches Rust dependency builds for Docker layers. | latest          | TODO    |
+| [cargo-chef](https://github.com/LukeMathWalker/cargo-chef) | Caches Rust dependency builds for Docker layers. | 0.1.78          | TODO    |
 | [rust](https://hub.docker.com/_/rust)                      | Rust build image (build stage).                  | 1.98-alpine3.21 | TODO    |
 
 ---
