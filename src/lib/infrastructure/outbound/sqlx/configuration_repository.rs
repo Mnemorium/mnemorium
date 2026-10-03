@@ -508,4 +508,152 @@ mod tests {
         assert_eq!(found, Some(expected));
         Ok(())
     }
+
+    #[rstest]
+    #[case::configuration_id_not_zero(
+        "INSERT INTO configuration (
+            configuration_id, jwt_secret, jwt_ttl, pepper, sqlite3_path, sqlite3_max_connections
+         ) VALUES (
+            1, 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 3600,
+            'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', 'mnemorium.db', 1
+         )"
+    )]
+    #[case::jwt_secret_length(
+        "INSERT INTO configuration (
+            configuration_id, jwt_secret, jwt_ttl, pepper, sqlite3_path, sqlite3_max_connections
+         ) VALUES (
+            0, 'short', 3600,
+            'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', 'mnemorium.db', 1
+         )"
+    )]
+    #[case::jwt_ttl_not_positive(
+        "INSERT INTO configuration (
+            configuration_id, jwt_secret, jwt_ttl, pepper, sqlite3_path, sqlite3_max_connections
+         ) VALUES (
+            0, 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 0,
+            'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', 'mnemorium.db', 1
+         )"
+    )]
+    #[case::pepper_length(
+        "INSERT INTO configuration (
+            configuration_id, jwt_secret, jwt_ttl, pepper, sqlite3_path, sqlite3_max_connections
+         ) VALUES (
+            0, 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 3600,
+            'short', 'mnemorium.db', 1
+         )"
+    )]
+    #[case::is_root_admin_password_logged_out_of_range(
+        "INSERT INTO configuration (
+            configuration_id, jwt_secret, jwt_ttl, pepper, sqlite3_path,
+            sqlite3_max_connections, is_root_admin_password_logged
+         ) VALUES (
+            0, 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 3600,
+            'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', 'mnemorium.db', 1, 2
+         )"
+    )]
+    #[case::sqlite3_max_connections_not_positive(
+        "INSERT INTO configuration (
+            configuration_id, jwt_secret, jwt_ttl, pepper, sqlite3_path, sqlite3_max_connections
+         ) VALUES (
+            0, 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 3600,
+            'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', 'mnemorium.db', 0
+         )"
+    )]
+    #[case::asset_storage_root_empty(
+        "INSERT INTO configuration (
+            configuration_id, jwt_secret, jwt_ttl, pepper, sqlite3_path,
+            sqlite3_max_connections, asset_storage_root
+         ) VALUES (
+            0, 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 3600,
+            'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', 'mnemorium.db', 1, ''
+         )"
+    )]
+    #[case::asset_upload_chunk_size_bytes_not_positive(
+        "INSERT INTO configuration (
+            configuration_id, jwt_secret, jwt_ttl, pepper, sqlite3_path,
+            sqlite3_max_connections, asset_upload_chunk_size_bytes
+         ) VALUES (
+            0, 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 3600,
+            'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', 'mnemorium.db', 1, 0
+         )"
+    )]
+    #[case::asset_upload_expiry_seconds_not_positive(
+        "INSERT INTO configuration (
+            configuration_id, jwt_secret, jwt_ttl, pepper, sqlite3_path,
+            sqlite3_max_connections, asset_upload_expiry_seconds
+         ) VALUES (
+            0, 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 3600,
+            'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', 'mnemorium.db', 1, 0
+         )"
+    )]
+    #[case::asset_upload_max_file_size_bytes_not_positive(
+        "INSERT INTO configuration (
+            configuration_id, jwt_secret, jwt_ttl, pepper, sqlite3_path,
+            sqlite3_max_connections, asset_upload_max_file_size_bytes
+         ) VALUES (
+            0, 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 3600,
+            'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', 'mnemorium.db', 1, 0
+         )"
+    )]
+    #[case::is_log_ansi_out_of_range(
+        "INSERT INTO configuration (
+            configuration_id, jwt_secret, jwt_ttl, pepper, sqlite3_path,
+            sqlite3_max_connections, is_log_ansi
+         ) VALUES (
+            0, 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 3600,
+            'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', 'mnemorium.db', 1, 2
+         )"
+    )]
+    #[case::log_max_files_negative(
+        "INSERT INTO configuration (
+            configuration_id, jwt_secret, jwt_ttl, pepper, sqlite3_path,
+            sqlite3_max_connections, log_max_files
+         ) VALUES (
+            0, 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 3600,
+            'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', 'mnemorium.db', 1, -1
+         )"
+    )]
+    #[case::log_rotation_unknown(
+        "INSERT INTO configuration (
+            configuration_id, jwt_secret, jwt_ttl, pepper, sqlite3_path,
+            sqlite3_max_connections, log_rotation
+         ) VALUES (
+            0, 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 3600,
+            'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', 'mnemorium.db', 1, 'WEEKLY'
+         )"
+    )]
+    #[tokio::test]
+    async fn create_violating_a_check_returns_data_integrity_violation(
+        #[case] statement: &'static str,
+    ) -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let mut transaction = begin_transaction().await?;
+
+        // Act & Assert
+        let result = sqlx::query(statement).execute(&mut *transaction).await;
+        let mapped = result.map_err(RepositoryError::from);
+        assert!(
+            matches!(mapped, Err(RepositoryError::DataIntegrityViolation)),
+            "statement must violate a check constraint: {statement}"
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn delete_configuration_returns_conflict() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let mut transaction = begin_transaction().await?;
+        let mut repository = SqlxConfigurationRepository::new(&mut transaction);
+        repository.create(configuration()?).await?;
+
+        // Act: the delete-guard trigger rejects removing the singleton row.
+        let result = sqlx::query("DELETE FROM configuration WHERE configuration_id = 0")
+            .execute(&mut *transaction)
+            .await
+            .map_err(RepositoryError::from);
+
+        // Assert
+        assert!(matches!(result, Err(RepositoryError::Conflict)));
+        Ok(())
+    }
 }
