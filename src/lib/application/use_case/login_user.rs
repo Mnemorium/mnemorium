@@ -83,9 +83,13 @@ where
                     .next()
                 else {
                     // Spend the same password work as a real verification on
-                    // the absent-user branch, then discard the result, so an
-                    // unknown username is indistinguishable by response time.
-                    drop(password_hasher.hash_password(&password).await);
+                    // the absent-user branch, then report an unknown username.
+                    // A backend fault surfaces as an internal error, exactly as
+                    // it does on the known-user branch.
+                    password_hasher
+                        .hash_password(&password)
+                        .await
+                        .map_err(|error| LoginUserError::Unknown(error.into()))?;
                     return Err(LoginUserError::InvalidUsername);
                 };
 
@@ -327,7 +331,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn login_user_unknown_username_with_failing_hasher_returns_invalid_username()
+    async fn login_user_unknown_username_with_failing_hasher_returns_unknown()
     -> Result<(), Box<dyn Error>> {
         // Arrange
         let harness = use_case_with(|user_repository, _, password_hasher, _| {
@@ -347,7 +351,7 @@ mod tests {
         let result = harness.use_case.execute(command).await;
 
         // Assert
-        assert!(matches!(result, Err(LoginUserError::InvalidUsername)));
+        assert!(matches!(result, Err(LoginUserError::Unknown(_))));
         assert!(harness.rolled_back.load(Ordering::SeqCst));
         Ok(())
     }
