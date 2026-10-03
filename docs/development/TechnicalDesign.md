@@ -188,6 +188,7 @@ material. The `#[utoipa::path(...)]` declaration contract lives in the [API sect
 | `STY-RUST-071` | Configuration     | Keep the bootstrap sources and their order identical to `ConfigConfigurationSource`.                                                                                                                                                                                                                                                                                                                                    | [§ 10](#10-configuration)                                        |
 | `STY-RUST-080` | Configuration     | The `logging` section drives the runtime logs; install the subscriber once, after `LoadConfiguration`, because the configuration lives behind the datastore.                                                                                                                                                                                                                                                            | [§ 10](#10-configuration)                                        |
 | `STY-RUST-082` | Configuration     | A setting that cannot be read after the pool or the router is built is a **startup-only setting**: it is read once at startup, listed in the registry in [§ 10.1](#101-startup-only-settings), and never silently cached. The registry is extensible: adding a startup-only setting appends it there in the same change, together with how a change is surfaced to the operator.                                        | [§ 10.1](#101-startup-only-settings)                             |
+| `STY-RUST-083` | Configuration     | A configuration value that is **present but malformed or out of range** fails startup: a reader falls back to a default only when the key is absent, and propagates every other read or validation error.                                                                                                                                                                                                               | [§ 10](#10-configuration)                                        |
 
 ---
 
@@ -828,7 +829,8 @@ build theirs the same way, so the key used to issue a token is always the key us
 The datastore path is needed before the pool exists, but the configuration singleton row lives behind that pool.
 `bootstrap_sqlite3` (`src/lib/infrastructure/outbound/config/bootstrap.rs`) therefore reads the file and the environment
 only. That layering is intentionally duplicated with `ConfigConfigurationSource` (see `STY-RUST-001`); keep the source
-list and order identical.
+list and order identical. A persistence setting that is present but malformed or out of range fails startup; the
+bootstrap falls back to a default only when the setting is absent (`STY-RUST-083`).
 
 The configuration also carries the logging settings (`logging.level`, `logging.rotation`, `logging.max_files`,
 `logging.ansi`). Because those settings live behind the datastore, the `tracing` subscriber is installed from the loaded

@@ -1,4 +1,5 @@
 use config::Config;
+use config::ConfigError;
 use config::Environment;
 use config::File;
 
@@ -27,7 +28,9 @@ use crate::infrastructure::outbound::config::configuration_source::USER_CONFIG_P
 /// # Errors
 ///
 /// Returns an error when the layered sources cannot be read or parsed, or when
-/// the resolved settings are invalid.
+/// the resolved settings are invalid. A setting that is absent falls back to
+/// its default; a setting that is present but cannot be read or is invalid
+/// fails startup.
 pub fn bootstrap_sqlite3() -> anyhow::Result<Sqlite3> {
     let settings = Config::builder()
         .add_source(File::with_name(USER_CONFIG_PATH).required(false))
@@ -38,14 +41,15 @@ pub fn bootstrap_sqlite3() -> anyhow::Result<Sqlite3> {
                 .ignore_empty(true),
         )
         .build()?;
-    let path = settings
-        .get_string("persistence.sqlite3.path")
-        .unwrap_or_else(|_| DEFAULT_SQLITE3_PATH.to_owned());
-    let max_connections = settings
-        .get_int("persistence.sqlite3.max_connections")
-        .ok()
-        .and_then(|value| u32::try_from(value).ok())
-        .filter(|value| *value > 0)
-        .unwrap_or_else(default_sqlite3_max_conn);
+    let path = match settings.get_string("persistence.sqlite3.path") {
+        Ok(path) => path,
+        Err(ConfigError::NotFound(_)) => DEFAULT_SQLITE3_PATH.to_owned(),
+        Err(error) => return Err(error.into()),
+    };
+    let max_connections = match settings.get_int("persistence.sqlite3.max_connections") {
+        Ok(value) => u32::try_from(value)?,
+        Err(ConfigError::NotFound(_)) => default_sqlite3_max_conn(),
+        Err(error) => return Err(error.into()),
+    };
     Ok(Sqlite3::try_new(path, max_connections)?)
 }
