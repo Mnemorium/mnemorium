@@ -1,3 +1,10 @@
+## [0.5.2](https://github.com/Mnemorium/mnemorium/compare/v0.5.1...v0.5.2) (2026-10-03)
+
+### Bug Fixes
+
+* **api:** add self links to user resource representations ([#69](https://github.com/Mnemorium/mnemorium/issues/69)) ([1110840](https://github.com/Mnemorium/mnemorium/commit/111084003954d5824b160a40d838d7e2eeafaaca))
+* **infrastructure:** fail startup on invalid persistence settings ([#102](https://github.com/Mnemorium/mnemorium/issues/102)) ([d89c449](https://github.com/Mnemorium/mnemorium/commit/d89c449f4305d79939534b8e08f4569f78815947))
+
 ## [0.5.1](https://github.com/Mnemorium/mnemorium/compare/v0.5.0...v0.5.1) (2026-10-03)
 
 ### Bug Fixes
