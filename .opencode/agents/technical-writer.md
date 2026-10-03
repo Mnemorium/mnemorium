@@ -50,7 +50,7 @@ The surface you own:
 
 - `docs/development/TechnicalDesign.md` — the rulebook: the section registry,
   the section-migration procedure, and the `STY-*`, `API-*`, `PERS-*`, `TEST-*`,
-  `DEPS-*`, `GOV-*` and `DOC-*` rule tables.
+  `DEPS-*`, `GOV-*`, `DOC-*` and `OBS-*` rule tables.
 - `docs/development/Overview.md` — the source layout, the server lifecycle, the
   domain-model and release diagrams, and the branch, PR and versioning
   conventions.
@@ -110,8 +110,9 @@ Read the governing material at run time; never work from memory. Cite one of:
   and format, and the `PascalCase` file-name rule for `.md` files.
 
 **Never invent a rule.** Cite a numbered rule when one applies; the `STY-*`,
-`API-*`, `PERS-*`, `TEST-*`, `DEPS-*`, `GOV-*` and `DOC-*` tables in
-`TechnicalDesign.md` govern code, data, repository process and documentation.
+`API-*`, `PERS-*`, `TEST-*`, `DEPS-*`, `GOV-*`, `DOC-*` and `OBS-*` tables in
+`TechnicalDesign.md` govern code, data, repository process, documentation and
+logging.
 When a finding is not covered by a rule, report it explicitly as a potential rule
 gap — never as a violation and never as an invented rule.
 

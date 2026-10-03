@@ -75,6 +75,12 @@ See `docs/development/TechnicalDesign.md` § 8 (Documentation), `DOC-001` for th
 code-example conventions: an example cites the source it restates, tracks that
 code, and marks elided regions with `// [...]`.
 
+## Logging
+
+See `docs/development/TechnicalDesign.md` § 9 (Logging & Observability),
+`OBS-001`–`OBS-007` for what the server logs, from which layer, at what severity,
+and what must never reach a log sink.
+
 ## Special Rules
 
 - Respect the hexagonal dependency direction: `domain` ← `application` ←

@@ -12,6 +12,7 @@ permissions:
   - { action: subagent, resource: "rust-developer", effect: allow }
   - { action: subagent, resource: "test-specialist", effect: allow }
   - { action: subagent, resource: "security-specialist", effect: allow }
+  - { action: subagent, resource: "logging-specialist", effect: allow }
   - { action: subagent, resource: "database-engineer", effect: allow }
   - { action: subagent, resource: "api-architect", effect: allow }
   - { action: subagent, resource: "system-architect", effect: allow }
