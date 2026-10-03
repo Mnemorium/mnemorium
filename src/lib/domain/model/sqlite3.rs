@@ -11,13 +11,38 @@ pub enum Sqlite3Error {
 }
 
 /// `SQLite3` datastore settings.
+///
+/// Deserialization is routed through `Sqlite3Config` and [`TryFrom`] so that the
+/// layered configuration cannot bypass the validation performed by
+/// [`Sqlite3::try_new`].
 #[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+#[serde(try_from = "Sqlite3Config")]
 #[non_exhaustive]
 pub struct Sqlite3 {
     /// Maximum number of connections to the database.
     max_connections: u32,
     /// Path to the `SQLite3` database file.
     path: String,
+}
+
+/// Unchecked deserialization mirror of [`Sqlite3`].
+///
+/// Serde builds this snapshot and hands it to the [`TryFrom`] implementation,
+/// which validates it through [`Sqlite3::try_new`].
+#[derive(serde::Deserialize)]
+struct Sqlite3Config {
+    /// Maximum number of connections to the database.
+    max_connections: u32,
+    /// Path to the `SQLite3` database file.
+    path: String,
+}
+
+impl TryFrom<Sqlite3Config> for Sqlite3 {
+    type Error = Sqlite3Error;
+
+    fn try_from(config: Sqlite3Config) -> Result<Self, Self::Error> {
+        Self::try_new(config.path, config.max_connections)
+    }
 }
 
 impl Sqlite3 {

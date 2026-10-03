@@ -14,13 +14,38 @@ pub enum JwtError {
 }
 
 /// `JWT` token settings.
+///
+/// Deserialization is routed through `JwtConfig` and [`TryFrom`] so that the
+/// layered configuration cannot bypass the validation performed by
+/// [`Jwt::try_new`].
 #[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+#[serde(try_from = "JwtConfig")]
 #[non_exhaustive]
 pub struct Jwt {
     /// Secret key used to sign and verify tokens.
     secret: String,
     /// Lifetime of a token, in seconds.
     ttl: u64,
+}
+
+/// Unchecked deserialization mirror of [`Jwt`].
+///
+/// Serde builds this snapshot and hands it to the [`TryFrom`] implementation,
+/// which validates it through [`Jwt::try_new`].
+#[derive(serde::Deserialize)]
+struct JwtConfig {
+    /// Secret key used to sign and verify tokens.
+    secret: String,
+    /// Lifetime of a token, in seconds.
+    ttl: u64,
+}
+
+impl TryFrom<JwtConfig> for Jwt {
+    type Error = JwtError;
+
+    fn try_from(config: JwtConfig) -> Result<Self, Self::Error> {
+        Self::try_new(config.secret, config.ttl)
+    }
 }
 
 impl Jwt {

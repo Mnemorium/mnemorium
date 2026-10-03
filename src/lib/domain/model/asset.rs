@@ -32,11 +32,34 @@ pub enum AssetError {
 }
 
 /// Storage-related settings of the Asset bounded context.
+///
+/// Deserialization is routed through `AssetStorageConfig` and [`TryFrom`] so
+/// that the layered configuration cannot bypass the validation performed by
+/// [`AssetStorage::try_new`].
 #[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+#[serde(try_from = "AssetStorageConfig")]
 #[non_exhaustive]
 pub struct AssetStorage {
     /// Root directory holding the staged and final files.
     root: String,
+}
+
+/// Unchecked deserialization mirror of [`AssetStorage`].
+///
+/// Serde builds this snapshot and hands it to the [`TryFrom`] implementation,
+/// which validates it through [`AssetStorage::try_new`].
+#[derive(serde::Deserialize)]
+struct AssetStorageConfig {
+    /// Root directory holding the staged and final files.
+    root: String,
+}
+
+impl TryFrom<AssetStorageConfig> for AssetStorage {
+    type Error = AssetError;
+
+    fn try_from(config: AssetStorageConfig) -> Result<Self, Self::Error> {
+        Self::try_new(config.root)
+    }
 }
 
 impl AssetStorage {
