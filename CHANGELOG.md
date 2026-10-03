@@ -1,3 +1,9 @@
+## [0.6.2](https://github.com/Mnemorium/mnemorium/compare/v0.6.1...v0.6.2) (2026-10-03)
+
+### Bug Fixes
+
+* **api:** log only classified request and auth rejections ([#134](https://github.com/Mnemorium/mnemorium/issues/134)) ([56168a0](https://github.com/Mnemorium/mnemorium/commit/56168a085230f191628a7c3d4a0c50984bd1cc9e))
+
 ## [0.6.1](https://github.com/Mnemorium/mnemorium/compare/v0.6.0...v0.6.1) (2026-10-03)
 
 ### Bug Fixes
