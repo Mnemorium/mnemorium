@@ -30,8 +30,9 @@ Constraints:
 
 - Never modify tracked files. The only write allowed is staging the diff under
   `.artifacts/review/`.
-- You are not done until the review is published. Post it with the GitHub MCP
-  (`tools.github.add_issue_comment`) from Code Mode, and route pre-existing
+- You are not done until the review is published. Publish it with the GitHub MCP
+  (`tools.github.pull_request_read` + `tools.github.add_issue_comment` /
+  `tools.github.update_issue_comment`) from Code Mode, and route pre-existing
   concerns through `create-issue`. If publishing fails, print the full document
   as your final message.
 - Never end with the panel outstanding. You run unattended; never ask questions.
