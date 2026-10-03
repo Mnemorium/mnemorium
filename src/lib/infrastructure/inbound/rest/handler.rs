@@ -214,7 +214,7 @@ mod tests {
         // Assert
         assert_eq!(
             assert_envelope(response, StatusCode::UNAUTHORIZED, "/api/v1/identity/login").await?,
-            "the password does not match the stored hash"
+            "invalid credentials"
         );
         Ok(())
     }
