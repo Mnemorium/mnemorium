@@ -1,3 +1,9 @@
+## [0.5.0](https://github.com/Mnemorium/mnemorium/compare/v0.4.1...v0.5.0) (2026-10-03)
+
+### Features
+
+* **agent:** add investigate command ([0404d85](https://github.com/Mnemorium/mnemorium/commit/0404d859b064f7c591eefecaf8d33ec2158f1989))
+
 ## [0.4.1](https://github.com/Mnemorium/mnemorium/compare/v0.4.0...v0.4.1) (2026-10-02)
 
 ### Bug Fixes
