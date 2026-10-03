@@ -49,7 +49,7 @@ def test_uc001_create_user_account_invalid_payload(
 ) -> None:
     for payload in INVALID_PAYLOADS:
         response = register(root_admin_token, **payload)
-        assert_error_body(response, 400)
+        assert_error_body(response, 422)
 
 
 def test_uc001_create_user_account_admin_role_forbidden(

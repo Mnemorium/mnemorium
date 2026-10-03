@@ -620,7 +620,7 @@
                 }
               }
             },
-            "description": "Invalid payload"
+            "description": "Malformed request body or invalid integrity hash"
           },
           "401": {
             "content": {
@@ -872,7 +872,7 @@
                 }
               }
             },
-            "description": "Invalid identifier, chunk number, range, digest or body"
+            "description": "Malformed identifier, chunk number, Content-Range or Content-Digest header"
           },
           "401": {
             "content": {
@@ -942,6 +942,16 @@
             },
             "description": "The request body exceeds the maximum chunk size"
           },
+          "422": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The chunk number, range or digest fails validation"
+          },
           "500": {
             "content": {
               "application/hal+json": {
@@ -998,7 +1008,7 @@
                 }
               }
             },
-            "description": "Invalid identifier, incomplete upload or integrity mismatch"
+            "description": "Invalid upload session identifier"
           },
           "401": {
             "content": {
@@ -1047,6 +1057,16 @@
               }
             },
             "description": "Upload session expired"
+          },
+          "422": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The upload is incomplete or its integrity does not match"
           },
           "500": {
             "content": {
@@ -1138,7 +1158,7 @@
                 }
               }
             },
-            "description": "Invalid payload or password policy violation"
+            "description": "Malformed request body"
           },
           "401": {
             "content": {
@@ -1255,7 +1275,7 @@
                 }
               }
             },
-            "description": "Invalid payload"
+            "description": "Malformed request body"
           },
           "401": {
             "content": {
@@ -1358,7 +1378,7 @@
                 }
               }
             },
-            "description": "Invalid payload"
+            "description": "Malformed request body"
           },
           "401": {
             "content": {
@@ -1731,7 +1751,7 @@
                 }
               }
             },
-            "description": "Invalid user identifier or payload"
+            "description": "Invalid user identifier or malformed request body"
           },
           "401": {
             "content": {

@@ -32,7 +32,7 @@ impl From<PatchCredentialError> for ApiError {
     fn from(err: PatchCredentialError) -> Self {
         match err {
             PatchCredentialError::Forbidden => Self::Forbidden(err.to_string()),
-            PatchCredentialError::InvalidPassword => Self::BadRequest(err.to_string()),
+            PatchCredentialError::InvalidPassword => Self::UnprocessableEntity(err.to_string()),
             PatchCredentialError::Unknown(_) => Self::InternalServerError,
             PatchCredentialError::UnknownCredential => Self::NotFound(err.to_string()),
         }
@@ -64,7 +64,19 @@ impl From<PatchCredentialError> for ApiError {
             status = BAD_REQUEST,
             body = ErrorBody,
             content_type = "application/hal+json",
-            description = "Invalid payload or password policy violation"
+            description = "Malformed request body"
+        ),
+        (
+            status = UNSUPPORTED_MEDIA_TYPE,
+            body = ErrorBody,
+            content_type = "application/hal+json",
+            description = "The request body is not application/json"
+        ),
+        (
+            status = UNPROCESSABLE_ENTITY,
+            body = ErrorBody,
+            content_type = "application/hal+json",
+            description = "The new password violates the password policy"
         ),
         (
             status = UNAUTHORIZED,
@@ -299,7 +311,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn patch_credential_invalid_password_returns_bad_request() -> Result<(), Box<dyn Error>> {
+    async fn patch_credential_invalid_password_returns_unprocessable_entity()
+    -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut use_case = MockPatchCredentialUseCase::new();
         expect_error(&mut use_case, PatchCredentialError::InvalidPassword);
@@ -308,7 +321,7 @@ mod tests {
         let response = send(use_case, 0, 0, Body::from(request_body("password123"))).await?;
 
         // Assert
-        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
         assert_eq!(
             error_message_of(&response).as_deref(),
             Some("password does not satisfy the password policy")

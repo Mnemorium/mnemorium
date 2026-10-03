@@ -52,7 +52,7 @@ impl From<CompleteUploadError> for ApiError {
     fn from(err: CompleteUploadError) -> Self {
         match err {
             CompleteUploadError::Incomplete | CompleteUploadError::IntegrityMismatch => {
-                Self::BadRequest(err.to_string())
+                Self::UnprocessableEntity(err.to_string())
             }
             CompleteUploadError::Expired => Self::Gone(err.to_string()),
             CompleteUploadError::NoSuchUpload => Self::NotFound(err.to_string()),
@@ -90,7 +90,13 @@ impl From<CompleteUploadError> for ApiError {
             status = BAD_REQUEST,
             body = ErrorBody,
             content_type = "application/hal+json",
-            description = "Invalid identifier, incomplete upload or integrity mismatch"
+            description = "Invalid upload session identifier"
+        ),
+        (
+            status = UNPROCESSABLE_ENTITY,
+            body = ErrorBody,
+            content_type = "application/hal+json",
+            description = "The upload is incomplete or its integrity does not match"
         ),
         (
             status = UNAUTHORIZED,
@@ -272,7 +278,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn post_upload_complete_incomplete_returns_bad_request() -> Result<(), Box<dyn Error>> {
+    async fn post_upload_complete_incomplete_returns_unprocessable_entity()
+    -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut use_case = MockCompleteUploadUseCase::new();
         expect_error(&mut use_case, CompleteUploadError::Incomplete);
@@ -281,7 +288,7 @@ mod tests {
         let response = send(use_case, 3, "7").await?;
 
         // Assert
-        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
         assert_eq!(
             error_message_of(&response).as_deref(),
             Some("the upload session is not complete")
@@ -290,7 +297,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn post_upload_complete_integrity_mismatch_returns_bad_request()
+    async fn post_upload_complete_integrity_mismatch_returns_unprocessable_entity()
     -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut use_case = MockCompleteUploadUseCase::new();
@@ -300,7 +307,7 @@ mod tests {
         let response = send(use_case, 3, "7").await?;
 
         // Assert
-        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
         assert_eq!(
             error_message_of(&response).as_deref(),
             Some("the integrity hash does not match the declared one")

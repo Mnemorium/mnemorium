@@ -47,7 +47,9 @@ impl From<WriteUploadChunkError> for ApiError {
             WriteUploadChunkError::InvalidChunk
             | WriteUploadChunkError::InvalidChunkNumber
             | WriteUploadChunkError::InvalidChunkRange
-            | WriteUploadChunkError::InvalidContentDigest => Self::BadRequest(err.to_string()),
+            | WriteUploadChunkError::InvalidContentDigest => {
+                Self::UnprocessableEntity(err.to_string())
+            }
             WriteUploadChunkError::Expired => Self::Gone(err.to_string()),
             WriteUploadChunkError::AlreadyFinished => Self::Conflict(err.to_string()),
             WriteUploadChunkError::NoSuchUpload => Self::NotFound(err.to_string()),
@@ -96,7 +98,13 @@ impl From<WriteUploadChunkError> for ApiError {
             status = BAD_REQUEST,
             body = ErrorBody,
             content_type = "application/hal+json",
-            description = "Invalid identifier, chunk number, range, digest or body"
+            description = "Malformed identifier, chunk number, Content-Range or Content-Digest header"
+        ),
+        (
+            status = UNPROCESSABLE_ENTITY,
+            body = ErrorBody,
+            content_type = "application/hal+json",
+            description = "The chunk number, range or digest fails validation"
         ),
         (
             status = UNAUTHORIZED,
@@ -563,7 +571,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn put_upload_chunk_range_not_matching_chunk_returns_bad_request()
+    async fn put_upload_chunk_range_not_matching_chunk_returns_unprocessable_entity()
     -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut use_case = MockWriteUploadChunkUseCase::new();
@@ -581,7 +589,7 @@ mod tests {
         .await?;
 
         // Assert
-        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
         assert_eq!(
             error_message_of(&response).as_deref(),
             Some("the chunk range does not match the chunk number")
@@ -824,7 +832,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn put_upload_chunk_invalid_chunk_returns_bad_request() -> Result<(), Box<dyn Error>> {
+    async fn put_upload_chunk_invalid_chunk_returns_unprocessable_entity()
+    -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut use_case = MockWriteUploadChunkUseCase::new();
         expect_error(&mut use_case, WriteUploadChunkError::InvalidChunk);
@@ -841,7 +850,7 @@ mod tests {
         .await?;
 
         // Assert
-        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
         assert_eq!(
             error_message_of(&response).as_deref(),
             Some("the chunk is invalid")
