@@ -13,7 +13,7 @@ fn main() -> Result<()> {
     // release tooling and the CI "spec is current" diff byte-for-byte.
     spec.push('\n');
 
-    let output_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("docs/development/api");
+    let output_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("docs");
     let output_path = output_dir.join("openapi.json");
 
     fs::create_dir_all(&output_dir)?;

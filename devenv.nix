@@ -124,10 +124,10 @@
     openapi = {
       enable = true;
       name = "Regenerate and stage OpenAPI spec";
-      entry = "bash -c 'cargo run --bin openapi_gen && git add -- docs/development/api/openapi.json'";
+      entry = "bash -c 'cargo run --bin openapi_gen && git add -- docs/openapi.json'";
       language = "system";
       pass_filenames = false;
-      files = "(\\.rs$|(^|/)Cargo\\.(toml|lock)$|^docs/development/api/openapi\\.json$)";
+      files = "(\\.rs$|(^|/)Cargo\\.(toml|lock)$|^docs/openapi\\.json$)";
     };
 
     bundle-licenses = {
@@ -240,7 +240,7 @@
   tasks."docs:openapi-gen" = {
     exec = "cargo run --bin openapi_gen";
     after = [ "build:openapi-gen" ];
-    description = "Generate the OpenAPI specification to docs/development/api/openapi.json";
+    description = "Generate the OpenAPI specification to docs/openapi.json";
   };
 
   tasks."docs:html-coverage" = {
@@ -348,7 +348,7 @@
 
   processes = {
     docs.exec = "mkdocs serve --dev-addr 0.0.0.0:8000";
-    openapi-spec.exec = "npx @redocly/cli preview -d docs/development/api --port 8001";
+    openapi-spec.exec = "npx @redocly/cli preview -d docs/openapi.json --port 8001";
   };
 
 }

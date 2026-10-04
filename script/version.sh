@@ -3,7 +3,7 @@ set -u -o pipefail
 
 readonly CARGO_TOML="Cargo.toml"
 readonly REST_RS="src/lib/infrastructure/inbound/rest.rs"
-readonly OPENAPI_JSON="docs/development/api/openapi.json"
+readonly OPENAPI_JSON="docs/openapi.json"
 readonly CARGO_VERSION_ENV='version = env!("CARGO_PKG_VERSION")'
 readonly SEMVER_REGEX='^[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.]+)?$'
 

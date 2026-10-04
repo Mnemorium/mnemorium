@@ -28,7 +28,7 @@ Enter the environment first: `devenv shell`.
 | Coverage  | `cargo llvm-cov --lib --fail-under-functions 80 --fail-under-regions 80 --fail-under-lines 80` (gate ≥ 80%)                          |
 | E2E       | `pytest -p no:cacheprovider test/e2e` (needs the Docker server named `mnemorium-e2e`)                                                |
 | Lint      | `cargo clippy --all-targets --all-features -- -D warnings`; `cargo fmt --all -- --check`                                             |
-| OpenAPI   | `cargo run --bin openapi_gen` (writes `docs/development/api/openapi.json`)                                                           |
+| OpenAPI   | `cargo run --bin openapi_gen` (writes `docs/openapi.json`)                                                           |
 | Full gate | `devenv test` (all pre-commit hooks)                                                                                                 |
 
 Run `git commit` through the environment as well, prefixed with `devenv shell --`
@@ -87,6 +87,6 @@ and what must never reach a log sink.
   `infrastructure`. Nothing points outward; the domain must not import
   infrastructure.
 - Any Rust change that affects the API must regenerate and commit
-  `docs/development/api/openapi.json`.
+  `docs/openapi.json`.
 - Migrations are mutable until release — see
   `docs/development/TechnicalDesign.md` § 4 (Persistence), `PERS-014`.

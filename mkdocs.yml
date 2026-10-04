@@ -29,7 +29,6 @@ nav:
       - Overview: development/Overview.md
       - Technical Design: development/TechnicalDesign.md
       - Issue Tracking: development/IssueTracking.md
-      - API Spec: development/api/Spec.md
       - Glossary: development/Glossary.md
       - Use Cases: development/UseCases.md
 
@@ -39,7 +38,6 @@ plugins:
       theme:
         enabled: false
   - search
-  - neoteroi.mkdocsoad
 
 markdown_extensions:
   - pymdownx.highlight:
