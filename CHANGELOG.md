@@ -1,3 +1,9 @@
+## [0.6.5](https://github.com/Mnemorium/mnemorium/compare/v0.6.4...v0.6.5) (2026-10-04)
+
+### Bug Fixes
+
+* **persistence:** drop the genre upper-id trigger by its real name ([#145](https://github.com/Mnemorium/mnemorium/issues/145)) ([f44232c](https://github.com/Mnemorium/mnemorium/commit/f44232c79b2146b94e4b129f148906a503d5bdf6))
+
 ## [0.6.4](https://github.com/Mnemorium/mnemorium/compare/v0.6.3...v0.6.4) (2026-10-04)
 
 ### Bug Fixes
