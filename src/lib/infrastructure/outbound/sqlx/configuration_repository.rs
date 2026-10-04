@@ -9,6 +9,7 @@ use crate::domain::model::jwt::Jwt;
 use crate::domain::model::logging::Logging;
 use crate::domain::model::logging::Rotation;
 use crate::domain::model::persistence::Persistence;
+use crate::domain::model::rate_limit::RateLimit;
 use crate::domain::model::security::Security;
 use crate::domain::model::sqlite3::Sqlite3;
 use crate::domain::port::configuration_repository::ConfigurationRepository;
@@ -58,9 +59,12 @@ impl ConfigurationRepository for SqlxConfigurationRepository<'_> {
                 asset_storage_root,
                 asset_upload_chunk_size_bytes,
                 asset_upload_expiry_seconds,
-                asset_upload_max_file_size_bytes
+                asset_upload_max_file_size_bytes,
+                is_behind_proxy,
+                rate_limit_burst_size,
+                rate_limit_period_seconds
             )
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18)
             RETURNING
                 configuration_id,
                 jwt_secret,
@@ -76,7 +80,10 @@ impl ConfigurationRepository for SqlxConfigurationRepository<'_> {
                 asset_storage_root,
                 asset_upload_chunk_size_bytes,
                 asset_upload_expiry_seconds,
-                asset_upload_max_file_size_bytes",
+                asset_upload_max_file_size_bytes,
+                is_behind_proxy,
+                rate_limit_burst_size,
+                rate_limit_period_seconds",
         )
         .bind(0i64)
         .bind(configuration.security().jwt().secret())
@@ -110,6 +117,15 @@ impl ConfigurationRepository for SqlxConfigurationRepository<'_> {
         .bind(to_i64(
             configuration.asset().upload().max_file_size_bytes(),
             "configuration asset_upload_max_file_size_bytes does not fit in i64",
+        )?)
+        .bind(configuration.security().rate_limit().behind_proxy())
+        .bind(to_i64(
+            u64::from(configuration.security().rate_limit().burst_size()),
+            "configuration rate_limit_burst_size does not fit in i64",
+        )?)
+        .bind(to_i64(
+            configuration.security().rate_limit().period_seconds(),
+            "configuration rate_limit_period_seconds does not fit in i64",
         )?)
         .fetch_one(&mut **self.transaction)
         .await?;
@@ -143,9 +159,12 @@ impl ConfigurationRepository for SqlxConfigurationRepository<'_> {
                 asset_storage_root,
                 asset_upload_chunk_size_bytes,
                 asset_upload_expiry_seconds,
-                asset_upload_max_file_size_bytes
+                asset_upload_max_file_size_bytes,
+                is_behind_proxy,
+                rate_limit_burst_size,
+                rate_limit_period_seconds
             )
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18)
             ON CONFLICT (configuration_id) DO UPDATE SET
                 jwt_secret = excluded.jwt_secret,
                 jwt_ttl = excluded.jwt_ttl,
@@ -160,7 +179,10 @@ impl ConfigurationRepository for SqlxConfigurationRepository<'_> {
                 asset_storage_root = excluded.asset_storage_root,
                 asset_upload_chunk_size_bytes = excluded.asset_upload_chunk_size_bytes,
                 asset_upload_expiry_seconds = excluded.asset_upload_expiry_seconds,
-                asset_upload_max_file_size_bytes = excluded.asset_upload_max_file_size_bytes
+                asset_upload_max_file_size_bytes = excluded.asset_upload_max_file_size_bytes,
+                is_behind_proxy = excluded.is_behind_proxy,
+                rate_limit_burst_size = excluded.rate_limit_burst_size,
+                rate_limit_period_seconds = excluded.rate_limit_period_seconds
             RETURNING
                 configuration_id,
                 jwt_secret,
@@ -176,7 +198,10 @@ impl ConfigurationRepository for SqlxConfigurationRepository<'_> {
                 asset_storage_root,
                 asset_upload_chunk_size_bytes,
                 asset_upload_expiry_seconds,
-                asset_upload_max_file_size_bytes",
+                asset_upload_max_file_size_bytes,
+                is_behind_proxy,
+                rate_limit_burst_size,
+                rate_limit_period_seconds",
         )
         .bind(0i64)
         .bind(configuration.security().jwt().secret())
@@ -211,6 +236,15 @@ impl ConfigurationRepository for SqlxConfigurationRepository<'_> {
             configuration.asset().upload().max_file_size_bytes(),
             "configuration asset_upload_max_file_size_bytes does not fit in i64",
         )?)
+        .bind(configuration.security().rate_limit().behind_proxy())
+        .bind(to_i64(
+            u64::from(configuration.security().rate_limit().burst_size()),
+            "configuration rate_limit_burst_size does not fit in i64",
+        )?)
+        .bind(to_i64(
+            configuration.security().rate_limit().period_seconds(),
+            "configuration rate_limit_period_seconds does not fit in i64",
+        )?)
         .fetch_one(&mut **self.transaction)
         .await?;
 
@@ -234,7 +268,10 @@ impl ConfigurationRepository for SqlxConfigurationRepository<'_> {
                 asset_storage_root,
                 asset_upload_chunk_size_bytes,
                 asset_upload_expiry_seconds,
-                asset_upload_max_file_size_bytes
+                asset_upload_max_file_size_bytes,
+                is_behind_proxy,
+                rate_limit_burst_size,
+                rate_limit_period_seconds
             FROM configuration
             WHERE configuration_id = 0",
         )
@@ -268,8 +305,28 @@ fn domain_configuration(row: SqlxConfiguration) -> Result<Configuration, Reposit
         .map_err(|_| RepositoryError::DataIntegrityViolation)?;
     let jwt =
         Jwt::try_new(row.jwt_secret, ttl).map_err(|_| RepositoryError::DataIntegrityViolation)?;
-    let security = Security::try_new(jwt, row.pepper, row.is_root_admin_password_logged)
+    let rate_limit_burst_size = u32::try_from(row.rate_limit_burst_size).map_err(|error| {
+        RepositoryError::Unknown(
+            anyhow::anyhow!(error)
+                .context("configuration rate_limit_burst_size does not fit in u32"),
+        )
+    })?;
+    let rate_limit_period_seconds =
+        u64::try_from(row.rate_limit_period_seconds).map_err(|error| {
+            RepositoryError::Unknown(
+                anyhow::anyhow!(error)
+                    .context("configuration rate_limit_period_seconds does not fit in u64"),
+            )
+        })?;
+    let rate_limit = RateLimit::try_new(
+        row.is_behind_proxy,
+        rate_limit_burst_size,
+        rate_limit_period_seconds,
+    )
+    .map_err(|_| RepositoryError::DataIntegrityViolation)?;
+    let mut security = Security::try_new(jwt, row.pepper, row.is_root_admin_password_logged)
         .map_err(|_| RepositoryError::DataIntegrityViolation)?;
+    security.set_rate_limit(rate_limit);
     let persistence = Persistence::new(sqlite3);
     let log_max_files = u32::try_from(row.log_max_files).map_err(|error| {
         RepositoryError::Unknown(
@@ -331,6 +388,7 @@ mod tests {
     use crate::domain::model::logging::Logging;
     use crate::domain::model::logging::Rotation;
     use crate::domain::model::persistence::Persistence;
+    use crate::domain::model::rate_limit::RateLimit;
     use crate::domain::model::security::Security;
     use crate::domain::model::sqlite3::Sqlite3;
     use crate::domain::port::configuration_repository::ConfigurationRepository as _;
@@ -416,6 +474,31 @@ mod tests {
             4_294_967_296
         );
         assert_eq!(found, Some(expected));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn save_round_trips_the_rate_limit() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let mut transaction = begin_transaction().await?;
+        let mut repository = SqlxConfigurationRepository::new(&mut transaction);
+        repository.create(configuration()?).await?;
+        let mut security = Security::try_new(Jwt::try_new(hex64('e'), 120)?, hex64('f'), false)?;
+        security.set_rate_limit(RateLimit::try_new(true, 9, 30)?);
+        let updated = Configuration::new(
+            Persistence::new(Sqlite3::try_new("other.db".to_owned(), 3)?),
+            security,
+            Logging::try_new(false, "warn".to_owned(), 0, Rotation::Never)?,
+            Asset::default(),
+        );
+
+        // Act
+        let persisted = repository.save(updated).await?;
+
+        // Assert
+        assert!(persisted.security().rate_limit().behind_proxy());
+        assert_eq!(persisted.security().rate_limit().burst_size(), 9);
+        assert_eq!(persisted.security().rate_limit().period_seconds(), 30);
         Ok(())
     }
 

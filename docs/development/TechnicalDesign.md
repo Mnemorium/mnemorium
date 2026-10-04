@@ -915,6 +915,9 @@ are the **startup-only settings**; this table is their registry.
 | `asset.upload.chunk_size_bytes`       | The axum body limit fixed when the router is built (`src/lib/infrastructure/inbound/rest/handler/asset.rs`); the upload use cases read the live value. | None (`TODO(hot-reload)` in the same handler).                         |
 | `asset.storage.root`                  | The `FileSystemStorage` adapter built per use from the root captured in `src/bin/server.rs`.                                                           | None.                                                                  |
 | `logging.level`                       | `logging::setup` (`src/lib/infrastructure/logging.rs`) when the `tracing` subscriber is installed.                                                     | None.                                                                  |
+| `security.rate_limit.behind_proxy`    | The login limiter built when the router is built (`src/lib/infrastructure/inbound/rest/handler/identity.rs`).                                          | None.                                                                  |
+| `security.rate_limit.burst_size`      | The login limiter built when the router is built (`src/lib/infrastructure/inbound/rest/handler/identity.rs`).                                          | None.                                                                  |
+| `security.rate_limit.period_seconds`  | The login limiter built when the router is built (`src/lib/infrastructure/inbound/rest/handler/identity.rs`).                                          | None.                                                                  |
 
 The registry is **extensible**: a setting becomes startup-only by being added here. Adding one records, in the same
 change, how a change to the stored value is surfaced to the operator (a startup warning, or an explicit `None`).
@@ -1948,6 +1951,9 @@ entity configuration {
     * asset_upload_chunk_size_bytes: INTEGER <<NN, DF(5242880), CC(asset_upload_chunk_size_bytes > 0)>>
     * asset_upload_expiry_seconds: INTEGER <<NN, DF(86400), CC(asset_upload_expiry_seconds > 0)>>
     * asset_upload_max_file_size_bytes: INTEGER <<NN, DF(107374182400), CC(asset_upload_max_file_size_bytes > 0)>>
+    * is_behind_proxy: INTEGER <<NN, DF(0), CC(is_behind_proxy IN (0, 1))>>
+    * rate_limit_burst_size: INTEGER <<NN, DF(5), CC(rate_limit_burst_size > 0)>>
+    * rate_limit_period_seconds: INTEGER <<NN, DF(12), CC(rate_limit_period_seconds > 0)>>
 }
 
 user ||--|| credential
@@ -2264,6 +2270,7 @@ Source: `Cargo.toml`.
 | [thiserror](https://crates.io/crates/thiserror)                   | Derives `std::error::Error` implementations.                                    | 2.0.20  | MIT OR Apache-2.0                  |
 | [tokio](https://crates.io/crates/tokio)                           | Event-driven, non-blocking I/O platform for asynchronous applications.          | 1.53.1  | MIT                                |
 | [tower](https://crates.io/crates/tower)                           | Modular, reusable components for building robust clients and servers.           | 0.5.3   | MIT                                |
+| [tower_governor](https://crates.io/crates/tower_governor)         | Per-client rate limiting for Tower services, backed by `governor`.              | 0.8.0   | MIT OR Apache-2.0                  |
 | [tracing](https://crates.io/crates/tracing)                       | Application-level tracing for Rust.                                             | 0.1.44  | MIT                                |
 | [tracing-appender](https://crates.io/crates/tracing-appender)     | File appenders and non-blocking writers for `tracing`.                          | 0.2.5   | MIT                                |
 | [tracing-subscriber](https://crates.io/crates/tracing-subscriber) | Composing and implementing `tracing` subscribers.                               | 0.3.23  | MIT                                |
@@ -2686,6 +2693,7 @@ code or a classification — never a value.
 | `authn_failed`              | `warn`  | `claimed_identity`, `reason` | a credential is rejected; one reason, never distinguishing a bad identity from a bad secret |
 | `authz_failed`              | `warn`  | `actor`, `action`, `target`  | an authorization decision denies an action                                                  |
 | `session_validation_failed` | `warn`  | `reason`                     | a token is missing, invalid or expired                                                      |
+| `rate_limit_exceeded`       | `warn`  | `route`, `reason`            | a request is rejected by a rate limiter                                                     |
 | `deserialization_failed`    | `warn`  | `source`, `reason`           | a JSON body or the configuration fails to deserialize                                       |
 | `application_error`         | `error` | `operation`                  | a use case originates an internal `Unknown`                                                 |
 | `port_fault`                | `error` | `kind`, `operation`          | an outbound adapter maps a dependency failure                                               |
@@ -2700,7 +2708,7 @@ code or a classification — never a value.
 | `unexpected_http_method`    | `warn`  | `method`, `path`             | a request uses a method the route does not support                                          |
 
 Events with no surface in this server are deliberately absent: import/export, network and TLS failures, payment,
-geolocation and consent, fraud, rate-limit and excessive-use, and key rotation.
+geolocation and consent, fraud, excessive use, and key rotation.
 
 ---
 

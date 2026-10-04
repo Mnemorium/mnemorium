@@ -1,6 +1,8 @@
 use std::future::pending;
+use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Duration;
 
 use arc_swap::ArcSwap;
 use mnemorium::application::port::ensure_storage_directories::EnsureStorageDirectoriesCommand;
@@ -26,6 +28,7 @@ use mnemorium::infrastructure::use_case_factory::identity::RuntimeIdentityUseCas
 use mnemorium::infrastructure::use_case_factory::user::RuntimeUserUseCaseFactory;
 use tokio::net::TcpListener;
 use tokio::signal::ctrl_c;
+use tokio::time::sleep;
 
 use tokio::signal::unix::{SignalKind, signal};
 
@@ -110,7 +113,18 @@ async fn main() -> Result<(), anyhow::Error> {
         user_use_case_factory,
     );
 
-    let app = handler::setup_routes(&state);
+    let (app, rate_limit_cleanup) = handler::setup_routes(&state);
+
+    // TODO(rate-limit): the login limiter is built inside `setup_routes` and
+    // pruned here; revisit whether the composition root should own its
+    // construction once rate limiting grows beyond the login endpoint.
+    let rate_limit_cleanup_interval = Duration::from_mins(1);
+    tokio::spawn(async move {
+        loop {
+            sleep(rate_limit_cleanup_interval).await;
+            rate_limit_cleanup.prune();
+        }
+    });
 
     info!("Starting Mnemorium server");
 
@@ -147,9 +161,12 @@ async fn main() -> Result<(), anyhow::Error> {
                 info!("Shutdown signal received; draining in-flight requests");
             };
 
-            match axum::serve(listener, app)
-                .with_graceful_shutdown(shutdown_signal)
-                .await
+            match axum::serve(
+                listener,
+                app.into_make_service_with_connect_info::<SocketAddr>(),
+            )
+            .with_graceful_shutdown(shutdown_signal)
+            .await
             {
                 Ok(()) => {
                     info!("Mnemorium server stopped");

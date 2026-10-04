@@ -270,7 +270,7 @@ working around it.
 5. `ruff check .` and `ruff format --check .` when Python tests changed
 6. `pytest -p no:cacheprovider test/e2e` when E2E tests changed — the server must
    already be running in the container `mnemorium-e2e` (`docker build -t mnemorium .`,
-   then `docker rm -f mnemorium-e2e` before `docker run -d --name mnemorium-e2e -p 4080:4080 mnemorium`)
+   then `docker rm -f mnemorium-e2e` before `docker run -d --name mnemorium-e2e -p 4080:4080 -e MNEMORIUM__SECURITY__RATE_LIMIT__BURST_SIZE=1000 mnemorium`, because the login-heavy suite shares one peer IP and would otherwise trip the default rate limit)
 
 Report every result, including the measured coverage.
 

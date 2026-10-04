@@ -142,6 +142,9 @@ rand = { version = "0.10.2", features = ["chacha"] }
 arc-swap = "1.9.2"
 sha2 = "0.11.0"
 base64 = "0.23.1"
+tower_governor = { version = "0.8.0", default-features = false, features = [
+  "axum",
+] }
 
 
 [dev-dependencies]

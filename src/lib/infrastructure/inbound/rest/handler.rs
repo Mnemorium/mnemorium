@@ -17,35 +17,48 @@ use crate::infrastructure::inbound::rest::handler::get_health::get_health;
 use crate::infrastructure::inbound::rest::handler::identity::identity_routes;
 use crate::infrastructure::inbound::rest::handler::user::user_routes;
 use crate::infrastructure::inbound::rest::middleware::hal_errors::hal_errors;
+use crate::infrastructure::inbound::rest::middleware::rate_limit::RateLimitCleanup;
 use crate::infrastructure::inbound::rest::middleware::trace::tracing;
 
-/// Build the application router.
+/// Build the application router and the rate-limit cleanup it needs.
 ///
 /// This is the single composition root: the server mounts only this router, and
 /// `hal_errors` is applied **last** so it is the outermost layer. It therefore
 /// rewraps every `4xx`/`5xx` the server emits, including the routing fallback
 /// (an unknown or malformed URL) and framework rejections, as the one HAL error
 /// envelope (`API-039`). It must remain outermost.
-pub fn setup_routes(state: &AppState) -> axum::Router {
+///
+/// The returned [`RateLimitCleanup`] must be driven on an interval by the
+/// composition root; dropping it only stops the periodic prune, it does not
+/// disable the limiter.
+pub fn setup_routes(state: &AppState) -> (axum::Router, RateLimitCleanup) {
+    let mut cleanup = RateLimitCleanup::new();
+    let (identity, identity_cleanup) = identity_routes(state);
+    cleanup.merge(identity_cleanup);
+
     let v1 = axum::Router::new()
         .nest("/asset", asset_routes(state))
-        .nest("/identity", identity_routes(state))
+        .nest("/identity", identity)
         .nest("/user", user_routes(state));
 
-    axum::Router::new()
+    let router = axum::Router::new()
         .route("/health", get(get_health))
         .nest("/api/v1", v1)
         .layer(middleware::from_fn(tracing))
-        .layer(middleware::from_fn(hal_errors))
+        .layer(middleware::from_fn(hal_errors));
+
+    (router, cleanup)
 }
 
 #[cfg(test)]
 mod tests {
     use std::error::Error;
+    use std::net::SocketAddr;
     use std::sync::Arc;
 
     use axum::body::Body;
     use axum::body::to_bytes;
+    use axum::extract::ConnectInfo;
     use axum::extract::Request;
     use axum::http::StatusCode;
     use axum::http::header;
@@ -57,6 +70,7 @@ mod tests {
     use super::setup_routes;
     use crate::application::port::identity_use_case_factory::MockIdentityUseCaseFactory;
     use crate::application::port::login_user::LoginUserError;
+    use crate::application::port::login_user::LoginUserResponse;
     use crate::application::port::login_user::LoginUserUseCase;
     use crate::application::port::login_user::MockLoginUserUseCase;
     use crate::test_helpers::SECRET_PASSWORD;
@@ -64,8 +78,15 @@ mod tests {
     use crate::test_helpers::app_state_with_identity;
 
     /// Build a request with `method` and `uri`, optionally carrying a JSON body.
+    ///
+    /// The request always carries a `ConnectInfo` peer address, so the login
+    /// rate limiter can extract a client key under the default (peer IP)
+    /// configuration.
     fn request(method: &str, uri: &str, body: Option<&str>) -> Result<Request, Box<dyn Error>> {
-        let mut builder = Request::builder().method(method).uri(uri);
+        let mut builder = Request::builder()
+            .method(method)
+            .uri(uri)
+            .extension(ConnectInfo(SocketAddr::from(([127, 0, 0, 1], 0))));
         if body.is_some() {
             builder = builder.header(header::CONTENT_TYPE, "application/json");
         }
@@ -120,7 +141,7 @@ mod tests {
 
     /// A router whose token provider is built from the fixture configuration.
     fn plain_router() -> Result<axum::Router, Box<dyn Error>> {
-        Ok(setup_routes(&app_state()?))
+        Ok(setup_routes(&app_state()?).0)
     }
 
     #[tokio::test]
@@ -208,6 +229,7 @@ mod tests {
         })
         .to_string();
         let response = setup_routes(&state)
+            .0
             .oneshot(request("POST", "/api/v1/identity/login", Some(&body))?)
             .await?;
 
@@ -215,6 +237,54 @@ mod tests {
         assert_eq!(
             assert_envelope(response, StatusCode::UNAUTHORIZED, "/api/v1/identity/login").await?,
             "invalid credentials"
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn login_rate_limit_rejects_after_the_burst() -> Result<(), Box<dyn Error>> {
+        // Arrange: every call succeeds, so only the rate limiter can reject.
+        let mut factory = MockIdentityUseCaseFactory::new();
+        factory.expect_login_user().times(5).returning(|| {
+            let mut login_use_case = MockLoginUserUseCase::new();
+            login_use_case.expect_execute().returning(|_| {
+                Box::pin(async { Ok(LoginUserResponse::new("jwt-token".to_owned(), 3600)) })
+            });
+            Arc::new(login_use_case) as Arc<dyn LoginUserUseCase>
+        });
+        let state = app_state_with_identity(Arc::new(factory))?;
+        let router = setup_routes(&state).0;
+        let body = json!({ "username": "alice", "password": SECRET_PASSWORD }).to_string();
+
+        // Act: spend the default burst of five, then one more.
+        for _ in 0u8..5u8 {
+            let response = router
+                .clone()
+                .oneshot(request("POST", "/api/v1/identity/login", Some(&body))?)
+                .await?;
+            assert_eq!(
+                response.status(),
+                StatusCode::OK,
+                "a request within the burst must succeed"
+            );
+        }
+        let rejected = router
+            .oneshot(request("POST", "/api/v1/identity/login", Some(&body))?)
+            .await?;
+
+        // Assert
+        assert!(
+            rejected.headers().get(header::RETRY_AFTER).is_some(),
+            "a rate-limited response must carry Retry-After (`API-027`)"
+        );
+        assert_eq!(
+            assert_envelope(
+                rejected,
+                StatusCode::TOO_MANY_REQUESTS,
+                "/api/v1/identity/login",
+            )
+            .await?,
+            "too many requests"
         );
         Ok(())
     }

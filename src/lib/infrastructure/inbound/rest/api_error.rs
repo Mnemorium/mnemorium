@@ -55,6 +55,8 @@ pub enum ApiError {
     NotFound(String),
     /// The request payload is larger than the server allows (`413`).
     PayloadTooLarge(String),
+    /// The caller sent too many requests in a given time window (`429`).
+    TooManyRequests(String),
     /// Authentication is required or the credentials are invalid (`401`).
     Unauthorized(String),
     /// The request is well-formed but the server cannot process it (`422`).
@@ -78,6 +80,7 @@ impl ApiError {
             ),
             Self::NotFound(message) => (StatusCode::NOT_FOUND, message),
             Self::PayloadTooLarge(message) => (StatusCode::PAYLOAD_TOO_LARGE, message),
+            Self::TooManyRequests(message) => (StatusCode::TOO_MANY_REQUESTS, message),
             Self::Unauthorized(message) => (StatusCode::UNAUTHORIZED, message),
             Self::UnprocessableEntity(message) => (StatusCode::UNPROCESSABLE_ENTITY, message),
             Self::UnsupportedMediaType(message) => (StatusCode::UNSUPPORTED_MEDIA_TYPE, message),
