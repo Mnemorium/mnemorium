@@ -2472,12 +2472,13 @@ CI `scopes` job; a failure cites `GOV-001`.
 
 ## Documentation
 
-This section governs the examples and excerpts the documentation publishes. It keeps every published example traceable
-to the code it restates, so a reader can verify it and a reviewer can catch it going stale.
+This section governs the examples, diagrams and excerpts the documentation publishes. It keeps every published example
+traceable to the code it restates, so a reader can verify it and a reviewer can catch it going stale.
 
-| ID        | Section       | Rule                                                                                                                                                                                 | More info               |
-| --------- | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------- |
-| `DOC-001` | Code examples | An example that restates production code names the source path it is drawn from, is updated in the same change as that code, and may elide omitted regions with a `// [...]` marker. | [§ 1](#1-code-examples) |
+| ID        | Section               | Rule                                                                                                                                                                                                                                                               | More info                       |
+| --------- | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------- |
+| `DOC-001` | Code examples         | An example that restates production code names the source path it is drawn from, is updated in the same change as that code, and may elide omitted regions with a `// [...]` marker.                                                                               | [§ 1](#1-code-examples)         |
+| `DOC-002` | Domain model diagrams | A domain model diagram that the documentation publishes represents the domain's real-world concepts — conceptual classes, typed attributes, and named associations with multiplicity — and never software methods, database tables or other implementation detail. | [§ 2](#2-domain-model-diagrams) |
 
 ---
 
@@ -2505,6 +2506,70 @@ pub enum UserError {
     // [...]
 }
 ```
+
+---
+
+### 2. Domain model diagrams
+
+A **Domain Model Diagram (MDD)** is a conceptual model: it represents the real-world concepts of the domain rather than
+the software classes that implement them. It records what exists in the domain, what information must be remembered, and
+how the concepts relate.
+
+An MDD is not the [entity-relationship diagram](#entity-relationship-diagram). The ERD is the physical schema and tracks
+`migrations/` (`PERS-011`–`PERS-013`, [§ Persistence](#persistence)); an MDD is product vocabulary and tracks the
+concepts documented in [`Overview.md`](Overview.md#domain-model). Neither replaces the other.
+
+**Conceptual classes.** Model real-world concepts, never implementation classes or database tables, and give a class no
+methods. A class name is a singular noun in `UpperCamelCase` (`MusicAlbum`, not `MusicAlbums`). Identify classes from
+business transactions and their items, products and services, people and their roles, organizations, physical objects,
+important events, descriptions and catalogs, and external systems.
+
+**Attributes.** An attribute carries information a use case must remember and always has a type (`username : String`,
+`release_date : Date`); visibility markers (`+`, `-`) add nothing to a domain model. A concept with identity of its own
+is a class, not an attribute: `MusicTrack` references a `MusicRecording` class rather than holding a
+`recording : String` field.
+
+**Associations.** An association is a relationship the domain must remember. Name it with a domain verb read from the
+owning side, and state its multiplicity:
+
+```text
+User        1 ---- 1      Credential : Authenticates with
+User        1 ---- 0..*   File       : Uploads
+MusicAlbum  1 ---- 1..*   MusicMedium: Packages
+MusicMedium 1 ---- 0..*   MusicTrack : Positions
+MusicTrack  0..* ---- 1   MusicRecording : References
+```
+
+One album packages one or more mediums; each medium belongs to one album. Avoid verbs that carry no domain meaning —
+`Has`, `Uses`, `Contains`, `Owns`.
+
+**Attributes versus associations.** A relationship between two concepts is an association, not a field: model `User` —
+`Uploads` — `File`, never a `files : File` attribute on `User`. Associations document domain knowledge and read better
+than a field would.
+
+**Derived attributes.** Prefix an attribute the model computes from other information with a slash
+(`/occupiedCountries : Integer`). A derived attribute follows from an association and is not stored.
+
+**Common association patterns.**
+
+| Pattern               | Example                          |
+| --------------------- | -------------------------------- |
+| Transaction ↔ Item    | `Order` ↔ `OrderLine`            |
+| Transaction ↔ Actor   | `Customer` ↔ `Payment`           |
+| Description ↔ Object  | `ProductDescription` ↔ `Product` |
+| Part ↔ Whole          | `GalleryItem` ↔ `Gallery`        |
+| Container ↔ Content   | `MusicMedium` ↔ `MusicTrack`     |
+| Organization ↔ Member | `MusicGroup` ↔ `Person`          |
+| Neighboring objects   | `City` ↔ `City`                  |
+
+**What not to model.** No software methods (`calculatePrice()`, `save()`, `getName()`), no database tables, and no
+programming-language or infrastructure detail (`Vec<T>`, foreign keys, column types). Model only the relationships the
+domain must remember, not every possible one: the diagram describes business reality, not the software design.
+
+The examples above use the project's concepts for familiarity but are conceptual illustrations — they do not restate
+production code and are not bound by [`DOC-001`](#1-code-examples).
+
+**Reference** — Craig Larman, _Applying UML and Patterns_, conceptual modeling, the source of the conventions above.
 
 ---
 
