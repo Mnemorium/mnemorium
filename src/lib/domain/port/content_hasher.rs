@@ -16,7 +16,7 @@ pub trait ContentHasher: Send + Sync {
 
 /// One incremental hashing session.
 #[cfg_attr(test, mockall::automock)]
-pub trait ContentHasherSession: Send {
+pub trait ContentHasherSession: Send + Sync {
     /// Consume the session, returning the digest of everything fed so far.
     ///
     /// # Errors
@@ -28,4 +28,21 @@ pub trait ContentHasherSession: Send {
     ///
     /// The operation is infallible.
     fn update(&mut self, bytes: &[u8]);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ContentHasherSession;
+
+    /// Assert `T` implements `Send + Sync`.
+    #[expect(
+        clippy::single_call_fn,
+        reason = "a named bound assertion reads better than an inline bound"
+    )]
+    fn assert_send_sync<T: Send + Sync + ?Sized>() {}
+
+    #[test]
+    fn content_hasher_session_is_send_and_sync() {
+        assert_send_sync::<dyn ContentHasherSession>();
+    }
 }
