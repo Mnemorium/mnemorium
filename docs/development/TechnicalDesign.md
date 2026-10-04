@@ -725,7 +725,7 @@ match result {
 The base trait and the factory are declared in `domain/port/unit_of_work.rs`:
 
 ```rust
-pub trait UnitOfWork: Send {
+pub trait UnitOfWork: Send + Sync {
     fn commit(self) -> impl Future<Output = Result<(), UnitOfWorkError>> + Send;
     fn rollback(self) -> impl Future<Output = Result<(), UnitOfWorkError>> + Send;
 }
