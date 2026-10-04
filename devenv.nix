@@ -348,7 +348,7 @@
 
   processes = {
     docs.exec = "mkdocs serve --dev-addr 0.0.0.0:8000";
-    openapi-spec.exec = "npx @redocly/cli preview -d docs/openapi.json --port 8001";
+    openapi-spec.exec = "npx --yes @redocly/cli@2.57.0 preview -d docs --port 8001";
   };
 
 }
