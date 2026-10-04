@@ -75,7 +75,7 @@ impl From<LoginUserError> for ApiError {
             status = BAD_REQUEST,
             body = ErrorBody,
             content_type = "application/hal+json",
-            description = "Invalid payload"
+            description = "Malformed request body"
         ),
         (
             status = UNAUTHORIZED,
@@ -87,7 +87,7 @@ impl From<LoginUserError> for ApiError {
             status = UNSUPPORTED_MEDIA_TYPE,
             body = ErrorBody,
             content_type = "application/hal+json",
-            description = "The request body media type is not application/json"
+            description = "The request body is not application/json"
         ),
         (
             status = UNPROCESSABLE_ENTITY,

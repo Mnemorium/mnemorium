@@ -72,7 +72,7 @@ impl From<UpdateUserError> for ApiError {
     fn from(err: UpdateUserError) -> Self {
         match err {
             UpdateUserError::InvalidEmail | UpdateUserError::InvalidUsername => {
-                Self::BadRequest(err.to_string())
+                Self::UnprocessableEntity(err.to_string())
             }
             UpdateUserError::NotAdmin
             | UpdateUserError::TargetNotModifiable
@@ -105,7 +105,7 @@ impl From<UpdateUserError> for ApiError {
             status = BAD_REQUEST,
             body = ErrorBody,
             content_type = "application/hal+json",
-            description = "Invalid user identifier or payload"
+            description = "Invalid user identifier or malformed request body"
         ),
         (
             status = UNAUTHORIZED,
@@ -123,13 +123,13 @@ impl From<UpdateUserError> for ApiError {
             status = UNSUPPORTED_MEDIA_TYPE,
             body = ErrorBody,
             content_type = "application/hal+json",
-            description = "The request body media type is not application/json"
+            description = "The request body is not application/json"
         ),
         (
             status = UNPROCESSABLE_ENTITY,
             body = ErrorBody,
             content_type = "application/hal+json",
-            description = "The request body does not match the expected schema"
+            description = "The request body does not match the expected schema, or the username or email fails validation"
         ),
         (
             status = FORBIDDEN,
@@ -484,7 +484,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn patch_user_invalid_username_returns_bad_request() -> Result<(), Box<dyn Error>> {
+    async fn patch_user_invalid_username_returns_unprocessable_entity() -> Result<(), Box<dyn Error>>
+    {
         // Arrange
         let mut use_case = MockUpdateUserUseCase::new();
         expect_error(&mut use_case, UpdateUserError::InvalidUsername);
@@ -499,7 +500,7 @@ mod tests {
         .await?;
 
         // Assert
-        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
         assert_eq!(
             error_message_of(&response).as_deref(),
             Some("username must be at least 4 characters long")
@@ -508,7 +509,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn patch_user_invalid_email_returns_bad_request() -> Result<(), Box<dyn Error>> {
+    async fn patch_user_invalid_email_returns_unprocessable_entity() -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut use_case = MockUpdateUserUseCase::new();
         expect_error(&mut use_case, UpdateUserError::InvalidEmail);
@@ -523,7 +524,7 @@ mod tests {
         .await?;
 
         // Assert
-        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
         assert_eq!(
             error_message_of(&response).as_deref(),
             Some("email has an invalid format")

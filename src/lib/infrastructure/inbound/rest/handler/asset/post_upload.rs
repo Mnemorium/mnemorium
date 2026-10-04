@@ -84,7 +84,7 @@ impl From<BeginUploadError> for ApiError {
     fn from(err: BeginUploadError) -> Self {
         match err {
             BeginUploadError::InvalidFileName | BeginUploadError::InvalidFileSize => {
-                Self::BadRequest(err.to_string())
+                Self::UnprocessableEntity(err.to_string())
             }
             BeginUploadError::FileTooLarge => Self::PayloadTooLarge(err.to_string()),
             BeginUploadError::Unknown(_) => Self::InternalServerError,
@@ -121,7 +121,7 @@ impl From<BeginUploadError> for ApiError {
             status = BAD_REQUEST,
             body = ErrorBody,
             content_type = "application/hal+json",
-            description = "Invalid payload"
+            description = "Malformed request body or invalid integrity hash"
         ),
         (
             status = UNAUTHORIZED,
@@ -154,7 +154,7 @@ impl From<BeginUploadError> for ApiError {
             status = UNPROCESSABLE_ENTITY,
             body = ErrorBody,
             content_type = "application/hal+json",
-            description = "The request body does not match the expected schema"
+            description = "The request body does not match the expected schema, or the file name or size fails validation"
         ),
         (
             status = INTERNAL_SERVER_ERROR,
@@ -391,6 +391,44 @@ mod tests {
         assert_eq!(
             error_message_of(&response).as_deref(),
             Some("the file size exceeds the maximum allowed size")
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn post_upload_invalid_file_name_returns_unprocessable_entity()
+    -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let mut use_case = MockBeginUploadUseCase::new();
+        expect_error(&mut use_case, BeginUploadError::InvalidFileName);
+
+        // Act
+        let response = send(use_case, 3, request_body()?).await?;
+
+        // Assert
+        assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+        assert_eq!(
+            error_message_of(&response).as_deref(),
+            Some("the file name is invalid")
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn post_upload_invalid_file_size_returns_unprocessable_entity()
+    -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let mut use_case = MockBeginUploadUseCase::new();
+        expect_error(&mut use_case, BeginUploadError::InvalidFileSize);
+
+        // Act
+        let response = send(use_case, 3, request_body()?).await?;
+
+        // Assert
+        assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+        assert_eq!(
+            error_message_of(&response).as_deref(),
+            Some("the file size must be greater than zero")
         );
         Ok(())
     }
