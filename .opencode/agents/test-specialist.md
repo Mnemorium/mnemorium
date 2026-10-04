@@ -58,6 +58,9 @@ permissions:
     resource: "git log *"
     effect: allow
   - action: shell
+    resource: "git show *"
+    effect: allow
+  - action: shell
     resource: "sqlfluff *"
     effect: deny
   - action: subagent
