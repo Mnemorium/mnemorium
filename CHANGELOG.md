@@ -1,3 +1,9 @@
+## [0.6.4](https://github.com/Mnemorium/mnemorium/compare/v0.6.3...v0.6.4) (2026-10-04)
+
+### Bug Fixes
+
+* **api:** return 422 for validation failures and document the status taxonomy ([#132](https://github.com/Mnemorium/mnemorium/issues/132)) ([93b8e80](https://github.com/Mnemorium/mnemorium/commit/93b8e80a8685a777edf2eb9c8d261e42d8649f34))
+
 ## [0.6.3](https://github.com/Mnemorium/mnemorium/compare/v0.6.2...v0.6.3) (2026-10-03)
 
 ### Bug Fixes
