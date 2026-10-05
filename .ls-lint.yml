@@ -6,6 +6,7 @@ ls:
   .md: PascalCase
 ignore:
   - .devenv
+  - .artifacts
   - README.md
   - AGENTS.md
   - CHANGELOG.md

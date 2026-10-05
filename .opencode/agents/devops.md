@@ -67,6 +67,12 @@ permissions:
   - { action: shell, resource: "prettier --check *", effect: allow }
   - { action: shell, resource: "semgrep *", effect: allow }
   - { action: shell, resource: "nixfmt --check *", effect: allow }
+  - { action: shell, resource: "echo *", effect: allow }
+  - { action: shell, resource: "wc *", effect: allow }
+  - { action: shell, resource: "echo *>*", effect: deny }
+  - { action: shell, resource: "wc *>*", effect: deny }
+  - { action: shell, resource: "*$(*", effect: deny }
+  - { action: shell, resource: "*`*", effect: deny }
   - { action: question, resource: "*", effect: allow }
   - { action: webfetch, resource: "*", effect: allow }
   - { action: websearch, resource: "*", effect: deny }

@@ -70,6 +70,24 @@ permissions:
   - action: shell
     resource: "*devenv*"
     effect: deny
+  - action: shell
+    resource: "echo *"
+    effect: allow
+  - action: shell
+    resource: "wc *"
+    effect: allow
+  - action: shell
+    resource: "echo *>*"
+    effect: deny
+  - action: shell
+    resource: "wc *>*"
+    effect: deny
+  - action: shell
+    resource: "*$(*"
+    effect: deny
+  - action: shell
+    resource: "*`*"
+    effect: deny
   - action: question
     resource: "*"
     effect: allow

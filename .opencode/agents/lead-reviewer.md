@@ -31,6 +31,11 @@ permissions:
   - { action: shell, resource: "git rev-parse *", effect: allow }
   - { action: shell, resource: "git merge-base *", effect: allow }
   - { action: shell, resource: "git add -N *", effect: allow }
+  # Stream filtering (read-only) and directory listing
+  - { action: shell, resource: "sed *", effect: allow }
+  - { action: shell, resource: "sed -i*", effect: deny }
+  - { action: shell, resource: "sed --in-place*", effect: deny }
+  - { action: shell, resource: "ls *", effect: allow }
   # Panel
   - { action: subagent, resource: "*", effect: deny }
   - { action: subagent, resource: "rust-developer", effect: allow }

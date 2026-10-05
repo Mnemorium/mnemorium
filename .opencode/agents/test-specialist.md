@@ -63,6 +63,24 @@ permissions:
   - action: shell
     resource: "sqlfluff *"
     effect: deny
+  - action: shell
+    resource: "echo *"
+    effect: allow
+  - action: shell
+    resource: "wc *"
+    effect: allow
+  - action: shell
+    resource: "echo *>*"
+    effect: deny
+  - action: shell
+    resource: "wc *>*"
+    effect: deny
+  - action: shell
+    resource: "*$(*"
+    effect: deny
+  - action: shell
+    resource: "*`*"
+    effect: deny
   - action: subagent
     resource: "*"
     effect: deny
