@@ -1,0 +1,26 @@
+accepted = [
+  "Apache-2.0",
+  "BSD-2-Clause",
+  "BSD-3-Clause",
+  "BSL-1.0",
+  "CC0-1.0",
+  "ISC",
+  "MIT",
+  "MIT-0",
+  "Unicode-3.0",
+  "Unlicense",
+  "Zlib",
+]
+
+targets = ["x86_64-unknown-linux-musl"]
+
+ignore-build-dependencies = true
+ignore-dev-dependencies = true
+
+# NOTE: `governor` publishes no LICENSE file and lists a `.git`-suffixed
+# repository URL. cargo-about's `clarify.git` builds
+# `raw.githubusercontent.com/boinkor-net/governor.git/<sha>/LICENSE`, which 404s
+# because the `.git` suffix is not stripped (upstream bug, present on `main`).
+# Its `clarify.files` route only reads the published crate directory, where no
+# LICENSE exists. Until the upstream bug is fixed, governor is reported with
+# cargo-about's generic MIT text and no copyright holder. Track that upstream.
