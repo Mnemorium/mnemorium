@@ -638,7 +638,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn asset_upload_deserializes_valid_settings() -> Result<(), Box<dyn Error>> {
+    async fn asset_upload_valid_payload_round_trips_all_fields() -> Result<(), Box<dyn Error>> {
         // Arrange
         let payload =
             r#"{"chunk_size_bytes":2048,"expiry_seconds":120,"max_file_size_bytes":4294967296}"#;
@@ -672,7 +672,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn logging_deserializes_valid_settings() -> Result<(), Box<dyn Error>> {
+    async fn logging_valid_payload_round_trips_all_fields() -> Result<(), Box<dyn Error>> {
         // Arrange
         let payload =
             r#"{"ansi":true,"level":"info,sqlx=trace","max_files":3,"rotation":"HOURLY"}"#;
@@ -710,7 +710,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn security_deserializes_valid_settings() -> Result<(), Box<dyn Error>> {
+    async fn security_valid_payload_round_trips_all_fields() -> Result<(), Box<dyn Error>> {
         // Arrange
         let payload = format!(
             r#"{{"jwt":{{"secret":"{}","ttl":3600}},"pepper":"{}"}}"#,
@@ -769,7 +769,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn jwt_deserializes_valid_settings() -> Result<(), Box<dyn Error>> {
+    async fn jwt_valid_payload_round_trips_all_fields() -> Result<(), Box<dyn Error>> {
         // Arrange
         let payload = format!(r#"{{"secret":"{}","ttl":3600}}"#, hex64('a'));
 
@@ -819,7 +819,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn sqlite3_deserializes_valid_settings() -> Result<(), Box<dyn Error>> {
+    async fn sqlite3_valid_payload_round_trips_all_fields() -> Result<(), Box<dyn Error>> {
         // Arrange
         let payload = r#"{"max_connections":4,"path":"mnemorium.db"}"#;
 
@@ -851,7 +851,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn asset_storage_deserializes_valid_root() -> Result<(), Box<dyn Error>> {
+    async fn asset_storage_valid_payload_round_trips_root() -> Result<(), Box<dyn Error>> {
         // Arrange
         let payload = r#"{"root":"media"}"#;
 
