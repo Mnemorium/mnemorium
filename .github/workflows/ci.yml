@@ -494,7 +494,8 @@ jobs:
           persist-credentials: false
       - uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24  # v31
       - name: nixfmt
-        run: nix run nixpkgs#nixfmt -- --check devenv.nix
+        # Pin nixfmt to the nixpkgs revision locked in devenv.lock, not the floating `nixpkgs` registry.
+        run: nix run github:cachix/devenv-nixpkgs/c2f38fe7f9e04d9aadd354d380f2bd40531d9737#nixfmt -- --check devenv.nix
 
   lint:
     needs: [changes, betterleaks]
