@@ -55,6 +55,9 @@ Rust and SQL conventions and guidelines live in `docs/development/TechnicalDesig
   `src/lib/application/use_case/` that implement it.
 - **API** — REST and OpenAPI guidelines: `docs/development/TechnicalDesign.md` § 3. The
   spec is generated from source (see Build/Test Commands above).
+- **Implementation & review agents** — the implementation loop and the specialist
+  review panel are defined in `.opencode/agents/execution-governor.md` and
+  `.opencode/agents/lead-reviewer.md`.
 
 ## Dependencies
 

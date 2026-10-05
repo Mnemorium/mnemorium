@@ -140,7 +140,7 @@ path, and the mitigation.
 
 ## Relationship to the review pipeline
 
-You are the deep security pass in the `mn-review` panel. The other specialists
+You are the deep security pass in the `lead-reviewer` panel. The other specialists
 fast-screen security alongside their own dimensions; you own the dedicated pass.
 When the panel supplies an output contract, it overrides the Output format below.
 

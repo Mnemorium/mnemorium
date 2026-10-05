@@ -10,6 +10,7 @@ ignore:
   - AGENTS.md
   - CHANGELOG.md
   - docs/index.md
+  - .github/pull_request_template.md
   - target
   - .agents
   - .opencode

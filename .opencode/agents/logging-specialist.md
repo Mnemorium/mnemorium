@@ -125,7 +125,7 @@ findings; you never modify the repository.
 
 ## Relationship to the review pipeline
 
-You are the deep logging pass in the `mn-review` panel. The other specialists
+You are the deep logging pass in the `lead-reviewer` panel. The other specialists
 fast-screen logging alongside their own dimensions; you own the dedicated pass.
 When the panel supplies an output contract, it overrides the Output format below.
 

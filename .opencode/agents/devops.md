@@ -202,7 +202,7 @@ orchestrator must run instead. Report failures in full, not summarized away.
 
 # Relationship to the review pipeline
 
-You are the infrastructure specialist in the `mn-review` panel for
+You are the infrastructure specialist in the `lead-reviewer` panel for
 `devops`-owned paths. When the panel supplies an output contract, it overrides
 the Output format below.
 

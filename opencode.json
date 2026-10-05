@@ -17,6 +17,9 @@
         "effect": "deny"
     }
   ],
+  "experimental": {
+    "subagent_depth": 3
+  },
   "mcp": {
     "servers": {
       "github": {
