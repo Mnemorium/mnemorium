@@ -27,9 +27,12 @@ pub enum RateLimitError {
 ///
 /// Deserialization is routed through `RateLimitConfig` and [`TryFrom`] so that
 /// the layered configuration cannot bypass the validation performed by
-/// [`RateLimit::try_new`].
+/// [`RateLimit::try_new`]. Serialization uses the same mirror so the layered
+/// configuration round-trips: `trusted_proxies` is written as a comma-separated
+/// string, not a JSON array, because the `config` crate merges the persisted
+/// snapshot back through the same string-typed field.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
-#[serde(try_from = "RateLimitConfig")]
+#[serde(try_from = "RateLimitConfig", into = "RateLimitConfig")]
 #[non_exhaustive]
 pub struct RateLimit {
     /// Number of requests a client address may spend before throttling.
@@ -45,8 +48,9 @@ pub struct RateLimit {
 /// Unchecked deserialization mirror of [`RateLimit`].
 ///
 /// Serde builds this snapshot and hands it to the [`TryFrom`] implementation,
-/// which validates it through [`RateLimit::try_new`].
-#[derive(serde::Deserialize)]
+/// which validates it through [`RateLimit::try_new`]. Serialization goes the
+/// other way — through [`From`] — so the two directions agree on the wire form.
+#[derive(serde::Deserialize, serde::Serialize)]
 struct RateLimitConfig {
     /// Number of requests a client address may spend before throttling.
     #[serde(default = "default_burst_size")]
@@ -68,6 +72,22 @@ impl TryFrom<RateLimitConfig> for RateLimit {
             config.period_seconds,
             parse_trusted_proxies(&config.trusted_proxies)?,
         )
+    }
+}
+
+impl From<&RateLimit> for RateLimitConfig {
+    fn from(rate_limit: &RateLimit) -> Self {
+        Self {
+            burst_size: rate_limit.burst_size,
+            period_seconds: rate_limit.period_seconds,
+            trusted_proxies: rate_limit.trusted_proxies_value(),
+        }
+    }
+}
+
+impl From<RateLimit> for RateLimitConfig {
+    fn from(rate_limit: RateLimit) -> Self {
+        Self::from(&rate_limit)
     }
 }
 
