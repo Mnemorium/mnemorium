@@ -319,7 +319,7 @@ envelope builder: it reads the attached message and serves the one `ErrorBody` f
 
 Every error response carries the same body, a HAL representation served as `application/hal+json`: the human-readable
 `error` message at the root (`API-033`) and a `_links.self` whose `href` is the request URI the client called
-(`API-032`).
+(`API-039`).
 
 ```json
 {
@@ -1018,6 +1018,7 @@ are documented inline, at the source, with `#[utoipa::path(...)]` macros.
 | `API-039` | HAL payload               | Error responses are HAL representations: the `error` message at the root plus `_links.self` carrying the request URI, served as `application/hal+json`. The same envelope is returned for every error the server emits, including routing fallbacks and extractor rejections.                                                                                                                                        | [§ 2.5](#25-error-public-payload)           |
 | `API-040` | HAL payload               | The `error` message is a stable, server-authored, client-safe string. It carries no request payload content, no extractor or framework wording, and no internal detail such as field paths, expected types, parse positions or type names. Rejection detail is logged, never returned.                                                                                                                               | [§ 2.5](#25-error-public-payload)           |
 | `API-041` | Responses                 | Return the status code that reflects _why_ the request failed, independently of the layer that caught it. `400 Bad Request` when the server cannot parse the request; `422 Unprocessable Content` when it parses but its shape or values fail a schema, framing or business rule; `401 Unauthorized` for any authentication outcome; `415 Unsupported Media Type` for an unsupported request or declared media type. | [§ Response codes](#response-codes)         |
+| `API-042` | HAL payload               | `_links.self` carries the canonical relative URI of the resource the representation is about: when a representation reports the outcome of an action, `self` is the addressed resource and a resource the payload reports or references is exposed as a named link (`API-034`), never as `self`; error responses follow `API-039`.                                                                                   | [§ HAL payload](#hal-payload-guidelines)    |
 
 ---
 
@@ -1464,6 +1465,14 @@ A **resource representation** is a success response that carries an addressable 
 collection. Every resource representation includes `_links.self`, a relative URI reference to the resource (`API-032`).
 Token-issuing responses, liveness probes and `204 No Content` responses are not resource representations and keep their
 plain `application/json` representation.
+
+A representation's `_links.self` names the resource it is about, by that resource's canonical relative URI (`API-042`).
+When a representation reports the outcome of an action on a resource, `self` is the addressed resource, and a resource
+the payload reports or references is exposed as a named link (`API-034`) — never promoted to `self`. The canonical URI
+is used even when the request used an alias: `GET /api/v1/user/me` returns `self` = `/api/v1/user/{id}`, and
+`POST /api/v1/asset/upload/{upload_id}/complete` reports the completion of the session it addressed, so its `self` is
+`/api/v1/asset/upload/{upload_id}` while the produced file is carried as `file_id` and linked by name once a file
+endpoint exists. Error envelopes are the exception: their `self` is the request URI (`API-039`).
 
 ---
 
