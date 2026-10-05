@@ -2010,8 +2010,6 @@ audio_stream ||--|| audio
 language ||--o{ audio_stream
 language ||--o{ subtitle_stream
 
-image ||--|| color
-
 gallery ||--o{ gallery_item
 gallery ||--o{ gallery_video
 
