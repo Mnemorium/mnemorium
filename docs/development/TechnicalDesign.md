@@ -2738,6 +2738,7 @@ code or a classification — never a value.
 | `deserialization_failed`    | `warn`  | `source`, `reason`           | a JSON body or the configuration fails to deserialize                                       |
 | `application_error`         | `error` | `operation`                  | a use case originates an internal `Unknown`                                                 |
 | `port_fault`                | `error` | `kind`, `operation`          | an outbound adapter maps a dependency failure                                               |
+| `token_provider_fault`      | `error` | `kind`                       | the inbound token boundary receives an operational fault from the token provider            |
 | `lifecycle`                 | `info`  | `component`, `outcome`       | startup, shutdown or logging initialization                                                 |
 | `user_admin`                | `info`  | `actor`, `action`, `target`  | a user is created or updated, a role or credential changes                                  |
 | `secret_initialized`        | `info`  | `component`                  | the pepper or the JWT signing secret is generated at startup                                |
