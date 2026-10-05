@@ -2,12 +2,11 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
-use tracing::error;
-
 use crate::application::port::get_user::GetUserCommand;
 use crate::application::port::get_user::GetUserError;
 use crate::application::port::get_user::GetUserResponse;
 use crate::application::port::get_user::GetUserUseCase;
+use crate::application::security_event;
 use crate::domain::model::user::Role;
 use crate::domain::port::unit_of_work::UnitOfWork as _;
 use crate::domain::port::unit_of_work::UnitOfWorkFactory;
@@ -61,6 +60,7 @@ where
                     .next()
                     .ok_or(GetUserError::NoSuchCaller)?;
                 if caller.role() != Role::Admin {
+                    security_event::authorization_failed(caller.id(), "read", "user");
                     return Err(GetUserError::NotAdmin);
                 }
 
@@ -91,14 +91,12 @@ where
                         .commit()
                         .await
                         .map_err(|error| GetUserError::Unknown(error.into()))?;
+                    security_event::sensitive_data_access(command.caller_id(), "user");
                     Ok(value)
                 }
                 Err(error) => {
-                    if let Err(rollback_error) = unit_of_work.rollback().await {
-                        error!(
-                            error = ?rollback_error,
-                            "failed to roll back the get user unit of work"
-                        );
+                    if unit_of_work.rollback().await.is_err() {
+                        // The unit-of-work adapter owns the rollback-failure log (OBS-002).
                     }
                     Err(error)
                 }

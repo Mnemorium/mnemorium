@@ -899,9 +899,10 @@ The configuration also carries the logging settings (`logging.level`, `logging.r
 configuration **after** `LoadConfiguration` returns: anything logged during bootstrap, `init_db` and `LoadConfiguration`
 itself is discarded, and a startup failure reaches the operator through the error `main` returns. `logging::setup`
 (`src/lib/infrastructure/logging.rs`) fails fast on invalid filter directives and returns the `WorkerGuard` the
-composition root holds for the lifetime of the process. Security events emit on the reserved `security` target with a
-`warn` floor that `logging.level` cannot suppress (see [§ 9 (Logging & Observability)](#logging--observability),
-`OBS-007`); `logging::setup` rejects `off`/`none` and any filter directive that targets `security`.
+composition root holds for the lifetime of the process. Security events emit on the reserved `security` target at their
+catalogued level, and `logging.level` cannot suppress them (see
+[§ 9 (Logging & Observability)](#logging--observability), `OBS-007`); `logging::setup` rejects `off`/`none` as a
+whole-level value and any filter directive that targets `security`.
 
 Runtime write-guarding of the configuration is deferred; until it lands, the startup-only settings in § 10.1 are the
 only configuration values a running process holds from startup.
@@ -2638,7 +2639,7 @@ only here — a rule in another section cites an `OBS-*` rule, it never restates
 | `OBS-004` | Redaction   | Never log application source, session identifiers, access or JWT tokens, passwords or password material, database connection strings, the pepper or JWT signing secret, or personal data; a type that holds a secret must not derive a `Debug` that exposes it. | [§ 4](#4-redaction)                        |
 | `OBS-005` | Severity    | Use only the levels `error`, `warn`, `info`, `debug` and `trace`, assigned per [§ 5](#5-severity); `error` is an operator-actionable fault, `warn` a reviewable security event, `info` a security success or lifecycle event.                                   | [§ 5](#5-severity)                         |
 | `OBS-006` | Catalog     | Emit every event in the catalog in [§ 6](#6-security-event-catalog) at its declared level and with its declared fields.                                                                                                                                         | [§ 6](#6-security-event-catalog)           |
-| `OBS-007` | Suppression | Security events target the reserved `security` target and carry a `warn` floor that `logging.level` cannot suppress.                                                                                                                                            | [§ 7](#7-non-suppressible-security-events) |
+| `OBS-007` | Suppression | Security events target the reserved `security` target; `logging::setup` rejects `off`/`none` as a whole-level value and any directive that targets `security`, so `logging.level` can never suppress a catalog event.                                           | [§ 7](#7-non-suppressible-security-events) |
 
 ---
 
@@ -2747,6 +2748,11 @@ code or a classification — never a value.
 | `system_object`             | `info`  | `object`, `action`           | a system-level object is created (the configuration singleton, the Root Admin)              |
 | `unexpected_http_method`    | `warn`  | `method`, `path`             | a request uses a method the route does not support                                          |
 
+An explicit, narrow exception to the field rule above: `authn_failed.claimed_identity` is the raw submitted username,
+because it is the only identity available when authentication fails and no identifier can stand in for it. `OBS-003` and
+`OBS-004` remain in force for every other event: they still forbid a raw client-supplied request-body field and personal
+data.
+
 Events with no surface in this server are deliberately absent: import/export, network and TLS failures, payment,
 geolocation and consent, fraud, excessive use, and key rotation.
 
@@ -2754,10 +2760,11 @@ geolocation and consent, fraud, excessive use, and key rotation.
 
 ### 7. Non-suppressible security events
 
-Catalog events emit on the reserved `security` target. `logging::setup` (`src/lib/infrastructure/logging.rs`) builds the
-filter so a `warn` floor for that target survives any `logging.level`: it rejects `off`/`none` as a whole-level value
-and rejects a directive that targets `security`, so `logging.level` tunes operational verbosity only and can never
-suppress a security event. `logging.level` is startup-only (`STY-RUST-082`; see [§ 10.1](#101-startup-only-settings)).
+Catalog events emit on the reserved `security` target at whatever level the catalog declares for them (`error`, `warn`,
+`info` or `debug`; `OBS-006`). `logging::setup` (`src/lib/infrastructure/logging.rs`) builds the filter so
+`logging.level` can never suppress a catalog event: it rejects `off`/`none` as a whole-level value and rejects any
+directive that targets `security`. `logging.level` therefore tunes operational verbosity only; it is startup-only
+(`STY-RUST-082`; see [§ 10.1](#101-startup-only-settings)).
 
 ---
 

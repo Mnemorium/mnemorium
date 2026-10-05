@@ -12,6 +12,7 @@ use crate::application::port::begin_upload::BeginUploadCommand;
 use crate::application::port::begin_upload::BeginUploadError;
 use crate::application::port::begin_upload::BeginUploadResponse;
 use crate::application::port::begin_upload::BeginUploadUseCase;
+use crate::application::security_event;
 use crate::application::use_case::upload_layout::staged_path;
 use crate::domain::alias::NumericID;
 use crate::domain::model::upload::ChunkBitmap;
@@ -163,11 +164,14 @@ where
 
                 let expires_at = upload
                     .created_at()
-                    .checked_add_signed(Duration::seconds(
-                        i64::try_from(expiry_seconds)
-                            .map_err(|error| BeginUploadError::Unknown(anyhow::anyhow!(error)))?,
-                    ))
+                    .checked_add_signed(Duration::seconds(i64::try_from(expiry_seconds).map_err(
+                        |error| {
+                            security_event::application_error("begin_upload");
+                            BeginUploadError::Unknown(anyhow::anyhow!(error))
+                        },
+                    )?))
                     .ok_or_else(|| {
+                        security_event::application_error("begin_upload");
                         BeginUploadError::Unknown(anyhow::anyhow!(
                             "the upload expiry overflows the created_at timestamp"
                         ))
@@ -183,7 +187,14 @@ where
 
             match result {
                 Ok(value) => match unit_of_work.commit().await {
-                    Ok(()) => Ok(value),
+                    Ok(()) => {
+                        security_event::upload(
+                            command.user_id(),
+                            &value.upload_id().to_string(),
+                            "accepted",
+                        );
+                        Ok(value)
+                    }
                     Err(error) => {
                         // The commit outcome is ambiguous: the row may or may
                         // not be persisted. Removing the staging file cannot
@@ -194,11 +205,8 @@ where
                     }
                 },
                 Err(error) => {
-                    if let Err(rollback_error) = unit_of_work.rollback().await {
-                        error!(
-                            error = ?rollback_error,
-                            "failed to roll back the begin upload unit of work"
-                        );
+                    if unit_of_work.rollback().await.is_err() {
+                        // The unit-of-work adapter owns the rollback-failure log (OBS-002).
                     }
                     discard_staging(file_storage.as_ref(), root.as_path(), staged_upload_id).await;
                     Err(error)
@@ -245,8 +253,10 @@ where
 )]
 fn validate_total_chunks(file_size: u64, chunk_size: u64) -> Result<usize, BeginUploadError> {
     let total = file_size.div_ceil(chunk_size);
-    let total_chunks = usize::try_from(total)
-        .map_err(|error| BeginUploadError::Unknown(anyhow::anyhow!(error)))?;
+    let total_chunks = usize::try_from(total).map_err(|error| {
+        security_event::application_error("begin_upload");
+        BeginUploadError::Unknown(anyhow::anyhow!(error))
+    })?;
     if total_chunks > MAX_TOTAL_CHUNKS {
         return Err(BeginUploadError::FileTooLarge);
     }

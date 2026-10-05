@@ -133,6 +133,7 @@ impl From<JsonRejection> for ApiError {
             ),
         };
         warn!(
+            target: "security",
             event = event,
             source = "json_body",
             reason = reason,
@@ -163,6 +164,7 @@ impl ApiError {
             );
         }
         warn!(
+            target: "security",
             event = "input_validation_failed",
             source = "request_body",
             reason = "buffer_failed",

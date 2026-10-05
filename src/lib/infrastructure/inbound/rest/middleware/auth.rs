@@ -72,6 +72,7 @@ where
         .and_then(|(scheme, token)| scheme.eq_ignore_ascii_case("bearer").then_some(token))
     else {
         warn!(
+            target: "security",
             event = "session_validation_failed",
             reason = "missing_authorization_header",
             "rejected a request without a bearer token"
@@ -87,6 +88,7 @@ where
             | TokenProviderError::TokenExpired,
         ) => {
             warn!(
+                target: "security",
                 event = "session_validation_failed",
                 reason = "invalid_or_expired_token",
                 "rejected an invalid or expired bearer token"

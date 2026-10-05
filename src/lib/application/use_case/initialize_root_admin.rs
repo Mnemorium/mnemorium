@@ -3,11 +3,11 @@ use std::pin::Pin;
 use std::sync::Arc;
 
 use chrono::Utc;
-use tracing::error;
 
 use crate::application::port::initialize_root_admin::InitializeRootAdminError;
 use crate::application::port::initialize_root_admin::InitializeRootAdminResponse;
 use crate::application::port::initialize_root_admin::InitializeRootAdminUseCase;
+use crate::application::security_event;
 use crate::domain::model::credential::Credential;
 use crate::domain::model::user::Role;
 use crate::domain::model::user::User;
@@ -123,6 +123,8 @@ where
                     .await
                     .map_err(|error| InitializeRootAdminError::Unknown(error.into()))?;
 
+                security_event::system_object("root_admin", "create");
+
                 Ok(Some(InitializeRootAdminResponse::new(default_password)))
             }
             .await;
@@ -136,11 +138,8 @@ where
                     Ok(value)
                 }
                 Err(error) => {
-                    if let Err(rollback_error) = unit_of_work.rollback().await {
-                        error!(
-                            error = ?rollback_error,
-                            "failed to roll back the initialize root admin unit of work"
-                        );
+                    if unit_of_work.rollback().await.is_err() {
+                        // The unit-of-work adapter owns the rollback-failure log (OBS-002).
                     }
                     Err(error)
                 }

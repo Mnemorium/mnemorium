@@ -5,11 +5,10 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::thread::available_parallelism;
 
-use tracing::error;
-
 use crate::application::port::load_configuration::LoadConfigurationError;
 use crate::application::port::load_configuration::LoadConfigurationResponse;
 use crate::application::port::load_configuration::LoadConfigurationUseCase;
+use crate::application::security_event;
 use crate::domain::model::asset::Asset;
 use crate::domain::model::configuration::Configuration;
 use crate::domain::model::jwt::Jwt;
@@ -89,7 +88,10 @@ where
 
         let configuration_row = self.default_configuration().await?;
         match configuration.create(configuration_row.clone()).await {
-            Ok(_) => Ok(configuration_row),
+            Ok(_) => {
+                security_event::system_object("configuration", "create");
+                Ok(configuration_row)
+            }
             Err(RepositoryError::AlreadyExist) => {
                 // Another boot created the singleton concurrently; the row
                 // exists, which is all this boot needs.
@@ -98,6 +100,7 @@ where
                     .await
                     .map_err(|error| LoadConfigurationError::Unknown(error.into()))?
                     .ok_or_else(|| {
+                        security_event::application_error("load_configuration");
                         LoadConfigurationError::Unknown(anyhow::anyhow!(
                             "the configuration singleton row does not exist"
                         ))
@@ -215,11 +218,8 @@ where
                     Ok(value)
                 }
                 Err(error) => {
-                    if let Err(rollback_error) = unit_of_work.rollback().await {
-                        error!(
-                            error = ?rollback_error,
-                            "failed to roll back the load configuration unit of work"
-                        );
+                    if unit_of_work.rollback().await.is_err() {
+                        // The unit-of-work adapter owns the rollback-failure log (OBS-002).
                     }
                     Err(error)
                 }

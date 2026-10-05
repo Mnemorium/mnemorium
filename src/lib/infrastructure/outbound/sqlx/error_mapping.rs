@@ -13,31 +13,29 @@ const SQLITE_CONSTRAINT_TRIGGER: &str = "1811";
 
 impl From<Error> for RepositoryError {
     fn from(err: Error) -> Self {
-        error!(
-            error = ?err,
-            "an error occurred while accessing the repository"
-        );
-        match err {
+        let (kind, mapped) = match err {
             Error::Database(db) => match db.kind() {
-                ErrorKind::UniqueViolation => Self::AlreadyExist,
-                ErrorKind::ForeignKeyViolation
-                | ErrorKind::NotNullViolation
-                | ErrorKind::CheckViolation
-                | ErrorKind::ExclusionViolation => Self::DataIntegrityViolation,
-                // A trigger `RAISE(ABORT)` guards the current state: the
-                // requested write conflicts with the persisted row.
-                ErrorKind::Other if db.code().as_deref() == Some(SQLITE_CONSTRAINT_TRIGGER) => {
-                    Self::Conflict
+                ErrorKind::UniqueViolation => ("unique_violation", Self::AlreadyExist),
+                ErrorKind::ForeignKeyViolation => {
+                    ("foreign_key_violation", Self::DataIntegrityViolation)
                 }
-                ErrorKind::Other | _ => Self::OperationFailed,
+                ErrorKind::NotNullViolation => ("not_null_violation", Self::DataIntegrityViolation),
+                ErrorKind::CheckViolation => ("check_violation", Self::DataIntegrityViolation),
+                ErrorKind::ExclusionViolation => {
+                    ("exclusion_violation", Self::DataIntegrityViolation)
+                }
+                ErrorKind::Other if db.code().as_deref() == Some(SQLITE_CONSTRAINT_TRIGGER) => {
+                    ("conflict", Self::Conflict)
+                }
+                ErrorKind::Other | _ => ("database_error", Self::OperationFailed),
             },
-            Error::PoolTimedOut => Self::Timeout,
+            Error::PoolTimedOut => ("timeout", Self::Timeout),
             Error::PoolClosed
             | Error::WorkerCrashed
             | Error::Io(_)
             | Error::Configuration(_)
             | Error::Tls(_)
-            | Error::ConfigFile(_) => Self::Unavailable,
+            | Error::ConfigFile(_) => ("unavailable", Self::Unavailable),
             Error::Protocol(_)
             | Error::InvalidArgument(_)
             | Error::RowNotFound
@@ -48,31 +46,42 @@ impl From<Error> for RepositoryError {
             | Error::Encode(_)
             | Error::Decode(_)
             | Error::AnyDriverError(_)
-            | Error::InvalidSavePointStatement => Self::OperationFailed,
-            Error::Migrate(migration_error) => Self::Unknown(anyhow::anyhow!(migration_error)),
-            Error::BeginFailed => {
-                Self::Unknown(anyhow::anyhow!("beginning the transaction failed"))
-            }
-            other => Self::Unknown(anyhow::anyhow!(other)),
-        }
+            | Error::InvalidSavePointStatement => ("operation_failed", Self::OperationFailed),
+            Error::Migrate(migration_error) => (
+                "migration_failed",
+                Self::Unknown(anyhow::anyhow!(migration_error)),
+            ),
+            Error::BeginFailed => (
+                "begin_failed",
+                Self::Unknown(anyhow::anyhow!("beginning the transaction failed")),
+            ),
+            other => ("unknown", Self::Unknown(anyhow::anyhow!(other))),
+        };
+        error!(
+            target: "security",
+            event = "port_fault",
+            kind = %kind,
+            operation = "repository",
+            "an outbound dependency failed"
+        );
+        mapped
     }
 }
 
 impl From<Error> for UnitOfWorkError {
     fn from(err: Error) -> Self {
-        error!(
-            error = ?err,
-            "an error occurred while accessing the unit of work"
-        );
-        match err {
-            Error::PoolTimedOut
-            | Error::PoolClosed
+        let (kind, mapped) = match err {
+            Error::PoolTimedOut => ("timeout", Self::Unavailable),
+            Error::PoolClosed
             | Error::WorkerCrashed
             | Error::Io(_)
             | Error::Configuration(_)
             | Error::Tls(_)
-            | Error::ConfigFile(_) => Self::Unavailable,
-            Error::Migrate(migration_error) => Self::Unknown(anyhow::anyhow!(migration_error)),
+            | Error::ConfigFile(_) => ("unavailable", Self::Unavailable),
+            Error::Migrate(migration_error) => (
+                "migration_failed",
+                Self::Unknown(anyhow::anyhow!(migration_error)),
+            ),
             Error::Database(_)
             | Error::Protocol(_)
             | Error::InvalidArgument(_)
@@ -86,8 +95,16 @@ impl From<Error> for UnitOfWorkError {
             | Error::AnyDriverError(_)
             | Error::InvalidSavePointStatement
             | Error::BeginFailed
-            | _ => Self::OperationFailed,
-        }
+            | _ => ("operation_failed", Self::OperationFailed),
+        };
+        error!(
+            target: "security",
+            event = "port_fault",
+            kind = %kind,
+            operation = "unit_of_work",
+            "an outbound dependency failed"
+        );
+        mapped
     }
 }
 
