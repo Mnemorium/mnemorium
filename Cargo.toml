@@ -142,7 +142,15 @@ rand = { version = "0.10.2", features = ["chacha"] }
 arc-swap = "1.9.2"
 sha2 = "0.11.0"
 base64 = "0.23.1"
-
+image = { version = "0.25.10", default-features = false, features = [
+  "bmp",
+  "jpeg",
+  "gif",
+  "png",
+  "tiff",
+  "ico",
+  "pnm",
+] }
 
 [dev-dependencies]
 mockall = "0.15.0"
