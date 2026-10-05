@@ -123,8 +123,6 @@ where
                     .await
                     .map_err(|error| InitializeRootAdminError::Unknown(error.into()))?;
 
-                security_event::system_object("root_admin", "create");
-
                 Ok(Some(InitializeRootAdminResponse::new(default_password)))
             }
             .await;
@@ -135,6 +133,9 @@ where
                         .commit()
                         .await
                         .map_err(|error| InitializeRootAdminError::Unknown(error.into()))?;
+                    if value.is_some() {
+                        security_event::system_object("root_admin", "create");
+                    }
                     Ok(value)
                 }
                 Err(error) => {
