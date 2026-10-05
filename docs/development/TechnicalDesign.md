@@ -2219,9 +2219,11 @@ to be filled in.
 
 Columns: **Name**, **Description**, **Version**, **License**.
 
-| ID         | Section        | Rule                                                                                                                                             | More info                 |
-| ---------- | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------- |
-| `DEPS-001` | GitHub Actions | Pin every third-party GitHub Action to a full-length commit SHA and record the release in a same-line comment, for example `# v6` or `# v1.2.3`. | [§ 1](#1-ci-supply-chain) |
+| ID         | Section               | Rule                                                                                                                                                                                                  | More info                       |
+| ---------- | --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------- |
+| `DEPS-001` | GitHub Actions        | Pin every third-party GitHub Action to a full-length commit SHA and record the release in a same-line comment, for example `# v6` or `# v1.2.3`.                                                      | [§ 1](#1-ci-supply-chain)       |
+| `DEPS-002` | CI trust boundary     | A CI/CD job that holds a repository secret, a write-scoped token, or a registry credential must load the configuration it executes from a trusted revision, never from the pull-request revision.     | [§ 2](#2-ci-trust-boundary)     |
+| `DEPS-003` | CI runtime resolution | Reference every package or executable a CI job resolves at run time by an exact version, never a floating range; a transitive dependency tree remains a documented residual where no lockfile exists. | [§ 3](#3-ci-runtime-resolution) |
 
 ---
 
@@ -2245,13 +2247,38 @@ action's own release tag.
 
 ---
 
-### 2. Rust
+### 2. CI trust boundary
+
+A CI/CD job that holds a repository secret, a write-scoped token, or a registry credential must load the configuration
+it executes from a trusted revision, never from the pull request under review. Pull-request content is data: pass it to
+a tool that interprets it as input, never as the agent definitions, skills, project configuration, or scripts that run
+with the credential. The `review` job in `.github/workflows/ci.yml` checks out `github.event.pull_request.base.sha` for
+this reason and lets a pull request supply only the content to review.
+
+The write scopes a job needs are a property of the job, not a violation: the `review` job keeps `pull-requests: write`
+and `issues: write` because it publishes the review and files pre-existing issues. The rule bounds _what executes with
+the credential_, not which scopes the job may hold. Output a job produces from untrusted content stays untrusted and
+must be treated as data by any later step that consumes it.
+
+---
+
+### 3. CI runtime resolution
+
+Reference every package or executable a CI job resolves at run time by an exact version; never a floating range.
+`npx --yes`, `pip install`, and `nix run nixpkgs#…` resolve their dependency tree fresh on each run, so an exact direct
+version still leaves every transitive dependency unpinned. Where a job cannot use the pinned `devenv.lock` toolchain or
+a digest-pinned image, this residue is a documented residual risk: the direct reference must still carry an exact
+version, and the residual must be recorded rather than implied pinned.
+
+---
+
+### 5. Rust
 
 Source: `Cargo.toml`.
 
 ---
 
-#### 2.1 Runtime
+#### 5.1 Runtime
 
 | Name                                                              | Description                                                                     | Version | License                            |
 | ----------------------------------------------------------------- | ------------------------------------------------------------------------------- | ------- | ---------------------------------- |
@@ -2282,7 +2309,7 @@ Source: `Cargo.toml`.
 
 ---
 
-#### 2.2 Development
+#### 5.2 Development
 
 | Name                                          | Description                                           | Version | License           |
 | --------------------------------------------- | ----------------------------------------------------- | ------- | ----------------- |
@@ -2293,7 +2320,7 @@ Source: `Cargo.toml`.
 
 ---
 
-#### 2.3 Build
+#### 5.3 Build
 
 | Name                                  | Description                                                                   | Version | License           |
 | ------------------------------------- | ----------------------------------------------------------------------------- | ------- | ----------------- |
@@ -2301,11 +2328,11 @@ Source: `Cargo.toml`.
 
 ---
 
-### 3. Tooling
+### 6. Tooling
 
 ---
 
-#### 3.1 Nix / devenv
+#### 6.1 Nix / devenv
 
 Source: `devenv.nix`.
 
@@ -2335,7 +2362,7 @@ Source: `devenv.nix`.
 
 ---
 
-#### 3.2 Python
+#### 6.2 Python
 
 Source: `requirements.txt`.
 
@@ -2350,7 +2377,7 @@ Source: `requirements.txt`.
 
 ---
 
-#### 3.3 CI
+#### 6.3 CI
 
 Source: `.github/workflows/*`.
 
@@ -2361,7 +2388,7 @@ Source: `.github/workflows/*`.
 | [@semantic-release/changelog](https://www.npmjs.com/package/@semantic-release/changelog)                               | TODO                                            | 7.0.0   | TODO       |
 | [@semantic-release/exec](https://www.npmjs.com/package/@semantic-release/exec)                                         | TODO                                            | 7.1.0   | TODO       |
 | [@semantic-release/git](https://www.npmjs.com/package/@semantic-release/git)                                           | TODO                                            | 11.0.1  | TODO       |
-| [actions/checkout](https://github.com/actions/checkout)                                                                | TODO                                            | v6      | TODO       |
+| [actions/checkout](https://github.com/actions/checkout)                                                                | TODO                                            | v7.0.1  | TODO       |
 | [actions/create-github-app-token](https://github.com/actions/create-github-app-token)                                  | TODO                                            | v3.2.0  | TODO       |
 | [actions/download-artifact](https://github.com/actions/download-artifact)                                              | TODO                                            | v7      | TODO       |
 | [actions/setup-node](https://github.com/actions/setup-node)                                                            | TODO                                            | v4      | TODO       |
@@ -2371,7 +2398,7 @@ Source: `.github/workflows/*`.
 | [amannn/action-semantic-pull-request](https://github.com/amannn/action-semantic-pull-request)                          | TODO                                            | v6      | TODO       |
 | [anomalyco/opencode/github](https://github.com/anomalyco/opencode)                                                     | TODO                                            | latest  | TODO       |
 | [cachix/install-nix-action](https://github.com/cachix/install-nix-action)                                              | TODO                                            | v31     | TODO       |
-| [conventional-changelog-conventionalcommits](https://www.npmjs.com/package/conventional-changelog-conventionalcommits) | TODO                                            | 9       | TODO       |
+| [conventional-changelog-conventionalcommits](https://www.npmjs.com/package/conventional-changelog-conventionalcommits) | TODO                                            | 9.3.1   | TODO       |
 | [DavidAnson/markdownlint-cli2-action](https://github.com/DavidAnson/markdownlint-cli2-action)                          | TODO                                            | v24     | TODO       |
 | [docker/build-push-action](https://github.com/docker/build-push-action)                                                | Builds the production image with the GHA cache. | v7      | Apache-2.0 |
 | [docker/login-action](https://github.com/docker/login-action)                                                          | TODO                                            | v4      | TODO       |
@@ -2386,7 +2413,7 @@ Source: `.github/workflows/*`.
 
 ---
 
-### 4. Container images
+### 7. Container images
 
 Source: `Dockerfile`.
 
