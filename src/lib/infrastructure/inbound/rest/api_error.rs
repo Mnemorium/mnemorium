@@ -148,6 +148,13 @@ impl ApiError {
     #[must_use]
     fn from_bytes_rejection(rejection: &BytesRejection) -> Self {
         if rejection.status() == StatusCode::PAYLOAD_TOO_LARGE {
+            warn!(
+                target: "security",
+                event = "limit_exceeded",
+                source = "request_body",
+                reason = "size_limit_exceeded",
+                "rejected an oversized request body"
+            );
             return Self::PayloadTooLarge(
                 "the request body exceeds the maximum allowed size".to_owned(),
             );
@@ -191,6 +198,10 @@ pub(crate) fn error_response(status: StatusCode, message: String, path: &str) ->
 #[cfg(test)]
 mod tests {
     use std::error::Error;
+    use std::io as stdio;
+    use std::sync::Arc;
+    use std::sync::Mutex;
+    use std::sync::PoisonError;
 
     use axum::Json;
     use axum::Router;
@@ -204,12 +215,23 @@ mod tests {
     use axum::response::Response;
     use axum::routing::post;
     use tower::ServiceExt as _;
+    use tracing::subscriber::DefaultGuard;
+    use tracing::subscriber::set_default;
+    use tracing_subscriber::fmt;
+    use tracing_subscriber::layer::SubscriberExt as _;
 
     use crate::infrastructure::inbound::rest::app_state::AppState;
     use crate::test_helpers::app_state;
     use crate::test_helpers::error_message_of;
 
     use super::ApiError;
+
+    /// Append-only sink that lets a test read back the lines [`fmt`] emits.
+    #[derive(Clone)]
+    struct CaptureWriter {
+        /// Buffer shared with the test that asserts on the captured output.
+        buffer: Arc<Mutex<Vec<u8>>>,
+    }
 
     /// Body schema the probe route deserializes into.
     ///
@@ -218,6 +240,35 @@ mod tests {
     #[derive(serde::Deserialize, serde::Serialize)]
     struct Probe {
         count: u64,
+    }
+
+    #[expect(
+        clippy::missing_trait_methods,
+        reason = "only the raw `write` and `flush` are meaningful for an in-memory capture buffer"
+    )]
+    impl stdio::Write for CaptureWriter {
+        fn flush(&mut self) -> stdio::Result<()> {
+            Ok(())
+        }
+
+        fn write(&mut self, buf: &[u8]) -> stdio::Result<usize> {
+            let mut buffer = self.buffer.lock().unwrap_or_else(PoisonError::into_inner);
+            buffer.extend_from_slice(buf);
+            Ok(buf.len())
+        }
+    }
+
+    /// Hand every formatted event to a fresh clone of the shared buffer.
+    #[expect(
+        clippy::missing_trait_methods,
+        reason = "the default `make_writer_for` already routes through `make_writer`"
+    )]
+    impl<'writer> fmt::MakeWriter<'writer> for CaptureWriter {
+        type Writer = Self;
+
+        fn make_writer(&'writer self) -> Self::Writer {
+            self.clone()
+        }
     }
 
     /// Echo the probe count, converting any rejection through the impl.
@@ -254,6 +305,29 @@ mod tests {
         let request = builder.body(Body::from(body.to_owned()))?;
         let response = router.oneshot(request).await?;
         Ok(response)
+    }
+
+    /// Install a capturing subscriber on the current thread and return the
+    /// shared buffer plus the guard that keeps it active.
+    ///
+    /// The guard must stay alive for the whole probe: `#[tokio::test]` runs on a
+    /// current-thread runtime, so the awaited request is polled on this thread
+    /// and sees the scoped default dispatcher.
+    fn capture_logs() -> (Arc<Mutex<Vec<u8>>>, DefaultGuard) {
+        let buffer = Arc::new(Mutex::new(Vec::new()));
+        let subscriber = tracing_subscriber::registry().with(
+            fmt::layer().with_ansi(false).with_writer(CaptureWriter {
+                buffer: Arc::clone(&buffer),
+            }),
+        );
+        let guard = set_default(subscriber);
+        (buffer, guard)
+    }
+
+    /// Read the captured bytes back as a lossy UTF-8 string.
+    fn captured_logs(buffer: &Mutex<Vec<u8>>) -> String {
+        let bytes = buffer.lock().unwrap_or_else(PoisonError::into_inner);
+        String::from_utf8_lossy(bytes.as_slice()).into_owned()
     }
 
     #[tokio::test]
@@ -326,6 +400,93 @@ mod tests {
         assert_eq!(
             error_message_of(&response).as_deref(),
             Some("the request body exceeds the maximum allowed size")
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn from_bytes_rejection_oversized_body_logs_limit_exceeded_once()
+    -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let (buffer, _capture) = capture_logs();
+
+        // Act
+        let response =
+            rejection_response(r#"{"count":1234567890}"#, Some("application/json"), Some(8))
+                .await?;
+
+        // Assert
+        assert_eq!(response.status(), StatusCode::PAYLOAD_TOO_LARGE);
+        let logs = captured_logs(&buffer);
+        assert_eq!(
+            logs.matches("WARN").count(),
+            1,
+            "the oversized-body 413 must emit exactly one warn event: {logs}"
+        );
+        assert_eq!(
+            logs.matches("event=\"limit_exceeded\"").count(),
+            1,
+            "the oversized-body 413 must emit exactly one limit_exceeded event: {logs}"
+        );
+        assert!(
+            logs.contains("source=\"request_body\""),
+            "the event must classify the source as the request body: {logs}"
+        );
+        assert!(
+            logs.contains("reason=\"size_limit_exceeded\""),
+            "the event must classify the reason as the size limit: {logs}"
+        );
+        assert!(
+            logs.contains("security"),
+            "the event must target the reserved security target: {logs}"
+        );
+        assert!(
+            !logs.contains("1234567890"),
+            "the captured event must not contain the request-body value: {logs}"
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn from_bytes_rejection_oversized_body_does_not_log_buffer_failed()
+    -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let (buffer, _capture) = capture_logs();
+
+        // Act
+        let response =
+            rejection_response(r#"{"count":1234567890}"#, Some("application/json"), Some(8))
+                .await?;
+
+        // Assert
+        assert_eq!(response.status(), StatusCode::PAYLOAD_TOO_LARGE);
+        let logs = captured_logs(&buffer);
+        assert!(
+            !logs.contains("buffer_failed"),
+            "the oversized body must not also log the sibling buffer_failed event: {logs}"
+        );
+        assert!(
+            !logs.contains("input_validation_failed"),
+            "the oversized body must not also log the input_validation_failed event: {logs}"
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn from_bytes_rejection_valid_body_logs_no_limit_exceeded() -> Result<(), Box<dyn Error>>
+    {
+        // Arrange
+        let (buffer, _capture) = capture_logs();
+
+        // Act
+        let response = rejection_response(r#"{"count":1}"#, Some("application/json"), None).await?;
+
+        // Assert
+        assert_eq!(response.status(), StatusCode::OK);
+        let logs = captured_logs(&buffer);
+        assert!(
+            !logs.contains("limit_exceeded"),
+            "a valid body within the limit must not emit a limit_exceeded event: {logs}"
         );
         Ok(())
     }
