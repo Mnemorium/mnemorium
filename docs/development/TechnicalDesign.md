@@ -2254,13 +2254,11 @@ action's own release tag.
 A CI/CD job that holds a repository secret, a write-scoped token, or a registry credential must load the configuration
 it executes from a trusted revision, never from the pull request under review. Pull-request content is data: pass it to
 a tool that interprets it as input, never as the agent definitions, skills, project configuration, or scripts that run
-with the credential. The `review` job in `.github/workflows/ci.yml` checks out `github.event.pull_request.base.sha` for
-this reason and lets a pull request supply only the content to review.
+with the credential.
 
-The write scopes a job needs are a property of the job, not a violation: the `review` job keeps `pull-requests: write`
-and `issues: write` because it publishes the review and files pre-existing issues. The rule bounds _what executes with
-the credential_, not which scopes the job may hold. Output a job produces from untrusted content stays untrusted and
-must be treated as data by any later step that consumes it.
+The write scopes a job needs are a property of the job, not a violation. The rule bounds _what executes with the
+credential_, not which scopes the job may hold. Output a job produces from untrusted content stays untrusted and must be
+treated as data by any later step that consumes it.
 
 ---
 
@@ -2386,14 +2384,12 @@ Source: `.github/workflows/*`.
 
 | Name                                                                                                                   | Description                                     | Version | License    |
 | ---------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------- | ------- | ---------- |
-| [@opencode/cli](https://www.npmjs.com/package/@opencode/cli)                                                           | TODO                                            | 2.0.22  | TODO       |
 | [@semantic-release-plus/docker](https://www.npmjs.com/package/@semantic-release-plus/docker)                           | TODO                                            | 3.1.3   | TODO       |
 | [@semantic-release/changelog](https://www.npmjs.com/package/@semantic-release/changelog)                               | TODO                                            | 7.0.0   | TODO       |
 | [@semantic-release/exec](https://www.npmjs.com/package/@semantic-release/exec)                                         | TODO                                            | 7.1.0   | TODO       |
 | [@semantic-release/git](https://www.npmjs.com/package/@semantic-release/git)                                           | TODO                                            | 11.0.1  | TODO       |
 | [actions/checkout](https://github.com/actions/checkout)                                                                | TODO                                            | v7.0.1  | TODO       |
 | [actions/create-github-app-token](https://github.com/actions/create-github-app-token)                                  | TODO                                            | v3.2.0  | TODO       |
-| [actions/download-artifact](https://github.com/actions/download-artifact)                                              | TODO                                            | v7      | TODO       |
 | [actions/setup-node](https://github.com/actions/setup-node)                                                            | TODO                                            | v4      | TODO       |
 | [actions/setup-node](https://github.com/actions/setup-node)                                                            | TODO                                            | v7      | TODO       |
 | [actions/setup-python](https://github.com/actions/setup-python)                                                        | TODO                                            | v5      | TODO       |

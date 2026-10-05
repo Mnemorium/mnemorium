@@ -1,8 +1,7 @@
 ---
 description: Primary orchestrator for the mn-review pull-request review. Loads the
   mn-review skill, dispatches the specialist panel, synthesizes one document, and
-  publishes it to the pull request through the GitHub MCP. Use for CI review and
-  /mn-review.
+  publishes it to the pull request through the GitHub MCP. Use for /mn-review.
 mode: primary
 hidden: true
 permissions:

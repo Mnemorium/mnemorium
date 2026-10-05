@@ -1,6 +1,6 @@
 ---
 name: mn-review
-description: Process and reporting contract for the multi-specialist AI review of a pull request or a local diff. The orchestrator acquires the diff, dispatches the domain specialists in parallel, synthesizes their findings into one document, publishes it as a pull-request comment or prints it, and routes untracked pre-existing concerns to create-issue. Use when CI reviews a pull request or a developer runs /mn-review.
+description: Process and reporting contract for the multi-specialist AI review of a pull request or a local diff. The orchestrator acquires the diff, dispatches the domain specialists in parallel, synthesizes their findings into one document, publishes it as a pull-request comment or prints it, and routes untracked pre-existing concerns to create-issue. Use when a developer runs /mn-review.
 ---
 
 # MN Review
@@ -11,14 +11,12 @@ in parallel, synthesizes one document, and publishes it.
 
 ## When to use
 
-- The CI review job reviews a pull request.
 - A maintainer or developer runs `/mn-review <PR>` or `/mn-review` locally.
 
 ## Inputs
 
 - **Review target** — the command argument (`$ARGUMENTS`): a pull request number
-  or URL, or empty. In CI, the `<pull_request>` block carries `Number`, `URL`,
-  `Owner`, `Repository`, `Base Branch`, and `Head Branch`.
+  or URL, or empty.
 - **The diff**, obtained as follows:
   - **Pull request present** — call the `github` MCP server's `pull_request_read`
     tool from Code Mode with `method: "get_diff"` and the `owner`, `repo`, and
