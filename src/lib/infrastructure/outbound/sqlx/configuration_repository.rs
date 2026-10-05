@@ -639,6 +639,10 @@ mod tests {
         Ok(())
     }
 
+    // `configuration_id` is not probed with NULL: it is an INTEGER primary key
+    // (a rowid alias), so an explicit NULL is auto-assigned a rowid and then
+    // rejected by `chk_configuration_configuration_id` — a CHECK, already
+    // covered by `configuration_id_not_zero`, not the NOT NULL constraint.
     #[rstest]
     #[case::jwt_secret(
         "INSERT INTO configuration (
@@ -678,6 +682,87 @@ mod tests {
          ) VALUES (
             0, 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 3600,
             'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', 'mnemorium.db', NULL
+         )"
+    )]
+    #[case::is_root_admin_password_logged(
+        "INSERT INTO configuration (
+            configuration_id, jwt_secret, jwt_ttl, pepper, sqlite3_path,
+            sqlite3_max_connections, is_root_admin_password_logged
+         ) VALUES (
+            0, 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 3600,
+            'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', 'mnemorium.db', 1, NULL
+         )"
+    )]
+    #[case::asset_storage_root(
+        "INSERT INTO configuration (
+            configuration_id, jwt_secret, jwt_ttl, pepper, sqlite3_path,
+            sqlite3_max_connections, asset_storage_root
+         ) VALUES (
+            0, 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 3600,
+            'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', 'mnemorium.db', 1, NULL
+         )"
+    )]
+    #[case::asset_upload_chunk_size_bytes(
+        "INSERT INTO configuration (
+            configuration_id, jwt_secret, jwt_ttl, pepper, sqlite3_path,
+            sqlite3_max_connections, asset_upload_chunk_size_bytes
+         ) VALUES (
+            0, 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 3600,
+            'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', 'mnemorium.db', 1, NULL
+         )"
+    )]
+    #[case::asset_upload_expiry_seconds(
+        "INSERT INTO configuration (
+            configuration_id, jwt_secret, jwt_ttl, pepper, sqlite3_path,
+            sqlite3_max_connections, asset_upload_expiry_seconds
+         ) VALUES (
+            0, 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 3600,
+            'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', 'mnemorium.db', 1, NULL
+         )"
+    )]
+    #[case::asset_upload_max_file_size_bytes(
+        "INSERT INTO configuration (
+            configuration_id, jwt_secret, jwt_ttl, pepper, sqlite3_path,
+            sqlite3_max_connections, asset_upload_max_file_size_bytes
+         ) VALUES (
+            0, 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 3600,
+            'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', 'mnemorium.db', 1, NULL
+         )"
+    )]
+    #[case::is_log_ansi(
+        "INSERT INTO configuration (
+            configuration_id, jwt_secret, jwt_ttl, pepper, sqlite3_path,
+            sqlite3_max_connections, is_log_ansi
+         ) VALUES (
+            0, 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 3600,
+            'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', 'mnemorium.db', 1, NULL
+         )"
+    )]
+    #[case::log_level(
+        "INSERT INTO configuration (
+            configuration_id, jwt_secret, jwt_ttl, pepper, sqlite3_path,
+            sqlite3_max_connections, log_level
+         ) VALUES (
+            0, 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 3600,
+            'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', 'mnemorium.db', 1, NULL
+         )"
+    )]
+    #[case::log_max_files(
+        "INSERT INTO configuration (
+            configuration_id, jwt_secret, jwt_ttl, pepper, sqlite3_path,
+            sqlite3_max_connections, log_max_files
+         ) VALUES (
+            0, 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 3600,
+            'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', 'mnemorium.db', 1, NULL
+         )"
+    )]
+    #[case::log_rotation(
+        "INSERT INTO configuration (
+            configuration_id, jwt_secret, jwt_ttl, pepper, sqlite3_path,
+            sqlite3_max_connections, log_rotation
+         ) VALUES (
+            0, 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 3600,
+            'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', 'mnemorium.db', 1, NULL
          )"
     )]
     #[tokio::test]
