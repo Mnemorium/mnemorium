@@ -17,12 +17,12 @@ use crate::infrastructure::inbound::rest::api_error::error_response;
 /// Rewrap every `4xx`/`5xx` response as the HAL error envelope (`API-039`).
 ///
 /// The envelope carries the extracted message at the root and a `_links.self`
-/// pointing at the request URI, including any query string. The original status
-/// is preserved; every original header except `Content-Type` and
-/// `Content-Length` is kept, so `Allow`, `Location` and `WWW-Authenticate`
+/// pointing at the request path, never the query string (`API-043`). The
+/// original status is preserved; every original header except `Content-Type`
+/// and `Content-Length` is kept, so `Allow`, `Location` and `WWW-Authenticate`
 /// survive the rewrite.
 pub async fn hal_errors(request: Request, next: Next) -> Response {
-    let path = request.uri().to_string();
+    let path = request.uri().path().to_owned();
     let response = next.run(request).await;
     let status = response.status();
     if !status.is_client_error() && !status.is_server_error() {
@@ -84,6 +84,7 @@ mod tests {
     use axum::middleware;
     use axum::response::Response;
     use axum::routing::get;
+    use rstest::rstest;
     use serde_json::Value;
     use serde_json::json;
     use tower::ServiceExt as _;
@@ -179,7 +180,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn hal_errors_keeps_the_query_string_in_the_self_link() -> Result<(), Box<dyn Error>> {
+    async fn hal_errors_drops_the_query_string_from_the_self_link() -> Result<(), Box<dyn Error>> {
         // Act
         let response = send(router(), "GET", "/broken?page=2&size=10").await?;
 
@@ -190,8 +191,51 @@ mod tests {
             payload,
             json!({
                 "error": "bad request",
-                "_links": { "self": { "href": "/broken?page=2&size=10" } },
+                "_links": { "self": { "href": "/broken" } },
             })
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn hal_errors_never_echoes_a_query_value() -> Result<(), Box<dyn Error>> {
+        // Act
+        let response = send(router(), "GET", "/broken?token=SECRET&page=2").await?;
+
+        // Assert
+        let (status, payload) = into_parts(response).await?;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(
+            payload.pointer("/_links/self/href").and_then(Value::as_str),
+            Some("/broken"),
+            "the self link must carry the request path only (`API-039`, `API-043`)"
+        );
+        assert!(
+            !payload.to_string().contains("SECRET"),
+            "a query value must not appear anywhere in the error envelope"
+        );
+        Ok(())
+    }
+
+    #[rstest]
+    #[case::empty_query("/broken?", StatusCode::BAD_REQUEST, "/broken")]
+    #[case::repeated_key("/broken?a=1&a=2", StatusCode::BAD_REQUEST, "/broken")]
+    #[case::encoded_path("/broken%20x?q=1", StatusCode::NOT_FOUND, "/broken%20x")]
+    #[tokio::test]
+    async fn hal_errors_keeps_the_path_and_drops_the_query(
+        #[case] uri: &str,
+        #[case] expected_status: StatusCode,
+        #[case] expected_href: &str,
+    ) -> Result<(), Box<dyn Error>> {
+        // Act
+        let response = send(router(), "GET", uri).await?;
+
+        // Assert
+        let (status, payload) = into_parts(response).await?;
+        assert_eq!(status, expected_status);
+        assert_eq!(
+            payload.pointer("/_links/self/href").and_then(Value::as_str),
+            Some(expected_href)
         );
         Ok(())
     }
