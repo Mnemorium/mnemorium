@@ -1,4 +1,5 @@
-//! Shared Hypertext Application Language (HAL) link types.
+//! Shared Hypertext Application Language (HAL) link types and the `hal_json`
+//! response wrapper.
 //!
 //! See `docs/development/TechnicalDesign.md` § HAL payload guidelines.
 
