@@ -269,6 +269,7 @@ mod tests {
     use crate::domain::model::logging::LoggingError;
     use crate::domain::model::logging::Rotation;
     use crate::domain::model::persistence::Persistence;
+    use crate::domain::model::rate_limit::ClientIpHeader;
     use crate::domain::model::rate_limit::RateLimit;
     use crate::domain::model::security::Security;
     use crate::domain::model::sqlite3::Sqlite3;
@@ -883,6 +884,7 @@ mod tests {
         let mut security = Security::try_new(Jwt::try_new(hex64('a'), 3600)?, hex64('b'), true)?;
         security.set_rate_limit(RateLimit::try_new(
             9,
+            ClientIpHeader::XRealIp,
             30,
             vec!["10.0.0.1".parse()?, "2001:db8::1".parse()?],
         )?);

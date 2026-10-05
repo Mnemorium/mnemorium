@@ -908,16 +908,17 @@ A few settings are read once while the process starts — before the live config
 component that consumes them is built — and a change to their stored value has no effect until the server restarts. They
 are the **startup-only settings**; this table is their registry.
 
-| Setting                               | Consumed at startup by                                                                                                                                 | Restart feedback                                                       |
-| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------- |
-| `persistence.sqlite3.path`            | The bootstrap that opens the pool (`src/lib/infrastructure/outbound/config/bootstrap.rs`).                                                             | A startup warning when the stored value differs (`src/bin/server.rs`). |
-| `persistence.sqlite3.max_connections` | The pool sizing in the same bootstrap.                                                                                                                 | None.                                                                  |
-| `asset.upload.chunk_size_bytes`       | The axum body limit fixed when the router is built (`src/lib/infrastructure/inbound/rest/handler/asset.rs`); the upload use cases read the live value. | None (`TODO(hot-reload)` in the same handler).                         |
-| `asset.storage.root`                  | The `FileSystemStorage` adapter built per use from the root captured in `src/bin/server.rs`.                                                           | None.                                                                  |
-| `logging.level`                       | `logging::setup` (`src/lib/infrastructure/logging.rs`) when the `tracing` subscriber is installed.                                                     | None.                                                                  |
-| `security.rate_limit.trusted_proxies` | The login limiter built when the router is built (`src/lib/infrastructure/inbound/rest/handler/identity.rs`).                                          | None.                                                                  |
-| `security.rate_limit.burst_size`      | The login limiter built when the router is built (`src/lib/infrastructure/inbound/rest/handler/identity.rs`).                                          | None.                                                                  |
-| `security.rate_limit.period_seconds`  | The login limiter built when the router is built (`src/lib/infrastructure/inbound/rest/handler/identity.rs`).                                          | None.                                                                  |
+| Setting                                | Consumed at startup by                                                                                                                                 | Restart feedback                                                       |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------- |
+| `persistence.sqlite3.path`             | The bootstrap that opens the pool (`src/lib/infrastructure/outbound/config/bootstrap.rs`).                                                             | A startup warning when the stored value differs (`src/bin/server.rs`). |
+| `persistence.sqlite3.max_connections`  | The pool sizing in the same bootstrap.                                                                                                                 | None.                                                                  |
+| `asset.upload.chunk_size_bytes`        | The axum body limit fixed when the router is built (`src/lib/infrastructure/inbound/rest/handler/asset.rs`); the upload use cases read the live value. | None (`TODO(hot-reload)` in the same handler).                         |
+| `asset.storage.root`                   | The `FileSystemStorage` adapter built per use from the root captured in `src/bin/server.rs`.                                                           | None.                                                                  |
+| `logging.level`                        | `logging::setup` (`src/lib/infrastructure/logging.rs`) when the `tracing` subscriber is installed.                                                     | None.                                                                  |
+| `security.rate_limit.trusted_proxies`  | The login limiter built in the composition root (`src/bin/server.rs`) when the router is built.                                                        | None.                                                                  |
+| `security.rate_limit.client_ip_header` | The login limiter built in the composition root (`src/bin/server.rs`) when the router is built.                                                        | None.                                                                  |
+| `security.rate_limit.burst_size`       | The login limiter built in the composition root (`src/bin/server.rs`) when the router is built.                                                        | None.                                                                  |
+| `security.rate_limit.period_seconds`   | The login limiter built in the composition root (`src/bin/server.rs`) when the router is built.                                                        | None.                                                                  |
 
 The registry is **extensible**: a setting becomes startup-only by being added here. Adding one records, in the same
 change, how a change to the stored value is surfaced to the operator (a startup warning, or an explicit `None`).
@@ -1963,6 +1964,7 @@ entity configuration {
     * asset_upload_expiry_seconds: INTEGER <<NN, DF(86400), CC(asset_upload_expiry_seconds > 0)>>
     * asset_upload_max_file_size_bytes: INTEGER <<NN, DF(107374182400), CC(asset_upload_max_file_size_bytes > 0)>>
     * rate_limit_trusted_proxies: TEXT <<NN, DF('')>>
+    * rate_limit_client_ip_header: TEXT <<NN, DF('x-forwarded-for')>>
     * rate_limit_burst_size: INTEGER <<NN, DF(5), CC(rate_limit_burst_size > 0)>>
     * rate_limit_period_seconds: INTEGER <<NN, DF(12), CC(rate_limit_period_seconds > 0)>>
 }

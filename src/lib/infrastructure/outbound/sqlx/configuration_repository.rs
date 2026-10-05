@@ -9,6 +9,7 @@ use crate::domain::model::jwt::Jwt;
 use crate::domain::model::logging::Logging;
 use crate::domain::model::logging::Rotation;
 use crate::domain::model::persistence::Persistence;
+use crate::domain::model::rate_limit::ClientIpHeader;
 use crate::domain::model::rate_limit::RateLimit;
 use crate::domain::model::rate_limit::parse_trusted_proxies;
 use crate::domain::model::security::Security;
@@ -62,10 +63,11 @@ impl ConfigurationRepository for SqlxConfigurationRepository<'_> {
                 asset_upload_expiry_seconds,
                 asset_upload_max_file_size_bytes,
                 rate_limit_burst_size,
+                rate_limit_client_ip_header,
                 rate_limit_period_seconds,
                 rate_limit_trusted_proxies
             )
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19)
             RETURNING
                 configuration_id,
                 jwt_secret,
@@ -83,6 +85,7 @@ impl ConfigurationRepository for SqlxConfigurationRepository<'_> {
                 asset_upload_expiry_seconds,
                 asset_upload_max_file_size_bytes,
                 rate_limit_burst_size,
+                rate_limit_client_ip_header,
                 rate_limit_period_seconds,
                 rate_limit_trusted_proxies",
         )
@@ -123,6 +126,13 @@ impl ConfigurationRepository for SqlxConfigurationRepository<'_> {
             u64::from(configuration.security().rate_limit().burst_size()),
             "configuration rate_limit_burst_size does not fit in i64",
         )?)
+        .bind(
+            configuration
+                .security()
+                .rate_limit()
+                .client_ip_header()
+                .as_str(),
+        )
         .bind(to_i64(
             configuration.security().rate_limit().period_seconds(),
             "configuration rate_limit_period_seconds does not fit in i64",
@@ -167,10 +177,11 @@ impl ConfigurationRepository for SqlxConfigurationRepository<'_> {
                 asset_upload_expiry_seconds,
                 asset_upload_max_file_size_bytes,
                 rate_limit_burst_size,
+                rate_limit_client_ip_header,
                 rate_limit_period_seconds,
                 rate_limit_trusted_proxies
             )
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19)
             ON CONFLICT (configuration_id) DO UPDATE SET
                 jwt_secret = excluded.jwt_secret,
                 jwt_ttl = excluded.jwt_ttl,
@@ -187,6 +198,7 @@ impl ConfigurationRepository for SqlxConfigurationRepository<'_> {
                 asset_upload_expiry_seconds = excluded.asset_upload_expiry_seconds,
                 asset_upload_max_file_size_bytes = excluded.asset_upload_max_file_size_bytes,
                 rate_limit_burst_size = excluded.rate_limit_burst_size,
+                rate_limit_client_ip_header = excluded.rate_limit_client_ip_header,
                 rate_limit_period_seconds = excluded.rate_limit_period_seconds,
                 rate_limit_trusted_proxies = excluded.rate_limit_trusted_proxies
             RETURNING
@@ -206,6 +218,7 @@ impl ConfigurationRepository for SqlxConfigurationRepository<'_> {
                 asset_upload_expiry_seconds,
                 asset_upload_max_file_size_bytes,
                 rate_limit_burst_size,
+                rate_limit_client_ip_header,
                 rate_limit_period_seconds,
                 rate_limit_trusted_proxies",
         )
@@ -246,6 +259,13 @@ impl ConfigurationRepository for SqlxConfigurationRepository<'_> {
             u64::from(configuration.security().rate_limit().burst_size()),
             "configuration rate_limit_burst_size does not fit in i64",
         )?)
+        .bind(
+            configuration
+                .security()
+                .rate_limit()
+                .client_ip_header()
+                .as_str(),
+        )
         .bind(to_i64(
             configuration.security().rate_limit().period_seconds(),
             "configuration rate_limit_period_seconds does not fit in i64",
@@ -281,6 +301,7 @@ impl ConfigurationRepository for SqlxConfigurationRepository<'_> {
                 asset_upload_expiry_seconds,
                 asset_upload_max_file_size_bytes,
                 rate_limit_burst_size,
+                rate_limit_client_ip_header,
                 rate_limit_period_seconds,
                 rate_limit_trusted_proxies
             FROM configuration
@@ -331,6 +352,8 @@ fn domain_configuration(row: SqlxConfiguration) -> Result<Configuration, Reposit
         })?;
     let rate_limit = RateLimit::try_new(
         rate_limit_burst_size,
+        ClientIpHeader::parse(&row.rate_limit_client_ip_header)
+            .map_err(|_| RepositoryError::DataIntegrityViolation)?,
         rate_limit_period_seconds,
         parse_trusted_proxies(&row.rate_limit_trusted_proxies)
             .map_err(|_| RepositoryError::DataIntegrityViolation)?,
@@ -400,6 +423,7 @@ mod tests {
     use crate::domain::model::logging::Logging;
     use crate::domain::model::logging::Rotation;
     use crate::domain::model::persistence::Persistence;
+    use crate::domain::model::rate_limit::ClientIpHeader;
     use crate::domain::model::rate_limit::RateLimit;
     use crate::domain::model::security::Security;
     use crate::domain::model::sqlite3::Sqlite3;
@@ -497,6 +521,7 @@ mod tests {
         let mut security = Security::try_new(Jwt::try_new(hex64('e'), 120)?, hex64('f'), false)?;
         security.set_rate_limit(RateLimit::try_new(
             9,
+            ClientIpHeader::XRealIp,
             30,
             vec!["10.0.0.1".parse()?, "2001:db8::1".parse()?],
         )?);
@@ -517,6 +542,10 @@ mod tests {
             expected
         );
         assert_eq!(persisted.security().rate_limit().burst_size(), 9);
+        assert_eq!(
+            persisted.security().rate_limit().client_ip_header(),
+            ClientIpHeader::XRealIp
+        );
         assert_eq!(persisted.security().rate_limit().period_seconds(), 30);
         Ok(())
     }

@@ -14,6 +14,7 @@ use mnemorium::application::use_case::initialize_root_admin::InitializeRootAdmin
 use mnemorium::application::use_case::load_configuration::LoadConfiguration;
 use mnemorium::infrastructure::inbound::rest::app_state::AppState;
 use mnemorium::infrastructure::inbound::rest::handler;
+use mnemorium::infrastructure::inbound::rest::middleware::rate_limit::LoginRateLimiter;
 use mnemorium::infrastructure::logging;
 use mnemorium::infrastructure::outbound::argon2::password_hasher::Argon2PasswordHasher;
 use mnemorium::infrastructure::outbound::config::bootstrap::bootstrap_sqlite3;
@@ -106,6 +107,10 @@ async fn main() -> Result<(), anyhow::Error> {
         Arc::clone(&unit_of_work_factory),
     ));
 
+    let login_rate_limiter = Arc::new(LoginRateLimiter::new(
+        configuration.load().security().rate_limit(),
+    ));
+
     let state = AppState::new(
         asset_use_case_factory,
         configuration,
@@ -113,16 +118,13 @@ async fn main() -> Result<(), anyhow::Error> {
         user_use_case_factory,
     );
 
-    let (app, rate_limit_cleanup) = handler::setup_routes(&state);
+    let app = handler::setup_routes(&state, &login_rate_limiter);
 
-    // TODO(rate-limit): the login limiter is built inside `setup_routes` and
-    // pruned here; revisit whether the composition root should own its
-    // construction once rate limiting grows beyond the login endpoint.
     let rate_limit_cleanup_interval = Duration::from_mins(1);
     tokio::spawn(async move {
         loop {
             sleep(rate_limit_cleanup_interval).await;
-            rate_limit_cleanup.prune();
+            login_rate_limiter.prune();
         }
     });
 

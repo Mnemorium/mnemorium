@@ -17,10 +17,10 @@ use crate::infrastructure::inbound::rest::handler::get_health::get_health;
 use crate::infrastructure::inbound::rest::handler::identity::identity_routes;
 use crate::infrastructure::inbound::rest::handler::user::user_routes;
 use crate::infrastructure::inbound::rest::middleware::hal_errors::hal_errors;
-use crate::infrastructure::inbound::rest::middleware::rate_limit::RateLimitCleanup;
+use crate::infrastructure::inbound::rest::middleware::rate_limit::LoginRateLimiter;
 use crate::infrastructure::inbound::rest::middleware::trace::tracing;
 
-/// Build the application router and the rate-limit cleanup it needs.
+/// Build the application router.
 ///
 /// This is the single composition root: the server mounts only this router, and
 /// `hal_errors` is applied **last** so it is the outermost layer. It therefore
@@ -28,26 +28,19 @@ use crate::infrastructure::inbound::rest::middleware::trace::tracing;
 /// (an unknown or malformed URL) and framework rejections, as the one HAL error
 /// envelope (`API-039`). It must remain outermost.
 ///
-/// The returned [`RateLimitCleanup`] must be driven on an interval by the
-/// composition root; dropping it only stops the periodic prune, it does not
-/// disable the limiter.
-pub fn setup_routes(state: &AppState) -> (axum::Router, RateLimitCleanup) {
-    let mut cleanup = RateLimitCleanup::new();
-    let (identity, identity_cleanup) = identity_routes(state);
-    cleanup.merge(identity_cleanup);
-
+/// The `limiter` is the process-lifetime login rate limiter the server built;
+/// it is applied to the `login` route here.
+pub fn setup_routes(state: &AppState, limiter: &LoginRateLimiter) -> axum::Router {
     let v1 = axum::Router::new()
         .nest("/asset", asset_routes(state))
-        .nest("/identity", identity)
+        .nest("/identity", identity_routes(state, limiter))
         .nest("/user", user_routes(state));
 
-    let router = axum::Router::new()
+    axum::Router::new()
         .route("/health", get(get_health))
         .nest("/api/v1", v1)
         .layer(middleware::from_fn(tracing))
-        .layer(middleware::from_fn(hal_errors));
-
-    (router, cleanup)
+        .layer(middleware::from_fn(hal_errors))
 }
 
 #[cfg(test)]
@@ -73,6 +66,7 @@ mod tests {
     use crate::application::port::login_user::LoginUserResponse;
     use crate::application::port::login_user::LoginUserUseCase;
     use crate::application::port::login_user::MockLoginUserUseCase;
+    use crate::infrastructure::inbound::rest::middleware::rate_limit::LoginRateLimiter;
     use crate::test_helpers::SECRET_PASSWORD;
     use crate::test_helpers::app_state;
     use crate::test_helpers::app_state_with_identity;
@@ -141,7 +135,9 @@ mod tests {
 
     /// A router whose token provider is built from the fixture configuration.
     fn plain_router() -> Result<axum::Router, Box<dyn Error>> {
-        Ok(setup_routes(&app_state()?).0)
+        let state = app_state()?;
+        let limiter = LoginRateLimiter::new(state.configuration().load().security().rate_limit());
+        Ok(setup_routes(&state, &limiter))
     }
 
     #[tokio::test]
@@ -221,6 +217,7 @@ mod tests {
             .times(0..=1)
             .return_once(move || Arc::new(login_use_case) as Arc<dyn LoginUserUseCase>);
         let state = app_state_with_identity(Arc::new(factory))?;
+        let limiter = LoginRateLimiter::new(state.configuration().load().security().rate_limit());
 
         // Act
         let body = json!({
@@ -228,8 +225,7 @@ mod tests {
             "password": SECRET_PASSWORD,
         })
         .to_string();
-        let response = setup_routes(&state)
-            .0
+        let response = setup_routes(&state, &limiter)
             .oneshot(request("POST", "/api/v1/identity/login", Some(&body))?)
             .await?;
 
@@ -253,7 +249,8 @@ mod tests {
             Arc::new(login_use_case) as Arc<dyn LoginUserUseCase>
         });
         let state = app_state_with_identity(Arc::new(factory))?;
-        let router = setup_routes(&state).0;
+        let limiter = LoginRateLimiter::new(state.configuration().load().security().rate_limit());
+        let router = setup_routes(&state, &limiter);
         let body = json!({ "username": "alice", "password": SECRET_PASSWORD }).to_string();
 
         // Act: spend the default burst of five, then one more.

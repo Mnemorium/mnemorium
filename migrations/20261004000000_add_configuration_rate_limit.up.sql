@@ -2,6 +2,9 @@ ALTER TABLE configuration
 ADD COLUMN rate_limit_trusted_proxies TEXT NOT NULL DEFAULT '';
 
 ALTER TABLE configuration
+ADD COLUMN rate_limit_client_ip_header TEXT NOT NULL DEFAULT 'x-forwarded-for';
+
+ALTER TABLE configuration
 ADD COLUMN rate_limit_burst_size INTEGER NOT NULL DEFAULT 5
 CONSTRAINT chk_configuration_rate_limit_burst_size CHECK (
     rate_limit_burst_size > 0
