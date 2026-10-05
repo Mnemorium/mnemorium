@@ -104,8 +104,10 @@ where
                 TokenProviderError::Unknown(_) => "unknown",
             };
             error!(
-                error.kind = %reason,
-                "token provider failed to validate a token"
+                target: "security",
+                event = "token_provider_fault",
+                kind = %reason,
+                "the token provider failed to validate a token"
             );
             return ApiError::InternalServerError.into_response();
         }
