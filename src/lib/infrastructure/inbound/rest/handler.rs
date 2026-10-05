@@ -124,7 +124,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn unknown_route_is_wrapped_and_keeps_the_query_string() -> Result<(), Box<dyn Error>> {
+    async fn unknown_route_is_wrapped_and_drops_the_query_string() -> Result<(), Box<dyn Error>> {
         // Act
         let response = plain_router()?
             .oneshot(request("GET", "/api/v1/does-not-exist?x=1", None)?)
@@ -132,12 +132,7 @@ mod tests {
 
         // Assert
         assert_eq!(
-            assert_envelope(
-                response,
-                StatusCode::NOT_FOUND,
-                "/api/v1/does-not-exist?x=1",
-            )
-            .await?,
+            assert_envelope(response, StatusCode::NOT_FOUND, "/api/v1/does-not-exist").await?,
             "Not Found"
         );
         Ok(())

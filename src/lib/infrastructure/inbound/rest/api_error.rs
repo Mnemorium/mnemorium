@@ -31,7 +31,7 @@ pub struct ErrorBody {
 /// Internal carrier for an [`ApiError`] message.
 ///
 /// `ApiError` cannot build the HAL error envelope itself: [`IntoResponse`] has
-/// no access to the request URI, so it cannot fill `_links.self` (`API-032`).
+/// no access to the request, so it cannot fill `_links.self` (`API-039`).
 /// It attaches only its message, and the root `hal_errors` middleware builds
 /// the one [`ErrorBody`] envelope from that message (`API-039`).
 #[derive(Clone, Debug)]
@@ -164,7 +164,8 @@ impl ApiError {
 
 /// Build the one HAL error envelope every error response is served as
 /// (`API-039`): the message at the root (`API-033`) plus `_links.self` to the
-/// request URI (`API-032`), served as `application/hal+json` (`API-031`).
+/// request path (`API-039`, `API-043`), served as `application/hal+json`
+/// (`API-031`).
 ///
 /// It is the single envelope builder by design: only the root `hal_errors`
 /// middleware calls it, and only after it has read the [`ApiErrorMessage`].
