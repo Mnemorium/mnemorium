@@ -1,5 +1,5 @@
 use axum::{body::Body, http::Request, middleware::Next, response::Response};
-use tracing::info;
+use tracing::debug;
 
 pub async fn tracing(req: Request<Body>, next: Next) -> Response {
     let method = req.method().clone();
@@ -7,11 +7,11 @@ pub async fn tracing(req: Request<Body>, next: Next) -> Response {
     // may carry personal data or a token.
     let path = req.uri().path().to_owned();
 
-    info!(method = %method, path = %path, "request");
+    debug!(method = %method, path = %path, "request");
 
     let response = next.run(req).await;
 
-    info!(status = %response.status(), path = %path, "response");
+    debug!(status = %response.status(), path = %path, "response");
 
     response
 }
