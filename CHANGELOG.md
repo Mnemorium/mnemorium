@@ -1,3 +1,9 @@
+## [0.6.8](https://github.com/Mnemorium/mnemorium/compare/v0.6.7...v0.6.8) (2026-10-05)
+
+### Bug Fixes
+
+* **api:** log limit-exceeded body rejections ([#204](https://github.com/Mnemorium/mnemorium/issues/204)) ([03bb8d4](https://github.com/Mnemorium/mnemorium/commit/03bb8d4eeabc931adc8ff676e119a19de4348948))
+
 ## [0.6.7](https://github.com/Mnemorium/mnemorium/compare/v0.6.6...v0.6.7) (2026-10-05)
 
 ### Bug Fixes
