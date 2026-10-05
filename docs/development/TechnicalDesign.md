@@ -2219,13 +2219,13 @@ to be filled in.
 
 Columns: **Name**, **Description**, **Version**, **License**.
 
-| ID         | Section        | Rule                                                                                                                                             | More info                             |
-| ---------- | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------- |
-| `DEPS-001` | GitHub Actions | Pin every third-party GitHub Action to a full-length commit SHA and record the release in a same-line comment, for example `# v6` or `# v1.2.3`. | [§ CI supply chain](#ci-supply-chain) |
+| ID         | Section        | Rule                                                                                                                                             | More info                 |
+| ---------- | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------- |
+| `DEPS-001` | GitHub Actions | Pin every third-party GitHub Action to a full-length commit SHA and record the release in a same-line comment, for example `# v6` or `# v1.2.3`. | [§ 1](#1-ci-supply-chain) |
 
 ---
 
-### CI supply chain
+### 1. CI supply chain
 
 A GitHub Action referenced by a tag or branch is mutable: whoever controls the action repository can move the ref. Pin
 every third-party action to a full-length commit SHA and record the release beside it, so a human can read it and
@@ -2245,13 +2245,13 @@ action's own release tag.
 
 ---
 
-### Rust
+### 2. Rust
 
 Source: `Cargo.toml`.
 
 ---
 
-#### Runtime
+#### 2.1 Runtime
 
 | Name                                                              | Description                                                                     | Version | License                            |
 | ----------------------------------------------------------------- | ------------------------------------------------------------------------------- | ------- | ---------------------------------- |
@@ -2282,7 +2282,7 @@ Source: `Cargo.toml`.
 
 ---
 
-#### Development
+#### 2.2 Development
 
 | Name                                          | Description                                           | Version | License           |
 | --------------------------------------------- | ----------------------------------------------------- | ------- | ----------------- |
@@ -2293,7 +2293,7 @@ Source: `Cargo.toml`.
 
 ---
 
-#### Build
+#### 2.3 Build
 
 | Name                                  | Description                                                                   | Version | License           |
 | ------------------------------------- | ----------------------------------------------------------------------------- | ------- | ----------------- |
@@ -2301,11 +2301,11 @@ Source: `Cargo.toml`.
 
 ---
 
-### Tooling
+### 3. Tooling
 
 ---
 
-#### Nix / devenv
+#### 3.1 Nix / devenv
 
 Source: `devenv.nix`.
 
@@ -2335,7 +2335,7 @@ Source: `devenv.nix`.
 
 ---
 
-#### Python
+#### 3.2 Python
 
 Source: `requirements.txt`.
 
@@ -2350,7 +2350,7 @@ Source: `requirements.txt`.
 
 ---
 
-#### CI
+#### 3.3 CI
 
 Source: `.github/workflows/*`.
 
@@ -2386,7 +2386,7 @@ Source: `.github/workflows/*`.
 
 ---
 
-### Container images
+### 4. Container images
 
 Source: `Dockerfile`.
 
