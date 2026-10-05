@@ -1,3 +1,9 @@
+## [0.6.7](https://github.com/Mnemorium/mnemorium/compare/v0.6.6...v0.6.7) (2026-10-05)
+
+### Bug Fixes
+
+* **api:** drop the query string from error self links ([#198](https://github.com/Mnemorium/mnemorium/issues/198)) ([d5cda32](https://github.com/Mnemorium/mnemorium/commit/d5cda32945195062f14a0f8e1e7e15420f1016ec))
+
 ## [0.6.6](https://github.com/Mnemorium/mnemorium/compare/v0.6.5...v0.6.6) (2026-10-04)
 
 ### Bug Fixes
