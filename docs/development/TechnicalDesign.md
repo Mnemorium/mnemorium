@@ -309,17 +309,17 @@ impl From<RegisterUserError> for ApiError {
 ##### 2.4 ApiError to axum response
 
 `ApiError` implements `IntoResponse`, converting to the corresponding HTTP status code and attaching its message to the
-response. It cannot build the error envelope itself — `IntoResponse` has no access to the request URI, so it cannot fill
-`_links.self` (`API-032`), and it never sees framework-generated errors. The root `hal_errors` middleware is the single
-envelope builder: it reads the attached message and serves the one `ErrorBody` for every `4xx`/`5xx` (`API-039`).
+response. It cannot build the error envelope itself — `IntoResponse` has no access to the request path, so it cannot
+fill `_links.self` (`API-039`), and it never sees framework-generated errors. The root `hal_errors` middleware is the
+single envelope builder: it reads the attached message and serves the one `ErrorBody` for every `4xx`/`5xx` (`API-039`).
 
 ---
 
 ##### 2.5 Error public payload
 
 Every error response carries the same body, a HAL representation served as `application/hal+json`: the human-readable
-`error` message at the root (`API-033`) and a `_links.self` whose `href` is the request URI the client called
-(`API-039`).
+`error` message at the root (`API-033`) and a `_links.self` whose `href` is the request path the client called
+(`API-039`, `API-043`).
 
 ```json
 {
@@ -331,6 +331,10 @@ Every error response carries the same body, a HAL representation served as `appl
   "error": "An error message"
 }
 ```
+
+`_links.self` carries the request path — the path component of the request URI — and never the query string. The query
+is a raw client-supplied value that may carry personal data or a token, so it is withheld from the response for the same
+reason [§ 9](#logging--observability) withholds it from logs (`OBS-003`).
 
 The envelope is uniform across every error the server emits — use-case errors, authentication failures, routing
 fallbacks (an unknown or malformed URL) and extractor rejections alike. See `API-039`.
@@ -1015,10 +1019,11 @@ are documented inline, at the source, with `#[utoipa::path(...)]` macros.
 | `API-036` | HAL payload               | Expose search and filtering through URI templates (`templated: true`).                                                                                                                                                                                                                                                                                                                                               | [§ HAL payload](#hal-payload-guidelines)    |
 | `API-037` | HAL payload               | Keep actions discoverable through links; clients never construct or hardcode URLs.                                                                                                                                                                                                                                                                                                                                   | [§ HAL payload](#hal-payload-guidelines)    |
 | `API-038` | HAL payload               | HAL is a response representation format; requests carry only business data.                                                                                                                                                                                                                                                                                                                                          | [§ HAL payload](#hal-payload-guidelines)    |
-| `API-039` | HAL payload               | Error responses are HAL representations: the `error` message at the root plus `_links.self` carrying the request URI, served as `application/hal+json`. The same envelope is returned for every error the server emits, including routing fallbacks and extractor rejections.                                                                                                                                        | [§ 2.5](#25-error-public-payload)           |
+| `API-039` | HAL payload               | Error responses are HAL representations: the `error` message at the root plus `_links.self` carrying the request path, served as `application/hal+json`. The same envelope is returned for every error the server emits, including routing fallbacks and extractor rejections.                                                                                                                                       | [§ 2.5](#25-error-public-payload)           |
 | `API-040` | HAL payload               | The `error` message is a stable, server-authored, client-safe string. It carries no request payload content, no extractor or framework wording, and no internal detail such as field paths, expected types, parse positions or type names. Rejection detail is logged, never returned.                                                                                                                               | [§ 2.5](#25-error-public-payload)           |
 | `API-041` | Responses                 | Return the status code that reflects _why_ the request failed, independently of the layer that caught it. `400 Bad Request` when the server cannot parse the request; `422 Unprocessable Content` when it parses but its shape or values fail a schema, framing or business rule; `401 Unauthorized` for any authentication outcome; `415 Unsupported Media Type` for an unsupported request or declared media type. | [§ Response codes](#response-codes)         |
 | `API-042` | HAL payload               | `_links.self` carries the canonical relative URI of the resource the representation is about: when a representation reports the outcome of an action, `self` is the addressed resource and a resource the payload reports or references is exposed as a named link (`API-034`), never as `self`; error responses follow `API-039`.                                                                                   | [§ HAL payload](#hal-payload-guidelines)    |
+| `API-043` | HAL payload               | An error envelope's `_links.self` carries the request path component of the request URI, never the query string; the query is a raw client-supplied value that may carry personal data or a token, withheld for the reason `OBS-003` withholds it from logs.                                                                                                                                                         | [§ 2.5](#25-error-public-payload)           |
 
 ---
 
@@ -1472,7 +1477,7 @@ the payload reports or references is exposed as a named link (`API-034`) — nev
 is used even when the request used an alias: `GET /api/v1/user/me` returns `self` = `/api/v1/user/{id}`, and
 `POST /api/v1/asset/upload/{upload_id}/complete` reports the completion of the session it addressed, so its `self` is
 `/api/v1/asset/upload/{upload_id}` while the produced file is carried as `file_id` and linked by name once a file
-endpoint exists. Error envelopes are the exception: their `self` is the request URI (`API-039`).
+endpoint exists. Error envelopes are the exception: their `self` is the request path (`API-039`, `API-043`).
 
 ---
 
