@@ -23,6 +23,7 @@
             │   └── rest
             │       ├── api_error.rs
             │       ├── app_state.rs
+            │       ├── hal.rs
             │       ├── handler.rs
             │       ├── handler
             │       │   ├── asset
@@ -65,6 +66,7 @@
 | `src/lib/infrastructure/inbound/rest`                 | HTTP adapter layer                                                                                           |
 | `src/lib/infrastructure/inbound/rest/api_error.rs`    | API Error declaration                                                                                        |
 | `src/lib/infrastructure/inbound/rest/app_state.rs`    | Application state shared by the HTTP layer: live configuration and per-context use-case factories            |
+| `src/lib/infrastructure/inbound/rest/hal.rs`          | Shared HAL types and helpers: link types, the `application/hal+json` media type, and the `hal_json` wrapper  |
 | `src/lib/infrastructure/inbound/rest.rs`              | REST module root: declares the submodules and aggregates the OpenAPI document (`ApiDoc`)                     |
 | `src/lib/infrastructure/inbound/rest/handler.rs`      | Declares the route table (`setup_routes`) and installs the tracing middleware                                |
 | `src/lib/infrastructure/inbound/rest/handler`         | HTTP endpoint handler                                                                                        |

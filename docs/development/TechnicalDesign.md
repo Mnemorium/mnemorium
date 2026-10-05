@@ -325,7 +325,7 @@ Every error response carries the same body, a HAL representation served as `appl
 {
   "_links": {
     "self": {
-      "href": "/api/v1/users/42"
+      "href": "/api/v1/user/42"
     }
   },
   "error": "An error message"
@@ -1387,7 +1387,7 @@ as new codes are introduced; completeness is not required.
 | `401` | Unauthorized           | Authentication is required, or the credentials are invalid.                          | `POST /api/v1/identity/login` with a wrong password; a missing or expired bearer token.                     |
 | `403` | Forbidden              | The caller is authenticated but not permitted to perform the request.                | A non-admin `PATCH /api/v1/user/{id}`; a non-root admin granting the `ADMIN` role.                          |
 | `404` | Not Found              | The addressed resource does not exist.                                               | An unknown `{id}` in `GET /api/v1/user/{id}`; an unknown upload session.                                    |
-| `405` | Method Not Allowed     | The method is not supported on the route; the response carries `Allow`.              | `DELETE /api/v1/health` (axum routing fallback; `hal_errors` keeps the `Allow` header).                     |
+| `405` | Method Not Allowed     | The method is not supported on the route; the response carries `Allow`.              | `DELETE /health` (only `GET` is routed; `hal_errors` keeps the `Allow` header).                             |
 | `409` | Conflict               | The request conflicts with the current state of the resource.                        | Registering a username that is already taken; a chunk on a finished upload.                                 |
 | `410` | Gone                   | The resource existed but is no longer available.                                     | `PUT .../chunk/{n}` against an expired upload session.                                                      |
 | `413` | Content Too Large      | The request body (or a declared size) exceeds the server limit.                      | A begin-upload declaring a file size above the maximum; a body over `DefaultBodyLimit`.                     |
