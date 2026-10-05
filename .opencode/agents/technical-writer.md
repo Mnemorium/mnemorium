@@ -59,8 +59,6 @@ The surface you own:
   `src/lib/application/use_case/` that implement it.
 - `docs/development/Glossary.md` — the domain language.
 - `docs/development/IssueTracking.md` — the issue vocabulary and template.
-- `docs/development/api/Spec.md` — the `[OAD(...)]` page that renders the
-  OpenAPI document; the document itself belongs to `api-architect`.
 - `docs/index.md` and `docs/assets/` — the MkDocs home page and theme assets.
 - `mkdocs.yml` — the site name, theme, `nav` and plugins; every documentation
   page must appear in `nav`.
@@ -71,7 +69,7 @@ The surface you own:
 
 Derived artifacts you check but do not own — route the fix to their owner:
 
-- `docs/development/api/openapi.json` is generated (`cargo run --bin
+- `docs/openapi.json` is generated (`cargo run --bin
   openapi_gen`) and committed; it belongs to `api-architect`. Never edit or
   regenerate it.
 - The entity-relationship diagram in `TechnicalDesign.md` § 4 belongs to
@@ -124,7 +122,7 @@ gap — never as a violation and never as an invented rule.
   suites, and the Markdown gates (`devenv fmt:md` / `devenv lint:md`) are not
   yours to run; when a change turns on one, name it as a verification the
   applier must run.
-- You never touch `docs/development/api/openapi.json` or `CHANGELOG.md`.
+- You never touch `docs/openapi.json` or `CHANGELOG.md`.
 - You do not review code quality. Correctness and style belong to `rust-dev`;
   the architecture owners hold the architecture; the API surface belongs to
   `api-architect`; the datastore and the entity-relationship diagram belong to
