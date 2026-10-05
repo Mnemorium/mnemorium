@@ -6,15 +6,22 @@
 //! macros so the catalog lives in one place; the application layer is the
 //! owning layer for a security decision (`OBS-002`).
 //!
-//! A `claimed_identity` is the raw submitted username by the explicit exception
+//! A `claimed_identity` is the submitted username by the explicit exception
 //! recorded in `TechnicalDesign.md` § 9 (Security-event catalog): it is the only
 //! identity available when authentication fails, and no other field can stand
-//! in for it.
+//! in for it. The field escapes control characters and bounds its length, so a
+//! client cannot forge a log record through it (`OBS-003`).
 
 use tracing::debug;
 use tracing::error;
 use tracing::info;
 use tracing::warn;
+
+/// Maximum number of characters of a claimed identity kept on the event.
+///
+/// The submitted username is unbounded, so the field is truncated to keep a
+/// single event from flooding the sink.
+const MAX_CLAIMED_IDENTITY_CHARS: usize = 256;
 
 /// A credential was accepted (`authn_succeeded`, `info`, field `actor`).
 pub fn authentication_succeeded(actor: i64) {
@@ -29,12 +36,19 @@ pub fn authentication_succeeded(actor: i64) {
 /// A credential was rejected (`authn_failed`, `warn`).
 ///
 /// The reason is uniform across a bad identity and a bad secret: it never
-/// distinguishes the two (`OBS-006`).
+/// distinguishes the two (`OBS-006`). The claimed identity is bounded and its
+/// control characters are escaped, so it cannot forge a record on the
+/// non-suppressible `security` channel (`OBS-003`).
 pub fn authentication_failed(claimed_identity: &str) {
+    let sanitized: String = claimed_identity
+        .chars()
+        .take(MAX_CLAIMED_IDENTITY_CHARS)
+        .flat_map(char::escape_debug)
+        .collect();
     warn!(
         target: "security",
         event = "authn_failed",
-        claimed_identity = %claimed_identity,
+        claimed_identity = %sanitized,
         reason = "invalid_credentials",
         "rejected an authentication attempt"
     );

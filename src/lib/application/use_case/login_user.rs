@@ -162,20 +162,24 @@ where
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeMap;
+    use std::collections::HashMap;
     use std::error::Error;
     use std::fmt::Debug;
     use std::sync::Arc;
     use std::sync::Mutex;
+    use std::sync::Once;
+    use std::sync::OnceLock;
     use std::sync::atomic::AtomicBool;
     use std::sync::atomic::Ordering;
+    use std::thread;
+    use std::thread::ThreadId;
 
     use chrono::NaiveDateTime;
     use tracing::Event;
     use tracing::Level;
     use tracing::field::Field;
     use tracing::field::Visit;
-    use tracing::subscriber::DefaultGuard;
-    use tracing::subscriber::set_default;
+    use tracing::subscriber::set_global_default;
     use tracing_subscriber::layer::Context;
     use tracing_subscriber::layer::Layer;
     use tracing_subscriber::layer::SubscriberExt as _;
@@ -226,12 +230,9 @@ mod tests {
         target: String,
     }
 
-    /// Collect the `tracing` events emitted while it is installed.
-    #[derive(Clone, Default)]
-    struct CaptureEvents {
-        /// The events captured so far.
-        events: Arc<Mutex<Vec<CapturedEvent>>>,
-    }
+    /// A handle to the process-wide, per-thread event sink.
+    #[derive(Clone, Copy, Default)]
+    struct CaptureEvents;
 
     /// Collect the fields of one event into a map.
     #[derive(Default)]
@@ -241,9 +242,15 @@ mod tests {
     }
 
     impl CaptureEvents {
-        /// Return the single captured event, or `None` when the count differs.
+        /// Return the single event captured on this thread, if exactly one was.
+        #[expect(
+            clippy::trivially_copy_pass_by_ref,
+            clippy::unused_self,
+            reason = "`self` is an intentional handle; the data lives in the thread sink"
+        )]
         fn single(&self) -> Option<CapturedEvent> {
-            let events = self.events.lock().ok()?;
+            let sink = sink().lock().ok()?;
+            let events = sink.get(&thread::current().id())?;
             if events.len() == 1 {
                 events.first().cloned()
             } else {
@@ -251,11 +258,17 @@ mod tests {
             }
         }
 
-        /// Return a snapshot of the captured events.
+        /// Return the events captured on this thread.
+        #[expect(
+            clippy::trivially_copy_pass_by_ref,
+            clippy::unused_self,
+            reason = "`self` is an intentional handle; the data lives in the thread sink"
+        )]
         fn snapshot(&self) -> Vec<CapturedEvent> {
-            self.events
+            sink()
                 .lock()
-                .map(|events| events.clone())
+                .ok()
+                .and_then(|sink| sink.get(&thread::current().id()).cloned())
                 .unwrap_or_default()
         }
     }
@@ -265,7 +278,7 @@ mod tests {
         reason = "only `on_event` is needed; every other `Layer` method keeps its default"
     )]
     impl<S: tracing::Subscriber> Layer<S> for CaptureEvents {
-        /// Record every event the subscriber receives.
+        /// Record every event the subscriber receives on its thread's sink.
         fn on_event(&self, event: &Event<'_>, _context: Context<'_, S>) {
             let metadata = event.metadata();
             let mut visitor = FieldVisitor::default();
@@ -275,8 +288,10 @@ mod tests {
                 target: metadata.target().to_owned(),
                 fields: visitor.fields,
             };
-            if let Ok(mut events) = self.events.lock() {
-                events.push(captured);
+            if let Ok(mut sink) = sink().lock() {
+                sink.entry(thread::current().id())
+                    .or_default()
+                    .push(captured);
             }
         }
     }
@@ -317,12 +332,28 @@ mod tests {
         }
     }
 
-    /// Install a capturing subscriber for the current test thread.
-    fn capture() -> (CaptureEvents, DefaultGuard) {
-        let capture = CaptureEvents::default();
-        let subscriber = registry().with(capture.clone());
-        let guard = set_default(subscriber);
-        (capture, guard)
+    /// Return the process-wide, per-thread event sink.
+    fn sink() -> &'static Mutex<HashMap<ThreadId, Vec<CapturedEvent>>> {
+        static SINK: OnceLock<Mutex<HashMap<ThreadId, Vec<CapturedEvent>>>> = OnceLock::new();
+        SINK.get_or_init(|| Mutex::new(HashMap::new()))
+    }
+
+    /// Install the capturing subscriber and clear this thread's sink.
+    ///
+    /// The subscriber is installed once per process: a thread-local dispatcher
+    /// would race the global callsite-interest cache when other tests exercise
+    /// the same callsites without one.
+    fn capture() -> (CaptureEvents, ()) {
+        static INSTALL: Once = Once::new();
+        INSTALL.call_once(|| {
+            let subscriber = registry().with(CaptureEvents);
+            // A second install can only lose a race to an equivalent subscriber.
+            let _installed = set_global_default(subscriber);
+        });
+        if let Ok(mut sink) = sink().lock() {
+            sink.remove(&thread::current().id());
+        }
+        (CaptureEvents, ())
     }
 
     fn use_case_with(
@@ -722,6 +753,43 @@ mod tests {
             event.fields.get("claimed_identity").map(String::as_str),
             Some("ghost")
         );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn login_user_unknown_username_escapes_claimed_identity() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let harness = use_case_with(|user_repository, _, password_hasher, _| {
+            user_repository
+                .expect_search()
+                .times(1)
+                .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+            password_hasher
+                .expect_hash_password()
+                .times(1)
+                .returning(|_| Box::pin(async { Ok("decoy-hash".to_owned()) }));
+            Ok(())
+        })?;
+        let command = command("bad\nname", SECRET_PASSWORD);
+        let (capture, _guard) = capture();
+
+        // Act
+        assert!(harness.use_case.execute(command).await.is_err());
+
+        // Assert
+        let Some(event) = capture.single() else {
+            return Err("expected exactly one security event".into());
+        };
+        let claimed_identity = event
+            .fields
+            .get("claimed_identity")
+            .map(String::as_str)
+            .ok_or("expected a claimed_identity field")?;
+        assert!(
+            !claimed_identity.contains(['\n', '\r']),
+            "the claimed identity must not forge a log record"
+        );
+        assert_eq!(claimed_identity, "bad\\nname");
         Ok(())
     }
 
