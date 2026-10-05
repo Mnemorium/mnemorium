@@ -115,7 +115,7 @@ Cover all of these; none is optional:
 - Secrets, keys, or tokens in code or committed files, and secrets in logs
   (`docs/development/TechnicalDesign.md` § 9 (Logging & Observability),
   `OBS-004`).
-- Sensitive data in error payloads or logs (`OBS-003`, `OBS-004`).
+- Sensitive data in error payloads (`API-043`) or logs (`OBS-003`, `OBS-004`).
 - Dependency advisories the change introduces or relies on.
 
 For a design input, additionally name the asset, the trust boundary, the attack
