@@ -191,7 +191,7 @@ material. The `#[utoipa::path(...)]` declaration contract lives in the [API sect
 | `STY-RUST-071` | Configuration     | Keep the bootstrap sources and their order identical to `ConfigConfigurationSource`.                                                                                                                                                                                                                                                                                                                                                                                                                                                   | [§ 10](#10-configuration)                                        |
 | `STY-RUST-080` | Configuration     | The `logging` section drives the runtime logs; install the subscriber once, after `LoadConfiguration`, because the configuration lives behind the datastore.                                                                                                                                                                                                                                                                                                                                                                           | [§ 10](#10-configuration)                                        |
 | `STY-RUST-082` | Configuration     | A setting that cannot be read after the pool or the router is built is a **startup-only setting**: it is read once at startup, listed in the registry in [§ 10.1](#101-startup-only-settings), and never silently cached. The registry is extensible: adding a startup-only setting appends it there in the same change, together with how a change is surfaced to the operator.                                                                                                                                                       | [§ 10.1](#101-startup-only-settings)                             |
-| `STY-RUST-083` | Configuration     | A configuration value that is **present but malformed or out of range** fails startup: a reader falls back to a default only when the key is absent, and propagates every other read or validation error.                                                                                                                                                                                                                                                                                                                              | [§ 10](#10-configuration)                                        |
+| `STY-RUST-084` | Configuration     | A configuration value that is **present but malformed or out of range** fails startup: a reader falls back to a default only when the key is absent, and propagates every other read or validation error.                                                                                                                                                                                                                                                                                                                              | [§ 10](#10-configuration)                                        |
 
 ---
 
@@ -888,7 +888,7 @@ The datastore path is needed before the pool exists, but the configuration singl
 `bootstrap_sqlite3` (`src/lib/infrastructure/outbound/config/bootstrap.rs`) therefore reads the file and the environment
 only. That layering is intentionally duplicated with `ConfigConfigurationSource` (see `STY-RUST-001`); keep the source
 list and order identical. A persistence setting that is present but malformed or out of range fails startup; the
-bootstrap falls back to a default only when the setting is absent (`STY-RUST-083`).
+bootstrap falls back to a default only when the setting is absent (`STY-RUST-084`).
 
 The configuration also carries the logging settings (`logging.level`, `logging.rotation`, `logging.max_files`,
 `logging.ansi`). Because those settings live behind the datastore, the `tracing` subscriber is installed from the loaded
@@ -1912,7 +1912,6 @@ entity image {
    * height_px: INTEGER <<NN, CC(height_px > 0)>>
    * orientation: VARCHAR(20) <<NN, CC(orientation IN ('LANDSCAPE', 'PORTRAIT', 'SQUARE'))>>
    * created_at: DATE <<NN>>
-   * color_id: TEXT <<FK, NN>>
 }
 
 entity color {
@@ -2019,8 +2018,6 @@ audio_stream ||--|| audio
 language ||--o{ audio_stream
 language ||--o{ subtitle_stream
 
-image ||--|| color
-
 gallery ||--o{ gallery_item
 gallery ||--o{ gallery_video
 
@@ -2058,7 +2055,7 @@ the flows the E2E suite covers come from the critical exception paths in [UseCas
 | ---------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------- |
 | `TEST-001` | Unit test        | The test module lives in the same file as the unit under test.                                                                                                                                                                                                     | [§ Unit test](#unit-test)                    |
 | `TEST-002` | Unit test        | Mock an external dependency with `mockall`'s `#[automock]` attribute.                                                                                                                                                                                              | [§ Unit test](#unit-test)                    |
-| `TEST-003` | Unit test        | Unit tests cover the HTTP handler and every layer except the outbound port adapters (SQLite, moka cache), which are exercised in the [Integration test](#integration-test) section.                                                                                | [§ Unit test](#unit-test)                    |
+| `TEST-003` | Unit test        | Unit tests cover the HTTP handler and every layer except the outbound port adapters (SQLite, moka cache, configuration source), which are exercised in the [Integration test](#integration-test) section.                                                          | [§ Unit test](#unit-test)                    |
 | `TEST-004` | Unit test        | Do not test the payload DTOs (`<Context>Request`, `<Context>Query`, `<Context>Response`) in isolation; test the handler that consumes them.                                                                                                                        | [§ Unit test](#unit-test)                    |
 | `TEST-005` | Unit test        | Repository query filters must be tested for strictness: the same filter backs both the SQLite repository and the moka cache, and they must surface the same error.                                                                                                 | [§ Unit test](#unit-test)                    |
 | `TEST-006` | Unit test        | Generic tests (those whose subject is not password behavior) use the shared `SECRET_PASSWORD` from `crate::test_helpers` for any password they need.                                                                                                               | [§ Unit test](#unit-test)                    |
@@ -2082,7 +2079,7 @@ the flows the E2E suite covers come from the critical exception paths in [UseCas
 | `TEST-024` | Domain service   | Domain services (in `src/lib/domain/service/`) have a dedicated unit test module of their own, living in the same file as the service under test.                                                                                                                  | [§ Domain service](#domain-service-strategy) |
 | `TEST-025` | Domain service   | Cover the business rules each service enforces.                                                                                                                                                                                                                    | [§ Domain service](#domain-service-strategy) |
 | `TEST-026` | Domain service   | Domain services are pure — no external dependency, so no mocking.                                                                                                                                                                                                  | [§ Domain service](#domain-service-strategy) |
-| `TEST-027` | Integration test | Integration tests exercise the outbound port adapters: the repository (SQLite, moka cache) and the external services.                                                                                                                                              | [§ Integration test](#integration-test)      |
+| `TEST-027` | Integration test | Integration tests exercise the outbound port adapters: the repository (SQLite, moka cache), the configuration source, and the external services.                                                                                                                   | [§ Integration test](#integration-test)      |
 | `TEST-028` | Integration test | The test module lives in the same file as the code under test.                                                                                                                                                                                                     | [§ Integration test](#integration-test)      |
 | `TEST-029` | Repository       | Have one happy-path test.                                                                                                                                                                                                                                          | [§ Repository](#repository)                  |
 | `TEST-030` | Repository       | Verify every constraint — declared in the db schema and reflected in the rest of the project.                                                                                                                                                                      | [§ Repository](#repository)                  |
@@ -2227,13 +2224,15 @@ to be filled in.
 
 Columns: **Name**, **Description**, **Version**, **License**.
 
-| ID         | Section        | Rule                                                                                                                                             | More info                             |
-| ---------- | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------- |
-| `DEPS-001` | GitHub Actions | Pin every third-party GitHub Action to a full-length commit SHA and record the release in a same-line comment, for example `# v6` or `# v1.2.3`. | [§ CI supply chain](#ci-supply-chain) |
+| ID         | Section               | Rule                                                                                                                                                                                                  | More info                       |
+| ---------- | --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------- |
+| `DEPS-001` | GitHub Actions        | Pin every third-party GitHub Action to a full-length commit SHA and record the release in a same-line comment, for example `# v6` or `# v1.2.3`.                                                      | [§ 1](#1-ci-supply-chain)       |
+| `DEPS-002` | CI trust boundary     | A CI/CD job that holds a repository secret, a write-scoped token, or a registry credential must load the configuration it executes from a trusted revision, never from the pull-request revision.     | [§ 2](#2-ci-trust-boundary)     |
+| `DEPS-003` | CI runtime resolution | Reference every package or executable a CI job resolves at run time by an exact version, never a floating range; a transitive dependency tree remains a documented residual where no lockfile exists. | [§ 3](#3-ci-runtime-resolution) |
 
 ---
 
-### CI supply chain
+### 1. CI supply chain
 
 A GitHub Action referenced by a tag or branch is mutable: whoever controls the action repository can move the ref. Pin
 every third-party action to a full-length commit SHA and record the release beside it, so a human can read it and
@@ -2253,13 +2252,38 @@ action's own release tag.
 
 ---
 
-### Rust
+### 2. CI trust boundary
+
+A CI/CD job that holds a repository secret, a write-scoped token, or a registry credential must load the configuration
+it executes from a trusted revision, never from the pull request under review. Pull-request content is data: pass it to
+a tool that interprets it as input, never as the agent definitions, skills, project configuration, or scripts that run
+with the credential. The `review` job in `.github/workflows/ci.yml` checks out `github.event.pull_request.base.sha` for
+this reason and lets a pull request supply only the content to review.
+
+The write scopes a job needs are a property of the job, not a violation: the `review` job keeps `pull-requests: write`
+and `issues: write` because it publishes the review and files pre-existing issues. The rule bounds _what executes with
+the credential_, not which scopes the job may hold. Output a job produces from untrusted content stays untrusted and
+must be treated as data by any later step that consumes it.
+
+---
+
+### 3. CI runtime resolution
+
+Reference every package or executable a CI job resolves at run time by an exact version; never a floating range.
+`npx --yes`, `pip install`, and `nix run nixpkgs#…` resolve their dependency tree fresh on each run, so an exact direct
+version still leaves every transitive dependency unpinned. Where a job cannot use the pinned `devenv.lock` toolchain or
+a digest-pinned image, this residue is a documented residual risk: the direct reference must still carry an exact
+version, and the residual must be recorded rather than implied pinned.
+
+---
+
+### 5. Rust
 
 Source: `Cargo.toml`.
 
 ---
 
-#### Runtime
+#### 5.1 Runtime
 
 | Name                                                              | Description                                                                     | Version | License                            |
 | ----------------------------------------------------------------- | ------------------------------------------------------------------------------- | ------- | ---------------------------------- |
@@ -2271,6 +2295,7 @@ Source: `Cargo.toml`.
 | [chrono](https://crates.io/crates/chrono)                         | Date and time library for Rust.                                                 | 0.4.45  | MIT OR Apache-2.0                  |
 | [config](https://crates.io/crates/config)                         | Layered configuration system for Rust applications.                             | 0.15.25 | MIT OR Apache-2.0                  |
 | [email_address](https://crates.io/crates/email_address)           | RFC-compliant `EmailAddress` newtype.                                           | 0.2.9   | MIT                                |
+| [image](https://crates.io/crates/image)                           | Image decoding and metadata: dimensions and EXIF orientation.                   | 0.25.10 | MIT OR Apache-2.0                  |
 | [infer](https://crates.io/crates/infer)                           | Infers a file type from its magic number signature.                             | 0.22.0  | MIT                                |
 | [jsonwebtoken](https://crates.io/crates/jsonwebtoken)             | Creates and decodes JWTs in a strongly typed way.                               | 11.0.0  | MIT                                |
 | [moka](https://crates.io/crates/moka)                             | Fast, concurrent cache library inspired by Java Caffeine.                       | 0.12.16 | (MIT OR Apache-2.0) AND Apache-2.0 |
@@ -2291,7 +2316,7 @@ Source: `Cargo.toml`.
 
 ---
 
-#### Development
+#### 5.2 Development
 
 | Name                                          | Description                                           | Version | License           |
 | --------------------------------------------- | ----------------------------------------------------- | ------- | ----------------- |
@@ -2302,7 +2327,7 @@ Source: `Cargo.toml`.
 
 ---
 
-#### Build
+#### 5.3 Build
 
 | Name                                  | Description                                                                   | Version | License           |
 | ------------------------------------- | ----------------------------------------------------------------------------- | ------- | ----------------- |
@@ -2310,11 +2335,11 @@ Source: `Cargo.toml`.
 
 ---
 
-### Tooling
+### 6. Tooling
 
 ---
 
-#### Nix / devenv
+#### 6.1 Nix / devenv
 
 Source: `devenv.nix`.
 
@@ -2344,7 +2369,7 @@ Source: `devenv.nix`.
 
 ---
 
-#### Python
+#### 6.2 Python
 
 Source: `requirements.txt`.
 
@@ -2359,7 +2384,7 @@ Source: `requirements.txt`.
 
 ---
 
-#### CI
+#### 6.3 CI
 
 Source: `.github/workflows/*`.
 
@@ -2370,7 +2395,7 @@ Source: `.github/workflows/*`.
 | [@semantic-release/changelog](https://www.npmjs.com/package/@semantic-release/changelog)                               | TODO                                            | 7.0.0   | TODO       |
 | [@semantic-release/exec](https://www.npmjs.com/package/@semantic-release/exec)                                         | TODO                                            | 7.1.0   | TODO       |
 | [@semantic-release/git](https://www.npmjs.com/package/@semantic-release/git)                                           | TODO                                            | 11.0.1  | TODO       |
-| [actions/checkout](https://github.com/actions/checkout)                                                                | TODO                                            | v6      | TODO       |
+| [actions/checkout](https://github.com/actions/checkout)                                                                | TODO                                            | v7.0.1  | TODO       |
 | [actions/create-github-app-token](https://github.com/actions/create-github-app-token)                                  | TODO                                            | v3.2.0  | TODO       |
 | [actions/download-artifact](https://github.com/actions/download-artifact)                                              | TODO                                            | v7      | TODO       |
 | [actions/setup-node](https://github.com/actions/setup-node)                                                            | TODO                                            | v4      | TODO       |
@@ -2380,7 +2405,7 @@ Source: `.github/workflows/*`.
 | [amannn/action-semantic-pull-request](https://github.com/amannn/action-semantic-pull-request)                          | TODO                                            | v6      | TODO       |
 | [anomalyco/opencode/github](https://github.com/anomalyco/opencode)                                                     | TODO                                            | latest  | TODO       |
 | [cachix/install-nix-action](https://github.com/cachix/install-nix-action)                                              | TODO                                            | v31     | TODO       |
-| [conventional-changelog-conventionalcommits](https://www.npmjs.com/package/conventional-changelog-conventionalcommits) | TODO                                            | 9       | TODO       |
+| [conventional-changelog-conventionalcommits](https://www.npmjs.com/package/conventional-changelog-conventionalcommits) | TODO                                            | 9.3.1   | TODO       |
 | [DavidAnson/markdownlint-cli2-action](https://github.com/DavidAnson/markdownlint-cli2-action)                          | TODO                                            | v24     | TODO       |
 | [docker/build-push-action](https://github.com/docker/build-push-action)                                                | Builds the production image with the GHA cache. | v7      | Apache-2.0 |
 | [docker/login-action](https://github.com/docker/login-action)                                                          | TODO                                            | v4      | TODO       |
@@ -2395,7 +2420,7 @@ Source: `.github/workflows/*`.
 
 ---
 
-### Container images
+### 7. Container images
 
 Source: `Dockerfile`.
 

@@ -145,7 +145,15 @@ base64 = "0.23.1"
 tower_governor = { version = "0.8.0", default-features = false, features = [
   "axum",
 ] }
-
+image = { version = "0.25.10", default-features = false, features = [
+  "bmp",
+  "jpeg",
+  "gif",
+  "png",
+  "tiff",
+  "ico",
+  "pnm",
+] }
 
 [dev-dependencies]
 mockall = "0.15.0"

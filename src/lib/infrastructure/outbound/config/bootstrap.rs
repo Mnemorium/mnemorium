@@ -41,6 +41,28 @@ pub fn bootstrap_sqlite3() -> anyhow::Result<Sqlite3> {
                 .ignore_empty(true),
         )
         .build()?;
+    resolve_sqlite3(&settings)
+}
+
+/// Resolve the persistence settings from a layered configuration.
+///
+/// This is the seam the bootstrap exposes for tests: [`bootstrap_sqlite3`]
+/// builds the file-and-environment [`Config`] and this function applies the
+/// absent-versus-malformed rule to it, so the rule can be driven in-process
+/// with an in-memory [`Config`] instead of mutating process-global state.
+///
+/// # Errors
+///
+/// Returns an error when a setting is present but cannot be read, is invalid,
+/// or is out of range. A setting that is absent falls back to its default.
+#[cfg_attr(
+    not(test),
+    expect(
+        clippy::single_call_fn,
+        reason = "the resolution rule is named after the configuration rule it enforces"
+    )
+)]
+fn resolve_sqlite3(settings: &Config) -> anyhow::Result<Sqlite3> {
     let path = match settings.get_string("persistence.sqlite3.path") {
         Ok(path) => path,
         Err(ConfigError::NotFound(_)) => DEFAULT_SQLITE3_PATH.to_owned(),
@@ -52,4 +74,119 @@ pub fn bootstrap_sqlite3() -> anyhow::Result<Sqlite3> {
         Err(error) => return Err(error.into()),
     };
     Ok(Sqlite3::try_new(path, max_connections)?)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::error::Error;
+
+    use config::Config;
+    use config::File;
+    use config::FileFormat;
+
+    use crate::application::use_case::load_configuration::DEFAULT_SQLITE3_PATH;
+    use crate::application::use_case::load_configuration::default_sqlite3_max_conn;
+
+    use super::resolve_sqlite3;
+
+    /// Build an in-memory layered configuration from a JSON object.
+    fn settings(json: &str) -> Result<Config, config::ConfigError> {
+        Config::builder()
+            .add_source(File::from_str(json, FileFormat::Json))
+            .build()
+    }
+
+    #[test]
+    fn resolve_sqlite3_absent_settings_uses_defaults() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let settings = settings("{}")?;
+
+        // Act
+        let sqlite3 = resolve_sqlite3(&settings)?;
+
+        // Assert
+        assert_eq!(sqlite3.path(), DEFAULT_SQLITE3_PATH);
+        assert_eq!(sqlite3.max_connections(), default_sqlite3_max_conn());
+        Ok(())
+    }
+
+    #[test]
+    fn resolve_sqlite3_valid_settings_returns_configured_values() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let settings =
+            settings(r#"{"persistence":{"sqlite3":{"path":"custom.db","max_connections":4}}}"#)?;
+
+        // Act
+        let sqlite3 = resolve_sqlite3(&settings)?;
+
+        // Assert
+        assert_eq!(sqlite3.path(), "custom.db");
+        assert_eq!(sqlite3.max_connections(), 4);
+        Ok(())
+    }
+
+    #[test]
+    fn resolve_sqlite3_present_max_connections_zero_is_rejected() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let settings =
+            settings(r#"{"persistence":{"sqlite3":{"path":"mnemorium.db","max_connections":0}}}"#)?;
+
+        // Act
+        let result = resolve_sqlite3(&settings);
+
+        // Assert
+        assert!(result.is_err(), "a zero max_connections must be rejected");
+        Ok(())
+    }
+
+    #[test]
+    fn resolve_sqlite3_present_path_empty_is_rejected() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let settings = settings(r#"{"persistence":{"sqlite3":{"path":"","max_connections":4}}}"#)?;
+
+        // Act
+        let result = resolve_sqlite3(&settings);
+
+        // Assert
+        assert!(result.is_err(), "an empty path must be rejected");
+        Ok(())
+    }
+
+    #[test]
+    fn resolve_sqlite3_present_max_connections_wrong_type_is_rejected() -> Result<(), Box<dyn Error>>
+    {
+        // Arrange
+        let settings = settings(
+            r#"{"persistence":{"sqlite3":{"path":"mnemorium.db","max_connections":"many"}}}"#,
+        )?;
+
+        // Act
+        let result = resolve_sqlite3(&settings);
+
+        // Assert
+        assert!(
+            result.is_err(),
+            "a wrongly typed max_connections must be rejected"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn resolve_sqlite3_present_max_connections_out_of_range_is_rejected()
+    -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let settings = settings(
+            r#"{"persistence":{"sqlite3":{"path":"mnemorium.db","max_connections":5000000000}}}"#,
+        )?;
+
+        // Act
+        let result = resolve_sqlite3(&settings);
+
+        // Assert
+        assert!(
+            result.is_err(),
+            "a max_connections above u32::MAX must be rejected"
+        );
+        Ok(())
+    }
 }

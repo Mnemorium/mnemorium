@@ -92,3 +92,56 @@ fn to_value(json: JsonValue) -> Result<Value, config::ConfigError> {
 
     Ok(Value::new(None, kind))
 }
+
+#[cfg(test)]
+mod tests {
+    use std::error::Error;
+
+    use config::Config;
+
+    use crate::domain::model::asset::Asset;
+    use crate::domain::model::configuration::Configuration;
+    use crate::domain::model::jwt::Jwt;
+    use crate::domain::model::logging::Logging;
+    use crate::domain::model::logging::Rotation;
+    use crate::domain::model::persistence::Persistence;
+    use crate::domain::model::security::Security;
+    use crate::domain::model::sqlite3::Sqlite3;
+
+    use super::DbSqlite3Source;
+
+    /// A valid configuration used to drive the source round trip.
+    #[expect(
+        clippy::single_call_fn,
+        reason = "the fixture is named for readability"
+    )]
+    fn configuration() -> Result<Configuration, Box<dyn Error>> {
+        let jwt = Jwt::try_new("a".repeat(64), 3600)?;
+        let security = Security::try_new(jwt, "b".repeat(64), true)?;
+        let sqlite3 = Sqlite3::try_new("mnemorium.db".to_owned(), 1)?;
+        let persistence = Persistence::new(sqlite3);
+        let logging = Logging::try_new(false, "debug,sqlx=warn".to_owned(), 7, Rotation::Daily)?;
+        Ok(Configuration::new(
+            persistence,
+            security,
+            logging,
+            Asset::default(),
+        ))
+    }
+
+    #[test]
+    fn db_sqlite3_source_round_trips_a_configuration() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let expected = configuration()?;
+
+        // Act
+        let settings = Config::builder()
+            .add_source(DbSqlite3Source::new(expected.clone()))
+            .build()?;
+        let actual = settings.try_deserialize::<Configuration>()?;
+
+        // Assert
+        assert_eq!(actual, expected);
+        Ok(())
+    }
+}

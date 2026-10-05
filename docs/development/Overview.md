@@ -236,7 +236,6 @@ class Image {
   width_px: int
   height_px: int
   orientation: string
-  color_space: string
   color_depth: int
   created_at: date
 }
