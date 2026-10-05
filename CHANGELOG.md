@@ -1,3 +1,9 @@
+## [0.6.9](https://github.com/Mnemorium/mnemorium/compare/v0.6.8...v0.6.9) (2026-10-05)
+
+### Bug Fixes
+
+* **api:** log request tracing at debug per OBS-005 ([#195](https://github.com/Mnemorium/mnemorium/issues/195)) ([aecfd98](https://github.com/Mnemorium/mnemorium/commit/aecfd982ad80ebd37b7a36b15e65380630de4dde))
+
 ## [0.6.8](https://github.com/Mnemorium/mnemorium/compare/v0.6.7...v0.6.8) (2026-10-05)
 
 ### Bug Fixes
