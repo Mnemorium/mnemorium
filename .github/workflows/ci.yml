@@ -400,7 +400,11 @@ jobs:
           toolchain: "1.98.0"
       - uses: taiki-e/install-action@83ac0ad63c0167e6f06796fab0fce28db1bf3db0  # v2
         with:
-          tool: cargo-deny@0.20,cargo-about
+          # cargo-about is pinned to the version devenv/nixpkgs ships: the
+          # notices are byte-compared, so both environments must run the same
+          # generator. Bump this in lockstep with `pkgs.cargo-about` in
+          # devenv.nix.
+          tool: cargo-deny@0.20,cargo-about@0.9.0
       - name: Check dependencies
         run: cargo deny check
       - name: Check third-party notices are current
