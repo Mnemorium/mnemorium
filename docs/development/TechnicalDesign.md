@@ -1908,7 +1908,6 @@ entity image {
    * height_px: INTEGER <<NN, CC(height_px > 0)>>
    * orientation: VARCHAR(20) <<NN, CC(orientation IN ('LANDSCAPE', 'PORTRAIT', 'SQUARE'))>>
    * created_at: DATE <<NN>>
-   * color_id: TEXT <<FK, NN>>
 }
 
 entity color {
@@ -2010,8 +2009,6 @@ stream ||--o{ subtitle_stream
 audio_stream ||--|| audio
 language ||--o{ audio_stream
 language ||--o{ subtitle_stream
-
-image ||--|| color
 
 gallery ||--o{ gallery_item
 gallery ||--o{ gallery_video
@@ -2290,6 +2287,7 @@ Source: `Cargo.toml`.
 | [chrono](https://crates.io/crates/chrono)                         | Date and time library for Rust.                                                 | 0.4.45  | MIT OR Apache-2.0                  |
 | [config](https://crates.io/crates/config)                         | Layered configuration system for Rust applications.                             | 0.15.25 | MIT OR Apache-2.0                  |
 | [email_address](https://crates.io/crates/email_address)           | RFC-compliant `EmailAddress` newtype.                                           | 0.2.9   | MIT                                |
+| [image](https://crates.io/crates/image)                           | Image decoding and metadata: dimensions and EXIF orientation.                   | 0.25.10 | MIT OR Apache-2.0                  |
 | [infer](https://crates.io/crates/infer)                           | Infers a file type from its magic number signature.                             | 0.22.0  | MIT                                |
 | [jsonwebtoken](https://crates.io/crates/jsonwebtoken)             | Creates and decodes JWTs in a strongly typed way.                               | 11.0.0  | MIT                                |
 | [moka](https://crates.io/crates/moka)                             | Fast, concurrent cache library inspired by Java Caffeine.                       | 0.12.16 | (MIT OR Apache-2.0) AND Apache-2.0 |
