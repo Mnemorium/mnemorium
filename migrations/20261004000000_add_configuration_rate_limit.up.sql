@@ -1,6 +1,5 @@
 ALTER TABLE configuration
-ADD COLUMN is_behind_proxy INTEGER NOT NULL DEFAULT 0
-CONSTRAINT chk_configuration_is_behind_proxy CHECK (is_behind_proxy IN (0, 1));
+ADD COLUMN rate_limit_trusted_proxies TEXT NOT NULL DEFAULT '';
 
 ALTER TABLE configuration
 ADD COLUMN rate_limit_burst_size INTEGER NOT NULL DEFAULT 5

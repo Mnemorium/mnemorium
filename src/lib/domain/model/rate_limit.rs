@@ -1,9 +1,12 @@
-/// Default value for [`RateLimit::behind_proxy`].
-const DEFAULT_BEHIND_PROXY: bool = false;
+use std::net::IpAddr;
+use std::str::FromStr as _;
+
 /// Default value for [`RateLimit::burst_size`].
 const DEFAULT_BURST_SIZE: u32 = 5;
 /// Default value for [`RateLimit::period_seconds`].
 const DEFAULT_PERIOD_SECONDS: u64 = 12;
+/// Separator between addresses in the [`RateLimit::trusted_proxies`] list.
+const TRUSTED_PROXIES_SEPARATOR: char = ',';
 
 /// Error returned when initialising or updating a `RateLimit` value object.
 #[derive(Debug, thiserror::Error)]
@@ -15,6 +18,9 @@ pub enum RateLimitError {
     /// The replenishment period is zero.
     #[error("rate limit period must be greater than zero")]
     InvalidPeriodSeconds,
+    /// An entry of the trusted-proxy list is not a valid IP address.
+    #[error("rate limit trusted proxy must be a valid IP address")]
+    InvalidTrustedProxy,
 }
 
 /// Login rate-limiting settings.
@@ -26,13 +32,14 @@ pub enum RateLimitError {
 #[serde(try_from = "RateLimitConfig")]
 #[non_exhaustive]
 pub struct RateLimit {
-    /// Whether the server sits behind a reverse proxy that sets the client
-    /// address headers.
-    behind_proxy: bool,
     /// Number of requests a client address may spend before throttling.
     burst_size: u32,
     /// Seconds after which one element of the quota is replenished.
     period_seconds: u64,
+    /// Addresses of the reverse proxies whose client-address headers are
+    /// trusted. Empty means the forwarded headers are never trusted and the
+    /// client key is always the peer address.
+    trusted_proxies: Vec<IpAddr>,
 }
 
 /// Unchecked deserialization mirror of [`RateLimit`].
@@ -41,16 +48,15 @@ pub struct RateLimit {
 /// which validates it through [`RateLimit::try_new`].
 #[derive(serde::Deserialize)]
 struct RateLimitConfig {
-    /// Whether the server sits behind a reverse proxy that sets the client
-    /// address headers.
-    #[serde(default = "default_behind_proxy")]
-    behind_proxy: bool,
     /// Number of requests a client address may spend before throttling.
     #[serde(default = "default_burst_size")]
     burst_size: u32,
     /// Seconds after which one element of the quota is replenished.
     #[serde(default = "default_period_seconds")]
     period_seconds: u64,
+    /// Comma-separated addresses of the trusted reverse proxies.
+    #[serde(default)]
+    trusted_proxies: String,
 }
 
 impl TryFrom<RateLimitConfig> for RateLimit {
@@ -58,9 +64,9 @@ impl TryFrom<RateLimitConfig> for RateLimit {
 
     fn try_from(config: RateLimitConfig) -> Result<Self, Self::Error> {
         Self::try_new(
-            config.behind_proxy,
             config.burst_size,
             config.period_seconds,
+            parse_trusted_proxies(&config.trusted_proxies)?,
         )
     }
 }
@@ -68,21 +74,14 @@ impl TryFrom<RateLimitConfig> for RateLimit {
 impl Default for RateLimit {
     fn default() -> Self {
         Self {
-            behind_proxy: DEFAULT_BEHIND_PROXY,
             burst_size: DEFAULT_BURST_SIZE,
             period_seconds: DEFAULT_PERIOD_SECONDS,
+            trusted_proxies: Vec::new(),
         }
     }
 }
 
 impl RateLimit {
-    /// Return whether the server sits behind a reverse proxy that sets the
-    /// client address headers.
-    #[must_use]
-    pub fn behind_proxy(&self) -> bool {
-        self.behind_proxy
-    }
-
     /// Return the number of requests a client address may spend before
     /// throttling.
     #[must_use]
@@ -94,12 +93,6 @@ impl RateLimit {
     #[must_use]
     pub fn period_seconds(&self) -> u64 {
         self.period_seconds
-    }
-
-    /// Update whether the server sits behind a reverse proxy that sets the
-    /// client address headers.
-    pub fn set_behind_proxy(&mut self, behind_proxy: bool) {
-        self.behind_proxy = behind_proxy;
     }
 
     /// Update the number of requests a client address may spend before
@@ -124,6 +117,28 @@ impl RateLimit {
         Ok(())
     }
 
+    /// Update the addresses of the trusted reverse proxies.
+    pub fn set_trusted_proxies(&mut self, trusted_proxies: Vec<IpAddr>) {
+        self.trusted_proxies = trusted_proxies;
+    }
+
+    /// Return the addresses of the trusted reverse proxies.
+    #[must_use]
+    pub fn trusted_proxies(&self) -> &[IpAddr] {
+        &self.trusted_proxies
+    }
+
+    /// Return the trusted proxies rendered as the persisted comma-separated
+    /// list.
+    #[must_use]
+    pub fn trusted_proxies_value(&self) -> String {
+        self.trusted_proxies
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<String>>()
+            .join(&TRUSTED_PROXIES_SEPARATOR.to_string())
+    }
+
     /// Initialise a new `RateLimit`, validating `burst_size` and
     /// `period_seconds`.
     ///
@@ -133,16 +148,16 @@ impl RateLimit {
     /// and [`RateLimitError::InvalidPeriodSeconds`] when `period_seconds` is
     /// zero.
     pub fn try_new(
-        behind_proxy: bool,
         burst_size: u32,
         period_seconds: u64,
+        trusted_proxies: Vec<IpAddr>,
     ) -> Result<Self, RateLimitError> {
         let validated_burst_size = Self::validate_burst_size(burst_size)?;
         let validated_period_seconds = Self::validate_period_seconds(period_seconds)?;
         Ok(Self {
-            behind_proxy,
             burst_size: validated_burst_size,
             period_seconds: validated_period_seconds,
+            trusted_proxies,
         })
     }
 
@@ -172,9 +187,19 @@ impl RateLimit {
     }
 }
 
-/// Default value for [`RateLimit::behind_proxy`].
-fn default_behind_proxy() -> bool {
-    DEFAULT_BEHIND_PROXY
+/// Parse the comma-separated trusted-proxy list.
+///
+/// # Errors
+///
+/// Returns [`RateLimitError::InvalidTrustedProxy`] when a non-empty entry is
+/// not a valid IP address.
+pub fn parse_trusted_proxies(value: &str) -> Result<Vec<IpAddr>, RateLimitError> {
+    value
+        .split(TRUSTED_PROXIES_SEPARATOR)
+        .map(str::trim)
+        .filter(|entry| !entry.is_empty())
+        .map(|entry| IpAddr::from_str(entry).map_err(|_| RateLimitError::InvalidTrustedProxy))
+        .collect()
 }
 
 /// Default value for [`RateLimit::burst_size`].

@@ -1,29 +1,92 @@
 //! Per-client rate limiting for the login endpoint.
 //!
 // TODO(system-test): the limiter is covered by unit and handler tests only. A
-// system test that exercises both `behind_proxy` topologies and asserts the
-// `429` plus `Retry-After` is still owed (see #156).
-//
-// TODO(rate-limit): `behind_proxy` trusts the forwarded headers unconditionally.
-// Harden it to trust them only from configured proxy addresses before this is
-// exposed to an untrusted network.
+// system test that exercises both client-IP topologies and asserts the `429`
+// plus `Retry-After` is still owed (see #156).
 
+use std::net::IpAddr;
+use std::net::SocketAddr;
 use std::sync::Arc;
 
 use axum::Router;
+use axum::extract::ConnectInfo;
+use axum::http::HeaderMap;
+use axum::http::Request;
 use axum::response::IntoResponse as _;
 use axum::response::Response;
 use tower_governor::GovernorError;
 use tower_governor::GovernorLayer;
 use tower_governor::governor::GovernorConfigBuilder;
+use tower_governor::key_extractor::KeyExtractor;
 use tower_governor::key_extractor::PeerIpKeyExtractor;
-use tower_governor::key_extractor::SmartIpKeyExtractor;
 use tracing::error;
 use tracing::warn;
 
 use crate::domain::model::rate_limit::RateLimit;
 use crate::infrastructure::inbound::rest::api_error::ApiError;
 use crate::infrastructure::inbound::rest::app_state::AppState;
+
+/// Header carrying the RFC 7239 `Forwarded` value.
+const FORWARDED: &str = "forwarded";
+/// Header carrying the `X-Forwarded-For` chain.
+const X_FORWARDED_FOR: &str = "x-forwarded-for";
+/// Header carrying a single client address.
+const X_REAL_IP: &str = "x-real-ip";
+
+/// A [`KeyExtractor`] that trusts the client-address headers only from the
+/// configured proxy addresses.
+///
+/// The key is the immediate peer address unless the peer is a trusted proxy. In
+/// that case the client address is the rightmost address of the forwarded
+/// chain that is not itself a trusted proxy, so a client cannot mint a fresh
+/// bucket by rotating a client-supplied header value.
+#[derive(Debug, Clone)]
+pub struct TrustedProxyKeyExtractor {
+    /// Addresses whose forwarded headers are trusted.
+    trusted: Arc<[IpAddr]>,
+}
+
+impl TrustedProxyKeyExtractor {
+    /// Return the client address for `request`, or `None` when no peer address
+    /// is available.
+    fn client_address<T>(&self, request: &Request<T>) -> Option<IpAddr> {
+        let peer = request
+            .extensions()
+            .get::<ConnectInfo<SocketAddr>>()
+            .map(|connect_info| connect_info.0.ip())?;
+        if !self.trusted.contains(&peer) {
+            return Some(peer);
+        }
+        Some(self.forwarded_address(request.headers()).unwrap_or(peer))
+    }
+
+    /// Resolve the client address from the forwarded headers, walking the chain
+    /// right-to-left and skipping trusted hops.
+    fn forwarded_address(&self, headers: &HeaderMap) -> Option<IpAddr> {
+        let chain = header_chain(headers)?;
+        chain
+            .into_iter()
+            .rev()
+            .find(|address| !self.trusted.contains(address))
+    }
+
+    /// Create a new extractor trusting `trusted`.
+    #[must_use]
+    pub fn new(trusted: Vec<IpAddr>) -> Self {
+        Self {
+            trusted: trusted.into(),
+        }
+    }
+}
+
+impl KeyExtractor for TrustedProxyKeyExtractor {
+    type Key = IpAddr;
+
+    fn extract<T>(&self, req: &Request<T>) -> Result<Self::Key, GovernorError> {
+        self.client_address(req)
+            .ok_or(GovernorError::UnableToExtractKey)
+    }
+}
 
 /// Periodic upkeep for the login rate limiter.
 ///
@@ -40,6 +103,13 @@ pub struct RateLimitCleanup {
 
 impl RateLimitCleanup {
     /// Build a cleanup from a single prune closure.
+    #[cfg_attr(
+        not(test),
+        expect(
+            clippy::single_call_fn,
+            reason = "the single-limiter constructor keeps the prune list private"
+        )
+    )]
     fn from_prune(prune: Box<dyn Fn() + Send + Sync>) -> Self {
         Self {
             prunes: vec![prune],
@@ -65,12 +135,36 @@ impl RateLimitCleanup {
     }
 }
 
+/// Build `config` for `extractor`, apply it to `router` and return the cleanup.
+fn apply<K>(
+    router: Router<AppState>,
+    rate_limit: &RateLimit,
+    extractor: K,
+) -> (Router<AppState>, RateLimitCleanup)
+where
+    K: KeyExtractor + Send + Sync + 'static,
+    K::Key: Send + Sync,
+{
+    let mut builder = GovernorConfigBuilder::default().key_extractor(extractor);
+    builder
+        .per_second(rate_limit.period_seconds())
+        .burst_size(rate_limit.burst_size());
+    let Some(config) = builder.finish() else {
+        error!("the login rate limit configuration is invalid; rate limiting is disabled");
+        return (router, RateLimitCleanup::new());
+    };
+    let limiter = Arc::clone(config.limiter());
+    let cleanup = RateLimitCleanup::from_prune(Box::new(move || limiter.retain_recent()));
+    let layer = GovernorLayer::new(config).error_handler(rate_limit_error);
+    (router.route_layer(layer), cleanup)
+}
+
 /// Apply the login rate limiter to `router`, returning the cleanup it needs.
 ///
 /// The limiter is built when the router is built, so a change to the
 /// rate-limit settings is a startup-only setting (`STY-RUST-082`). The client
-/// key is the peer address by default; when the server sits behind a reverse
-/// proxy (`behind_proxy`), the key is read from the forwarded headers.
+/// key is always derived from the immediate peer address; the forwarded headers
+/// are consulted only when the peer is one of `trusted_proxies`.
 ///
 /// A validated [`RateLimit`] cannot make the governor configuration invalid;
 /// should it ever be, the limiter is skipped so the endpoint stays reachable.
@@ -78,39 +172,90 @@ pub fn apply_login_rate_limit(
     router: Router<AppState>,
     rate_limit: &RateLimit,
 ) -> (Router<AppState>, RateLimitCleanup) {
-    if rate_limit.behind_proxy() {
-        let mut builder = GovernorConfigBuilder::default().key_extractor(SmartIpKeyExtractor);
-        builder
-            .per_second(rate_limit.period_seconds())
-            .burst_size(rate_limit.burst_size());
-        let Some(config) = builder.finish() else {
-            error!("the login rate limit configuration is invalid; rate limiting is disabled");
-            return (router, RateLimitCleanup::new());
-        };
-        let limiter = Arc::clone(config.limiter());
-        let cleanup = RateLimitCleanup::from_prune(Box::new(move || limiter.retain_recent()));
-        let layer = GovernorLayer::new(config).error_handler(rate_limit_error);
-        (router.route_layer(layer), cleanup)
+    if rate_limit.trusted_proxies().is_empty() {
+        apply(router, rate_limit, PeerIpKeyExtractor)
     } else {
-        let mut builder = GovernorConfigBuilder::default().key_extractor(PeerIpKeyExtractor);
-        builder
-            .per_second(rate_limit.period_seconds())
-            .burst_size(rate_limit.burst_size());
-        let Some(config) = builder.finish() else {
-            error!("the login rate limit configuration is invalid; rate limiting is disabled");
-            return (router, RateLimitCleanup::new());
-        };
-        let limiter = Arc::clone(config.limiter());
-        let cleanup = RateLimitCleanup::from_prune(Box::new(move || limiter.retain_recent()));
-        let layer = GovernorLayer::new(config).error_handler(rate_limit_error);
-        (router.route_layer(layer), cleanup)
+        apply(
+            router,
+            rate_limit,
+            TrustedProxyKeyExtractor::new(rate_limit.trusted_proxies().to_vec()),
+        )
     }
+}
+
+/// Return the forwarded client-address chain, preferring `X-Forwarded-For`.
+#[expect(
+    clippy::single_call_fn,
+    reason = "the header resolution is named for readability"
+)]
+fn header_chain(headers: &HeaderMap) -> Option<Vec<IpAddr>> {
+    if let Some(chain) = headers
+        .get(X_FORWARDED_FOR)
+        .and_then(|value| value.to_str().ok())
+        .and_then(parse_address_list)
+    {
+        return Some(chain);
+    }
+    if let Some(address) = headers
+        .get(X_REAL_IP)
+        .and_then(|value| value.to_str().ok())
+        .and_then(parse_address)
+    {
+        return Some(vec![address]);
+    }
+    headers
+        .get(FORWARDED)
+        .and_then(|value| value.to_str().ok())
+        .and_then(parse_forwarded)
+}
+
+/// Parse a single address, trimming surrounding whitespace and brackets.
+fn parse_address(value: &str) -> Option<IpAddr> {
+    value
+        .trim()
+        .trim_start_matches('[')
+        .trim_end_matches(']')
+        .parse()
+        .ok()
+}
+
+/// Parse a comma-separated list of addresses, discarding unparseable entries.
+#[expect(
+    clippy::single_call_fn,
+    reason = "the header parsing helpers are named for readability"
+)]
+fn parse_address_list(value: &str) -> Option<Vec<IpAddr>> {
+    let addresses: Vec<IpAddr> = value.split(',').filter_map(parse_address).collect();
+    (!addresses.is_empty()).then_some(addresses)
+}
+
+/// Parse the `for=` element of an RFC 7239 `Forwarded` header.
+#[expect(
+    clippy::single_call_fn,
+    reason = "the RFC 7239 parser is named for readability"
+)]
+fn parse_forwarded(value: &str) -> Option<Vec<IpAddr>> {
+    let addresses: Vec<IpAddr> = value
+        .split(',')
+        .flat_map(|element| element.split(';'))
+        .filter_map(|parameter| parameter.split_once('='))
+        .filter(|&(name, _value)| name.trim().eq_ignore_ascii_case("for"))
+        .filter_map(|(_name, address)| parse_address(address))
+        .collect();
+    (!addresses.is_empty()).then_some(addresses)
 }
 
 /// Map a governor rejection onto the API error envelope.
 ///
 /// A rejected attempt is a reviewable security event (`OBS-005`, `OBS-006`).
 /// The client address is personal data and is never logged (`OBS-004`).
+#[cfg_attr(
+    not(test),
+    expect(
+        clippy::single_call_fn,
+        reason = "the error mapping is named for readability"
+    )
+)]
 fn rate_limit_error(error: GovernorError) -> Response {
     match error {
         GovernorError::TooManyRequests { headers, .. } => {
@@ -137,19 +282,143 @@ fn rate_limit_error(error: GovernorError) -> Response {
 
 #[cfg(test)]
 mod tests {
+    use std::error::Error;
+    use std::net::IpAddr;
+    use std::net::SocketAddr;
     use std::sync::Arc;
     use std::sync::atomic::AtomicUsize;
     use std::sync::atomic::Ordering;
 
+    use axum::extract::ConnectInfo;
     use axum::http::HeaderMap;
     use axum::http::HeaderValue;
+    use axum::http::Request;
     use axum::http::StatusCode;
     use tower_governor::GovernorError;
+    use tower_governor::key_extractor::KeyExtractor as _;
 
     use crate::test_helpers::error_message_of;
 
     use super::RateLimitCleanup;
+    use super::TrustedProxyKeyExtractor;
     use super::rate_limit_error;
+
+    /// Build a request whose peer is `peer` and that carries `headers`.
+    fn request(peer: &str, headers: &[(&str, &str)]) -> Result<Request<()>, Box<dyn Error>> {
+        let mut builder = Request::builder().extension(ConnectInfo(peer.parse::<SocketAddr>()?));
+        for &(name, value) in headers {
+            builder = builder.header(name, value);
+        }
+        Ok(builder.body(())?)
+    }
+
+    #[test]
+    fn untrusted_peer_ignores_the_forwarded_header() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let extractor = TrustedProxyKeyExtractor::new(vec!["10.0.0.1".parse()?]);
+        let request = request(
+            "203.0.113.9:1234",
+            &[("x-forwarded-for", "1.2.3.4, 5.6.7.8")],
+        )?;
+
+        // Act
+        let key = extractor.extract(&request)?;
+
+        // Assert: the peer wins, so a spoofed header cannot mint a bucket.
+        assert_eq!(key, "203.0.113.9".parse::<IpAddr>()?);
+        Ok(())
+    }
+
+    #[test]
+    fn trusted_peer_uses_the_rightmost_untrusted_address() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let extractor = TrustedProxyKeyExtractor::new(vec!["10.0.0.1".parse()?]);
+        let request = request("10.0.0.1:1234", &[("x-forwarded-for", "1.2.3.4, 10.0.0.2")])?;
+
+        // Act
+        let key = extractor.extract(&request)?;
+
+        // Assert: the rightmost non-trusted hop is the client.
+        assert_eq!(key, "10.0.0.2".parse::<IpAddr>()?);
+        Ok(())
+    }
+
+    #[test]
+    fn trusted_peer_skips_a_chain_of_trusted_hops() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let extractor =
+            TrustedProxyKeyExtractor::new(vec!["10.0.0.1".parse()?, "10.0.0.2".parse()?]);
+        let request = request(
+            "10.0.0.1:1234",
+            &[("x-forwarded-for", "203.0.113.7, 10.0.0.2")],
+        )?;
+
+        // Act
+        let key = extractor.extract(&request)?;
+
+        // Assert
+        assert_eq!(key, "203.0.113.7".parse::<IpAddr>()?);
+        Ok(())
+    }
+
+    #[test]
+    fn trusted_peer_reads_x_real_ip() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let extractor = TrustedProxyKeyExtractor::new(vec!["10.0.0.1".parse()?]);
+        let request = request("10.0.0.1:1234", &[("x-real-ip", "203.0.113.5")])?;
+
+        // Act
+        let key = extractor.extract(&request)?;
+
+        // Assert
+        assert_eq!(key, "203.0.113.5".parse::<IpAddr>()?);
+        Ok(())
+    }
+
+    #[test]
+    fn trusted_peer_reads_the_forwarded_header() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let extractor = TrustedProxyKeyExtractor::new(vec!["10.0.0.1".parse()?]);
+        let request = request(
+            "10.0.0.1:1234",
+            &[("forwarded", "for=203.0.113.8;proto=https")],
+        )?;
+
+        // Act
+        let key = extractor.extract(&request)?;
+
+        // Assert
+        assert_eq!(key, "203.0.113.8".parse::<IpAddr>()?);
+        Ok(())
+    }
+
+    #[test]
+    fn trusted_peer_without_a_header_falls_back_to_the_peer() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let extractor = TrustedProxyKeyExtractor::new(vec!["10.0.0.1".parse()?]);
+        let request = request("10.0.0.1:1234", &[])?;
+
+        // Act
+        let key = extractor.extract(&request)?;
+
+        // Assert
+        assert_eq!(key, "10.0.0.1".parse::<IpAddr>()?);
+        Ok(())
+    }
+
+    #[test]
+    fn missing_peer_address_is_unable_to_extract() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let extractor = TrustedProxyKeyExtractor::new(vec!["10.0.0.1".parse()?]);
+        let request = Request::builder().body(())?;
+
+        // Act
+        let result = extractor.extract(&request);
+
+        // Assert
+        assert!(matches!(result, Err(GovernorError::UnableToExtractKey)));
+        Ok(())
+    }
 
     #[test]
     fn prune_runs_every_registered_closure() {

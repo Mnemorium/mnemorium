@@ -21,7 +21,6 @@ pub struct Configuration {
     pub asset_upload_max_file_size_bytes: i64,
     #[sqlx(primary_key)]
     pub configuration_id: NumericID,
-    pub is_behind_proxy: bool,
     pub is_log_ansi: bool,
     pub is_root_admin_password_logged: bool,
     pub jwt_secret: String,
@@ -32,6 +31,7 @@ pub struct Configuration {
     pub pepper: String,
     pub rate_limit_burst_size: i64,
     pub rate_limit_period_seconds: i64,
+    pub rate_limit_trusted_proxies: String,
     pub sqlite3_max_connections: i64,
     pub sqlite3_path: String,
 }

@@ -915,7 +915,7 @@ are the **startup-only settings**; this table is their registry.
 | `asset.upload.chunk_size_bytes`       | The axum body limit fixed when the router is built (`src/lib/infrastructure/inbound/rest/handler/asset.rs`); the upload use cases read the live value. | None (`TODO(hot-reload)` in the same handler).                         |
 | `asset.storage.root`                  | The `FileSystemStorage` adapter built per use from the root captured in `src/bin/server.rs`.                                                           | None.                                                                  |
 | `logging.level`                       | `logging::setup` (`src/lib/infrastructure/logging.rs`) when the `tracing` subscriber is installed.                                                     | None.                                                                  |
-| `security.rate_limit.behind_proxy`    | The login limiter built when the router is built (`src/lib/infrastructure/inbound/rest/handler/identity.rs`).                                          | None.                                                                  |
+| `security.rate_limit.trusted_proxies` | The login limiter built when the router is built (`src/lib/infrastructure/inbound/rest/handler/identity.rs`).                                          | None.                                                                  |
 | `security.rate_limit.burst_size`      | The login limiter built when the router is built (`src/lib/infrastructure/inbound/rest/handler/identity.rs`).                                          | None.                                                                  |
 | `security.rate_limit.period_seconds`  | The login limiter built when the router is built (`src/lib/infrastructure/inbound/rest/handler/identity.rs`).                                          | None.                                                                  |
 
@@ -1951,7 +1951,7 @@ entity configuration {
     * asset_upload_chunk_size_bytes: INTEGER <<NN, DF(5242880), CC(asset_upload_chunk_size_bytes > 0)>>
     * asset_upload_expiry_seconds: INTEGER <<NN, DF(86400), CC(asset_upload_expiry_seconds > 0)>>
     * asset_upload_max_file_size_bytes: INTEGER <<NN, DF(107374182400), CC(asset_upload_max_file_size_bytes > 0)>>
-    * is_behind_proxy: INTEGER <<NN, DF(0), CC(is_behind_proxy IN (0, 1))>>
+    * rate_limit_trusted_proxies: TEXT <<NN, DF('')>>
     * rate_limit_burst_size: INTEGER <<NN, DF(5), CC(rate_limit_burst_size > 0)>>
     * rate_limit_period_seconds: INTEGER <<NN, DF(12), CC(rate_limit_period_seconds > 0)>>
 }
