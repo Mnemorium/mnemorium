@@ -28,7 +28,7 @@
         [
             "@semantic-release/git",
             {
-                "assets": ["CHANGELOG.md", "docs/development/api/openapi.json", "Cargo.toml", "Cargo.lock"]
+                "assets": ["CHANGELOG.md", "docs/openapi.json", "Cargo.toml", "Cargo.lock"]
             }
         ],
         [

@@ -75,7 +75,7 @@ so never renumber, reuse, or invent one.
 
 Read alongside the rulebook: `docs/development/UseCases.md` for the catalog,
 `docs/development/Glossary.md` for the domain language, and
-`docs/development/api/openapi.json` for the current generated specification.
+`docs/openapi.json` for the current generated specification.
 
 # Where handlers are declared
 
@@ -92,7 +92,7 @@ one:
 4. **OpenAPI aggregation** — `rest.rs::ApiDoc`: the `__path_<handler>` in
    `paths(...)`, the payload schemas in `components(schemas(...))`, and the
    context's `tags(...)`.
-5. **Generated spec** — `docs/development/api/openapi.json`, regenerated with
+5. **Generated spec** — `docs/openapi.json`, regenerated with
    `cargo run --bin openapi_gen` (never hand-edited).
 
 The aggregation also carries document-scoped members that do not change when an

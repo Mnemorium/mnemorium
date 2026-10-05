@@ -1,3 +1,9 @@
+## [0.6.6](https://github.com/Mnemorium/mnemorium/compare/v0.6.5...v0.6.6) (2026-10-04)
+
+### Bug Fixes
+
+* **domain:** declare asset upload port traits send and sync ([#155](https://github.com/Mnemorium/mnemorium/issues/155)) ([9d993f1](https://github.com/Mnemorium/mnemorium/commit/9d993f195a5058153e0fd6c81cb1365cb78e93f1))
+
 ## [0.6.5](https://github.com/Mnemorium/mnemorium/compare/v0.6.4...v0.6.5) (2026-10-04)
 
 ### Bug Fixes

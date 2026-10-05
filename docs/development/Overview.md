@@ -23,6 +23,7 @@
             │   └── rest
             │       ├── api_error.rs
             │       ├── app_state.rs
+            │       ├── hal.rs
             │       ├── handler.rs
             │       ├── handler
             │       │   ├── asset
@@ -50,7 +51,7 @@
 | `docs`                                                |                                                                                                              |
 | `src`                                                 |                                                                                                              |
 | `src/bin`                                             |                                                                                                              |
-| `src/bin/openapi_gen.rs`                              | Generate the OpenAPI specification to `docs/development/api/openapi.json`                                    |
+| `src/bin/openapi_gen.rs`                              | Generate the OpenAPI specification to `docs/openapi.json`                                                    |
 | `src/bin/server.rs`                                   | Server entrypoint and graceful shutdown                                                                      |
 | `src/lib`                                             |                                                                                                              |
 | `src/lib/application`                                 | App Layer                                                                                                    |
@@ -65,6 +66,7 @@
 | `src/lib/infrastructure/inbound/rest`                 | HTTP adapter layer                                                                                           |
 | `src/lib/infrastructure/inbound/rest/api_error.rs`    | API Error declaration                                                                                        |
 | `src/lib/infrastructure/inbound/rest/app_state.rs`    | Application state shared by the HTTP layer: live configuration and per-context use-case factories            |
+| `src/lib/infrastructure/inbound/rest/hal.rs`          | Shared HAL types and helpers: link types, the `application/hal+json` media type, and the `hal_json` wrapper  |
 | `src/lib/infrastructure/inbound/rest.rs`              | REST module root: declares the submodules and aggregates the OpenAPI document (`ApiDoc`)                     |
 | `src/lib/infrastructure/inbound/rest/handler.rs`      | Declares the route table (`setup_routes`) and installs the tracing middleware                                |
 | `src/lib/infrastructure/inbound/rest/handler`         | HTTP endpoint handler                                                                                        |
@@ -407,9 +409,9 @@ merge by [semantic-release](https://semantic-release.org/) from the commits sinc
 
 When a release is needed, the release workflow (`.github/workflows/cd.yml`) runs semantic-release, which:
 
-1. Bumps the version in `Cargo.toml`, `Cargo.lock`, and `docs/development/api/openapi.json`.
+1. Bumps the version in `Cargo.toml`, `Cargo.lock`, and `docs/openapi.json`.
 2. Builds the Docker image at the new version.
-3. Commits `CHANGELOG.md`, `Cargo.lock`, `docs/development/api/openapi.json`, and `Cargo.toml` as `github-actions[bot]`.
+3. Commits `CHANGELOG.md`, `Cargo.lock`, `docs/openapi.json`, and `Cargo.toml` as `github-actions[bot]`.
 4. Tags the commit (`v<version>`) and pushes it.
 5. Publishes the GitHub release (with generated release notes) and pushes the Docker image.
 
@@ -446,7 +448,7 @@ start
 if (Is a release needed?) then (yes)
   :Compute the next version\n(MAJOR, MINOR or PATCH);
   :Update CHANGELOG.md;
-  :Bump info.version in\ndocs/development/api/openapi.json;
+  :Bump info.version in\ndocs/openapi.json;
   :Bump the version in Cargo.toml and Cargo.lock\nand build the Docker image;
   :Commit the updated files;
   :Create the GitHub release with notes\nand tag the new version;

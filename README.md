@@ -175,9 +175,8 @@ default password stops being revealed once it has been changed. See
 
 TODO: add a realistic end-to-end usage example.
 
-The API is served under `/api/v1`. The OpenAPI specification is generated to
-[`docs/development/api/openapi.json`](docs/development/api/openapi.json), and the running server can expose an
-interactive Swagger UI.
+The API is served under `/api/v1`. The OpenAPI specification is generated to [`docs/openapi.json`](docs/openapi.json),
+and the running server can expose an interactive Swagger UI.
 
 <!-- TODO: document the Swagger UI path once it is confirmed. -->
 
@@ -195,7 +194,7 @@ Enter the environment first: `devenv shell`.
 | Coverage  | `cargo llvm-cov --lib` (gate ≥ 80% lines/regions/functions)                              |
 | E2E       | `pytest test/e2e` (needs the Docker server named `mnemorium-e2e`)                        |
 | Lint      | `cargo clippy --all-targets --all-features -- -D warnings`; `cargo fmt --all -- --check` |
-| OpenAPI   | `cargo run --bin openapi_gen` (writes `docs/development/api/openapi.json`)               |
+| OpenAPI   | `cargo run --bin openapi_gen` (writes `docs/openapi.json`)                               |
 | Full gate | `devenv test` (all pre-commit hooks)                                                     |
 
 The module and layer map lives in [Overview](docs/development/Overview.md). That document also defines the branch, PR

@@ -75,7 +75,7 @@ against the file paths the diff adds or changes.
 | `test-specialist`     | always (tests)                                                                                   |
 | `security-specialist` | always (security)                                                                                |
 | `database-engineer`   | `migrations/**`, `**/*.sql`, `src/lib/infrastructure/outbound/sqlx/**`                           |
-| `api-architect`       | `src/lib/infrastructure/inbound/rest/**`, `docs/development/api/**`                              |
+| `api-architect`       | `src/lib/infrastructure/inbound/rest/**`, `docs/openapi.json`                              |
 | `system-architect`    | `src/**`                                                                                         |
 | `logging-specialist`  | a changed `**/*.rs` file that adds or changes a `tracing` macro, `src/lib/infrastructure/logging.rs`, or the `OBS-*` rules in `docs/development/TechnicalDesign.md` |
 | `technical-writer`    | `docs/**`, `**/*.md`, `mkdocs.yml`, `.opencode/**`, `AGENTS.md`                                  |

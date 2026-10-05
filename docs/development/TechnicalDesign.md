@@ -319,13 +319,13 @@ envelope builder: it reads the attached message and serves the one `ErrorBody` f
 
 Every error response carries the same body, a HAL representation served as `application/hal+json`: the human-readable
 `error` message at the root (`API-033`) and a `_links.self` whose `href` is the request URI the client called
-(`API-032`).
+(`API-039`).
 
 ```json
 {
   "_links": {
     "self": {
-      "href": "/api/v1/users/42"
+      "href": "/api/v1/user/42"
     }
   },
   "error": "An error message"
@@ -725,7 +725,7 @@ match result {
 The base trait and the factory are declared in `domain/port/unit_of_work.rs`:
 
 ```rust
-pub trait UnitOfWork: Send {
+pub trait UnitOfWork: Send + Sync {
     fn commit(self) -> impl Future<Output = Result<(), UnitOfWorkError>> + Send;
     fn rollback(self) -> impl Future<Output = Result<(), UnitOfWorkError>> + Send;
 }
@@ -1021,6 +1021,7 @@ are documented inline, at the source, with `#[utoipa::path(...)]` macros.
 | `API-039` | HAL payload               | Error responses are HAL representations: the `error` message at the root plus `_links.self` carrying the request URI, served as `application/hal+json`. The same envelope is returned for every error the server emits, including routing fallbacks and extractor rejections.                                                                                                                                        | [§ 2.5](#25-error-public-payload)           |
 | `API-040` | HAL payload               | The `error` message is a stable, server-authored, client-safe string. It carries no request payload content, no extractor or framework wording, and no internal detail such as field paths, expected types, parse positions or type names. Rejection detail is logged, never returned.                                                                                                                               | [§ 2.5](#25-error-public-payload)           |
 | `API-041` | Responses                 | Return the status code that reflects _why_ the request failed, independently of the layer that caught it. `400 Bad Request` when the server cannot parse the request; `422 Unprocessable Content` when it parses but its shape or values fail a schema, framing or business rule; `401 Unauthorized` for any authentication outcome; `415 Unsupported Media Type` for an unsupported request or declared media type. | [§ Response codes](#response-codes)         |
+| `API-042` | HAL payload               | `_links.self` carries the canonical relative URI of the resource the representation is about: when a representation reports the outcome of an action, `self` is the addressed resource and a resource the payload reports or references is exposed as a named link (`API-034`), never as `self`; error responses follow `API-039`.                                                                                   | [§ HAL payload](#hal-payload-guidelines)    |
 
 ---
 
@@ -1390,7 +1391,7 @@ as new codes are introduced; completeness is not required.
 | `401` | Unauthorized           | Authentication is required, or the credentials are invalid.                          | `POST /api/v1/identity/login` with a wrong password; a missing or expired bearer token.                     |
 | `403` | Forbidden              | The caller is authenticated but not permitted to perform the request.                | A non-admin `PATCH /api/v1/user/{id}`; a non-root admin granting the `ADMIN` role.                          |
 | `404` | Not Found              | The addressed resource does not exist.                                               | An unknown `{id}` in `GET /api/v1/user/{id}`; an unknown upload session.                                    |
-| `405` | Method Not Allowed     | The method is not supported on the route; the response carries `Allow`.              | `DELETE /api/v1/health` (axum routing fallback; `hal_errors` keeps the `Allow` header).                     |
+| `405` | Method Not Allowed     | The method is not supported on the route; the response carries `Allow`.              | `DELETE /health` (only `GET` is routed; `hal_errors` keeps the `Allow` header).                             |
 | `409` | Conflict               | The request conflicts with the current state of the resource.                        | Registering a username that is already taken; a chunk on a finished upload.                                 |
 | `410` | Gone                   | The resource existed but is no longer available.                                     | `PUT .../chunk/{n}` against an expired upload session.                                                      |
 | `413` | Content Too Large      | The request body (or a declared size) exceeds the server limit.                      | A begin-upload declaring a file size above the maximum; a body over `DefaultBodyLimit`.                     |
@@ -1419,40 +1420,42 @@ schemas:
 struct ApiDoc;
 ```
 
-`src/bin/openapi_gen.rs` consumes that derive and renders the specification to `docs/development/api/openapi.json` — the
-same folder this documentation lives in — so the spec always stays in sync with the source:
+`src/bin/openapi_gen.rs` consumes that derive and renders the specification to `docs/openapi.json`, so the spec always
+stays in sync with the source:
 
 ```rust
 use std::fs;
+use std::path::Path;
 
-fn main() {
-    let mut spec = serde_json::to_string_pretty(&ApiDoc::openapi()).expect("serialize spec");
-    // End the file with a single newline so the committed spec matches what
-    // the release tooling and the CI currency check produce.
+use anyhow::Result;
+
+use mnemorium::infrastructure::inbound::rest::ApiDoc;
+use utoipa::OpenApi as _;
+
+fn main() -> Result<()> {
+    let value = serde_json::to_value(ApiDoc::openapi())?;
+    let mut spec = serde_json::to_string_pretty(&value)?;
+    // [...]
     spec.push('\n');
 
-    fs::create_dir_all("docs/development/api").expect("create docs/development/api");
-    fs::write("docs/development/api/openapi.json", spec)
-        .expect("write openapi.json");
+    let output_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("docs");
+    let output_path = output_dir.join("openapi.json");
+
+    fs::create_dir_all(&output_dir)?;
+    fs::write(&output_path, spec)?;
+    // [...]
+
+    Ok(())
 }
 ```
 
-Run it with `cargo run --bin openapi_gen`. The resulting `openapi.json` is committed alongside this document.
+Run it with `cargo run --bin openapi_gen`. The resulting `docs/openapi.json` is committed.
 
 The running server can also expose the specification and an interactive Swagger UI through `utoipa-swagger-ui`, so the
 API surface is browsable while the service is up.
 
-`mkdocs.yml` uses the `neoteroi.mkdocsoad` plugin. Once `openapi_gen` has emitted `docs/development/api/openapi.json`,
-embed the live specification in any page with the `:::oas` directive:
-
-````markdown
-```yaml
-:::oas spec.openapi
-```
-````
-
-The plugin loads the OAS from the generated JSON, so shipping the documentation and the spec together in
-`docs/development/api/` keeps them version-locked.
+`openapi.json` sits at the documentation root, so `mkdocs build` copies it into the published site as the static asset
+`/openapi.json`; clients fetch the specification directly.
 
 ---
 
@@ -1465,6 +1468,14 @@ A **resource representation** is a success response that carries an addressable 
 collection. Every resource representation includes `_links.self`, a relative URI reference to the resource (`API-032`).
 Token-issuing responses, liveness probes and `204 No Content` responses are not resource representations and keep their
 plain `application/json` representation.
+
+A representation's `_links.self` names the resource it is about, by that resource's canonical relative URI (`API-042`).
+When a representation reports the outcome of an action on a resource, `self` is the addressed resource, and a resource
+the payload reports or references is exposed as a named link (`API-034`) — never promoted to `self`. The canonical URI
+is used even when the request used an alias: `GET /api/v1/user/me` returns `self` = `/api/v1/user/{id}`, and
+`POST /api/v1/asset/upload/{upload_id}/complete` reports the completion of the session it addressed, so its `self` is
+`/api/v1/asset/upload/{upload_id}` while the produced file is carried as `file_id` and linked by name once a file
+endpoint exists. Error envelopes are the exception: their `self` is the request URI (`API-039`).
 
 ---
 
@@ -2340,7 +2351,6 @@ Source: `requirements.txt`.
 | [mkdocs](https://pypi.org/project/mkdocs/)                   | Static site generator for the documentation site. | 1.6.0   | BSD-2-Clause |
 | [mkdocs-material](https://pypi.org/project/mkdocs-material/) | Material Design theme for MkDocs.                 | 9.7.7   | MIT          |
 | [mkdocs_puml](https://pypi.org/project/mkdocs-puml/)         | Renders PlantUML diagrams from fenced blocks.     | 2.3.0   | MIT          |
-| [neoteroi-mkdocs](https://pypi.org/project/neoteroi-mkdocs/) | MkDocs plugins, including OpenAPI rendering.      | 1.2.0   | MIT          |
 | [pytest](https://pypi.org/project/pytest/)                   | Python testing framework used by the E2E suite.   | 9.1.1   | MIT          |
 | [requests](https://pypi.org/project/requests/)               | HTTP library for Python.                          | 2.34.2  | Apache-2.0   |
 | [ruff](https://pypi.org/project/ruff/)                       | Fast Python linter and formatter.                 | 0.16.5  | MIT          |
@@ -2417,59 +2427,59 @@ The set is **closed and exhaustive** over the tracked paths: every path is owned
 longest-prefix match, and every scope owns at least one path. Adding or removing a scope edits this table and the
 `scopes:` block of `.github/workflows/ci.yml` in the same change.
 
-| Group   | Scope            | Path                                      | Description                    |
-| ------- | ---------------- | ----------------------------------------- | ------------------------------ |
-| Code    | `domain`         | `src/lib/domain.rs`                       | Domain module root             |
-| Code    | `domain`         | `src/lib/domain/**`                       | Domain layer                   |
-| Code    | `application`    | `src/lib/application.rs`                  | Application module root        |
-| Code    | `application`    | `src/lib/application/**`                  | Application layer              |
-| Code    | `application`    | `src/lib/lib.rs`                          | Crate root and test helpers    |
-| Code    | `infrastructure` | `src/lib/infrastructure.rs`               | Infrastructure module root     |
-| Code    | `infrastructure` | `src/lib/infrastructure/**`               | Infrastructure layer           |
-| Code    | `api`            | `src/lib/infrastructure/inbound/rest.rs`  | REST module root               |
-| Code    | `api`            | `src/lib/infrastructure/inbound/rest/**`  | REST adapter                   |
-| Code    | `api`            | `docs/development/api/**`                 | OpenAPI spec and page          |
-| Code    | `persistence`    | `migrations/**`                           | Migrations                     |
-| Code    | `persistence`    | `src/lib/infrastructure/outbound/sqlx.rs` | SQLx module root               |
-| Code    | `persistence`    | `src/lib/infrastructure/outbound/sqlx/**` | SQLx SQLite layer              |
-| Code    | `server`         | `src/bin/**`                              | Server binaries                |
-| Tests   | `test-e2e`       | `test/**`                                 | Tests                          |
-| Docs    | `user`           | `README.md`                               | Repository README              |
-| Docs    | `user`           | `docs/index.md`                           | Documentation home page        |
-| Docs    | `user`           | `docs/assets/**`                          | Documentation theme assets     |
-| Docs    | `user`           | `mkdocs.yml`                              | MkDocs site configuration      |
-| Docs    | `development`    | `docs/development/**`                     | Development documentation      |
-| Repo    | `repo`           | `LICENSE`                                 | License                        |
-| Repo    | `repo`           | `THIRD_PARTY_NOTICES.txt`                 | Third-party notices            |
-| Tooling | `config`         | `Cargo.toml`                              | Rust manifest                  |
-| Tooling | `config`         | `Cargo.lock`                              | Rust lockfile                  |
-| Tooling | `config`         | `.betterleaks.toml`                       | Secret-scan configuration      |
-| Tooling | `config`         | `.gitignore`                              | Git ignore rules               |
-| Tooling | `config`         | `.ls-lint.yml`                            | Naming linter configuration    |
-| Tooling | `config`         | `.markdownlint-cli2.jsonc`                | Markdown lint configuration    |
-| Tooling | `config`         | `.prettierrc`                             | Prettier configuration         |
-| Tooling | `config`         | `.prettierignore`                         | Prettier ignore rules          |
-| Tooling | `config`         | `.releaserc.json`                         | semantic-release configuration |
-| Tooling | `config`         | `.taplo.toml`                             | TOML linter configuration      |
-| Tooling | `config`         | `.yamllint`                               | YAML linter configuration      |
-| Tooling | `config`         | `clippy.toml`                             | Clippy configuration           |
-| Tooling | `config`         | `deny.toml`                               | cargo-deny configuration       |
-| Tooling | `config`         | `pytest.ini`                              | pytest configuration           |
-| Tooling | `config`         | `requirements.txt`                        | Python dependencies            |
-| Tooling | `config`         | `ruff.toml`                               | Ruff configuration             |
-| Tooling | `config`         | `secretspec.toml`                         | SecretSpec configuration       |
-| Tooling | `agent`          | `.opencode/**`                            | opencode configuration         |
-| Tooling | `agent`          | `.agents/**`                              | Agent skills                   |
-| Tooling | `agent`          | `AGENTS.md`                               | Repository router              |
-| Tooling | `agent`          | `opencode.json`                           | opencode project configuration |
-| Tooling | `agent`          | `skills-lock.json`                        | Skill lockfile                 |
-| Tooling | `github`         | `.github/**`                              | GitHub workflows and assets    |
-| Tooling | `devenv`         | `devenv.nix`                              | devenv environment             |
-| Tooling | `devenv`         | `devenv.yaml`                             | devenv inputs                  |
-| Tooling | `devenv`         | `devenv.lock`                             | devenv lockfile                |
-| Tooling | `devops`         | `Dockerfile`                              | Container build                |
-| Tooling | `devops`         | `.dockerignore`                           | Build-context ignore rules     |
-| Tooling | `devops`         | `script/**`                               | Repository scripts             |
+| Group   | Scope            | Path                                      | Description                     |
+| ------- | ---------------- | ----------------------------------------- | ------------------------------- |
+| Code    | `domain`         | `src/lib/domain.rs`                       | Domain module root              |
+| Code    | `domain`         | `src/lib/domain/**`                       | Domain layer                    |
+| Code    | `application`    | `src/lib/application.rs`                  | Application module root         |
+| Code    | `application`    | `src/lib/application/**`                  | Application layer               |
+| Code    | `application`    | `src/lib/lib.rs`                          | Crate root and test helpers     |
+| Code    | `infrastructure` | `src/lib/infrastructure.rs`               | Infrastructure module root      |
+| Code    | `infrastructure` | `src/lib/infrastructure/**`               | Infrastructure layer            |
+| Code    | `api`            | `src/lib/infrastructure/inbound/rest.rs`  | REST module root                |
+| Code    | `api`            | `src/lib/infrastructure/inbound/rest/**`  | REST adapter                    |
+| Code    | `persistence`    | `migrations/**`                           | Migrations                      |
+| Code    | `persistence`    | `src/lib/infrastructure/outbound/sqlx.rs` | SQLx module root                |
+| Code    | `persistence`    | `src/lib/infrastructure/outbound/sqlx/**` | SQLx SQLite layer               |
+| Code    | `server`         | `src/bin/**`                              | Server binaries                 |
+| Tests   | `test-e2e`       | `test/**`                                 | Tests                           |
+| Docs    | `user`           | `README.md`                               | Repository README               |
+| Docs    | `user`           | `docs/index.md`                           | Documentation home page         |
+| Docs    | `user`           | `docs/assets/**`                          | Documentation theme assets      |
+| Docs    | `user`           | `docs/openapi.json`                       | Published OpenAPI specification |
+| Docs    | `user`           | `mkdocs.yml`                              | MkDocs site configuration       |
+| Docs    | `development`    | `docs/development/**`                     | Development documentation       |
+| Repo    | `repo`           | `LICENSE`                                 | License                         |
+| Repo    | `repo`           | `THIRD_PARTY_NOTICES.txt`                 | Third-party notices             |
+| Tooling | `config`         | `Cargo.toml`                              | Rust manifest                   |
+| Tooling | `config`         | `Cargo.lock`                              | Rust lockfile                   |
+| Tooling | `config`         | `.betterleaks.toml`                       | Secret-scan configuration       |
+| Tooling | `config`         | `.gitignore`                              | Git ignore rules                |
+| Tooling | `config`         | `.ls-lint.yml`                            | Naming linter configuration     |
+| Tooling | `config`         | `.markdownlint-cli2.jsonc`                | Markdown lint configuration     |
+| Tooling | `config`         | `.prettierrc`                             | Prettier configuration          |
+| Tooling | `config`         | `.prettierignore`                         | Prettier ignore rules           |
+| Tooling | `config`         | `.releaserc.json`                         | semantic-release configuration  |
+| Tooling | `config`         | `.taplo.toml`                             | TOML linter configuration       |
+| Tooling | `config`         | `.yamllint`                               | YAML linter configuration       |
+| Tooling | `config`         | `clippy.toml`                             | Clippy configuration            |
+| Tooling | `config`         | `deny.toml`                               | cargo-deny configuration        |
+| Tooling | `config`         | `pytest.ini`                              | pytest configuration            |
+| Tooling | `config`         | `requirements.txt`                        | Python dependencies             |
+| Tooling | `config`         | `ruff.toml`                               | Ruff configuration              |
+| Tooling | `config`         | `secretspec.toml`                         | SecretSpec configuration        |
+| Tooling | `agent`          | `.opencode/**`                            | opencode configuration          |
+| Tooling | `agent`          | `.agents/**`                              | Agent skills                    |
+| Tooling | `agent`          | `AGENTS.md`                               | Repository router               |
+| Tooling | `agent`          | `opencode.json`                           | opencode project configuration  |
+| Tooling | `agent`          | `skills-lock.json`                        | Skill lockfile                  |
+| Tooling | `github`         | `.github/**`                              | GitHub workflows and assets     |
+| Tooling | `devenv`         | `devenv.nix`                              | devenv environment              |
+| Tooling | `devenv`         | `devenv.yaml`                             | devenv inputs                   |
+| Tooling | `devenv`         | `devenv.lock`                             | devenv lockfile                 |
+| Tooling | `devops`         | `Dockerfile`                              | Container build                 |
+| Tooling | `devops`         | `.dockerignore`                           | Build-context ignore rules      |
+| Tooling | `devops`         | `script/**`                               | Repository scripts              |
 
 Two things are exempt because the release tooling generates them and they bypass the pull-request gate: a bot commit
 (semantic-release, `github-actions[bot]`) and the generated `CHANGELOG.md`. Neither carries a scope.

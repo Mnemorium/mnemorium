@@ -149,7 +149,7 @@ documentation; a fetched source never creates or overrides a project rule.
   run a command that writes tracked files — in particular, not `devenv test`
   (its pre-commit hooks rewrite files), not the `fmt:*` tasks (they write), and
   not `cargo run --bin openapi_gen` (it writes
-  `docs/development/api/openapi.json`, owned by `api-architect`).
+  `docs/openapi.json`, owned by `api-architect`).
 - You run no scanner you do not have. Never claim a gate, scan, or build you did
   not run, and never invent its result.
 - You have not released anything. Never claim a version, tag, or publish
