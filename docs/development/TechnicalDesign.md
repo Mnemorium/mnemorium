@@ -2748,10 +2748,10 @@ code or a classification — never a value.
 | `system_object`             | `info`  | `object`, `action`           | a system-level object is created (the configuration singleton, the Root Admin)              |
 | `unexpected_http_method`    | `warn`  | `method`, `path`             | a request uses a method the route does not support                                          |
 
-An explicit, narrow exception to the field rule above: `authn_failed.claimed_identity` is the raw submitted username,
-because it is the only identity available when authentication fails and no identifier can stand in for it. `OBS-003` and
-`OBS-004` remain in force for every other event: they still forbid a raw client-supplied request-body field and personal
-data.
+An explicit, narrow exception to the field rule above: `authn_failed.claimed_identity` is the submitted username,
+because it is the only identity available when authentication fails and no identifier can stand in for it. The field
+escapes control characters and bounds its length, so it cannot forge a log record (`OBS-003`); `OBS-003` and `OBS-004`
+remain in force for every other event: they still forbid a raw client-supplied request-body field and personal data.
 
 Events with no surface in this server are deliberately absent: import/export, network and TLS failures, payment,
 geolocation and consent, fraud, excessive use, and key rotation.
