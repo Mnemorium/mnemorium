@@ -28,6 +28,9 @@
     "ignores": [
         ".devenv/",
         "target/",
+        "site/",
+        ".artifacts/",
+        ".pytest_cache/",
         ".agents/",
         ".opencode/",
         "AGENTS.md",

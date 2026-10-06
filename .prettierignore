@@ -1,6 +1,7 @@
 .devenv/
 target/
 site/
+.artifacts/
 .pytest_cache/
 .agents/
 .opencode/
