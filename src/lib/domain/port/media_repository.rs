@@ -1,10 +1,10 @@
 use std::future::Future;
 
 use crate::domain::alias::NumericID;
-use crate::domain::model::media::image::Image;
-use crate::domain::model::media::image::Orientation;
-use crate::domain::model::media::video::ScanType;
-use crate::domain::model::media::video::Video;
+use crate::domain::model::image::Image;
+use crate::domain::model::image::Orientation;
+use crate::domain::model::video::ScanType;
+use crate::domain::model::video::Video;
 use crate::domain::port::error::RepositoryError;
 
 /// Search filters for [`MediaRepository::search_images`]. Every field is

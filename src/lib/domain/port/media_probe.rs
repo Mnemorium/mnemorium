@@ -1,8 +1,8 @@
 use std::future::Future;
 use std::path::Path;
 
-use crate::domain::model::media::image::Orientation;
-use crate::domain::model::media::video::ScanType;
+use crate::domain::model::image::Orientation;
+use crate::domain::model::video::ScanType;
 use crate::domain::port::error::MediaProbeError;
 
 /// Metadata extracted from an image file.
