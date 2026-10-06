@@ -20,119 +20,59 @@ permissions:
   - { action: edit, resource: "Cargo.toml", effect: deny }
   - { action: edit, resource: "clippy.toml", effect: deny }
   - { action: edit, resource: "deny.toml", effect: deny }
-  - { action: shell, resource: "*", effect: deny }
-  # Run directory
-  - { action: shell, resource: "mkdir -p .artifacts/execution*", effect: allow }
-  - { action: shell, resource: "mktemp -d .artifacts/execution*", effect: allow }
-  # Version control (read-only; the caller owns history)
-  - { action: shell, resource: "git status *", effect: allow }
-  - { action: shell, resource: "git diff *", effect: allow }
-  - { action: shell, resource: "git log *", effect: allow }
-  - { action: shell, resource: "git show *", effect: allow }
-  - { action: shell, resource: "git remote *", effect: allow }
-  - { action: shell, resource: "git branch *", effect: allow }
-  - { action: shell, resource: "git rev-parse *", effect: allow }
-  - { action: shell, resource: "ls *", effect: allow }
-  # Read-only inspection utilities
-  - { action: shell, resource: "which *", effect: allow }
-  - { action: shell, resource: "type *", effect: allow }
-  - { action: shell, resource: "cat *", effect: allow }
-  - { action: shell, resource: "head *", effect: allow }
-  - { action: shell, resource: "tail *", effect: allow }
-  - { action: shell, resource: "wc *", effect: allow }
-  - { action: shell, resource: "nl *", effect: allow }
-  - { action: shell, resource: "sed *", effect: allow }
-  - { action: shell, resource: "awk *", effect: allow }
-  - { action: shell, resource: "grep *", effect: allow }
-  - { action: shell, resource: "rg *", effect: allow }
-  - { action: shell, resource: "find *", effect: allow }
-  - { action: shell, resource: "sort *", effect: allow }
-  - { action: shell, resource: "uniq *", effect: allow }
-  - { action: shell, resource: "cut *", effect: allow }
-  - { action: shell, resource: "tr *", effect: allow }
-  - { action: shell, resource: "column *", effect: allow }
-  - { action: shell, resource: "jq *", effect: allow }
-  - { action: shell, resource: "yq *", effect: allow }
-  - { action: shell, resource: "diff *", effect: allow }
-  - { action: shell, resource: "cmp *", effect: allow }
-  - { action: shell, resource: "file *", effect: allow }
-  - { action: shell, resource: "stat *", effect: allow }
-  - { action: shell, resource: "readlink *", effect: allow }
-  - { action: shell, resource: "realpath *", effect: allow }
-  - { action: shell, resource: "basename *", effect: allow }
-  - { action: shell, resource: "dirname *", effect: allow }
-  - { action: shell, resource: "du *", effect: allow }
-  - { action: shell, resource: "df *", effect: allow }
-  - { action: shell, resource: "sha256sum *", effect: allow }
-  - { action: shell, resource: "md5sum *", effect: allow }
-  - { action: shell, resource: "tree *", effect: allow }
-  - { action: shell, resource: "xxd *", effect: allow }
-  - { action: shell, resource: "hexdump *", effect: allow }
-  - { action: shell, resource: "pwd", effect: allow }
-  - { action: shell, resource: "date *", effect: allow }
-  - { action: shell, resource: "test *", effect: allow }
-  - { action: shell, resource: "true", effect: allow }
-  - { action: shell, resource: "false", effect: allow }
-  # Working-tree file mutation (remove, rename, and copy the files a plan names)
-  - { action: shell, resource: "rm *", effect: allow }
-  - { action: shell, resource: "mv *", effect: allow }
-  - { action: shell, resource: "rmdir *", effect: allow }
-  - { action: shell, resource: "cp *", effect: allow }
-  - { action: shell, resource: "touch *", effect: allow }
-  # Rust: build, test, format
-  - { action: shell, resource: "cargo fmt *", effect: allow }
-  - { action: shell, resource: "cargo clippy *", effect: allow }
-  - { action: shell, resource: "cargo check *", effect: allow }
-  - { action: shell, resource: "cargo build *", effect: allow }
-  - { action: shell, resource: "cargo test *", effect: allow }
-  - { action: shell, resource: "cargo llvm-cov *", effect: allow }
-  - { action: shell, resource: "cargo deny *", effect: allow }
-  - { action: shell, resource: "cargo run --bin openapi_gen *", effect: allow }
-  # Layer, language, and lint gates
-  - { action: shell, resource: "sqlfluff lint *", effect: allow }
-  - { action: shell, resource: "ruff check *", effect: allow }
-  - { action: shell, resource: "ruff format *", effect: allow }
-  - { action: shell, resource: "pytest *", effect: allow }
-  - { action: shell, resource: "prettier *", effect: allow }
-  - { action: shell, resource: "markdownlint-cli2 *", effect: allow }
-  - { action: shell, resource: "mkdocs build *", effect: allow }
-  - { action: shell, resource: "shellcheck *", effect: allow }
-  - { action: shell, resource: "shfmt *", effect: allow }
-  - { action: shell, resource: "taplo fmt *", effect: allow }
-  - { action: shell, resource: "taplo lint *", effect: allow }
-  - { action: shell, resource: "ls-lint *", effect: allow }
-  - { action: shell, resource: "yamllint *", effect: allow }
-  - { action: shell, resource: "nixfmt *", effect: allow }
-  - { action: shell, resource: "semgrep *", effect: allow }
-  # Repository gate scripts
-  - { action: shell, resource: "script/check_scopes.sh *", effect: allow }
-  - { action: shell, resource: "script/no_domain_model_tests.sh *", effect: allow }
-  - { action: shell, resource: "script/no_outward_imports.sh *", effect: allow }
-  - { action: shell, resource: "script/generate_third_party_notices.sh *", effect: allow }
-  # devenv tasks
-  - { action: shell, resource: "devenv lint:*", effect: allow }
-  - { action: shell, resource: "devenv build:*", effect: allow }
-  - { action: shell, resource: "devenv test:*", effect: allow }
-  - { action: shell, resource: "devenv security:*", effect: allow }
-  - { action: shell, resource: "devenv tasks run lint:*", effect: allow }
-  - { action: shell, resource: "devenv tasks run build:*", effect: allow }
-  - { action: shell, resource: "devenv tasks run test:*", effect: allow }
-  - { action: shell, resource: "devenv tasks run security:*", effect: allow }
-  # Process, network, and timing utilities
-  - { action: shell, resource: "ps *", effect: allow }
-  - { action: shell, resource: "sleep *", effect: allow }
-  - { action: shell, resource: "curl *", effect: allow }
-  # Container (all docker commands)
-  - { action: shell, resource: "docker *", effect: allow }
-  # Guardrails that survive the widened shell allowlist: never read a secret
-  # file into the transcript, and give the locked manifests no shell route that
-  # bypasses their edit deny.
+  # Shell: broadly allowed, then a short, stable guardrail deny list. This is a
+  # mistake guardrail, not a sandbox: docker, curl, wget, and Code Mode stay
+  # open by design, so it stops a literal dangerous command and injected text,
+  # not a determined escape. Rules are last-match-wins, so every deny follows
+  # the broad allow. Add a task or a script/*.sh, never another command rule.
+  - { action: shell, resource: "*", effect: allow }
+  # Secret files — matched on command text, so `curl --data @.env …` also hits
   - { action: shell, resource: "*.env", effect: deny }
-  - { action: shell, resource: "*.env.*", effect: deny }
+  - { action: shell, resource: "*.env.*", effect: ask }
   - { action: shell, resource: "*.env.example*", effect: allow }
+  # The locked manifests get no shell route around their edit deny
   - { action: shell, resource: "*Cargo.toml*", effect: deny }
   - { action: shell, resource: "*clippy.toml*", effect: deny }
   - { action: shell, resource: "*deny.toml*", effect: deny }
+  # Version control history — the caller owns commits, pushes, and branches
+  - { action: shell, resource: "git commit*", effect: deny }
+  - { action: shell, resource: "git push*", effect: deny }
+  - { action: shell, resource: "git reset*", effect: deny }
+  - { action: shell, resource: "git rebase*", effect: deny }
+  - { action: shell, resource: "git merge*", effect: deny }
+  - { action: shell, resource: "git cherry-pick*", effect: deny }
+  - { action: shell, resource: "git revert*", effect: deny }
+  - { action: shell, resource: "git clean*", effect: deny }
+  - { action: shell, resource: "git checkout*", effect: deny }
+  - { action: shell, resource: "git switch*", effect: deny }
+  - { action: shell, resource: "git stash*", effect: deny }
+  - { action: shell, resource: "git tag*", effect: deny }
+  - { action: shell, resource: "git remote add*", effect: deny }
+  - { action: shell, resource: "git remote set-url*", effect: deny }
+  - { action: shell, resource: "git remote remove*", effect: deny }
+  - { action: shell, resource: "git config*", effect: deny }
+  - { action: shell, resource: "git update-ref*", effect: deny }
+  - { action: shell, resource: "git filter-*", effect: deny }
+  - { action: shell, resource: "git branch -d*", effect: deny }
+  - { action: shell, resource: "git branch -D*", effect: deny }
+  # Privilege
+  - { action: shell, resource: "sudo *", effect: deny }
+  - { action: shell, resource: "su *", effect: deny }
+  - { action: shell, resource: "doas *", effect: deny }
+  - { action: shell, resource: "pkexec *", effect: deny }
+  # Self-destruction
+  - { action: shell, resource: "rm -rf /*", effect: deny }
+  - { action: shell, resource: "rm -fr /*", effect: deny }
+  - { action: shell, resource: "rm -rf ~", effect: deny }
+  - { action: shell, resource: "dd *", effect: deny }
+  - { action: shell, resource: "mkfs*", effect: deny }
+  - { action: shell, resource: "shred *", effect: deny }
+  - { action: shell, resource: "chmod -R *", effect: deny }
+  - { action: shell, resource: "chown -R *", effect: deny }
+  # MCP surfaces the governor never declares: the lead-reviewer files issues and
+  # the caller owns history, so the governor reaches neither
+  - { action: "github_*", resource: "*", effect: deny }
+  - { action: "browser_*", resource: "*", effect: deny }
   # Subagent: the reviewer only — the governor implements the change itself
   - { action: subagent, resource: "*", effect: deny }
   - { action: subagent, resource: "lead-reviewer", effect: allow }
@@ -185,10 +125,17 @@ assumption: stop and report what is missing.
   `clippy.toml`, and `deny.toml` remain denied — never try to bypass that through
   the shell or any other route. Write the run directory and loop state under
   `.artifacts/execution/**`.
+- **The shell is broad; the deny list is a guardrail, not a sandbox.** Every
+  command is allowed except a short, stable deny list: secret files (`.env`
+  denied, `.env.*` asks a human), the locked manifests, history-mutating `git`,
+  privilege escalation, and self-destruction. `docker`, `curl`, `wget`, and Code
+  Mode stay open by design. Prefer wrapping a repeated flow in a `script/*.sh`
+  or a devenv task over growing the permission list; the list is meant to stop
+  mistakes and injected text, not a determined escape.
 - **You never touch version control history.** The caller creates the branch and
-  owns commits, pushes, and pull requests. Your `git` use is read-only
-  (`status`, `diff`, `log`, `show`, `remote`, `branch`, `rev-parse`); you never
-  stage, commit, or reset.
+  owns commits, pushes, and branches. The history-mutating `git` subcommands are
+  denied; the rest of your `git` use is read-only. You never stage, commit, or
+  reset.
 - **Unattended.** You never ask a question. When the plan is ambiguous or a rule
   is missing, you stop the loop and report it.
 - **One plan, one loop.** You implement the plan you were given; a later plan
@@ -246,7 +193,7 @@ artifacts at the canonical paths the lead-reviewer expects.
 | `**/*.sh`, `script/**`                          | `shellcheck script/*.sh`; `shfmt -d script/*.sh`                                                                                                                                                                                                                    |
 | `**/*.nix`                                      | `nixfmt --check devenv.nix`                                                                                                                                                                                                                                          |
 | `Cargo.toml`, `Cargo.lock`                      | `cargo deny check`; `script/generate_third_party_notices.sh --check`                                                                                                                                                                                                |
-| Rust, Python, container, SQL, or CI changed     | container E2E: build the image, run it as `mnemorium-e2e`, wait for `/health`, then `pytest -p no:cacheprovider -ra --tb=short --junitxml=.artifacts/e2e/junit.xml test/e2e`                                                                                        |
+| Rust, Python, container, SQL, or CI changed     | container E2E: `script/e2e.sh` — builds the image, runs `mnemorium-e2e`, waits for `/health`, runs `pytest -p no:cacheprovider -ra --tb=short --junitxml=.artifacts/e2e/junit.xml test/e2e`, and cleans up (`NO_BUILD=1` reuses an existing image)                                                                                        |
 
 Collect the static-analysis artifact (`.artifacts/semgrep.sarif`) when the
 security gate ran. If a required tool is missing, stop and tell the caller to

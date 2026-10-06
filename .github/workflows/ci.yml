@@ -352,29 +352,10 @@ jobs:
           tags: mnemorium
           cache-from: type=gha,scope=e2e-image
           cache-to: type=gha,mode=max,scope=e2e-image
-      - name: Start container
-        run: |
-          docker rm -f mnemorium-e2e || true
-          docker run -d --name mnemorium-e2e -p 4080:4080 \
-            -e MNEMORIUM__SECURITY__RATE_LIMIT__BURST_SIZE=1000 \
-            mnemorium
-      - name: Wait for health
-        run: |
-          for _ in $(seq 1 60); do
-            if curl -fsS http://127.0.0.1:4080/health >/dev/null; then
-              exit 0
-            fi
-            sleep 1
-          done
-          echo "server not healthy within 60s" >&2
-          exit 1
       - name: Run E2E tests
         env:
-          PYTHONPATH: ${{ github.workspace }}/test/e2e
-          MNEMORIUM_E2E_BASE_URL: http://127.0.0.1:4080
-        run: >-
-          pytest -p no:cacheprovider -ra --tb=short
-          --junitxml=.artifacts/e2e/junit.xml test/e2e
+          NO_BUILD: "1"
+        run: script/e2e.sh
       - name: Upload E2E artifacts
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
