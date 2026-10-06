@@ -1,3 +1,9 @@
+## [0.8.1](https://github.com/Mnemorium/mnemorium/compare/v0.8.0...v0.8.1) (2026-10-06)
+
+### Bug Fixes
+
+* **persistence:** log expected constraint rejections at warn ([#206](https://github.com/Mnemorium/mnemorium/issues/206)) ([4c29dfc](https://github.com/Mnemorium/mnemorium/commit/4c29dfccf6e61cf4c3e1288cffdd695fd29acb02))
+
 ## [0.8.0](https://github.com/Mnemorium/mnemorium/compare/v0.7.0...v0.8.0) (2026-10-06)
 
 ### Features
