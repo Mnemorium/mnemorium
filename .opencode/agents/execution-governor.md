@@ -33,10 +33,52 @@ permissions:
   - { action: shell, resource: "git branch *", effect: allow }
   - { action: shell, resource: "git rev-parse *", effect: allow }
   - { action: shell, resource: "ls *", effect: allow }
-  # Working-tree file mutation (remove and rename the files a plan names)
+  # Read-only inspection utilities
+  - { action: shell, resource: "which *", effect: allow }
+  - { action: shell, resource: "type *", effect: allow }
+  - { action: shell, resource: "cat *", effect: allow }
+  - { action: shell, resource: "head *", effect: allow }
+  - { action: shell, resource: "tail *", effect: allow }
+  - { action: shell, resource: "wc *", effect: allow }
+  - { action: shell, resource: "nl *", effect: allow }
+  - { action: shell, resource: "sed *", effect: allow }
+  - { action: shell, resource: "awk *", effect: allow }
+  - { action: shell, resource: "grep *", effect: allow }
+  - { action: shell, resource: "rg *", effect: allow }
+  - { action: shell, resource: "find *", effect: allow }
+  - { action: shell, resource: "sort *", effect: allow }
+  - { action: shell, resource: "uniq *", effect: allow }
+  - { action: shell, resource: "cut *", effect: allow }
+  - { action: shell, resource: "tr *", effect: allow }
+  - { action: shell, resource: "column *", effect: allow }
+  - { action: shell, resource: "jq *", effect: allow }
+  - { action: shell, resource: "yq *", effect: allow }
+  - { action: shell, resource: "diff *", effect: allow }
+  - { action: shell, resource: "cmp *", effect: allow }
+  - { action: shell, resource: "file *", effect: allow }
+  - { action: shell, resource: "stat *", effect: allow }
+  - { action: shell, resource: "readlink *", effect: allow }
+  - { action: shell, resource: "realpath *", effect: allow }
+  - { action: shell, resource: "basename *", effect: allow }
+  - { action: shell, resource: "dirname *", effect: allow }
+  - { action: shell, resource: "du *", effect: allow }
+  - { action: shell, resource: "df *", effect: allow }
+  - { action: shell, resource: "sha256sum *", effect: allow }
+  - { action: shell, resource: "md5sum *", effect: allow }
+  - { action: shell, resource: "tree *", effect: allow }
+  - { action: shell, resource: "xxd *", effect: allow }
+  - { action: shell, resource: "hexdump *", effect: allow }
+  - { action: shell, resource: "pwd", effect: allow }
+  - { action: shell, resource: "date *", effect: allow }
+  - { action: shell, resource: "test *", effect: allow }
+  - { action: shell, resource: "true", effect: allow }
+  - { action: shell, resource: "false", effect: allow }
+  # Working-tree file mutation (remove, rename, and copy the files a plan names)
   - { action: shell, resource: "rm *", effect: allow }
   - { action: shell, resource: "mv *", effect: allow }
   - { action: shell, resource: "rmdir *", effect: allow }
+  - { action: shell, resource: "cp *", effect: allow }
+  - { action: shell, resource: "touch *", effect: allow }
   # Rust: build, test, format
   - { action: shell, resource: "cargo fmt *", effect: allow }
   - { action: shell, resource: "cargo clippy *", effect: allow }
@@ -82,6 +124,15 @@ permissions:
   - { action: shell, resource: "docker rm *", effect: allow }
   - { action: shell, resource: "docker logs *", effect: allow }
   - { action: shell, resource: "docker ps *", effect: allow }
+  # Guardrails that survive the widened shell allowlist: never read a secret
+  # file into the transcript, and give the locked manifests no shell route that
+  # bypasses their edit deny.
+  - { action: shell, resource: "*.env", effect: deny }
+  - { action: shell, resource: "*.env.*", effect: deny }
+  - { action: shell, resource: "*.env.example*", effect: allow }
+  - { action: shell, resource: "*Cargo.toml*", effect: deny }
+  - { action: shell, resource: "*clippy.toml*", effect: deny }
+  - { action: shell, resource: "*deny.toml*", effect: deny }
   # Subagent: the reviewer only — the governor implements the change itself
   - { action: subagent, resource: "*", effect: deny }
   - { action: subagent, resource: "lead-reviewer", effect: allow }
