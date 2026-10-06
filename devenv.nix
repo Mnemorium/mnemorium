@@ -28,7 +28,7 @@
     pkgs.llvm
     pkgs.shellcheck
     pkgs.cargo-deny
-    pkgs.cargo-bundle-licenses
+    pkgs.cargo-about
     pkgs.semgrep
     pkgs.xdg-utils
     pkgs.shfmt
@@ -136,7 +136,7 @@
       entry = "bash -c 'script/generate_third_party_notices.sh && git add -- THIRD_PARTY_NOTICES.txt'";
       language = "system";
       pass_filenames = false;
-      files = "(^|/)Cargo\\.(toml|lock)$";
+      files = "(^|/)Cargo\\.(toml|lock)$|^about\\.(toml|hbs)$";
     };
 
     # === test coverage
@@ -336,7 +336,7 @@
 
   tasks."licenses:generate" = {
     exec = "script/generate_third_party_notices.sh";
-    description = "Regenerate THIRD_PARTY_NOTICES.txt from the crate graph";
+    description = "Regenerate THIRD_PARTY_NOTICES.txt from the crate graph via cargo-about";
   };
 
   # Scripts

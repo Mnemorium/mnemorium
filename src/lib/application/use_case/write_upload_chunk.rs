@@ -11,6 +11,7 @@ use crate::application::port::write_upload_chunk::WriteUploadChunkCommand;
 use crate::application::port::write_upload_chunk::WriteUploadChunkError;
 use crate::application::port::write_upload_chunk::WriteUploadChunkResponse;
 use crate::application::port::write_upload_chunk::WriteUploadChunkUseCase;
+use crate::application::security_event;
 use crate::application::use_case::upload_layout::staged_path;
 use crate::application::use_case::upload_session::caller_file_id;
 use crate::application::use_case::upload_session::expiry;
@@ -92,9 +93,38 @@ where
             )
             .await
             {
-                Ok(value) => Ok(value),
-                Err(AttemptError::Business(error)) => Err(error),
-                Err(AttemptError::Expired) => Err(WriteUploadChunkError::Expired),
+                Ok(value) => {
+                    security_event::upload(
+                        command.user_id(),
+                        &command.upload_id().to_string(),
+                        "chunk_written",
+                    );
+                    Ok(value)
+                }
+                Err(failure) => {
+                    let error = match failure {
+                        AttemptError::Business(error) => error,
+                        AttemptError::Expired => WriteUploadChunkError::Expired,
+                    };
+                    let reason = match error {
+                        WriteUploadChunkError::AlreadyFinished => Some("already_finished"),
+                        WriteUploadChunkError::Expired => Some("expired"),
+                        WriteUploadChunkError::InvalidChunkNumber => Some("out_of_range"),
+                        WriteUploadChunkError::InvalidChunk
+                        | WriteUploadChunkError::InvalidChunkRange
+                        | WriteUploadChunkError::InvalidContentDigest
+                        | WriteUploadChunkError::NoSuchUpload
+                        | WriteUploadChunkError::Unknown(_) => None,
+                    };
+                    if let Some(code) = reason {
+                        security_event::suspicious_business_logic(
+                            command.user_id(),
+                            "write_chunk",
+                            code,
+                        );
+                    }
+                    Err(error)
+                }
             }
         })
     }
@@ -180,6 +210,7 @@ where
 
         let total_chunks = upload.total_chunks();
         let chunk_number = usize::try_from(command.chunk_number()).map_err(|error| {
+            security_event::application_error("write_upload_chunk");
             AttemptError::Business(WriteUploadChunkError::Unknown(anyhow::anyhow!(error)))
         })?;
         if chunk_number >= total_chunks {
@@ -189,6 +220,7 @@ where
         }
 
         let chunk_size = usize::try_from(upload.chunk_size()).map_err(|error| {
+            security_event::application_error("write_upload_chunk");
             AttemptError::Business(WriteUploadChunkError::Unknown(anyhow::anyhow!(error)))
         })?;
         let remaining = upload
@@ -196,6 +228,7 @@ where
             .saturating_sub(command.chunk_number().saturating_mul(upload.chunk_size()));
         let expected_len = remaining.min(upload.chunk_size());
         let chunk_len = u64::try_from(command.chunk().len()).map_err(|error| {
+            security_event::application_error("write_upload_chunk");
             AttemptError::Business(WriteUploadChunkError::Unknown(anyhow::anyhow!(error)))
         })?;
         if chunk_len != expected_len {
@@ -326,11 +359,8 @@ where
             Err(AttemptError::Business(WriteUploadChunkError::Expired))
         }
         Err(error) => {
-            if let Err(rollback_error) = unit_of_work.rollback().await {
-                error!(
-                    error = ?rollback_error,
-                    "failed to roll back the write upload chunk unit of work"
-                );
+            if unit_of_work.rollback().await.is_err() {
+                // The unit-of-work adapter owns the rollback-failure log (OBS-002).
             }
             Err(error)
         }

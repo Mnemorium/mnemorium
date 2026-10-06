@@ -102,6 +102,15 @@ impl From<LoginUserError> for ApiError {
             description = "The request body exceeds the maximum allowed size"
         ),
         (
+            status = TOO_MANY_REQUESTS,
+            body = ErrorBody,
+            content_type = "application/hal+json",
+            description = "Too many login attempts",
+            headers(
+                ("Retry-After" = u64, description = "Seconds before the next login attempt is permitted")
+            )
+        ),
+        (
             status = INTERNAL_SERVER_ERROR,
             body = ErrorBody,
             content_type = "application/hal+json",

@@ -159,11 +159,8 @@ where
                     Err(GetUploadError::NoSuchUpload)
                 }
                 Flow::Failed(error) => {
-                    if let Err(rollback_error) = unit_of_work.rollback().await {
-                        error!(
-                            error = ?rollback_error,
-                            "failed to roll back the get upload unit of work"
-                        );
+                    if unit_of_work.rollback().await.is_err() {
+                        // The unit-of-work adapter owns the rollback-failure log (OBS-002).
                     }
                     Err(error)
                 }

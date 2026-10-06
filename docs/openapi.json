@@ -575,7 +575,7 @@
       "name": "MIT"
     },
     "title": "Mnemorium API",
-    "version": "0.6.9"
+    "version": "0.7.0"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -1316,6 +1316,26 @@
               }
             },
             "description": "The request body does not match the expected schema"
+          },
+          "429": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Too many login attempts",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds before the next login attempt is permitted",
+                "schema": {
+                  "format": "int64",
+                  "minimum": 0,
+                  "type": "integer"
+                }
+              }
+            }
           },
           "500": {
             "content": {

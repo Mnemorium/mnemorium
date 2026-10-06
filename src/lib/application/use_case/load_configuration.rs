@@ -5,11 +5,10 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::thread::available_parallelism;
 
-use tracing::error;
-
 use crate::application::port::load_configuration::LoadConfigurationError;
 use crate::application::port::load_configuration::LoadConfigurationResponse;
 use crate::application::port::load_configuration::LoadConfigurationUseCase;
+use crate::application::security_event;
 use crate::domain::model::asset::Asset;
 use crate::domain::model::configuration::Configuration;
 use crate::domain::model::jwt::Jwt;
@@ -64,10 +63,13 @@ where
     S: SecretGenerator,
     C: ConfigurationSource,
 {
-    /// Ensure the configuration singleton row exists, returning its base layer.
+    /// Ensure the configuration singleton row exists, returning its base layer
+    /// and whether this call created it.
     ///
     /// On first boot the row is created with defaults and freshly generated
-    /// secrets, so the configuration source always finds a base layer.
+    /// secrets, so the configuration source always finds a base layer. The
+    /// `created` flag lets the caller emit `system_object` only after the unit
+    /// of work commits (`OBS-002`, `OBS-006`).
     ///
     /// # Errors
     ///
@@ -78,30 +80,32 @@ where
     async fn base_layer(
         &self,
         configuration: &mut impl ConfigurationRepository,
-    ) -> Result<Configuration, LoadConfigurationError> {
+    ) -> Result<(Configuration, bool), LoadConfigurationError> {
         if let Some(row) = configuration
             .search()
             .await
             .map_err(|error| LoadConfigurationError::Unknown(error.into()))?
         {
-            return Ok(row);
+            return Ok((row, false));
         }
 
         let configuration_row = self.default_configuration().await?;
         match configuration.create(configuration_row.clone()).await {
-            Ok(_) => Ok(configuration_row),
+            Ok(_) => Ok((configuration_row, true)),
             Err(RepositoryError::AlreadyExist) => {
                 // Another boot created the singleton concurrently; the row
                 // exists, which is all this boot needs.
-                configuration
+                let row = configuration
                     .search()
                     .await
                     .map_err(|error| LoadConfigurationError::Unknown(error.into()))?
                     .ok_or_else(|| {
+                        security_event::application_error("load_configuration");
                         LoadConfigurationError::Unknown(anyhow::anyhow!(
                             "the configuration singleton row does not exist"
                         ))
-                    })
+                    })?;
+                Ok((row, false))
             }
             Err(error) => Err(LoadConfigurationError::Unknown(error.into())),
         }
@@ -187,11 +191,13 @@ where
                 .await
                 .map_err(|error| LoadConfigurationError::Unknown(error.into()))?;
 
-            let result =
-                async {
-                    let base = self.base_layer(&mut unit_of_work.configuration()).await?;
-                    let configuration = self.configuration_source.load(base).await.map_err(
-                        |error| match error {
+            let result = async {
+                let (base, created) = self.base_layer(&mut unit_of_work.configuration()).await?;
+                let configuration =
+                    self.configuration_source
+                        .load(base)
+                        .await
+                        .map_err(|error| match error {
                             ConfigurationSourceError::InvalidConfiguration(source) => {
                                 LoadConfigurationError::InvalidConfiguration(source)
                             }
@@ -199,27 +205,26 @@ where
                             | ConfigurationSourceError::Unknown(_)) => {
                                 LoadConfigurationError::Unknown(anyhow::Error::new(other))
                             }
-                        },
-                    )?;
+                        })?;
 
-                    Ok(LoadConfigurationResponse::new(configuration))
-                }
-                .await;
+                Ok((LoadConfigurationResponse::new(configuration), created))
+            }
+            .await;
 
             match result {
-                Ok(value) => {
+                Ok((value, created)) => {
                     unit_of_work
                         .commit()
                         .await
                         .map_err(|error| LoadConfigurationError::Unknown(error.into()))?;
+                    if created {
+                        security_event::system_object("configuration", "create");
+                    }
                     Ok(value)
                 }
                 Err(error) => {
-                    if let Err(rollback_error) = unit_of_work.rollback().await {
-                        error!(
-                            error = ?rollback_error,
-                            "failed to roll back the load configuration unit of work"
-                        );
+                    if unit_of_work.rollback().await.is_err() {
+                        // The unit-of-work adapter owns the rollback-failure log (OBS-002).
                     }
                     Err(error)
                 }
@@ -269,6 +274,8 @@ mod tests {
     use crate::domain::model::logging::LoggingError;
     use crate::domain::model::logging::Rotation;
     use crate::domain::model::persistence::Persistence;
+    use crate::domain::model::rate_limit::ClientIpHeader;
+    use crate::domain::model::rate_limit::RateLimit;
     use crate::domain::model::security::Security;
     use crate::domain::model::sqlite3::Sqlite3;
     use crate::domain::model::sqlite3::Sqlite3Error;
@@ -873,5 +880,35 @@ mod tests {
             (2..=super::MAX_DEFAULT_SQLITE3_MAX_CONN).contains(&connections),
             "the default pool must be bounded between two and the configured cap"
         );
+    }
+
+    #[test]
+    fn configuration_round_trips_trusted_proxies_through_json() -> Result<(), Box<dyn Error>> {
+        // Arrange: a non-empty trusted-proxy list is the case that must survive
+        // the `DbSqlite3Source` JSON round-trip (`security.rate_limit`).
+        let mut security = Security::try_new(Jwt::try_new(hex64('a'), 3600)?, hex64('b'), true)?;
+        security.set_rate_limit(RateLimit::try_new(
+            9,
+            ClientIpHeader::XRealIp,
+            30,
+            vec!["10.0.0.1".parse()?, "2001:db8::1".parse()?],
+        )?);
+        let configuration = Configuration::new(
+            Persistence::new(Sqlite3::try_new("mnemorium.db".to_owned(), 1)?),
+            security,
+            Logging::try_new(false, "debug,sqlx=warn".to_owned(), 7, Rotation::Daily)?,
+            Asset::default(),
+        );
+
+        // Act
+        let json = serde_json::to_string(&configuration)?;
+        let decoded: Configuration = serde_json::from_str(&json)?;
+
+        // Assert
+        assert_eq!(
+            decoded.security().rate_limit(),
+            configuration.security().rate_limit()
+        );
+        Ok(())
     }
 }

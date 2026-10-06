@@ -11,6 +11,7 @@ use crate::application::port::complete_upload::CompleteUploadCommand;
 use crate::application::port::complete_upload::CompleteUploadError;
 use crate::application::port::complete_upload::CompleteUploadResponse;
 use crate::application::port::complete_upload::CompleteUploadUseCase;
+use crate::application::security_event;
 use crate::application::use_case::upload_layout::final_path;
 use crate::application::use_case::upload_layout::is_path_safe;
 use crate::application::use_case::upload_layout::relative_final;
@@ -148,6 +149,11 @@ where
                         // Idempotent completion: the upload finished since the
                         // caller's last attempt; return the caller's file.
                         discard(unit_of_work).await;
+                        security_event::upload(
+                            command.user_id(),
+                            &command.upload_id().to_string(),
+                            "completed",
+                        );
                         return Ok(CompleteUploadResponse::new(file_id, true));
                     }
                     Resolution::Expired => {
@@ -159,10 +165,22 @@ where
                             .commit()
                             .await
                             .map_err(|error| CompleteUploadError::Unknown(error.into()))?;
+                        security_event::suspicious_business_logic(
+                            command.user_id(),
+                            "complete",
+                            "expired",
+                        );
                         return Err(CompleteUploadError::Expired);
                     }
                     Resolution::Failed(error) => {
                         discard(unit_of_work).await;
+                        if matches!(&error, CompleteUploadError::Incomplete) {
+                            security_event::suspicious_business_logic(
+                                command.user_id(),
+                                "complete",
+                                "not_complete",
+                            );
+                        }
                         return Err(error);
                     }
                 }
@@ -223,6 +241,7 @@ where
                 }
 
                 if !is_path_safe(upload.file_name()) {
+                    security_event::application_error("complete_upload");
                     return Flow::Failed(CompleteUploadError::Unknown(anyhow::anyhow!(
                         "the upload file name is not a safe path segment"
                     )));
@@ -273,9 +292,12 @@ where
                             Ok(Some(file_id)) => {
                                 Flow::Succeeded(CompleteUploadResponse::new(file_id, false))
                             }
-                            Ok(None) => Flow::Failed(CompleteUploadError::Unknown(
-                                anyhow::anyhow!("the duplicate file vanished while completing"),
-                            )),
+                            Ok(None) => {
+                                security_event::application_error("complete_upload");
+                                Flow::Failed(CompleteUploadError::Unknown(anyhow::anyhow!(
+                                    "the duplicate file vanished while completing"
+                                )))
+                            }
                             Err(error) => Flow::Failed(CompleteUploadError::Unknown(error.into())),
                         };
                     }
@@ -301,6 +323,11 @@ where
                         restore_promoted(&file_storage, promoted.as_ref()).await;
                         return Err(CompleteUploadError::Unknown(error.into()));
                     }
+                    security_event::upload(
+                        command.user_id(),
+                        &command.upload_id().to_string(),
+                        "completed",
+                    );
                     Ok(value)
                 }
                 Flow::Expired => {
@@ -312,11 +339,23 @@ where
                         .commit()
                         .await
                         .map_err(|error| CompleteUploadError::Unknown(error.into()))?;
+                    security_event::suspicious_business_logic(
+                        command.user_id(),
+                        "complete",
+                        "expired",
+                    );
                     Err(CompleteUploadError::Expired)
                 }
                 Flow::Failed(error) => {
                     discard(unit_of_work).await;
                     restore_promoted(&file_storage, promoted.as_ref()).await;
+                    if matches!(&error, CompleteUploadError::Incomplete) {
+                        security_event::suspicious_business_logic(
+                            command.user_id(),
+                            "complete",
+                            "not_complete",
+                        );
+                    }
                     Err(error)
                 }
             }
@@ -375,9 +414,12 @@ where
     if upload.is_finished() {
         return match caller_file_id(unit_of_work, &upload, command.user_id()).await {
             Ok(Some(file_id)) => Resolution::Finished(file_id),
-            Ok(None) => Resolution::Failed(CompleteUploadError::Unknown(anyhow::anyhow!(
-                "the finished upload has no matching file"
-            ))),
+            Ok(None) => {
+                security_event::application_error("complete_upload");
+                Resolution::Failed(CompleteUploadError::Unknown(anyhow::anyhow!(
+                    "the finished upload has no matching file"
+                )))
+            }
             Err(error) => Resolution::Failed(CompleteUploadError::Unknown(error.into())),
         };
     }
@@ -462,11 +504,8 @@ async fn discard<U>(unit_of_work: U)
 where
     U: UnitOfWork,
 {
-    if let Err(rollback_error) = unit_of_work.rollback().await {
-        error!(
-            error = ?rollback_error,
-            "failed to roll back the complete upload unit of work"
-        );
+    if unit_of_work.rollback().await.is_err() {
+        // The unit-of-work adapter owns the rollback-failure log (OBS-002).
     }
 }
 

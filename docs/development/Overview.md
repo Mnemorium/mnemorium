@@ -10,6 +10,7 @@
     └── lib
         ├── application
         │   ├── port
+        │   ├── security_event.rs
         │   └── use_case
         ├── domain
         │   ├── alias.rs
@@ -56,6 +57,7 @@
 | `src/lib`                                             |                                                                                                              |
 | `src/lib/application`                                 | App Layer                                                                                                    |
 | `src/lib/application/port`                            | Application use-case interfaces (one application use case per file)                                          |
+| `src/lib/application/security_event.rs`               | Application-owned security-event constructors (`OBS-006`)                                                    |
 | `src/lib/application/use_case`                        | Application use-case implementations (one per file)                                                          |
 | `src/lib/domain`                                      | Domain Layer                                                                                                 |
 | `src/lib/domain/alias.rs`                             | Type alias for the project (ex: which integer to use for IDs)                                                |
@@ -70,7 +72,7 @@
 | `src/lib/infrastructure/inbound/rest.rs`              | REST module root: declares the submodules and aggregates the OpenAPI document (`ApiDoc`)                     |
 | `src/lib/infrastructure/inbound/rest/handler.rs`      | Declares the route table (`setup_routes`) and installs the tracing middleware                                |
 | `src/lib/infrastructure/inbound/rest/handler`         | HTTP endpoint handler                                                                                        |
-| `src/lib/infrastructure/inbound/rest/middleware`      | Axum middleware (authentication, tracing)                                                                    |
+| `src/lib/infrastructure/inbound/rest/middleware`      | Axum middleware (authentication, rate limiting, tracing)                                                     |
 | `src/lib/infrastructure/outbound`                     | Outbound Port adapter declaration                                                                            |
 | `src/lib/infrastructure/outbound/argon2`              | Argon2 password hasher adapter                                                                               |
 | `src/lib/infrastructure/outbound/config`              | Configuration source adapters                                                                                |

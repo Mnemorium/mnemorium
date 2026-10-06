@@ -2,12 +2,11 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
-use tracing::error;
-
 use crate::application::port::update_user::UpdateUserCommand;
 use crate::application::port::update_user::UpdateUserError;
 use crate::application::port::update_user::UpdateUserResponse;
 use crate::application::port::update_user::UpdateUserUseCase;
+use crate::application::security_event;
 use crate::domain::model::user::Role;
 use crate::domain::model::user::UserError;
 use crate::domain::port::unit_of_work::UnitOfWork as _;
@@ -63,6 +62,7 @@ where
                     .next()
                     .ok_or(UpdateUserError::NoSuchCaller)?;
                 if caller.role() != Role::Admin {
+                    security_event::authorization_failed(caller.id(), "update", "user");
                     return Err(UpdateUserError::NotAdmin);
                 }
 
@@ -85,6 +85,7 @@ where
                     return Err(UpdateUserError::TargetNotModifiable);
                 }
                 if command.role().is_some() && caller.id() != 0 {
+                    security_event::authorization_failed(caller.id(), "update_role", "user");
                     return Err(UpdateUserError::RoleChangeForbidden);
                 }
 
@@ -129,14 +130,12 @@ where
                         .commit()
                         .await
                         .map_err(|error| UpdateUserError::Unknown(error.into()))?;
+                    security_event::user_admin(command.caller_id(), "update", "user");
                     Ok(value)
                 }
                 Err(error) => {
-                    if let Err(rollback_error) = unit_of_work.rollback().await {
-                        error!(
-                            error = ?rollback_error,
-                            "failed to roll back the update user unit of work"
-                        );
+                    if unit_of_work.rollback().await.is_err() {
+                        // The unit-of-work adapter owns the rollback-failure log (OBS-002).
                     }
                     Err(error)
                 }

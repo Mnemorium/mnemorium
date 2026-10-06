@@ -12,6 +12,7 @@ pub mod music_medium;
 pub mod music_playlist;
 pub mod music_recording;
 pub mod persistence;
+pub mod rate_limit;
 pub mod security;
 pub mod sqlite3;
 pub mod upload;

@@ -1,5 +1,6 @@
 use crate::domain::model::jwt::Jwt;
 use crate::domain::model::jwt::JwtError;
+use crate::domain::model::rate_limit::RateLimit;
 
 /// Length of a hexadecimal-encoded pepper, in characters.
 const PEPPER_HEX_LENGTH: usize = 64;
@@ -33,6 +34,9 @@ pub struct Security {
     log_root_admin_password: bool,
     /// Site-wide secret mixed into password hashes.
     pepper: String,
+    /// Login rate-limiting settings.
+    #[serde(default)]
+    rate_limit: RateLimit,
 }
 
 /// Unchecked deserialization mirror of [`Security`].
@@ -49,13 +53,19 @@ struct SecurityConfig {
     log_root_admin_password: bool,
     /// Site-wide secret mixed into password hashes.
     pepper: String,
+    /// Login rate-limiting settings.
+    #[serde(default)]
+    rate_limit: RateLimit,
 }
 
 impl TryFrom<SecurityConfig> for Security {
     type Error = SecurityError;
 
     fn try_from(config: SecurityConfig) -> Result<Self, Self::Error> {
-        Self::try_new(config.jwt, config.pepper, config.log_root_admin_password)
+        let mut security =
+            Self::try_new(config.jwt, config.pepper, config.log_root_admin_password)?;
+        security.set_rate_limit(config.rate_limit);
+        Ok(security)
     }
 }
 
@@ -85,6 +95,12 @@ impl Security {
         &self.pepper
     }
 
+    /// Return the login rate-limiting settings.
+    #[must_use]
+    pub fn rate_limit(&self) -> &RateLimit {
+        &self.rate_limit
+    }
+
     /// Update whether the Root Admin default password is logged to standard
     /// output on runtime start.
     pub fn set_log_root_admin_password(&mut self, log_root_admin_password: bool) {
@@ -100,6 +116,11 @@ impl Security {
     pub fn set_pepper(&mut self, pepper: String) -> Result<(), SecurityError> {
         self.pepper = Self::validate_pepper(pepper)?;
         Ok(())
+    }
+
+    /// Update the login rate-limiting settings.
+    pub fn set_rate_limit(&mut self, rate_limit: RateLimit) {
+        self.rate_limit = rate_limit;
     }
 
     /// Initialise a new `Security`, validating `pepper`.
@@ -118,6 +139,7 @@ impl Security {
             jwt,
             log_root_admin_password,
             pepper: validated_pepper,
+            rate_limit: RateLimit::default(),
         })
     }
 
