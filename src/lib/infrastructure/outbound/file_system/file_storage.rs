@@ -198,10 +198,11 @@ impl FileStorage for FileSystemStorage {
                         }
                         Ok(_) => {
                             error!(
-                                error = ?err,
-                                staged = %owned_staged.display(),
-                                final_path = %owned_final.display(),
-                                "cannot promote the staged file: a destination directory is missing"
+                                target: "security",
+                                event = "port_fault",
+                                kind = "destination_missing",
+                                operation = "promote",
+                                "an outbound dependency failed"
                             );
                             Err(StorageError::OperationFailed)
                         }

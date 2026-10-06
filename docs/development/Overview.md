@@ -10,6 +10,7 @@
     └── lib
         ├── application
         │   ├── port
+        │   ├── security_event.rs
         │   └── use_case
         ├── domain
         │   ├── alias.rs
@@ -56,6 +57,7 @@
 | `src/lib`                                             |                                                                                                              |
 | `src/lib/application`                                 | App Layer                                                                                                    |
 | `src/lib/application/port`                            | Application use-case interfaces (one application use case per file)                                          |
+| `src/lib/application/security_event.rs`               | Application-owned security-event constructors (`OBS-006`)                                                    |
 | `src/lib/application/use_case`                        | Application use-case implementations (one per file)                                                          |
 | `src/lib/domain`                                      | Domain Layer                                                                                                 |
 | `src/lib/domain/alias.rs`                             | Type alias for the project (ex: which integer to use for IDs)                                                |

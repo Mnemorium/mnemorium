@@ -3,12 +3,12 @@ use std::pin::Pin;
 use std::sync::Arc;
 
 use chrono::Utc;
-use tracing::error;
 
 use crate::application::port::register_user::RegisterUserCommand;
 use crate::application::port::register_user::RegisterUserError;
 use crate::application::port::register_user::RegisterUserResponse;
 use crate::application::port::register_user::RegisterUserUseCase;
+use crate::application::security_event;
 use crate::domain::model::credential::Credential;
 use crate::domain::model::user::Role;
 use crate::domain::model::user::User;
@@ -94,13 +94,17 @@ where
                     .map_err(|error| RegisterUserError::Unknown(error.into()))?
                     .into_iter()
                     .next()
-                    .ok_or(RegisterUserError::Forbidden)?;
+                    .ok_or_else(|| {
+                        security_event::authorization_failed(command.caller_id(), "create", "user");
+                        RegisterUserError::Forbidden
+                    })?;
 
                 let authorized = match command.role() {
                     Role::Admin => caller.role() == Role::Admin && caller.id() == 0,
                     Role::Standard => caller.role() == Role::Admin,
                 };
                 if !authorized {
+                    security_event::authorization_failed(caller.id(), "create", "user");
                     return Err(RegisterUserError::Forbidden);
                 }
 
@@ -141,8 +145,12 @@ where
                     .await
                     .map_err(|error| RegisterUserError::Unknown(error.into()))?;
                 let pending_credential =
-                    Credential::try_new(0, password_hash, Utc::now().naive_utc())
-                        .map_err(|error| RegisterUserError::Unknown(error.into()))?;
+                    Credential::try_new(0, password_hash, Utc::now().naive_utc()).map_err(
+                        |error| {
+                            security_event::application_error("register_user");
+                            RegisterUserError::Unknown(error.into())
+                        },
+                    )?;
                 let credential = unit_of_work
                     .credentials()
                     .create(pending_credential)
@@ -150,8 +158,12 @@ where
                     .map_err(|error| RegisterUserError::Unknown(error.into()))?;
 
                 let pending_user =
-                    User::try_new(0, username, email, credential.id(), command.role())
-                        .map_err(|error| RegisterUserError::Unknown(error.into()))?;
+                    User::try_new(0, username, email, credential.id(), command.role()).map_err(
+                        |error| {
+                            security_event::application_error("register_user");
+                            RegisterUserError::Unknown(error.into())
+                        },
+                    )?;
                 let user = unit_of_work
                     .users()
                     .create(pending_user)
@@ -173,14 +185,12 @@ where
                         .commit()
                         .await
                         .map_err(|error| RegisterUserError::Unknown(error.into()))?;
+                    security_event::user_admin(command.caller_id(), "create", "user");
                     Ok(value)
                 }
                 Err(error) => {
-                    if let Err(rollback_error) = unit_of_work.rollback().await {
-                        error!(
-                            error = ?rollback_error,
-                            "failed to roll back the register user unit of work"
-                        );
+                    if unit_of_work.rollback().await.is_err() {
+                        // The unit-of-work adapter owns the rollback-failure log (OBS-002).
                     }
                     Err(error)
                 }

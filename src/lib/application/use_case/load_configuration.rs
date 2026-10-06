@@ -5,11 +5,10 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::thread::available_parallelism;
 
-use tracing::error;
-
 use crate::application::port::load_configuration::LoadConfigurationError;
 use crate::application::port::load_configuration::LoadConfigurationResponse;
 use crate::application::port::load_configuration::LoadConfigurationUseCase;
+use crate::application::security_event;
 use crate::domain::model::asset::Asset;
 use crate::domain::model::configuration::Configuration;
 use crate::domain::model::jwt::Jwt;
@@ -64,10 +63,13 @@ where
     S: SecretGenerator,
     C: ConfigurationSource,
 {
-    /// Ensure the configuration singleton row exists, returning its base layer.
+    /// Ensure the configuration singleton row exists, returning its base layer
+    /// and whether this call created it.
     ///
     /// On first boot the row is created with defaults and freshly generated
-    /// secrets, so the configuration source always finds a base layer.
+    /// secrets, so the configuration source always finds a base layer. The
+    /// `created` flag lets the caller emit `system_object` only after the unit
+    /// of work commits (`OBS-002`, `OBS-006`).
     ///
     /// # Errors
     ///
@@ -78,30 +80,32 @@ where
     async fn base_layer(
         &self,
         configuration: &mut impl ConfigurationRepository,
-    ) -> Result<Configuration, LoadConfigurationError> {
+    ) -> Result<(Configuration, bool), LoadConfigurationError> {
         if let Some(row) = configuration
             .search()
             .await
             .map_err(|error| LoadConfigurationError::Unknown(error.into()))?
         {
-            return Ok(row);
+            return Ok((row, false));
         }
 
         let configuration_row = self.default_configuration().await?;
         match configuration.create(configuration_row.clone()).await {
-            Ok(_) => Ok(configuration_row),
+            Ok(_) => Ok((configuration_row, true)),
             Err(RepositoryError::AlreadyExist) => {
                 // Another boot created the singleton concurrently; the row
                 // exists, which is all this boot needs.
-                configuration
+                let row = configuration
                     .search()
                     .await
                     .map_err(|error| LoadConfigurationError::Unknown(error.into()))?
                     .ok_or_else(|| {
+                        security_event::application_error("load_configuration");
                         LoadConfigurationError::Unknown(anyhow::anyhow!(
                             "the configuration singleton row does not exist"
                         ))
-                    })
+                    })?;
+                Ok((row, false))
             }
             Err(error) => Err(LoadConfigurationError::Unknown(error.into())),
         }
@@ -187,11 +191,13 @@ where
                 .await
                 .map_err(|error| LoadConfigurationError::Unknown(error.into()))?;
 
-            let result =
-                async {
-                    let base = self.base_layer(&mut unit_of_work.configuration()).await?;
-                    let configuration = self.configuration_source.load(base).await.map_err(
-                        |error| match error {
+            let result = async {
+                let (base, created) = self.base_layer(&mut unit_of_work.configuration()).await?;
+                let configuration =
+                    self.configuration_source
+                        .load(base)
+                        .await
+                        .map_err(|error| match error {
                             ConfigurationSourceError::InvalidConfiguration(source) => {
                                 LoadConfigurationError::InvalidConfiguration(source)
                             }
@@ -199,27 +205,26 @@ where
                             | ConfigurationSourceError::Unknown(_)) => {
                                 LoadConfigurationError::Unknown(anyhow::Error::new(other))
                             }
-                        },
-                    )?;
+                        })?;
 
-                    Ok(LoadConfigurationResponse::new(configuration))
-                }
-                .await;
+                Ok((LoadConfigurationResponse::new(configuration), created))
+            }
+            .await;
 
             match result {
-                Ok(value) => {
+                Ok((value, created)) => {
                     unit_of_work
                         .commit()
                         .await
                         .map_err(|error| LoadConfigurationError::Unknown(error.into()))?;
+                    if created {
+                        security_event::system_object("configuration", "create");
+                    }
                     Ok(value)
                 }
                 Err(error) => {
-                    if let Err(rollback_error) = unit_of_work.rollback().await {
-                        error!(
-                            error = ?rollback_error,
-                            "failed to roll back the load configuration unit of work"
-                        );
+                    if unit_of_work.rollback().await.is_err() {
+                        // The unit-of-work adapter owns the rollback-failure log (OBS-002).
                     }
                     Err(error)
                 }

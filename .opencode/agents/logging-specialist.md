@@ -106,7 +106,7 @@ findings; you never modify the repository.
   obligation — that lives only in `OBS-*`. Report a restated logging rule in a
   `STY-*` row as drift.
 - `src/lib/infrastructure/logging.rs` installs the subscriber; read it to judge
-  reachability, sinks and the non-suppressible floor.
+  reachability, sinks and non-suppressible `security` events.
 - Evidence first: every finding carries `path:line`, or it is not reported.
 - Never invent a rule, rule ID, or event. When no rule covers an issue, say so.
 

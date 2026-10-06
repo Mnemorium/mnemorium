@@ -14,27 +14,33 @@ use crate::domain::port::password_hasher::PasswordHasher;
 /// Map a `password_hash` engine error to the port error.
 impl From<PasswordHashError> for PasswordHasherError {
     fn from(err: PasswordHashError) -> Self {
-        error!(
-            error = ?err,
-            "an error occurred while hashing or verifying a password"
-        );
-        match err {
-            PasswordHashError::Crypto => {
-                Self::Unknown(anyhow::anyhow!("the crypto backend failed"))
+        let (kind, mapped) = match err {
+            PasswordHashError::Crypto => (
+                "crypto_failure",
+                Self::Unknown(anyhow::anyhow!("the crypto backend failed")),
+            ),
+            PasswordHashError::Algorithm => ("algorithm_failure", Self::OperationFailed),
+            PasswordHashError::EncodingInvalid => ("encoding_invalid", Self::OperationFailed),
+            PasswordHashError::Internal => ("internal_failure", Self::OperationFailed),
+            PasswordHashError::OutOfMemory => ("out_of_memory", Self::OperationFailed),
+            PasswordHashError::OutputSize => ("output_size", Self::OperationFailed),
+            PasswordHashError::ParamInvalid { .. } | PasswordHashError::ParamsInvalid => {
+                ("invalid_parameters", Self::OperationFailed)
             }
-            PasswordHashError::Algorithm
-            | PasswordHashError::EncodingInvalid
-            | PasswordHashError::Internal
-            | PasswordHashError::OutOfMemory
-            | PasswordHashError::OutputSize
-            | PasswordHashError::ParamInvalid { .. }
-            | PasswordHashError::ParamsInvalid
-            | PasswordHashError::PasswordInvalid
-            | PasswordHashError::RngFailure
-            | PasswordHashError::SaltInvalid
-            | PasswordHashError::Version
-            | _ => Self::OperationFailed,
-        }
+            PasswordHashError::PasswordInvalid => ("password_invalid", Self::OperationFailed),
+            PasswordHashError::RngFailure => ("rng_failure", Self::OperationFailed),
+            PasswordHashError::SaltInvalid => ("salt_invalid", Self::OperationFailed),
+            PasswordHashError::Version => ("version", Self::OperationFailed),
+            _ => ("operation_failed", Self::OperationFailed),
+        };
+        error!(
+            target: "security",
+            event = "port_fault",
+            kind = %kind,
+            operation = "password_hashing",
+            "an outbound dependency failed"
+        );
+        mapped
     }
 }
 

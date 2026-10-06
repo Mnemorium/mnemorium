@@ -20,8 +20,10 @@ const LOG_DIRECTORY: &str = "logs";
 const LOG_FILE_NAME: &str = "mnemorium.log";
 /// Reserved target carrying security events (`OBS-007`).
 const SECURITY_TARGET: &str = "security";
-/// Directive pinning the security target to its non-suppressible floor.
-const SECURITY_FLOOR: &str = "security=warn";
+/// Directive pinning the security target to its non-suppressible floor: the
+/// catalog's lowest declared level, so no `logging.level` value can suppress a
+/// catalog event (`OBS-006`, `OBS-007`).
+const SECURITY_FLOOR: &str = "security=debug";
 
 /// Configure and install the global `tracing` subscriber from `logging`.
 ///
@@ -31,16 +33,17 @@ const SECURITY_FLOOR: &str = "security=warn";
 /// writer.
 ///
 /// The filter is built from the `logging.level` directives with the security
-/// floor appended last (`OBS-007`): the reserved `security` target keeps at
-/// least a `warn` level no matter what `logging.level` says, so a security
-/// event can never be suppressed. `off`/`none` as a whole-level value and any
-/// directive that targets `security` are rejected, because both would lift the
-/// floor.
+/// floor appended last (`OBS-007`): the reserved `security` target keeps the
+/// catalog's lowest declared level (`debug`) no matter what `logging.level`
+/// says, so a security event can never be suppressed. `off`/`none` as a
+/// whole-level value and any directive that targets `security` are rejected,
+/// because both would lift the floor.
 ///
 /// # Errors
 ///
 /// Returns an error when the verbosity directives are invalid, when they
-/// suppress the security target, or when the file appender cannot be created.
+/// disable logging as a whole (`off`/`none`), when they target the reserved
+/// `security` target, or when the file appender cannot be created (`OBS-007`).
 pub fn setup(logging: &Logging) -> anyhow::Result<WorkerGuard> {
     let filter = build_filter(logging)?;
 
@@ -149,6 +152,16 @@ mod tests {
 
         // Assert
         assert!(result.is_err(), "`off` must not disable logging entirely");
+        Ok(())
+    }
+
+    #[test]
+    fn bare_none_is_rejected() -> Result<(), Box<dyn Error>> {
+        // Act
+        let result = build_filter(&logging("none")?);
+
+        // Assert
+        assert!(result.is_err(), "`none` must not disable logging entirely");
         Ok(())
     }
 

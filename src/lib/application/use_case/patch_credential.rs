@@ -3,11 +3,11 @@ use std::pin::Pin;
 use std::sync::Arc;
 
 use chrono::Utc;
-use tracing::error;
 
 use crate::application::port::patch_credential::PatchCredentialCommand;
 use crate::application::port::patch_credential::PatchCredentialError;
 use crate::application::port::patch_credential::PatchCredentialUseCase;
+use crate::application::security_event;
 use crate::domain::model::credential::Credential;
 use crate::domain::model::user::Role;
 use crate::domain::port::configuration_repository::ConfigurationRepository as _;
@@ -83,9 +83,17 @@ where
                     .map_err(|error| PatchCredentialError::Unknown(error.into()))?
                     .into_iter()
                     .next()
-                    .ok_or(PatchCredentialError::Forbidden)?;
+                    .ok_or_else(|| {
+                        security_event::authorization_failed(
+                            command.caller_id(),
+                            "patch",
+                            "credential",
+                        );
+                        PatchCredentialError::Forbidden
+                    })?;
 
                 if !(caller.role() == Role::Admin && caller.id() == 0) {
+                    security_event::authorization_failed(caller.id(), "patch", "credential");
                     return Err(PatchCredentialError::Forbidden);
                 }
 
@@ -146,14 +154,12 @@ where
                         .commit()
                         .await
                         .map_err(|error| PatchCredentialError::Unknown(error.into()))?;
+                    security_event::credential_rotated(command.caller_id());
                     Ok(value)
                 }
                 Err(error) => {
-                    if let Err(rollback_error) = unit_of_work.rollback().await {
-                        error!(
-                            error = ?rollback_error,
-                            "failed to roll back the patch credential unit of work"
-                        );
+                    if unit_of_work.rollback().await.is_err() {
+                        // The unit-of-work adapter owns the rollback-failure log (OBS-002).
                     }
                     Err(error)
                 }
