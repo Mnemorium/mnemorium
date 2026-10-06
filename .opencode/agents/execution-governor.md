@@ -118,12 +118,12 @@ permissions:
   - { action: shell, resource: "devenv tasks run build:*", effect: allow }
   - { action: shell, resource: "devenv tasks run test:*", effect: allow }
   - { action: shell, resource: "devenv tasks run security:*", effect: allow }
-  # Container (E2E)
-  - { action: shell, resource: "docker build *", effect: allow }
-  - { action: shell, resource: "docker run *", effect: allow }
-  - { action: shell, resource: "docker rm *", effect: allow }
-  - { action: shell, resource: "docker logs *", effect: allow }
-  - { action: shell, resource: "docker ps *", effect: allow }
+  # Process, network, and timing utilities
+  - { action: shell, resource: "ps *", effect: allow }
+  - { action: shell, resource: "sleep *", effect: allow }
+  - { action: shell, resource: "curl *", effect: allow }
+  # Container (all docker commands)
+  - { action: shell, resource: "docker *", effect: allow }
   # Guardrails that survive the widened shell allowlist: never read a secret
   # file into the transcript, and give the locked manifests no shell route that
   # bypasses their edit deny.
