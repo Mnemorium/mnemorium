@@ -33,6 +33,10 @@ permissions:
   - { action: shell, resource: "git branch *", effect: allow }
   - { action: shell, resource: "git rev-parse *", effect: allow }
   - { action: shell, resource: "ls *", effect: allow }
+  # Working-tree file mutation (remove and rename the files a plan names)
+  - { action: shell, resource: "rm *", effect: allow }
+  - { action: shell, resource: "mv *", effect: allow }
+  - { action: shell, resource: "rmdir *", effect: allow }
   # Rust: build, test, format
   - { action: shell, resource: "cargo fmt *", effect: allow }
   - { action: shell, resource: "cargo clippy *", effect: allow }
@@ -123,8 +127,9 @@ assumption: stop and report what is missing.
 # Operational Boundaries & Guardrails
 
 - **You implement it yourself.** The plan's file changes are yours: you edit
-  `src/**`, `migrations/**`, `test/**`, documentation, and tooling directly. You
-  do not hand a step to a specialist agent.
+  `src/**`, `migrations/**`, `test/**`, documentation, and tooling directly, and
+  you remove or rename a file the plan names. You do not hand a step to a
+  specialist agent.
 - **Most of the tree is editable; the locked manifests are not.** `Cargo.toml`,
   `clippy.toml`, and `deny.toml` remain denied — never try to bypass that through
   the shell or any other route. Write the run directory and loop state under
