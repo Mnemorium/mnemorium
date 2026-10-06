@@ -1,3 +1,9 @@
+## [0.9.0](https://github.com/Mnemorium/mnemorium/compare/v0.8.1...v0.9.0) (2026-10-06)
+
+### Features
+
+* **persistence:** add the Library gallery store ([#210](https://github.com/Mnemorium/mnemorium/issues/210)) ([2957405](https://github.com/Mnemorium/mnemorium/commit/2957405909296c93fa6f34099d1a445414204f54))
+
 ## [0.8.1](https://github.com/Mnemorium/mnemorium/compare/v0.8.0...v0.8.1) (2026-10-06)
 
 ### Bug Fixes
