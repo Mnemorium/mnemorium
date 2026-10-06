@@ -70,7 +70,7 @@
 | `src/lib/infrastructure/inbound/rest.rs`              | REST module root: declares the submodules and aggregates the OpenAPI document (`ApiDoc`)                     |
 | `src/lib/infrastructure/inbound/rest/handler.rs`      | Declares the route table (`setup_routes`) and installs the tracing middleware                                |
 | `src/lib/infrastructure/inbound/rest/handler`         | HTTP endpoint handler                                                                                        |
-| `src/lib/infrastructure/inbound/rest/middleware`      | Axum middleware (authentication, tracing)                                                                    |
+| `src/lib/infrastructure/inbound/rest/middleware`      | Axum middleware (authentication, rate limiting, tracing)                                                     |
 | `src/lib/infrastructure/outbound`                     | Outbound Port adapter declaration                                                                            |
 | `src/lib/infrastructure/outbound/argon2`              | Argon2 password hasher adapter                                                                               |
 | `src/lib/infrastructure/outbound/config`              | Configuration source adapters                                                                                |

@@ -29,6 +29,10 @@ pub struct Configuration {
     pub log_max_files: i64,
     pub log_rotation: Rotation,
     pub pepper: String,
+    pub rate_limit_burst_size: i64,
+    pub rate_limit_client_ip_header: String,
+    pub rate_limit_period_seconds: i64,
+    pub rate_limit_trusted_proxies: String,
     pub sqlite3_max_connections: i64,
     pub sqlite3_path: String,
 }

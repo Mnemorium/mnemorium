@@ -269,6 +269,8 @@ mod tests {
     use crate::domain::model::logging::LoggingError;
     use crate::domain::model::logging::Rotation;
     use crate::domain::model::persistence::Persistence;
+    use crate::domain::model::rate_limit::ClientIpHeader;
+    use crate::domain::model::rate_limit::RateLimit;
     use crate::domain::model::security::Security;
     use crate::domain::model::sqlite3::Sqlite3;
     use crate::domain::model::sqlite3::Sqlite3Error;
@@ -873,5 +875,35 @@ mod tests {
             (2..=super::MAX_DEFAULT_SQLITE3_MAX_CONN).contains(&connections),
             "the default pool must be bounded between two and the configured cap"
         );
+    }
+
+    #[test]
+    fn configuration_round_trips_trusted_proxies_through_json() -> Result<(), Box<dyn Error>> {
+        // Arrange: a non-empty trusted-proxy list is the case that must survive
+        // the `DbSqlite3Source` JSON round-trip (`security.rate_limit`).
+        let mut security = Security::try_new(Jwt::try_new(hex64('a'), 3600)?, hex64('b'), true)?;
+        security.set_rate_limit(RateLimit::try_new(
+            9,
+            ClientIpHeader::XRealIp,
+            30,
+            vec!["10.0.0.1".parse()?, "2001:db8::1".parse()?],
+        )?);
+        let configuration = Configuration::new(
+            Persistence::new(Sqlite3::try_new("mnemorium.db".to_owned(), 1)?),
+            security,
+            Logging::try_new(false, "debug,sqlx=warn".to_owned(), 7, Rotation::Daily)?,
+            Asset::default(),
+        );
+
+        // Act
+        let json = serde_json::to_string(&configuration)?;
+        let decoded: Configuration = serde_json::from_str(&json)?;
+
+        // Assert
+        assert_eq!(
+            decoded.security().rate_limit(),
+            configuration.security().rate_limit()
+        );
+        Ok(())
     }
 }

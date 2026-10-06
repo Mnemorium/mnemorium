@@ -912,13 +912,17 @@ A few settings are read once while the process starts — before the live config
 component that consumes them is built — and a change to their stored value has no effect until the server restarts. They
 are the **startup-only settings**; this table is their registry.
 
-| Setting                               | Consumed at startup by                                                                                                                                 | Restart feedback                                                       |
-| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------- |
-| `persistence.sqlite3.path`            | The bootstrap that opens the pool (`src/lib/infrastructure/outbound/config/bootstrap.rs`).                                                             | A startup warning when the stored value differs (`src/bin/server.rs`). |
-| `persistence.sqlite3.max_connections` | The pool sizing in the same bootstrap.                                                                                                                 | None.                                                                  |
-| `asset.upload.chunk_size_bytes`       | The axum body limit fixed when the router is built (`src/lib/infrastructure/inbound/rest/handler/asset.rs`); the upload use cases read the live value. | None (`TODO(hot-reload)` in the same handler).                         |
-| `asset.storage.root`                  | The `FileSystemStorage` adapter built per use from the root captured in `src/bin/server.rs`.                                                           | None.                                                                  |
-| `logging.level`                       | `logging::setup` (`src/lib/infrastructure/logging.rs`) when the `tracing` subscriber is installed.                                                     | None.                                                                  |
+| Setting                                | Consumed at startup by                                                                                                                                 | Restart feedback                                                       |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------- |
+| `persistence.sqlite3.path`             | The bootstrap that opens the pool (`src/lib/infrastructure/outbound/config/bootstrap.rs`).                                                             | A startup warning when the stored value differs (`src/bin/server.rs`). |
+| `persistence.sqlite3.max_connections`  | The pool sizing in the same bootstrap.                                                                                                                 | None.                                                                  |
+| `asset.upload.chunk_size_bytes`        | The axum body limit fixed when the router is built (`src/lib/infrastructure/inbound/rest/handler/asset.rs`); the upload use cases read the live value. | None (`TODO(hot-reload)` in the same handler).                         |
+| `asset.storage.root`                   | The `FileSystemStorage` adapter built per use from the root captured in `src/bin/server.rs`.                                                           | None.                                                                  |
+| `logging.level`                        | `logging::setup` (`src/lib/infrastructure/logging.rs`) when the `tracing` subscriber is installed.                                                     | None.                                                                  |
+| `security.rate_limit.trusted_proxies`  | The login limiter built in the composition root (`src/bin/server.rs`) when the router is built.                                                        | None.                                                                  |
+| `security.rate_limit.client_ip_header` | The login limiter built in the composition root (`src/bin/server.rs`) when the router is built.                                                        | None.                                                                  |
+| `security.rate_limit.burst_size`       | The login limiter built in the composition root (`src/bin/server.rs`) when the router is built.                                                        | None.                                                                  |
+| `security.rate_limit.period_seconds`   | The login limiter built in the composition root (`src/bin/server.rs`) when the router is built.                                                        | None.                                                                  |
 
 The registry is **extensible**: a setting becomes startup-only by being added here. Adding one records, in the same
 change, how a change to the stored value is surfaced to the operator (a startup warning, or an explicit `None`).
@@ -1963,6 +1967,10 @@ entity configuration {
     * asset_upload_chunk_size_bytes: INTEGER <<NN, DF(5242880), CC(asset_upload_chunk_size_bytes > 0)>>
     * asset_upload_expiry_seconds: INTEGER <<NN, DF(86400), CC(asset_upload_expiry_seconds > 0)>>
     * asset_upload_max_file_size_bytes: INTEGER <<NN, DF(107374182400), CC(asset_upload_max_file_size_bytes > 0)>>
+    * rate_limit_trusted_proxies: TEXT <<NN, DF('')>>
+    * rate_limit_client_ip_header: TEXT <<NN, DF('x-forwarded-for')>>
+    * rate_limit_burst_size: INTEGER <<NN, DF(5), CC(rate_limit_burst_size > 0)>>
+    * rate_limit_period_seconds: INTEGER <<NN, DF(12), CC(rate_limit_period_seconds > 0)>>
 }
 
 user ||--|| credential
@@ -2303,6 +2311,7 @@ Source: `Cargo.toml`.
 | [thiserror](https://crates.io/crates/thiserror)                   | Derives `std::error::Error` implementations.                                    | 2.0.20  | MIT OR Apache-2.0                  |
 | [tokio](https://crates.io/crates/tokio)                           | Event-driven, non-blocking I/O platform for asynchronous applications.          | 1.53.1  | MIT                                |
 | [tower](https://crates.io/crates/tower)                           | Modular, reusable components for building robust clients and servers.           | 0.5.3   | MIT                                |
+| [tower_governor](https://crates.io/crates/tower_governor)         | Per-client rate limiting for Tower services, backed by `governor`.              | 0.8.0   | MIT OR Apache-2.0                  |
 | [tracing](https://crates.io/crates/tracing)                       | Application-level tracing for Rust.                                             | 0.1.44  | MIT                                |
 | [tracing-appender](https://crates.io/crates/tracing-appender)     | File appenders and non-blocking writers for `tracing`.                          | 0.2.5   | MIT                                |
 | [tracing-subscriber](https://crates.io/crates/tracing-subscriber) | Composing and implementing `tracing` subscribers.                               | 0.3.23  | MIT                                |
@@ -2337,29 +2346,29 @@ Source: `Cargo.toml`.
 
 Source: `devenv.nix`.
 
-| Name                                                                       | Description                                                          | Version | License |
-| -------------------------------------------------------------------------- | -------------------------------------------------------------------- | ------- | ------- |
-| [betterleaks](https://github.com/dortort/betterleaks)                      | Secret scanning in pre-commit and CI.                                | 1.8.1   | TODO    |
-| [cargo-bundle-licenses](https://github.com/sstadick/cargo-bundle-licenses) | Bundles the third-party license texts for `THIRD_PARTY_NOTICES.txt`. | 4.2.0   | TODO    |
-| [cargo-deny](https://github.com/EmbarkStudios/cargo-deny)                  | Audits `Cargo.lock` for advisories, licenses, bans, and sources.     | 0.20.2  | TODO    |
-| [cargo-llvm-cov](https://github.com/taiki-e/cargo-llvm-cov)                | Coverage instrumentation and reporting for Rust.                     | 0.9.0   | TODO    |
-| [git](https://git-scm.com/)                                                | Version control.                                                     | 2.55.0  | TODO    |
-| [llvm](https://llvm.org/)                                                  | LLVM tools used by coverage (`llvm-cov`, `llvm-profdata`).           | 21.1.8  | TODO    |
-| [ls-lint](https://ls-lint.org/)                                            | File and directory naming linter.                                    | 2.3.1   | TODO    |
-| [nixfmt](https://github.com/NixOS/nixfmt)                                  | Nix code formatter.                                                  | 1.4.0   | TODO    |
-| [nodejs](https://nodejs.org/)                                              | Node.js runtime for tooling.                                         | 24.19.0 | TODO    |
-| [prettier](https://prettier.io/)                                           | Markdown formatter.                                                  | 3.8.3   | TODO    |
-| [Python toolchain](https://www.python.org/)                                | Python runtime for tooling and tests.                                | 3.14.6  | TODO    |
-| [Rust toolchain](https://www.rust-lang.org/)                               | Rust compiler and standard tooling.                                  | 1.98.0  | TODO    |
-| [semgrep](https://semgrep.dev/)                                            | Static-analysis (SAST) scanner; CI and the `security:semgrep` task.  | 1.172.0 | TODO    |
-| [shellcheck](https://github.com/koalaman/shellcheck)                       | Shell script linter.                                                 | 0.11.0  | TODO    |
-| [shfmt](https://github.com/mvdan/sh)                                       | Shell script formatter.                                              | 3.13.1  | TODO    |
-| [sqlfluff](https://sqlfluff.com/)                                          | SQL linter and formatter (SQLite dialect).                           | 4.3.0   | TODO    |
-| [sqlite](https://sqlite.org/)                                              | SQLite command-line shell.                                           | 3.51.2  | TODO    |
-| [sqlx-cli](https://github.com/launchbadge/sqlx)                            | SQLx migrations and database CLI.                                    | 0.9.0   | TODO    |
-| [taplo](https://taplo.tamasfe.dev/)                                        | TOML formatter.                                                      | 0.10.0  | TODO    |
-| [xdg-utils](https://www.freedesktop.org/wiki/Software/xdg-utils/)          | Desktop integration helpers (opens reports in a browser).            | 1.2.1   | TODO    |
-| [yamllint](https://github.com/adrienverge/yamllint)                        | YAML linter.                                                         | 1.37.1  | TODO    |
+| Name                                                              | Description                                                             | Version | License |
+| ----------------------------------------------------------------- | ----------------------------------------------------------------------- | ------- | ------- |
+| [betterleaks](https://github.com/dortort/betterleaks)             | Secret scanning in pre-commit and CI.                                   | 1.8.1   | TODO    |
+| [cargo-about](https://github.com/EmbarkStudios/cargo-about)       | Generates the third-party license notices in `THIRD_PARTY_NOTICES.txt`. | 0.9.0   | TODO    |
+| [cargo-deny](https://github.com/EmbarkStudios/cargo-deny)         | Audits `Cargo.lock` for advisories, licenses, bans, and sources.        | 0.20.2  | TODO    |
+| [cargo-llvm-cov](https://github.com/taiki-e/cargo-llvm-cov)       | Coverage instrumentation and reporting for Rust.                        | 0.9.0   | TODO    |
+| [git](https://git-scm.com/)                                       | Version control.                                                        | 2.55.0  | TODO    |
+| [llvm](https://llvm.org/)                                         | LLVM tools used by coverage (`llvm-cov`, `llvm-profdata`).              | 21.1.8  | TODO    |
+| [ls-lint](https://ls-lint.org/)                                   | File and directory naming linter.                                       | 2.3.1   | TODO    |
+| [nixfmt](https://github.com/NixOS/nixfmt)                         | Nix code formatter.                                                     | 1.4.0   | TODO    |
+| [nodejs](https://nodejs.org/)                                     | Node.js runtime for tooling.                                            | 24.19.0 | TODO    |
+| [prettier](https://prettier.io/)                                  | Markdown formatter.                                                     | 3.8.3   | TODO    |
+| [Python toolchain](https://www.python.org/)                       | Python runtime for tooling and tests.                                   | 3.14.6  | TODO    |
+| [Rust toolchain](https://www.rust-lang.org/)                      | Rust compiler and standard tooling.                                     | 1.98.0  | TODO    |
+| [semgrep](https://semgrep.dev/)                                   | Static-analysis (SAST) scanner; CI and the `security:semgrep` task.     | 1.172.0 | TODO    |
+| [shellcheck](https://github.com/koalaman/shellcheck)              | Shell script linter.                                                    | 0.11.0  | TODO    |
+| [shfmt](https://github.com/mvdan/sh)                              | Shell script formatter.                                                 | 3.13.1  | TODO    |
+| [sqlfluff](https://sqlfluff.com/)                                 | SQL linter and formatter (SQLite dialect).                              | 4.3.0   | TODO    |
+| [sqlite](https://sqlite.org/)                                     | SQLite command-line shell.                                              | 3.51.2  | TODO    |
+| [sqlx-cli](https://github.com/launchbadge/sqlx)                   | SQLx migrations and database CLI.                                       | 0.9.0   | TODO    |
+| [taplo](https://taplo.tamasfe.dev/)                               | TOML formatter.                                                         | 0.10.0  | TODO    |
+| [xdg-utils](https://www.freedesktop.org/wiki/Software/xdg-utils/) | Desktop integration helpers (opens reports in a browser).               | 1.2.1   | TODO    |
+| [yamllint](https://github.com/adrienverge/yamllint)               | YAML linter.                                                            | 1.37.1  | TODO    |
 
 ---
 
@@ -2470,6 +2479,8 @@ longest-prefix match, and every scope owns at least one path. Adding or removing
 | Docs    | `development`    | `docs/development/**`                     | Development documentation       |
 | Repo    | `repo`           | `LICENSE`                                 | License                         |
 | Repo    | `repo`           | `THIRD_PARTY_NOTICES.txt`                 | Third-party notices             |
+| Repo    | `repo`           | `about.toml`                              | cargo-about configuration       |
+| Repo    | `repo`           | `about.hbs`                               | cargo-about notices template    |
 | Tooling | `config`         | `Cargo.toml`                              | Rust manifest                   |
 | Tooling | `config`         | `Cargo.lock`                              | Rust lockfile                   |
 | Tooling | `config`         | `.betterleaks.toml`                       | Secret-scan configuration       |
@@ -2722,6 +2733,7 @@ code or a classification — never a value.
 | `authn_failed`              | `warn`  | `claimed_identity`, `reason` | a credential is rejected; one reason, never distinguishing a bad identity from a bad secret |
 | `authz_failed`              | `warn`  | `actor`, `action`, `target`  | an authorization decision denies an action                                                  |
 | `session_validation_failed` | `warn`  | `reason`                     | a token is missing, invalid or expired                                                      |
+| `rate_limit_exceeded`       | `warn`  | `route`, `reason`            | a request is rejected by a rate limiter                                                     |
 | `deserialization_failed`    | `warn`  | `source`, `reason`           | a JSON body or the configuration fails to deserialize                                       |
 | `application_error`         | `error` | `operation`                  | a use case originates an internal `Unknown`                                                 |
 | `port_fault`                | `error` | `kind`, `operation`          | an outbound adapter maps a dependency failure                                               |
@@ -2736,7 +2748,7 @@ code or a classification — never a value.
 | `unexpected_http_method`    | `warn`  | `method`, `path`             | a request uses a method the route does not support                                          |
 
 Events with no surface in this server are deliberately absent: import/export, network and TLS failures, payment,
-geolocation and consent, fraud, rate-limit and excessive-use, and key rotation.
+geolocation and consent, fraud, excessive use, and key rotation.
 
 ---
 
