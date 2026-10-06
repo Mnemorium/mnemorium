@@ -1672,7 +1672,7 @@ enforce invariants.
 | `PERS-002` | Datastore & migrations      | Version the schema with migrations in `migrations/`, one `.up.sql`/`.down.sql` pair per change.                                                                                                                                                |                                           |
 | `PERS-003` | Datastore & migrations      | Apply the migrations at startup with `sqlx::migrate!` in `src/lib/infrastructure/outbound/sqlx/sqlite3.rs`.                                                                                                                                    |                                           |
 | `PERS-004` | Datastore & migrations      | Run the migrations at boot inside `init_db`.                                                                                                                                                                                                   |                                           |
-| `PERS-005` | Seeds                       | Seed the reference data (`audio_channel`, `color`, `language`, `mime_type`) from the migrations.                                                                                                                                               |                                           |
+| `PERS-005` | Seeds                       | Seed the reference data (`audio_channel`, `color`, `gallery`, `language`, `mime_type`) from the migrations.                                                                                                                                    |                                           |
 | `PERS-006` | Invariants                  | A `user` row with `user_id = 0` (the Root Admin) cannot be deleted or modified.                                                                                                                                                                |                                           |
 | `PERS-007` | Invariants                  | A `gallery` row with `gallery_id = 0` (the default gallery) cannot be deleted or modified.                                                                                                                                                     |                                           |
 | `PERS-008` | Invariants                  | Normalise `codec`, `genre_id` and `movie.country_of_origin` to uppercase on insert/update.                                                                                                                                                     |                                           |
@@ -1685,6 +1685,15 @@ enforce invariants.
 | `PERS-015` | Invariants                  | Delete an upload's staging file on every path that does not commit the upload row; a failed begin-upload never leaves a staging file behind.                                                                                                   |                                           |
 | `PERS-016` | Invariants                  | Treat a staging file that already exists for a newly created upload identifier as a leftover from an interrupted begin and reclaim it, instead of failing the begin.                                                                           |                                           |
 | `PERS-017` | Datastore & migrations      | Map SQLite's `SQLITE_CONSTRAINT_TRIGGER` extended result code (`1811`, a trigger `RAISE(ABORT)`) to `RepositoryError::Conflict` in `error_mapping.rs`; repositories must not test the extended result code themselves.                         | [§ 8.2](#82-repository-adapter)           |
+| `PERS-018` | Invariants                  | A `gallery_item` references exactly one media row: either `image_id` or `video_id` is set, never both and never neither (`chk_gallery_item_one_media`).                                                                                        |                                           |
+| `PERS-019` | Invariants                  | A media row belongs to at most one gallery: the partial unique indexes `uq_gallery_item_image_id` and `uq_gallery_item_video_id` enforce one `gallery_item` per `image`/`video`.                                                               |                                           |
+| `PERS-020` | Datastore & migrations      | Cascade deletes only within one bounded context; a cross-context foreign key (for example `image.file_id` and `video.file_id` into `file`) does not use `ON DELETE CASCADE`, so the application orchestrates the deletion.                     |                                           |
+
+Editing an already-applied migration (`PERS-014`) changes its checksum, and deleting an applied pair removes its
+version. `sqlx::migrate!` then fails at startup — `VersionMismatch` for the changed checksum, `VersionMissing` for the
+deleted pair (this change deletes the `20260904012859_create_gallery_video` pair) — instead of leaving a
+stale-but-running database. Reset by deleting the SQLite file (default `mnemorium.db`) together with its `-wal` and
+`-shm` sidecars and restarting the server; the development database is disposable and is rebuilt from `migrations/`.
 
 ---
 
@@ -1918,6 +1927,7 @@ entity image {
    * height_px: INTEGER <<NN, CC(height_px > 0)>>
    * orientation: VARCHAR(20) <<NN, CC(orientation IN ('LANDSCAPE', 'PORTRAIT', 'SQUARE'))>>
    * created_at: DATE <<NN>>
+   * file_id: INTEGER <<FK, NN, UN>>
 }
 
 entity color {
@@ -1933,21 +1943,16 @@ entity gallery {
    * created_at: TEXT <<NN>>
    * last_modified_at: TEXT <<NN>>
    * is_public: BOOLEAN <<NN>>
+   user_id: INTEGER <<FK>>
 }
 
 entity gallery_item {
-   * gallery_id: INTEGER <<FK, PK, NN>>
-   * image_id: INTEGER <<FK, PK, NN>>
-   * item_index: INTEGER <<PK, NN>>
+   * gallery_item_id: INTEGER <<PK>>
    --
-   * added_at: TEXT <<NN, DF(CURRENT_TIMESTAMP)>>
-}
-
-entity gallery_video {
-   * gallery_id: INTEGER <<FK, PK, NN>>
-   * video_id: INTEGER <<FK, PK, NN>>
-   * item_index: INTEGER <<PK, NN>>
-   --
+   * gallery_id: INTEGER <<FK, NN>>
+   image_id: INTEGER <<FK, UN>>
+   video_id: INTEGER <<FK, UN>>
+   * item_index: INTEGER <<NN, CC(item_index >= 0)>>
    * added_at: TEXT <<NN, DF(CURRENT_TIMESTAMP)>>
 }
 
@@ -1976,6 +1981,7 @@ entity configuration {
 
 user ||--|| credential
 user ||--o{ music_playlist
+user ||--o{ gallery
 user ||--o{ file
 user ||--o{ upload
 upload ||--o{ upload_chunk
@@ -2014,6 +2020,8 @@ person ||--o{ music_group_person
 video ||--|| file
 video ||--|| color
 
+image ||--|| file
+
 movie ||--|| video
 movie ||--o{ movie_genre
 
@@ -2025,16 +2033,19 @@ language ||--o{ audio_stream
 language ||--o{ subtitle_stream
 
 gallery ||--o{ gallery_item
-gallery ||--o{ gallery_video
-
-gallery_item ||--|| image
-gallery_video ||--|| video
+image ||--o| gallery_item
+video ||--o| gallery_item
 
 @enduml
 ```
 
 The `file` entity enforces a composite unique key on `(user_id, integrity_hash)`: a caller stores one file record per
 integrity hash, while different callers may each store their own copy.
+
+The `gallery_item` entity stores either an `image` or a `video`, never both (`chk_gallery_item_one_media`). Two partial
+unique indexes, `uq_gallery_item_image_id` and `uq_gallery_item_video_id`, keep a media row in at most one gallery item,
+and `UNIQUE(gallery_id, item_index)` keeps the item order unique within a gallery. `ON DELETE CASCADE` is limited to one
+bounded context (`PERS-020`); the cross-context `file` foreign keys on `image` and `video` do not cascade.
 
 ---
 
