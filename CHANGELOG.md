@@ -1,3 +1,9 @@
+## [0.7.0](https://github.com/Mnemorium/mnemorium/compare/v0.6.9...v0.7.0) (2026-10-06)
+
+### Features
+
+* **application:** rate limit the identity login endpoint per client ([#159](https://github.com/Mnemorium/mnemorium/issues/159)) ([5efa76d](https://github.com/Mnemorium/mnemorium/commit/5efa76d313e50c838bd4726b48c9639829a30170))
+
 ## [0.6.9](https://github.com/Mnemorium/mnemorium/compare/v0.6.8...v0.6.9) (2026-10-05)
 
 ### Bug Fixes
