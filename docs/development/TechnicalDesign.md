@@ -2648,18 +2648,22 @@ Each error or security event is logged exactly once, by the layer that owns the 
 error received from below, the last layer that still holds its detail. Every layer above maps the error to a coarser,
 more abstract form and never logs it again.
 
-| Error or event                                                                                      | Owning layer          | Level                                         | Logged                             | Upper layers                                                   |
-| --------------------------------------------------------------------------------------------------- | --------------------- | --------------------------------------------- | ---------------------------------- | -------------------------------------------------------------- |
-| Port failure (repository, file storage, external service; unit-of-work `begin`/`commit`/`rollback`) | outbound adapter      | `error`, or `warn` for an expected constraint | the failure's `kind` and operation | application maps it and logs nothing; the handler logs nothing |
-| `Unknown` a use case originates (no port produced it)                                               | application use case  | `error`                                       | its `kind`, never a source chain   | the handler logs nothing                                       |
-| Security decision (authentication failure, authorization denial, out-of-order action)               | application use case  | `warn`                                        | the actor and a reason code        | the handler maps it to `401`/`403` and logs nothing            |
-| Token-boundary rejection                                                                            | inbound middleware    | `warn`, or `error` for a provider fault       | the rejection's kind               | —                                                              |
-| Domain rule violation                                                                               | — (returned as value) | —                                             | nothing                            | the use case that invoked it logs it once                      |
+| Error or event                                                                                      | Owning layer          | Level                                                                                                       | Logged                             | Upper layers                                                   |
+| --------------------------------------------------------------------------------------------------- | --------------------- | ----------------------------------------------------------------------------------------------------------- | ---------------------------------- | -------------------------------------------------------------- |
+| Port failure (repository, file storage, external service; unit-of-work `begin`/`commit`/`rollback`) | outbound adapter      | `error` (`port_fault`) for a dependency fault, or `warn` (`constraint_rejected`) for an expected constraint | the failure's `kind` and operation | application maps it and logs nothing; the handler logs nothing |
+| `Unknown` a use case originates (no port produced it)                                               | application use case  | `error`                                                                                                     | its `kind`, never a source chain   | the handler logs nothing                                       |
+| Security decision (authentication failure, authorization denial, out-of-order action)               | application use case  | `warn`                                                                                                      | the actor and a reason code        | the handler maps it to `401`/`403` and logs nothing            |
+| Token-boundary rejection                                                                            | inbound middleware    | `warn`, or `error` for a provider fault                                                                     | the rejection's kind               | —                                                              |
+| Domain rule violation                                                                               | — (returned as value) | —                                                                                                           | nothing                            | the use case that invoked it logs it once                      |
 
 The owning layer is the only one that can log something useful: the raw cause of a port failure exists only inside the
 adapter, and the actor and the reason of an authentication decision exist only inside the use case. By the time the
 error reaches the handler it is an opaque `Unknown`, so logging it there would emit a content-free duplicate. Logging an
 error in more than one layer, or logging a chain already classified below, violates this rule.
+
+An **expected constraint** is a constraint outcome a use case handles as a business result — `AlreadyExist` or
+`Conflict`. The adapter logs it at `warn` as `constraint_rejected` (`OBS-005`, `OBS-006`); any other port failure is a
+dependency fault logged at `error` as `port_fault`.
 
 ---
 
@@ -2725,6 +2729,7 @@ code or a classification — never a value.
 | `deserialization_failed`    | `warn`  | `source`, `reason`           | a JSON body or the configuration fails to deserialize                                       |
 | `application_error`         | `error` | `operation`                  | a use case originates an internal `Unknown`                                                 |
 | `port_fault`                | `error` | `kind`, `operation`          | an outbound adapter maps a dependency failure                                               |
+| `constraint_rejected`       | `warn`  | `kind`, `operation`          | an outbound adapter maps an expected constraint to a business result                        |
 | `lifecycle`                 | `info`  | `component`, `outcome`       | startup, shutdown or logging initialization                                                 |
 | `user_admin`                | `info`  | `actor`, `action`, `target`  | a user is created or updated, a role or credential changes                                  |
 | `secret_initialized`        | `info`  | `component`                  | the pepper or the JWT signing secret is generated at startup                                |
