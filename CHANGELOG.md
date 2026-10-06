@@ -1,3 +1,9 @@
+## [0.8.0](https://github.com/Mnemorium/mnemorium/compare/v0.7.0...v0.8.0) (2026-10-06)
+
+### Features
+
+* emit the security-event catalog from the application layer ([#184](https://github.com/Mnemorium/mnemorium/issues/184)) ([2c30b2d](https://github.com/Mnemorium/mnemorium/commit/2c30b2dbac6674bc451362f3187b523cdf55d414))
+
 ## [0.7.0](https://github.com/Mnemorium/mnemorium/compare/v0.6.9...v0.7.0) (2026-10-06)
 
 ### Features
