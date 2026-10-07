@@ -1,3 +1,5 @@
+use std::fmt::{Debug, Formatter, Result as FmtResult};
+
 use crate::domain::model::jwt::Jwt;
 use crate::domain::model::jwt::JwtError;
 use crate::domain::model::rate_limit::RateLimit;
@@ -22,7 +24,7 @@ pub enum SecurityError {
 /// Deserialization is routed through `SecurityConfig` and [`TryFrom`] so that
 /// the layered configuration cannot bypass the validation performed by
 /// [`Security::try_new`].
-#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+#[derive(Clone, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
 #[serde(try_from = "SecurityConfig")]
 #[non_exhaustive]
 pub struct Security {
@@ -159,6 +161,17 @@ impl Security {
         } else {
             Err(SecurityError::InvalidPepper)
         }
+    }
+}
+
+impl Debug for Security {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        f.debug_struct("Security")
+            .field("jwt", &self.jwt)
+            .field("log_root_admin_password", &self.log_root_admin_password)
+            .field("pepper", &"**")
+            .field("rate_limit", &self.rate_limit)
+            .finish_non_exhaustive()
     }
 }
 

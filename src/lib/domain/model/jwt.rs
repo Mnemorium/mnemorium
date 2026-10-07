@@ -1,3 +1,5 @@
+use std::fmt::{Debug, Formatter, Result as FmtResult};
+
 /// Length of a hexadecimal-encoded secret, in characters.
 const SECRET_HEX_LENGTH: usize = 64;
 
@@ -18,7 +20,7 @@ pub enum JwtError {
 /// Deserialization is routed through `JwtConfig` and [`TryFrom`] so that the
 /// layered configuration cannot bypass the validation performed by
 /// [`Jwt::try_new`].
-#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+#[derive(Clone, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
 #[serde(try_from = "JwtConfig")]
 #[non_exhaustive]
 pub struct Jwt {
@@ -131,5 +133,14 @@ impl Jwt {
             return Err(JwtError::InvalidTtl);
         }
         Ok(ttl)
+    }
+}
+
+impl Debug for Jwt {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        f.debug_struct("Jwt")
+            .field("secret", &"**")
+            .field("ttl", &self.ttl)
+            .finish_non_exhaustive()
     }
 }

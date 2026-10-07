@@ -911,4 +911,85 @@ mod tests {
         );
         Ok(())
     }
+
+    #[test]
+    fn jwt_debug_redacts_secret_but_keeps_ttl() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let secret = hex64('a');
+        let jwt = Jwt::try_new(secret.clone(), 3600)?;
+
+        // Act
+        let debug = format!("{jwt:?}");
+
+        // Assert
+        assert!(
+            !debug.contains(secret.as_str()),
+            "Debug output must not contain the secret, got: {debug:?}"
+        );
+        assert!(
+            debug.contains("3600"),
+            "Debug output must still contain the ttl, got: {debug:?}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn security_debug_redacts_secrets_but_keeps_rate_limit() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let secret = hex64('a');
+        let pepper = hex64('b');
+        let security =
+            Security::try_new(Jwt::try_new(secret.clone(), 3600)?, pepper.clone(), true)?;
+
+        // Act
+        let debug = format!("{security:?}");
+
+        // Assert
+        assert!(
+            !debug.contains(secret.as_str()),
+            "Debug output must not contain the JWT secret, got: {debug:?}"
+        );
+        assert!(
+            !debug.contains(pepper.as_str()),
+            "Debug output must not contain the pepper, got: {debug:?}"
+        );
+        assert!(
+            debug.contains("rate_limit"),
+            "Debug output must still contain the rate limit settings, got: {debug:?}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn configuration_debug_redacts_secrets_but_keeps_persistence() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let secret = hex64('a');
+        let pepper = hex64('b');
+        let jwt = Jwt::try_new(secret.clone(), 3600)?;
+        let security = Security::try_new(jwt, pepper.clone(), true)?;
+        let configuration = Configuration::new(
+            Persistence::new(Sqlite3::try_new("mnemorium.db".to_owned(), 1)?),
+            security,
+            Logging::try_new(false, "debug,sqlx=warn".to_owned(), 7, Rotation::Daily)?,
+            Asset::default(),
+        );
+
+        // Act
+        let debug = format!("{configuration:?}");
+
+        // Assert
+        assert!(
+            !debug.contains(secret.as_str()),
+            "Debug output must not contain the JWT secret, got: {debug:?}"
+        );
+        assert!(
+            !debug.contains(pepper.as_str()),
+            "Debug output must not contain the pepper, got: {debug:?}"
+        );
+        assert!(
+            debug.contains("persistence"),
+            "Debug output must still contain the persistence settings, got: {debug:?}"
+        );
+        Ok(())
+    }
 }

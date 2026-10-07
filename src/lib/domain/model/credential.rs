@@ -1,3 +1,5 @@
+use std::fmt::{Debug, Formatter, Result as FmtResult};
+
 use chrono::NaiveDateTime;
 
 use crate::domain::alias::NumericID;
@@ -15,7 +17,7 @@ pub enum CredentialError {
 }
 
 /// A credential, holding the password hash used for authentication.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct Credential {
     /// Unique identifier of the credential.
@@ -87,5 +89,15 @@ impl Credential {
             return Err(CredentialError::PasswordHashEmpty);
         }
         Ok(password_hash)
+    }
+}
+
+impl Debug for Credential {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        f.debug_struct("Credential")
+            .field("id", &self.id)
+            .field("password_hash", &"**")
+            .field("updated_at", &self.updated_at)
+            .finish_non_exhaustive()
     }
 }
