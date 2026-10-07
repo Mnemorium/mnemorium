@@ -1,5 +1,16 @@
 # Overview
 
+## Architecture rules
+
+The architecture is normative here (see `docs/development/TechnicalDesign.md` § 2, Architecture). Its invariants carry
+`ARCH-*` IDs so a review can cite them.
+
+| ID         | Topic           | Rule                                                                                                                                            |
+| ---------- | --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ARCH-001` | Layer direction | Dependencies point inward only: `domain` ← `application` ← `infrastructure`; no module imports outward (see `AGENTS.md`, "Special Rules").      |
+| `ARCH-002` | Bounded context | Each domain model and port belongs to exactly one bounded context; a context view exposes only its own context's repositories (`STY-RUST-042`). |
+| `ARCH-003` | Cross-context   | Work that spans bounded contexts is orchestrated in the application layer, never by a domain model or an outbound adapter.                      |
+
 ## Source code structure
 
 ```text
