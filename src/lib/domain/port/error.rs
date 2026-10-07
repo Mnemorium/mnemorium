@@ -195,6 +195,24 @@ pub enum ConfigurationSourceError {
     Unknown(#[source] anyhow::Error),
 }
 
+/// Error returned when probing a media file fails.
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
+pub enum MediaProbeError {
+    /// The probe could not complete for a non-specific reason.
+    #[error("the media probe could not complete for a non-specific reason")]
+    OperationFailed,
+    /// The probe exceeded the allowed execution time.
+    #[error("the probe exceeded the allowed execution time")]
+    Timeout,
+    /// An unexpected or unmapped error occurred.
+    #[error("an unexpected or unmapped error occurred: {0}")]
+    Unknown(#[source] anyhow::Error),
+    /// The media file format is not supported.
+    #[error("the media file format is not supported")]
+    UnsupportedMedia,
+}
+
 /// Error returned when a file storage operation fails.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
