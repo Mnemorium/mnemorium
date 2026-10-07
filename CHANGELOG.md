@@ -1,3 +1,9 @@
+## [0.12.0](https://github.com/Mnemorium/mnemorium/compare/v0.11.0...v0.12.0) (2026-10-07)
+
+### Features
+
+* **infrastructure:** add Library gallery adapters ([#215](https://github.com/Mnemorium/mnemorium/issues/215)) ([a4e5359](https://github.com/Mnemorium/mnemorium/commit/a4e5359698de73c660155adf40fbeef7fde0a8e7))
+
 ## [0.11.0](https://github.com/Mnemorium/mnemorium/compare/v0.10.0...v0.11.0) (2026-10-07)
 
 ### Features
