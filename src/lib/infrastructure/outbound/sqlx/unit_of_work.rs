@@ -8,7 +8,10 @@ use crate::domain::port::configuration_unit_of_work::ConfigurationUnitOfWork;
 use crate::domain::port::credential_repository::CredentialRepository;
 use crate::domain::port::error::UnitOfWorkError;
 use crate::domain::port::file_repository::FileRepository;
+use crate::domain::port::gallery_repository::GalleryRepository;
 use crate::domain::port::identity_unit_of_work::IdentityUnitOfWork;
+use crate::domain::port::library_unit_of_work::LibraryUnitOfWork;
+use crate::domain::port::media_repository::MediaRepository;
 use crate::domain::port::mime_type_repository::MimeTypeRepository;
 use crate::domain::port::unit_of_work::UnitOfWork;
 use crate::domain::port::unit_of_work::UnitOfWorkFactory;
@@ -18,6 +21,8 @@ use crate::domain::port::user_unit_of_work::UserUnitOfWork;
 use crate::infrastructure::outbound::sqlx::configuration_repository::SqlxConfigurationRepository;
 use crate::infrastructure::outbound::sqlx::credential_repository::SqlxCredentialRepository;
 use crate::infrastructure::outbound::sqlx::file_repository::SqlxFileRepository;
+use crate::infrastructure::outbound::sqlx::gallery_repository::SqlxGalleryRepository;
+use crate::infrastructure::outbound::sqlx::media_repository::SqlxMediaRepository;
 use crate::infrastructure::outbound::sqlx::mime_type_repository::SqlxMimeTypeRepository;
 use crate::infrastructure::outbound::sqlx::upload_repository::SqlxUploadRepository;
 use crate::infrastructure::outbound::sqlx::user_repository::SqlxUserRepository;
@@ -58,6 +63,16 @@ impl AssetUnitOfWork for SqlxUnitOfWork {
 impl IdentityUnitOfWork for SqlxUnitOfWork {
     fn credentials(&mut self) -> impl CredentialRepository + '_ {
         SqlxCredentialRepository::new(self.transaction())
+    }
+}
+
+impl LibraryUnitOfWork for SqlxUnitOfWork {
+    fn galleries(&mut self) -> impl GalleryRepository + '_ {
+        SqlxGalleryRepository::new(self.transaction())
+    }
+
+    fn media(&mut self) -> impl MediaRepository + '_ {
+        SqlxMediaRepository::new(self.transaction())
     }
 }
 

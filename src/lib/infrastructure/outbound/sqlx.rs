@@ -2,6 +2,8 @@ pub mod configuration_repository;
 pub mod credential_repository;
 pub mod error_mapping;
 pub mod file_repository;
+pub mod gallery_repository;
+pub mod media_repository;
 pub mod mime_type_repository;
 pub mod model;
 pub mod sqlite3;
