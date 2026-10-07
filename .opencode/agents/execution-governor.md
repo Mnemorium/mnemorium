@@ -82,6 +82,7 @@ permissions:
   - { action: webfetch, resource: "*", effect: deny }
   - { action: external_directory, resource: "*", effect: deny }
   - { action: external_directory, resource: "/nix/store/**", effect: allow }
+  - { action: external_directory, resource: "~/.local/share/opencode/tool-output/**", effect: allow }
 ---
 
 # Role & Persona
@@ -179,13 +180,17 @@ implementation.
 # Gate matrix
 
 Run every row whose trigger matches a changed path; always run the **Any** row.
-Write command output under the run directory (`checks/`) and leave the generated
-artifacts at the canonical paths the lead-reviewer expects.
+The matrix is authoritative over a plan's own `Gates` section: run every row
+whose trigger matches, even when the plan lists fewer gates. Write one log per
+gate row under the run directory (`checks/<gate>.log`) — an empty file is the
+record of a gate that passed silently — list every gate and its log path in
+`state.md`, and leave the generated artifacts at the canonical paths the
+lead-reviewer expects.
 
 | Trigger (changed paths)                         | Gates                                                                                                                                                                                                                                                              |
 | ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Any change                                      | `script/check_scopes.sh`, `ls-lint`, `taplo fmt --check`, `yamllint -c .yamllint .`                                                                                                                                                                                |
-| `**/*.rs`, `Cargo.toml`, `Cargo.lock`           | `cargo fmt --all -- --check`; `cargo clippy --all-targets --all-features -- -D warnings`; `cargo build --bin server`; `script/no_domain_model_tests.sh`; `script/no_outward_imports.sh`; `cargo test`; `cargo llvm-cov --lib --fail-under-functions 80 --fail-under-regions 80 --fail-under-lines 80 --lcov --output-path .artifacts/coverage/lcov.info` |
+| `**/*.rs`, `Cargo.toml`, `Cargo.lock`           | `cargo fmt --all -- --check`; `cargo clippy --all-targets --all-features -- -D warnings`; `cargo build --bin server`; `script/no_domain_model_tests.sh`; `script/no_outward_imports.sh`; `script/check_repository_declaration_order.sh`; `cargo test`; `cargo llvm-cov --lib --fail-under-functions 80 --fail-under-regions 80 --fail-under-lines 80 --lcov --output-path .artifacts/coverage/lcov.info` |
 | `docs/openapi.json`, REST paths                 | `cargo run --bin openapi_gen`, then `git diff --exit-code -- docs/openapi.json`                                                                                                                                                                                    |
 | `migrations/**/*.sql`                           | `sqlfluff lint --dialect sqlite migrations`                                                                                                                                                                                                                         |
 | `**/*.py`, `ruff.toml`, `pytest.ini`, `requirements.txt` | `ruff check .`; `ruff format --check .`                                                                                                                                                                                                                    |
@@ -213,11 +218,13 @@ Iteration: <N of 3>
 Previous report: <path | none>
 Run directory: <.artifacts/execution/run-XXXXXX>
 Gate artifacts: <semgrep.sarif path | none>; <coverage summary/lcov paths | none>; <e2e junit path | none>
+Gate logs: <run directory>/checks/
 
 Collect the diff yourself against the base ref, select the panel, review, write
 your report and next-step plan under the run directory, and file out-of-scope
-concerns as issues. Return the report path, the next-step plan path, and the
-blocker count.
+concerns as issues. The gates are already run; read their logs under `checks/`
+rather than re-running them. Return the report path, the next-step plan path, and
+the blocker count.
 ```
 
 # Stop conditions

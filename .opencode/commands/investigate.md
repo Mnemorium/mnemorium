@@ -56,18 +56,20 @@ Target: $ARGUMENTS
      AI-disclosure comment naming the evidence. Stop.
    - **Continue** — treat a free-form answer as a plan amendment; when it changes
      scope materially, re-dispatch the reviewer before continuing.
-6. **Branch in a free worktree.** List `git worktree list` and, for each path,
-   require `git -C <path> status --porcelain` empty and
-   `git -C <path> log --oneline @{u}..` empty. In the first free one create the
-   branch with `git -C <path> switch -c <type>(<scope>)/<slug> origin/main`.
-   When none is free, create one with
+6. **Branch in a free worktree.** Run `script/free_worktree.sh`. It prints the
+   path of the first free worktree other than this session's own, or nothing
+   when none is free. When it prints a path, create the branch there with
+   `git -C <path> switch -c <type>(<scope>)/<slug> origin/main`. When it prints
+   nothing, create one with
    `git worktree add /tmp/opencode/mnemorium-issue-<n> -b <branch> origin/main`.
    Then move this session into the worktree with the `opencode.session_move`
    tool.
 7. **Execute.** After the move takes effect, dispatch the `execution-governor`
    subagent with `mode: issue`, the issue reference, the fix plan folded with the
-   developer's amendments, base ref `origin/main`, and `owner`/`repo`. Wait for
-   its final report, next-step plan, and unresolved blockers.
+   developer's amendments, base ref `origin/main`, and `owner`/`repo`. The
+   `execution-governor` is a hidden agent: dispatch it by name even though it is
+   not listed in the subagent catalog. Wait for its final report, next-step
+   plan, and unresolved blockers.
 8. **Ship.** In the worktree, stage and commit once with a Conventional Commit
    whose scope is the dominant `GOV-001` scope, then `git push -u origin
    <branch>`. Create the pull request with `create_pull_request` (`owner`,

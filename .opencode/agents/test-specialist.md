@@ -87,6 +87,9 @@ permissions:
   - action: external_directory
     resource: "*"
     effect: deny
+  - action: external_directory
+    resource: "~/.local/share/opencode/tool-output/**"
+    effect: allow
   - action: websearch
     resource: "*"
     effect: deny

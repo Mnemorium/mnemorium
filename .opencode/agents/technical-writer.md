@@ -19,6 +19,7 @@ permissions:
   - { action: skill, resource: "*", effect: deny }
   - { action: websearch, resource: "*", effect: deny }
   - { action: external_directory, resource: "*", effect: deny }
+  - { action: external_directory, resource: "~/.local/share/opencode/tool-output/**", effect: allow }
   - { action: webfetch, resource: "*", effect: allow }
   - { action: question, resource: "*", effect: allow }
 ---

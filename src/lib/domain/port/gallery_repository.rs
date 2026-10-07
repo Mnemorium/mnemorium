@@ -34,52 +34,6 @@ pub struct GalleryItemFilter {
     pub media: Option<GalleryItemMedia>,
 }
 
-/// A `GalleryItem` together with the metadata of its backing file.
-///
-/// A read model assembled from `gallery_item LEFT JOIN image/video LEFT JOIN
-/// file`, carrying the fields the item representation needs that the
-/// [`GalleryItem`] aggregate does not hold.
-#[derive(Debug, Clone, PartialEq, Eq)]
-#[non_exhaustive]
-pub struct GalleryItemDetail {
-    /// Identifier of the backing file.
-    file_id: NumericID,
-    /// The gallery item itself.
-    item: GalleryItem,
-    /// Name of the item: the image name, or the file path for a video.
-    name: String,
-}
-
-impl GalleryItemDetail {
-    /// Return the identifier of the backing file.
-    #[must_use]
-    pub fn file_id(&self) -> NumericID {
-        self.file_id
-    }
-
-    /// Return the gallery item.
-    #[must_use]
-    pub fn item(&self) -> &GalleryItem {
-        &self.item
-    }
-
-    /// Return the name of the item.
-    #[must_use]
-    pub fn name(&self) -> &str {
-        &self.name
-    }
-
-    /// Create a new gallery-item detail.
-    #[must_use]
-    pub fn new(item: GalleryItem, file_id: NumericID, name: String) -> Self {
-        Self {
-            file_id,
-            item,
-            name,
-        }
-    }
-}
-
 /// Port for persisting and querying `Gallery` and its `GalleryItem`s.
 #[cfg_attr(test, mockall::automock)]
 pub trait GalleryRepository: Send + Sync {
@@ -155,6 +109,52 @@ pub trait GalleryRepository: Send + Sync {
         &mut self,
         filter: &GalleryItemFilter,
     ) -> impl Future<Output = Result<Vec<GalleryItemDetail>, RepositoryError>> + Send;
+}
+
+/// A `GalleryItem` together with the metadata of its backing file.
+///
+/// A read model assembled from `gallery_item LEFT JOIN image/video LEFT JOIN
+/// file`, carrying the fields the item representation needs that the
+/// [`GalleryItem`] aggregate does not hold.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct GalleryItemDetail {
+    /// Identifier of the backing file.
+    file_id: NumericID,
+    /// The gallery item itself.
+    item: GalleryItem,
+    /// Name of the item: the image name, or the file path for a video.
+    name: String,
+}
+
+impl GalleryItemDetail {
+    /// Return the identifier of the backing file.
+    #[must_use]
+    pub fn file_id(&self) -> NumericID {
+        self.file_id
+    }
+
+    /// Return the gallery item.
+    #[must_use]
+    pub fn item(&self) -> &GalleryItem {
+        &self.item
+    }
+
+    /// Return the name of the item.
+    #[must_use]
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    /// Create a new gallery-item detail.
+    #[must_use]
+    pub fn new(item: GalleryItem, file_id: NumericID, name: String) -> Self {
+        Self {
+            file_id,
+            item,
+            name,
+        }
+    }
 }
 
 #[cfg(test)]

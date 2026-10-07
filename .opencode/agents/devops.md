@@ -20,6 +20,7 @@ permissions:
   - { action: edit, resource: "*", effect: deny }
   - { action: external_directory, resource: "*", effect: deny }
   - { action: external_directory, resource: "/nix/store/**", effect: allow }
+  - { action: external_directory, resource: "~/.local/share/opencode/tool-output/**", effect: allow }
   - { action: shell, resource: "*", effect: deny }
   # Read-only gates: Rust
   - { action: shell, resource: "cargo fmt --check*", effect: allow }

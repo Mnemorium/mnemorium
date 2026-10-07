@@ -107,6 +107,9 @@ permissions:
     resource: "*"
     effect: deny
   - action: external_directory
+    resource: "~/.local/share/opencode/tool-output/**"
+    effect: allow
+  - action: external_directory
     resource: "~/.cargo/registry/**"
     effect: allow
 ---

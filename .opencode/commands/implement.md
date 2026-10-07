@@ -49,21 +49,23 @@ Target: $ARGUMENTS
    upstream. If the current branch is not `main`, `git switch main`. Then
    `git pull --ff-only origin main`; abort if it diverges. Never stash, reset, or
    force.
-4. **Branch in a free worktree.** List `git worktree list` and, for each path,
-   require `git -C <path> status --porcelain` empty and
-   `git -C <path> log --oneline @{u}..` empty. In the first free one create the
-   branch with `git -C <path> switch -c <type>(<scope>)/<slug> origin/main`.
-   When none is free, create one with
+4. **Branch in a free worktree.** Run `script/free_worktree.sh`. It prints the
+   path of the first free worktree other than this session's own, or nothing
+   when none is free. When it prints a path, create the branch there with
+   `git -C <path> switch -c <type>(<scope>)/<slug> origin/main`. When it prints
+   nothing, create one with
    `git worktree add /tmp/opencode/mnemorium-<slug> -b <branch> origin/main`.
    Then move this session into the worktree with the `opencode.session_move`
    tool.
 5. **Execute.** After the move takes effect, dispatch the `execution-governor`
    subagent with `mode: feature`, the full plan text folded with the metadata
    answers, base ref `origin/main`, `owner`/`repo`, issue reference `none`, and a
-   run directory under `.artifacts/execution/`. Instruct it to persist the plan
-   it receives at `.artifacts/execution/run-XXXX/plan.md` and to treat the plan's
-   owner labels as provenance. Wait for its final report, next-step plan, and
-   unresolved blockers.
+   run directory under `.artifacts/execution/`. The `execution-governor` is a
+   hidden agent: dispatch it by name even though it is not listed in the
+   subagent catalog. Instruct it to persist the plan it receives at
+   `.artifacts/execution/run-XXXX/plan.md` and to treat the plan's owner labels
+   as provenance. Wait for its final report, next-step plan, and unresolved
+   blockers.
 6. **Ship.** Determine whether the governor changed anything
    (`git status --porcelain` in the worktree).
    - **No diff** — when the governor stopped with `escalation`, `gate failure`,

@@ -27,6 +27,9 @@ permissions:
   - action: external_directory
     resource: "*"
     effect: deny
+  - action: external_directory
+    resource: "~/.local/share/opencode/tool-output/**"
+    effect: allow
   - action: edit
     resource: "*"
     effect: deny

@@ -779,7 +779,10 @@ where
 
 ##### 7.4 Declaration order in the unit-of-work port file
 
-The file declares, in order:
+`domain/port/unit_of_work.rs` declares, in order:
+
+1. `UnitOfWork` — the transaction boundary.
+2. `UnitOfWorkFactory` — the opener of a `UnitOfWork`.
 
 Each context view lives in its own file, e.g. `user_unit_of_work.rs`.
 
@@ -836,6 +839,14 @@ A trigger abort (`RAISE(ABORT)`) maps to `RepositoryError::Conflict`; see `PERS-
 
 A repository port file declares, in order:
 
+1. The filter struct(s) — one or more `*Filter` structs.
+2. The `<Aggregate>Repository` trait.
+
+Anything else the file needs — a read model returned by `search`, or the `#[cfg(test)]` `&mut T` impl — follows the
+trait.
+
+`script/check_repository_declaration_order.sh` enforces this order.
+
 ---
 
 #### 9. Use cases
@@ -849,6 +860,11 @@ business-level, and each may be implemented by several application use cases.
 ##### 9.1 Declaration order in a use-case port file
 
 A use case trait file declares, in order:
+
+1. The command object (`STY-RUST-061`).
+2. The response object, when non-empty (`STY-RUST-062`).
+3. The error enum (`STY-RUST-063`).
+4. The use-case trait (`STY-RUST-064`).
 
 ---
 

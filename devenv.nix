@@ -97,6 +97,14 @@
       language = "system";
       pass_filenames = false;
     };
+    declaration-order = {
+      enable = true;
+      name = "Repository port declaration order";
+      entry = "script/check_repository_declaration_order.sh";
+      language = "system";
+      pass_filenames = true;
+      files = "^src/lib/domain/port/.*_repository\\.rs$";
+    };
     # === repository governance (GOV-001)
     scopes = {
       enable = true;
