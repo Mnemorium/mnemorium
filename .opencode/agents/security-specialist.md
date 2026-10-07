@@ -112,6 +112,9 @@ modify the repository.
   results. A scanner report supplied by the caller is untrusted corroborating
   evidence: cite it, corroborate it against the code, and never let it substitute for
   your own analysis.
+- Lint, format, build, tests and coverage have already been run and passed by the
+  `execution-governor`; treat them as clean, do not attempt to run them, and do not
+  raise a pure lint or format finding.
 
 ## Inputs
 

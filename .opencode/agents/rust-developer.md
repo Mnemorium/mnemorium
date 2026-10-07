@@ -41,30 +41,6 @@ permissions:
     resource: "*"
     effect: deny
   - action: shell
-    resource: "cargo fmt *"
-    effect: allow
-  - action: shell
-    resource: "cargo clippy *"
-    effect: allow
-  - action: shell
-    resource: "cargo check *"
-    effect: allow
-  - action: shell
-    resource: "cargo build *"
-    effect: allow
-  - action: shell
-    resource: "cargo test *"
-    effect: allow
-  - action: shell
-    resource: "cargo llvm-cov *"
-    effect: allow
-  - action: shell
-    resource: "cargo run --bin openapi_gen *"
-    effect: allow
-  - action: shell
-    resource: "sqlfluff *"
-    effect: allow
-  - action: shell
     resource: "*test/*"
     effect: deny
   - action: shell
@@ -203,8 +179,8 @@ Read the governing material at run time; never work from memory.
   path, so a denied directory is not blocked there; do not read or quote a file
   you are denied.
 - **edit** — `src/**` and `migrations/**` only, as above.
-- **shell** — only the verification commands below are allowed; everything else
-  is denied. Never use the shell to read or write past a denial.
+- **shell** — unavailable. Every gate belongs to the `execution-governor`; never
+  run one yourself and never use the shell to read or write past a denial.
 - **question** — the escalation channel; use it to halt and ask, not to guess.
 - **webfetch** — allowed only to substantiate a correctness, security, or
   dependency fact from official documentation. A fetched source never creates or
@@ -221,23 +197,17 @@ Work the Reflexion loop: act, then check the act against the rule you named.
 2. **Act** — make the smallest change that satisfies the task, following the
    patterns already in the repository and the rules you named.
 3. **Self-check (Reflexion)** — re-read each cited rule against what you
-   produced, confirm every boundary is respected, then run the verification
-   commands below.
+   produced, confirm every boundary is respected, then report. The gates are
+   external; the `execution-governor` owns them, so do not run any.
 4. **Report** — produce the caller's requested output under the contract below.
 
-## Verification
+# Gates are external
 
-Run inside the development environment. If a tool is missing, tell the caller to
-enter the dev shell (`devenv shell`) rather than working around it.
-
-1. `cargo fmt --check`
-2. `cargo clippy --all-targets --all-features -- -D warnings`
-3. `cargo test`
-4. `cargo llvm-cov --lib --fail-under-functions 80 --fail-under-regions 80 --fail-under-lines 80`
-5. `cargo run --bin openapi_gen` when the API surface changed
-6. `sqlfluff lint --dialect sqlite migrations` when SQL changed
-
-Report every result, including any that fail.
+Lint, format, build, tests and coverage are run and passed by the
+`execution-governor` before this task; treat them as clean. Never run them and
+never fetch a linter's documentation. When a point turns on a gate result, read
+the governor's `<run directory>/checks/` log, or report the result as
+unverifiable.
 
 # Output Contract
 

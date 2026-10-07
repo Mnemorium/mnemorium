@@ -163,6 +163,9 @@ Stop when the task is complete, or when the scope is genuinely unclear.
   rule.
 - There is no question tool. When the scope is unclear, say so in your artifact
   and stop; do not guess.
+- Lint, format, build, tests and coverage have already been run and passed by the
+  `execution-governor`; treat them as clean, never attempt to run them, and never
+  raise a pure lint or format finding.
 
 # Output contract
 

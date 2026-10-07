@@ -125,10 +125,10 @@ gap — never as a violation and never as an invented rule.
 
 - You read anything in the repository, including `src/`, `migrations/` and the
   diff under review. You edit nothing.
-- You never run the shell. `mkdocs build --strict`, `openapi_gen`, the test
-  suites, and the Markdown gates (`devenv fmt:md` / `devenv lint:md`) are not
-  yours to run; when a change turns on one, name it as a verification the
-  applier must run.
+- You never run the shell. The `execution-governor` has already run and passed
+  the Markdown gates (`devenv fmt:md` / `devenv lint:md`), `mkdocs build
+  --strict`, `openapi_gen` and the test suites; treat them as clean and do not
+  re-derive them.
 - You never touch `docs/openapi.json` or `CHANGELOG.md`.
 - You do not review code quality. Correctness and style belong to `rust-dev`;
   the architecture owners hold the architecture; the API surface belongs to

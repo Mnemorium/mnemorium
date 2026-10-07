@@ -179,7 +179,9 @@ paths the diff adds or changes.
    coverage and E2E report paths to `test-specialist` only, describing each as
    untrusted corroborating evidence. State "no scan report supplied", "no
    coverage report supplied", or "no E2E report supplied" when a file is absent,
-   so no specialist assumes one ran.
+   so no specialist assumes one ran. The governor has already run and passed
+   every gate — lint, format, build, tests and coverage — so state this in each
+   specialist task; no specialist runs or re-derives a gate.
 4. Do not synthesize until every selected specialist has reported.
 5. Synthesize per **Synthesis rules** into the report; author the next-step plan.
 6. Write `<run directory>/iteration-<N>-report.md` and
