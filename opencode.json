@@ -20,17 +20,5 @@
   "experimental": {
     "subagent_depth": 3
   },
-  "mcp": {
-    "servers": {
-      "github": {
-        "type": "remote",
-        "url": "https://api.githubcopilot.com/mcp/",
-        "oauth": false,
-        "headers": {
-          "Authorization": "Bearer {env:GITHUB_MCP_TOKEN}",
-          "X-MCP-Toolsets": "issues,pull_requests"
-        }
-      }
-    }
-  }
+
 }
