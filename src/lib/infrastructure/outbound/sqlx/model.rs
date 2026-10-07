@@ -1,5 +1,9 @@
 pub mod configuration;
 pub mod credential;
 pub mod file;
+pub mod gallery;
+pub mod gallery_item;
+pub mod image;
 pub mod upload;
 pub mod user;
+pub mod video;
