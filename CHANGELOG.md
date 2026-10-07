@@ -1,3 +1,9 @@
+## [0.10.0](https://github.com/Mnemorium/mnemorium/compare/v0.9.0...v0.10.0) (2026-10-07)
+
+### Features
+
+* **domain:** add Library gallery models and ports ([#213](https://github.com/Mnemorium/mnemorium/issues/213)) ([934b7c7](https://github.com/Mnemorium/mnemorium/commit/934b7c7d2b8b96cec26e3907b5b7bdf3d2045be1))
+
 ## [0.9.0](https://github.com/Mnemorium/mnemorium/compare/v0.8.1...v0.9.0) (2026-10-06)
 
 ### Features
