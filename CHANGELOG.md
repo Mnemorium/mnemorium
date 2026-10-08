@@ -1,3 +1,9 @@
+## [0.12.1](https://github.com/Mnemorium/mnemorium/compare/v0.12.0...v0.12.1) (2026-10-08)
+
+### Bug Fixes
+
+* **domain:** redact secrets in the Debug of Jwt, Security, and Credential ([#219](https://github.com/Mnemorium/mnemorium/issues/219)) ([b65472f](https://github.com/Mnemorium/mnemorium/commit/b65472fd9724d7c0b422441900e79143eaf21dc5))
+
 ## [0.12.0](https://github.com/Mnemorium/mnemorium/compare/v0.11.0...v0.12.0) (2026-10-07)
 
 ### Features
