@@ -1,3 +1,9 @@
+## [0.14.0](https://github.com/Mnemorium/mnemorium/compare/v0.13.1...v0.14.0) (2026-10-08)
+
+### Features
+
+* **application:** register uploaded media via ffprobe ([#243](https://github.com/Mnemorium/mnemorium/issues/243)) ([29af0da](https://github.com/Mnemorium/mnemorium/commit/29af0da7672c569f4a42133be130d2fe47d7bd5b))
+
 ## [0.13.1](https://github.com/Mnemorium/mnemorium/compare/v0.13.0...v0.13.1) (2026-10-08)
 
 ### Bug Fixes
