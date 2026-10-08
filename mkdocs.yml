@@ -28,7 +28,6 @@ nav:
   - Development:
       - Overview: development/Overview.md
       - Technical Design: development/TechnicalDesign.md
-      - Issue Tracking: development/IssueTracking.md
       - Glossary: development/Glossary.md
       - Use Cases: development/UseCases.md
 

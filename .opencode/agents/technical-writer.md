@@ -65,7 +65,6 @@ The surface you own:
   lists the application use-case file(s) under
   `src/lib/application/use_case/` that implement it.
 - `docs/development/Glossary.md` — the domain language.
-- `docs/development/IssueTracking.md` — the issue vocabulary and template.
 - `docs/index.md` and `docs/assets/` — the MkDocs home page and theme assets.
 - `mkdocs.yml` — the site name, theme, `nav` and plugins; every documentation
   page must appear in `nav`.
