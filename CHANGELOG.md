@@ -1,3 +1,9 @@
+## [0.13.1](https://github.com/Mnemorium/mnemorium/compare/v0.13.0...v0.13.1) (2026-10-08)
+
+### Bug Fixes
+
+* **api:** stop echoing framework rejection text in the error envelope ([#237](https://github.com/Mnemorium/mnemorium/issues/237)) ([fb98df5](https://github.com/Mnemorium/mnemorium/commit/fb98df5a18b7a4dd5f6fcc848165bd0af55d3a4b))
+
 ## [0.13.0](https://github.com/Mnemorium/mnemorium/compare/v0.12.2...v0.13.0) (2026-10-08)
 
 ### Features
