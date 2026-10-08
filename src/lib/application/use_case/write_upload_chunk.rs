@@ -5,7 +5,6 @@ use std::pin::Pin;
 use std::sync::Arc;
 
 use chrono::Utc;
-use tracing::error;
 
 use crate::application::port::write_upload_chunk::WriteUploadChunkCommand;
 use crate::application::port::write_upload_chunk::WriteUploadChunkError;
@@ -189,15 +188,22 @@ where
         if !upload.is_finished() && Utc::now().naive_utc() > expires_at {
             // TODO(reaper): move the expiry cleanup to a background task; this
             // lazy delete keeps the row and the staged file only until the next
-            // access.
-            if let Err(error) = file_storage
+            // access. The adapters own the failure logs (`OBS-002`), so a failed
+            // cleanup is swallowed here.
+            if file_storage
                 .delete_upload_file(&staged_path(root, upload.upload_id()))
                 .await
+                .is_err()
             {
-                error!(error = ?error, "failed to delete the expired upload staged file");
+                // The file-storage adapter owns the failure log (`OBS-002`).
             }
-            if let Err(error) = unit_of_work.uploads().delete(upload.upload_id()).await {
-                error!(error = ?error, "failed to delete the expired upload row");
+            if unit_of_work
+                .uploads()
+                .delete(upload.upload_id())
+                .await
+                .is_err()
+            {
+                // The repository adapter owns the failure log (`OBS-002`).
             }
             return Err(AttemptError::Expired);
         }

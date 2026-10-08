@@ -6,7 +6,6 @@ use std::sync::Arc;
 
 use chrono::Duration;
 use chrono::Utc;
-use tracing::error;
 
 use crate::application::port::begin_upload::BeginUploadCommand;
 use crate::application::port::begin_upload::BeginUploadError;
@@ -219,9 +218,10 @@ where
 /// Best-effort remove the staging file of an upload whose row was not committed.
 ///
 /// A missing staging file is success and an absent identifier is a no-op. A
-/// deletion failure is logged, never fatal: the caller already carries the
-/// error that aborted the begin. A staging file survives only a process death
-/// between creating it and committing the row; a future reaper covers that.
+/// deletion failure is swallowed, never fatal: the file-storage adapter owns the
+/// failure log (`OBS-002`) and the caller already carries the error that aborted
+/// the begin. A staging file survives only a process death between creating it
+/// and committing the row; a future reaper covers that.
 async fn discard_staging<S>(file_storage: &S, root: &Path, upload_id: Option<NumericID>)
 where
     S: FileStorage,
@@ -229,14 +229,12 @@ where
     let Some(staged) = upload_id else {
         return;
     };
-    if let Err(error) = file_storage
+    if file_storage
         .delete_upload_file(&staged_path(root, staged))
         .await
+        .is_err()
     {
-        error!(
-            error = ?error,
-            "failed to delete the staged file of an uncommitted upload"
-        );
+        // The file-storage adapter owns the failure log (`OBS-002`).
     }
 }
 
