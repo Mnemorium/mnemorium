@@ -26,6 +26,7 @@ use mnemorium::infrastructure::outbound::sqlx::sqlite3::init_db;
 use mnemorium::infrastructure::outbound::sqlx::unit_of_work::SqlxUnitOfWorkFactory;
 use mnemorium::infrastructure::use_case_factory::asset::RuntimeAssetUseCaseFactory;
 use mnemorium::infrastructure::use_case_factory::identity::RuntimeIdentityUseCaseFactory;
+use mnemorium::infrastructure::use_case_factory::library::RuntimeLibraryUseCaseFactory;
 use mnemorium::infrastructure::use_case_factory::user::RuntimeUserUseCaseFactory;
 use tokio::net::TcpListener;
 use tokio::signal::ctrl_c;
@@ -94,6 +95,9 @@ async fn main() -> Result<(), anyhow::Error> {
     let user_use_case_factory = Arc::new(RuntimeUserUseCaseFactory::new(Arc::clone(
         &unit_of_work_factory,
     )));
+    let library_use_case_factory = Arc::new(RuntimeLibraryUseCaseFactory::new(Arc::clone(
+        &unit_of_work_factory,
+    )));
 
     let storage_root = PathBuf::from(configuration.load().asset().storage().root());
     let file_storage = Arc::new(FileSystemStorage::new());
@@ -115,6 +119,7 @@ async fn main() -> Result<(), anyhow::Error> {
         asset_use_case_factory,
         configuration,
         identity_use_case_factory,
+        library_use_case_factory,
         user_use_case_factory,
     );
 

@@ -20,6 +20,242 @@
         ],
         "type": "object"
       },
+      "GalleryItemDetailResponse": {
+        "description": "Detailed item of a gallery, returned by the item endpoints.",
+        "properties": {
+          "_links": {
+            "$ref": "#/components/schemas/SelfLinks",
+            "description": "Link to the item resource itself."
+          },
+          "added_at": {
+            "description": "Date and time at which the item was added.",
+            "type": "string"
+          },
+          "file_id": {
+            "$ref": "#/components/schemas/i64",
+            "description": "Identifier of the backing file."
+          },
+          "id": {
+            "$ref": "#/components/schemas/i64",
+            "description": "Unique identifier of the item."
+          },
+          "media_id": {
+            "$ref": "#/components/schemas/i64",
+            "description": "Identifier of the referenced medium."
+          },
+          "name": {
+            "description": "Name of the item: the image name, or the file path for a video.",
+            "type": "string"
+          },
+          "type": {
+            "$ref": "#/components/schemas/GalleryItemType",
+            "description": "Kind of the referenced medium."
+          }
+        },
+        "required": [
+          "added_at",
+          "file_id",
+          "id",
+          "_links",
+          "media_id",
+          "type",
+          "name"
+        ],
+        "type": "object"
+      },
+      "GalleryItemResponse": {
+        "description": "One item of a gallery, without the metadata of its medium.",
+        "properties": {
+          "_links": {
+            "$ref": "#/components/schemas/SelfLinks",
+            "description": "Link to the item resource itself."
+          },
+          "added_at": {
+            "description": "Date and time at which the item was added.",
+            "type": "string"
+          },
+          "file_id": {
+            "$ref": "#/components/schemas/i64",
+            "description": "Identifier of the backing file."
+          },
+          "id": {
+            "$ref": "#/components/schemas/i64",
+            "description": "Unique identifier of the item."
+          },
+          "media_id": {
+            "$ref": "#/components/schemas/i64",
+            "description": "Identifier of the referenced medium."
+          },
+          "name": {
+            "description": "Name of the item: the image name, or the file path for a video.",
+            "type": "string"
+          },
+          "type": {
+            "$ref": "#/components/schemas/GalleryItemType",
+            "description": "Kind of the referenced medium."
+          }
+        },
+        "required": [
+          "added_at",
+          "file_id",
+          "id",
+          "_links",
+          "media_id",
+          "type",
+          "name"
+        ],
+        "type": "object"
+      },
+      "GalleryItemType": {
+        "description": "Kind of the single medium a gallery item references.",
+        "enum": [
+          "image",
+          "video"
+        ],
+        "type": "string"
+      },
+      "GalleryLinks": {
+        "description": "HAL links exposed by a gallery representation.\n\nThe `self` link addresses the gallery; the `items` link exposes the alias\npath where its items are served (`API-037`).",
+        "properties": {
+          "items": {
+            "$ref": "#/components/schemas/Link",
+            "description": "Link to the item collection of the gallery."
+          },
+          "self": {
+            "$ref": "#/components/schemas/Link",
+            "description": "Link to the gallery resource itself."
+          }
+        },
+        "required": [
+          "items",
+          "self"
+        ],
+        "type": "object"
+      },
+      "GalleryListLinks": {
+        "description": "HAL links exposed by a gallery collection representation.\n\nThe `self` link addresses the collection view the representation is about,\n`next` and `prev` navigate that same view when another page exists, and the\ntemplated `search` link exposes the collection filters (`API-037`,\n`API-042`). The active filters and the page size are carried into every link\nso a filtered or paginated listing stays navigable.",
+        "properties": {
+          "next": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/Link",
+                "description": "Link to the next page, when one exists."
+              }
+            ]
+          },
+          "prev": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/Link",
+                "description": "Link to the previous page, when one exists."
+              }
+            ]
+          },
+          "search": {
+            "$ref": "#/components/schemas/Link",
+            "description": "Templated link exposing the collection's search filters."
+          },
+          "self": {
+            "$ref": "#/components/schemas/Link",
+            "description": "Link to the collection itself."
+          }
+        },
+        "required": [
+          "search",
+          "self"
+        ],
+        "type": "object"
+      },
+      "GalleryListResponse": {
+        "description": "Galleries matching the requested filters.",
+        "properties": {
+          "_links": {
+            "$ref": "#/components/schemas/GalleryListLinks",
+            "description": "Navigation links of the collection."
+          },
+          "items": {
+            "description": "The galleries of the returned page.",
+            "items": {
+              "$ref": "#/components/schemas/GalleryResponse"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "items",
+          "_links"
+        ],
+        "type": "object"
+      },
+      "GalleryResponse": {
+        "description": "Gallery returned by a successful lookup or creation.\n\nOn a collection listing, `items` stays empty and `item_count` communicates\nthe size of the gallery.",
+        "properties": {
+          "_links": {
+            "$ref": "#/components/schemas/GalleryLinks",
+            "description": "Links to the gallery and its item collection."
+          },
+          "created_at": {
+            "description": "Date and time at which the gallery was created.",
+            "type": "string"
+          },
+          "id": {
+            "$ref": "#/components/schemas/i64",
+            "description": "Unique identifier of the gallery."
+          },
+          "is_public": {
+            "description": "Whether any authenticated user may read and moderate the gallery.",
+            "type": "boolean"
+          },
+          "item_count": {
+            "description": "Number of items the gallery contains.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "items": {
+            "description": "Items of the gallery, ordered by position.",
+            "items": {
+              "$ref": "#/components/schemas/GalleryItemResponse"
+            },
+            "type": "array"
+          },
+          "last_modified_at": {
+            "description": "Date and time of the last modification of the gallery.",
+            "type": "string"
+          },
+          "name": {
+            "description": "Name of the gallery.",
+            "type": "string"
+          },
+          "owner_id": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/i64",
+                "description": "Identifier of the owning user, absent for the system gallery."
+              }
+            ]
+          }
+        },
+        "required": [
+          "created_at",
+          "id",
+          "is_public",
+          "item_count",
+          "items",
+          "last_modified_at",
+          "_links",
+          "name"
+        ],
+        "type": "object"
+      },
       "GetMeResponse": {
         "description": "Current user returned by a successful lookup.",
         "properties": {
@@ -275,6 +511,43 @@
           "_links",
           "role",
           "username"
+        ],
+        "type": "object"
+      },
+      "PostGalleryItemRequest": {
+        "description": "Payload to add one of the caller's media to a gallery.",
+        "properties": {
+          "media_id": {
+            "$ref": "#/components/schemas/i64",
+            "description": "Identifier of the medium to add."
+          },
+          "type": {
+            "$ref": "#/components/schemas/GalleryItemType",
+            "description": "Kind of the medium to add."
+          }
+        },
+        "required": [
+          "media_id",
+          "type"
+        ],
+        "type": "object"
+      },
+      "PostGalleryRequest": {
+        "description": "Payload to create a gallery owned by the caller.",
+        "properties": {
+          "is_public": {
+            "description": "Whether any authenticated user may read and moderate the gallery.",
+            "type": "boolean"
+          },
+          "name": {
+            "description": "Name of the gallery.",
+            "maxLength": 100,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
         ],
         "type": "object"
       },
@@ -1482,6 +1755,841 @@
         ]
       }
     },
+    "/library/gallery": {
+      "get": {
+        "description": "Any authenticated caller may list galleries: public galleries are visible to\nall, private galleries only to their owner and administrators. The\ncollection is paginated and filterable, and returned as a HAL collection\nwith navigation and search links.",
+        "operationId": "list_galleries",
+        "parameters": [
+          {
+            "description": "Only return galleries whose public flag matches this value.",
+            "in": "path",
+            "name": "is_public",
+            "required": true,
+            "schema": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            }
+          },
+          {
+            "description": "Maximum number of galleries to return, between 1 and 100.",
+            "in": "path",
+            "name": "limit",
+            "required": true,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "type": [
+                "integer",
+                "null"
+              ]
+            }
+          },
+          {
+            "description": "Only return galleries whose name matches this value.",
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "description": "Number of matching galleries to skip before returning the page.",
+            "in": "path",
+            "name": "offset",
+            "required": true,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            }
+          },
+          {
+            "description": "Only return galleries owned by this user.",
+            "in": "path",
+            "name": "owner_id",
+            "required": true,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "$ref": "#/components/schemas/i64"
+                }
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GalleryListResponse"
+                }
+              }
+            },
+            "description": "Galleries matching the filters"
+          },
+          "400": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Invalid filter values"
+          },
+          "401": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid credentials"
+          },
+          "422": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The limit is out of range"
+          },
+          "500": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unexpected error"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ],
+        "summary": "List galleries",
+        "tags": [
+          "library"
+        ]
+      },
+      "post": {
+        "description": "Any authenticated caller may create a gallery. The name is required, trimmed\nand at most 100 characters long; `is_public` defaults to `false`.",
+        "operationId": "post_gallery",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PostGalleryRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GalleryResponse"
+                }
+              }
+            },
+            "description": "Gallery created",
+            "headers": {
+              "Location": {
+                "description": "URI of the newly created gallery",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Malformed request body"
+          },
+          "401": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid credentials"
+          },
+          "413": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request body exceeds the maximum allowed size"
+          },
+          "415": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request body is not application/json"
+          },
+          "422": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The gallery name is empty or too long"
+          },
+          "500": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unexpected error"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ],
+        "summary": "Create a gallery",
+        "tags": [
+          "library"
+        ]
+      }
+    },
+    "/library/gallery/{id}": {
+      "delete": {
+        "description": "Only the owner of the gallery may delete it; administrators have no\noverride. The seeded default gallery (identifier `0`) is never deletable and\nanswers `409`. Deletion is permanent.",
+        "operationId": "delete_gallery",
+        "parameters": [
+          {
+            "description": "Identifier of the gallery to delete",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/i64"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Gallery deleted"
+          },
+          "400": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Invalid gallery identifier"
+          },
+          "401": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid credentials"
+          },
+          "403": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Caller is not the owner of the gallery"
+          },
+          "404": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unknown gallery"
+          },
+          "409": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The default gallery cannot be deleted"
+          },
+          "500": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unexpected error"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ],
+        "summary": "Delete a gallery",
+        "tags": [
+          "library"
+        ]
+      },
+      "get": {
+        "description": "Any authenticated caller may read a public gallery; a private gallery is\nreadable by its owner and administrators only. The representation carries\nthe gallery and its items, ordered by position.",
+        "operationId": "get_gallery",
+        "parameters": [
+          {
+            "description": "Identifier of the gallery to fetch",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/i64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GalleryResponse"
+                }
+              }
+            },
+            "description": "Gallery found"
+          },
+          "400": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Invalid gallery identifier"
+          },
+          "401": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid credentials"
+          },
+          "403": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Caller is not allowed to read the gallery"
+          },
+          "404": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unknown gallery"
+          },
+          "500": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unexpected error"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ],
+        "summary": "Fetch a gallery by identifier",
+        "tags": [
+          "library"
+        ]
+      }
+    },
+    "/library/gallery/{id}/item": {
+      "get": {
+        "description": "This route is a true alias of `GET /library/gallery/{id}`: it returns the\nsame gallery representation, and the `_links.self` of that representation is\nthe canonical gallery URI, never this alias path (`API-042`).",
+        "operationId": "get_gallery_item_list",
+        "parameters": [
+          {
+            "description": "Identifier of the gallery whose items are listed",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/i64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GalleryResponse"
+                }
+              }
+            },
+            "description": "Gallery found"
+          },
+          "400": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Invalid gallery identifier"
+          },
+          "401": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid credentials"
+          },
+          "403": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Caller is not allowed to read the gallery"
+          },
+          "404": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unknown gallery"
+          },
+          "500": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unexpected error"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ],
+        "summary": "List the items of a gallery",
+        "tags": [
+          "library"
+        ]
+      },
+      "post": {
+        "description": "Any authenticated caller may add an item to a public gallery; a private\ngallery accepts items from its owner and administrators only. A caller may\nonly add media it owns, unless it is an administrator. A medium already in a\ngallery is rejected with `409`.",
+        "operationId": "post_gallery_item",
+        "parameters": [
+          {
+            "description": "Identifier of the gallery the media is added to",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/i64"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PostGalleryItemRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GalleryItemDetailResponse"
+                }
+              }
+            },
+            "description": "Item added",
+            "headers": {
+              "Location": {
+                "description": "URI of the newly added item",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Invalid gallery identifier or malformed request body"
+          },
+          "401": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid credentials"
+          },
+          "403": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Caller may not add items to the gallery, or does not own the medium"
+          },
+          "404": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unknown gallery or medium"
+          },
+          "409": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The medium already belongs to a gallery"
+          },
+          "413": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request body exceeds the maximum allowed size"
+          },
+          "415": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request body is not application/json"
+          },
+          "422": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request body does not match the expected schema"
+          },
+          "500": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unexpected error"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ],
+        "summary": "Add an item to a gallery",
+        "tags": [
+          "library"
+        ]
+      }
+    },
+    "/library/gallery/{id}/item/{item_id}": {
+      "delete": {
+        "description": "Any authenticated caller may delete an item of a public gallery; an item of\na private gallery may be deleted by the gallery owner and administrators\nonly. The item is scoped to the gallery named in the path. Deletion is\npermanent and removes the medium and its backing file.",
+        "operationId": "delete_gallery_item",
+        "parameters": [
+          {
+            "description": "Identifier of the gallery the item belongs to",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/i64"
+            }
+          },
+          {
+            "description": "Identifier of the item to delete",
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/i64"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Item deleted"
+          },
+          "400": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Invalid gallery or item identifier"
+          },
+          "401": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid credentials"
+          },
+          "403": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Caller is not allowed to delete items of the gallery"
+          },
+          "404": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unknown gallery or item"
+          },
+          "500": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unexpected error"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ],
+        "summary": "Delete a gallery item",
+        "tags": [
+          "library"
+        ]
+      },
+      "get": {
+        "description": "Any authenticated caller may read an item of a public gallery; an item of a\nprivate gallery is readable by the gallery owner and administrators only.\nThe item is scoped to the gallery named in the path.",
+        "operationId": "get_gallery_item",
+        "parameters": [
+          {
+            "description": "Identifier of the gallery the item belongs to",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/i64"
+            }
+          },
+          {
+            "description": "Identifier of the item to fetch",
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/i64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GalleryItemDetailResponse"
+                }
+              }
+            },
+            "description": "Item found"
+          },
+          "400": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Invalid gallery or item identifier"
+          },
+          "401": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid credentials"
+          },
+          "403": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Caller is not allowed to read the gallery"
+          },
+          "404": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unknown gallery or item"
+          },
+          "500": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unexpected error"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ],
+        "summary": "Fetch a gallery item",
+        "tags": [
+          "library"
+        ]
+      }
+    },
     "/user": {
       "get": {
         "description": "Requires an `Admin` caller. Returns the profiles of every user matching\nthe optional filters as a HAL collection. An empty list is a valid outcome.",
@@ -1874,6 +2982,10 @@
     {
       "description": "Identity bounded context",
       "name": "identity"
+    },
+    {
+      "description": "Library bounded context",
+      "name": "library"
     },
     {
       "description": "User bounded context",
