@@ -22,7 +22,7 @@ mnemorium.db
 # Local config
 config.yaml
 
-# Local secrets (SecretSpec dotenv provider)
+# Local secrets
 .env
 
 # Python

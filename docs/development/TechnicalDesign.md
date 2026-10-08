@@ -2528,7 +2528,6 @@ longest-prefix match, and every scope owns at least one path. Adding or removing
 | Tooling | `config`         | `pytest.ini`                              | pytest configuration            |
 | Tooling | `config`         | `requirements.txt`                        | Python dependencies             |
 | Tooling | `config`         | `ruff.toml`                               | Ruff configuration              |
-| Tooling | `config`         | `secretspec.toml`                         | SecretSpec configuration        |
 | Tooling | `agent`          | `.opencode/**`                            | opencode configuration          |
 | Tooling | `agent`          | `.agents/**`                              | Agent skills                    |
 | Tooling | `agent`          | `AGENTS.md`                               | Repository router               |
