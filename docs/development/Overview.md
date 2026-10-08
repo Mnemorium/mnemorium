@@ -480,4 +480,9 @@ stop
 
 ## GitHub token
 
-TODO: document how to set up the token used by the `github` MCP server.
+The review pipeline reaches GitHub through the `github` MCP server:
+
+- grant `pull-requests: write` to read the pull request diff and post the review comment, and `issues: write` to list
+  and file issues;
+- set `GITHUB_MCP_TOKEN` in your environment for the MCP server; a personal access token works;
+- the MCP server connects on its own; no `gh` CLI is required.
