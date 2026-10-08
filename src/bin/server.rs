@@ -137,7 +137,7 @@ async fn main() -> Result<(), anyhow::Error> {
             let shutdown_signal = async {
                 let interrupt = async {
                     if let Err(err) = ctrl_c().await {
-                        error!("Failed to install SIGINT handler: {}", err);
+                        error!(kind = ?err.kind(), "Failed to install SIGINT handler");
                         pending::<()>().await;
                     }
                 };
@@ -149,7 +149,7 @@ async fn main() -> Result<(), anyhow::Error> {
                             let _signal = stream.recv().await;
                         }
                         Err(err) => {
-                            error!("Failed to install SIGTERM handler: {}", err);
+                            error!(kind = ?err.kind(), "Failed to install SIGTERM handler");
                             pending::<()>().await;
                         }
                     }
@@ -174,12 +174,12 @@ async fn main() -> Result<(), anyhow::Error> {
                     info!("Mnemorium server stopped");
                 }
                 Err(err) => {
-                    error!("Fail to run axum server: {}", err);
+                    error!(kind = ?err.kind(), "Fail to run axum server");
                 }
             }
         }
         Err(err) => {
-            error!("Fail to bind TcpListener to port: {}", err);
+            error!(kind = ?err.kind(), "Fail to bind TcpListener to port");
         }
     }
 

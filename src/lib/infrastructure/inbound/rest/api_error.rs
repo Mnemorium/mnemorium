@@ -372,6 +372,9 @@ mod tests {
     #[tokio::test]
     async fn json_rejection_wrong_type_returns_unprocessable_entity() -> Result<(), Box<dyn Error>>
     {
+        // Arrange
+        let (buffer, _capture) = capture_logs();
+
         // Act
         let response = rejection_response(
             r#"{"count":"LEAK_SENTINEL"}"#,
@@ -396,6 +399,23 @@ mod tests {
         assert!(
             !message.contains("column"),
             "message leaked a parse position"
+        );
+        let logs = captured_logs(&buffer);
+        assert!(
+            !logs.contains("LEAK_SENTINEL"),
+            "the sink must never carry the offending body: {logs}"
+        );
+        assert!(
+            !logs.contains("invalid type"),
+            "the sink must never carry serde detail: {logs}"
+        );
+        assert!(
+            !logs.contains("line"),
+            "the sink must never carry a parse position: {logs}"
+        );
+        assert!(
+            !logs.contains("column"),
+            "the sink must never carry a parse position: {logs}"
         );
         Ok(())
     }
