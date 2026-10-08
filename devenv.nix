@@ -19,7 +19,6 @@
     pkgs.git
     pkgs.ls-lint
     pkgs.cargo-llvm-cov
-    pkgs.nixfmt
     pkgs.llvm
     pkgs.shellcheck
     pkgs.cargo-deny
@@ -30,6 +29,7 @@
     pkgs.taplo
     pkgs.sqlx-cli
     pkgs.sqlfluff
+    multiverse.nixfmt."1.5.0"
     multiverse.nodejs."24.19.0"
     multiverse.prettier."3.8.3"
     multiverse.sqlite."3.51.2"
@@ -112,7 +112,10 @@
     ruff.enable = true;
     ruff-format.enable = true;
     # === Nix (This file)
-    nixfmt.enable = true;
+    nixfmt = {
+      enable = true;
+      package = multiverse.nixfmt."1.5.0";
+    };
     # === file/dir names
     ls-lint = {
       enable = true;
