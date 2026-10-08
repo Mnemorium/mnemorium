@@ -2231,9 +2231,12 @@ Shared Rust test helpers live only in the single `#[cfg(test)] mod test_helpers`
 sanctioned exception to [TEST-001](#unit-test) (a test module lives with the code under test) and to `STY-RUST-001`
 (shared test fixtures are exempt from the extract-function rule).
 
-It holds the fixtures the in-crate tests share: `SECRET_PASSWORD`, `TestFactory`, `unit_of_work_factory`,
-`TestUnitOfWork`, `TestUnitOfWorkFactory`, and the app-state builders `app_state`, `app_state_with_identity`,
-`app_state_with_user`, `app_state_with_asset`, `app_state_with_library`.
+It holds the fixtures the in-crate tests share: the secrets `SECRET_PASSWORD` and `TEST_JWT_SECRET`; the unit-of-work
+doubles `TestUnitOfWork`/`TestUow`, `TestUnitOfWorkFactory`/`TestFactory`, and their builders `unit_of_work_factory`,
+`asset_factory`, `asset_unit_of_work`, `gallery_factory`, `gallery_unit_of_work`, and `configuration_with_jwt_secret`;
+the harnesses `AssetFactoryHarness` and `GalleryFactoryHarness`; the app-state builders `app_state`,
+`app_state_with_identity`, `app_state_with_user`, `app_state_with_asset`, `app_state_with_library`; and the response
+assertion helper `error_message_of`.
 
 Helpers are never scattered into per-module files — for example a `test_helper.rs` beside the code under test, or a
 second helper module. A new shared helper is added to this single module, and only with the developer's explicit

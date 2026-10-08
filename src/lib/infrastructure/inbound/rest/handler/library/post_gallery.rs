@@ -132,6 +132,7 @@ mod tests {
     use chrono::NaiveDate;
     use chrono::NaiveDateTime;
     use mockall::predicate::eq;
+    use rstest::rstest;
     use serde_json::Value;
     use serde_json::json;
     use tower::ServiceExt as _;
@@ -206,6 +207,10 @@ mod tests {
     }
 
     /// Make the mocked use case fail with `error`.
+    #[expect(
+        clippy::single_call_fn,
+        reason = "the data-driven error table drives the mock through a named helper"
+    )]
     fn expect_error(use_case: &mut MockCreateGalleryUseCase, error: CreateGalleryError) {
         use_case
             .expect_execute()
@@ -310,86 +315,53 @@ mod tests {
         Ok(())
     }
 
+    #[rstest]
+    #[case::empty_name(
+        1,
+        CreateGalleryError::InvalidName,
+        StatusCode::UNPROCESSABLE_ENTITY,
+        "gallery name must not be empty"
+    )]
+    #[case::too_long_name(
+        1,
+        CreateGalleryError::NameTooLong,
+        StatusCode::UNPROCESSABLE_ENTITY,
+        "gallery name must be at most 100 characters long"
+    )]
+    #[case::unknown_caller(
+        999,
+        CreateGalleryError::NoSuchCaller,
+        StatusCode::UNAUTHORIZED,
+        "the authenticated user does not exist"
+    )]
+    #[case::dependency_failure(
+        1,
+        CreateGalleryError::Unknown(anyhow::anyhow!("boom")),
+        StatusCode::INTERNAL_SERVER_ERROR,
+        "an unexpected error occurred"
+    )]
     #[tokio::test]
-    async fn post_gallery_empty_name_returns_unprocessable_entity() -> Result<(), Box<dyn Error>> {
+    async fn post_gallery_error_maps_to_status(
+        #[case] caller_id: NumericID,
+        #[case] error: CreateGalleryError,
+        #[case] status: StatusCode,
+        #[case] message: &str,
+    ) -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut use_case = MockCreateGalleryUseCase::new();
-        expect_error(&mut use_case, CreateGalleryError::InvalidName);
-
-        // Act
-        let response = send(use_case, 1, Body::from(json!({ "name": "" }).to_string())).await?;
-
-        // Assert
-        assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
-        assert_eq!(
-            error_message_of(&response).as_deref(),
-            Some("gallery name must not be empty")
-        );
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn post_gallery_too_long_name_returns_unprocessable_entity() -> Result<(), Box<dyn Error>>
-    {
-        // Arrange
-        let mut use_case = MockCreateGalleryUseCase::new();
-        expect_error(&mut use_case, CreateGalleryError::NameTooLong);
-
-        // Act
-        let response = send(
-            use_case,
-            1,
-            Body::from(json!({ "name": "x".repeat(101) }).to_string()),
-        )
-        .await?;
-
-        // Assert
-        assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn post_gallery_unknown_caller_returns_unauthorized() -> Result<(), Box<dyn Error>> {
-        // Arrange
-        let mut use_case = MockCreateGalleryUseCase::new();
-        expect_error(&mut use_case, CreateGalleryError::NoSuchCaller);
+        expect_error(&mut use_case, error);
 
         // Act
         let response = send(
             use_case,
-            999,
+            caller_id,
             Body::from(json!({ "name": "x" }).to_string()),
         )
         .await?;
 
         // Assert
-        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
-        assert_eq!(
-            error_message_of(&response).as_deref(),
-            Some("the authenticated user does not exist")
-        );
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn post_gallery_dependency_failure_returns_internal_server_error()
-    -> Result<(), Box<dyn Error>> {
-        // Arrange
-        let mut use_case = MockCreateGalleryUseCase::new();
-        expect_error(
-            &mut use_case,
-            CreateGalleryError::Unknown(anyhow::anyhow!("boom")),
-        );
-
-        // Act
-        let response = send(use_case, 1, Body::from(json!({ "name": "x" }).to_string())).await?;
-
-        // Assert
-        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
-        assert_eq!(
-            error_message_of(&response).as_deref(),
-            Some("an unexpected error occurred")
-        );
+        assert_eq!(response.status(), status);
+        assert_eq!(error_message_of(&response).as_deref(), Some(message));
         Ok(())
     }
 
@@ -424,6 +396,24 @@ mod tests {
         // Assert
         assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
         assert!(error_message_of(&response).is_some());
+        Ok(())
+    }
+
+    #[rstest]
+    #[case::name_not_a_string(r#"{"name": 1}"#)]
+    #[case::is_public_not_a_bool(r#"{"is_public": "yes"}"#)]
+    #[tokio::test]
+    async fn post_gallery_wrong_attribute_type_returns_unprocessable_entity(
+        #[case] body: &str,
+    ) -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let use_case = MockCreateGalleryUseCase::new();
+
+        // Act
+        let response = send(use_case, 1, Body::from(body.to_owned())).await?;
+
+        // Assert
+        assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
         Ok(())
     }
 }

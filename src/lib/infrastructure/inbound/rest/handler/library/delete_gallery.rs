@@ -109,6 +109,7 @@ mod tests {
     use axum::response::Response;
     use axum::routing::delete;
     use mockall::predicate::eq;
+    use rstest::rstest;
     use tower::ServiceExt as _;
 
     use super::delete_gallery;
@@ -150,6 +151,10 @@ mod tests {
     }
 
     /// Make the mocked use case fail with `error`.
+    #[expect(
+        clippy::single_call_fn,
+        reason = "the data-driven error table drives the mock through a named helper"
+    )]
     fn expect_error(use_case: &mut MockDeleteGalleryUseCase, error: DeleteGalleryError) {
         use_case
             .expect_execute()
@@ -175,85 +180,60 @@ mod tests {
         Ok(())
     }
 
+    #[rstest]
+    #[case::default_gallery(
+        1,
+        "0",
+        DeleteGalleryError::DefaultGallery,
+        StatusCode::CONFLICT,
+        "the default gallery cannot be deleted"
+    )]
+    #[case::not_owner(
+        1,
+        "3",
+        DeleteGalleryError::Forbidden,
+        StatusCode::FORBIDDEN,
+        "only the owner may delete this gallery"
+    )]
+    #[case::unknown_gallery(
+        1,
+        "3",
+        DeleteGalleryError::NoSuchGallery,
+        StatusCode::NOT_FOUND,
+        "a gallery with this identifier does not exist"
+    )]
+    #[case::unknown_caller(
+        999,
+        "3",
+        DeleteGalleryError::NoSuchCaller,
+        StatusCode::UNAUTHORIZED,
+        "the authenticated user does not exist"
+    )]
+    #[case::dependency_failure(
+        1,
+        "3",
+        DeleteGalleryError::Unknown(anyhow::anyhow!("boom")),
+        StatusCode::INTERNAL_SERVER_ERROR,
+        "an unexpected error occurred"
+    )]
     #[tokio::test]
-    async fn delete_gallery_default_gallery_returns_conflict() -> Result<(), Box<dyn Error>> {
+    async fn delete_gallery_error_maps_to_status(
+        #[case] caller_id: NumericID,
+        #[case] id: &str,
+        #[case] error: DeleteGalleryError,
+        #[case] status: StatusCode,
+        #[case] message: &str,
+    ) -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut use_case = MockDeleteGalleryUseCase::new();
-        expect_error(&mut use_case, DeleteGalleryError::DefaultGallery);
+        expect_error(&mut use_case, error);
 
         // Act
-        let response = send(use_case, 1, "0").await?;
+        let response = send(use_case, caller_id, id).await?;
 
         // Assert
-        assert_eq!(response.status(), StatusCode::CONFLICT);
-        assert_eq!(
-            error_message_of(&response).as_deref(),
-            Some("the default gallery cannot be deleted")
-        );
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn delete_gallery_not_owner_returns_forbidden() -> Result<(), Box<dyn Error>> {
-        // Arrange
-        let mut use_case = MockDeleteGalleryUseCase::new();
-        expect_error(&mut use_case, DeleteGalleryError::Forbidden);
-
-        // Act
-        let response = send(use_case, 1, "3").await?;
-
-        // Assert
-        assert_eq!(response.status(), StatusCode::FORBIDDEN);
-        assert_eq!(
-            error_message_of(&response).as_deref(),
-            Some("only the owner may delete this gallery")
-        );
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn delete_gallery_unknown_gallery_returns_not_found() -> Result<(), Box<dyn Error>> {
-        // Arrange
-        let mut use_case = MockDeleteGalleryUseCase::new();
-        expect_error(&mut use_case, DeleteGalleryError::NoSuchGallery);
-
-        // Act
-        let response = send(use_case, 1, "3").await?;
-
-        // Assert
-        assert_eq!(response.status(), StatusCode::NOT_FOUND);
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn delete_gallery_unknown_caller_returns_unauthorized() -> Result<(), Box<dyn Error>> {
-        // Arrange
-        let mut use_case = MockDeleteGalleryUseCase::new();
-        expect_error(&mut use_case, DeleteGalleryError::NoSuchCaller);
-
-        // Act
-        let response = send(use_case, 999, "3").await?;
-
-        // Assert
-        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn delete_gallery_dependency_failure_returns_internal_server_error()
-    -> Result<(), Box<dyn Error>> {
-        // Arrange
-        let mut use_case = MockDeleteGalleryUseCase::new();
-        expect_error(
-            &mut use_case,
-            DeleteGalleryError::Unknown(anyhow::anyhow!("boom")),
-        );
-
-        // Act
-        let response = send(use_case, 1, "3").await?;
-
-        // Assert
-        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(response.status(), status);
+        assert_eq!(error_message_of(&response).as_deref(), Some(message));
         Ok(())
     }
 

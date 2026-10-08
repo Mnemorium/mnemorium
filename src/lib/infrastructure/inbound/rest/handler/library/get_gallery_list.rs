@@ -30,6 +30,7 @@ const MAX_LIMIT: usize = 100;
 /// Every filter is optional; an all-`None` query returns the first page of the
 /// galleries the caller may see.
 #[derive(Debug, Deserialize, Serialize, IntoParams)]
+#[into_params(parameter_in = Query)]
 #[non_exhaustive]
 pub struct ListGalleriesQuery {
     /// Only return galleries whose public flag matches this value.
@@ -178,6 +179,7 @@ mod tests {
     use chrono::NaiveDate;
     use chrono::NaiveDateTime;
     use mockall::predicate::eq;
+    use rstest::rstest;
     use serde_json::Value;
     use serde_json::json;
     use tower::ServiceExt as _;
@@ -247,6 +249,10 @@ mod tests {
     }
 
     /// Make the mocked use case fail with `error`.
+    #[expect(
+        clippy::single_call_fn,
+        reason = "the data-driven error table drives the mock through a named helper"
+    )]
     fn expect_error(use_case: &mut MockListGalleriesUseCase, error: ListGalleriesError) {
         use_case
             .expect_execute()
@@ -460,43 +466,36 @@ mod tests {
         Ok(())
     }
 
+    #[rstest]
+    #[case::unknown_caller(
+        999,
+        ListGalleriesError::NoSuchCaller,
+        StatusCode::UNAUTHORIZED,
+        "the authenticated user does not exist"
+    )]
+    #[case::dependency_failure(
+        1,
+        ListGalleriesError::Unknown(anyhow::anyhow!("boom")),
+        StatusCode::INTERNAL_SERVER_ERROR,
+        "an unexpected error occurred"
+    )]
     #[tokio::test]
-    async fn get_gallery_list_unknown_caller_returns_unauthorized() -> Result<(), Box<dyn Error>> {
+    async fn get_gallery_list_error_maps_to_status(
+        #[case] caller_id: NumericID,
+        #[case] error: ListGalleriesError,
+        #[case] status: StatusCode,
+        #[case] message: &str,
+    ) -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut use_case = MockListGalleriesUseCase::new();
-        expect_error(&mut use_case, ListGalleriesError::NoSuchCaller);
+        expect_error(&mut use_case, error);
 
         // Act
-        let response = send(use_case, 999, "").await?;
+        let response = send(use_case, caller_id, "").await?;
 
         // Assert
-        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
-        assert_eq!(
-            error_message_of(&response).as_deref(),
-            Some("the authenticated user does not exist")
-        );
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn get_gallery_list_dependency_failure_returns_internal_server_error()
-    -> Result<(), Box<dyn Error>> {
-        // Arrange
-        let mut use_case = MockListGalleriesUseCase::new();
-        expect_error(
-            &mut use_case,
-            ListGalleriesError::Unknown(anyhow::anyhow!("boom")),
-        );
-
-        // Act
-        let response = send(use_case, 1, "").await?;
-
-        // Assert
-        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
-        assert_eq!(
-            error_message_of(&response).as_deref(),
-            Some("an unexpected error occurred")
-        );
+        assert_eq!(response.status(), status);
+        assert_eq!(error_message_of(&response).as_deref(), Some(message));
         Ok(())
     }
 
@@ -607,14 +606,20 @@ mod tests {
         Ok(())
     }
 
+    #[rstest]
+    #[case::is_public("?is_public=maybe")]
+    #[case::limit("?limit=abc")]
+    #[case::offset("?offset=abc")]
+    #[case::owner_id("?owner_id=abc")]
     #[tokio::test]
-    async fn get_gallery_list_invalid_filter_returns_stable_bad_request()
-    -> Result<(), Box<dyn Error>> {
+    async fn get_gallery_list_invalid_filter_returns_stable_bad_request(
+        #[case] query: &str,
+    ) -> Result<(), Box<dyn Error>> {
         // Arrange
         let use_case = MockListGalleriesUseCase::new();
 
         // Act
-        let response = send(use_case, 1, "?is_public=maybe").await?;
+        let response = send(use_case, 1, query).await?;
 
         // Assert: the handler-owned message is stable, never the framework's
         // rejection text (`API-040`).

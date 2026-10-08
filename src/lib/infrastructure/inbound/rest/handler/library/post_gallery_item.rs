@@ -165,6 +165,7 @@ mod tests {
     use chrono::NaiveDate;
     use chrono::NaiveDateTime;
     use mockall::predicate::eq;
+    use rstest::rstest;
     use serde_json::Value;
     use serde_json::json;
     use tower::ServiceExt as _;
@@ -237,6 +238,10 @@ mod tests {
     }
 
     /// Make the mocked use case fail with `error`.
+    #[expect(
+        clippy::single_call_fn,
+        reason = "the data-driven error table drives the mock through a named helper"
+    )]
     fn expect_error(use_case: &mut MockAddGalleryItemUseCase, error: AddGalleryItemError) {
         use_case
             .expect_execute()
@@ -348,172 +353,87 @@ mod tests {
         Ok(())
     }
 
+    #[rstest]
+    #[case::already_assigned(
+        1,
+        AddGalleryItemError::AlreadyAssigned,
+        StatusCode::CONFLICT,
+        "the medium already belongs to a gallery"
+    )]
+    #[case::not_owned_media(
+        1,
+        AddGalleryItemError::NotOwnedMedia,
+        StatusCode::FORBIDDEN,
+        "the caller does not own this medium"
+    )]
+    #[case::forbidden(
+        1,
+        AddGalleryItemError::Forbidden,
+        StatusCode::FORBIDDEN,
+        "the caller is not allowed to add an item to this gallery"
+    )]
+    #[case::unknown_media(
+        1,
+        AddGalleryItemError::NoSuchMedia,
+        StatusCode::NOT_FOUND,
+        "a medium with this identifier does not exist"
+    )]
+    #[case::unknown_gallery(
+        1,
+        AddGalleryItemError::NoSuchGallery,
+        StatusCode::NOT_FOUND,
+        "a gallery with this identifier does not exist"
+    )]
+    #[case::unknown_caller(
+        999,
+        AddGalleryItemError::NoSuchCaller,
+        StatusCode::UNAUTHORIZED,
+        "the authenticated user does not exist"
+    )]
+    #[case::dependency_failure(
+        1,
+        AddGalleryItemError::Unknown(anyhow::anyhow!("boom")),
+        StatusCode::INTERNAL_SERVER_ERROR,
+        "an unexpected error occurred"
+    )]
     #[tokio::test]
-    async fn post_gallery_item_already_assigned_returns_conflict() -> Result<(), Box<dyn Error>> {
+    async fn post_gallery_item_error_maps_to_status(
+        #[case] caller_id: NumericID,
+        #[case] error: AddGalleryItemError,
+        #[case] status: StatusCode,
+        #[case] message: &str,
+    ) -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut use_case = MockAddGalleryItemUseCase::new();
-        expect_error(&mut use_case, AddGalleryItemError::AlreadyAssigned);
+        expect_error(&mut use_case, error);
 
         // Act
         let response = send(
             use_case,
-            1,
+            caller_id,
             "3",
             Body::from(json!({ "type": "image", "media_id": 7i64 }).to_string()),
         )
         .await?;
 
         // Assert
-        assert_eq!(response.status(), StatusCode::CONFLICT);
-        assert_eq!(
-            error_message_of(&response).as_deref(),
-            Some("the medium already belongs to a gallery")
-        );
+        assert_eq!(response.status(), status);
+        assert_eq!(error_message_of(&response).as_deref(), Some(message));
         Ok(())
     }
 
+    #[rstest]
+    #[case::unknown_medium_type(r#"{"type": "audio", "media_id": 7}"#)]
+    #[case::media_id_not_an_integer(r#"{"type": "image", "media_id": "seven"}"#)]
     #[tokio::test]
-    async fn post_gallery_item_not_owned_media_returns_forbidden() -> Result<(), Box<dyn Error>> {
-        // Arrange
-        let mut use_case = MockAddGalleryItemUseCase::new();
-        expect_error(&mut use_case, AddGalleryItemError::NotOwnedMedia);
-
-        // Act
-        let response = send(
-            use_case,
-            1,
-            "3",
-            Body::from(json!({ "type": "image", "media_id": 7i64 }).to_string()),
-        )
-        .await?;
-
-        // Assert
-        assert_eq!(response.status(), StatusCode::FORBIDDEN);
-        assert_eq!(
-            error_message_of(&response).as_deref(),
-            Some("the caller does not own this medium")
-        );
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn post_gallery_item_forbidden_returns_forbidden() -> Result<(), Box<dyn Error>> {
-        // Arrange
-        let mut use_case = MockAddGalleryItemUseCase::new();
-        expect_error(&mut use_case, AddGalleryItemError::Forbidden);
-
-        // Act
-        let response = send(
-            use_case,
-            1,
-            "3",
-            Body::from(json!({ "type": "image", "media_id": 7i64 }).to_string()),
-        )
-        .await?;
-
-        // Assert
-        assert_eq!(response.status(), StatusCode::FORBIDDEN);
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn post_gallery_item_unknown_media_returns_not_found() -> Result<(), Box<dyn Error>> {
-        // Arrange
-        let mut use_case = MockAddGalleryItemUseCase::new();
-        expect_error(&mut use_case, AddGalleryItemError::NoSuchMedia);
-
-        // Act
-        let response = send(
-            use_case,
-            1,
-            "3",
-            Body::from(json!({ "type": "image", "media_id": 7i64 }).to_string()),
-        )
-        .await?;
-
-        // Assert
-        assert_eq!(response.status(), StatusCode::NOT_FOUND);
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn post_gallery_item_unknown_gallery_returns_not_found() -> Result<(), Box<dyn Error>> {
-        // Arrange
-        let mut use_case = MockAddGalleryItemUseCase::new();
-        expect_error(&mut use_case, AddGalleryItemError::NoSuchGallery);
-
-        // Act
-        let response = send(
-            use_case,
-            1,
-            "3",
-            Body::from(json!({ "type": "image", "media_id": 7i64 }).to_string()),
-        )
-        .await?;
-
-        // Assert
-        assert_eq!(response.status(), StatusCode::NOT_FOUND);
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn post_gallery_item_unknown_caller_returns_unauthorized() -> Result<(), Box<dyn Error>> {
-        // Arrange
-        let mut use_case = MockAddGalleryItemUseCase::new();
-        expect_error(&mut use_case, AddGalleryItemError::NoSuchCaller);
-
-        // Act
-        let response = send(
-            use_case,
-            999,
-            "3",
-            Body::from(json!({ "type": "image", "media_id": 7i64 }).to_string()),
-        )
-        .await?;
-
-        // Assert
-        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn post_gallery_item_dependency_failure_returns_internal_server_error()
-    -> Result<(), Box<dyn Error>> {
-        // Arrange
-        let mut use_case = MockAddGalleryItemUseCase::new();
-        expect_error(
-            &mut use_case,
-            AddGalleryItemError::Unknown(anyhow::anyhow!("boom")),
-        );
-
-        // Act
-        let response = send(
-            use_case,
-            1,
-            "3",
-            Body::from(json!({ "type": "image", "media_id": 7i64 }).to_string()),
-        )
-        .await?;
-
-        // Assert
-        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn post_gallery_item_invalid_type_returns_unprocessable_entity()
-    -> Result<(), Box<dyn Error>> {
+    async fn post_gallery_item_invalid_attribute_returns_unprocessable_entity(
+        #[case] body: &str,
+    ) -> Result<(), Box<dyn Error>> {
         // Arrange
         let use_case = MockAddGalleryItemUseCase::new();
 
         // Act
-        let response = send(
-            use_case,
-            1,
-            "3",
-            Body::from(json!({ "type": "audio", "media_id": 7i64 }).to_string()),
-        )
-        .await?;
+        let response = send(use_case, 1, "3", Body::from(body.to_owned())).await?;
 
         // Assert
         assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);

@@ -1762,71 +1762,52 @@
         "parameters": [
           {
             "description": "Only return galleries whose public flag matches this value.",
-            "in": "path",
+            "in": "query",
             "name": "is_public",
-            "required": true,
+            "required": false,
             "schema": {
-              "type": [
-                "boolean",
-                "null"
-              ]
+              "type": "boolean"
             }
           },
           {
             "description": "Maximum number of galleries to return, between 1 and 100.",
-            "in": "path",
+            "in": "query",
             "name": "limit",
-            "required": true,
+            "required": false,
             "schema": {
               "default": 20,
               "maximum": 100,
               "minimum": 1,
-              "type": [
-                "integer",
-                "null"
-              ]
+              "type": "integer"
             }
           },
           {
             "description": "Only return galleries whose name matches this value.",
-            "in": "path",
+            "in": "query",
             "name": "name",
-            "required": true,
+            "required": false,
             "schema": {
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": "string"
             }
           },
           {
             "description": "Number of matching galleries to skip before returning the page.",
-            "in": "path",
+            "in": "query",
             "name": "offset",
-            "required": true,
+            "required": false,
             "schema": {
               "default": 0,
               "minimum": 0,
-              "type": [
-                "integer",
-                "null"
-              ]
+              "type": "integer"
             }
           },
           {
             "description": "Only return galleries owned by this user.",
-            "in": "path",
+            "in": "query",
             "name": "owner_id",
-            "required": true,
+            "required": false,
             "schema": {
-              "oneOf": [
-                {
-                  "type": "null"
-                },
-                {
-                  "$ref": "#/components/schemas/i64"
-                }
-              ]
+              "$ref": "#/components/schemas/i64"
             }
           }
         ],
