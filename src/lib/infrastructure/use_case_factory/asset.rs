@@ -2,6 +2,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use arc_swap::ArcSwap;
+use tokio::sync::Semaphore;
 
 use crate::application::port::asset_use_case_factory::AssetUseCaseFactory;
 use crate::application::port::begin_upload::BeginUploadUseCase;
@@ -27,6 +28,8 @@ use crate::infrastructure::outbound::sqlx::unit_of_work::SqlxUnitOfWorkFactory;
 pub struct RuntimeAssetUseCaseFactory {
     /// Live application configuration.
     configuration: Arc<ArcSwap<Configuration>>,
+    /// Permit pool bounding concurrent media probes, owned by the composition root.
+    probe_permits: Arc<Semaphore>,
     /// Root directory holding the upload and file folders.
     storage_root: PathBuf,
     /// Factory opening the unit of work wrapping the Asset use cases.
@@ -45,9 +48,11 @@ impl RuntimeAssetUseCaseFactory {
         configuration: Arc<ArcSwap<Configuration>>,
         storage_root: PathBuf,
         unit_of_work_factory: Arc<SqlxUnitOfWorkFactory>,
+        probe_permits: Arc<Semaphore>,
     ) -> Self {
         Self {
             configuration,
+            probe_permits,
             storage_root,
             unit_of_work_factory,
         }
@@ -72,7 +77,9 @@ impl AssetUseCaseFactory for RuntimeAssetUseCaseFactory {
         Arc::new(CompleteUpload::new(
             Arc::clone(&self.unit_of_work_factory),
             Self::file_storage(),
-            Arc::new(LocalMediaProbe::new()),
+            Arc::new(LocalMediaProbe::with_permits(Arc::clone(
+                &self.probe_permits,
+            ))),
             self.storage_root.clone(),
             live.asset().upload().expiry_seconds(),
         ))

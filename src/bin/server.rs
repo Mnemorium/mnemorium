@@ -20,6 +20,7 @@ use mnemorium::infrastructure::outbound::argon2::password_hasher::Argon2Password
 use mnemorium::infrastructure::outbound::config::bootstrap::bootstrap_sqlite3;
 use mnemorium::infrastructure::outbound::config::configuration_source::ConfigConfigurationSource;
 use mnemorium::infrastructure::outbound::file_system::file_storage::FileSystemStorage;
+use mnemorium::infrastructure::outbound::media_probe::LocalMediaProbe;
 use mnemorium::infrastructure::outbound::random::password_generator::RandomPasswordGenerator;
 use mnemorium::infrastructure::outbound::random::secret_generator::ChaChaSecretGenerator;
 use mnemorium::infrastructure::outbound::sqlx::sqlite3::init_db;
@@ -109,6 +110,7 @@ async fn main() -> Result<(), anyhow::Error> {
         Arc::clone(&configuration),
         storage_root,
         Arc::clone(&unit_of_work_factory),
+        LocalMediaProbe::new_permits(),
     ));
 
     let login_rate_limiter = Arc::new(LoginRateLimiter::new(

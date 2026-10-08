@@ -50,6 +50,7 @@ The architecture is normative here (see `docs/development/TechnicalDesign.md` §
             │   ├── config
             │   ├── file_system
             │   ├── jwt
+            │   ├── media_probe.rs
             │   ├── moka.rs
             │   ├── random
             │   ├── sha2
@@ -91,6 +92,7 @@ The architecture is normative here (see `docs/development/TechnicalDesign.md` §
 | `src/lib/infrastructure/outbound/config/bootstrap.rs` | Bootstrap persistence settings read before the datastore is reachable                                        |
 | `src/lib/infrastructure/outbound/file_system`         | File storage adapter                                                                                         |
 | `src/lib/infrastructure/outbound/jwt`                 | JWT token provider adapter                                                                                   |
+| `src/lib/infrastructure/outbound/media_probe.rs`      | Media probe adapter decoding images in-process and videos through `ffprobe`                                  |
 | `src/lib/infrastructure/outbound/moka.rs`             | In-memory cache adapter                                                                                      |
 | `src/lib/infrastructure/outbound/random`              | Password and secret generator adapters                                                                       |
 | `src/lib/infrastructure/outbound/sha2`                | SHA-256 content hasher adapter                                                                               |
@@ -116,9 +118,11 @@ instance while existing requests finish.
 
 The supervisor controls the hard termination window:
 
-- **Docker**: `docker stop` sends `SIGTERM`, then `SIGKILL` after the grace period (default 10 s). Current endpoints
-  complete well within it; raise the grace (`docker stop --time <seconds>`, or `stop_grace_period` in compose) once
-  long-running uploads or media scans land.
+- **Docker**: `docker stop` sends `SIGTERM`, then `SIGKILL` after the grace period (default 10 s). A media completion
+  (`POST /api/v1/asset/upload/{id}/complete` for a `video/*` upload) runs an `ffprobe` probe for up to 30 s plus a 5 s
+  admission wait, so the default grace truncates an in-flight completion; raise the grace
+  (`docker stop --time <seconds>`, or `stop_grace_period` in compose) above the probe bound, for example
+  `stop_grace_period: 60s`.
 - **systemd**: `KillSignal=SIGTERM` is the default; size `TimeoutStopSec` to the longest expected drain plus a margin
   for filesystem syncs (`TimeoutStopSec=120` is a safe starting point on networked storage).
 - **launchd**: use `launchctl bootout` (sends `SIGTERM` and waits); avoid `launchctl kickstart -k`, which sends

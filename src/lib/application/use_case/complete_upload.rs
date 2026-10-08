@@ -656,9 +656,12 @@ fn probe_fault(error: MediaProbeError) -> CompleteUploadError {
 
 /// Insert the image or video row for `file_id` in the completion transaction.
 ///
-/// A concurrent registration that wins the insert race is an idempotent
-/// success: the unique constraint on the file identifier reports
-/// [`RepositoryError::AlreadyExist`].
+/// Idempotency is enforced upstream by file-level deduplication: `complete_upload`
+/// returns an existing file row (matched by `caller_file_id` and integrity hash)
+/// before it reaches this step, so the insert runs at most once per created file.
+/// The [`RepositoryError::AlreadyExist`] arm is defensive only — `file_id` names a
+/// row created in this same unit of work, so no concurrent transaction can have
+/// inserted a media row for it.
 #[expect(
     clippy::single_call_fn,
     reason = "the media persistence is named after the step it performs"
@@ -680,8 +683,14 @@ async fn register_media<U: LibraryUnitOfWork>(
                 Utc::now().date_naive(),
                 file_id,
             )
-            .map_err(|error| CompleteUploadError::Unknown(anyhow::Error::new(error)))?;
+            .map_err(|error| {
+                security_event::application_error("complete_upload");
+                CompleteUploadError::Unknown(anyhow::Error::new(error))
+            })?;
             match unit_of_work.media().create_image(pending).await {
+                // `Ok` and the defensive `AlreadyExist` are both success: the
+                // file row was created in this unit of work, so the insert
+                // cannot race (see the doc comment above).
                 Ok(_) | Err(RepositoryError::AlreadyExist) => Ok(()),
                 Err(error) => Err(CompleteUploadError::Unknown(error.into())),
             }
@@ -698,8 +707,14 @@ async fn register_media<U: LibraryUnitOfWork>(
                 video.scan_type,
                 file_id,
             )
-            .map_err(|error| CompleteUploadError::Unknown(anyhow::Error::new(error)))?;
+            .map_err(|error| {
+                security_event::application_error("complete_upload");
+                CompleteUploadError::Unknown(anyhow::Error::new(error))
+            })?;
             match unit_of_work.media().create_video(pending).await {
+                // `Ok` and the defensive `AlreadyExist` are both success: the
+                // file row was created in this unit of work, so the insert
+                // cannot race (see the doc comment above).
                 Ok(_) | Err(RepositoryError::AlreadyExist) => Ok(()),
                 Err(error) => Err(CompleteUploadError::Unknown(error.into())),
             }
@@ -710,15 +725,21 @@ async fn register_media<U: LibraryUnitOfWork>(
 #[cfg(test)]
 mod tests {
     use std::error::Error;
+    use std::io as stdio;
     use std::path::PathBuf;
     use std::sync::Arc;
     use std::sync::Mutex;
+    use std::sync::PoisonError;
     use std::sync::atomic::AtomicBool;
     use std::sync::atomic::AtomicUsize;
     use std::sync::atomic::Ordering;
 
     use chrono::NaiveDate;
     use chrono::NaiveDateTime;
+    use tracing::subscriber::DefaultGuard;
+    use tracing::subscriber::set_default;
+    use tracing_subscriber::fmt;
+    use tracing_subscriber::layer::SubscriberExt as _;
 
     use crate::application::port::complete_upload::CompleteUploadCommand;
     use crate::application::port::complete_upload::CompleteUploadError;
@@ -777,6 +798,42 @@ mod tests {
         phase_two_rolled_back: Arc<AtomicBool>,
         /// The use case under test.
         use_case: UseCase,
+    }
+
+    /// Append-only sink that lets a test read back the lines [`fmt`] emits.
+    #[derive(Clone)]
+    struct CaptureWriter {
+        /// Buffer shared with the test that asserts on the captured output.
+        buffer: Arc<Mutex<Vec<u8>>>,
+    }
+
+    #[expect(
+        clippy::missing_trait_methods,
+        reason = "only the raw `write` and `flush` are meaningful for an in-memory capture buffer"
+    )]
+    impl stdio::Write for CaptureWriter {
+        fn flush(&mut self) -> stdio::Result<()> {
+            Ok(())
+        }
+
+        fn write(&mut self, buf: &[u8]) -> stdio::Result<usize> {
+            let mut buffer = self.buffer.lock().unwrap_or_else(PoisonError::into_inner);
+            buffer.extend_from_slice(buf);
+            Ok(buf.len())
+        }
+    }
+
+    /// Hand every formatted event to a fresh clone of the shared buffer.
+    #[expect(
+        clippy::missing_trait_methods,
+        reason = "the default `make_writer_for` already routes through `make_writer`"
+    )]
+    impl<'writer> fmt::MakeWriter<'writer> for CaptureWriter {
+        type Writer = Self;
+
+        fn make_writer(&'writer self) -> Self::Writer {
+            self.clone()
+        }
     }
 
     /// Build a completion whose two phases each open their own unit of work.
@@ -1988,10 +2045,6 @@ mod tests {
     }
 
     /// Build an image probe result.
-    #[expect(
-        clippy::single_call_fn,
-        reason = "the image fixture is built through a named helper"
-    )]
     fn probed_image() -> ProbedImage {
         ProbedImage {
             height_px: 480,
@@ -2011,6 +2064,25 @@ mod tests {
             scan_type: ScanType::Progressive,
             width: 640,
         }
+    }
+
+    /// Install a capturing subscriber on the current thread and return the
+    /// shared buffer plus the guard that keeps it active.
+    fn capture_logs() -> (Arc<Mutex<Vec<u8>>>, DefaultGuard) {
+        let buffer = Arc::new(Mutex::new(Vec::new()));
+        let subscriber = tracing_subscriber::registry().with(
+            fmt::layer().with_ansi(false).with_writer(CaptureWriter {
+                buffer: Arc::clone(&buffer),
+            }),
+        );
+        let guard = set_default(subscriber);
+        (buffer, guard)
+    }
+
+    /// Read the captured bytes back as a lossy UTF-8 string.
+    fn captured_logs(buffer: &Mutex<Vec<u8>>) -> String {
+        let bytes = buffer.lock().unwrap_or_else(PoisonError::into_inner);
+        String::from_utf8_lossy(bytes.as_slice()).into_owned()
     }
 
     #[tokio::test]
@@ -2384,6 +2456,377 @@ mod tests {
         // Assert
         assert!(matches!(result, Err(CompleteUploadError::Unknown(_))));
         assert!(!harness.phase_two_committed.load(Ordering::SeqCst));
+        Ok(())
+    }
+
+    /// Wire a phase-two file repository that finds no duplicate and inserts the row.
+    fn expect_file_create(files: &mut MockFileRepository) {
+        files
+            .expect_search()
+            .times(1)
+            .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+        files
+            .expect_create()
+            .times(1)
+            .returning(|file| Box::pin(async move { Ok(file) }));
+    }
+
+    /// Wire a file storage that promotes the staged file.
+    fn expect_promote(file_storage: &mut MockFileStorage) {
+        file_storage
+            .expect_promote()
+            .times(1)
+            .returning(|_, _| Box::pin(async { Ok(true) }));
+    }
+
+    /// Wire a file storage that restores the promoted file after a failed write.
+    fn expect_restore(file_storage: &mut MockFileStorage) {
+        file_storage
+            .expect_restore()
+            .times(1)
+            .returning(|_, _| Box::pin(async { Ok(()) }));
+    }
+
+    #[tokio::test]
+    async fn complete_upload_absent_staged_image_returns_no_such_upload()
+    -> Result<(), Box<dyn Error>> {
+        // Arrange: the upload row exists but the staged bytes vanished between
+        // the hash and the image probe.
+        let mut phase_one_uploads = MockUploadRepository::new();
+        expect_upload(
+            &mut phase_one_uploads,
+            upload_with_mime(5, 3, 4, &[0], false, "image/png")?,
+        );
+        let mut file_storage = MockFileStorage::new();
+        expect_integrity_hash(&mut file_storage, DIGEST);
+        let mut media_probe = MockMediaProbe::new();
+        media_probe
+            .expect_probe_image()
+            .times(1)
+            .returning(|_| Box::pin(async { Ok(None) }));
+        let harness = use_case_with_media(
+            phase_one_uploads,
+            MockFileRepository::new(),
+            MockMediaRepository::new(),
+            MockUploadRepository::new(),
+            MockFileRepository::new(),
+            MockMediaRepository::new(),
+            file_storage,
+            media_probe,
+        );
+
+        // Act
+        let result = harness
+            .use_case
+            .execute(CompleteUploadCommand::new(5, 3))
+            .await;
+
+        // Assert
+        assert!(matches!(result, Err(CompleteUploadError::NoSuchUpload)));
+        assert!(!harness.phase_two_committed.load(Ordering::SeqCst));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn complete_upload_image_probe_timeout_returns_unknown() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let mut phase_one_uploads = MockUploadRepository::new();
+        expect_upload(
+            &mut phase_one_uploads,
+            upload_with_mime(5, 3, 4, &[0], false, "image/png")?,
+        );
+        let mut file_storage = MockFileStorage::new();
+        expect_integrity_hash(&mut file_storage, DIGEST);
+        let mut media_probe = MockMediaProbe::new();
+        media_probe
+            .expect_probe_image()
+            .times(1)
+            .returning(|_| Box::pin(async { Err(MediaProbeError::Timeout) }));
+        let harness = use_case_with_media(
+            phase_one_uploads,
+            MockFileRepository::new(),
+            MockMediaRepository::new(),
+            MockUploadRepository::new(),
+            MockFileRepository::new(),
+            MockMediaRepository::new(),
+            file_storage,
+            media_probe,
+        );
+
+        // Act
+        let result = harness
+            .use_case
+            .execute(CompleteUploadCommand::new(5, 3))
+            .await;
+
+        // Assert
+        assert!(matches!(result, Err(CompleteUploadError::Unknown(_))));
+        assert!(!harness.phase_two_committed.load(Ordering::SeqCst));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn complete_upload_image_unsupported_media_returns_unsupported_media()
+    -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let mut phase_one_uploads = MockUploadRepository::new();
+        expect_upload(
+            &mut phase_one_uploads,
+            upload_with_mime(5, 3, 4, &[0], false, "image/png")?,
+        );
+        let mut file_storage = MockFileStorage::new();
+        expect_integrity_hash(&mut file_storage, DIGEST);
+        let mut media_probe = MockMediaProbe::new();
+        media_probe
+            .expect_probe_image()
+            .times(1)
+            .returning(|_| Box::pin(async { Err(MediaProbeError::UnsupportedMedia) }));
+        let harness = use_case_with_media(
+            phase_one_uploads,
+            MockFileRepository::new(),
+            MockMediaRepository::new(),
+            MockUploadRepository::new(),
+            MockFileRepository::new(),
+            MockMediaRepository::new(),
+            file_storage,
+            media_probe,
+        );
+
+        // Act
+        let result = harness
+            .use_case
+            .execute(CompleteUploadCommand::new(5, 3))
+            .await;
+
+        // Assert
+        assert!(matches!(result, Err(CompleteUploadError::UnsupportedMedia)));
+        assert!(!harness.phase_two_committed.load(Ordering::SeqCst));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn complete_upload_concurrent_image_registration_is_idempotent()
+    -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let resolved = upload_with_mime(5, 3, 4, &[0], false, "image/png")?;
+        let mut phase_one_uploads = MockUploadRepository::new();
+        expect_upload(&mut phase_one_uploads, resolved.clone());
+        let mut phase_two_uploads = MockUploadRepository::new();
+        expect_upload(&mut phase_two_uploads, resolved.clone());
+        phase_two_uploads
+            .expect_finish()
+            .times(1)
+            .returning(move |_| {
+                let stored = resolved.clone();
+                Box::pin(async move { Ok(Some(stored)) })
+            });
+        let mut phase_two_files = MockFileRepository::new();
+        expect_file_create(&mut phase_two_files);
+        let mut phase_two_media = MockMediaRepository::new();
+        phase_two_media
+            .expect_create_image()
+            .times(1)
+            .returning(|_| Box::pin(async { Err(RepositoryError::AlreadyExist) }));
+        let mut file_storage = MockFileStorage::new();
+        expect_integrity_hash(&mut file_storage, DIGEST);
+        expect_promote(&mut file_storage);
+        let mut media_probe = MockMediaProbe::new();
+        media_probe
+            .expect_probe_image()
+            .times(1)
+            .returning(|_| Box::pin(async { Ok(Some(probed_image())) }));
+        let harness = use_case_with_media(
+            phase_one_uploads,
+            MockFileRepository::new(),
+            MockMediaRepository::new(),
+            phase_two_uploads,
+            phase_two_files,
+            phase_two_media,
+            file_storage,
+            media_probe,
+        );
+
+        // Act
+        let result = harness
+            .use_case
+            .execute(CompleteUploadCommand::new(5, 3))
+            .await;
+
+        // Assert
+        assert!(result.is_ok());
+        assert!(harness.phase_two_committed.load(Ordering::SeqCst));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn complete_upload_image_media_write_failure_rolls_back() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let resolved = upload_with_mime(5, 3, 4, &[0], false, "image/png")?;
+        let mut phase_one_uploads = MockUploadRepository::new();
+        expect_upload(&mut phase_one_uploads, resolved.clone());
+        let mut phase_two_uploads = MockUploadRepository::new();
+        expect_upload(&mut phase_two_uploads, resolved);
+        let mut phase_two_files = MockFileRepository::new();
+        expect_file_create(&mut phase_two_files);
+        let mut phase_two_media = MockMediaRepository::new();
+        phase_two_media
+            .expect_create_image()
+            .times(1)
+            .returning(|_| Box::pin(async { Err(RepositoryError::OperationFailed) }));
+        let mut file_storage = MockFileStorage::new();
+        expect_integrity_hash(&mut file_storage, DIGEST);
+        expect_promote(&mut file_storage);
+        expect_restore(&mut file_storage);
+        let mut media_probe = MockMediaProbe::new();
+        media_probe
+            .expect_probe_image()
+            .times(1)
+            .returning(|_| Box::pin(async { Ok(Some(probed_image())) }));
+        let harness = use_case_with_media(
+            phase_one_uploads,
+            MockFileRepository::new(),
+            MockMediaRepository::new(),
+            phase_two_uploads,
+            phase_two_files,
+            phase_two_media,
+            file_storage,
+            media_probe,
+        );
+
+        // Act
+        let result = harness
+            .use_case
+            .execute(CompleteUploadCommand::new(5, 3))
+            .await;
+
+        // Assert
+        assert!(matches!(result, Err(CompleteUploadError::Unknown(_))));
+        assert!(harness.phase_two_rolled_back.load(Ordering::SeqCst));
+        assert!(!harness.phase_two_committed.load(Ordering::SeqCst));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn complete_upload_invalid_image_metadata_returns_unknown() -> Result<(), Box<dyn Error>>
+    {
+        // Arrange: the probe yields a non-positive width, which the domain
+        // constructor rejects; no media row is written and the unit rolls back.
+        let (buffer, _capture) = capture_logs();
+        let resolved = upload_with_mime(5, 3, 4, &[0], false, "image/png")?;
+        let mut phase_one_uploads = MockUploadRepository::new();
+        expect_upload(&mut phase_one_uploads, resolved.clone());
+        let mut phase_two_uploads = MockUploadRepository::new();
+        expect_upload(&mut phase_two_uploads, resolved);
+        let mut phase_two_files = MockFileRepository::new();
+        expect_file_create(&mut phase_two_files);
+        let mut file_storage = MockFileStorage::new();
+        expect_integrity_hash(&mut file_storage, DIGEST);
+        expect_promote(&mut file_storage);
+        expect_restore(&mut file_storage);
+        let mut media_probe = MockMediaProbe::new();
+        media_probe.expect_probe_image().times(1).returning(|_| {
+            Box::pin(async {
+                Ok(Some(ProbedImage {
+                    height_px: 480,
+                    orientation: Orientation::Landscape,
+                    width_px: 0,
+                }))
+            })
+        });
+        let harness = use_case_with_media(
+            phase_one_uploads,
+            MockFileRepository::new(),
+            MockMediaRepository::new(),
+            phase_two_uploads,
+            phase_two_files,
+            MockMediaRepository::new(),
+            file_storage,
+            media_probe,
+        );
+
+        // Act
+        let result = harness
+            .use_case
+            .execute(CompleteUploadCommand::new(5, 3))
+            .await;
+
+        // Assert
+        assert!(matches!(result, Err(CompleteUploadError::Unknown(_))));
+        assert!(harness.phase_two_rolled_back.load(Ordering::SeqCst));
+        assert!(!harness.phase_two_committed.load(Ordering::SeqCst));
+        let logs = captured_logs(&buffer);
+        assert!(
+            logs.contains("ERROR") && logs.contains("event=\"application_error\""),
+            "the constructor failure must emit the catalogued application_error: {logs}"
+        );
+        assert!(
+            logs.contains("operation=complete_upload"),
+            "the event must name the owning operation: {logs}"
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn complete_upload_invalid_video_metadata_returns_unknown() -> Result<(), Box<dyn Error>>
+    {
+        // Arrange: the probe yields a non-positive frame count, which the domain
+        // constructor rejects; no media row is written and the unit rolls back.
+        let (buffer, _capture) = capture_logs();
+        let resolved = upload_with_mime(5, 3, 4, &[0], false, "video/mp4")?;
+        let mut phase_one_uploads = MockUploadRepository::new();
+        expect_upload(&mut phase_one_uploads, resolved.clone());
+        let mut phase_two_uploads = MockUploadRepository::new();
+        expect_upload(&mut phase_two_uploads, resolved);
+        let mut phase_two_files = MockFileRepository::new();
+        expect_file_create(&mut phase_two_files);
+        let mut file_storage = MockFileStorage::new();
+        expect_integrity_hash(&mut file_storage, DIGEST);
+        expect_promote(&mut file_storage);
+        expect_restore(&mut file_storage);
+        let mut media_probe = MockMediaProbe::new();
+        media_probe.expect_probe_video().times(1).returning(|_| {
+            Box::pin(async {
+                Ok(Some(ProbedVideo {
+                    codec: "h264".to_owned(),
+                    color_id: "YCbCr".to_owned(),
+                    duration_ms: 1000.0,
+                    frame_count: 0,
+                    height: 480,
+                    scan_type: ScanType::Progressive,
+                    width: 640,
+                }))
+            })
+        });
+        let harness = use_case_with_media(
+            phase_one_uploads,
+            MockFileRepository::new(),
+            MockMediaRepository::new(),
+            phase_two_uploads,
+            phase_two_files,
+            MockMediaRepository::new(),
+            file_storage,
+            media_probe,
+        );
+
+        // Act
+        let result = harness
+            .use_case
+            .execute(CompleteUploadCommand::new(5, 3))
+            .await;
+
+        // Assert
+        assert!(matches!(result, Err(CompleteUploadError::Unknown(_))));
+        assert!(harness.phase_two_rolled_back.load(Ordering::SeqCst));
+        assert!(!harness.phase_two_committed.load(Ordering::SeqCst));
+        let logs = captured_logs(&buffer);
+        assert!(
+            logs.contains("ERROR") && logs.contains("event=\"application_error\""),
+            "the constructor failure must emit the catalogued application_error: {logs}"
+        );
+        assert!(
+            logs.contains("operation=complete_upload"),
+            "the event must name the owning operation: {logs}"
+        );
         Ok(())
     }
 }
