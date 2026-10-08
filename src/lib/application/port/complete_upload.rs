@@ -85,6 +85,9 @@ pub enum CompleteUploadError {
     /// An unexpected or unmapped error occurred.
     #[error("an unknown error occurred: {0}")]
     Unknown(#[source] anyhow::Error),
+    /// The completed upload is not a supported image or video.
+    #[error("the completed upload is not a supported media file")]
+    UnsupportedMedia,
 }
 
 /// Use case for completing an upload session.

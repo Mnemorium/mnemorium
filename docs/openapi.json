@@ -1339,7 +1339,7 @@
                 }
               }
             },
-            "description": "The upload is incomplete or its integrity does not match"
+            "description": "The upload is incomplete, its integrity does not match, or its content is not supported media"
           },
           "500": {
             "content": {

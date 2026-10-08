@@ -14,6 +14,7 @@ use crate::application::use_case::get_upload::GetUpload;
 use crate::application::use_case::write_upload_chunk::WriteUploadChunk;
 use crate::domain::model::configuration::Configuration;
 use crate::infrastructure::outbound::file_system::file_storage::FileSystemStorage;
+use crate::infrastructure::outbound::media_probe::LocalMediaProbe;
 use crate::infrastructure::outbound::sha2::content_hasher::Sha2ContentHasher;
 use crate::infrastructure::outbound::sqlx::unit_of_work::SqlxUnitOfWorkFactory;
 
@@ -71,6 +72,7 @@ impl AssetUseCaseFactory for RuntimeAssetUseCaseFactory {
         Arc::new(CompleteUpload::new(
             Arc::clone(&self.unit_of_work_factory),
             Self::file_storage(),
+            Arc::new(LocalMediaProbe::new()),
             self.storage_root.clone(),
             live.asset().upload().expiry_seconds(),
         ))

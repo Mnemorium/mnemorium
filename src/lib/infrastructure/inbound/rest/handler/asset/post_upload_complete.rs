@@ -51,9 +51,9 @@ impl PostUploadCompleteResponse {
 impl From<CompleteUploadError> for ApiError {
     fn from(err: CompleteUploadError) -> Self {
         match err {
-            CompleteUploadError::Incomplete | CompleteUploadError::IntegrityMismatch => {
-                Self::UnprocessableEntity(err.to_string())
-            }
+            CompleteUploadError::Incomplete
+            | CompleteUploadError::IntegrityMismatch
+            | CompleteUploadError::UnsupportedMedia => Self::UnprocessableEntity(err.to_string()),
             CompleteUploadError::Expired => Self::Gone(err.to_string()),
             CompleteUploadError::NoSuchUpload => Self::NotFound(err.to_string()),
             CompleteUploadError::Unknown(_) => Self::InternalServerError,
@@ -96,7 +96,7 @@ impl From<CompleteUploadError> for ApiError {
             status = UNPROCESSABLE_ENTITY,
             body = ErrorBody,
             content_type = "application/hal+json",
-            description = "The upload is incomplete or its integrity does not match"
+            description = "The upload is incomplete, its integrity does not match, or its content is not supported media"
         ),
         (
             status = UNAUTHORIZED,
@@ -311,6 +311,25 @@ mod tests {
         assert_eq!(
             error_message_of(&response).as_deref(),
             Some("the integrity hash does not match the declared one")
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn post_upload_complete_unsupported_media_returns_unprocessable_entity()
+    -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let mut use_case = MockCompleteUploadUseCase::new();
+        expect_error(&mut use_case, CompleteUploadError::UnsupportedMedia);
+
+        // Act
+        let response = send(use_case, 3, "7").await?;
+
+        // Assert
+        assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+        assert_eq!(
+            error_message_of(&response).as_deref(),
+            Some("the completed upload is not a supported media file")
         );
         Ok(())
     }
