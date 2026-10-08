@@ -1,6 +1,7 @@
 use axum::Json;
 use axum::extract::rejection::BytesRejection;
 use axum::extract::rejection::JsonRejection;
+use axum::extract::rejection::QueryRejection;
 use axum::http::HeaderValue;
 use axum::http::StatusCode;
 use axum::http::header;
@@ -159,6 +160,29 @@ impl From<JsonRejection> for ApiError {
                 Self::BadRequest("the request body is invalid".to_owned())
             }
         }
+    }
+}
+
+impl From<QueryRejection> for ApiError {
+    fn from(rejection: QueryRejection) -> Self {
+        // The framework rejection text carries the offending field, the
+        // expected type and parser detail, so only its classification is logged
+        // (`OBS-003`) and the client receives a stable, server-authored message
+        // (`API-040`). The catalogued event carries its declared field set
+        // (`OBS-006`): `field` and `reason` for `input_validation_failed`.
+        warn!(
+            target: "security",
+            event = "input_validation_failed",
+            field = "query",
+            reason = "invalid_value",
+            "rejected a request query string"
+        );
+        if rejection.status() == StatusCode::PAYLOAD_TOO_LARGE {
+            return Self::PayloadTooLarge(
+                "the request query string exceeds the maximum allowed size".to_owned(),
+            );
+        }
+        Self::BadRequest("the request query string is invalid".to_owned())
     }
 }
 

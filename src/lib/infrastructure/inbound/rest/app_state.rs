@@ -5,6 +5,7 @@ use axum::extract::FromRef;
 
 use crate::application::port::asset_use_case_factory::AssetUseCaseFactory;
 use crate::application::port::identity_use_case_factory::IdentityUseCaseFactory;
+use crate::application::port::library_use_case_factory::LibraryUseCaseFactory;
 use crate::application::port::user_use_case_factory::UserUseCaseFactory;
 use crate::domain::model::configuration::Configuration;
 use crate::infrastructure::outbound::jwt::token_provider::JwtTokenProvider;
@@ -24,6 +25,8 @@ pub struct AppState {
     configuration: Arc<ArcSwap<Configuration>>,
     /// Factory building the Identity use cases.
     identity_use_case_factory: Arc<dyn IdentityUseCaseFactory>,
+    /// Factory building the Library use cases.
+    library_use_case_factory: Arc<dyn LibraryUseCaseFactory>,
     /// Factory building the User use cases.
     user_use_case_factory: Arc<dyn UserUseCaseFactory>,
 }
@@ -47,18 +50,26 @@ impl AppState {
         Arc::clone(&self.identity_use_case_factory)
     }
 
+    /// Return the factory building the Library use cases.
+    #[must_use]
+    pub fn library_use_case_factory(&self) -> Arc<dyn LibraryUseCaseFactory> {
+        Arc::clone(&self.library_use_case_factory)
+    }
+
     /// Create a new application state.
     #[must_use]
     pub fn new(
         asset_use_case_factory: Arc<dyn AssetUseCaseFactory>,
         configuration: Arc<ArcSwap<Configuration>>,
         identity_use_case_factory: Arc<dyn IdentityUseCaseFactory>,
+        library_use_case_factory: Arc<dyn LibraryUseCaseFactory>,
         user_use_case_factory: Arc<dyn UserUseCaseFactory>,
     ) -> Self {
         Self {
             asset_use_case_factory,
             configuration,
             identity_use_case_factory,
+            library_use_case_factory,
             user_use_case_factory,
         }
     }

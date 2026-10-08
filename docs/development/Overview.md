@@ -41,6 +41,7 @@ The architecture is normative here (see `docs/development/TechnicalDesign.md` §
             │       │   ├── asset
             │       │   ├── get_health.rs
             │       │   ├── identity
+            │       │   ├── library
             │       │   └── user
             │       └── middleware.rs
             ├── logging.rs
