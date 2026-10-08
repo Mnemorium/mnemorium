@@ -20,6 +20,8 @@ mod test_helpers {
     use crate::application::port::asset_use_case_factory::MockAssetUseCaseFactory;
     use crate::application::port::identity_use_case_factory::IdentityUseCaseFactory;
     use crate::application::port::identity_use_case_factory::MockIdentityUseCaseFactory;
+    use crate::application::port::library_use_case_factory::LibraryUseCaseFactory;
+    use crate::application::port::library_use_case_factory::MockLibraryUseCaseFactory;
     use crate::application::port::user_use_case_factory::MockUserUseCaseFactory;
     use crate::application::port::user_use_case_factory::UserUseCaseFactory;
     use crate::domain::model::asset::Asset;
@@ -536,13 +538,14 @@ mod test_helpers {
                 TEST_JWT_SECRET,
             )?)),
             Arc::new(MockIdentityUseCaseFactory::new()),
+            Arc::new(MockLibraryUseCaseFactory::new()),
             Arc::new(MockUserUseCaseFactory::new()),
         ))
     }
 
     /// Build an application state around a mocked Identity use-case factory.
     ///
-    /// The User factory is a mock the callers never reach.
+    /// The Library and User factories are mocks the callers never reach.
     ///
     /// # Errors
     ///
@@ -556,13 +559,14 @@ mod test_helpers {
                 TEST_JWT_SECRET,
             )?)),
             identity_use_case_factory,
+            Arc::new(MockLibraryUseCaseFactory::new()),
             Arc::new(MockUserUseCaseFactory::new()),
         ))
     }
 
     /// Build an application state around a mocked User use-case factory.
     ///
-    /// The Identity factory is a mock the callers never reach.
+    /// The Identity and Library factories are mocks the callers never reach.
     ///
     /// # Errors
     ///
@@ -576,13 +580,36 @@ mod test_helpers {
                 TEST_JWT_SECRET,
             )?)),
             Arc::new(MockIdentityUseCaseFactory::new()),
+            Arc::new(MockLibraryUseCaseFactory::new()),
             user_use_case_factory,
+        ))
+    }
+
+    /// Build an application state around a mocked Library use-case factory.
+    ///
+    /// The Identity and User factories are mocks the callers never reach.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the fixed configuration cannot be built.
+    pub fn app_state_with_library(
+        library_use_case_factory: Arc<dyn LibraryUseCaseFactory>,
+    ) -> Result<AppState, Box<dyn Error>> {
+        Ok(AppState::new(
+            Arc::new(MockAssetUseCaseFactory::new()),
+            Arc::new(ArcSwap::from_pointee(configuration_with_jwt_secret(
+                TEST_JWT_SECRET,
+            )?)),
+            Arc::new(MockIdentityUseCaseFactory::new()),
+            library_use_case_factory,
+            Arc::new(MockUserUseCaseFactory::new()),
         ))
     }
 
     /// Build an application state around a mocked Asset use-case factory.
     ///
-    /// The Identity and User factories are mocks the callers never reach.
+    /// The Identity, Library and User factories are mocks the callers never
+    /// reach.
     ///
     /// # Errors
     ///
@@ -596,6 +623,7 @@ mod test_helpers {
                 TEST_JWT_SECRET,
             )?)),
             Arc::new(MockIdentityUseCaseFactory::new()),
+            Arc::new(MockLibraryUseCaseFactory::new()),
             Arc::new(MockUserUseCaseFactory::new()),
         ))
     }

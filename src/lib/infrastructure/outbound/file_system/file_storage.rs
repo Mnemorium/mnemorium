@@ -33,8 +33,21 @@ impl FileSystemStorage {
     ///
     /// A missing entity is never mapped here: the operations for which absence
     /// is a valid outcome handle `NotFound` themselves and return a value.
-    fn map_io_error(err: Error) -> StorageError {
+    ///
+    /// The outbound adapter owns the failure log (`OBS-002`): it emits the
+    /// catalogued `port_fault` with the error's stable `kind` and the port
+    /// `operation` before mapping, so a caller logs nothing (`OBS-003`,
+    /// `OBS-006`). Only the classification is logged, never the `io::Error`
+    /// `Debug` or a path.
+    fn map_io_error(err: Error, operation: &str) -> StorageError {
         let kind = err.kind();
+        error!(
+            target: "security",
+            event = "port_fault",
+            kind = ?kind,
+            operation = operation,
+            "an outbound dependency failed"
+        );
         if kind == ErrorKind::PermissionDenied {
             StorageError::Unavailable
         } else {
@@ -62,13 +75,17 @@ impl FileStorage for FileSystemStorage {
             let mut file = match fs::OpenOptions::new().write(true).open(&owned_path).await {
                 Ok(file) => file,
                 Err(err) if err.kind() == ErrorKind::NotFound => return Ok(false),
-                Err(err) => return Err(Self::map_io_error(err)),
+                Err(err) => return Err(Self::map_io_error(err, "add_chunk")),
             };
             file.seek(SeekFrom::Start(offset))
                 .await
-                .map_err(Self::map_io_error)?;
-            file.write_all(&chunk).await.map_err(Self::map_io_error)?;
-            file.flush().await.map_err(Self::map_io_error)?;
+                .map_err(|error| Self::map_io_error(error, "add_chunk"))?;
+            file.write_all(&chunk)
+                .await
+                .map_err(|error| Self::map_io_error(error, "add_chunk"))?;
+            file.flush()
+                .await
+                .map_err(|error| Self::map_io_error(error, "add_chunk"))?;
             Ok(true)
         }
     }
@@ -82,7 +99,7 @@ impl FileStorage for FileSystemStorage {
         async move {
             fs::create_dir_all(&owned_path)
                 .await
-                .map_err(Self::map_io_error)
+                .map_err(|error| Self::map_io_error(error, "create_directory"))
         }
     }
 
@@ -103,12 +120,16 @@ impl FileStorage for FileSystemStorage {
                 Err(err) if err.kind() == ErrorKind::AlreadyExists => {
                     fs::remove_file(&owned_path)
                         .await
-                        .map_err(Self::map_io_error)?;
-                    open_new(&owned_path).await.map_err(Self::map_io_error)?
+                        .map_err(|error| Self::map_io_error(error, "create_upload_file"))?;
+                    open_new(&owned_path)
+                        .await
+                        .map_err(|error| Self::map_io_error(error, "create_upload_file"))?
                 }
-                Err(err) => return Err(Self::map_io_error(err)),
+                Err(err) => return Err(Self::map_io_error(err, "create_upload_file")),
             };
-            file.set_len(file_size).await.map_err(Self::map_io_error)?;
+            file.set_len(file_size)
+                .await
+                .map_err(|error| Self::map_io_error(error, "create_upload_file"))?;
             Ok(())
         }
     }
@@ -123,7 +144,7 @@ impl FileStorage for FileSystemStorage {
             match fs::remove_file(&owned_path).await {
                 Ok(()) => Ok(()),
                 Err(err) if err.kind() == ErrorKind::NotFound => Ok(()),
-                Err(err) => Err(Self::map_io_error(err)),
+                Err(err) => Err(Self::map_io_error(err, "delete_upload_file")),
             }
         }
     }
@@ -138,7 +159,7 @@ impl FileStorage for FileSystemStorage {
             match fs::metadata(&owned_path).await {
                 Ok(metadata) => Ok(metadata.is_dir()),
                 Err(err) if err.kind() == ErrorKind::NotFound => Ok(false),
-                Err(err) => Err(Self::map_io_error(err)),
+                Err(err) => Err(Self::map_io_error(err, "directory_exist")),
             }
         }
     }
@@ -157,11 +178,14 @@ impl FileStorage for FileSystemStorage {
             let mut file = match fs::File::open(&owned_path).await {
                 Ok(file) => file,
                 Err(err) if err.kind() == ErrorKind::NotFound => return Ok(None),
-                Err(err) => return Err(Self::map_io_error(err)),
+                Err(err) => return Err(Self::map_io_error(err, "integrity_hash")),
             };
             let mut buffer = vec![0u8; HASH_BUFFER_SIZE];
             loop {
-                let read = file.read(&mut buffer).await.map_err(Self::map_io_error)?;
+                let read = file
+                    .read(&mut buffer)
+                    .await
+                    .map_err(|error| Self::map_io_error(error, "integrity_hash"))?;
                 if read == 0 {
                     break;
                 }
@@ -206,10 +230,10 @@ impl FileStorage for FileSystemStorage {
                             );
                             Err(StorageError::OperationFailed)
                         }
-                        Err(metadata_err) => Err(Self::map_io_error(metadata_err)),
+                        Err(metadata_err) => Err(Self::map_io_error(metadata_err, "promote")),
                     }
                 }
-                Err(err) => Err(Self::map_io_error(err)),
+                Err(err) => Err(Self::map_io_error(err, "promote")),
             }
         }
     }
@@ -226,7 +250,7 @@ impl FileStorage for FileSystemStorage {
             match fs::rename(&owned_final, &owned_staged).await {
                 Ok(()) => Ok(()),
                 Err(err) if err.kind() == ErrorKind::NotFound => Ok(()),
-                Err(err) => Err(Self::map_io_error(err)),
+                Err(err) => Err(Self::map_io_error(err, "restore")),
             }
         }
     }
@@ -244,13 +268,84 @@ async fn open_new(path: &Path) -> Result<fs::File, Error> {
 #[cfg(test)]
 mod tests {
     use std::error::Error;
+    use std::io as stdio;
+    use std::sync::Arc;
+    use std::sync::Mutex;
+    use std::sync::PoisonError;
 
     use tempfile::tempdir;
     use tokio::fs;
+    use tracing::subscriber::DefaultGuard;
+    use tracing::subscriber::set_default;
+    use tracing_subscriber::fmt;
+    use tracing_subscriber::layer::SubscriberExt as _;
 
     use super::FileSystemStorage;
     use crate::domain::port::error::StorageError;
     use crate::domain::port::file_storage::FileStorage as _;
+
+    /// Append-only sink that lets a test read back the lines [`fmt`] emits.
+    #[derive(Clone)]
+    struct CaptureWriter {
+        /// Buffer shared with the test that asserts on the captured output.
+        buffer: Arc<Mutex<Vec<u8>>>,
+    }
+
+    #[expect(
+        clippy::missing_trait_methods,
+        reason = "only the raw `write` and `flush` are meaningful for an in-memory capture buffer"
+    )]
+    impl stdio::Write for CaptureWriter {
+        fn flush(&mut self) -> stdio::Result<()> {
+            Ok(())
+        }
+
+        fn write(&mut self, buf: &[u8]) -> stdio::Result<usize> {
+            let mut buffer = self.buffer.lock().unwrap_or_else(PoisonError::into_inner);
+            buffer.extend_from_slice(buf);
+            Ok(buf.len())
+        }
+    }
+
+    /// Hand every formatted event to a fresh clone of the shared buffer.
+    #[expect(
+        clippy::missing_trait_methods,
+        reason = "the default `make_writer_for` already routes through `make_writer`"
+    )]
+    impl<'writer> fmt::MakeWriter<'writer> for CaptureWriter {
+        type Writer = Self;
+
+        fn make_writer(&'writer self) -> Self::Writer {
+            self.clone()
+        }
+    }
+
+    /// Install a capturing subscriber on the current thread and return the
+    /// shared buffer plus the guard that keeps it active.
+    #[expect(
+        clippy::single_call_fn,
+        reason = "the module-local capture helper mirrors the pattern the other adapter suites use"
+    )]
+    fn capture_logs() -> (Arc<Mutex<Vec<u8>>>, DefaultGuard) {
+        let buffer = Arc::new(Mutex::new(Vec::new()));
+        let subscriber = tracing_subscriber::registry().with(
+            fmt::layer().with_ansi(false).with_writer(CaptureWriter {
+                buffer: Arc::clone(&buffer),
+            }),
+        );
+        let guard = set_default(subscriber);
+        (buffer, guard)
+    }
+
+    /// Read the captured bytes back as a lossy UTF-8 string.
+    #[expect(
+        clippy::single_call_fn,
+        reason = "the module-local read-back helper mirrors the pattern the other adapter suites use"
+    )]
+    fn captured_logs(buffer: &Mutex<Vec<u8>>) -> String {
+        let bytes = buffer.lock().unwrap_or_else(PoisonError::into_inner);
+        String::from_utf8_lossy(bytes.as_slice()).into_owned()
+    }
 
     #[tokio::test]
     async fn create_upload_file_creates_preallocated_staged_file() -> Result<(), Box<dyn Error>> {
@@ -486,6 +581,7 @@ mod tests {
     async fn promote_staged_file_missing_destination_directory_returns_operation_failed()
     -> Result<(), Box<dyn Error>> {
         // Arrange
+        let (buffer, _capture) = capture_logs();
         let tmp = tempdir()?;
         let storage = FileSystemStorage::new();
         let staged = tmp.path().join("uploads").join("42");
@@ -504,6 +600,34 @@ mod tests {
         assert!(
             staged.is_file(),
             "a failed promote must leave the staged file in place"
+        );
+        let logs = captured_logs(&buffer);
+        assert_eq!(
+            logs.matches("ERROR").count(),
+            1,
+            "a promote fault must emit exactly one error event: {logs}"
+        );
+        assert!(
+            logs.contains("event=\"port_fault\""),
+            "the event must be port_fault: {logs}"
+        );
+        assert!(
+            logs.contains("kind=\"destination_missing\""),
+            "the event must carry the stable kind: {logs}"
+        );
+        assert!(
+            logs.contains("operation=\"promote\""),
+            "the event must name the owning operation: {logs}"
+        );
+        let staged_text = staged.to_string_lossy();
+        let final_text = final_path.to_string_lossy();
+        assert!(
+            !logs.contains(staged_text.as_ref()),
+            "the sink must never carry the staged path: {logs}"
+        );
+        assert!(
+            !logs.contains(final_text.as_ref()),
+            "the sink must never carry the final path: {logs}"
         );
         Ok(())
     }

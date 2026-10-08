@@ -100,5 +100,5 @@ The review reaches GitHub through the `github` MCP server:
 
 - grant `pull-requests: write` to read the pull request diff and post the review comment, and `issues: write` to list
   and file issues;
-- provide a token as `GITHUB_MCP_TOKEN` for the MCP server; a personal access token works;
+- set `GITHUB_MCP_TOKEN` in your environment for the MCP server; a personal access token works;
 - the MCP server connects on its own; no `gh` CLI is required.

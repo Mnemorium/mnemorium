@@ -5,7 +5,6 @@ use std::pin::Pin;
 use std::sync::Arc;
 
 use chrono::Utc;
-use tracing::error;
 
 use crate::application::port::complete_upload::CompleteUploadCommand;
 use crate::application::port::complete_upload::CompleteUploadError;
@@ -451,14 +450,17 @@ where
 {
     // TODO(reaper): move the expiry cleanup to a background task; this lazy
     // delete keeps the row and the staged file only until the next access.
-    if let Err(error) = file_storage
+    // The file-storage and repository adapters own the failure logs
+    // (`OBS-002`), so a failed cleanup is swallowed here.
+    if file_storage
         .delete_upload_file(&staged_path(root, upload_id))
         .await
+        .is_err()
     {
-        error!(error = ?error, "failed to delete the expired upload staged file");
+        // The file-storage adapter owns the failure log (`OBS-002`).
     }
-    if let Err(error) = unit_of_work.uploads().delete(upload_id).await {
-        error!(error = ?error, "failed to delete the expired upload row");
+    if unit_of_work.uploads().delete(upload_id).await.is_err() {
+        // The repository adapter owns the failure log (`OBS-002`).
     }
     Resolution::Expired
 }
@@ -518,13 +520,14 @@ where
     let Some(promoted_paths) = promoted else {
         return;
     };
-    if let Err(error) = file_storage
+    if file_storage
         .restore(&promoted_paths.final_path, &promoted_paths.staged_path)
         .await
+        .is_err()
     {
+        // The file-storage adapter owns the failure log (`OBS-002`).
         // TODO(reaper): a failed restore leaves the final file orphaned; delete
         // it once a background reaper exists.
-        error!(error = ?error, "failed to restore the promoted file of an incomplete upload");
     }
 }
 

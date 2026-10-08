@@ -3,6 +3,7 @@ use axum::extract::path::ErrorKind;
 use axum::extract::rejection::BytesRejection;
 use axum::extract::rejection::JsonRejection;
 use axum::extract::rejection::PathRejection;
+use axum::extract::rejection::QueryRejection;
 use axum::http::HeaderValue;
 use axum::http::StatusCode;
 use axum::http::header;
@@ -241,6 +242,29 @@ impl ApiError {
     }
 }
 
+impl From<QueryRejection> for ApiError {
+    fn from(rejection: QueryRejection) -> Self {
+        // The framework rejection text carries the offending field, the
+        // expected type and parser detail, so only its classification is logged
+        // (`OBS-003`) and the client receives a stable, server-authored message
+        // (`API-040`). The catalogued event carries its declared field set
+        // (`OBS-006`): `field` and `reason` for `input_validation_failed`.
+        warn!(
+            target: "security",
+            event = "input_validation_failed",
+            field = "query",
+            reason = "invalid_value",
+            "rejected a request query string"
+        );
+        if rejection.status() == StatusCode::PAYLOAD_TOO_LARGE {
+            return Self::PayloadTooLarge(
+                "the request query string exceeds the maximum allowed size".to_owned(),
+            );
+        }
+        Self::BadRequest("the request query string is invalid".to_owned())
+    }
+}
+
 impl ApiError {
     /// Map a failed body buffer to a `413` or a generic `400`.
     #[expect(
@@ -455,6 +479,9 @@ mod tests {
     #[tokio::test]
     async fn json_rejection_wrong_type_returns_unprocessable_entity() -> Result<(), Box<dyn Error>>
     {
+        // Arrange
+        let (buffer, _capture) = capture_logs();
+
         // Act
         let response = rejection_response(
             r#"{"count":"LEAK_SENTINEL"}"#,
@@ -479,6 +506,23 @@ mod tests {
         assert!(
             !message.contains("column"),
             "message leaked a parse position"
+        );
+        let logs = captured_logs(&buffer);
+        assert!(
+            !logs.contains("LEAK_SENTINEL"),
+            "the sink must never carry the offending body: {logs}"
+        );
+        assert!(
+            !logs.contains("invalid type"),
+            "the sink must never carry serde detail: {logs}"
+        );
+        assert!(
+            !logs.contains("line"),
+            "the sink must never carry a parse position: {logs}"
+        );
+        assert!(
+            !logs.contains("column"),
+            "the sink must never carry a parse position: {logs}"
         );
         Ok(())
     }

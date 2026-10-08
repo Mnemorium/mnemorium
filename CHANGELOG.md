@@ -1,3 +1,21 @@
+## [0.13.0](https://github.com/Mnemorium/mnemorium/compare/v0.12.2...v0.13.0) (2026-10-08)
+
+### Features
+
+* **api:** expose the Library gallery endpoints ([#233](https://github.com/Mnemorium/mnemorium/issues/233)) ([3c52868](https://github.com/Mnemorium/mnemorium/commit/3c52868e598c5249cc39c3d0ba43085c98546798))
+
+## [0.12.2](https://github.com/Mnemorium/mnemorium/compare/v0.12.1...v0.12.2) (2026-10-08)
+
+### Bug Fixes
+
+* **infrastructure:** classify OBS-003 log sites and drop raw error logs ([#229](https://github.com/Mnemorium/mnemorium/issues/229)) ([2bf6a58](https://github.com/Mnemorium/mnemorium/commit/2bf6a587d961f99338d148ccf384e1db2e36ec19))
+
+## [0.12.1](https://github.com/Mnemorium/mnemorium/compare/v0.12.0...v0.12.1) (2026-10-08)
+
+### Bug Fixes
+
+* **domain:** redact secrets in the Debug of Jwt, Security, and Credential ([#219](https://github.com/Mnemorium/mnemorium/issues/219)) ([b65472f](https://github.com/Mnemorium/mnemorium/commit/b65472fd9724d7c0b422441900e79143eaf21dc5))
+
 ## [0.12.0](https://github.com/Mnemorium/mnemorium/compare/v0.11.0...v0.12.0) (2026-10-07)
 
 ### Features

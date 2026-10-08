@@ -6,6 +6,7 @@
 pub mod asset;
 pub mod get_health;
 pub mod identity;
+pub mod library;
 pub mod user;
 
 use axum::middleware;
@@ -15,6 +16,7 @@ use crate::infrastructure::inbound::rest::app_state::AppState;
 use crate::infrastructure::inbound::rest::handler::asset::asset_routes;
 use crate::infrastructure::inbound::rest::handler::get_health::get_health;
 use crate::infrastructure::inbound::rest::handler::identity::identity_routes;
+use crate::infrastructure::inbound::rest::handler::library::library_routes;
 use crate::infrastructure::inbound::rest::handler::user::user_routes;
 use crate::infrastructure::inbound::rest::middleware::hal_errors::hal_errors;
 use crate::infrastructure::inbound::rest::middleware::rate_limit::LoginRateLimiter;
@@ -34,6 +36,7 @@ pub fn setup_routes(state: &AppState, limiter: &LoginRateLimiter) -> axum::Route
     let v1 = axum::Router::new()
         .nest("/asset", asset_routes(state))
         .nest("/identity", identity_routes(state, limiter))
+        .nest("/library", library_routes(state))
         .nest("/user", user_routes(state));
 
     axum::Router::new()

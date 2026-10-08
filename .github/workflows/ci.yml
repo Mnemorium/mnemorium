@@ -112,6 +112,9 @@ jobs:
               - '**/*.sh'
             nix:
               - '**/*.nix'
+              - 'devenv.lock'
+              - 'devenv.yaml'
+              - '.github/workflows/ci.yml'
             deps:
               - 'Cargo.toml'
               - 'Cargo.lock'
@@ -483,8 +486,22 @@ jobs:
           persist-credentials: false
       - uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24  # v31
       - name: nixfmt
-        # Pin nixfmt to the nixpkgs revision locked in devenv.lock, not the floating `nixpkgs` registry.
-        run: nix run github:cachix/devenv-nixpkgs/c2f38fe7f9e04d9aadd354d380f2bd40531d9737#nixfmt -- --check devenv.nix
+        # Resolve nixfmt from the revision devenv.lock pins, so the formatter
+        # matches the development environment and cannot drift. The repository
+        # stays workflow-literal and the revision is validated as a full commit,
+        # so a PR-controlled lockfile cannot redirect the fetched source.
+        run: |
+          node="$(jq -r '.nodes.root.inputs.nixpkgs' devenv.lock)"
+          if [[ -z "${node}" || "${node}" == "null" ]]; then
+            echo "devenv.lock root has no nixpkgs input" >&2
+            exit 1
+          fi
+          rev="$(jq -r --arg n "${node}" '.nodes[$n].locked.rev' devenv.lock)"
+          if [[ ! "${rev}" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "devenv.lock nixpkgs input is not pinned to a commit: ${rev}" >&2
+            exit 1
+          fi
+          nix run "github:cachix/devenv-nixpkgs/${rev}#nixfmt" -- --check devenv.nix
 
   lint:
     needs: [changes, betterleaks]
