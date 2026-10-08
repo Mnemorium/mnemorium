@@ -1,3 +1,9 @@
+## [0.12.2](https://github.com/Mnemorium/mnemorium/compare/v0.12.1...v0.12.2) (2026-10-08)
+
+### Bug Fixes
+
+* **infrastructure:** classify OBS-003 log sites and drop raw error logs ([#229](https://github.com/Mnemorium/mnemorium/issues/229)) ([2bf6a58](https://github.com/Mnemorium/mnemorium/commit/2bf6a587d961f99338d148ccf384e1db2e36ec19))
+
 ## [0.12.1](https://github.com/Mnemorium/mnemorium/compare/v0.12.0...v0.12.1) (2026-10-08)
 
 ### Bug Fixes
