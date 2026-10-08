@@ -71,7 +71,8 @@ The surface you own:
 - The root Markdown — `README.md` and `AGENTS.md`. `CHANGELOG.md` is generated
   by semantic-release; never hand-edited.
 - The prompts themselves — `.opencode/agents/*.md`,
-  `.opencode/skills/*/SKILL.md`, and `.agents/skills/*/SKILL.md`.
+  `.opencode/commands/*.md`, `.opencode/skills/*/SKILL.md`, and
+  `.agents/skills/*/SKILL.md`.
 
 Derived artifacts you check but do not own — route the fix to their owner:
 

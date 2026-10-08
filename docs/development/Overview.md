@@ -486,3 +486,7 @@ The review pipeline reaches GitHub through the `github` MCP server:
   and file issues;
 - set `GITHUB_MCP_TOKEN` in your environment for the MCP server; a personal access token works;
 - the MCP server connects on its own; no `gh` CLI is required.
+
+The scheduled issue-triage workflow (`.github/workflows/triage.yml`) uses the same server and the same
+`GITHUB_MCP_TOKEN`. It mints a GitHub App token scoped to `issues: write` only, masks it with `::add-mask::`, and
+supplies it to both the opencode action (`GITHUB_TOKEN`) and the MCP server (`GITHUB_MCP_TOKEN`).

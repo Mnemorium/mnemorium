@@ -2444,33 +2444,36 @@ Source: `requirements.txt`.
 
 Source: `.github/workflows/*`.
 
-| Name                                                                                                                   | Description                                     | Version | License    |
-| ---------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------- | ------- | ---------- |
-| [@semantic-release-plus/docker](https://www.npmjs.com/package/@semantic-release-plus/docker)                           | TODO                                            | 3.1.3   | TODO       |
-| [@semantic-release/changelog](https://www.npmjs.com/package/@semantic-release/changelog)                               | TODO                                            | 7.0.0   | TODO       |
-| [@semantic-release/exec](https://www.npmjs.com/package/@semantic-release/exec)                                         | TODO                                            | 7.1.0   | TODO       |
-| [@semantic-release/git](https://www.npmjs.com/package/@semantic-release/git)                                           | TODO                                            | 11.0.1  | TODO       |
-| [actions/checkout](https://github.com/actions/checkout)                                                                | TODO                                            | v7.0.1  | TODO       |
-| [actions/create-github-app-token](https://github.com/actions/create-github-app-token)                                  | TODO                                            | v3.2.0  | TODO       |
-| [actions/setup-node](https://github.com/actions/setup-node)                                                            | TODO                                            | v4      | TODO       |
-| [actions/setup-node](https://github.com/actions/setup-node)                                                            | TODO                                            | v7      | TODO       |
-| [actions/setup-python](https://github.com/actions/setup-python)                                                        | TODO                                            | v5      | TODO       |
-| [actions/upload-artifact](https://github.com/actions/upload-artifact)                                                  | TODO                                            | v7      | TODO       |
-| [amannn/action-semantic-pull-request](https://github.com/amannn/action-semantic-pull-request)                          | TODO                                            | v6      | TODO       |
-| [anomalyco/opencode/github](https://github.com/anomalyco/opencode)                                                     | TODO                                            | latest  | TODO       |
-| [cachix/install-nix-action](https://github.com/cachix/install-nix-action)                                              | TODO                                            | v31     | TODO       |
-| [conventional-changelog-conventionalcommits](https://www.npmjs.com/package/conventional-changelog-conventionalcommits) | TODO                                            | 9.3.1   | TODO       |
-| [DavidAnson/markdownlint-cli2-action](https://github.com/DavidAnson/markdownlint-cli2-action)                          | TODO                                            | v24     | TODO       |
-| [docker/build-push-action](https://github.com/docker/build-push-action)                                                | Builds the production image with the GHA cache. | v7      | Apache-2.0 |
-| [docker/login-action](https://github.com/docker/login-action)                                                          | TODO                                            | v4      | TODO       |
-| [docker/setup-buildx-action](https://github.com/docker/setup-buildx-action)                                            | BuildKit builder setup for cached image builds. | v4      | Apache-2.0 |
-| [dortort/betterleaks-action](https://github.com/dortort/betterleaks-action)                                            | TODO                                            | v0.1.0  | TODO       |
-| [dtolnay/rust-toolchain](https://github.com/dtolnay/rust-toolchain)                                                    | TODO                                            | 1.98.0  | TODO       |
-| [ls-lint/action](https://github.com/ls-lint/action)                                                                    | TODO                                            | v2      | TODO       |
-| [semantic-release](https://www.npmjs.com/package/semantic-release)                                                     | TODO                                            | 25.0.9  | TODO       |
-| [Swatinem/rust-cache](https://github.com/Swatinem/rust-cache)                                                          | TODO                                            | v2      | TODO       |
-| [taiki-e/install-action](https://github.com/taiki-e/install-action)                                                    | TODO                                            | v2      | TODO       |
-| [tj-actions/changed-files](https://github.com/tj-actions/changed-files)                                                | TODO                                            | v47.0.6 | TODO       |
+| Name                                                                                                                   | Description                                     | Version  | License    |
+| ---------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------- | -------- | ---------- |
+| [@semantic-release-plus/docker](https://www.npmjs.com/package/@semantic-release-plus/docker)                           | TODO                                            | 3.1.3    | TODO       |
+| [@semantic-release/changelog](https://www.npmjs.com/package/@semantic-release/changelog)                               | TODO                                            | 7.0.0    | TODO       |
+| [@semantic-release/exec](https://www.npmjs.com/package/@semantic-release/exec)                                         | TODO                                            | 7.1.0    | TODO       |
+| [@semantic-release/git](https://www.npmjs.com/package/@semantic-release/git)                                           | TODO                                            | 11.0.1   | TODO       |
+| [actions/checkout](https://github.com/actions/checkout)                                                                | TODO                                            | v7.0.1   | TODO       |
+| [actions/create-github-app-token](https://github.com/actions/create-github-app-token)                                  | TODO                                            | v3.2.0   | TODO       |
+| [actions/setup-node](https://github.com/actions/setup-node)                                                            | TODO                                            | v4       | TODO       |
+| [actions/setup-node](https://github.com/actions/setup-node)                                                            | TODO                                            | v7       | TODO       |
+| [actions/setup-python](https://github.com/actions/setup-python)                                                        | TODO                                            | v5       | TODO       |
+| [actions/upload-artifact](https://github.com/actions/upload-artifact)                                                  | TODO                                            | v7       | TODO       |
+| [amannn/action-semantic-pull-request](https://github.com/amannn/action-semantic-pull-request)                          | TODO                                            | v6       | TODO       |
+| [anomalyco/opencode/github](https://github.com/anomalyco/opencode)                                                     | Runs opencode in a GitHub Actions workflow.     | v1.18.35 | MIT        |
+| [cachix/install-nix-action](https://github.com/cachix/install-nix-action)                                              | TODO                                            | v31      | TODO       |
+| [conventional-changelog-conventionalcommits](https://www.npmjs.com/package/conventional-changelog-conventionalcommits) | TODO                                            | 9.3.1    | TODO       |
+| [DavidAnson/markdownlint-cli2-action](https://github.com/DavidAnson/markdownlint-cli2-action)                          | TODO                                            | v24      | TODO       |
+| [docker/build-push-action](https://github.com/docker/build-push-action)                                                | Builds the production image with the GHA cache. | v7       | Apache-2.0 |
+| [docker/login-action](https://github.com/docker/login-action)                                                          | TODO                                            | v4       | TODO       |
+| [docker/setup-buildx-action](https://github.com/docker/setup-buildx-action)                                            | BuildKit builder setup for cached image builds. | v4       | Apache-2.0 |
+| [dortort/betterleaks-action](https://github.com/dortort/betterleaks-action)                                            | TODO                                            | v0.1.0   | TODO       |
+| [dtolnay/rust-toolchain](https://github.com/dtolnay/rust-toolchain)                                                    | TODO                                            | 1.98.0   | TODO       |
+| [ls-lint/action](https://github.com/ls-lint/action)                                                                    | TODO                                            | v2       | TODO       |
+| [semantic-release](https://www.npmjs.com/package/semantic-release)                                                     | TODO                                            | 25.0.9   | TODO       |
+| [Swatinem/rust-cache](https://github.com/Swatinem/rust-cache)                                                          | TODO                                            | v2       | TODO       |
+| [taiki-e/install-action](https://github.com/taiki-e/install-action)                                                    | TODO                                            | v2       | TODO       |
+| [tj-actions/changed-files](https://github.com/tj-actions/changed-files)                                                | TODO                                            | v47.0.6  | TODO       |
+
+`anomalyco/opencode/github` installs the opencode CLI from the floating `releases/latest` at run time, so the pinned
+action SHA does not pin the binary it runs — a `DEPS-003` residual.
 
 ---
 

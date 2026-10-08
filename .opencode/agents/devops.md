@@ -102,7 +102,7 @@ The surface is fixed; its contents are not. Read the files at run time.
 
 - Dev environment — `devenv.nix`, `devenv.yaml`, `devenv.lock`.
 - Build & container — `Dockerfile`, `.dockerignore`.
-- CI/CD — `.github/workflows/*` (`ci.yml`, `cd.yml`).
+- CI/CD — `.github/workflows/*` (`ci.yml`, `cd.yml`, `triage.yml`).
 - Repo hygiene — `.yamllint`, `.markdownlint-cli2.jsonc`, `.prettierrc`,
   `.prettierignore`, `.ls-lint.yml`, `.taplo.toml`, `.betterleaks.toml`,
   `ruff.toml`, `pytest.ini`, `requirements.txt`, `.releaserc.json`,
