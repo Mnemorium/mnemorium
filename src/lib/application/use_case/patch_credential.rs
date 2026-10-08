@@ -663,4 +663,26 @@ mod tests {
         assert!(harness.rolled_back.load(Ordering::SeqCst));
         Ok(())
     }
+
+    #[test]
+    fn credential_debug_redacts_password_hash_but_keeps_id() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let password_hash = "hashed-password".to_owned();
+        let updated_at = NaiveDateTime::parse_from_str("2026-01-01 12:00:00", "%F %T")?;
+        let credential = Credential::try_new(7, password_hash.clone(), updated_at)?;
+
+        // Act
+        let debug = format!("{credential:?}");
+
+        // Assert
+        assert!(
+            !debug.contains(password_hash.as_str()),
+            "Debug output must not contain the password hash, got: {debug:?}"
+        );
+        assert!(
+            debug.contains("id"),
+            "Debug output must still contain the credential id, got: {debug:?}"
+        );
+        Ok(())
+    }
 }
