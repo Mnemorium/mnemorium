@@ -2260,11 +2260,12 @@ to be filled in.
 
 Columns: **Name**, **Description**, **Version**, **License**.
 
-| ID         | Section               | Rule                                                                                                                                                                                                  | More info                       |
-| ---------- | --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------- |
-| `DEPS-001` | GitHub Actions        | Pin every third-party GitHub Action to a full-length commit SHA and record the release in a same-line comment, for example `# v6` or `# v1.2.3`.                                                      | [§ 1](#1-ci-supply-chain)       |
-| `DEPS-002` | CI trust boundary     | A CI/CD job that holds a repository secret, a write-scoped token, or a registry credential must load the configuration it executes from a trusted revision, never from the pull-request revision.     | [§ 2](#2-ci-trust-boundary)     |
-| `DEPS-003` | CI runtime resolution | Reference every package or executable a CI job resolves at run time by an exact version, never a floating range; a transitive dependency tree remains a documented residual where no lockfile exists. | [§ 3](#3-ci-runtime-resolution) |
+| ID         | Section               | Rule                                                                                                                                                                                                                                                                                                                                                                               | More info                       |
+| ---------- | --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------- |
+| `DEPS-001` | GitHub Actions        | Pin every third-party GitHub Action to a full-length commit SHA and record the release in a same-line comment, for example `# v6` or `# v1.2.3`.                                                                                                                                                                                                                                   | [§ 1](#1-ci-supply-chain)       |
+| `DEPS-002` | CI trust boundary     | A CI/CD job that holds a repository secret, a write-scoped token, or a registry credential must load the configuration it executes from a trusted revision, never from the pull-request revision.                                                                                                                                                                                  | [§ 2](#2-ci-trust-boundary)     |
+| `DEPS-003` | CI runtime resolution | Reference every package or executable a CI job resolves at run time by an exact version, never a floating range; a transitive dependency tree remains a documented residual where no lockfile exists.                                                                                                                                                                              | [§ 3](#3-ci-runtime-resolution) |
+| `DEPS-004` | Dev/CI tool parity    | A tool a CI job resolves through `devenv.lock` resolves from the lockfile's pinned revision — never restated in the workflow — and the job's change filter matches `devenv.lock`, `devenv.yaml`, and the workflow file that defines the job, so a lockfile or job change re-runs the gate; hand-restated pins and other non-`devenv.lock` tool installs are a documented residual. | [§ 4](#4-devci-tool-parity)     |
 
 ---
 
@@ -2308,6 +2309,24 @@ Reference every package or executable a CI job resolves at run time by an exact 
 version still leaves every transitive dependency unpinned. Where a job cannot use the pinned `devenv.lock` toolchain or
 a digest-pinned image, this residue is a documented residual risk: the direct reference must still carry an exact
 version, and the residual must be recorded rather than implied pinned.
+
+---
+
+### 4. Dev/CI tool parity
+
+A tool that both the dev environment and a CI job run must resolve to the same revision; otherwise the CI gate silently
+validates against a different formatter, linter, or generator than the developer uses. Restating `devenv.lock`'s
+revision in a workflow by hand creates a second source of truth that no automated bump maintains — derive it from the
+lockfile instead, and fail rather than run when the lock does not pin a full commit, so pull-request content cannot
+float the fetched revision.
+
+A job whose validity depends on the lockfile must re-run when the inputs move, so its file filter matches `devenv.lock`
+(which pins the revision), `devenv.yaml` (which declares the inputs), and the workflow file that defines the job — the
+last so the gate is exercised when its own definition changes.
+
+The rule binds only the tools a job resolves through `devenv.lock`. Jobs that install tools from another source — the
+`security` job's hand-restated `cargo-deny`/`cargo-about` pins and the `taiki-e/install-action` tool installs — are a
+documented residual of this parity, recorded rather than implied pinned, exactly as `DEPS-003` records its own.
 
 ---
 
