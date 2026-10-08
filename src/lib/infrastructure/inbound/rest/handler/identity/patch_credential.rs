@@ -2,6 +2,7 @@ use axum::Json;
 use axum::extract::Path;
 use axum::extract::State;
 use axum::extract::rejection::JsonRejection;
+use axum::extract::rejection::PathRejection;
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use serde::{Deserialize, Serialize};
@@ -64,7 +65,7 @@ impl From<PatchCredentialError> for ApiError {
             status = BAD_REQUEST,
             body = ErrorBody,
             content_type = "application/hal+json",
-            description = "Malformed request body"
+            description = "Malformed path identifier or request body"
         ),
         (
             status = UNAUTHORIZED,
@@ -117,9 +118,10 @@ impl From<PatchCredentialError> for ApiError {
 pub async fn patch_credential(
     State(state): State<AppState>,
     caller: AuthenticatedUser,
-    Path(credential_id): Path<NumericID>,
+    credential_path: Result<Path<NumericID>, PathRejection>,
     payload: Result<Json<PatchCredentialRequest>, JsonRejection>,
 ) -> Result<impl IntoResponse, ApiError> {
+    let Path(credential_id) = credential_path.map_err(ApiError::from)?;
     let Json(request) = payload.map_err(ApiError::from)?;
     state
         .identity_use_case_factory()
@@ -416,6 +418,42 @@ mod tests {
             error_message_of(&response).as_deref(),
             Some("no credential matches the provided identifier")
         );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn patch_credential_non_numeric_id_returns_bad_request() -> Result<(), Box<dyn Error>> {
+        // The `Path` extractor rejects a non-numeric identifier before the
+        // handler runs, so the use case must not be reached. The existing
+        // `send` helper formats a `NumericID` and cannot express this URI.
+        // Envelope assertions live in the `hal_errors` module and the client
+        // message is pinned in `api_error.rs` (`TEST-049`, `TEST-001`); this
+        // bare router has no middleware.
+        // Arrange
+        let mut use_case = MockPatchCredentialUseCase::new();
+        use_case.expect_execute().times(0);
+        let mut factory = MockIdentityUseCaseFactory::new();
+        factory
+            .expect_patch_credential()
+            .times(0..=1)
+            .return_once(move || Arc::new(use_case) as Arc<dyn PatchCredentialUseCase>);
+
+        let mut request = Request::builder()
+            .method("PATCH")
+            .uri("/api/v1/identity/credential/not-a-number")
+            .header(header::CONTENT_TYPE, "application/json")
+            .body(Body::from(request_body(SECRET_PASSWORD)))?;
+        request.extensions_mut().insert(AuthenticatedUser::from(0));
+
+        let router = axum::Router::new()
+            .route("/api/v1/identity/credential/{id}", patch(patch_credential))
+            .with_state(app_state_with_identity(Arc::new(factory))?);
+
+        // Act
+        let response = router.oneshot(request).await?;
+
+        // Assert
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
         Ok(())
     }
 }

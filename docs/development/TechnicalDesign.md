@@ -2744,7 +2744,7 @@ must implement `Debug` by redaction, or hold its secret in a type whose `Debug` 
 
 | Level   | Use                                                   | Examples                                                                                                                                                                                                |
 | ------- | ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `error` | An operator-actionable fault the caller cannot fix.   | datastore or filesystem unavailable, a commit or rollback failure, a token-provider operational failure, an unhandled `500`.                                                                            |
+| `error` | An operator-actionable fault the caller cannot fix.   | datastore or filesystem unavailable, a commit or rollback failure, a token-provider operational failure, an inbound path extractor misconfiguration, an unhandled `500`.                                |
 | `warn`  | A reviewable security event; not necessarily a fault. | input or output validation failure, discrete-list rejection, authentication or authorization failure, an invalid or expired token, a deserialization failure, a limit exceeded, an out-of-order action. |
 | `info`  | A security success or a lifecycle event.              | startup, shutdown, logging initialization, authentication success, a user-administration or credential change, an accepted upload, a generated secret.                                                  |
 | `debug` | Diagnostics with no security relevance.               | request tracing, internal state.                                                                                                                                                                        |
@@ -2770,6 +2770,7 @@ code or a classification — never a value.
 | `session_validation_failed` | `warn`  | `reason`                     | a token is missing, invalid or expired                                                      |
 | `rate_limit_exceeded`       | `warn`  | `route`, `reason`            | a request is rejected by a rate limiter                                                     |
 | `deserialization_failed`    | `warn`  | `source`, `reason`           | a JSON body or the configuration fails to deserialize                                       |
+| `extractor_fault`           | `error` | `reason`                     | an inbound path extractor rejects a request for a server-side routing fault                 |
 | `application_error`         | `error` | `operation`                  | a use case originates an internal `Unknown`                                                 |
 | `port_fault`                | `error` | `kind`, `operation`          | an outbound adapter maps a dependency failure                                               |
 | `constraint_rejected`       | `warn`  | `kind`, `operation`          | an outbound adapter maps an expected constraint to a business result                        |

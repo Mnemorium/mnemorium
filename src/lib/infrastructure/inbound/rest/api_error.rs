@@ -1,11 +1,14 @@
 use axum::Json;
+use axum::extract::path::ErrorKind;
 use axum::extract::rejection::BytesRejection;
 use axum::extract::rejection::JsonRejection;
+use axum::extract::rejection::PathRejection;
 use axum::http::HeaderValue;
 use axum::http::StatusCode;
 use axum::http::header;
 use axum::response::IntoResponse;
 use axum::response::Response;
+use tracing::error;
 use tracing::warn;
 
 use crate::infrastructure::inbound::rest::hal::HAL_CONTENT_TYPE;
@@ -162,6 +165,82 @@ impl From<JsonRejection> for ApiError {
     }
 }
 
+impl From<PathRejection> for ApiError {
+    fn from(rejection: PathRejection) -> Self {
+        // The client receives a stable, server-authored message only
+        // (`API-040`): axum's path rejection text embeds the raw rejected value
+        // and the expected type name, so only its classification is logged
+        // (`OBS-003`) and it is never echoed. A parse or UTF-8 failure is a
+        // client `400` (`API-041`); a missing path-parameter extension, an
+        // unsupported target type or an unclassified variant is an internal
+        // `500` and an operator-actionable `extractor_fault` (`OBS-005`).
+        match rejection {
+            PathRejection::FailedToDeserializePathParams(failure) => {
+                Self::from(failure.into_kind())
+            }
+            PathRejection::MissingPathParams(_) => {
+                Self::reject_misconfigured_path("missing_path_params")
+            }
+            _unknown => Self::reject_misconfigured_path("unclassified_rejection"),
+        }
+    }
+}
+
+impl From<ErrorKind> for ApiError {
+    /// Map a failed path-parameter deserialization to a `400` or a `500`.
+    ///
+    /// The known [`ErrorKind`] variants are matched so every classification
+    /// emits its own catalogued event (`OBS-006`) and the server-authored
+    /// message stays free of the raw value and the expected type name
+    /// (`API-040`). `ErrorKind` is `#[non_exhaustive]`, so the wildcard is the
+    /// `#[non_exhaustive]` forward-compatibility guard; an unclassified variant
+    /// is an internal `500` under the § 3 response-code table (`API-041`), not
+    /// a client error, and logs `extractor_fault`.
+    fn from(kind: ErrorKind) -> Self {
+        match kind {
+            ErrorKind::ParseError { .. }
+            | ErrorKind::ParseErrorAtIndex { .. }
+            | ErrorKind::ParseErrorAtKey { .. } => Self::reject_path("parse"),
+            ErrorKind::DeserializeError { .. } => Self::reject_path("deserialize"),
+            ErrorKind::InvalidUtf8InPathParam { .. } => Self::reject_path("invalid_utf8"),
+            ErrorKind::Message(_) => Self::reject_path("custom_message"),
+            ErrorKind::WrongNumberOfParameters { .. } => {
+                Self::reject_misconfigured_path("wrong_number_of_parameters")
+            }
+            ErrorKind::UnsupportedType { .. } => {
+                Self::reject_misconfigured_path("unsupported_type")
+            }
+            _unknown => Self::reject_misconfigured_path("unclassified_rejection"),
+        }
+    }
+}
+
+impl ApiError {
+    /// Log an operator-actionable path-extraction fault and return a generic
+    /// `500`.
+    fn reject_misconfigured_path(reason: &'static str) -> Self {
+        error!(
+            target: "security",
+            event = "extractor_fault",
+            reason,
+            "rejected a misconfigured request path"
+        );
+        Self::InternalServerError
+    }
+
+    /// Log a client path-parameter failure and return a generic `400`.
+    fn reject_path(reason: &'static str) -> Self {
+        warn!(
+            target: "security",
+            event = "input_validation_failed",
+            field = "path",
+            reason,
+            "rejected a request path"
+        );
+        Self::BadRequest("the request path is invalid".to_owned())
+    }
+}
+
 impl ApiError {
     /// Map a failed body buffer to a `413` or a generic `400`.
     #[expect(
@@ -233,11 +312,15 @@ mod tests {
     use axum::extract::DefaultBodyLimit;
     use axum::extract::Request;
     use axum::extract::State;
+    use axum::extract::path::ErrorKind;
     use axum::extract::rejection::JsonRejection;
+    use axum::extract::rejection::MissingPathParams;
+    use axum::extract::rejection::PathRejection;
     use axum::http::StatusCode;
     use axum::http::header;
     use axum::response::Response;
     use axum::routing::post;
+    use rstest::rstest;
     use tower::ServiceExt as _;
     use tracing::subscriber::DefaultGuard;
     use tracing::subscriber::set_default;
@@ -513,5 +596,162 @@ mod tests {
             "a valid body within the limit must not emit a limit_exceeded event: {logs}"
         );
         Ok(())
+    }
+
+    #[rstest]
+    #[case::parse(
+        ErrorKind::ParseError { value: "abc".to_owned(), expected_type: "i64" },
+        StatusCode::BAD_REQUEST
+    )]
+    #[case::parse_at_index(
+        ErrorKind::ParseErrorAtIndex { index: 0, value: "abc".to_owned(), expected_type: "i64" },
+        StatusCode::BAD_REQUEST
+    )]
+    #[case::parse_at_key(
+        ErrorKind::ParseErrorAtKey { key: "id".to_owned(), value: "abc".to_owned(), expected_type: "i64" },
+        StatusCode::BAD_REQUEST
+    )]
+    #[case::deserialize(
+        ErrorKind::DeserializeError { key: "id".to_owned(), value: "abc".to_owned(), message: "nope".to_owned() },
+        StatusCode::BAD_REQUEST
+    )]
+    #[case::invalid_utf8(
+        ErrorKind::InvalidUtf8InPathParam { key: "id".to_owned() },
+        StatusCode::BAD_REQUEST
+    )]
+    #[case::message(ErrorKind::Message("custom".to_owned()), StatusCode::BAD_REQUEST)]
+    #[case::wrong_number(
+        ErrorKind::WrongNumberOfParameters { got: 0, expected: 1 },
+        StatusCode::INTERNAL_SERVER_ERROR
+    )]
+    #[case::unsupported_type(
+        ErrorKind::UnsupportedType { name: "Vec<i64>" },
+        StatusCode::INTERNAL_SERVER_ERROR
+    )]
+    fn path_error_kind_maps_to_its_status(#[case] kind: ErrorKind, #[case] expected: StatusCode) {
+        // Act
+        let (status, _message) = ApiError::from(kind).status_and_message();
+
+        // Assert
+        assert_eq!(status, expected);
+    }
+
+    #[test]
+    fn missing_path_params_maps_to_internal_server_error() {
+        // Arrange
+        let (buffer, _capture) = capture_logs();
+        let rejection = PathRejection::MissingPathParams(MissingPathParams::default());
+
+        // Act
+        let (status, _message) = ApiError::from(rejection).status_and_message();
+
+        // Assert
+        assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+        let logs = captured_logs(&buffer);
+        assert_eq!(
+            logs.matches("event=\"extractor_fault\"").count(),
+            1,
+            "a missing path-parameter extension must emit exactly one extractor_fault: {logs}"
+        );
+        assert!(
+            logs.contains("reason=\"missing_path_params\""),
+            "the event must classify the reason: {logs}"
+        );
+    }
+
+    #[test]
+    fn client_path_rejection_logs_one_classified_event_without_the_value() {
+        // Arrange
+        let (buffer, _capture) = capture_logs();
+
+        // Act
+        let (status, message) = ApiError::from(ErrorKind::ParseError {
+            value: "LEAK_SENTINEL".to_owned(),
+            expected_type: "i64",
+        })
+        .status_and_message();
+
+        // Assert
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(message, "the request path is invalid");
+        assert!(
+            !message.contains("LEAK_SENTINEL"),
+            "the client message must not echo the rejected value (`API-040`)"
+        );
+        assert!(
+            !message.contains("i64"),
+            "the client message must not echo the expected type name (`API-040`)"
+        );
+        let logs = captured_logs(&buffer);
+        assert_eq!(
+            logs.matches("WARN").count(),
+            1,
+            "a client path rejection must emit exactly one warn event: {logs}"
+        );
+        assert_eq!(
+            logs.matches("event=\"input_validation_failed\"").count(),
+            1,
+            "a client path rejection must emit exactly one input_validation_failed event: {logs}"
+        );
+        assert!(
+            logs.contains("field=\"path\""),
+            "the event must identify the path field: {logs}"
+        );
+        assert!(
+            logs.contains("reason=\"parse\""),
+            "the event must classify the reason: {logs}"
+        );
+        assert!(
+            logs.contains("security"),
+            "the event must target the reserved security target: {logs}"
+        );
+        assert!(
+            !logs.contains("extractor_fault"),
+            "a client path rejection must not emit the server event: {logs}"
+        );
+        assert!(
+            !logs.contains("LEAK_SENTINEL"),
+            "the event must not echo the rejected value: {logs}"
+        );
+        assert!(
+            !logs.contains("i64"),
+            "the event must not echo the expected type name: {logs}"
+        );
+    }
+
+    #[test]
+    fn misconfigured_path_logs_one_extractor_fault() {
+        // Arrange
+        let (buffer, _capture) = capture_logs();
+
+        // Act
+        let (status, message) = ApiError::from(ErrorKind::WrongNumberOfParameters {
+            got: 0,
+            expected: 1,
+        })
+        .status_and_message();
+
+        // Assert
+        assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(message, "an unexpected error occurred");
+        let logs = captured_logs(&buffer);
+        assert_eq!(
+            logs.matches("ERROR").count(),
+            1,
+            "a server path misconfiguration must emit exactly one error event: {logs}"
+        );
+        assert_eq!(
+            logs.matches("event=\"extractor_fault\"").count(),
+            1,
+            "a server path misconfiguration must emit exactly one extractor_fault: {logs}"
+        );
+        assert!(
+            logs.contains("reason=\"wrong_number_of_parameters\""),
+            "the event must classify the reason: {logs}"
+        );
+        assert!(
+            !logs.contains("input_validation_failed"),
+            "a server fault must not be logged as a client-validation event: {logs}"
+        );
     }
 }

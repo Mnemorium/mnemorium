@@ -1,7 +1,5 @@
 //! Middleware wrapping every error response in the HAL error envelope.
 
-use std::str::from_utf8;
-
 use axum::body::to_bytes;
 use axum::extract::Request;
 use axum::http::StatusCode;
@@ -44,10 +42,15 @@ pub async fn hal_errors(request: Request, next: Next) -> Response {
 /// Extract the human-readable message of a failed response.
 ///
 /// The message attached by [`ApiError`](crate::infrastructure::inbound::rest::api_error::ApiError)
-/// takes precedence; otherwise a JSON body with a string `error` field is
-/// reused as-is, then a non-empty UTF-8 body is used trimmed, and finally the
-/// status reason phrase is synthesized, because the default `404`/`405` bodies
-/// are empty or textual.
+/// takes precedence; otherwise a JSON body the application authored — served
+/// as `application/json` or `application/hal+json` and carrying `error` as its
+/// only top-level key — is reused, and finally the status reason phrase is
+/// synthesized, because the default `404`/`405` bodies are empty or textual.
+///
+/// A body that is neither is never reused verbatim: an unverified plain-text
+/// or JSON body may carry extractor or framework wording, an expected type
+/// name, or a rejected value, which `API-040` forbids. Such a body falls
+/// through to the status reason phrase (`API-040`, § 2.5).
 #[expect(
     clippy::single_call_fn,
     reason = "the message extraction order is named for readability"
@@ -56,16 +59,22 @@ fn error_message(parts: &Parts, status: StatusCode, body: &[u8]) -> String {
     if let Some(message) = parts.extensions.get::<ApiErrorMessage>() {
         return message.0.clone();
     }
-    if let Ok(value) = serde_json::from_slice::<Value>(body)
-        && let Some(message) = value.get("error").and_then(Value::as_str)
+    let authored_json = parts
+        .headers
+        .get(header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|media_type| {
+            matches!(
+                media_type.split(';').next().map(str::trim),
+                Some("application/json" | "application/hal+json")
+            )
+        });
+    if authored_json
+        && let Ok(object) = serde_json::from_slice::<serde_json::Map<String, Value>>(body)
+        && object.len() == 1
+        && let Some(message) = object.get("error").and_then(Value::as_str)
     {
         return message.to_owned();
-    }
-    if let Ok(text) = from_utf8(body) {
-        let trimmed = text.trim();
-        if !trimmed.is_empty() {
-            return trimmed.to_owned();
-        }
     }
     status.canonical_reason().unwrap_or("error").to_owned()
 }
@@ -78,6 +87,7 @@ mod tests {
     use axum::Router;
     use axum::body::Body;
     use axum::body::to_bytes;
+    use axum::extract::Path;
     use axum::extract::Request;
     use axum::http::StatusCode;
     use axum::http::header;
@@ -93,7 +103,8 @@ mod tests {
     use crate::infrastructure::inbound::rest::api_error::ApiError;
 
     /// Router exercising the middleware over an `ApiError`, a raw JSON error, a
-    /// textual error, a healthy route and a method restriction.
+    /// textual error, a framework path rejection, a healthy route and a method
+    /// restriction.
     fn router() -> Router {
         Router::new()
             .route(
@@ -110,8 +121,25 @@ mod tests {
                 }),
             )
             .route(
+                "/multi-key",
+                get(|| async {
+                    (
+                        StatusCode::BAD_REQUEST,
+                        Json(json!({ "error": "raw json", "detail": "extra" })),
+                    )
+                }),
+            )
+            .route(
+                "/plain-json",
+                get(|| async { (StatusCode::BAD_REQUEST, r#"{"error": "sneaky"}"#) }),
+            )
+            .route(
                 "/plain",
                 get(|| async { (StatusCode::INTERNAL_SERVER_ERROR, "plain failure") }),
+            )
+            .route(
+                "/item/{id}",
+                get(|Path(id): Path<i64>| async move { id.to_string() }),
             )
             .route("/only", get(|| async { "ok" }))
             .layer(middleware::from_fn(hal_errors))
@@ -180,6 +208,50 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn hal_errors_synthesizes_when_a_json_error_carries_extra_keys()
+    -> Result<(), Box<dyn Error>> {
+        // Act
+        let response = send(router(), "GET", "/multi-key").await?;
+
+        // Assert
+        let (status, payload) = into_parts(response).await?;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(
+            payload,
+            json!({
+                "error": "Bad Request",
+                "_links": { "self": { "href": "/multi-key" } },
+            }),
+            "an aggregate JSON body the application did not author must not be reused (`API-040`)"
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn hal_errors_synthesizes_when_a_json_shaped_body_is_plain_text()
+    -> Result<(), Box<dyn Error>> {
+        // Act
+        let response = send(router(), "GET", "/plain-json").await?;
+
+        // Assert
+        let (status, payload) = into_parts(response).await?;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(
+            payload,
+            json!({
+                "error": "Bad Request",
+                "_links": { "self": { "href": "/plain-json" } },
+            }),
+            "a JSON-shaped body served as text/plain must not be reused (`API-040`)"
+        );
+        assert!(
+            !payload.to_string().contains("sneaky"),
+            "an unverified plain-text body must never appear in the envelope (`API-040`)"
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn hal_errors_drops_the_query_string_from_the_self_link() -> Result<(), Box<dyn Error>> {
         // Act
         let response = send(router(), "GET", "/broken?page=2&size=10").await?;
@@ -241,7 +313,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn hal_errors_reuses_a_plain_text_error() -> Result<(), Box<dyn Error>> {
+    async fn hal_errors_does_not_reuse_a_plain_text_error() -> Result<(), Box<dyn Error>> {
         // Act
         let response = send(router(), "GET", "/plain").await?;
 
@@ -252,9 +324,34 @@ mod tests {
         assert_eq!(
             payload,
             json!({
-                "error": "plain failure",
+                "error": "Internal Server Error",
                 "_links": { "self": { "href": "/plain" } },
             })
+        );
+        assert!(
+            !payload.to_string().contains("plain failure"),
+            "an unverified plain-text body must never appear in the envelope (`API-040`)"
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn hal_errors_does_not_reuse_a_framework_path_rejection() -> Result<(), Box<dyn Error>> {
+        // Act
+        let response = send(router(), "GET", "/item/abc").await?;
+
+        // Assert
+        assert_eq!(content_type(&response), Some("application/hal+json"));
+        let (status, payload) = into_parts(response).await?;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(
+            payload,
+            json!({
+                "error": "Bad Request",
+                "_links": { "self": { "href": "/item/abc" } },
+            }),
+            "a framework path rejection must be reduced to the synthesized status reason, \
+             never the raw value or the expected type name (`API-040`)"
         );
         Ok(())
     }
