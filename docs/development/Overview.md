@@ -487,6 +487,15 @@ The review pipeline reaches GitHub through the `github` MCP server:
 - set `GITHUB_MCP_TOKEN` in your environment for the MCP server; a personal access token works;
 - the MCP server connects on its own; no `gh` CLI is required.
 
-The scheduled issue-triage workflow (`.github/workflows/triage.yml`) uses the same server and the same
-`GITHUB_MCP_TOKEN`. It mints a GitHub App token scoped to `issues: write` only, masks it with `::add-mask::`, and
-supplies it to both the opencode action (`GITHUB_TOKEN`) and the MCP server (`GITHUB_MCP_TOKEN`).
+The issue-triage workflow (`.github/workflows/triage.yml`) reaches GitHub the same way, but supplies its own minted
+token as `GITHUB_MCP_TOKEN` rather than reading the environment variable above. It mints a GitHub App token —
+`issues: read` for a dry run, `issues: write` for a live run — masks it with `::add-mask::`, and passes it to the GitHub
+MCP server. The run installs `@opencode/cli@2.0.22` from npm, writes the GitHub MCP server configuration to
+`.opencode/config.json`, and starts the sweep with `opencode run --standalone --agent ci-triage`, which loads that file
+through `OPENCODE_CONFIG`.
+
+The workflow requires:
+
+- secret `APP_CLIENT_ID` and secret `APP_PRIVATE_KEY` — the GitHub App whose token it mints;
+- variable `AGENT_TRIAGE_MODEL` — the model the sweep runs with;
+- secret `OPENCODE_API_KEY` — the OpenCode provider credential.

@@ -44,18 +44,21 @@ the skill's six outcomes; they are mutually exclusive.
 - **Inconclusive** — needs a developer's judgment. Set `needs-developer` and
   remove `needs-triage`.
 - **Partial** — still valid but under-specified or only partly implemented. Set
-  `needs-info`; report the plan, then append after acceptance.
+  `needs-info` and remove `needs-triage`; report the plan, then append after
+  acceptance.
 - **Obsolete** — no longer valid: the code, symbol, or rule it cites is gone; a
   merged pull request already fixed it; or it was superseded by another issue or
-  a documented decision. Add `obsolete` and **leave the issue open**.
-- **Duplicate** — duplicates another open issue. Add `duplicate`, link it, and
-  close with `duplicate_of` set to the older issue.
+  a documented decision. Add `obsolete`, remove the old state label, and
+  **leave the issue open**.
+- **Duplicate** — duplicates another open issue. Add `duplicate`, remove
+  `needs-triage`, link it, and close with `duplicate_of` set to the older issue.
 - **Groupable** — shares one fix with other issues. Create one parent umbrella
-  issue and attach the group as sub-issues.
+  issue and attach the group as sub-issues, removing `needs-triage` from each.
 
-This command states the **Obsolete** mark in Phase 1, applies the accepted
-**Partial** plans in Phase 2, and reports the remaining outcomes for the user to
-confirm. The skill defines each outcome; the command never redefines it.
+This command applies all six outcomes. The **Conclusive**, **Inconclusive**,
+**Obsolete** and **Duplicate** writes are applied in Phase 1; the accepted
+**Partial** plans and **Groupable** umbrellas are applied in Phase 2. The skill
+defines each outcome; the command never redefines it.
 
 ## Evidence gate
 
@@ -71,13 +74,17 @@ change.
 
 ## Actions
 
-### Obsolete
+### Conclusive
 
-1. Add the `obsolete` label and remove the old state label.
-2. Post a comment naming the evidence, with the AI disclosure first. Always
-   comment; never mark silently.
-3. **Leave the issue open.** The `obsolete` state marks it for a human; nothing
-   in this command closes it.
+1. Set `ready-for-agent` (an agent can implement it) or `ready-for-human` (it
+   needs a human).
+2. Remove `needs-triage`. Keep at most one category label; never add or replace
+   one.
+
+### Inconclusive
+
+1. Set `needs-developer`.
+2. Remove `needs-triage`.
 
 ### Partial
 
@@ -90,19 +97,48 @@ acceptance.
    (`.opencode/skills/triage/SKILL.md`), keeping the AI disclosure. The edit is
    append-only: never remove or rewrite what a human wrote, and do not invent
    sections. That template is authoritative.
-3. Add the `needs-info` label. Leave the existing category label untouched. Do
-   not infer or replace a category.
+3. Set the `needs-info` label and remove `needs-triage`. Leave the existing
+   category label untouched. Do not infer or replace a category.
+
+### Obsolete
+
+1. Add the `obsolete` label and remove the old state label.
+2. Post a comment naming the evidence, with the AI disclosure first. Always
+   comment; never mark silently.
+3. **Leave the issue open.** The `obsolete` state marks it for a human; nothing
+   in this command closes it.
+
+### Duplicate
+
+1. Require a **content-signature** match with the older issue, never a title
+   match.
+2. Add `duplicate` and remove `needs-triage`.
+3. Post a linking comment naming the older issue, with the AI disclosure first,
+   then close with `state_reason: duplicate` and `duplicate_of` set to the older
+   issue. Never close silently.
+
+### Groupable
+
+The umbrella is proposed in Phase 1 and created only after the user accepts it.
+
+1. In **Phase 1**, report the proposed umbrella title, body, and the group it
+   attaches.
+2. In **Phase 2**, after acceptance, create one parent umbrella issue, attach the
+   group as native sub-issues, and remove `needs-triage` from each grouped issue.
+   Add no extra label.
 
 ## Flow
 
 This command runs in **one session, two phases**.
 
-- **Phase 1** — sweep, classify, and apply the obsolete marks and their evidence
-  comments immediately. Then print the report and the plans. **Do not end the
-  session**: stay available.
+- **Phase 1** — sweep, classify, and apply the Conclusive, Inconclusive, Obsolete
+  and Duplicate outcomes and their evidence comments immediately. Then print the
+  report and the Partial and Groupable plans. **Do not end the session**: stay
+  available.
 - **Phase 2** — the user replies in this session to accept one or more plans
-  (for example, "do it"). Apply the accepted body edits and `needs-info` labels.
-  Do not apply a plan the user did not accept.
+  (for example, "do it"). Apply the accepted Partial body edits and `needs-info`
+  labels, and the accepted Groupable umbrellas. Do not apply a plan the user did
+  not accept.
 
 ## Report
 
@@ -113,10 +149,26 @@ Print one document to the chat:
 
 Scope: all open issues | issues #42–#57 | issue #42
 
+## Conclusive — labeled (n)
+
+- #NN — <title>
+  - **Label:** `ready-for-agent` | `ready-for-human`
+
+## Inconclusive — labeled (n)
+
+- #NN — <title>
+  - **Label:** `needs-developer`
+
 ## Marked obsolete — left open (n)
 
 - #NN — <title>
   - **Evidence:** <merge commit | pull request | `path:line`>
+  - **Comment:** <url or quote>
+
+## Duplicates — closed (n)
+
+- #NN — <title>
+  - **Duplicate of:** #NN
   - **Comment:** <url or quote>
 
 ## Updated (partial) — awaiting acceptance (n)
@@ -125,14 +177,17 @@ Scope: all open issues | issues #42–#57 | issue #42
   - **Plan:** <proposed body section + labels>
   - **Apply after acceptance.**
 
+## Groupable — umbrella proposed (n)
+
+- #NN — <title>
+  - **Umbrella:** <proposed title>
+  - **Group:** #NN, #NN
+  - **Apply after acceptance.**
+
 ## Flagged likely obsolete (needs confirmation) (n)
 
 - #NN — <title>
   - **Evidence:** <what is inconclusive>
-
-## Left untouched (n)
-
-- #NN — <title>
 ```
 
 Omit a group when it is empty. Include the scope line always.
@@ -147,7 +202,8 @@ Omit a group when it is empty. Include the scope line always.
 ## Constraints
 
 - Human-readable Markdown only.
-- One issue belongs to exactly one outcome; never both mark and edit one issue.
+- One issue belongs to exactly one outcome; never apply two outcomes to one
+  issue.
 - Never edit a body before the user accepts its plan in this session.
 - The `triage` skill holds the authoritative behavior and label vocabulary, and
   names the decision-request template defined by the `create-issue` skill;
