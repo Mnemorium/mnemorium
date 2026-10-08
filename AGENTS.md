@@ -82,7 +82,7 @@ code, and marks elided regions with `// [...]`.
 ## Logging
 
 See `docs/development/TechnicalDesign.md` § 9 (Logging & Observability),
-`OBS-001`–`OBS-007` for what the server logs, from which layer, at what severity,
+`OBS-001`–`OBS-008` for what the server logs, from which layer, at what severity,
 and what must never reach a log sink.
 
 ## Special Rules

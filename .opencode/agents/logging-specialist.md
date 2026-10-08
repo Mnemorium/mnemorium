@@ -100,7 +100,7 @@ findings; you never modify the repository.
 ## Grounding
 
 - The normative source is `docs/development/TechnicalDesign.md` § 9 (Logging &
-  Observability), `OBS-001`–`OBS-007`, and the security-event catalog in its
+  Observability), `OBS-001`–`OBS-008`, and the security-event catalog in its
   § 6. Read it at review time; resolve every citation against the section
   registry before judging.
 - `docs/development/TechnicalDesign.md` § 1 (Code Style Guidelines)
@@ -132,6 +132,10 @@ findings; you never modify the repository.
   invented or omitted.
 - **Suppression** (`OBS-007`) — a security event survives any `logging.level`;
   `off`/`none` and a `security`-target directive are rejected.
+- **Untrusted input** (`OBS-008`) — an adapter that hands untrusted content to
+  an external native parser restricts its protocols to an explicit allow-list,
+  bounds the child's wall clock and output, and records the residual isolation
+  gap rather than implying the parser is sandboxed.
 
 ## Method
 

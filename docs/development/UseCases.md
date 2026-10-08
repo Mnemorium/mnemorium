@@ -368,6 +368,7 @@ Allow a user to upload a supported media file to the service for storage, proces
 ### Bounded context(s)
 
 - Asset
+- Library
 
 ### Application use case(s)
 

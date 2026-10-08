@@ -162,7 +162,7 @@ material. The `#[utoipa::path(...)]` declaration contract lives in the [API sect
 | `STY-RUST-042` | Unit of Work      | A context view exposes only its own context's repositories.                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | [§ 7.2](#72-context-views)                                       |
 | `STY-RUST-043` | Unit of Work      | Repositories are obtained **only** from a unit of work; concrete sqlx adapters never leave infrastructure.                                                                                                                                                                                                                                                                                                                                                                                                                             | [§ 7.2](#72-context-views)                                       |
 | `STY-RUST-044` | Unit of Work      | Every repository comes from the **same** unit of work (one `begin()`); opening a second unit of work would be a second transaction and break atomicity.                                                                                                                                                                                                                                                                                                                                                                                | [§ 7.3](#73-cross-context-use-cases)                             |
-| `STY-RUST-045` | Unit of Work      | Cross-context writes stay atomic: Register User (Identity + User), Delete User Account (Identity + User + Library + Asset; see [UseCases.md](UseCases.md)).                                                                                                                                                                                                                                                                                                                                                                            | [§ 7.3](#73-cross-context-use-cases)                             |
+| `STY-RUST-045` | Unit of Work      | Cross-context writes stay atomic: Register User (Identity + User), Delete User Account (Identity + User + Library + Asset), Complete Upload (Asset + Library; see [UseCases.md](UseCases.md)).                                                                                                                                                                                                                                                                                                                                         | [§ 7.3](#73-cross-context-use-cases)                             |
 | `STY-RUST-046` | Unit of Work      | Each accessor borrows `&mut self`, so repositories are requested **sequentially**, never held two at a time.                                                                                                                                                                                                                                                                                                                                                                                                                           | [§ 7.3](#73-cross-context-use-cases)                             |
 | `STY-RUST-047` | Unit of Work      | Declare the `UnitOfWork` trait first in `domain/port/unit_of_work.rs`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | [§ 7.4](#74-declaration-order-in-the-unit-of-work-port-file)     |
 | `STY-RUST-048` | Unit of Work      | Declare the `UnitOfWorkFactory` trait second in `domain/port/unit_of_work.rs`.                                                                                                                                                                                                                                                                                                                                                                                                                                                         | [§ 7.4](#74-declaration-order-in-the-unit-of-work-port-file)     |
@@ -2486,6 +2486,20 @@ Source: `Dockerfile`.
 
 ---
 
+### 8. Runtime system binaries
+
+Source: the runtime stage of `Dockerfile`.
+
+| Name                                       | Description                                                                                  | Provided by                                                                                                                         | License |
+| ------------------------------------------ | -------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- | ------- |
+| [ffprobe](https://ffmpeg.org/ffprobe.html) | Video metadata probe resolved from `PATH` by `media_probe.rs` on every `video/*` completion. | The `ffmpeg` package the runtime image must install (currently absent — [#242](https://github.com/Mnemorium/mnemorium/issues/242)). | TODO    |
+
+A binary a shipped container resolves from `PATH` at run time is a runtime dependency, not a build one: the runtime
+stage image must provide it. `ffprobe` ships with `ffmpeg`; the runtime stage does not install it yet, which is tracked
+by [#242](https://github.com/Mnemorium/mnemorium/issues/242).
+
+---
+
 ## Repository Governance
 
 This section governs the conventions that bind a change to the repository itself, starting with the scope vocabulary a
@@ -2680,17 +2694,20 @@ production code and are not bound by [`DOC-001`](#1-code-examples).
 This section governs what the server logs, from which layer, at what severity, and what must never reach a log sink. It
 complements the error model in [§ 1 (Code Style Guidelines)](#2-error-handling): that detail describes how an error is
 abstracted as it crosses a boundary; this section describes where it is logged on the way up. A logging obligation lives
-only here — a rule in another section cites an `OBS-*` rule, it never restates one.
+only here — a rule in another section cites an `OBS-*` rule, it never restates one. The section also owns the
+trust-boundary obligation for an adapter that hands untrusted content to an external native parser, since such a parser
+is a security event source (`OBS-008`).
 
-| ID        | Section     | Rule                                                                                                                                                                                                                                                            | More info                                  |
-| --------- | ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ |
-| `OBS-001` | Layers      | Emit log events only from the application and infrastructure layers. The domain returns errors as values and never logs; the composition root is infrastructure and may log lifecycle events.                                                                   | [§ 1](#1-logging-layers)                   |
-| `OBS-002` | Ownership   | Log each error or security event exactly once, at the layer that owns the decision that produced it or that still holds its detail; every layer above maps it to a coarser form and never logs it again.                                                        | [§ 2](#2-log-once-at-the-owning-layer)     |
-| `OBS-003` | Content     | Log a stable classification — an event code or a `kind()` — never the `Display`/`Debug` of an extractor, deserializer, database, filesystem or framework error, and never a raw client-supplied value such as a query string, file name or request-body field.  | [§ 3](#3-log-content)                      |
-| `OBS-004` | Redaction   | Never log application source, session identifiers, access or JWT tokens, passwords or password material, database connection strings, the pepper or JWT signing secret, or personal data; a type that holds a secret must not derive a `Debug` that exposes it. | [§ 4](#4-redaction)                        |
-| `OBS-005` | Severity    | Use only the levels `error`, `warn`, `info`, `debug` and `trace`, assigned per [§ 5](#5-severity); `error` is an operator-actionable fault, `warn` a reviewable security event, `info` a security success or lifecycle event.                                   | [§ 5](#5-severity)                         |
-| `OBS-006` | Catalog     | Emit every event in the catalog in [§ 6](#6-security-event-catalog) at its declared level and with its declared fields.                                                                                                                                         | [§ 6](#6-security-event-catalog)           |
-| `OBS-007` | Suppression | Security events target the reserved `security` target; `logging::setup` rejects `off`/`none` as a whole-level value and any directive that targets `security`, so `logging.level` can never suppress a catalog event.                                           | [§ 7](#7-non-suppressible-security-events) |
+| ID        | Section         | Rule                                                                                                                                                                                                                                                                     | More info                                     |
+| --------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------- |
+| `OBS-001` | Layers          | Emit log events only from the application and infrastructure layers. The domain returns errors as values and never logs; the composition root is infrastructure and may log lifecycle events.                                                                            | [§ 1](#1-logging-layers)                      |
+| `OBS-002` | Ownership       | Log each error or security event exactly once, at the layer that owns the decision that produced it or that still holds its detail; every layer above maps it to a coarser form and never logs it again.                                                                 | [§ 2](#2-log-once-at-the-owning-layer)        |
+| `OBS-003` | Content         | Log a stable classification — an event code or a `kind()` — never the `Display`/`Debug` of an extractor, deserializer, database, filesystem or framework error, and never a raw client-supplied value such as a query string, file name or request-body field.           | [§ 3](#3-log-content)                         |
+| `OBS-004` | Redaction       | Never log application source, session identifiers, access or JWT tokens, passwords or password material, database connection strings, the pepper or JWT signing secret, or personal data; a type that holds a secret must not derive a `Debug` that exposes it.          | [§ 4](#4-redaction)                           |
+| `OBS-005` | Severity        | Use only the levels `error`, `warn`, `info`, `debug` and `trace`, assigned per [§ 5](#5-severity); `error` is an operator-actionable fault, `warn` a reviewable security event, `info` a security success or lifecycle event.                                            | [§ 5](#5-severity)                            |
+| `OBS-006` | Catalog         | Emit every event in the catalog in [§ 6](#6-security-event-catalog) at its declared level and with its declared fields.                                                                                                                                                  | [§ 6](#6-security-event-catalog)              |
+| `OBS-007` | Suppression     | Security events target the reserved `security` target; `logging::setup` rejects `off`/`none` as a whole-level value and any directive that targets `security`, so `logging.level` can never suppress a catalog event.                                                    | [§ 7](#7-non-suppressible-security-events)    |
+| `OBS-008` | Untrusted input | An adapter that hands caller-supplied content to an external native parser restricts the protocols it may open to an explicit allow-list, bounds the child's wall clock and output, and records the residual isolation gap rather than implying the parser is sandboxed. | [§ 8](#8-external-parsers-on-untrusted-input) |
 
 ---
 
@@ -2823,6 +2840,21 @@ Catalog events emit on the reserved `security` target at whatever level the cata
 `logging.level` can never suppress a catalog event: it rejects `off`/`none` as a whole-level value and rejects any
 directive that targets `security`. `logging.level` therefore tunes operational verbosity only; it is startup-only
 (`STY-RUST-082`; see [§ 10.1](#101-startup-only-settings)).
+
+---
+
+### 8. External parsers on untrusted input
+
+An outbound adapter that hands caller-supplied bytes to an external native parser — a memory-unsafe C parser in
+particular — extends the trust boundary to that process. Before the content is handed over, the adapter restricts the
+protocols the parser may open to an explicit allow-list, so a crafted container cannot request a nested fetch, bounds
+the child's wall clock and its standard output, and records the residual isolation gap rather than implying the parser
+is sandboxed. User isolation, namespaces and a syscall filter are the required end state for a memory-unsafe parser and
+are tracked separately.
+
+The media probe is the current instance: it runs `ffprobe` on the staged file with an explicit
+`-protocol_whitelist file`, a wall-clock timeout, a stdout cap and a concurrency permit; a fuller sandbox is tracked by
+[#242](https://github.com/Mnemorium/mnemorium/issues/242).
 
 ---
 
