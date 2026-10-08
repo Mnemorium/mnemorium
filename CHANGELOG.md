@@ -1,3 +1,9 @@
+## [0.13.0](https://github.com/Mnemorium/mnemorium/compare/v0.12.2...v0.13.0) (2026-10-08)
+
+### Features
+
+* **api:** expose the Library gallery endpoints ([#233](https://github.com/Mnemorium/mnemorium/issues/233)) ([3c52868](https://github.com/Mnemorium/mnemorium/commit/3c52868e598c5249cc39c3d0ba43085c98546798))
+
 ## [0.12.2](https://github.com/Mnemorium/mnemorium/compare/v0.12.1...v0.12.2) (2026-10-08)
 
 ### Bug Fixes
