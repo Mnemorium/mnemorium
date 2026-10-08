@@ -1431,7 +1431,7 @@
                 }
               }
             },
-            "description": "Malformed request body"
+            "description": "Malformed path identifier or request body"
           },
           "401": {
             "content": {
