@@ -1,8 +1,14 @@
 ---
 ls:
+  script:
+    .*: exists:0  # any non-shell scripts aren't allowed
+    .sh: snake_case
+  migrations:
+    .*: exists:0  # any non-sql scripts aren't allowed
+    .sql: snake_case
+
   .rs: snake_case
   .py: snake_case
-  .sh: snake_case
   .md: PascalCase
 ignore:
   - .devenv
