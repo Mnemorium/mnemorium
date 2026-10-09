@@ -487,15 +487,20 @@ The review pipeline reaches GitHub through the `github` MCP server:
 - set `GITHUB_MCP_TOKEN` in your environment for the MCP server; a personal access token works;
 - the MCP server connects on its own; no `gh` CLI is required.
 
-The issue-triage workflow (`.github/workflows/triage.yml`) reaches GitHub the same way, but supplies its own minted
-token as `GITHUB_MCP_TOKEN` rather than reading the environment variable above. It mints a GitHub App token —
-`issues: read` for a dry run, `issues: write` for a live run — masks it with `::add-mask::`, and passes it to the GitHub
-MCP server. The run installs `@opencode/cli@2.0.22` from npm, writes the GitHub MCP server configuration to
-`.opencode/config.json`, and starts the sweep with `opencode run --standalone --agent ci-triage`, which loads that file
-through `OPENCODE_CONFIG`.
+The issue-triage workflow (`.github/workflows/triage.yml`) reaches GitHub the same way, but mints its own tokens rather
+than reading the environment variable above. The analysis step mints a **read-only** App token, masks it with
+`::add-mask::`, passes it to the GitHub MCP server as `GITHUB_MCP_TOKEN`, and runs
+`opencode run --standalone --agent ci-triage` against the committed `.opencode/config.json` (loaded through
+`OPENCODE_CONFIG`). The agent reads the open issues and prints a proposed-writes document captured to
+`.artifacts/triage/proposals.json`; it never holds a write token. A second step runs `script/apply_triage_writes.py`
+with a separate App token — `issues: read` for a dry run, `issues: write` for a live run — which re-reads the open
+issues and applies only proposals that target those issues and use the skill's operations, labels, and disclosure. The
+run installs `@opencode/cli@2.0.22` from npm.
 
 The workflow requires:
 
-- secret `APP_CLIENT_ID` and secret `APP_PRIVATE_KEY` — the GitHub App whose token it mints;
+- environment `triage-live` with a required reviewer — a live run starts only after approval; a dry run uses the
+  unprotected `triage-dry-run` environment;
+- secret `APP_CLIENT_ID` and secret `APP_PRIVATE_KEY` — the GitHub App whose tokens it mints;
 - variable `AGENT_TRIAGE_MODEL` — the model the sweep runs with;
 - secret `OPENCODE_API_KEY` — the OpenCode provider credential.
