@@ -2477,6 +2477,7 @@ Source: `.github/workflows/*`.
 | [@semantic-release/changelog](https://www.npmjs.com/package/@semantic-release/changelog)                               | TODO                                                     | 7.0.0   | TODO       |
 | [@semantic-release/exec](https://www.npmjs.com/package/@semantic-release/exec)                                         | TODO                                                     | 7.1.0   | TODO       |
 | [@semantic-release/git](https://www.npmjs.com/package/@semantic-release/git)                                           | TODO                                                     | 11.0.1  | TODO       |
+| [actions/cache](https://github.com/actions/cache)                                                                      | Caches the local BuildKit layer cache for image builds.  | v4.3.0  | MIT        |
 | [actions/checkout](https://github.com/actions/checkout)                                                                | TODO                                                     | v7.0.1  | TODO       |
 | [actions/create-github-app-token](https://github.com/actions/create-github-app-token)                                  | TODO                                                     | v3.2.0  | TODO       |
 | [actions/setup-node](https://github.com/actions/setup-node)                                                            | TODO                                                     | v7.0.0  | TODO       |
@@ -2486,7 +2487,7 @@ Source: `.github/workflows/*`.
 | [cachix/install-nix-action](https://github.com/cachix/install-nix-action)                                              | TODO                                                     | v31     | TODO       |
 | [conventional-changelog-conventionalcommits](https://www.npmjs.com/package/conventional-changelog-conventionalcommits) | TODO                                                     | 9.3.1   | TODO       |
 | [DavidAnson/markdownlint-cli2-action](https://github.com/DavidAnson/markdownlint-cli2-action)                          | TODO                                                     | v24     | TODO       |
-| [docker/build-push-action](https://github.com/docker/build-push-action)                                                | Builds the production image with the GHA cache.          | v7      | Apache-2.0 |
+| [docker/build-push-action](https://github.com/docker/build-push-action)                                                | Builds the E2E image with a local BuildKit cache.        | v7      | Apache-2.0 |
 | [docker/login-action](https://github.com/docker/login-action)                                                          | TODO                                                     | v4      | TODO       |
 | [docker/setup-buildx-action](https://github.com/docker/setup-buildx-action)                                            | BuildKit builder setup for cached image builds.          | v4      | Apache-2.0 |
 | [dortort/betterleaks-action](https://github.com/dortort/betterleaks-action)                                            | TODO                                                     | v0.1.0  | TODO       |
