@@ -131,6 +131,9 @@ pub enum CreateGalleryError {
     /// The name is empty or made only of whitespace.
     #[error("gallery name must not be empty")]
     InvalidName,
+    /// The caller already owns a gallery with the same name.
+    #[error("the caller already owns a gallery with this name")]
+    NameAlreadyExists,
     /// The name is longer than [`MAX_GALLERY_NAME_LENGTH`] characters.
     #[error("gallery name must be at most {MAX_GALLERY_NAME_LENGTH} characters long")]
     NameTooLong,
