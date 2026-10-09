@@ -35,11 +35,19 @@ Target: $ARGUMENTS
 
 ## Classification
 
-The `triage` skill (`.opencode/skills/triage/SKILL.md`) is authoritative for the
-candidate set, the label vocabulary (`needs-triage`, `needs-info`,
+The **candidate set** is every open issue that carries `needs-triage` or carries
+no state label. Never relabel an issue that already carries `ready-for-agent`,
+`ready-for-human`, `needs-info`, or `needs-developer`; `obsolete` and `duplicate`
+are terminal. Never re-triage an umbrella issue or an issue attached to one as a
+sub-issue.
+
+The label vocabulary is the category labels (`bug`, `enhancement`,
+`documentation`) and the state labels (`needs-triage`, `needs-info`,
 `needs-developer`, `ready-for-agent`, `ready-for-human`, `obsolete`,
-`duplicate`), and the outcome of each issue. Sort each issue into exactly one of
-the skill's six outcomes; they are mutually exclusive.
+`duplicate`); an issue carries at most one category and at most one state label.
+
+Sort each issue into exactly one of the six outcomes below; they are mutually
+exclusive.
 
 - **Conclusive** — valid and specified enough to act on. Set `ready-for-agent` or
   `ready-for-human` and remove `needs-triage`.
@@ -59,8 +67,7 @@ the skill's six outcomes; they are mutually exclusive.
 
 This command applies all six outcomes. The **Conclusive**, **Inconclusive**,
 **Obsolete** and **Duplicate** writes are applied in Phase 1; the accepted
-**Partial** plans and **Groupable** umbrellas are applied in Phase 2. The skill
-defines each outcome; the command never redefines it.
+**Partial** plans and **Groupable** umbrellas are applied in Phase 2.
 
 ## Evidence gate
 
@@ -216,6 +223,5 @@ Omit a group when it is empty. Include the scope line always.
 - One issue belongs to exactly one outcome; never apply two outcomes to one
   issue.
 - Never edit a body before the user accepts its plan in this session.
-- The `triage` skill holds the authoritative behavior and label vocabulary, and
-  names the decision-request template defined by the `create-issue` skill;
-  follow it, and never invent a rule.
+- The `create-issue` skill defines the decision-request template this command
+  appends for a Partial issue; follow it, and never invent a rule.

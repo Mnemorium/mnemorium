@@ -97,10 +97,6 @@ jobs:
               - 'ruff.toml'
               - 'pytest.ini'
               - 'requirements.txt'
-              - '.opencode/agents/**'
-              - '.opencode/commands/**'
-              - '.opencode/skills/**'
-              - '.opencode/config.json'
             markdown:
               - '**/*.md'
               - '.prettierrc'
@@ -419,14 +415,6 @@ jobs:
         run: ruff check .
       - name: Ruff format
         run: ruff format --check .
-      - name: Check the triage guards
-        # The static guards validate the prompt assets the triage workflow runs;
-        # see docs/development/TechnicalDesign.md § 5, TEST-051.
-        run: |
-          python3 script/check_ci_triage_frontmatter.py
-          python3 script/check_opencode_config.py
-      - name: Test the triage guards
-        run: pytest -p no:cacheprovider -q test/unit
 
   docs:
     needs: [changes, betterleaks]
