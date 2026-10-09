@@ -2405,6 +2405,7 @@ Source: `devenv.nix`.
 | [cargo-about](https://github.com/EmbarkStudios/cargo-about)       | Generates the third-party license notices in `THIRD_PARTY_NOTICES.txt`. | 0.9.0   | TODO    |
 | [cargo-deny](https://github.com/EmbarkStudios/cargo-deny)         | Audits `Cargo.lock` for advisories, licenses, bans, and sources.        | 0.20.2  | TODO    |
 | [cargo-llvm-cov](https://github.com/taiki-e/cargo-llvm-cov)       | Coverage instrumentation and reporting for Rust.                        | 0.9.0   | TODO    |
+| [ffmpeg-headless](https://ffmpeg.org/)                            | Headless FFmpeg build providing the `ffprobe` binary.                   | 6.1.2   | TODO    |
 | [git](https://git-scm.com/)                                       | Version control.                                                        | 2.55.0  | TODO    |
 | [llvm](https://llvm.org/)                                         | LLVM tools used by coverage (`llvm-cov`, `llvm-profdata`).              | 21.1.8  | TODO    |
 | [ls-lint](https://ls-lint.org/)                                   | File and directory naming linter.                                       | 2.3.1   | TODO    |
@@ -2478,11 +2479,12 @@ Source: `.github/workflows/*`.
 
 Source: `Dockerfile`.
 
-| Name                                                       | Description                                      | Version         | License |
-| ---------------------------------------------------------- | ------------------------------------------------ | --------------- | ------- |
-| [alpine](https://hub.docker.com/_/alpine)                  | Alpine Linux base image (runtime stage).         | 3.21            | TODO    |
-| [cargo-chef](https://github.com/LukeMathWalker/cargo-chef) | Caches Rust dependency builds for Docker layers. | 0.1.78          | TODO    |
-| [rust](https://hub.docker.com/_/rust)                      | Rust build image (build stage).                  | 1.98-alpine3.21 | TODO    |
+| Name                                                       | Description                                       | Version         | License |
+| ---------------------------------------------------------- | ------------------------------------------------- | --------------- | ------- |
+| [alpine](https://hub.docker.com/_/alpine)                  | Alpine Linux base image (runtime stage).          | 3.21            | TODO    |
+| [cargo-chef](https://github.com/LukeMathWalker/cargo-chef) | Caches Rust dependency builds for Docker layers.  | 0.1.78          | TODO    |
+| [ffmpeg](https://ffmpeg.org/)                              | Runtime media tooling; ships `ffprobe` on `PATH`. | 6.1.2-r1        | TODO    |
+| [rust](https://hub.docker.com/_/rust)                      | Rust build image (build stage).                   | 1.98-alpine3.21 | TODO    |
 
 ---
 
@@ -2490,13 +2492,12 @@ Source: `Dockerfile`.
 
 Source: the runtime stage of `Dockerfile`.
 
-| Name                                       | Description                                                                                  | Provided by                                                                                                                         | License |
-| ------------------------------------------ | -------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- | ------- |
-| [ffprobe](https://ffmpeg.org/ffprobe.html) | Video metadata probe resolved from `PATH` by `media_probe.rs` on every `video/*` completion. | The `ffmpeg` package the runtime image must install (currently absent — [#242](https://github.com/Mnemorium/mnemorium/issues/242)). | TODO    |
+| Name                                       | Description                                                                                  | Provided by                                                              | License |
+| ------------------------------------------ | -------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ | ------- |
+| [ffprobe](https://ffmpeg.org/ffprobe.html) | Video metadata probe resolved from `PATH` by `media_probe.rs` on every `video/*` completion. | The `ffmpeg` package (`ffmpeg=6.1.2-r1`) installed by the runtime stage. | TODO    |
 
 A binary a shipped container resolves from `PATH` at run time is a runtime dependency, not a build one: the runtime
-stage image must provide it. `ffprobe` ships with `ffmpeg`; the runtime stage does not install it yet, which is tracked
-by [#242](https://github.com/Mnemorium/mnemorium/issues/242).
+stage image must provide it. `ffprobe` ships with `ffmpeg`; the runtime stage installs `ffmpeg=6.1.2-r1`.
 
 ---
 

@@ -29,6 +29,7 @@
     pkgs.taplo
     pkgs.sqlx-cli
     pkgs.sqlfluff
+    multiverse.ffmpeg-headless."6.1.2"
     multiverse.nixfmt."1.5.0"
     multiverse.nodejs."24.19.0"
     multiverse.prettier."3.8.3"
