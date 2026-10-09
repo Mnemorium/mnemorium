@@ -22,7 +22,7 @@
         [
             "@semantic-release/exec",
             {
-                "prepareCmd": "script/version.sh set \"${nextRelease.version}\" && cargo update --workspace && docker build -t wpelletier/mnemorium ."
+                "prepareCmd": "script/version.sh set \"${nextRelease.version}\" && cargo update --workspace && docker buildx build --load --tag wpelletier/mnemorium --cache-from type=local,src=/tmp/.buildx-cache-release --cache-to type=local,dest=/tmp/.buildx-cache-release-new,mode=max ."
             }
         ],
         [
