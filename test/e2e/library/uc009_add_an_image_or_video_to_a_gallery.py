@@ -25,7 +25,7 @@ _GALLERY_PATH = f"{_API_PREFIX}/library/gallery"
 
 _UNKNOWN_ID = 999_999_999
 
-_VIDEO_FIXTURE = Path(__file__).with_name("tiny_video.mp4")
+_VIDEO_FIXTURE = Path(__file__).resolve().parents[1] / "fixture" / "tiny_video.mp4"
 
 # Each generated image must have distinct bytes: the upload-completion handler
 # deduplicates by integrity hash, so identical bytes would reuse a file (and its
