@@ -2456,38 +2456,39 @@ Source: `requirements.txt`.
 
 Source: `.github/workflows/*`.
 
-| Name                                                                                                                   | Description                                                         | Version           | License    |
-| ---------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- | ----------------- | ---------- |
-| [opencode](https://github.com/anomalyco/opencode)                                                                      | Runs the unattended triage sweep; installed by the triage workflow. | latest (floating) | TODO       |
-| [@semantic-release-plus/docker](https://www.npmjs.com/package/@semantic-release-plus/docker)                           | TODO                                                                | 3.1.3             | TODO       |
-| [@semantic-release/changelog](https://www.npmjs.com/package/@semantic-release/changelog)                               | TODO                                                                | 7.0.0             | TODO       |
-| [@semantic-release/exec](https://www.npmjs.com/package/@semantic-release/exec)                                         | TODO                                                                | 7.1.0             | TODO       |
-| [@semantic-release/git](https://www.npmjs.com/package/@semantic-release/git)                                           | TODO                                                                | 11.0.1            | TODO       |
-| [actions/checkout](https://github.com/actions/checkout)                                                                | TODO                                                                | v7.0.1            | TODO       |
-| [actions/create-github-app-token](https://github.com/actions/create-github-app-token)                                  | TODO                                                                | v3.2.0            | TODO       |
-| [actions/setup-node](https://github.com/actions/setup-node)                                                            | TODO                                                                | v7.0.0            | TODO       |
-| [actions/setup-python](https://github.com/actions/setup-python)                                                        | TODO                                                                | v7.0.0            | TODO       |
-| [actions/upload-artifact](https://github.com/actions/upload-artifact)                                                  | TODO                                                                | v7                | TODO       |
-| [amannn/action-semantic-pull-request](https://github.com/amannn/action-semantic-pull-request)                          | TODO                                                                | v6                | TODO       |
-| [cachix/install-nix-action](https://github.com/cachix/install-nix-action)                                              | TODO                                                                | v31               | TODO       |
-| [conventional-changelog-conventionalcommits](https://www.npmjs.com/package/conventional-changelog-conventionalcommits) | TODO                                                                | 9.3.1             | TODO       |
-| [DavidAnson/markdownlint-cli2-action](https://github.com/DavidAnson/markdownlint-cli2-action)                          | TODO                                                                | v24               | TODO       |
-| [docker/build-push-action](https://github.com/docker/build-push-action)                                                | Builds the production image with the GHA cache.                     | v7                | Apache-2.0 |
-| [docker/login-action](https://github.com/docker/login-action)                                                          | TODO                                                                | v4                | TODO       |
-| [docker/setup-buildx-action](https://github.com/docker/setup-buildx-action)                                            | BuildKit builder setup for cached image builds.                     | v4                | Apache-2.0 |
-| [dortort/betterleaks-action](https://github.com/dortort/betterleaks-action)                                            | TODO                                                                | v0.1.0            | TODO       |
-| [dtolnay/rust-toolchain](https://github.com/dtolnay/rust-toolchain)                                                    | TODO                                                                | 1.98.0            | TODO       |
-| [ls-lint/action](https://github.com/ls-lint/action)                                                                    | TODO                                                                | v2                | TODO       |
-| [semantic-release](https://www.npmjs.com/package/semantic-release)                                                     | TODO                                                                | 25.0.9            | TODO       |
-| [Swatinem/rust-cache](https://github.com/Swatinem/rust-cache)                                                          | TODO                                                                | v2                | TODO       |
-| [taiki-e/install-action](https://github.com/taiki-e/install-action)                                                    | TODO                                                                | v2                | TODO       |
-| [tj-actions/changed-files](https://github.com/tj-actions/changed-files)                                                | TODO                                                                | v47.0.6           | TODO       |
+| Name                                                                                                                   | Description                                              | Version | License    |
+| ---------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- | ------- | ---------- |
+| [@opencode/cli](https://www.npmjs.com/package/@opencode/cli)                                                           | Runs the unattended triage sweep in the triage workflow. | 2.0.22  | TODO       |
+| [@semantic-release-plus/docker](https://www.npmjs.com/package/@semantic-release-plus/docker)                           | TODO                                                     | 3.1.3   | TODO       |
+| [@semantic-release/changelog](https://www.npmjs.com/package/@semantic-release/changelog)                               | TODO                                                     | 7.0.0   | TODO       |
+| [@semantic-release/exec](https://www.npmjs.com/package/@semantic-release/exec)                                         | TODO                                                     | 7.1.0   | TODO       |
+| [@semantic-release/git](https://www.npmjs.com/package/@semantic-release/git)                                           | TODO                                                     | 11.0.1  | TODO       |
+| [actions/checkout](https://github.com/actions/checkout)                                                                | TODO                                                     | v7.0.1  | TODO       |
+| [actions/create-github-app-token](https://github.com/actions/create-github-app-token)                                  | TODO                                                     | v3.2.0  | TODO       |
+| [actions/setup-node](https://github.com/actions/setup-node)                                                            | TODO                                                     | v7.0.0  | TODO       |
+| [actions/setup-python](https://github.com/actions/setup-python)                                                        | TODO                                                     | v7.0.0  | TODO       |
+| [actions/upload-artifact](https://github.com/actions/upload-artifact)                                                  | TODO                                                     | v7      | TODO       |
+| [amannn/action-semantic-pull-request](https://github.com/amannn/action-semantic-pull-request)                          | TODO                                                     | v6      | TODO       |
+| [cachix/install-nix-action](https://github.com/cachix/install-nix-action)                                              | TODO                                                     | v31     | TODO       |
+| [conventional-changelog-conventionalcommits](https://www.npmjs.com/package/conventional-changelog-conventionalcommits) | TODO                                                     | 9.3.1   | TODO       |
+| [DavidAnson/markdownlint-cli2-action](https://github.com/DavidAnson/markdownlint-cli2-action)                          | TODO                                                     | v24     | TODO       |
+| [docker/build-push-action](https://github.com/docker/build-push-action)                                                | Builds the production image with the GHA cache.          | v7      | Apache-2.0 |
+| [docker/login-action](https://github.com/docker/login-action)                                                          | TODO                                                     | v4      | TODO       |
+| [docker/setup-buildx-action](https://github.com/docker/setup-buildx-action)                                            | BuildKit builder setup for cached image builds.          | v4      | Apache-2.0 |
+| [dortort/betterleaks-action](https://github.com/dortort/betterleaks-action)                                            | TODO                                                     | v0.1.0  | TODO       |
+| [dtolnay/rust-toolchain](https://github.com/dtolnay/rust-toolchain)                                                    | TODO                                                     | 1.98.0  | TODO       |
+| [ls-lint/action](https://github.com/ls-lint/action)                                                                    | TODO                                                     | v2      | TODO       |
+| [semantic-release](https://www.npmjs.com/package/semantic-release)                                                     | TODO                                                     | 25.0.9  | TODO       |
+| [Swatinem/rust-cache](https://github.com/Swatinem/rust-cache)                                                          | TODO                                                     | v2      | TODO       |
+| [taiki-e/install-action](https://github.com/taiki-e/install-action)                                                    | TODO                                                     | v2      | TODO       |
+| [tj-actions/changed-files](https://github.com/tj-actions/changed-files)                                                | TODO                                                     | v47.0.6 | TODO       |
 
-`@opencode` is installed by the triage workflow with the official install script
-(`curl -fsSL https://opencode.ai/install | bash`), which downloads the current release binary and adds its directory to
-`$GITHUB_PATH`. The version is not pinned and the binary is not lockfile-covered — a documented `DEPS-003` residual. The
-workflow needs no Node and no Python toolchain of its own. The other workflows still provision the dev environment's
-Python and Node with `actions/setup-python` and `actions/setup-node` (`DEPS-004`).
+`@opencode/cli` is installed by the triage workflow at the exact version `2.0.22` on `actions/setup-node` (`v7.0.0`,
+Node `24.19.0`). Its transitive dependency tree resolves fresh from the npm registry, and its postinstall script
+downloads a platform-native `opencode` binary; neither is lockfile-pinned. The npm tree and the postinstall binary are
+documented `DEPS-003` residuals; the `setup-node` install of the dev environment's Node is a documented `DEPS-004`
+residual, because the workflow restates the toolchain rather than resolving it through `devenv.lock`. The other
+workflows provision Python and Node with `actions/setup-python` and `actions/setup-node`.
 
 ---
 

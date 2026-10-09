@@ -27,11 +27,15 @@ jobs:
         with:
           persist-credentials: false
 
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v7.0.0
+        with:
+          node-version: "24.19.0"
+
       - name: Install OpenCode
-        # The installer adds its directory to $GITHUB_PATH, so later steps find
-        # `opencode`. It downloads the current release binary; the version is
-        # not pinned — a documented DEPS-003 residual.
-        run: curl -fsSL https://opencode.ai/install | bash
+        # Pinned to an exact version (DEPS-003); its transitive dependency tree
+        # resolves from the npm registry at run time and is a documented
+        # residual.
+        run: npm install --global @opencode/cli@2.0.22
 
       - name: Triage open issues
         env:
