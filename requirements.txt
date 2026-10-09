@@ -5,4 +5,3 @@ mkdocs_puml==2.3.0
 ruff==0.16.5
 requests==2.34.2
 sqlfluff==4.3.0
-yamllint==1.37.1
