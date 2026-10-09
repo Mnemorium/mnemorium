@@ -42,6 +42,7 @@ jobs:
           # `gh` reads the workflow token from GH_TOKEN.
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           MODEL: ${{ vars.AGENT_TRIAGE_MODEL }}
           # Containment: the agent may run only `gh issue` commands. Every other
           # shell command is denied. `delete` and `transfer` are denied even
