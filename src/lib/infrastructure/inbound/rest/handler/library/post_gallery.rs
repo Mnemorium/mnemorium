@@ -23,6 +23,7 @@ impl From<CreateGalleryError> for ApiError {
             CreateGalleryError::InvalidName | CreateGalleryError::NameTooLong => {
                 Self::UnprocessableEntity(err.to_string())
             }
+            CreateGalleryError::NameAlreadyExists => Self::Conflict(err.to_string()),
             CreateGalleryError::NoSuchCaller => Self::Unauthorized(err.to_string()),
             CreateGalleryError::Unknown(_) => Self::InternalServerError,
         }
@@ -78,6 +79,12 @@ impl From<CreateGalleryError> for ApiError {
             body = ErrorBody,
             content_type = "application/hal+json",
             description = "The gallery name is empty or too long"
+        ),
+        (
+            status = CONFLICT,
+            body = ErrorBody,
+            content_type = "application/hal+json",
+            description = "The caller already owns a gallery with this name"
         ),
         (
             status = INTERNAL_SERVER_ERROR,
@@ -327,6 +334,12 @@ mod tests {
         CreateGalleryError::NameTooLong,
         StatusCode::UNPROCESSABLE_ENTITY,
         "gallery name must be at most 100 characters long"
+    )]
+    #[case::existing_name(
+        1,
+        CreateGalleryError::NameAlreadyExists,
+        StatusCode::CONFLICT,
+        "the caller already owns a gallery with this name"
     )]
     #[case::unknown_caller(
         999,

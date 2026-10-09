@@ -1707,6 +1707,7 @@ enforce invariants.
 | `PERS-018` | Invariants                  | A `gallery_item` references exactly one media row: either `image_id` or `video_id` is set, never both and never neither (`chk_gallery_item_one_media`).                                                                                        |                                           |
 | `PERS-019` | Invariants                  | A media row belongs to at most one gallery: the partial unique indexes `uq_gallery_item_image_id` and `uq_gallery_item_video_id` enforce one `gallery_item` per `image`/`video`.                                                               |                                           |
 | `PERS-020` | Datastore & migrations      | Cascade deletes only within one bounded context; a cross-context foreign key (for example `image.file_id` and `video.file_id` into `file`) does not use `ON DELETE CASCADE`, so the application orchestrates the deletion.                     |                                           |
+| `PERS-021` | Invariants                  | Two galleries owned by the same user cannot share a name (`uq_gallery_user_id_name`). SQLite treats `NULL` owner identifiers as distinct, so the ownerless default gallery (identifier `0`) stays outside the constraint.                      |                                           |
 
 Editing an already-applied migration (`PERS-014`) changes its checksum, and deleting an applied pair removes its
 version. `sqlx::migrate!` then fails at startup — `VersionMismatch` for the changed checksum, `VersionMissing` for the
@@ -2060,6 +2061,11 @@ video ||--o| gallery_item
 
 The `file` entity enforces a composite unique key on `(user_id, integrity_hash)`: a caller stores one file record per
 integrity hash, while different callers may each store their own copy.
+
+The `gallery` entity enforces a composite unique key on `(user_id, name)` (`uq_gallery_user_id_name`): a caller owns at
+most one gallery per name, while different callers may each own a gallery with the same name. `user_id` is nullable, and
+SQLite treats `NULL` values as distinct, so the ownerless default gallery (identifier `0`) stays outside the constraint
+and unique by its fixed identifier (`PERS-021`).
 
 The `gallery_item` entity stores either an `image` or a `video`, never both (`chk_gallery_item_one_media`). Two partial
 unique indexes, `uq_gallery_item_image_id` and `uq_gallery_item_video_id`, keep a media row in at most one gallery item,

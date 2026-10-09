@@ -11,6 +11,8 @@ use crate::application::port::create_gallery::CreateGalleryUseCase;
 use crate::application::use_case::library_access;
 use crate::domain::model::gallery::Gallery;
 use crate::domain::model::gallery::GalleryError;
+use crate::domain::port::error::RepositoryError;
+use crate::domain::port::gallery_repository::GalleryFilter;
 use crate::domain::port::gallery_repository::GalleryRepository as _;
 use crate::domain::port::library_unit_of_work::LibraryUnitOfWork;
 use crate::domain::port::unit_of_work::UnitOfWork as _;
@@ -79,11 +81,30 @@ where
                     _ => CreateGalleryError::Unknown(anyhow::Error::new(error)),
                 })?;
 
-                let created = unit_of_work
+                let existing = unit_of_work
                     .galleries()
-                    .create(gallery)
+                    .search(&GalleryFilter {
+                        name: Some(command.name().to_owned()),
+                        user_id: Some(command.caller_id()),
+                        ..GalleryFilter::default()
+                    })
                     .await
                     .map_err(|error| CreateGalleryError::Unknown(error.into()))?;
+                if !existing.is_empty() {
+                    return Err(CreateGalleryError::NameAlreadyExists);
+                }
+
+                let created =
+                    unit_of_work.galleries().create(gallery).await.map_err(
+                        |error| match error {
+                            // A concurrent insert won the race for the per-owner
+                            // unique name; the use case translates the port's
+                            // `AlreadyExist` so the caller cannot own a second
+                            // gallery with the same name either way (`STY-RUST-020`).
+                            RepositoryError::AlreadyExist => CreateGalleryError::NameAlreadyExists,
+                            other => CreateGalleryError::Unknown(other.into()),
+                        },
+                    )?;
 
                 Ok(CreateGalleryResponse::new(
                     created.gallery_id(),
@@ -173,6 +194,14 @@ mod tests {
         )
     }
 
+    /// Expect the pre-create name-collision search to find no gallery.
+    fn expect_no_collision(galleries: &mut MockGalleryRepository) {
+        galleries
+            .expect_search()
+            .times(1)
+            .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+    }
+
     fn expect_caller(users: &mut MockUserRepository, caller_id: i64) -> Result<(), Box<dyn Error>> {
         let caller = User::try_new(
             caller_id,
@@ -196,6 +225,7 @@ mod tests {
         expect_caller(&mut users, 1)?;
         let mut galleries = MockGalleryRepository::new();
         let stored = gallery(9, Some(1), "Holidays", false)?;
+        expect_no_collision(&mut galleries);
         galleries
             .expect_create()
             .times(1)
@@ -236,6 +266,7 @@ mod tests {
         expect_caller(&mut users, 1)?;
         let mut galleries = MockGalleryRepository::new();
         let stored = gallery(4, Some(1), "Shared", true)?;
+        expect_no_collision(&mut galleries);
         galleries
             .expect_create()
             .times(1)
@@ -302,6 +333,63 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn create_gallery_existing_name_returns_name_already_exists() -> Result<(), Box<dyn Error>>
+    {
+        // Arrange
+        let mut users = MockUserRepository::new();
+        expect_caller(&mut users, 1)?;
+        let mut galleries = MockGalleryRepository::new();
+        let existing = gallery(3, Some(1), "Holidays", false)?;
+        galleries
+            .expect_search()
+            .times(1)
+            .withf(|filter| filter.name.as_deref() == Some("Holidays") && filter.user_id == Some(1))
+            .return_once(move |_| {
+                let found = existing.clone();
+                Box::pin(async move { Ok(vec![found]) })
+            });
+        galleries.expect_create().times(0);
+        let harness = harness_with(users, galleries);
+        let use_case: UseCase = CreateGallery::new(Arc::clone(&harness.factory));
+
+        // Act
+        let result = use_case
+            .execute(CreateGalleryCommand::new(1, "Holidays".to_owned(), false))
+            .await;
+
+        // Assert
+        assert!(matches!(result, Err(CreateGalleryError::NameAlreadyExists)));
+        assert!(harness.rolled_back.load(Ordering::SeqCst));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn create_gallery_raced_duplicate_name_returns_name_already_exists()
+    -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let mut users = MockUserRepository::new();
+        expect_caller(&mut users, 1)?;
+        let mut galleries = MockGalleryRepository::new();
+        expect_no_collision(&mut galleries);
+        galleries
+            .expect_create()
+            .times(1)
+            .returning(|_| Box::pin(async { Err(RepositoryError::AlreadyExist) }));
+        let harness = harness_with(users, galleries);
+        let use_case: UseCase = CreateGallery::new(Arc::clone(&harness.factory));
+
+        // Act
+        let result = use_case
+            .execute(CreateGalleryCommand::new(1, "Holidays".to_owned(), false))
+            .await;
+
+        // Assert
+        assert!(matches!(result, Err(CreateGalleryError::NameAlreadyExists)));
+        assert!(harness.rolled_back.load(Ordering::SeqCst));
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn create_gallery_unknown_caller_returns_no_such_caller() -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut users = MockUserRepository::new();
@@ -351,6 +439,7 @@ mod tests {
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 1)?;
         let mut galleries = MockGalleryRepository::new();
+        expect_no_collision(&mut galleries);
         galleries
             .expect_create()
             .times(1)
@@ -376,6 +465,7 @@ mod tests {
         expect_caller(&mut users, 1)?;
         let mut galleries = MockGalleryRepository::new();
         let stored = gallery(9, Some(1), "Holidays", false)?;
+        expect_no_collision(&mut galleries);
         galleries.expect_create().times(1).return_once(move |_| {
             let found = stored.clone();
             Box::pin(async move { Ok(found) })

@@ -509,6 +509,48 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn create_rejects_duplicate_name_for_the_same_owner() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let mut transaction = begin_transaction().await?;
+        seed_user(&mut transaction, 1).await?;
+        let mut repository = SqlxGalleryRepository::new(&mut transaction);
+        repository
+            .create(gallery(0, Some(1), "Holidays", false)?)
+            .await?;
+
+        // Act
+        let duplicate = repository
+            .create(gallery(0, Some(1), "Holidays", true)?)
+            .await;
+
+        // Assert: uq_gallery_user_id_name rejects a second name for the owner.
+        assert!(matches!(duplicate, Err(RepositoryError::AlreadyExist)));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn create_allows_the_same_name_for_different_owners() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let mut transaction = begin_transaction().await?;
+        seed_user(&mut transaction, 1).await?;
+        seed_user(&mut transaction, 2).await?;
+        let mut repository = SqlxGalleryRepository::new(&mut transaction);
+        let first = repository
+            .create(gallery(0, Some(1), "Holidays", false)?)
+            .await?;
+
+        // Act
+        let second = repository
+            .create(gallery(0, Some(2), "Holidays", false)?)
+            .await?;
+
+        // Assert
+        assert_ne!(first.gallery_id(), second.gallery_id());
+        assert_eq!(second.name(), "Holidays");
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn save_persists_last_modified_at() -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut transaction = begin_transaction().await?;
@@ -670,11 +712,12 @@ mod tests {
         repository
             .create(gallery(0, Some(1), "Trip", true)?)
             .await?;
+        // A second owner may reuse the name: uniqueness is per owner.
         repository
-            .create(gallery(0, Some(1), "Trip", false)?)
+            .create(gallery(0, Some(2), "Trip", false)?)
             .await?;
         repository
-            .create(gallery(0, Some(2), "Other", true)?)
+            .create(gallery(0, Some(1), "Other", true)?)
             .await?;
 
         // Act
@@ -754,6 +797,45 @@ mod tests {
 
         // Assert
         assert!(found.is_empty());
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn search_filters_by_name_and_owner_conjunctively() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let mut transaction = begin_transaction().await?;
+        seed_user(&mut transaction, 1).await?;
+        seed_user(&mut transaction, 2).await?;
+        let mut repository = SqlxGalleryRepository::new(&mut transaction);
+        repository
+            .create(gallery(0, Some(1), "Holidays", false)?)
+            .await?;
+        repository
+            .create(gallery(0, Some(2), "Holidays", false)?)
+            .await?;
+        repository
+            .create(gallery(0, Some(1), "Other", false)?)
+            .await?;
+
+        // Act
+        let by_name_and_owner = repository
+            .search(&GalleryFilter {
+                name: Some("Holidays".to_owned()),
+                user_id: Some(1),
+                ..GalleryFilter::default()
+            })
+            .await?;
+
+        // Assert: both conditions must hold, so only the caller's own row matches.
+        assert_eq!(by_name_and_owner.len(), 1);
+        assert_eq!(
+            by_name_and_owner.first().and_then(Gallery::user_id),
+            Some(1)
+        );
+        assert_eq!(
+            by_name_and_owner.first().map(Gallery::name),
+            Some("Holidays")
+        );
         Ok(())
     }
 

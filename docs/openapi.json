@@ -1925,6 +1925,16 @@
             },
             "description": "Missing or invalid credentials"
           },
+          "409": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The caller already owns a gallery with this name"
+          },
           "413": {
             "content": {
               "application/hal+json": {

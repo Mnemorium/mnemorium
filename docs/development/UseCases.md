@@ -411,3 +411,56 @@ The upload flow is resumable and chunked, so it spans several requests.
 
 - The file exists on the storage with a unique path.
 - A file record bound to the caller exists in the datastore with its media type, integrity hash, and private visibility.
+
+## UC-007 - Create a Gallery
+
+### Description
+
+Allow an authenticated user to create a gallery they own to collect images and videos.
+
+### Primary actor
+
+- Standard User
+- Admin
+
+### Pre condition(s)
+
+- The caller is authenticated.
+
+### Trigger(s)
+
+- Gallery creation request (`POST /api/v1/library/gallery`).
+
+### Bounded context(s)
+
+- Library
+
+### Application use case(s)
+
+- `create_gallery.rs`
+
+### Business rules
+
+- The gallery name is required, must not be empty or only whitespace, and must be at most 100 characters long.
+- A caller's gallery names are unique: the same owner cannot create two galleries with the same name.
+- A gallery is private by default; the caller may request it be public.
+- The caller becomes the gallery owner.
+- A newly created gallery is empty.
+
+### Happy path
+
+1. The caller submits a gallery creation request carrying a name and an optional visibility.
+2. The system validates the name against the business rules.
+3. The system verifies the caller does not already own a gallery with the same name.
+4. The system creates the gallery owned by the caller.
+5. The system returns the created gallery.
+
+### Alternative flow
+
+- 2a. The name is empty or only whitespace, or longer than 100 characters; the system rejects the request.
+- 3a. The caller already owns a gallery with the same name; the system rejects the request.
+
+### Post condition(s)
+
+- A gallery owned by the caller exists.
+- The new gallery holds no item.

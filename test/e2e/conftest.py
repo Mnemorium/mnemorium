@@ -1,3 +1,5 @@
+import base64
+import hashlib
 import os
 import re
 import subprocess
@@ -23,6 +25,9 @@ LOGIN_PATH = f"{API_PREFIX}/identity/login"
 REGISTER_PATH = f"{API_PREFIX}/identity/register"
 ME_PATH = f"{API_PREFIX}/user/me"
 
+LIBRARY_GALLERY_PATH = f"{API_PREFIX}/library/gallery"
+UPLOAD_PATH = f"{API_PREFIX}/asset/upload"
+
 ROOT_ADMIN_USERNAME = "root"
 
 # The one secret password every generic test uses for users it provisions or
@@ -35,6 +40,12 @@ STANDARD_USER_USERNAME = "alice"
 STANDARD_USER_EMAIL = "alice@example.com"
 STANDARD_USER_PASSWORD = SECRET_PASSWORD
 STANDARD_USER_ROLE = "STANDARD"
+
+# A second Standard User, for cross-user visibility and ownership cases.
+SECOND_STANDARD_USER_USERNAME = "bobby"
+SECOND_STANDARD_USER_EMAIL = "bobby@example.com"
+SECOND_STANDARD_USER_PASSWORD = SECRET_PASSWORD
+SECOND_STANDARD_USER_ROLE = "STANDARD"
 
 ADMIN_USER_USERNAME = "mallory"
 ADMIN_USER_EMAIL = "mallory@example.com"
@@ -210,3 +221,181 @@ def standard_user_token(
         STANDARD_USER_PASSWORD,
         STANDARD_USER_ROLE,
     )
+
+
+@pytest.fixture
+def second_standard_user_token(
+    root_admin_token: str,
+    register: Callable[[str, str, str | None, str, str], requests.Response],
+    login: Callable[[str, str], str],
+) -> str:
+    """Access token of the Standard User "bob", provisioned on first use."""
+    return _provision_user(
+        register,
+        login,
+        root_admin_token,
+        SECOND_STANDARD_USER_USERNAME,
+        SECOND_STANDARD_USER_EMAIL,
+        SECOND_STANDARD_USER_PASSWORD,
+        SECOND_STANDARD_USER_ROLE,
+    )
+
+
+@pytest.fixture
+def upload_media(server_url: str) -> Callable[[str, str, bytes, str], int]:
+    """Return a callable that stages media as one upload chunk.
+
+    The callable begins a chunked upload for `file_name` and stores `data` as
+    its only chunk, returning the upload session identifier. Completing the
+    session with [`register_media`] is what registers the medium.
+    """
+
+    def _upload_media(
+        token: str,
+        file_name: str,
+        data: bytes,
+        content_type: str = "image/png",
+    ) -> int:
+        authorization = {"Authorization": f"Bearer {token}"}
+        digest = hashlib.sha256(data).digest()
+        begin = requests.post(
+            f"{server_url}{UPLOAD_PATH}",
+            headers=authorization,
+            json={
+                "content_type": content_type,
+                "file_name": file_name,
+                "file_size": len(data),
+                "integrity_hash": digest.hex(),
+            },
+            timeout=10,
+        )
+        assert begin.status_code == 201, f"begin failed: {begin.status_code} {begin.text}"
+        upload_id = begin.json()["upload_id"]
+
+        chunk = requests.put(
+            f"{server_url}{UPLOAD_PATH}/{upload_id}/chunk/0",
+            headers={
+                **authorization,
+                "Content-Type": "application/octet-stream",
+                "Content-Range": f"bytes 0-{len(data) - 1}/{len(data)}",
+                "Content-Digest": f"sha-256=:{base64.b64encode(digest).decode()}:",
+            },
+            data=data,
+            timeout=10,
+        )
+        assert chunk.status_code == 200, f"chunk failed: {chunk.status_code} {chunk.text}"
+        return upload_id
+
+    return _upload_media
+
+
+@pytest.fixture
+def register_media(server_url: str) -> Callable[[str, int], int]:
+    """Return a callable that completes an upload session, registering its medium.
+
+    Media registration has no route of its own: the upload-completion handler
+    registers the image or video row as a side effect (design § 8). The callable
+    returns the identifier of the finalized backing file.
+    """
+
+    def _register_media(token: str, upload_id: int) -> int:
+        response = requests.post(
+            f"{server_url}{UPLOAD_PATH}/{upload_id}/complete",
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=30,
+        )
+        assert response.status_code == 200, f"complete failed: {response.status_code} {response.text}"
+        return int(response.json()["file_id"])
+
+    return _register_media
+
+
+@pytest.fixture
+def create_gallery(server_url: str) -> Callable[[str, str, bool], requests.Response]:
+    """Return a callable that POSTs a gallery creation request."""
+
+    def _create_gallery(token: str, name: str, is_public: bool = False) -> requests.Response:
+        return requests.post(
+            f"{server_url}{LIBRARY_GALLERY_PATH}",
+            headers={"Authorization": f"Bearer {token}"},
+            json={"name": name, "is_public": is_public},
+            timeout=10,
+        )
+
+    return _create_gallery
+
+
+@pytest.fixture
+def add_gallery_item(server_url: str) -> Callable[[str, int, str, int], requests.Response]:
+    """Return a callable that POSTs one of the caller's media to a gallery."""
+
+    def _add_gallery_item(
+        token: str,
+        gallery_id: int,
+        media_type: str,
+        media_id: int,
+    ) -> requests.Response:
+        return requests.post(
+            f"{server_url}{LIBRARY_GALLERY_PATH}/{gallery_id}/item",
+            headers={"Authorization": f"Bearer {token}"},
+            json={"type": media_type, "media_id": media_id},
+            timeout=10,
+        )
+
+    return _add_gallery_item
+
+
+@pytest.fixture
+def get_gallery(server_url: str) -> Callable[[str, int], requests.Response]:
+    """Return a callable that GETs a gallery and its items by identifier."""
+
+    def _get_gallery(token: str, gallery_id: int) -> requests.Response:
+        return requests.get(
+            f"{server_url}{LIBRARY_GALLERY_PATH}/{gallery_id}",
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=10,
+        )
+
+    return _get_gallery
+
+
+@pytest.fixture
+def delete_gallery(server_url: str) -> Callable[[str, int], requests.Response]:
+    """Return a callable that DELETEs a gallery by identifier."""
+
+    def _delete_gallery(token: str, gallery_id: int) -> requests.Response:
+        return requests.delete(
+            f"{server_url}{LIBRARY_GALLERY_PATH}/{gallery_id}",
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=10,
+        )
+
+    return _delete_gallery
+
+
+@pytest.fixture
+def get_gallery_item(server_url: str) -> Callable[[str, int, int], requests.Response]:
+    """Return a callable that GETs one item of a gallery."""
+
+    def _get_gallery_item(token: str, gallery_id: int, item_id: int) -> requests.Response:
+        return requests.get(
+            f"{server_url}{LIBRARY_GALLERY_PATH}/{gallery_id}/item/{item_id}",
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=10,
+        )
+
+    return _get_gallery_item
+
+
+@pytest.fixture
+def delete_gallery_item(server_url: str) -> Callable[[str, int, int], requests.Response]:
+    """Return a callable that DELETEs one item of a gallery."""
+
+    def _delete_gallery_item(token: str, gallery_id: int, item_id: int) -> requests.Response:
+        return requests.delete(
+            f"{server_url}{LIBRARY_GALLERY_PATH}/{gallery_id}/item/{item_id}",
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=10,
+        )
+
+    return _delete_gallery_item
