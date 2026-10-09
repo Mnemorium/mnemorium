@@ -92,9 +92,14 @@ where
                 return Err(BeginUploadError::InvalidFileSize);
             }
             if file_size > max_file_size_bytes {
+                security_event::suspicious_business_logic(
+                    command.user_id(),
+                    "begin_upload",
+                    "file_size_exceeded",
+                );
                 return Err(BeginUploadError::FileTooLarge);
             }
-            let total_chunks = validate_total_chunks(file_size, chunk_size)?;
+            let total_chunks = validate_total_chunks(command.user_id(), file_size, chunk_size)?;
 
             let mut unit_of_work = unit_of_work_factory
                 .begin()
@@ -249,13 +254,18 @@ where
     clippy::single_call_fn,
     reason = "the chunk-count bound is named after the rule it enforces"
 )]
-fn validate_total_chunks(file_size: u64, chunk_size: u64) -> Result<usize, BeginUploadError> {
+fn validate_total_chunks(
+    actor: i64,
+    file_size: u64,
+    chunk_size: u64,
+) -> Result<usize, BeginUploadError> {
     let total = file_size.div_ceil(chunk_size);
     let total_chunks = usize::try_from(total).map_err(|error| {
         security_event::application_error("begin_upload");
         BeginUploadError::Unknown(anyhow::anyhow!(error))
     })?;
     if total_chunks > MAX_TOTAL_CHUNKS {
+        security_event::suspicious_business_logic(actor, "begin_upload", "total_chunks_exceeded");
         return Err(BeginUploadError::FileTooLarge);
     }
     Ok(total_chunks)
@@ -264,10 +274,18 @@ fn validate_total_chunks(file_size: u64, chunk_size: u64) -> Result<usize, Begin
 #[cfg(test)]
 mod tests {
     use std::error::Error;
+    use std::io as stdio;
     use std::path::PathBuf;
     use std::sync::Arc;
+    use std::sync::Mutex;
+    use std::sync::PoisonError;
     use std::sync::atomic::AtomicBool;
     use std::sync::atomic::Ordering;
+
+    use tracing::subscriber::DefaultGuard;
+    use tracing::subscriber::set_default;
+    use tracing_subscriber::fmt;
+    use tracing_subscriber::layer::SubscriberExt as _;
 
     use crate::application::port::begin_upload::BeginUploadCommand;
     use crate::application::port::begin_upload::BeginUploadError;
@@ -309,6 +327,42 @@ mod tests {
         rolled_back: Arc<AtomicBool>,
         /// The use case under test.
         use_case: UseCase,
+    }
+
+    /// Append-only sink that lets a test read back the lines [`fmt`] emits.
+    #[derive(Clone)]
+    struct CaptureWriter {
+        /// Buffer shared with the test that asserts on the captured output.
+        buffer: Arc<Mutex<Vec<u8>>>,
+    }
+
+    #[expect(
+        clippy::missing_trait_methods,
+        reason = "only the raw `write` and `flush` are meaningful for an in-memory capture buffer"
+    )]
+    impl stdio::Write for CaptureWriter {
+        fn flush(&mut self) -> stdio::Result<()> {
+            Ok(())
+        }
+
+        fn write(&mut self, buf: &[u8]) -> stdio::Result<usize> {
+            let mut buffer = self.buffer.lock().unwrap_or_else(PoisonError::into_inner);
+            buffer.extend_from_slice(buf);
+            Ok(buf.len())
+        }
+    }
+
+    /// Hand every formatted event to a fresh clone of the shared buffer.
+    #[expect(
+        clippy::missing_trait_methods,
+        reason = "the default `make_writer_for` already routes through `make_writer`"
+    )]
+    impl<'writer> fmt::MakeWriter<'writer> for CaptureWriter {
+        type Writer = Self;
+
+        fn make_writer(&'writer self) -> Self::Writer {
+            self.clone()
+        }
     }
 
     fn use_case_with(
@@ -389,6 +443,29 @@ mod tests {
             .expect_exists()
             .times(1)
             .returning(move |_| Box::pin(async move { Ok(exists) }));
+    }
+
+    /// Install a capturing subscriber on the current thread and return the
+    /// shared buffer plus the guard that keeps it active.
+    ///
+    /// The guard must stay alive for the whole execute: `#[tokio::test]` runs on
+    /// a current-thread runtime, so the awaited call is polled on this thread and
+    /// sees the scoped default dispatcher.
+    fn capture_logs() -> (Arc<Mutex<Vec<u8>>>, DefaultGuard) {
+        let buffer = Arc::new(Mutex::new(Vec::new()));
+        let subscriber = tracing_subscriber::registry().with(
+            fmt::layer().with_ansi(false).with_writer(CaptureWriter {
+                buffer: Arc::clone(&buffer),
+            }),
+        );
+        let guard = set_default(subscriber);
+        (buffer, guard)
+    }
+
+    /// Read the captured bytes back as a lossy UTF-8 string.
+    fn captured_logs(buffer: &Mutex<Vec<u8>>) -> String {
+        let bytes = buffer.lock().unwrap_or_else(PoisonError::into_inner);
+        String::from_utf8_lossy(bytes.as_slice()).into_owned()
     }
 
     #[expect(
@@ -668,6 +745,7 @@ mod tests {
     #[tokio::test]
     async fn begin_upload_file_at_max_size_succeeds() -> Result<(), Box<dyn Error>> {
         // Arrange
+        let (buffer, _capture) = capture_logs();
         let max_file_size = 10;
         let harness = use_case_with_max(
             |uploads, mime_types, file_storage| {
@@ -692,6 +770,11 @@ mod tests {
         // Assert
         assert_eq!(response.chunk_size(), CHUNK_SIZE);
         assert!(harness.committed.load(Ordering::SeqCst));
+        let logs = captured_logs(&buffer);
+        assert!(
+            !logs.contains("suspicious_business_logic"),
+            "a file at the size limit must not emit a suspicious_business_logic event: {logs}"
+        );
         Ok(())
     }
 
@@ -701,6 +784,7 @@ mod tests {
         // Arrange
         // No repository or storage expectation: the rejection must happen before
         // any of them is reached (mockall fails the test on an unexpected call).
+        let (buffer, _capture) = capture_logs();
         let harness = use_case_with_max(|_, _, _| Ok(()), 10)?;
         let command = command(11);
 
@@ -711,6 +795,33 @@ mod tests {
         assert!(matches!(result, Err(BeginUploadError::FileTooLarge)));
         assert!(!harness.committed.load(Ordering::SeqCst));
         assert!(!harness.rolled_back.load(Ordering::SeqCst));
+        let logs = captured_logs(&buffer);
+        assert_eq!(
+            logs.matches("WARN").count(),
+            1,
+            "the declared-size rejection must emit exactly one warn event: {logs}"
+        );
+        assert_eq!(
+            logs.matches("event=\"suspicious_business_logic\"").count(),
+            1,
+            "the declared-size rejection must emit exactly one suspicious_business_logic event: {logs}"
+        );
+        assert!(
+            logs.contains("security"),
+            "the event must target the reserved security target: {logs}"
+        );
+        assert!(
+            logs.contains(" actor=3 "),
+            "the event must carry the command's actor: {logs}"
+        );
+        assert!(
+            logs.contains("action=begin_upload"),
+            "the event must carry the use-case action: {logs}"
+        );
+        assert!(
+            logs.contains("reason=file_size_exceeded"),
+            "the event must classify the reason as the declared size: {logs}"
+        );
         Ok(())
     }
 
@@ -736,6 +847,7 @@ mod tests {
         // Exactly `MAX_TOTAL_CHUNKS` chunks is the largest file the chunk-count
         // backstop accepts. `max_file_size_bytes` equals the declared size, so
         // the size rule is satisfied at its limit and the chunk rule decides.
+        let (buffer, _capture) = capture_logs();
         let harness = use_case_with_max(
             |uploads, mime_types, file_storage| {
                 expect_mime_type(mime_types, true);
@@ -761,6 +873,11 @@ mod tests {
         assert_eq!(response.chunk_size(), CHUNK_SIZE);
         assert!(harness.committed.load(Ordering::SeqCst));
         assert!(!harness.rolled_back.load(Ordering::SeqCst));
+        let logs = captured_logs(&buffer);
+        assert!(
+            !logs.contains("suspicious_business_logic"),
+            "a file at the chunk-count limit must not emit a suspicious_business_logic event: {logs}"
+        );
         Ok(())
     }
 
@@ -770,6 +887,7 @@ mod tests {
         // One byte past the largest file that fits in `MAX_TOTAL_CHUNKS`
         // chunks. `max_file_size_bytes` equals the declared size, so the size
         // rule is satisfied and only the chunk-count backstop can reject.
+        let (buffer, _capture) = capture_logs();
         let file_size = MAX_TOTAL_CHUNKS_FILE_SIZE + 1;
         let harness = use_case_with_max(|_, _, _| Ok(()), file_size)?;
         let command = command(file_size);
@@ -781,6 +899,33 @@ mod tests {
         assert!(matches!(result, Err(BeginUploadError::FileTooLarge)));
         assert!(!harness.committed.load(Ordering::SeqCst));
         assert!(!harness.rolled_back.load(Ordering::SeqCst));
+        let logs = captured_logs(&buffer);
+        assert_eq!(
+            logs.matches("WARN").count(),
+            1,
+            "the chunk-count rejection must emit exactly one warn event: {logs}"
+        );
+        assert_eq!(
+            logs.matches("event=\"suspicious_business_logic\"").count(),
+            1,
+            "the chunk-count rejection must emit exactly one suspicious_business_logic event: {logs}"
+        );
+        assert!(
+            logs.contains("security"),
+            "the event must target the reserved security target: {logs}"
+        );
+        assert!(
+            logs.contains(" actor=3 "),
+            "the event must carry the command's actor: {logs}"
+        );
+        assert!(
+            logs.contains("action=begin_upload"),
+            "the event must carry the use-case action: {logs}"
+        );
+        assert!(
+            logs.contains("reason=total_chunks_exceeded"),
+            "the event must classify the reason as the chunk-count limit: {logs}"
+        );
         Ok(())
     }
 }

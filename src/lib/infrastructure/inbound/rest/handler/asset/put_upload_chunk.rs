@@ -2,6 +2,7 @@ use axum::Json;
 use axum::body::Bytes;
 use axum::extract::Path;
 use axum::extract::State;
+use axum::extract::rejection::BytesRejection;
 use axum::http::HeaderMap;
 use axum::http::HeaderValue;
 use axum::http::header;
@@ -162,8 +163,13 @@ pub async fn put_upload_chunk(
     caller: AuthenticatedUser,
     Path((upload_id_value, chunk_number_value)): Path<(String, String)>,
     headers: HeaderMap,
-    body: Bytes,
+    raw_body: Result<Bytes, BytesRejection>,
 ) -> Result<Response, ApiError> {
+    // Resolve the extractor result first: an oversized body must produce the
+    // `413` and its catalogued `limit_exceeded` event regardless of the path
+    // parameters or headers, which fail independently (`OBS-006`, `API-041`).
+    let body = raw_body.map_err(ApiError::from)?;
+
     let Ok(upload_id) = upload_id_value.parse::<NumericID>() else {
         return Err(ApiError::BadRequest(
             "invalid upload session identifier".to_owned(),

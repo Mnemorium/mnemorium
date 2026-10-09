@@ -2808,6 +2808,7 @@ code or a classification — never a value.
 | `authz_failed`              | `warn`  | `actor`, `action`, `target`  | an authorization decision denies an action                                                  |
 | `session_validation_failed` | `warn`  | `reason`                     | a token is missing, invalid or expired                                                      |
 | `rate_limit_exceeded`       | `warn`  | `route`, `reason`            | a request is rejected by a rate limiter                                                     |
+| `limit_exceeded`            | `warn`  | `source`, `reason`           | a request body exceeds a configured size limit                                              |
 | `deserialization_failed`    | `warn`  | `source`, `reason`           | a JSON body or the configuration fails to deserialize                                       |
 | `extractor_fault`           | `error` | `reason`                     | an inbound path extractor rejects a request for a server-side routing fault                 |
 | `application_error`         | `error` | `operation`                  | a use case originates an internal `Unknown`                                                 |
@@ -2828,6 +2829,9 @@ An explicit, narrow exception to the field rule above: `authn_failed.claimed_ide
 because it is the only identity available when authentication fails and no identifier can stand in for it. The field
 escapes control characters and bounds its length, so it cannot forge a log record (`OBS-003`); `OBS-003` and `OBS-004`
 remain in force for every other event: they still forbid a raw client-supplied request-body field and personal data.
+
+A transport body-size rejection is `limit_exceeded`; an application-declared business-limit rejection is
+`suspicious_business_logic`.
 
 Events with no surface in this server are deliberately absent: import/export, network and TLS failures, payment,
 geolocation and consent, fraud, excessive use, and key rotation.
