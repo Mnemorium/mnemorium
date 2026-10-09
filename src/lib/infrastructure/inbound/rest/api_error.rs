@@ -115,9 +115,7 @@ impl From<JsonRejection> for ApiError {
         // `reason` for `input_validation_failed`, `source` and `reason` for
         // `deserialization_failed`.
         match rejection {
-            JsonRejection::BytesRejection(bytes_rejection) => {
-                Self::from_bytes_rejection(&bytes_rejection)
-            }
+            JsonRejection::BytesRejection(bytes_rejection) => Self::from(bytes_rejection),
             JsonRejection::MissingJsonContentType(_) => {
                 warn!(
                     target: "security",
@@ -265,6 +263,12 @@ impl From<QueryRejection> for ApiError {
     }
 }
 
+impl From<BytesRejection> for ApiError {
+    fn from(rejection: BytesRejection) -> Self {
+        Self::from_bytes_rejection(&rejection)
+    }
+}
+
 impl ApiError {
     /// Map a failed body buffer to a `413` or a generic `400`.
     #[expect(
@@ -333,10 +337,12 @@ mod tests {
     use axum::Json;
     use axum::Router;
     use axum::body::Body;
+    use axum::body::Bytes;
     use axum::extract::DefaultBodyLimit;
     use axum::extract::Request;
     use axum::extract::State;
     use axum::extract::path::ErrorKind;
+    use axum::extract::rejection::BytesRejection;
     use axum::extract::rejection::JsonRejection;
     use axum::extract::rejection::MissingPathParams;
     use axum::extract::rejection::PathRejection;
@@ -411,6 +417,18 @@ mod tests {
         Ok(Json(probe))
     }
 
+    /// Echo the buffered raw body, converting any rejection through the impl.
+    #[expect(
+        clippy::single_call_fn,
+        reason = "the probe handler is a route target named for readability"
+    )]
+    async fn bytes_probe(
+        State(_state): State<AppState>,
+        body: Result<Bytes, BytesRejection>,
+    ) -> Result<Bytes, ApiError> {
+        body.map_err(ApiError::from)
+    }
+
     /// Drive the probe route and return the response.
     ///
     /// A `JsonRejection` cannot be constructed directly, so the tests obtain a
@@ -434,6 +452,33 @@ mod tests {
             builder = builder.header(header::CONTENT_TYPE, value);
         }
         let request = builder.body(Body::from(body.to_owned()))?;
+        let response = router.oneshot(request).await?;
+        Ok(response)
+    }
+
+    /// Drive the raw-bytes probe route and return the response.
+    ///
+    /// A `BytesRejection` cannot be constructed directly, so the test obtains a
+    /// real one by routing an over-limit body through the `Bytes` extractor
+    /// under a `DefaultBodyLimit::max` layer.
+    #[expect(
+        clippy::single_call_fn,
+        reason = "the probe harness is named for readability"
+    )]
+    async fn bytes_rejection_response(
+        body: &str,
+        body_limit: usize,
+    ) -> Result<Response, Box<dyn Error>> {
+        let router = Router::new()
+            .route(
+                "/probe-bytes",
+                post(bytes_probe).layer(DefaultBodyLimit::max(body_limit)),
+            )
+            .with_state(app_state()?);
+        let request = Request::builder()
+            .method("POST")
+            .uri("/probe-bytes")
+            .body(Body::from(body.to_owned()))?;
         let response = router.oneshot(request).await?;
         Ok(response)
     }
@@ -638,6 +683,25 @@ mod tests {
         assert!(
             !logs.contains("limit_exceeded"),
             "a valid body within the limit must not emit a limit_exceeded event: {logs}"
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn from_bytes_rejection_probe_body_within_limit_logs_no_limit_exceeded()
+    -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let (buffer, _capture) = capture_logs();
+
+        // Act
+        let response = bytes_rejection_response("LEAK_SENTINEL", 32).await?;
+
+        // Assert
+        assert_eq!(response.status(), StatusCode::OK);
+        let logs = captured_logs(&buffer);
+        assert!(
+            !logs.contains("limit_exceeded"),
+            "a raw body within the limit must not emit a limit_exceeded event: {logs}"
         );
         Ok(())
     }
