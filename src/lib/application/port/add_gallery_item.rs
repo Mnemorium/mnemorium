@@ -153,7 +153,7 @@ pub enum AddGalleryItemError {
     /// No medium matches the requested identifier.
     #[error("a medium with this identifier does not exist")]
     NoSuchMedia,
-    /// The caller does not own the medium and is not an administrator.
+    /// The caller does not own the medium and is not the Root Admin.
     #[error("the caller does not own this medium")]
     NotOwnedMedia,
     /// An unexpected or unmapped error occurred.

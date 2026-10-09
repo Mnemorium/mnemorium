@@ -524,3 +524,65 @@ Allow an authenticated user to browse the galleries and items they may see.
 ### Post condition(s)
 
 - The caller holds the requested galleries and items.
+
+## UC-009 - Add an Image or Video to a Gallery
+
+### Description
+
+Allow an authenticated user to append one of their images or videos to a gallery they may contribute to.
+
+### Primary actor
+
+- Standard User
+- Admin
+- Root Admin
+
+### Pre condition(s)
+
+- The caller is authenticated.
+
+### Trigger(s)
+
+- `POST /api/v1/library/gallery/{id}/item`
+
+### Bounded context(s)
+
+- Library
+
+### Application use case(s)
+
+- `add_gallery_item.rs`
+
+### Business rules
+
+- The caller may contribute to a public gallery; a private gallery accepts contributions from its owner or the Root
+  Admin only.
+- The image or video must belong to the caller, unless the caller is the Root Admin.
+- The image or video must exist.
+- An image or a video may belong to at most one gallery, and at most once.
+- The item order is server-assigned and appended after the last existing item.
+- Adding an item updates the gallery's last-modified time.
+
+### Happy path
+
+1. The caller submits an add request carrying the media type (image or video) and the backing file identifier.
+2. The system verifies the caller may contribute to the gallery.
+3. The system resolves the image or video and its backing file.
+4. The system verifies the caller owns the backing file, or is the Root Admin.
+5. The system verifies the image or video is not already in a gallery.
+6. The system appends the item at the next order position.
+7. The system returns the created item.
+
+### Alternative flow
+
+- 1a. The media type is neither image nor video; the system rejects the request.
+- 2a. The gallery is private and the caller is neither its owner nor the Root Admin; the system rejects the request.
+- 2b. No gallery matches the requested identifier; the system rejects the request.
+- 3a. No image or video matches the requested media identifier; the system rejects the request.
+- 4a. The image or video belongs to another user and the caller is not the Root Admin; the system rejects the request.
+- 5a. The image or video already belongs to a gallery; the system rejects the request.
+
+### Post condition(s)
+
+- The gallery holds the new item at the next order position.
+- The image or video belongs to this gallery.

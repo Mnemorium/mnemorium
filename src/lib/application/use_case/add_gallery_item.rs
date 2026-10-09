@@ -13,6 +13,8 @@ use crate::application::use_case::library_access;
 use crate::domain::alias::NumericID;
 use crate::domain::model::gallery_item::GalleryItem;
 use crate::domain::model::gallery_item::GalleryItemMedia;
+use crate::domain::model::image::Image;
+use crate::domain::model::video::Video;
 use crate::domain::port::asset_unit_of_work::AssetUnitOfWork;
 use crate::domain::port::file_repository::FileFilter;
 use crate::domain::port::file_repository::FileRepository as _;
@@ -20,7 +22,9 @@ use crate::domain::port::gallery_repository::GalleryFilter;
 use crate::domain::port::gallery_repository::GalleryItemFilter;
 use crate::domain::port::gallery_repository::GalleryRepository as _;
 use crate::domain::port::library_unit_of_work::LibraryUnitOfWork;
+use crate::domain::port::media_repository::ImageFilter;
 use crate::domain::port::media_repository::MediaRepository as _;
+use crate::domain::port::media_repository::VideoFilter;
 use crate::domain::port::unit_of_work::UnitOfWork as _;
 use crate::domain::port::unit_of_work::UnitOfWorkFactory;
 use crate::domain::port::user_unit_of_work::UserUnitOfWork;
@@ -96,7 +100,7 @@ where
                 let already_assigned = !unit_of_work
                     .galleries()
                     .search_items(&GalleryItemFilter {
-                        media: Some(command.media()),
+                        media: Some(media.media()),
                         ..GalleryItemFilter::default()
                     })
                     .await
@@ -112,7 +116,7 @@ where
                     .next_item_index(command.gallery_id())
                     .await
                     .map_err(|error| AddGalleryItemError::Unknown(error.into()))?;
-                let (image_id, video_id) = match command.media() {
+                let (image_id, video_id) = match media.media() {
                     GalleryItemMedia::Image(id) => (Some(id), None),
                     GalleryItemMedia::Video(id) => (None, Some(id)),
                 };
@@ -173,6 +177,8 @@ where
 struct ResolvedMedia {
     /// Identifier of the backing file.
     file_id: NumericID,
+    /// The resolved medium, carrying its image/video identifier.
+    media: GalleryItemMedia,
     /// Name of the item: the image name, or the file path for a video.
     name: String,
     /// Identifier of the user owning the backing file.
@@ -183,6 +189,11 @@ impl ResolvedMedia {
     /// Return the identifier of the backing file.
     fn file_id(&self) -> NumericID {
         self.file_id
+    }
+
+    /// Return the resolved medium, carrying its image/video identifier.
+    fn media(&self) -> GalleryItemMedia {
+        self.media
     }
 
     /// Return the name of the item.
@@ -196,8 +207,9 @@ impl ResolvedMedia {
     }
 }
 
-/// Resolve the medium referenced by `media`, returning the backing file's
-/// identifier, the item's display name and the owner of the backing file.
+/// Resolve the medium referenced by `media`, returning the resolved medium, its
+/// backing file's identifier, the item's display name and the owner of the
+/// backing file.
 ///
 /// # Errors
 ///
@@ -215,24 +227,22 @@ async fn resolve_media<U>(
 where
     U: LibraryUnitOfWork + AssetUnitOfWork,
 {
-    let (file_id, image_name) = match media {
+    let (resolved, file_id, image_name) = match media {
         GalleryItemMedia::Image(image_id) => {
-            let image = unit_of_work
-                .media()
-                .get_image(image_id)
-                .await
-                .map_err(|error| AddGalleryItemError::Unknown(error.into()))?
-                .ok_or(AddGalleryItemError::NoSuchMedia)?;
-            (image.file_id(), Some(image.name().to_owned()))
+            let image = resolve_image(unit_of_work, image_id).await?;
+            (
+                GalleryItemMedia::Image(image.image_id()),
+                image.file_id(),
+                Some(image.name().to_owned()),
+            )
         }
         GalleryItemMedia::Video(video_id) => {
-            let video = unit_of_work
-                .media()
-                .get_video(video_id)
-                .await
-                .map_err(|error| AddGalleryItemError::Unknown(error.into()))?
-                .ok_or(AddGalleryItemError::NoSuchMedia)?;
-            (video.file_id(), None)
+            let video = resolve_video(unit_of_work, video_id).await?;
+            (
+                GalleryItemMedia::Video(video.video_id()),
+                video.file_id(),
+                None,
+            )
         }
     };
 
@@ -253,9 +263,78 @@ where
 
     Ok(ResolvedMedia {
         file_id,
+        media: resolved,
         name,
         user_id: file.user_id(),
     })
+}
+
+/// Return the image whose backing file is `file_id`.
+///
+/// A freshly completed upload exposes the backing file's identifier to the
+/// client, so the add request carries the file identifier.
+///
+/// # Errors
+///
+/// Returns [`AddGalleryItemError::NoSuchMedia`] when no image references
+/// `file_id`, and [`AddGalleryItemError::Unknown`] when the repository read
+/// fails.
+#[expect(
+    clippy::single_call_fn,
+    reason = "the image resolution is named after the step it performs"
+)]
+async fn resolve_image<U>(
+    unit_of_work: &mut U,
+    file_id: NumericID,
+) -> Result<Image, AddGalleryItemError>
+where
+    U: LibraryUnitOfWork + AssetUnitOfWork,
+{
+    unit_of_work
+        .media()
+        .search_images(&ImageFilter {
+            file_id: Some(file_id),
+            ..ImageFilter::default()
+        })
+        .await
+        .map_err(|error| AddGalleryItemError::Unknown(error.into()))?
+        .into_iter()
+        .next()
+        .ok_or(AddGalleryItemError::NoSuchMedia)
+}
+
+/// Return the video whose backing file is `file_id`.
+///
+/// A freshly completed upload exposes the backing file's identifier to the
+/// client, so the add request carries the file identifier.
+///
+/// # Errors
+///
+/// Returns [`AddGalleryItemError::NoSuchMedia`] when no video references
+/// `file_id`, and [`AddGalleryItemError::Unknown`] when the repository read
+/// fails.
+#[expect(
+    clippy::single_call_fn,
+    reason = "the video resolution is named after the step it performs"
+)]
+async fn resolve_video<U>(
+    unit_of_work: &mut U,
+    file_id: NumericID,
+) -> Result<Video, AddGalleryItemError>
+where
+    U: LibraryUnitOfWork + AssetUnitOfWork,
+{
+    unit_of_work
+        .media()
+        .search_videos(&VideoFilter {
+            file_id: Some(file_id),
+            ..VideoFilter::default()
+        })
+        .await
+        .map_err(|error| AddGalleryItemError::Unknown(error.into()))?
+        .into_iter()
+        .next()
+        .ok_or(AddGalleryItemError::NoSuchMedia)
 }
 
 #[cfg(test)]
@@ -407,12 +486,24 @@ mod tests {
             .returning(|saved| Box::pin(async move { Ok(saved) }));
     }
 
-    fn expect_image(media: &mut MockMediaRepository, image_id: i64, stored: Image) {
+    fn expect_image(media: &mut MockMediaRepository, file_id: i64, stored: Image) {
         media
-            .expect_get_image()
+            .expect_search_images()
             .times(1)
-            .withf(move |id| *id == image_id)
-            .return_once(move |_| Box::pin(async move { Ok(Some(stored)) }));
+            .withf(move |filter| filter.file_id == Some(file_id))
+            .return_once(move |_| Box::pin(async move { Ok(vec![stored]) }));
+    }
+
+    #[expect(
+        clippy::single_call_fn,
+        reason = "the video expectation is named after the mock it configures"
+    )]
+    fn expect_video(media: &mut MockMediaRepository, file_id: i64, stored: Video) {
+        media
+            .expect_search_videos()
+            .times(1)
+            .withf(move |filter| filter.file_id == Some(file_id))
+            .return_once(move |_| Box::pin(async move { Ok(vec![stored]) }));
     }
 
     fn expect_file(files: &mut MockFileRepository, file_id: i64, stored: File) {
@@ -445,7 +536,7 @@ mod tests {
             });
         expect_saved_gallery(&mut galleries);
         let mut media = MockMediaRepository::new();
-        expect_image(&mut media, 7, image(7, 100, "sunset.png")?);
+        expect_image(&mut media, 100, image(7, 100, "sunset.png")?);
         let mut files = MockFileRepository::new();
         expect_file(&mut files, 100, file(100, 4, "files/sunset.png")?);
         let harness = harness_with(users, galleries, media, files);
@@ -453,7 +544,11 @@ mod tests {
 
         // Act
         let response = use_case
-            .execute(AddGalleryItemCommand::new(4, 3, GalleryItemMedia::Image(7)))
+            .execute(AddGalleryItemCommand::new(
+                4,
+                3,
+                GalleryItemMedia::Image(100),
+            ))
             .await?;
 
         // Assert
@@ -503,10 +598,7 @@ mod tests {
             200,
         )?;
         let mut media = MockMediaRepository::new();
-        media.expect_get_video().times(1).return_once(move |_| {
-            let found = stored_video.clone();
-            Box::pin(async move { Ok(Some(found)) })
-        });
+        expect_video(&mut media, 200, stored_video);
         let mut files = MockFileRepository::new();
         expect_file(&mut files, 200, file(200, 4, "files/clip.mp4")?);
         let harness = harness_with(users, galleries, media, files);
@@ -514,13 +606,80 @@ mod tests {
 
         // Act
         let response = use_case
-            .execute(AddGalleryItemCommand::new(4, 2, GalleryItemMedia::Video(8)))
+            .execute(AddGalleryItemCommand::new(
+                4,
+                2,
+                GalleryItemMedia::Video(200),
+            ))
             .await?;
 
         // Assert
         assert_eq!(response.media(), GalleryItemMedia::Video(8));
         assert_eq!(response.name(), "files/clip.mp4");
         assert!(harness.committed.load(Ordering::SeqCst));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn add_gallery_item_unknown_video_returns_no_such_media() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let mut users = MockUserRepository::new();
+        expect_caller(&mut users, 4, Role::Standard)?;
+        let mut galleries = MockGalleryRepository::new();
+        expect_gallery(&mut galleries, gallery(3, Some(4), "Mine", false)?);
+        galleries.expect_add_item().times(0);
+        let mut media = MockMediaRepository::new();
+        media
+            .expect_search_videos()
+            .times(1)
+            .withf(|filter| filter.file_id == Some(999))
+            .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+        let harness = harness_with(users, galleries, media, MockFileRepository::new());
+        let use_case: UseCase = AddGalleryItem::new(Arc::clone(&harness.factory));
+
+        // Act
+        let result = use_case
+            .execute(AddGalleryItemCommand::new(
+                4,
+                3,
+                GalleryItemMedia::Video(999),
+            ))
+            .await;
+
+        // Assert
+        assert!(matches!(result, Err(AddGalleryItemError::NoSuchMedia)));
+        assert!(harness.rolled_back.load(Ordering::SeqCst));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn add_gallery_item_non_root_admin_cannot_add_other_users_media()
+    -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let mut users = MockUserRepository::new();
+        expect_caller(&mut users, 1, Role::Admin)?;
+        let mut galleries = MockGalleryRepository::new();
+        expect_gallery(&mut galleries, gallery(3, Some(4), "Public", true)?);
+        galleries.expect_add_item().times(0);
+        let mut media = MockMediaRepository::new();
+        expect_image(&mut media, 100, image(7, 100, "sunset.png")?);
+        let mut files = MockFileRepository::new();
+        expect_file(&mut files, 100, file(100, 9, "files/sunset.png")?);
+        let harness = harness_with(users, galleries, media, files);
+        let use_case: UseCase = AddGalleryItem::new(Arc::clone(&harness.factory));
+
+        // Act
+        let result = use_case
+            .execute(AddGalleryItemCommand::new(
+                1,
+                3,
+                GalleryItemMedia::Image(100),
+            ))
+            .await;
+
+        // Assert
+        assert!(matches!(result, Err(AddGalleryItemError::NotOwnedMedia)));
+        assert!(harness.rolled_back.load(Ordering::SeqCst));
         Ok(())
     }
 
@@ -541,7 +700,7 @@ mod tests {
         });
         expect_saved_gallery(&mut galleries);
         let mut media = MockMediaRepository::new();
-        expect_image(&mut media, 7, image(7, 100, "sunset.png")?);
+        expect_image(&mut media, 100, image(7, 100, "sunset.png")?);
         let mut files = MockFileRepository::new();
         expect_file(&mut files, 100, file(100, 9, "files/sunset.png")?);
         let harness = harness_with(users, galleries, media, files);
@@ -549,7 +708,11 @@ mod tests {
 
         // Act
         let response = use_case
-            .execute(AddGalleryItemCommand::new(0, 3, GalleryItemMedia::Image(7)))
+            .execute(AddGalleryItemCommand::new(
+                0,
+                3,
+                GalleryItemMedia::Image(100),
+            ))
             .await?;
 
         // Assert
@@ -568,7 +731,7 @@ mod tests {
         expect_gallery(&mut galleries, gallery(2, Some(3), "Public", true)?);
         galleries.expect_add_item().times(0);
         let mut media = MockMediaRepository::new();
-        expect_image(&mut media, 7, image(7, 100, "sunset.png")?);
+        expect_image(&mut media, 100, image(7, 100, "sunset.png")?);
         let mut files = MockFileRepository::new();
         expect_file(&mut files, 100, file(100, 9, "files/sunset.png")?);
         let harness = harness_with(users, galleries, media, files);
@@ -576,7 +739,11 @@ mod tests {
 
         // Act
         let result = use_case
-            .execute(AddGalleryItemCommand::new(4, 2, GalleryItemMedia::Image(7)))
+            .execute(AddGalleryItemCommand::new(
+                4,
+                2,
+                GalleryItemMedia::Image(100),
+            ))
             .await;
 
         // Assert
@@ -657,13 +824,14 @@ mod tests {
         galleries
             .expect_search_items()
             .times(1)
+            .withf(|filter| filter.media == Some(GalleryItemMedia::Image(7)))
             .return_once(move |_| {
                 let found = existing.clone();
                 Box::pin(async move { Ok(vec![found]) })
             });
         galleries.expect_add_item().times(0);
         let mut media = MockMediaRepository::new();
-        expect_image(&mut media, 7, image(7, 100, "sunset.png")?);
+        expect_image(&mut media, 100, image(7, 100, "sunset.png")?);
         let mut files = MockFileRepository::new();
         expect_file(&mut files, 100, file(100, 4, "files/sunset.png")?);
         let harness = harness_with(users, galleries, media, files);
@@ -671,7 +839,11 @@ mod tests {
 
         // Act
         let result = use_case
-            .execute(AddGalleryItemCommand::new(4, 3, GalleryItemMedia::Image(7)))
+            .execute(AddGalleryItemCommand::new(
+                4,
+                3,
+                GalleryItemMedia::Image(100),
+            ))
             .await;
 
         // Assert
@@ -724,9 +896,10 @@ mod tests {
         galleries.expect_add_item().times(0);
         let mut media = MockMediaRepository::new();
         media
-            .expect_get_image()
+            .expect_search_images()
             .times(1)
-            .returning(|_| Box::pin(async { Ok(None) }));
+            .withf(|filter| filter.file_id == Some(999))
+            .returning(|_| Box::pin(async { Ok(Vec::new()) }));
         let harness = harness_with(users, galleries, media, MockFileRepository::new());
         let use_case: UseCase = AddGalleryItem::new(Arc::clone(&harness.factory));
 
@@ -787,7 +960,7 @@ mod tests {
         galleries.expect_add_item().times(0);
         let mut media = MockMediaRepository::new();
         media
-            .expect_get_image()
+            .expect_search_images()
             .times(1)
             .returning(|_| Box::pin(async { Err(RepositoryError::OperationFailed) }));
         let harness = harness_with(users, galleries, media, MockFileRepository::new());
@@ -795,7 +968,11 @@ mod tests {
 
         // Act
         let result = use_case
-            .execute(AddGalleryItemCommand::new(4, 3, GalleryItemMedia::Image(7)))
+            .execute(AddGalleryItemCommand::new(
+                4,
+                3,
+                GalleryItemMedia::Image(100),
+            ))
             .await;
 
         // Assert
@@ -813,7 +990,7 @@ mod tests {
         expect_gallery(&mut galleries, gallery(3, Some(4), "Mine", false)?);
         galleries.expect_add_item().times(0);
         let mut media = MockMediaRepository::new();
-        expect_image(&mut media, 7, image(7, 100, "sunset.png")?);
+        expect_image(&mut media, 100, image(7, 100, "sunset.png")?);
         let mut files = MockFileRepository::new();
         files
             .expect_search()
@@ -824,7 +1001,11 @@ mod tests {
 
         // Act
         let result = use_case
-            .execute(AddGalleryItemCommand::new(4, 3, GalleryItemMedia::Image(7)))
+            .execute(AddGalleryItemCommand::new(
+                4,
+                3,
+                GalleryItemMedia::Image(100),
+            ))
             .await;
 
         // Assert
@@ -850,7 +1031,7 @@ mod tests {
         });
         expect_saved_gallery(&mut galleries);
         let mut media = MockMediaRepository::new();
-        expect_image(&mut media, 7, image(7, 100, "sunset.png")?);
+        expect_image(&mut media, 100, image(7, 100, "sunset.png")?);
         let mut files = MockFileRepository::new();
         expect_file(&mut files, 100, file(100, 4, "files/sunset.png")?);
         let harness = harness_with(users, galleries, media, files);
@@ -859,7 +1040,11 @@ mod tests {
 
         // Act
         let result = use_case
-            .execute(AddGalleryItemCommand::new(4, 3, GalleryItemMedia::Image(7)))
+            .execute(AddGalleryItemCommand::new(
+                4,
+                3,
+                GalleryItemMedia::Image(100),
+            ))
             .await;
 
         // Assert

@@ -68,7 +68,11 @@ pub struct PostGalleryRequest {
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 #[non_exhaustive]
 pub struct PostGalleryItemRequest {
-    /// Identifier of the medium to add.
+    /// Identifier of the backing file of the medium to add.
+    ///
+    /// The upload-completion response (`POST /asset/upload/{id}/complete`)
+    /// exposes this backing file identifier. The created item's response
+    /// reports the resolved medium's own identifier separately.
     pub media_id: NumericID,
     /// Kind of the medium to add.
     #[serde(rename = "type")]

@@ -6,7 +6,6 @@
 
 use crate::domain::alias::NumericID;
 use crate::domain::model::gallery::Gallery;
-use crate::domain::model::user::Role;
 use crate::domain::model::user::User;
 use crate::domain::port::error::RepositoryError;
 use crate::domain::port::user_repository::UserFilter;
@@ -15,14 +14,14 @@ use crate::domain::port::user_unit_of_work::UserUnitOfWork;
 
 /// Return whether `caller` may add `media` owned by `owner_id`.
 ///
-/// Every caller may use their own media; an administrator may use any media
+/// Every caller may use their own media; only the Root Admin may use any media
 /// (`gallery-implementation-plan.md` § 4, own-media gate).
 #[expect(
     clippy::single_call_fn,
     reason = "the predicate is named after the rule it enforces"
 )]
 pub(crate) fn can_add_media(caller: &User, owner_id: NumericID) -> bool {
-    caller.role() == Role::Admin || caller.id() == owner_id
+    caller.is_root_admin() || caller.id() == owner_id
 }
 
 /// Return whether `caller` may add items to `gallery`.

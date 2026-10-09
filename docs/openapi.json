@@ -519,7 +519,7 @@
         "properties": {
           "media_id": {
             "$ref": "#/components/schemas/i64",
-            "description": "Identifier of the medium to add."
+            "description": "Identifier of the backing file of the medium to add.\n\nThe upload-completion response (`POST /asset/upload/{id}/complete`)\nexposes this backing file identifier. The created item's response\nreports the resolved medium's own identifier separately."
           },
           "type": {
             "$ref": "#/components/schemas/GalleryItemType",
@@ -2252,7 +2252,7 @@
         ]
       },
       "post": {
-        "description": "Any authenticated caller may add an item to a public gallery; a private\ngallery accepts items from its owner and the Root Admin only. A caller may\nonly add media it owns, unless it is an administrator. A medium already in a\ngallery is rejected with `409`.",
+        "description": "Any authenticated caller may add an item to a public gallery; a private\ngallery accepts items from its owner and the Root Admin only. A caller may\nonly add media it owns, unless it is the Root Admin. The request carries the\nmedium's backing file identifier, as exposed by upload completion; the item\nresponse reports the resolved medium identifier separately. A medium already\nin a gallery is rejected with `409`.",
         "operationId": "post_gallery_item",
         "parameters": [
           {
