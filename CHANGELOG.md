@@ -1,3 +1,9 @@
+## [0.17.0](https://github.com/Mnemorium/mnemorium/compare/v0.16.0...v0.17.0) (2026-10-09)
+
+### Features
+
+* **application:** add the Add an Image or Video to a Gallery use case ([#258](https://github.com/Mnemorium/mnemorium/issues/258)) ([2f17eb5](https://github.com/Mnemorium/mnemorium/commit/2f17eb56ee9f43a3396b4861bb56bc7fd4ff7c79))
+
 ## [0.16.0](https://github.com/Mnemorium/mnemorium/compare/v0.15.0...v0.16.0) (2026-10-09)
 
 ### Features
