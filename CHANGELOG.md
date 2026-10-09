@@ -1,3 +1,9 @@
+## [0.15.0](https://github.com/Mnemorium/mnemorium/compare/v0.14.1...v0.15.0) (2026-10-09)
+
+### Features
+
+* **application:** add the Create a Gallery use case ([#252](https://github.com/Mnemorium/mnemorium/issues/252)) ([79fa01c](https://github.com/Mnemorium/mnemorium/commit/79fa01c593dfeb26f5569899143ffd91c3db73b4))
+
 ## [0.14.1](https://github.com/Mnemorium/mnemorium/compare/v0.14.0...v0.14.1) (2026-10-09)
 
 ### Bug Fixes
