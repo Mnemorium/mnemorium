@@ -20,6 +20,12 @@ RUN cargo build --release --bin server
 
 FROM alpine:3.21 AS runtime
 
+RUN apk add --no-cache ffmpeg=6.1.2-r1 \
+    && addgroup -S mnemorium \
+    && adduser -S -D -H -G mnemorium mnemorium \
+    && mkdir -p /app \
+    && chown mnemorium:mnemorium /app
+
 WORKDIR /app
 COPY --from=builder /app/target/release/server /usr/local/bin/server
 COPY LICENSE THIRD_PARTY_NOTICES.txt /licenses/
@@ -28,5 +34,7 @@ EXPOSE 4080
 
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
   CMD wget -qO- http://127.0.0.1:4080/health >/dev/null || exit 1
+
+USER mnemorium
 
 CMD ["/usr/local/bin/server"]
