@@ -40,8 +40,10 @@ impl From<AddGalleryItemError> for ApiError {
 ///
 /// Any authenticated caller may add an item to a public gallery; a private
 /// gallery accepts items from its owner and the Root Admin only. A caller may
-/// only add media it owns, unless it is an administrator. A medium already in a
-/// gallery is rejected with `409`.
+/// only add media it owns, unless it is the Root Admin. The request carries the
+/// medium's backing file identifier, as exposed by upload completion; the item
+/// response reports the resolved medium identifier separately. A medium already
+/// in a gallery is rejected with `409`.
 #[utoipa::path(
     post,
     operation_id = "post_gallery_item",
