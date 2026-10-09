@@ -1,3 +1,9 @@
+## [0.16.0](https://github.com/Mnemorium/mnemorium/compare/v0.15.0...v0.16.0) (2026-10-09)
+
+### Features
+
+* **application:** add the Browse Galleries use case ([#255](https://github.com/Mnemorium/mnemorium/issues/255)) ([2da0269](https://github.com/Mnemorium/mnemorium/commit/2da02696986bc20eb79032e72fbe5931199c6719))
+
 ## [0.15.0](https://github.com/Mnemorium/mnemorium/compare/v0.14.1...v0.15.0) (2026-10-09)
 
 ### Features
