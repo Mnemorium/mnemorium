@@ -525,10 +525,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn add_gallery_item_admin_adds_other_users_media() -> Result<(), Box<dyn Error>> {
+    async fn add_gallery_item_root_admin_adds_other_users_media() -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut users = MockUserRepository::new();
-        expect_caller(&mut users, 1, Role::Admin)?;
+        expect_caller(&mut users, 0, Role::Admin)?;
         let mut galleries = MockGalleryRepository::new();
         expect_gallery(&mut galleries, gallery(3, Some(4), "Mine", false)?);
         expect_unassigned(&mut galleries);
@@ -549,7 +549,7 @@ mod tests {
 
         // Act
         let response = use_case
-            .execute(AddGalleryItemCommand::new(1, 3, GalleryItemMedia::Image(7)))
+            .execute(AddGalleryItemCommand::new(0, 3, GalleryItemMedia::Image(7)))
             .await?;
 
         // Assert
@@ -605,6 +605,34 @@ mod tests {
         // Act
         let result = use_case
             .execute(AddGalleryItemCommand::new(9, 3, GalleryItemMedia::Image(7)))
+            .await;
+
+        // Assert
+        assert!(matches!(result, Err(AddGalleryItemError::Forbidden)));
+        assert!(harness.rolled_back.load(Ordering::SeqCst));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn add_gallery_item_non_root_admin_private_gallery_returns_forbidden()
+    -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let mut users = MockUserRepository::new();
+        expect_caller(&mut users, 1, Role::Admin)?;
+        let mut galleries = MockGalleryRepository::new();
+        expect_gallery(&mut galleries, gallery(3, Some(4), "Mine", false)?);
+        galleries.expect_add_item().times(0);
+        let harness = harness_with(
+            users,
+            galleries,
+            MockMediaRepository::new(),
+            MockFileRepository::new(),
+        );
+        let use_case: UseCase = AddGalleryItem::new(Arc::clone(&harness.factory));
+
+        // Act
+        let result = use_case
+            .execute(AddGalleryItemCommand::new(1, 3, GalleryItemMedia::Image(7)))
             .await;
 
         // Assert

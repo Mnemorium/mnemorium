@@ -292,10 +292,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn get_gallery_item_admin_reads_private_item() -> Result<(), Box<dyn Error>> {
+    async fn get_gallery_item_root_admin_reads_private_item() -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut users = MockUserRepository::new();
-        expect_caller(&mut users, 1, Role::Admin)?;
+        expect_caller(&mut users, 0, Role::Admin)?;
         let mut galleries = MockGalleryRepository::new();
         expect_gallery(&mut galleries, gallery(3, Some(4), "Mine", false)?);
         let found = detail(42, 3)?;
@@ -311,12 +311,33 @@ mod tests {
 
         // Act
         let response = use_case
-            .execute(GetGalleryItemCommand::new(1, 3, 42))
+            .execute(GetGalleryItemCommand::new(0, 3, 42))
             .await?;
 
         // Assert
         assert_eq!(response.gallery_item_id(), 42);
         assert!(harness.committed.load(Ordering::SeqCst));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn get_gallery_item_non_root_admin_private_item_returns_forbidden()
+    -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let mut users = MockUserRepository::new();
+        expect_caller(&mut users, 1, Role::Admin)?;
+        let mut galleries = MockGalleryRepository::new();
+        expect_gallery(&mut galleries, gallery(3, Some(4), "Mine", false)?);
+        galleries.expect_search_items().times(0);
+        let harness = harness_with(users, galleries);
+        let use_case: UseCase = GetGalleryItem::new(Arc::clone(&harness.factory));
+
+        // Act
+        let result = use_case.execute(GetGalleryItemCommand::new(1, 3, 42)).await;
+
+        // Assert
+        assert!(matches!(result, Err(GetGalleryItemError::Forbidden)));
+        assert!(harness.rolled_back.load(Ordering::SeqCst));
         Ok(())
     }
 

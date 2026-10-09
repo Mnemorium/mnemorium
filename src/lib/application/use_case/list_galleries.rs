@@ -218,11 +218,11 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn list_galleries_admin_sees_every_gallery_with_item_counts() -> Result<(), Box<dyn Error>>
-    {
+    async fn list_galleries_root_admin_sees_every_gallery_with_item_counts()
+    -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut users = MockUserRepository::new();
-        expect_caller(&mut users, 1, Role::Admin)?;
+        expect_caller(&mut users, 0, Role::Admin)?;
         let mut galleries = MockGalleryRepository::new();
         let public = gallery(2, Some(3), "Public", true)?;
         let private = gallery(3, Some(4), "Private", false)?;
@@ -251,7 +251,7 @@ mod tests {
 
         // Act
         let response = use_case
-            .execute(ListGalleriesCommand::new(1, None, None, None, None, None))
+            .execute(ListGalleriesCommand::new(0, None, None, None, None, None))
             .await?;
 
         // Assert
@@ -310,6 +310,52 @@ mod tests {
             .await?;
 
         // Assert
+        assert_eq!(response.total(), 2);
+        assert_eq!(
+            response
+                .galleries()
+                .first()
+                .map(ListGalleriesItem::gallery_id),
+            Some(2)
+        );
+        assert_eq!(
+            response
+                .galleries()
+                .get(1)
+                .map(ListGalleriesItem::gallery_id),
+            Some(3)
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn list_galleries_non_root_admin_sees_public_and_owned_only() -> Result<(), Box<dyn Error>>
+    {
+        // Arrange
+        let mut users = MockUserRepository::new();
+        expect_caller(&mut users, 1, Role::Admin)?;
+        let mut galleries = MockGalleryRepository::new();
+        let public = gallery(2, Some(3), "Public", true)?;
+        let own = gallery(3, Some(1), "Mine", false)?;
+        let other_private = gallery(5, Some(9), "Other", false)?;
+        galleries.expect_search().times(1).return_once(move |_| {
+            let found = vec![public.clone(), own.clone(), other_private.clone()];
+            Box::pin(async move { Ok(found) })
+        });
+        galleries
+            .expect_search_items()
+            .times(1)
+            .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+        let harness = harness_with(users, galleries);
+        let use_case: UseCase = ListGalleries::new(Arc::clone(&harness.factory));
+
+        // Act
+        let response = use_case
+            .execute(ListGalleriesCommand::new(1, None, None, None, None, None))
+            .await?;
+
+        // Assert: a non-root Admin has no override, so another user's private
+        // gallery stays hidden.
         assert_eq!(response.total(), 2);
         assert_eq!(
             response

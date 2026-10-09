@@ -1757,7 +1757,7 @@
     },
     "/library/gallery": {
       "get": {
-        "description": "Any authenticated caller may list galleries: public galleries are visible to\nall, private galleries only to their owner and administrators. The\ncollection is paginated and filterable, and returned as a HAL collection\nwith navigation and search links.",
+        "description": "Any authenticated caller may list galleries: public galleries are visible to\nall, private galleries only to their owner and the Root Admin. The\ncollection is paginated and filterable, and returned as a HAL collection\nwith navigation and search links.",
         "operationId": "list_galleries",
         "parameters": [
           {
@@ -2078,7 +2078,7 @@
         ]
       },
       "get": {
-        "description": "Any authenticated caller may read a public gallery; a private gallery is\nreadable by its owner and administrators only. The representation carries\nthe gallery and its items, ordered by position.",
+        "description": "Any authenticated caller may read a public gallery; a private gallery is\nreadable by its owner and the Root Admin only. The representation carries\nthe gallery and its items, ordered by position.",
         "operationId": "get_gallery",
         "parameters": [
           {
@@ -2252,7 +2252,7 @@
         ]
       },
       "post": {
-        "description": "Any authenticated caller may add an item to a public gallery; a private\ngallery accepts items from its owner and administrators only. A caller may\nonly add media it owns, unless it is an administrator. A medium already in a\ngallery is rejected with `409`.",
+        "description": "Any authenticated caller may add an item to a public gallery; a private\ngallery accepts items from its owner and the Root Admin only. A caller may\nonly add media it owns, unless it is an administrator. A medium already in a\ngallery is rejected with `409`.",
         "operationId": "post_gallery_item",
         "parameters": [
           {
@@ -2398,7 +2398,7 @@
     },
     "/library/gallery/{id}/item/{item_id}": {
       "delete": {
-        "description": "Any authenticated caller may delete an item of a public gallery; an item of\na private gallery may be deleted by the gallery owner and administrators\nonly. The item is scoped to the gallery named in the path. Deletion is\npermanent and removes the medium and its backing file.",
+        "description": "Any authenticated caller may delete an item of a public gallery; an item of\na private gallery may be deleted by the gallery owner and the Root Admin\nonly. The item is scoped to the gallery named in the path. Deletion is\npermanent and removes the medium and its backing file.",
         "operationId": "delete_gallery_item",
         "parameters": [
           {
@@ -2486,7 +2486,7 @@
         ]
       },
       "get": {
-        "description": "Any authenticated caller may read an item of a public gallery; an item of a\nprivate gallery is readable by the gallery owner and administrators only.\nThe item is scoped to the gallery named in the path.",
+        "description": "Any authenticated caller may read an item of a public gallery; an item of a\nprivate gallery is readable by the gallery owner and the Root Admin only.\nThe item is scoped to the gallery named in the path.",
         "operationId": "get_gallery_item",
         "parameters": [
           {

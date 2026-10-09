@@ -71,7 +71,7 @@ impl From<ListGalleriesError> for ApiError {
 /// List the galleries the caller may see.
 ///
 /// Any authenticated caller may list galleries: public galleries are visible to
-/// all, private galleries only to their owner and administrators. The
+/// all, private galleries only to their owner and the Root Admin. The
 /// collection is paginated and filterable, and returned as a HAL collection
 /// with navigation and search links.
 #[utoipa::path(

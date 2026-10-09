@@ -31,7 +31,7 @@ impl From<GetGalleryItemError> for ApiError {
 /// Fetch one item of a gallery by its identifiers.
 ///
 /// Any authenticated caller may read an item of a public gallery; an item of a
-/// private gallery is readable by the gallery owner and administrators only.
+/// private gallery is readable by the gallery owner and the Root Admin only.
 /// The item is scoped to the gallery named in the path.
 #[utoipa::path(
     get,

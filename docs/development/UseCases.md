@@ -464,3 +464,63 @@ Allow an authenticated user to create a gallery they own to collect images and v
 
 - A gallery owned by the caller exists.
 - The new gallery holds no item.
+
+## UC-008 - Browse Galleries
+
+### Description
+
+Allow an authenticated user to browse the galleries and items they may see.
+
+### Primary actor
+
+- Standard User
+- Admin
+- Root Admin
+
+### Pre condition(s)
+
+- The caller is authenticated.
+
+### Trigger(s)
+
+- `GET /api/v1/library/gallery`
+- `GET /api/v1/library/gallery/{id}`
+- `GET /api/v1/library/gallery/{id}/item`
+- `GET /api/v1/library/gallery/{id}/item/{item_id}`
+
+### Bounded context(s)
+
+- Library
+
+### Application use case(s)
+
+- `list_galleries.rs`
+- `get_gallery.rs`
+- `get_gallery_item.rs`
+
+### Business rules
+
+- The listing shows every public gallery plus the caller's own galleries.
+- A private gallery and its items may be read by their owner or by the Root Admin only.
+- The listing may be filtered by name, visibility and owner, and paged by limit and offset.
+- The seeded default gallery (identifier `0`) is public and visible to every authenticated user.
+- Every gallery item references exactly one image or one video.
+
+### Happy path
+
+1. The caller lists galleries, optionally filtering and paging.
+2. The system returns every gallery the caller may see, each with its item count.
+3. The caller requests one gallery by its identifier.
+4. The system returns the gallery with its items in order.
+5. The caller requests one item of the gallery.
+6. The system returns the item with its media metadata.
+
+### Alternative flow
+
+- 2a. The caller requests a private gallery it neither owns nor reads as the Root Admin; the system rejects the request.
+- 3a. No gallery matches the requested identifier; the system rejects the request.
+- 5a. No item matching the requested identifier belongs to the gallery; the system rejects the request.
+
+### Post condition(s)
+
+- The caller holds the requested galleries and items.

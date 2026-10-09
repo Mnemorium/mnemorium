@@ -39,7 +39,7 @@ impl From<AddGalleryItemError> for ApiError {
 /// Add one of the caller's media to a gallery.
 ///
 /// Any authenticated caller may add an item to a public gallery; a private
-/// gallery accepts items from its owner and administrators only. A caller may
+/// gallery accepts items from its owner and the Root Admin only. A caller may
 /// only add media it owns, unless it is an administrator. A medium already in a
 /// gallery is rejected with `409`.
 #[utoipa::path(
