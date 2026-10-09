@@ -63,6 +63,13 @@ impl User {
         self.id
     }
 
+    /// Return whether the user is the Root Admin: the `Role::Admin` account
+    /// with identifier `0`.
+    #[must_use]
+    pub fn is_root_admin(&self) -> bool {
+        self.role == Role::Admin && self.id == 0
+    }
+
     /// Return the role.
     #[must_use]
     pub fn role(&self) -> Role {

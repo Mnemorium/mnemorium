@@ -58,10 +58,10 @@ pub(crate) fn can_delete_item(gallery: &Gallery, caller: &User) -> bool {
 /// Return whether `caller` may read `gallery`.
 ///
 /// Any authenticated caller may read a public gallery; a private gallery is
-/// readable by its owner or an administrator
+/// readable by its owner or the Root Admin
 /// (`gallery-implementation-plan.md` § 4).
 pub(crate) fn can_read_gallery(gallery: &Gallery, caller: &User) -> bool {
-    gallery.is_public() || gallery.is_owned_by(caller.id()) || caller.role() == Role::Admin
+    gallery.is_public() || gallery.is_owned_by(caller.id()) || caller.is_root_admin()
 }
 
 /// Return whether `gallery` is the seeded, undeletable system gallery.

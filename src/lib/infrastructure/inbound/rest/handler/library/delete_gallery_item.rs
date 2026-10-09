@@ -29,7 +29,7 @@ impl From<DeleteGalleryItemError> for ApiError {
 /// Delete one item of a gallery by its identifiers.
 ///
 /// Any authenticated caller may delete an item of a public gallery; an item of
-/// a private gallery may be deleted by the gallery owner and administrators
+/// a private gallery may be deleted by the gallery owner and the Root Admin
 /// only. The item is scoped to the gallery named in the path. Deletion is
 /// permanent and removes the medium and its backing file.
 #[utoipa::path(
