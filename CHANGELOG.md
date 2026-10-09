@@ -1,3 +1,9 @@
+## [0.14.1](https://github.com/Mnemorium/mnemorium/compare/v0.14.0...v0.14.1) (2026-10-09)
+
+### Bug Fixes
+
+* **api:** log OBS-002 request-limit 413 rejections ([#251](https://github.com/Mnemorium/mnemorium/issues/251)) ([eea8e64](https://github.com/Mnemorium/mnemorium/commit/eea8e64149af2b6375001a72773c7d89d94c0d3c))
+
 ## [0.14.0](https://github.com/Mnemorium/mnemorium/compare/v0.13.1...v0.14.0) (2026-10-08)
 
 ### Features
