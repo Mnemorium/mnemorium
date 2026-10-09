@@ -6,6 +6,9 @@ use axum::http::HeaderValue;
 use axum::http::StatusCode;
 use axum::http::header;
 use axum::response::Response;
+use serde::Deserialize;
+use serde::Serialize;
+use utoipa::ToSchema;
 
 use crate::application::port::add_gallery_item::AddGalleryItemCommand;
 use crate::application::port::add_gallery_item::AddGalleryItemError;
@@ -14,10 +17,25 @@ use crate::infrastructure::inbound::rest::api_error::ApiError;
 use crate::infrastructure::inbound::rest::api_error::ErrorBody;
 use crate::infrastructure::inbound::rest::app_state::AppState;
 use crate::infrastructure::inbound::rest::hal::hal_json;
-use crate::infrastructure::inbound::rest::handler::library::get_gallery::parse_gallery_id;
-use crate::infrastructure::inbound::rest::handler::library::representation::GalleryItemDetailResponse;
-use crate::infrastructure::inbound::rest::handler::library::representation::PostGalleryItemRequest;
+use crate::infrastructure::inbound::rest::handler::library::GalleryItemDetailResponse;
+use crate::infrastructure::inbound::rest::handler::library::GalleryItemType;
+use crate::infrastructure::inbound::rest::handler::library::parse_gallery_id;
 use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
+
+/// Payload to add one of the caller's media to a gallery.
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[non_exhaustive]
+pub struct PostGalleryItemRequest {
+    /// Identifier of the backing file of the medium to add.
+    ///
+    /// The upload-completion response (`POST /asset/upload/{id}/complete`)
+    /// exposes this backing file identifier. The created item's response
+    /// reports the resolved medium's own identifier separately.
+    pub media_id: NumericID,
+    /// Kind of the medium to add.
+    #[serde(rename = "type")]
+    pub media_type: GalleryItemType,
+}
 
 /// Map an add-gallery-item error to its API error.
 impl From<AddGalleryItemError> for ApiError {

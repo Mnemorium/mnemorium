@@ -106,8 +106,10 @@ Trace an endpoint through all five declaration points before you plan or judge
 one:
 
 1. **Handler file** —
-   `src/lib/infrastructure/inbound/rest/handler/<context>/<method>_<context>.rs`;
-   one endpoint per file, function named after the file.
+   `src/lib/infrastructure/inbound/rest/handler/<context>/<method>_<resource>.rs`;
+   one endpoint per file, function named after the file. Shared payloads, links
+   and helpers live in the context module file
+   (`src/lib/infrastructure/inbound/rest/handler/<context>.rs`).
 2. **Context route module** — `handler/<context>.rs` (e.g. `identity_routes`),
    where the route is registered and protection is applied.
 3. **Route table** — `handler.rs::setup_routes`, which nests each context under

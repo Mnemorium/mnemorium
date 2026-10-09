@@ -1,7 +1,6 @@
 use axum::extract::Path;
 use axum::extract::State;
 use axum::response::Response;
-use tracing::warn;
 
 use crate::application::port::get_gallery::GetGalleryCommand;
 use crate::application::port::get_gallery::GetGalleryError;
@@ -10,7 +9,8 @@ use crate::infrastructure::inbound::rest::api_error::ApiError;
 use crate::infrastructure::inbound::rest::api_error::ErrorBody;
 use crate::infrastructure::inbound::rest::app_state::AppState;
 use crate::infrastructure::inbound::rest::hal::hal_json;
-use crate::infrastructure::inbound::rest::handler::library::representation::GalleryResponse;
+use crate::infrastructure::inbound::rest::handler::library::GalleryResponse;
+use crate::infrastructure::inbound::rest::handler::library::parse_gallery_id;
 use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 
 /// Map a fetch-gallery error to its API error.
@@ -93,23 +93,6 @@ pub async fn get_gallery(
         .execute(GetGalleryCommand::new(caller.user_id(), gallery_id))
         .await?;
     Ok(hal_json(GalleryResponse::from(response)))
-}
-
-/// Parse a gallery identifier from a path segment.
-pub(crate) fn parse_gallery_id(value: &str) -> Result<NumericID, ApiError> {
-    value.parse::<NumericID>().map_err(|_| {
-        // The malformed value and the parser detail never reach the log
-        // (`OBS-003`); only the classification and its declared fields do
-        // (`OBS-006`).
-        warn!(
-            target: "security",
-            event = "input_validation_failed",
-            field = "gallery_id",
-            reason = "invalid_identifier",
-            "rejected a malformed gallery identifier"
-        );
-        ApiError::BadRequest("invalid gallery identifier".to_owned())
-    })
 }
 
 #[cfg(test)]

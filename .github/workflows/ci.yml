@@ -288,6 +288,8 @@ jobs:
         run: script/no_outward_imports.sh
       - name: Repository port declaration order
         run: script/check_repository_declaration_order.sh
+      - name: Endpoint-only REST handler files
+        run: script/check_rest_handler_files.sh
       - name: Verify OpenAPI spec is current
         run: |
           cargo run --bin openapi_gen
@@ -475,6 +477,10 @@ jobs:
         run: shellcheck script/*.sh
       - name: shfmt
         run: shfmt -d script/*.sh
+      - name: Endpoint-only REST handler files
+        run: script/check_rest_handler_files.sh
+      - name: Endpoint-only REST handler files (self-test)
+        run: script/check_rest_handler_files.sh --self-test
 
   nix:
     needs: [changes, betterleaks]

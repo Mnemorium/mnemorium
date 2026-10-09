@@ -5,6 +5,9 @@ use axum::http::HeaderValue;
 use axum::http::StatusCode;
 use axum::http::header;
 use axum::response::Response;
+use serde::Deserialize;
+use serde::Serialize;
+use utoipa::ToSchema;
 
 use crate::application::port::create_gallery::CreateGalleryCommand;
 use crate::application::port::create_gallery::CreateGalleryError;
@@ -12,9 +15,20 @@ use crate::infrastructure::inbound::rest::api_error::ApiError;
 use crate::infrastructure::inbound::rest::api_error::ErrorBody;
 use crate::infrastructure::inbound::rest::app_state::AppState;
 use crate::infrastructure::inbound::rest::hal::hal_json;
-use crate::infrastructure::inbound::rest::handler::library::representation::GalleryResponse;
-use crate::infrastructure::inbound::rest::handler::library::representation::PostGalleryRequest;
+use crate::infrastructure::inbound::rest::handler::library::GalleryResponse;
 use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
+
+/// Payload to create a gallery owned by the caller.
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[non_exhaustive]
+pub struct PostGalleryRequest {
+    /// Whether any authenticated user may read and moderate the gallery.
+    #[serde(default)]
+    pub is_public: bool,
+    /// Name of the gallery.
+    #[schema(min_length = 1, max_length = 100)]
+    pub name: String,
+}
 
 /// Map a create-gallery error to its API error.
 impl From<CreateGalleryError> for ApiError {

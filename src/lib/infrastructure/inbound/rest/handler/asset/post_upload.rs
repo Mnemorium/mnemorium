@@ -19,7 +19,7 @@ use crate::infrastructure::inbound::rest::api_error::ApiError;
 use crate::infrastructure::inbound::rest::api_error::ErrorBody;
 use crate::infrastructure::inbound::rest::app_state::AppState;
 use crate::infrastructure::inbound::rest::hal::HAL_CONTENT_TYPE;
-use crate::infrastructure::inbound::rest::handler::asset::links::UploadSessionLinks;
+use crate::infrastructure::inbound::rest::handler::asset::UploadSessionLinks;
 use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 
 /// Payload initializing an upload session.

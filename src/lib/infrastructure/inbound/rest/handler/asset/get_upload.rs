@@ -13,7 +13,7 @@ use crate::infrastructure::inbound::rest::api_error::ApiError;
 use crate::infrastructure::inbound::rest::api_error::ErrorBody;
 use crate::infrastructure::inbound::rest::app_state::AppState;
 use crate::infrastructure::inbound::rest::hal::HAL_CONTENT_TYPE;
-use crate::infrastructure::inbound::rest::handler::asset::upload_session::UploadSessionResponse;
+use crate::infrastructure::inbound::rest::handler::asset::UploadSessionResponse;
 use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 
 /// Map a get-upload error to its API error.
