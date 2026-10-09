@@ -21,8 +21,19 @@ CONTEXT_ALTERNATION=$(
 )
 readonly CONTEXT_ALTERNATION
 
-# An endpoint file is `<method>_<resource>.rs`, the method an HTTP verb.
+# An endpoint file is `<method>_<resource>.rs`, the method an HTTP verb; a
+# context operation submodule is the same name without the `.rs`.
 readonly ENDPOINT_FILE_PATTERN='^(get|post|put|patch|delete)_[a-z0-9_]+\.rs$'
+readonly OP_PATTERN='^(get|post|put|patch|delete)_[a-z0-9_]+$'
+readonly CONTEXT_PATTERN="^(${CONTEXT_ALTERNATION})$"
+
+# A `use` statement start (the leading whitespace is captured to test whether the
+# statement is at column 0), an ` as <ident>` alias, and a `/* … */` block
+# comment. Each is a variable so bash does not read its parentheses as `[[ ]]`
+# conditional grouping.
+readonly USE_START_PATTERN='^[[:space:]]*(pub([[:space:]]*\([^)]*\))?[[:space:]]+)?use[[:space:]]'
+readonly ALIAS_PATTERN='(.*)[[:space:]]as[[:space:]]+([A-Za-z0-9_]+)(.*)'
+readonly BLOCK_COMMENT_PATTERN='(.*)/\*([^*]|\*[^/])*\*/(.*)'
 
 # The only members allowed directly under `rest/` and `handler/`. Each bounded
 # context contributes its `<context>.rs` module file and its `<context>/`
@@ -105,134 +116,196 @@ assert_rejected() {
 	esac
 }
 
+# Print `$1` with leading and trailing whitespace removed.
+trim() {
+	local value="$1"
+	value="${value#"${value%%[![:space:]]*}"}"
+	value="${value%"${value##*[![:space:]]}"}"
+	printf '%s' "$value"
+}
+
+# Split `$1` on commas at brace depth zero and store the parts in SPLIT_OUT.
+SPLIT_OUT=()
+split_top_level() {
+	local text="$1" depth=0 i char part=""
+	SPLIT_OUT=()
+	for ((i = 0; i < ${#text}; i++)); do
+		char="${text:i:1}"
+		case "$char" in
+		"{") depth=$((depth + 1)) ;;
+		"}") depth=$((depth - 1)) ;;
+		",")
+			if [ "$depth" -eq 0 ]; then
+				part="$(trim "$part")"
+				[ -n "$part" ] && SPLIT_OUT+=("$part")
+				part=""
+				continue
+			fi
+			;;
+		esac
+		part+="$char"
+	done
+	part="$(trim "$part")"
+	[ -n "$part" ] && SPLIT_OUT+=("$part")
+}
+
+# Expand a Rust use tree (`$1`) into one fully-qualified path per line.
+expand_tree() {
+	local tree prefix inner suffix depth=0 end=-1 index i char sub path part
+	tree="$(trim "$1")"
+	[ -z "$tree" ] && return 0
+	if [[ $tree != *"{"* ]]; then
+		printf '%s\n' "$tree"
+		return 0
+	fi
+	prefix="${tree%%\{*}"
+	index=${#prefix}
+	prefix="$(trim "$prefix")"
+	prefix="${prefix%::}"
+	for ((i = 0; i < ${#tree}; i++)); do
+		char="${tree:i:1}"
+		if [ "$char" = "{" ]; then
+			depth=$((depth + 1))
+		elif [ "$char" = "}" ]; then
+			depth=$((depth - 1))
+			if [ "$depth" -eq 0 ]; then
+				end=$i
+				break
+			fi
+		fi
+	done
+	if [ "$end" -lt 0 ]; then
+		printf '%s\n' "$tree"
+		return 0
+	fi
+	inner="${tree:index+1:end-index-1}"
+	suffix="$(trim "${tree:end+1}")"
+	split_top_level "$inner"
+	local -a parts=("${SPLIT_OUT[@]}")
+	for part in "${parts[@]}"; do
+		while IFS= read -r sub; do
+			[ -z "$sub" ] && continue
+			if [ "$sub" = "self" ]; then
+				printf '%s\n' "$prefix"
+				continue
+			fi
+			if [ -n "$prefix" ]; then
+				path="${prefix}::${sub}"
+			else
+				path="$sub"
+			fi
+			if [[ $suffix == ::* ]]; then
+				path="${path}${suffix}"
+			fi
+			printf '%s\n' "$path"
+		done < <(expand_tree "$part")
+	done
+}
+
+# Report whether an expanded `use` path (`$1`) reaches a context operation
+# submodule: `handler::<context>::<operation>` anywhere, or a top-level
+# `super::<operation>`/`self::<operation>`.
+reaches_operation() {
+	local rest="$1" part first
+	local -a segs=()
+	while [[ $rest == *"::"* ]]; do
+		part="${rest%%::*}"
+		rest="${rest#*::}"
+		part="$(trim "$part")"
+		[ -n "$part" ] && segs+=("$part")
+	done
+	rest="$(trim "$rest")"
+	[ -n "$rest" ] && segs+=("$rest")
+	local count=${#segs[@]} i handler_index=-1
+	[ "$count" -eq 0 ] && return 1
+	first="${segs[0]}"
+	if { [ "$first" = "super" ] || [ "$first" = "self" ]; } &&
+		[ "$count" -gt 1 ] && [[ ${segs[1]} =~ $OP_PATTERN ]]; then
+		return 0
+	fi
+	for ((i = 0; i < count; i++)); do
+		if [ "${segs[i]}" = "handler" ]; then
+			handler_index=$i
+			break
+		fi
+	done
+	[ "$handler_index" -lt 0 ] && return 1
+	if [ $((handler_index + 2)) -lt "$count" ] &&
+		[[ ${segs[handler_index + 1]} =~ $CONTEXT_PATTERN ]] &&
+		[[ ${segs[handler_index + 2]} =~ $OP_PATTERN ]]; then
+		return 0
+	fi
+	return 1
+}
+
 # Print every cross-submodule import of `$1` and exit non-zero when any is
 # found. The file is parsed as a Rust use tree, so `pub`/`pub(crate)`, grouped,
-# bare-submodule, relative sibling and rustfmt-wrapped imports are all seen.
+# bare-submodule, relative sibling, aliased, comment-trailed and rustfmt-wrapped
+# imports are all seen.
 analyze_imports() {
 	local file="$1"
-	python3 - "$file" "$CONTEXT_ALTERNATION" <<'PY'
-import re
-import sys
+	local line buffer="" top_level=0 in_stmt=0
+	local -a flags=() texts=()
+	local i body path first offender=0
 
-OP_RE = re.compile(r"^(get|post|put|patch|delete)_[a-z0-9_]+$")
-USE_START_RE = re.compile(r"^([ \t]*)(?:pub(?:\s*\([^)]*\))?\s+)?use\s")
-USE_BODY_RE = re.compile(r"^(?:pub(?:\s*\([^)]*\))?\s+)?use\s+(.*)$", re.S)
+	while IFS= read -r line || [ -n "$line" ]; do
+		# Drop block comments and line comments before parsing the use tree.
+		while [[ $line =~ $BLOCK_COMMENT_PATTERN ]]; do
+			line="${BASH_REMATCH[1]}${BASH_REMATCH[3]}"
+		done
+		line="${line%%//*}"
+		if [ "$in_stmt" -eq 0 ]; then
+			if [[ $line =~ $USE_START_PATTERN ]]; then
+				if [[ $line =~ ^[[:space:]]+ ]]; then top_level=0; else top_level=1; fi
+				buffer="$line"
+				in_stmt=1
+				if [[ $line == *";"* ]]; then
+					flags+=("$top_level")
+					texts+=("$buffer")
+					in_stmt=0
+					buffer=""
+				fi
+			fi
+		else
+			buffer="$buffer $line"
+			if [[ $line == *";"* ]]; then
+				flags+=("$top_level")
+				texts+=("$buffer")
+				in_stmt=0
+				buffer=""
+			fi
+		fi
+	done <"$file"
 
+	for ((i = 0; i < ${#texts[@]}; i++)); do
+		body="${texts[i]}"
+		body="${body#*use}"
+		body="$(trim "$body")"
+		body="${body%;}"
+		body="$(trim "$body")"
+		# Strip ` as <ident>` aliases so the operation segment is bare.
+		while [[ $body =~ $ALIAS_PATTERN ]]; do
+			body="${BASH_REMATCH[1]}${BASH_REMATCH[3]}"
+		done
+		if [ "${flags[i]}" -eq 0 ] && { [ "${body:0:5}" = "super" ] || [ "${body:0:4}" = "self" ]; }; then
+			continue
+		fi
+		while IFS= read -r path; do
+			[ -z "$path" ] && continue
+			first="${path%%::*}"
+			if [ "${flags[i]}" -eq 0 ] && { [ "$first" = "super" ] || [ "$first" = "self" ]; }; then
+				continue
+			fi
+			if reaches_operation "$path"; then
+				offender=1
+				printf '%s: %s\n' "$file" "${texts[i]}"
+				break
+			fi
+		done < <(expand_tree "$body")
+	done
 
-def split_top_level(text):
-    parts, depth, current = [], 0, []
-    for char in text:
-        if char == "{":
-            depth += 1
-        elif char == "}":
-            depth -= 1
-        if char == "," and depth == 0:
-            parts.append("".join(current))
-            current = []
-        else:
-            current.append(char)
-    if current:
-        parts.append("".join(current))
-    return [part.strip() for part in parts if part.strip()]
-
-
-def expand(tree):
-    tree = tree.strip()
-    if not tree:
-        return []
-    index = tree.find("{")
-    if index == -1:
-        segments = [seg.strip() for seg in tree.split("::") if seg.strip()]
-        return [segments] if segments else []
-    prefix = tree[:index]
-    if prefix.endswith("::"):
-        prefix = prefix[:-2]
-    base = [seg.strip() for seg in prefix.split("::") if seg.strip()]
-    depth, end = 0, -1
-    for offset in range(index, len(tree)):
-        if tree[offset] == "{":
-            depth += 1
-        elif tree[offset] == "}":
-            depth -= 1
-            if depth == 0:
-                end = offset
-                break
-    inner = tree[index + 1:end]
-    suffix = tree[end + 1:].strip()
-    paths = []
-    for part in split_top_level(inner):
-        for sub in expand(part):
-            if sub == ["self"]:
-                paths.append(list(base))
-                continue
-            path = list(base) + sub
-            if suffix.startswith("::"):
-                path += [seg.strip() for seg in suffix[2:].split("::") if seg.strip()]
-            paths.append(path)
-    return paths
-
-
-def collect_statements(lines):
-    statements, buffer, top_level = [], None, False
-    for line in lines:
-        if buffer is None:
-            match = USE_START_RE.match(line)
-            if match:
-                buffer = line.strip()
-                top_level = not match.group(1)
-                if ";" in line:
-                    statements.append((top_level, buffer))
-                    buffer = None
-        else:
-            buffer += " " + line.strip()
-            if ";" in line:
-                statements.append((top_level, buffer))
-                buffer = None
-    return statements
-
-
-def reaches_operation(path, contexts):
-    if path[0] in ("super", "self") and len(path) > 1 and OP_RE.match(path[1]):
-        return True
-    if "handler" not in path:
-        return False
-    index = path.index("handler")
-    return (
-        index + 2 < len(path)
-        and path[index + 1] in contexts
-        and bool(OP_RE.match(path[index + 2]))
-    )
-
-
-def main():
-    filename, context_argument = sys.argv[1], sys.argv[2]
-    contexts = set(context_argument.split("|"))
-    with open(filename, encoding="utf-8") as handle:
-        lines = handle.read().splitlines()
-    offenders = []
-    for top_level, statement in collect_statements(lines):
-        match = USE_BODY_RE.match(statement)
-        if not match:
-            continue
-        body = match.group(1).rstrip().rstrip(";").strip()
-        for path in expand(body):
-            if not path:
-                continue
-            if path[0] in ("super", "self") and not top_level:
-                continue
-            if reaches_operation(path, contexts):
-                offenders.append(statement)
-                break
-    if not offenders:
-        return 0
-    for offender in offenders:
-        print(f"{filename}: {offender}")
-    return 1
-
-
-if __name__ == "__main__":
-    sys.exit(main())
-PY
+	[ "$offender" -eq 0 ] && return 0
+	return 1
 }
 
 check_context() {
@@ -303,6 +376,12 @@ self_test() {
 		"relative-self"
 		"nested-absolute"
 		"multi-line"
+		"aliased"
+		"aliased-grouped"
+		"aliased-relative"
+		"aliased-self"
+		"comment-trailed"
+		"comment-block"
 	)
 	local -a imports=(
 		$'use crate::infrastructure::inbound::rest::handler::library::get_gallery::get_gallery;\n'
@@ -315,18 +394,28 @@ self_test() {
 		$'use self::get_gallery_item::GalleryItemDetailResponse;\n'
 		$'    use crate::infrastructure::inbound::rest::handler::asset::get_upload::get_upload;\n'
 		$'use crate::infrastructure::inbound::rest::handler::library::{\n    get_gallery::get_gallery,\n};\n'
+		$'use crate::infrastructure::inbound::rest::handler::library::get_gallery as gg;\n'
+		$'use crate::infrastructure::inbound::rest::handler::library::{get_gallery as gg};\n'
+		$'use super::get_gallery_item as gi;\n'
+		$'use crate::infrastructure::inbound::rest::handler::library::get_gallery::{self as gg};\n'
+		$'use crate::infrastructure::inbound::rest::handler::library::get_gallery; // note\n'
+		$'use crate::infrastructure::inbound::rest::handler::library::get_gallery /* note */;\n'
 	)
 	local -a accepted_labels=(
 		"absolute module-level"
 		"grouped module-level"
 		"relative module-level"
 		"module-level helper"
+		"aliased module-level"
+		"comment-trailed module-level"
 	)
 	local -a accepted_imports=(
 		$'use crate::infrastructure::inbound::rest::handler::library::GalleryResponse;\n'
 		$'use crate::infrastructure::inbound::rest::handler::library::{GalleryResponse, parse_gallery_id};\n'
 		$'use super::GalleryResponse;\n'
 		$'use crate::infrastructure::inbound::rest::handler::asset::asset_routes;\n'
+		$'use crate::infrastructure::inbound::rest::handler::library::GalleryResponse as Resp;\n'
+		$'use crate::infrastructure::inbound::rest::handler::library::GalleryResponse; // note\n'
 	)
 
 	root=$(mktemp -d)
