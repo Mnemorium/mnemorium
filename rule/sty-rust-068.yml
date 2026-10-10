@@ -1,0 +1,25 @@
+---
+id: sty-rust-068
+language: Rust
+severity: hint
+message: >-
+  extract the AppState struct, its getters and its FromRef impls for
+  STY-RUST-068
+rule:
+  any:
+    # The single application state struct.
+    - all:
+        - kind: struct_item
+        - pattern: 'pub struct AppState { $$$FIELDS }'
+    # A getter: a public method on AppState borrowing self.
+    - all:
+        - kind: function_item
+        - pattern: 'pub fn $GETTER(&self) -> $RET { $$$BODY }'
+        - inside:
+            kind: impl_item
+            pattern: 'impl AppState { $$$IMPL_BODY }'
+            stopBy: end
+    # A FromRef impl exposing a piece of AppState to middleware.
+    - all:
+        - kind: impl_item
+        - pattern: 'impl FromRef<AppState> for $REF { $$$REF_BODY }'

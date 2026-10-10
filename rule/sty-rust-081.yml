@@ -1,0 +1,15 @@
+---
+id: sty-rust-081
+language: Rust
+severity: hint
+message: extract repository-port query signatures and declared structs for STY-RUST-081
+files:
+  - src/lib/domain/port/*_repository.rs
+rule:
+  any:
+    - all:
+        - kind: function_signature_item
+        - pattern: 'fn $METHOD($$$ARGS) -> impl Future<Output = Result<$RET, RepositoryError>> + Send;'
+    - all:
+        - kind: struct_item
+        - pattern: 'pub struct $STRUCT'

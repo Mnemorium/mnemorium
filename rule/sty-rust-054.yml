@@ -1,0 +1,22 @@
+---
+id: sty-rust-054
+language: Rust
+severity: error
+message: a use-case trait is named `<UseCaseName>UseCase`
+files:
+  - src/lib/application/port/**/*.rs
+rule:
+  all:
+    - kind: trait_item
+    - has:
+        any:
+          - kind: function_signature_item
+          - kind: function_item
+        has:
+          field: name
+          regex: '^execute$'
+        stopBy: end
+    - has:
+        field: name
+        not:
+          regex: '^[A-Z][A-Za-z0-9]*UseCase$'

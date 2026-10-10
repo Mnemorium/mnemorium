@@ -1,0 +1,16 @@
+---
+id: sty-rust-056
+language: Rust
+severity: error
+message: declare the command object first in a use-case port file
+rule:
+  all:
+    - kind: struct_item
+    - pattern: pub struct $COMMAND
+    - regex: '^pub struct \w+Command\b'
+    - follows:
+        any:
+          - kind: struct_item
+          - kind: enum_item
+          - kind: trait_item
+        stopBy: end

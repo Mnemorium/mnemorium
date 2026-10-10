@@ -162,7 +162,7 @@ impl GalleryRepository for SqlxGalleryRepository<'_> {
         );
         let mut first = true;
 
-        if let Some(id) = filter.id {
+        if let Some(id) = filter.gallery_id {
             push_filter(&mut first, &mut builder, "gallery_id = ", id);
         }
         if let Some(is_public) = filter.is_public {
@@ -216,7 +216,7 @@ impl GalleryRepository for SqlxGalleryRepository<'_> {
                 gallery_id,
             );
         }
-        if let Some(id) = filter.id {
+        if let Some(id) = filter.gallery_item_id {
             push_filter(
                 &mut first,
                 &mut builder,
@@ -490,7 +490,7 @@ mod tests {
         let persisted = repository.create(pending).await?;
         let found = repository
             .search(&GalleryFilter {
-                id: Some(persisted.gallery_id()),
+                gallery_id: Some(persisted.gallery_id()),
                 ..GalleryFilter::default()
             })
             .await?;
@@ -566,7 +566,7 @@ mod tests {
         let saved = repository.save(gallery).await?;
         let found = repository
             .search(&GalleryFilter {
-                id: Some(saved.gallery_id()),
+                gallery_id: Some(saved.gallery_id()),
                 ..GalleryFilter::default()
             })
             .await?;
@@ -584,7 +584,7 @@ mod tests {
         let mut repository = SqlxGalleryRepository::new(&mut transaction);
         let mut default = repository
             .search(&GalleryFilter {
-                id: Some(0),
+                gallery_id: Some(0),
                 ..GalleryFilter::default()
             })
             .await?
@@ -610,7 +610,7 @@ mod tests {
         let mut repository = SqlxGalleryRepository::new(&mut transaction);
         let mut default = repository
             .search(&GalleryFilter {
-                id: Some(0),
+                gallery_id: Some(0),
                 ..GalleryFilter::default()
             })
             .await?
@@ -848,7 +848,7 @@ mod tests {
         // Act
         let found = repository
             .search(&GalleryFilter {
-                id: Some(0),
+                gallery_id: Some(0),
                 ..GalleryFilter::default()
             })
             .await?;
@@ -1103,7 +1103,7 @@ mod tests {
             .await?;
         let by_id = repository
             .search_items(&GalleryItemFilter {
-                id: Some(stored.gallery_item_id()),
+                gallery_item_id: Some(stored.gallery_item_id()),
                 ..GalleryItemFilter::default()
             })
             .await?;

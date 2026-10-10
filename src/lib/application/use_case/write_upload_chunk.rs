@@ -169,7 +169,7 @@ where
         let upload = unit_of_work
             .uploads()
             .search(&UploadFilter {
-                id: Some(command.upload_id()),
+                upload_id: Some(command.upload_id()),
                 ..UploadFilter::default()
             })
             .await
@@ -320,7 +320,7 @@ where
         let saved = unit_of_work
             .uploads()
             .search(&UploadFilter {
-                id: Some(upload.upload_id()),
+                upload_id: Some(upload.upload_id()),
                 ..UploadFilter::default()
             })
             .await

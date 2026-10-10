@@ -1,8 +1,17 @@
 ---
 rules:
+  STY-RUST-001:
+    allowed_locations: []
   STY-RUST-002:
-    bounded_contexts:
+    bounded_contexts: &bounded_contexts
       - asset
       - identity
       - library
       - user
+  STY-RUST-075:
+    allowed_crates:
+      - anyhow
+      - chrono
+      - tracing
+  STY-RUST-083:
+    bounded_contexts: *bounded_contexts

@@ -1,0 +1,22 @@
+---
+id: sty-rust-066
+language: Rust
+severity: hint
+message: >-
+  extract the configuration sources added by ConfigConfigurationSource::load
+  and bootstrap_sqlite3, for STY-RUST-066
+files:
+  - src/lib/infrastructure/outbound/config/configuration_source.rs
+  - src/lib/infrastructure/outbound/config/bootstrap.rs
+rule:
+  all:
+    - pattern: $RECEIVER.add_source($SOURCE)
+    - any:
+        - inside:
+            kind: function_item
+            pattern: pub fn bootstrap_sqlite3($$$A) -> $$$RET { $$$BODY }
+            stopBy: end
+        - inside:
+            kind: function_item
+            pattern: fn load($$$A) -> $$$RET { $$$BODY }
+            stopBy: end

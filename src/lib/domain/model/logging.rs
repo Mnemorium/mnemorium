@@ -1,10 +1,20 @@
+/// Reserved target carrying security events; a verbosity directive must never
+/// target it, or it could suppress a catalog event (`OBS-007`).
+const SECURITY_TARGET: &str = "security";
+
 /// Error returned when initialising or updating a `Logging` value object.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum LoggingError {
+    /// The verbosity filter disables logging as a whole (`off`/`none`).
+    #[error("logging level must not disable logging")]
+    LevelDisablesLogging,
     /// The verbosity filter directives are empty.
     #[error("logging level must not be empty")]
     LevelEmpty,
+    /// The verbosity filter targets the reserved `security` target.
+    #[error("logging level must not target the reserved security target")]
+    LevelTargetsSecurity,
 }
 
 /// Rotation period of the log files.
@@ -94,9 +104,17 @@ impl Logging {
 
     /// Initialise a new `Logging`, validating `level`.
     ///
+    /// The level is rejected when it is empty, when it disables logging as a
+    /// whole (`off`/`none`), or when it carries a directive for the reserved
+    /// `security` target; either would let `logging.level` suppress a catalog
+    /// event (`OBS-007`).
+    ///
     /// # Errors
     ///
-    /// Returns [`LoggingError::LevelEmpty`] when `level` is empty.
+    /// Returns [`LoggingError::LevelEmpty`] when `level` is empty,
+    /// [`LoggingError::LevelDisablesLogging`] when `level` is a bare `off` or
+    /// `none`, and [`LoggingError::LevelTargetsSecurity`] when a directive
+    /// targets the reserved `security` target.
     pub fn try_new(
         ansi: bool,
         level: String,
@@ -105,6 +123,16 @@ impl Logging {
     ) -> Result<Self, LoggingError> {
         if level.is_empty() {
             return Err(LoggingError::LevelEmpty);
+        }
+        let directives = level.trim();
+        if matches!(directives.to_ascii_lowercase().as_str(), "off" | "none") {
+            return Err(LoggingError::LevelDisablesLogging);
+        }
+        if directives
+            .split(',')
+            .any(|directive| directive.trim().starts_with(SECURITY_TARGET))
+        {
+            return Err(LoggingError::LevelTargetsSecurity);
         }
         Ok(Self {
             ansi,

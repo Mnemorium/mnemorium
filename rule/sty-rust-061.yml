@@ -1,0 +1,21 @@
+---
+id: sty-rust-061
+language: Rust
+severity: hint
+message: extract the use-case-factory adapter struct and its fields
+files:
+  - src/lib/infrastructure/use_case_factory/*.rs
+rule:
+  any:
+    - all:
+        - kind: struct_item
+        - pattern: 'pub struct $FACTORY { $$$BODY }'
+    - all:
+        - kind: field_declaration
+        - pattern: '$FIELD: $TYPE'
+        - inside:
+            kind: field_declaration_list
+            inside:
+              kind: struct_item
+              pattern: 'pub struct $FACTORY { $$$BODY }'
+              stopBy: end

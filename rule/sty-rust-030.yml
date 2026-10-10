@@ -1,0 +1,32 @@
+---
+id: sty-rust-030
+language: Rust
+severity: error
+message: >-
+  a test loops over an inline case list and asserts each case; express the cases
+  as rstest #[case] rows instead
+rule:
+  all:
+    - kind: for_expression
+    - any:
+        - has:
+            field: value
+            kind: array_expression
+        - has:
+            field: value
+            has:
+              kind: array_expression
+              stopBy: end
+    - has:
+        field: body
+        has:
+          kind: macro_invocation
+          regex: 'assert'
+          stopBy: end
+    - inside:
+        kind: function_item
+        follows:
+          kind: attribute_item
+          regex: '#\[([A-Za-z_][A-Za-z0-9_]*::)*(test|rstest)\]'
+          stopBy: end
+        stopBy: end

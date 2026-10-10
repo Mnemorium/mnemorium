@@ -1,0 +1,15 @@
+---
+id: sty-rust-036
+language: Rust
+severity: error
+message: >-
+  a repository accessor on a context unit-of-work view must return a
+  short-lived view that borrows the unit of work: `impl <Repository> + '_`
+files:
+  - src/lib/domain/port/**/*_unit_of_work.rs
+rule:
+  all:
+    - kind: function_signature_item
+    - pattern: 'fn $NAME(&mut self) -> $RET'
+    - not:
+        pattern: "fn $NAME(&mut self) -> impl $TRAIT + '_"

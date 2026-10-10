@@ -1,0 +1,26 @@
+---
+id: sty-rust-032
+language: Rust
+severity: error
+message: >-
+  commit and rollback consume the unit of work: they take `self` by value, never
+  `&self` or `&mut self`
+files:
+  - src/**/*.rs
+rule:
+  all:
+    # A trait declaration without a body is a `function_signature_item`; an impl
+    # method with a body is a `function_item`. Both declare the lifecycle method.
+    - any:
+        - kind: function_item
+        - kind: function_signature_item
+    - has:
+        field: name
+        regex: '^(commit|rollback)$'
+    # `&self` / `&mut self` borrow the unit of work; only a by-value `self`
+    # (or `mut self`) consumes it.
+    - has:
+        field: parameters
+        has:
+          kind: self_parameter
+          regex: '^&'

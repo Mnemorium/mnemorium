@@ -252,17 +252,51 @@ mod tests {
         let body = json!({ "username": "alice", "password": SECRET_PASSWORD }).to_string();
 
         // Act: spend the default burst of five, then one more.
-        for _ in 0u8..5u8 {
-            let response = router
-                .clone()
-                .oneshot(request("POST", "/api/v1/identity/login", Some(&body))?)
-                .await?;
-            assert_eq!(
-                response.status(),
-                StatusCode::OK,
-                "a request within the burst must succeed"
-            );
-        }
+        let first = router
+            .clone()
+            .oneshot(request("POST", "/api/v1/identity/login", Some(&body))?)
+            .await?;
+        assert_eq!(
+            first.status(),
+            StatusCode::OK,
+            "a request within the burst must succeed"
+        );
+        let second = router
+            .clone()
+            .oneshot(request("POST", "/api/v1/identity/login", Some(&body))?)
+            .await?;
+        assert_eq!(
+            second.status(),
+            StatusCode::OK,
+            "a request within the burst must succeed"
+        );
+        let third = router
+            .clone()
+            .oneshot(request("POST", "/api/v1/identity/login", Some(&body))?)
+            .await?;
+        assert_eq!(
+            third.status(),
+            StatusCode::OK,
+            "a request within the burst must succeed"
+        );
+        let fourth = router
+            .clone()
+            .oneshot(request("POST", "/api/v1/identity/login", Some(&body))?)
+            .await?;
+        assert_eq!(
+            fourth.status(),
+            StatusCode::OK,
+            "a request within the burst must succeed"
+        );
+        let fifth = router
+            .clone()
+            .oneshot(request("POST", "/api/v1/identity/login", Some(&body))?)
+            .await?;
+        assert_eq!(
+            fifth.status(),
+            StatusCode::OK,
+            "a request within the burst must succeed"
+        );
         let rejected = router
             .oneshot(request("POST", "/api/v1/identity/login", Some(&body))?)
             .await?;

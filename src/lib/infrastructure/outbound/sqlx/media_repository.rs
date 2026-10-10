@@ -170,7 +170,7 @@ impl MediaRepository for SqlxMediaRepository<'_> {
         if let Some(file_id) = filter.file_id {
             push_filter(&mut first, &mut builder, "file_id = ", file_id);
         }
-        if let Some(id) = filter.id {
+        if let Some(id) = filter.image_id {
             push_filter(&mut first, &mut builder, "image_id = ", id);
         }
         if let Some(name) = filter.name.as_deref() {
@@ -218,7 +218,7 @@ impl MediaRepository for SqlxMediaRepository<'_> {
         if let Some(file_id) = filter.file_id {
             push_filter(&mut first, &mut builder, "file_id = ", file_id);
         }
-        if let Some(id) = filter.id {
+        if let Some(id) = filter.video_id {
             push_filter(&mut first, &mut builder, "video_id = ", id);
         }
         if let Some(scan_type) = filter.scan_type {

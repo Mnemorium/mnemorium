@@ -953,8 +953,8 @@ itself is discarded, and a startup failure reaches the operator through the erro
 (`src/lib/infrastructure/logging.rs`) fails fast on invalid filter directives and returns the `WorkerGuard` the
 composition root holds for the lifetime of the process. Security events emit on the reserved `security` target at their
 catalogued level, and `logging.level` cannot suppress them (see
-[§ 9 (Logging & Observability)](#logging--observability), `OBS-007`); `logging::setup` rejects `off`/`none` as a
-whole-level value and any filter directive that targets `security`.
+[§ 9 (Logging & Observability)](#logging--observability), `OBS-007`); `Logging::try_new` rejects `off`/`none` as a
+whole-level value and any filter directive that targets `security`, and `logging::setup` appends the security floor.
 
 Runtime write-guarding of the configuration is deferred; until it lands, the startup-only settings in § 10.1 are the
 only configuration values a running process holds from startup.
@@ -2765,16 +2765,16 @@ only here — a rule in another section cites an `OBS-*` rule, it never restates
 trust-boundary obligation for an adapter that hands untrusted content to an external native parser, since such a parser
 is a security event source (`OBS-008`).
 
-| ID        | Section         | Rule                                                                                                                                                                                                                                                                     | More info                                     |
-| --------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------- |
-| `OBS-001` | Layers          | Emit log events only from the application and infrastructure layers. The domain returns errors as values and never logs; the composition root is infrastructure and may log lifecycle events.                                                                            | [§ 1](#1-logging-layers)                      |
-| `OBS-002` | Ownership       | Log each error or security event exactly once, at the layer that owns the decision that produced it or that still holds its detail; every layer above maps it to a coarser form and never logs it again.                                                                 | [§ 2](#2-log-once-at-the-owning-layer)        |
-| `OBS-003` | Content         | Log a stable classification — an event code or a `kind()` — never the `Display`/`Debug` of an extractor, deserializer, database, filesystem or framework error, and never a raw client-supplied value such as a query string, file name or request-body field.           | [§ 3](#3-log-content)                         |
-| `OBS-004` | Redaction       | Never log application source, session identifiers, access or JWT tokens, passwords or password material, database connection strings, the pepper or JWT signing secret, or personal data; a type that holds a secret must not derive a `Debug` that exposes it.          | [§ 4](#4-redaction)                           |
-| `OBS-005` | Severity        | Use only the levels `error`, `warn`, `info`, `debug` and `trace`, assigned per [§ 5](#5-severity); `error` is an operator-actionable fault, `warn` a reviewable security event, `info` a security success or lifecycle event.                                            | [§ 5](#5-severity)                            |
-| `OBS-006` | Catalog         | Emit every event in the catalog in [§ 6](#6-security-event-catalog) at its declared level and with its declared fields.                                                                                                                                                  | [§ 6](#6-security-event-catalog)              |
-| `OBS-007` | Suppression     | Security events target the reserved `security` target; `logging::setup` rejects `off`/`none` as a whole-level value and any directive that targets `security`, so `logging.level` can never suppress a catalog event.                                                    | [§ 7](#7-non-suppressible-security-events)    |
-| `OBS-008` | Untrusted input | An adapter that hands caller-supplied content to an external native parser restricts the protocols it may open to an explicit allow-list, bounds the child's wall clock and output, and records the residual isolation gap rather than implying the parser is sandboxed. | [§ 8](#8-external-parsers-on-untrusted-input) |
+| ID        | Section         | Rule                                                                                                                                                                                                                                                                             | More info                                     |
+| --------- | --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------- |
+| `OBS-001` | Layers          | Emit log events only from the application and infrastructure layers. The domain returns errors as values and never logs; the composition root is infrastructure and may log lifecycle events.                                                                                    | [§ 1](#1-logging-layers)                      |
+| `OBS-002` | Ownership       | Log each error or security event exactly once, at the layer that owns the decision that produced it or that still holds its detail; every layer above maps it to a coarser form and never logs it again.                                                                         | [§ 2](#2-log-once-at-the-owning-layer)        |
+| `OBS-003` | Content         | Log a stable classification — an event code or a `kind()` — never the `Display`/`Debug` of an extractor, deserializer, database, filesystem or framework error, and never a raw client-supplied value such as a query string, file name or request-body field.                   | [§ 3](#3-log-content)                         |
+| `OBS-004` | Redaction       | Never log application source, session identifiers, access or JWT tokens, passwords or password material, database connection strings, the pepper or JWT signing secret, or personal data; a type that holds a secret must not derive a `Debug` that exposes it.                  | [§ 4](#4-redaction)                           |
+| `OBS-005` | Severity        | Use only the levels `error`, `warn`, `info`, `debug` and `trace`, assigned per [§ 5](#5-severity); `error` is an operator-actionable fault, `warn` a reviewable security event, `info` a security success or lifecycle event.                                                    | [§ 5](#5-severity)                            |
+| `OBS-006` | Catalog         | Emit every event in the catalog in [§ 6](#6-security-event-catalog) at its declared level and with its declared fields.                                                                                                                                                          | [§ 6](#6-security-event-catalog)              |
+| `OBS-007` | Suppression     | Security events target the reserved `security` target; `Logging::try_new` rejects `off`/`none` as a whole-level value and any directive that targets `security`, and `logging::setup` appends the non-suppressible floor, so `logging.level` can never suppress a catalog event. | [§ 7](#7-non-suppressible-security-events)    |
+| `OBS-008` | Untrusted input | An adapter that hands caller-supplied content to an external native parser restricts the protocols it may open to an explicit allow-list, bounds the child's wall clock and output, and records the residual isolation gap rather than implying the parser is sandboxed.         | [§ 8](#8-external-parsers-on-untrusted-input) |
 
 ---
 
@@ -2908,9 +2908,10 @@ geolocation and consent, fraud, excessive use, and key rotation.
 
 Catalog events emit on the reserved `security` target at whatever level the catalog declares for them (`error`, `warn`,
 `info` or `debug`; `OBS-006`). `logging::setup` (`src/lib/infrastructure/logging.rs`) builds the filter so
-`logging.level` can never suppress a catalog event: it rejects `off`/`none` as a whole-level value and rejects any
-directive that targets `security`. `logging.level` therefore tunes operational verbosity only; it is startup-only
-(`STY-RUST-076`; see [§ 10.1](#101-startup-only-settings)).
+`logging.level` can never suppress a catalog event: `Logging::try_new` rejects `off`/`none` as a whole-level value and
+rejects any directive that targets `security`, and `logging::setup` appends the security floor (`security=debug`).
+`logging.level` therefore tunes operational verbosity only; it is startup-only (`STY-RUST-076`; see
+[§ 10.1](#101-startup-only-settings)).
 
 ---
 

@@ -1,0 +1,27 @@
+---
+id: sty-rust-047
+language: Rust
+severity: error
+message: >-
+  a repository `search` returns a collection (`Result<Vec<_>, _>`) so that
+  nothing matching yields an empty collection, never an `Option` or a single
+  value
+files:
+  - src/lib/domain/port/*_repository.rs
+rule:
+  kind: function_signature_item
+  all:
+    - has:
+        field: name
+        regex: '^search(_|$)'
+    - has:
+        field: parameters
+        has:
+          kind: parameter
+          has:
+            field: type
+            regex: 'Filter'
+    - not:
+        has:
+          field: return_type
+          regex: 'Vec\s*<'

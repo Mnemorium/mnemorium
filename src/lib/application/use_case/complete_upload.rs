@@ -464,7 +464,7 @@ where
     let found = match unit_of_work
         .uploads()
         .search(&UploadFilter {
-            id: Some(command.upload_id()),
+            upload_id: Some(command.upload_id()),
             ..UploadFilter::default()
         })
         .await
@@ -731,7 +731,6 @@ mod tests {
     use std::sync::Mutex;
     use std::sync::PoisonError;
     use std::sync::atomic::AtomicBool;
-    use std::sync::atomic::AtomicUsize;
     use std::sync::atomic::Ordering;
 
     use chrono::NaiveDate;
@@ -1507,19 +1506,19 @@ mod tests {
         let mut phase_two_uploads = MockUploadRepository::new();
         expect_upload(&mut phase_two_uploads, resolved);
         let mut phase_two_files = MockFileRepository::new();
-        let search_calls = Arc::new(AtomicUsize::new(0));
-        let next_call = Arc::clone(&search_calls);
+        let mut search_order = mockall::Sequence::new();
         phase_two_files
             .expect_search()
-            .times(2)
-            .returning(move |_| {
-                let call = next_call.fetch_add(1, Ordering::SeqCst);
-                let result = if call == 0 {
-                    Ok(Vec::new())
-                } else {
-                    stored_file(11, 3).map(|file| vec![file])
-                };
-                Box::pin(async move { result })
+            .times(1)
+            .in_sequence(&mut search_order)
+            .return_once(|_| Box::pin(async { Ok(Vec::new()) }));
+        phase_two_files
+            .expect_search()
+            .times(1)
+            .in_sequence(&mut search_order)
+            .return_once(|_| {
+                let stored = stored_file(11, 3);
+                Box::pin(async move { stored.map(|file| vec![file]) })
             });
         phase_two_files
             .expect_create()

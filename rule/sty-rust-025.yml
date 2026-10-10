@@ -1,0 +1,17 @@
+---
+id: sty-rust-025
+language: Rust
+severity: hint
+message: >-
+  extract SQL CHECK-constraint-backed enums and their variants for
+  STY-RUST-025
+files:
+  - src/lib/infrastructure/outbound/sqlx/model/*.rs
+rule:
+  all:
+    - kind: enum_item
+    - pattern: pub enum $ENUM { $$$VARIANTS }
+    - follows:
+        kind: attribute_item
+        regex: 'sqlx\(rename_all = "UPPERCASE"\)'
+        stopBy: end

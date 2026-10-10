@@ -89,7 +89,7 @@ where
                 let found = match unit_of_work
                     .uploads()
                     .search(&UploadFilter {
-                        id: Some(command.upload_id()),
+                        upload_id: Some(command.upload_id()),
                         ..UploadFilter::default()
                     })
                     .await

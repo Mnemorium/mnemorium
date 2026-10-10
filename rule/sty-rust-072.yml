@@ -1,0 +1,46 @@
+---
+id: sty-rust-072
+language: Rust
+severity: error
+message: >-
+  outbound port traits are `'static`: a port trait declares no lifetime
+  parameter, and a use case never stores a repository beyond its `execute`
+files:
+  - src/lib/domain/port/**/*.rs
+  - src/lib/application/use_case/**/*.rs
+rule:
+  all:
+    - any:
+        # An outbound port trait is `'static`: a lifetime parameter on the
+        # trait makes it non-'static, so it cannot be injected as `Arc<F>`.
+        # `'static` is not a lifetime parameter; a method's own `<...>` generics
+        # are excluded by `stopBy: neighbor` on the trait's parameter list.
+        - all:
+            - kind: type_parameters
+            - has:
+                kind: lifetime
+                not:
+                  regex: "^'static$"
+                stopBy: end
+            - inside:
+                kind: trait_item
+                stopBy: neighbor
+        # A use case never stores a repository: the repository is a short-lived
+        # view obtained and dropped inside `execute`, never a struct field.
+        # `Repository\b` matches a repository type (`UserRepository`) but not
+        # `RepositoryError`.
+        - all:
+            - kind: field_declaration
+            - has:
+                field: type
+                regex: 'Repository\b'
+            - inside:
+                kind: struct_item
+                stopBy: end
+    - not:
+        inside:
+          kind: mod_item
+          stopBy: end
+          follows:
+            kind: attribute_item
+            regex: cfg\(test\)

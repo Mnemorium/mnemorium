@@ -1,0 +1,18 @@
+---
+id: sty-rust-046
+language: Rust
+severity: error
+message: >-
+  a repository `delete` returns `Result<bool, _>` so a no-match is `Ok(false)`,
+  not an error
+files:
+  - src/lib/domain/port/*_repository.rs
+rule:
+  kind: function_signature_item
+  has:
+    field: name
+    regex: '^delete(_|$)'
+  not:
+    has:
+      field: return_type
+      regex: 'Result<\s*bool\b'

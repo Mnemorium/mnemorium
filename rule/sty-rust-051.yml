@@ -1,0 +1,14 @@
+---
+id: sty-rust-051
+language: Rust
+severity: error
+message: a *Filter struct is declared after the repository trait
+rule:
+  all:
+    - kind: struct_item
+    - pattern: pub struct $FILTER
+    - regex: '^pub struct \w+Filter\b'
+    - follows:
+        kind: trait_item
+        pattern: 'pub trait $TRAIT'
+        stopBy: end

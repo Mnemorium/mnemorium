@@ -581,6 +581,33 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn logging_rejects_bare_off() {
+        // Act
+        let result = Logging::try_new(false, "off".to_owned(), 7, Rotation::Daily);
+
+        // Assert
+        assert!(matches!(result, Err(LoggingError::LevelDisablesLogging)));
+    }
+
+    #[tokio::test]
+    async fn logging_rejects_bare_none() {
+        // Act
+        let result = Logging::try_new(false, "none".to_owned(), 7, Rotation::Daily);
+
+        // Assert
+        assert!(matches!(result, Err(LoggingError::LevelDisablesLogging)));
+    }
+
+    #[tokio::test]
+    async fn logging_rejects_security_target() {
+        // Act
+        let result = Logging::try_new(false, "error,security=error".to_owned(), 7, Rotation::Daily);
+
+        // Assert
+        assert!(matches!(result, Err(LoggingError::LevelTargetsSecurity)));
+    }
+
+    #[tokio::test]
     async fn sqlite3_rejects_zero_max_connections() {
         // Act
         let result = Sqlite3::try_new("mnemorium.db".to_owned(), 0);

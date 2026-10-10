@@ -79,19 +79,31 @@ mod tests {
 
     #[test]
     fn hasher_hashes_incrementally() -> Result<(), Box<dyn Error>> {
-        assert_eq!(hash(&[b"12", b"34"])?.as_str(), hash(&[b"1234"])?.as_str());
+        // Act
+        let digest = hash(&[b"12", b"34"])?;
+
+        // Assert
+        assert_eq!(digest.as_str(), hash(&[b"1234"])?.as_str());
         Ok(())
     }
 
     #[test]
     fn hasher_hashes_the_empty_input() -> Result<(), Box<dyn Error>> {
-        assert_eq!(hash(&[])?.as_str(), DIGEST_EMPTY);
+        // Act
+        let digest = hash(&[])?;
+
+        // Assert
+        assert_eq!(digest.as_str(), DIGEST_EMPTY);
         Ok(())
     }
 
     #[test]
     fn hasher_matches_the_known_sha256_vector() -> Result<(), Box<dyn Error>> {
-        assert_eq!(hash(&[b"1234"])?.as_str(), DIGEST_1234);
+        // Act
+        let digest = hash(&[b"1234"])?;
+
+        // Assert
+        assert_eq!(digest.as_str(), DIGEST_1234);
         Ok(())
     }
 }

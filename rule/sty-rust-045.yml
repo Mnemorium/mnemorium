@@ -1,0 +1,17 @@
+---
+id: sty-rust-045
+language: Rust
+severity: error
+message: >-
+  save upserts an existing aggregate targeted by its identifier: use
+  INSERT ... ON CONFLICT (<id>) DO UPDATE SET ..., never a plain INSERT or UPDATE
+files:
+  - src/lib/infrastructure/outbound/sqlx/*_repository.rs
+rule:
+  all:
+    - kind: function_item
+    - has:
+        field: name
+        regex: '^save$'
+    - not:
+        regex: '(?s)ON\s+CONFLICT\s*\(\s*[a-z_]*_id\s*\)\s*DO\s+UPDATE'

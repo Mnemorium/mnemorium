@@ -1,0 +1,15 @@
+---
+id: sty-rust-063
+language: Rust
+severity: error
+message: >-
+  the use-case factory only supplies the unit-of-work factory; the use case
+  opens, commits and rolls back its own unit of work — the factory must not
+  call begin/commit/rollback
+files:
+  - src/lib/infrastructure/use_case_factory/*.rs
+rule:
+  any:
+    - pattern: $UOW.begin()
+    - pattern: $UOW.commit()
+    - pattern: $UOW.rollback()

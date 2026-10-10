@@ -1,0 +1,17 @@
+---
+id: sty-rust-059
+language: Rust
+severity: error
+message: the use-case trait $TRAIT must be declared last in a use-case port file
+files:
+  - src/lib/application/port/*.rs
+rule:
+  all:
+    - kind: trait_item
+    - pattern: pub trait $TRAIT
+    - regex: '^pub trait \w+UseCase\b'
+    - precedes:
+        any:
+          - kind: struct_item
+          - kind: enum_item
+        stopBy: end

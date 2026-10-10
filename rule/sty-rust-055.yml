@@ -1,0 +1,18 @@
+---
+id: sty-rust-055
+language: Rust
+severity: hint
+message: extract use-case trait implementations for STY-RUST-055
+files:
+  - src/lib/application/use_case/*.rs
+rule:
+  kind: impl_item
+  all:
+    - has:
+        field: trait
+        all:
+          - pattern: $TRAIT
+          - regex: 'UseCase$'
+    - has:
+        field: type
+        pattern: $TYPE

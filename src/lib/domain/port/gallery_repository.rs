@@ -12,7 +12,7 @@ use crate::domain::port::error::RepositoryError;
 #[non_exhaustive]
 pub struct GalleryFilter {
     /// Filter on the gallery identifier.
-    pub id: Option<NumericID>,
+    pub gallery_id: Option<NumericID>,
     /// Filter on whether the gallery is public.
     pub is_public: Option<bool>,
     /// Filter on the gallery name.
@@ -29,7 +29,7 @@ pub struct GalleryItemFilter {
     /// Filter on the identifier of the owning gallery.
     pub gallery_id: Option<NumericID>,
     /// Filter on the item identifier.
-    pub id: Option<NumericID>,
+    pub gallery_item_id: Option<NumericID>,
     /// Filter on the referenced medium.
     pub media: Option<GalleryItemMedia>,
 }

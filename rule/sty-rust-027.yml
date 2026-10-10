@@ -1,0 +1,37 @@
+---
+id: sty-rust-027
+language: Rust
+severity: error
+message: >-
+  a test function must follow Arrange-Act-Assert (AAA): annotate its body with
+  `// Act` and `// Assert` comments in that order (`// Act & Assert` satisfies
+  both)
+rule:
+  # A test function: a function_item whose own attribute list carries
+  # `#[test]`, `#[rstest]` or `#[tokio::test]`. `stopBy: function_item` stops the
+  # backward search at the previous function, so a helper that merely follows a
+  # test in the module is not mistaken for one; the search still sees past the
+  # intervening attributes (e.g. `#[case::...]`) to the test attribute.
+  kind: function_item
+  follows:
+    kind: attribute_item
+    regex: '#\[(test|rstest|tokio::test)\b'
+    stopBy:
+      kind: function_item
+  # Compliant when an `// Assert` comment follows an `// Act` comment, or a
+  # single comment carries both markers (`// Act & Assert`, as in the § 5 rstest
+  # example). `// Arrange` is optional — the § 5 rstest example omits it.
+  not:
+    any:
+      - has:
+          kind: line_comment
+          regex: '//[^\n]*\bAssert\b'
+          stopBy: end
+          follows:
+            kind: line_comment
+            regex: '//[^\n]*\bAct\b'
+            stopBy: end
+      - has:
+          kind: line_comment
+          regex: '//[^\n]*\bAct\b[^\n]*\bAssert\b'
+          stopBy: end

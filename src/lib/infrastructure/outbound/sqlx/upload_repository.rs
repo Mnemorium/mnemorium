@@ -158,7 +158,7 @@ impl UploadRepository for SqlxUploadRepository<'_> {
         );
         let mut first = true;
 
-        if let Some(id) = filter.id {
+        if let Some(id) = filter.upload_id {
             push_filter(&mut first, &mut builder, "upload_id = ", id);
         }
         if let Some(user_id) = filter.user_id {
@@ -186,7 +186,7 @@ impl UploadRepository for SqlxUploadRepository<'_> {
         );
         let mut first_chunk = true;
 
-        if let Some(id) = filter.id {
+        if let Some(id) = filter.upload_id {
             push_filter(
                 &mut first_chunk,
                 &mut chunk_builder,
@@ -413,7 +413,7 @@ mod tests {
         let persisted = repository.create(pending).await?;
         let found = repository
             .search(&UploadFilter {
-                id: Some(persisted.upload_id()),
+                upload_id: Some(persisted.upload_id()),
                 ..UploadFilter::default()
             })
             .await?;
@@ -445,14 +445,12 @@ mod tests {
         let created = repository.create(upload(0, 1, 40, &[], false)?).await?;
 
         // Act
-        for chunk_number in [0, 3, 9] {
-            repository
-                .record_chunk(created.upload_id(), chunk_number)
-                .await?;
-        }
+        repository.record_chunk(created.upload_id(), 0).await?;
+        repository.record_chunk(created.upload_id(), 3).await?;
+        repository.record_chunk(created.upload_id(), 9).await?;
         let found = repository
             .search(&UploadFilter {
-                id: Some(created.upload_id()),
+                upload_id: Some(created.upload_id()),
                 ..UploadFilter::default()
             })
             .await?;
@@ -483,7 +481,7 @@ mod tests {
         repository.record_chunk(created.upload_id(), 0).await?;
         let found = repository
             .search(&UploadFilter {
-                id: Some(created.upload_id()),
+                upload_id: Some(created.upload_id()),
                 ..UploadFilter::default()
             })
             .await?;
@@ -505,18 +503,15 @@ mod tests {
 
         // Act: finishing an incomplete upload matches no row.
         let incomplete = repository.finish(created.upload_id()).await;
-        for chunk_number in [0, 1] {
-            repository
-                .record_chunk(created.upload_id(), chunk_number)
-                .await?;
-        }
+        repository.record_chunk(created.upload_id(), 0).await?;
+        repository.record_chunk(created.upload_id(), 1).await?;
         let finished = repository
             .finish(created.upload_id())
             .await?
             .ok_or("the upload must still exist")?;
         let found = repository
             .search(&UploadFilter {
-                id: Some(created.upload_id()),
+                upload_id: Some(created.upload_id()),
                 ..UploadFilter::default()
             })
             .await?;

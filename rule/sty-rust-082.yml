@@ -1,0 +1,13 @@
+---
+id: sty-rust-082
+language: Rust
+severity: hint
+message: >-
+  extract a bounded-context path an endpoint file reaches
+  (`handler::<context>::<next>`), for STY-RUST-082
+rule:
+  any:
+    # A flat or bare path: `handler::<context>::<next>` (and deeper).
+    - pattern: crate::infrastructure::inbound::rest::handler::$CTX::$OP
+    # A use tree: `handler::<context>::{ <next>, ... }`.
+    - pattern: use crate::infrastructure::inbound::rest::handler::$CTX::{$$$ITEMS};
