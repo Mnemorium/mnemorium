@@ -150,7 +150,7 @@ where
                     if let Err(_rollback_error) = unit_of_work.rollback().await {
                         // The unit-of-work adapter owns the rollback-failure
                         // log (`OBS-002`); the use case returns the original
-                        // business error (`STY-RUST-038`).
+                        // business error (`STY-RUST-034`).
                     }
                     Err(error)
                 }

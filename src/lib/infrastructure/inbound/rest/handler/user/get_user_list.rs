@@ -22,7 +22,7 @@ use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 /// Filters restricting the returned users.
 ///
 /// Every filter is optional; an all-`None` query returns every user.
-#[derive(Debug, Deserialize, Serialize, IntoParams)]
+#[derive(Debug, Deserialize, IntoParams)]
 #[non_exhaustive]
 pub struct ListUsersQuery {
     /// Only return users whose email matches this value.
@@ -47,7 +47,7 @@ pub struct UserListLinks {
 }
 
 /// Users matching the requested filters.
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Serialize, ToSchema)]
 #[non_exhaustive]
 pub struct GetUserListResponse {
     /// The users matching the filters.

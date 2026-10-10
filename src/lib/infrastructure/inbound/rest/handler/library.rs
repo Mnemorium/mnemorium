@@ -100,7 +100,7 @@ impl From<GalleryItemMedia> for GalleryItemType {
 }
 
 /// One item of a gallery, without the metadata of its medium.
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Serialize, ToSchema)]
 #[non_exhaustive]
 pub struct GalleryItemResponse {
     /// Date and time at which the item was added.
@@ -138,7 +138,7 @@ impl From<&GalleryItemSummary> for GalleryItemResponse {
 }
 
 /// Detailed item of a gallery, returned by the item endpoints.
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Serialize, ToSchema)]
 #[non_exhaustive]
 pub struct GalleryItemDetailResponse {
     /// Date and time at which the item was added.
@@ -211,7 +211,7 @@ impl From<AddGalleryItemResponse> for GalleryItemDetailResponse {
 ///
 /// On a collection listing, `items` stays empty and `item_count` communicates
 /// the size of the gallery.
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Serialize, ToSchema)]
 #[non_exhaustive]
 pub struct GalleryResponse {
     /// Date and time at which the gallery was created.

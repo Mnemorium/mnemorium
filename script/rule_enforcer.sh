@@ -15,6 +15,7 @@ set -u -o pipefail
 #
 # Usage:
 #   script/rule_enforcer.sh [check]   # run every registered check (default)
+#   script/rule_enforcer.sh check -v  # ...and list every check that passed
 #   script/rule_enforcer.sh uncovered # list rulebook rules with no check
 #   script/rule_enforcer.sh list      # list registered rules
 #   script/rule_enforcer.sh help
@@ -28,6 +29,11 @@ readonly REPO_ROOT
 
 readonly RULEBOOK="docs/development/TechnicalDesign.md"
 readonly CONFIG="rule_enforcer.yaml"
+readonly SGCONFIG="sgconfig.yaml"
+
+# Verbose mode: set by `-v`/`--verbose` with `check`; lists every check, pass or
+# fail, instead of only the failures.
+VERBOSE=0
 
 # --- Registry ---------------------------------------------------------------
 #
@@ -40,7 +46,20 @@ readonly CONFIG="rule_enforcer.yaml"
 # RULES=(
 # 	"DOC-001:check_doc_001"
 # )
-RULES=()
+RULES=(
+	"STY-RUST-002:check_sty_rust_002"
+	"STY-RUST-003:check_sty_rust_003"
+	"STY-RUST-004:check_sty_rust_004"
+	"STY-RUST-005:check_sty_rust_005"
+	"STY-RUST-006:check_sty_rust_006"
+	"STY-RUST-007:check_sty_rust_007"
+	"STY-RUST-014:check_sty_rust_014"
+	"STY-RUST-013:check_sty_rust_013"
+	"STY-RUST-008:check_sty_rust_008"
+	"STY-RUST-011:check_sty_rust_011"
+	"STY-RUST-012:check_sty_rust_012"
+	"STY-RUST-068:check_sty_rust_068"
+)
 
 # --- Rulebook ---------------------------------------------------------------
 
@@ -66,6 +85,8 @@ Usage:
   script/rule_enforcer.sh uncovered List rulebook rules with no check.
   script/rule_enforcer.sh list      List registered rules.
   script/rule_enforcer.sh help      Show this help.
+
+  -v, --verbose   With `check`, list every check that passed, not only failures.
 
 A check is registered in this file as `<ID>:<function>` and reads its own
 configuration block from rule_enforcer.yaml through `rule_config <ID>`.
@@ -132,9 +153,16 @@ print_rule() {
 
 # --- Configuration ----------------------------------------------------------
 
+# require_yq — the harness reads the YAML config through yq, which the dev shell
+# provides. A missing yq is a tool error, not a malformed config, so the two are
+# told apart before yq is trusted.
+require_yq() {
+	command -v yq >/dev/null 2>&1
+}
+
 # rule_config <id> — print the rule's block from rule_enforcer.yaml as compact
 # JSON, or `{}` when the file, the `rules:` map or the block is absent. Returns
-# non-zero only when the file is malformed, so a check can tell "no config" from
+# non-zero only on a tool or parse error, so a check can tell "no config" from
 # "config broken".
 rule_config() {
 	local id="${1:-}"
@@ -148,6 +176,11 @@ rule_config() {
 		return 0
 	fi
 
+	if ! require_yq; then
+		printf 'error: %s: yq not found on PATH (run inside the dev shell: devenv shell)\n' "$id" >&2
+		return 2
+	fi
+
 	local block
 	block="$(yq -c ".rules[\"$id\"] // {}" "$CONFIG")" || return 2
 	[ -n "$block" ] || block='{}'
@@ -155,10 +188,14 @@ rule_config() {
 }
 
 # validate_config — hard-fail on a malformed file; a missing or empty file is
-# valid (all blocks are then `{}`).
+# valid (all blocks are then `{}`). A missing yq is reported as the tool error it
+# is, never as a malformed config.
 validate_config() {
 	[ -f "$CONFIG" ] || return 0
 	[ -s "$CONFIG" ] || return 0
+	if ! require_yq; then
+		die_code 2 "required tool not found: yq (run inside the dev shell: devenv shell)"
+	fi
 	if ! yq '.' "$CONFIG" >/dev/null 2>&1; then
 		die_code 2 "malformed config: $CONFIG"
 	fi
@@ -175,6 +212,291 @@ warn_unknown_config_rules() {
 			printf 'warning: config references unknown rule id: %s\n' "$key" >&2
 		fi
 	done < <(yq -r '.rules // {} | keys[]' "$CONFIG" 2>/dev/null)
+}
+
+# --- Checks -----------------------------------------------------------------
+
+check_sty_rust_002() {
+	local id="STY-RUST-002"
+	local handler_dir="src/lib/infrastructure/inbound/rest/handler"
+	local config context name dir
+	local -a contexts=()
+	local -A is_context=()
+	local result=0
+
+	config="$(rule_config "$id")" || return 2
+	mapfile -t contexts < <(
+		jq -r '.bounded_contexts[]?' <<<"$config"
+	)
+	if [ "${#contexts[@]}" -eq 0 ]; then
+		printf 'error: %s: rule_enforcer.yaml declares no bounded_contexts\n' "$id" >&2
+		return 2
+	fi
+
+	if [ ! -d "$handler_dir" ]; then
+		printf 'error: %s: missing %s\n' "$id" "$handler_dir" >&2
+		return 1
+	fi
+
+	for context in "${contexts[@]}"; do
+		is_context["$context"]=1
+		if [ ! -f "${handler_dir}/${context}.rs" ]; then
+			printf 'error: %s: missing bounded-context module %s\n' "$id" "${handler_dir}/${context}.rs" >&2
+			result=1
+		fi
+		if [ ! -d "${handler_dir}/${context}" ]; then
+			printf 'error: %s: missing bounded-context folder %s\n' "$id" "${handler_dir}/${context}" >&2
+			result=1
+		fi
+	done
+
+	while IFS= read -r dir; do
+		name="${dir##*/}"
+		if [ -z "${is_context[$name]+set}" ]; then
+			printf 'error: %s: %s is not a bounded-context folder\n' "$id" "$dir" >&2
+			result=1
+		fi
+	done < <(find "$handler_dir" -mindepth 1 -maxdepth 1 -type d | sort)
+
+	return "$result"
+}
+
+check_sty_rust_003() {
+	local id="STY-RUST-003"
+	local rule_id="sty-rust-003"
+	local output
+
+	if output="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
+		--globs 'src/lib/infrastructure/inbound/rest/handler/*/*.rs' \
+		--report-style=short --color=never src 2>&1)"; then
+		return 0
+	fi
+	printf '%s\n' "$output"
+	return 1
+}
+
+check_sty_rust_004() {
+	local id="STY-RUST-004"
+	local rule_id="sty-rust-004"
+	local output
+
+	if output="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
+		--report-style=short --color=never src 2>&1)"; then
+		return 0
+	fi
+	printf '%s\n' "$output"
+	return 1
+}
+
+check_sty_rust_005() {
+	local id="STY-RUST-005"
+	local rule_id="sty-rust-005"
+	local output
+
+	if output="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
+		--report-style=short --color=never src 2>&1)"; then
+		return 0
+	fi
+	printf '%s\n' "$output"
+	return 1
+}
+
+check_sty_rust_006() {
+	local id="STY-RUST-006"
+	local rule_id="sty-rust-006"
+	local handler_dir="src/lib/infrastructure/inbound/rest/handler"
+	local matches declared file fn base result=0
+
+	if [ ! -d "$handler_dir" ]; then
+		printf 'error: %s: missing %s\n' "$id" "$handler_dir" >&2
+		return 1
+	fi
+
+	# sty-rust-006 extracts the handler — the function carrying the endpoint's
+	# `#[utoipa::path]` attribute. The file-name comparison happens here because
+	# an ast-grep rule cannot see the file path it is matching in.
+	if ! matches="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
+		--json=stream "$handler_dir" 2>&1)"; then
+		printf '%s\n' "$matches"
+		return 1
+	fi
+	if [ -z "$matches" ]; then
+		printf 'error: %s: extracted no handler from %s\n' "$id" "$handler_dir" >&2
+		return 1
+	fi
+
+	# Every file that declares an endpoint must yield a handler.
+	declared="$(grep -rl '#\[utoipa::path' "$handler_dir" | sort -u)"
+	while IFS= read -r file; do
+		[ -n "$file" ] || continue
+		if ! printf '%s\n' "$matches" | jq -r '.file' | grep -qxF "$file"; then
+			printf 'error: %s: %s declares an endpoint but no handler was extracted\n' "$id" "$file" >&2
+			result=1
+		fi
+	done <<<"$declared"
+
+	while IFS=$'\t' read -r file fn; do
+		[ -n "$file" ] || continue
+		base="$(basename "$file" .rs)"
+		if [ "$fn" != "$base" ]; then
+			printf 'error: %s: handler %s in %s must be named %s after the file\n' "$id" "$fn" "$file" "$base" >&2
+			result=1
+		fi
+	done < <(printf '%s\n' "$matches" | jq -r '[.file, .metaVariables.single.FUNC.text] | @tsv')
+
+	return "$result"
+}
+
+check_sty_rust_007() {
+	local id="STY-RUST-007"
+	local rule_id="sty-rust-007"
+	local output
+
+	if output="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
+		--report-style=short --color=never src 2>&1)"; then
+		return 0
+	fi
+	printf '%s\n' "$output"
+	return 1
+}
+
+check_sty_rust_014() {
+	local id="STY-RUST-014"
+	local rule_id="sty-rust-014"
+	local output
+
+	if output="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
+		--report-style=short --color=never src 2>&1)"; then
+		return 0
+	fi
+	printf '%s\n' "$output"
+	return 1
+}
+
+check_sty_rust_013() {
+	local id="STY-RUST-013"
+	local rule_id="sty-rust-013"
+	local model_dir="src/lib/domain/model"
+	local matches file line name base key result=0
+	local -A struct_line=()
+
+	if [ ! -d "$model_dir" ]; then
+		printf 'error: %s: missing %s\n' "$id" "$model_dir" >&2
+		return 1
+	fi
+
+	# sty-rust-013 extracts each domain error enum and each model struct; the
+	# `<Model>Error`-before-`<Model>` pairing happens here because an ast-grep
+	# rule cannot relate two identifiers.
+	if ! matches="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
+		--json=stream "$model_dir" 2>&1)"; then
+		printf '%s\n' "$matches"
+		return 1
+	fi
+	if [ -z "$matches" ]; then
+		printf 'error: %s: extracted no domain error or model struct from %s\n' "$id" "$model_dir" >&2
+		return 1
+	fi
+
+	while IFS=$'\t' read -r file line name; do
+		[ -n "$name" ] || continue
+		struct_line["${file}:${name}"]="$line"
+	done < <(printf '%s\n' "$matches" |
+		jq -r 'select(.metaVariables.single.MODEL) | [.file, (.range.start.line|tostring), .metaVariables.single.MODEL.text] | @tsv')
+
+	while IFS=$'\t' read -r file line name; do
+		[ -n "$name" ] || continue
+		base="${name%Error}"
+		if [ "$base" = "$name" ]; then
+			continue
+		fi
+		key="${file}:${base}"
+		if [ -z "${struct_line[$key]+set}" ]; then
+			printf 'error: %s: %s: domain error enum %s has no model struct %s in the same file\n' \
+				"$id" "$file" "$name" "$base" >&2
+			result=1
+		elif [ "$line" -ge "${struct_line[$key]}" ]; then
+			printf 'error: %s: %s: domain error enum %s must be declared before struct %s\n' \
+				"$id" "$file" "$name" "$base" >&2
+			result=1
+		fi
+	done < <(printf '%s\n' "$matches" |
+		jq -r 'select(.metaVariables.single.ERROR_ENUM) | [.file, (.range.start.line|tostring), .metaVariables.single.ERROR_ENUM.text] | @tsv')
+
+	return "$result"
+}
+
+check_sty_rust_008() {
+	local id="STY-RUST-008"
+	local rule_id="sty-rust-008"
+	local output
+
+	if output="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
+		--report-style=short --color=never src 2>&1)"; then
+		return 0
+	fi
+	printf '%s\n' "$output"
+	return 1
+}
+
+check_sty_rust_011() {
+	local id="STY-RUST-011"
+	local rule_id="sty-rust-011"
+	local output
+
+	if output="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
+		--report-style=short --color=never src 2>&1)"; then
+		return 0
+	fi
+	printf '%s\n' "$output"
+	return 1
+}
+
+check_sty_rust_012() {
+	local id="STY-RUST-012"
+	local rule_id="sty-rust-012"
+	local target="src/lib/infrastructure/inbound/rest/api_error.rs"
+	local matches file result=0
+
+	# sty-rust-012 is a positive rule: it matches a compliant `enum ApiError` —
+	# one not derived with `thiserror`. It scans all of `src` so the file
+	# comparison below also catches a declaration in the wrong file.
+	if ! matches="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
+		--json=stream src 2>&1)"; then
+		printf '%s\n' "$matches"
+		return 1
+	fi
+
+	if [ -z "$matches" ]; then
+		printf 'error: %s: ApiError is not declared in %s without a thiserror derive\n' \
+			"$id" "$target" >&2
+		return 1
+	fi
+
+	while IFS= read -r file; do
+		[ -n "$file" ] || continue
+		if [ "$file" != "$target" ]; then
+			printf 'error: %s: ApiError must be declared only in %s (found in %s)\n' \
+				"$id" "$target" "$file" >&2
+			result=1
+		fi
+	done < <(printf '%s\n' "$matches" | jq -r '.file')
+
+	return "$result"
+}
+
+check_sty_rust_068() {
+	local id="STY-RUST-068"
+	local rule_id="sty-rust-068"
+	local output
+
+	if output="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
+		--globs '!src/bin/server.rs' \
+		--report-style=short --color=never src 2>&1)"; then
+		return 0
+	fi
+	printf '%s\n' "$output"
+	return 1
 }
 
 # --- Runner -----------------------------------------------------------------
@@ -216,6 +538,10 @@ run_checks() {
 			rc=$?
 		fi
 
+		if [ "$rc" -eq 0 ] && [ "$VERBOSE" -eq 1 ]; then
+			printf 'ok   %s (%s)\n' "$id" "${RULE_SECTION[$id]}"
+		fi
+
 		if [ "$rc" -ne 0 ]; then
 			failed=$((failed + 1))
 			printf 'FAIL %s (%s) — %s\n' "$id" "${RULE_SECTION[$id]}" "${RULE_TEXT[$id]}"
@@ -255,7 +581,28 @@ cmd_list() {
 }
 
 main() {
-	case "${1:-check}" in
+	local cmd="check" arg
+	while [ "$#" -gt 0 ]; do
+		arg="$1"
+		shift
+		case "$arg" in
+		-v | --verbose)
+			VERBOSE=1
+			;;
+		check | uncovered | list)
+			cmd="$arg"
+			;;
+		help | -h | --help)
+			cmd="help"
+			;;
+		*)
+			usage >&2
+			return 64
+			;;
+		esac
+	done
+
+	case "$cmd" in
 	check)
 		cd -- "$REPO_ROOT" || die "cannot enter $REPO_ROOT"
 		read_rulebook
@@ -274,13 +621,9 @@ main() {
 		read_rulebook
 		cmd_list
 		;;
-	help | -h | --help)
+	help)
 		usage
 		return 0
-		;;
-	*)
-		usage >&2
-		return 64
 		;;
 	esac
 }

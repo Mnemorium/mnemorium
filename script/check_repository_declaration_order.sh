@@ -4,7 +4,7 @@ set -u -o pipefail
 # A repository port file declares the filter struct(s) first and the
 # `<Aggregate>Repository` trait second; a read model or the `#[cfg(test)]`
 # `&mut T` impl follows the trait. See docs/development/TechnicalDesign.md
-# § 8.3 (Code Style Guidelines), STY-RUST-056 and STY-RUST-057.
+# § 8.3 (Code Style Guidelines), STY-RUST-052 and STY-RUST-053.
 readonly PORT_DIR="src/lib/domain/port"
 readonly FILE_SUFFIX="_repository.rs"
 
@@ -18,7 +18,7 @@ usage() {
 	echo ""
 	echo "  Fail when a repository port file declares a non-filter struct before"
 	echo "  its repository trait. The file must declare the filter struct(s)"
-	echo "  first and the trait second (STY-RUST-056, STY-RUST-057)."
+	echo "  first and the trait second (STY-RUST-052, STY-RUST-053)."
 	echo ""
 	echo "  With no arguments, every *${FILE_SUFFIX} file under $PORT_DIR is"
 	echo "  checked. Otherwise only the given files are checked; a file outside"
@@ -75,7 +75,7 @@ check_file() {
 		return 0
 	fi
 
-	echo "error: a repository port file declares the filter struct(s) first and the trait second (STY-RUST-056, STY-RUST-057):" >&2
+	echo "error: a repository port file declares the filter struct(s) first and the trait second (STY-RUST-052, STY-RUST-053):" >&2
 	printf '  %s\n' "$file" >&2
 	printf '    %s\n' "${hits[@]}" >&2
 	return 1

@@ -55,7 +55,7 @@ impl UploadSessionLinks {
 }
 
 /// State of an upload session returned by a successful lookup or chunk store.
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Serialize, ToSchema)]
 #[non_exhaustive]
 pub struct UploadSessionResponse {
     /// One character per chunk, `1` when received and `0` otherwise.

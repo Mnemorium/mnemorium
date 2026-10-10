@@ -1,0 +1,22 @@
+---
+id: sty-rust-004
+language: Rust
+severity: error
+message: a handler resolves its use case through state.<context>_use_case_factory().<use_case>() before execute
+files:
+  - src/lib/infrastructure/inbound/rest/handler/**/*.rs
+rule:
+  any:
+    - pattern: $RECV.execute($$$ARGS)
+      not:
+        regex: '(?s)_use_case_factory\(\).*\.execute\('
+    - all:
+        - kind: function_item
+        - follows:
+            kind: attribute_item
+            regex: '#\[utoipa::path'
+            stopBy: end
+        - has:
+            kind: parameter
+            regex: 'UseCase'
+            stopBy: end

@@ -7,7 +7,6 @@ use axum::http::StatusCode;
 use axum::http::header;
 use axum::response::Response;
 use serde::Deserialize;
-use serde::Serialize;
 use utoipa::ToSchema;
 
 use crate::application::port::add_gallery_item::AddGalleryItemCommand;
@@ -23,7 +22,7 @@ use crate::infrastructure::inbound::rest::handler::library::parse_gallery_id;
 use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 
 /// Payload to add one of the caller's media to a gallery.
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema)]
 #[non_exhaustive]
 pub struct PostGalleryItemRequest {
     /// Identifier of the backing file of the medium to add.

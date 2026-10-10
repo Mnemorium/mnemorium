@@ -12,7 +12,7 @@ use crate::infrastructure::inbound::rest::api_error::ErrorBody;
 use crate::infrastructure::inbound::rest::app_state::AppState;
 
 /// Payload to authenticate a user.
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema)]
 #[non_exhaustive]
 pub struct LoginRequest {
     /// Password used to authenticate.
@@ -24,7 +24,7 @@ pub struct LoginRequest {
 }
 
 /// Token issued by a successful authentication.
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Serialize, ToSchema)]
 #[non_exhaustive]
 pub struct LoginResponse {
     /// Token to present in the `Authorization` header of subsequent requests.

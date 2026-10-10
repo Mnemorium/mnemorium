@@ -23,7 +23,7 @@ use crate::infrastructure::inbound::rest::handler::asset::UploadSessionLinks;
 use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 
 /// Payload initializing an upload session.
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema)]
 #[non_exhaustive]
 pub struct PostUploadRequest {
     /// Declared media type of the file content.
@@ -47,7 +47,7 @@ pub struct PostUploadRequest {
 }
 
 /// Upload session created by a successful initialization.
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Serialize, ToSchema)]
 #[non_exhaustive]
 pub struct PostUploadResponse {
     /// Fixed size of every chunk except the last, in bytes.

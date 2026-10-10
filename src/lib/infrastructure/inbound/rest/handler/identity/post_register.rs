@@ -26,7 +26,7 @@ use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 /// The requested `role` is granted only when the authenticated caller is
 /// allowed to create it: the Root Admin can register `Admin` or `Standard`
 /// users, an `Admin` user can register `Standard` users only.
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema)]
 #[non_exhaustive]
 pub struct RegisterRequest {
     /// Email address of the new user, when provided.
@@ -46,7 +46,7 @@ pub struct RegisterRequest {
 }
 
 /// User created by a successful registration.
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Serialize, ToSchema)]
 #[non_exhaustive]
 pub struct RegisterResponse {
     /// Email address of the newly registered user, when one was provided.

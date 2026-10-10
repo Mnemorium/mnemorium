@@ -148,7 +148,7 @@ impl RateLimitCleanup {
 /// A process-lifetime login rate limiter and its periodic cleanup.
 ///
 /// It is the stateful adapter the login route is wrapped with: the composition
-/// root constructs it once (`STY-RUST-072`, `STY-RUST-073`) and hands it to the
+/// root constructs it once (`STY-RUST-068`) and hands it to the
 /// router builder, which applies it to the `login` route. The `governor`
 /// concrete types stay private to this module.
 pub struct LoginRateLimiter {

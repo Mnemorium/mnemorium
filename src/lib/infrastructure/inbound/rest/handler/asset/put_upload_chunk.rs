@@ -10,7 +10,7 @@ use axum::response::IntoResponse as _;
 use axum::response::Response;
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use utoipa::ToSchema;
 
 use crate::application::port::write_upload_chunk::WriteUploadChunkCommand;
@@ -33,7 +33,7 @@ const SHA256_BYTE_LENGTH: usize = 32;
 /// The handler extracts the body as raw bytes. It is declared as a binary
 /// `String` so the `OpenAPI` schema describes the raw `application/octet-stream`
 /// payload instead of the JSON array of integers a bare `Vec<u8>` would produce.
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema)]
 #[schema(value_type = String, format = Binary)]
 #[non_exhaustive]
 pub struct PutUploadChunkRequest(

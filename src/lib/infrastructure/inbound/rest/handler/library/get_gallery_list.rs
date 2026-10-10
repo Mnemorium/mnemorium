@@ -29,7 +29,7 @@ const MAX_LIMIT: usize = 100;
 ///
 /// Every filter is optional; an all-`None` query returns the first page of the
 /// galleries the caller may see.
-#[derive(Debug, Deserialize, Serialize, IntoParams)]
+#[derive(Debug, Deserialize, IntoParams)]
 #[into_params(parameter_in = Query)]
 #[non_exhaustive]
 pub struct ListGalleriesQuery {
@@ -102,7 +102,7 @@ impl GalleryListLinks {
 }
 
 /// Galleries matching the requested filters.
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Serialize, ToSchema)]
 #[non_exhaustive]
 pub struct GalleryListResponse {
     /// The galleries of the returned page.

@@ -23,7 +23,7 @@ use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 ///
 /// Every attribute is optional; an omitted attribute leaves the stored value
 /// unchanged.
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema)]
 #[non_exhaustive]
 pub struct PatchUserRequest {
     /// New email address.
@@ -37,7 +37,7 @@ pub struct PatchUserRequest {
 }
 
 /// Updated user returned by a successful update.
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Serialize, ToSchema)]
 #[non_exhaustive]
 pub struct PatchUserResponse {
     /// Email address of the user, when one was provided.

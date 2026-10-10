@@ -1,0 +1,8 @@
+---
+rules:
+  STY-RUST-002:
+    bounded_contexts:
+      - asset
+      - identity
+      - library
+      - user

@@ -1,0 +1,15 @@
+---
+id: sty-rust-005
+language: Rust
+severity: error
+message: an endpoint file is named <method>_<resource>.rs
+files:
+  - src/lib/infrastructure/inbound/rest/handler/**/*.rs
+ignores:
+  - src/lib/infrastructure/inbound/rest/handler/**/{get,post,put,patch,delete}_[a-z0-9_][a-z0-9_]*.rs
+rule:
+  kind: source_file
+  has:
+    kind: attribute_item
+    regex: '#\[utoipa::path'
+    stopBy: end

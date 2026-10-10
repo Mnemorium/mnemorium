@@ -100,7 +100,7 @@ where
                             // A concurrent insert won the race for the per-owner
                             // unique name; the use case translates the port's
                             // `AlreadyExist` so the caller cannot own a second
-                            // gallery with the same name either way (`STY-RUST-020`).
+                            // gallery with the same name either way (`STY-RUST-016`).
                             RepositoryError::AlreadyExist => CreateGalleryError::NameAlreadyExists,
                             other => CreateGalleryError::Unknown(other.into()),
                         },

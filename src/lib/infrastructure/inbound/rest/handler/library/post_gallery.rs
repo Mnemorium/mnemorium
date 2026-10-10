@@ -6,7 +6,6 @@ use axum::http::StatusCode;
 use axum::http::header;
 use axum::response::Response;
 use serde::Deserialize;
-use serde::Serialize;
 use utoipa::ToSchema;
 
 use crate::application::port::create_gallery::CreateGalleryCommand;
@@ -19,7 +18,7 @@ use crate::infrastructure::inbound::rest::handler::library::GalleryResponse;
 use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 
 /// Payload to create a gallery owned by the caller.
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema)]
 #[non_exhaustive]
 pub struct PostGalleryRequest {
     /// Whether any authenticated user may read and moderate the gallery.

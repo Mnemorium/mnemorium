@@ -1,0 +1,36 @@
+---
+id: sty-rust-008
+language: Rust
+severity: error
+message: >-
+  a query parameter struct is named <Context>Query and derives at least
+  Deserialize and IntoParams
+files:
+  - src/lib/infrastructure/inbound/rest/handler/**/*.rs
+rule:
+  any:
+    # A struct named *Query must derive Deserialize and IntoParams. The derive
+    # attribute precedes the struct (a following sibling is unreachable by
+    # `has`), so each required trait is matched with `follows`; `stopBy: end`
+    # skips intervening attributes such as #[non_exhaustive] and doc comments.
+    - all:
+        - kind: struct_item
+        - regex: 'struct \w*Query\b'
+        - not:
+            all:
+              - follows:
+                  kind: attribute_item
+                  regex: 'derive\([^)]*Deserialize'
+                  stopBy: end
+              - follows:
+                  kind: attribute_item
+                  regex: 'derive\([^)]*IntoParams'
+                  stopBy: end
+    # A type used as query parameters must be named *Query.
+    - all:
+        - kind: generic_type
+        - regex: '^Query<'
+        - not:
+            all:
+              - kind: generic_type
+              - regex: '^Query<\w*Query>$'

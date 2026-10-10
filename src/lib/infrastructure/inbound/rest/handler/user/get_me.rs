@@ -1,6 +1,6 @@
 use axum::extract::State;
 use axum::response::Response;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use utoipa::ToSchema;
 
 use crate::application::port::get_current_user::GetCurrentUserCommand;
@@ -17,7 +17,7 @@ use crate::infrastructure::inbound::rest::handler::user::user_self_href;
 use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 
 /// Current user returned by a successful lookup.
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Serialize, ToSchema)]
 #[non_exhaustive]
 pub struct GetMeResponse {
     /// Email address of the caller, when one was provided.
