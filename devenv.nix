@@ -29,6 +29,9 @@
     pkgs.taplo
     pkgs.sqlx-cli
     pkgs.sqlfluff
+    pkgs.ast-grep
+    pkgs.jq
+    pkgs.yq
     multiverse.ffmpeg-headless."6.1.2"
     multiverse.nixfmt."1.5.0"
     multiverse.nodejs."24.19.0"
