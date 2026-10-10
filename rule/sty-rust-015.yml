@@ -1,0 +1,12 @@
+---
+id: sty-rust-015
+language: Rust
+severity: hint
+message: extract outbound-port error enums
+files:
+  - src/lib/domain/port/**/*.rs
+rule:
+  all:
+    - kind: enum_item
+    - pattern: pub enum $ERROR_ENUM
+    - regex: '^pub enum \w+Error\b'

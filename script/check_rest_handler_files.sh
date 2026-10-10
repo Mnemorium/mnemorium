@@ -4,11 +4,11 @@ set -u -o pipefail
 # A REST handler bounded-context folder holds only endpoint files, and an
 # endpoint file imports no context submodule. See
 # docs/development/TechnicalDesign.md § 1 (Code Style Guidelines),
-# STY-RUST-003, STY-RUST-005, STY-RUST-083 and STY-RUST-084.
+# STY-RUST-003, STY-RUST-005, STY-RUST-082 and STY-RUST-083.
 readonly REST_DIR="src/lib/infrastructure/inbound/rest"
 readonly HANDLER_DIR="${REST_DIR}/handler"
-readonly HANDLER_RULES="STY-RUST-003, STY-RUST-005, STY-RUST-083"
-readonly MEMBER_RULES="STY-RUST-084"
+readonly HANDLER_RULES="STY-RUST-003, STY-RUST-005, STY-RUST-082"
+readonly MEMBER_RULES="STY-RUST-083"
 
 # The bounded contexts that own a handler folder.
 readonly CONTEXTS=(asset identity library user)

@@ -117,7 +117,7 @@ enum Probed {
 /// Completion spans two bounded contexts: for a supported image or video the
 /// Asset completion writes and the Library media insert share one mutating unit
 /// of work, so the file is never committed without its media row (`ARCH-003`,
-/// `STY-RUST-041`). A file whose mime type is another family completes without a
+/// `STY-RUST-040`). A file whose mime type is another family completes without a
 /// media row.
 pub struct CompleteUpload<F, S, P> {
     /// Lifetime of an upload session, in seconds.
@@ -376,7 +376,7 @@ where
 
                 // The media insert shares the completion's unit of work, so the
                 // file row and its image or video row commit together
-                // (`STY-RUST-041`).
+                // (`STY-RUST-040`).
                 if let Some(media) = probed
                     && let Err(error) =
                         register_media(&mut unit_of_work, file.id(), upload.file_name(), media)

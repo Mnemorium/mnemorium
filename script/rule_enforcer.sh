@@ -53,12 +53,19 @@ RULES=(
 	"STY-RUST-005:check_sty_rust_005"
 	"STY-RUST-006:check_sty_rust_006"
 	"STY-RUST-007:check_sty_rust_007"
-	"STY-RUST-014:check_sty_rust_014"
-	"STY-RUST-013:check_sty_rust_013"
 	"STY-RUST-008:check_sty_rust_008"
+	"STY-RUST-009:check_sty_rust_009"
+	"STY-RUST-010:check_sty_rust_010"
 	"STY-RUST-011:check_sty_rust_011"
 	"STY-RUST-012:check_sty_rust_012"
-	"STY-RUST-068:check_sty_rust_068"
+	"STY-RUST-013:check_sty_rust_013"
+	"STY-RUST-014:check_sty_rust_014"
+	"STY-RUST-019:check_sty_rust_019"
+	"STY-RUST-015:check_sty_rust_015"
+	"STY-RUST-016:check_sty_rust_016"
+	"STY-RUST-018:check_sty_rust_018"
+	"STY-RUST-020:check_sty_rust_020"
+	"STY-RUST-067:check_sty_rust_067"
 )
 
 # --- Rulebook ---------------------------------------------------------------
@@ -373,6 +380,80 @@ check_sty_rust_014() {
 	return 1
 }
 
+check_sty_rust_015() {
+	local id="STY-RUST-015"
+	local rule_id="sty-rust-015"
+	local target="src/lib/domain/port/error.rs"
+	local matches file result=0
+
+	# sty-rust-015 extracts every outbound-port error enum declared under
+	# src/lib/domain/port/; the file comparison below holds them all to
+	# error.rs, so a one-per-port family (e.g. UserRepositoryError beside
+	# RepositoryError) is rejected. The path check lives here because an
+	# ast-grep rule cannot see the file it is matching in.
+	if ! matches="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
+		--json=stream src/lib/domain/port 2>&1)"; then
+		printf '%s\n' "$matches"
+		return 1
+	fi
+
+	while IFS= read -r file; do
+		[ -n "$file" ] || continue
+		if [ "$file" != "$target" ]; then
+			printf 'error: %s: port error enum must be declared in %s (found in %s)\n' \
+				"$id" "$target" "$file" >&2
+			result=1
+		fi
+	done < <(printf '%s\n' "$matches" | jq -r '.file')
+
+	return "$result"
+}
+
+check_sty_rust_016() {
+	local id="STY-RUST-016"
+	local rule_id="sty-rust-016"
+	local output
+
+	if output="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
+		--report-style=short --color=never src 2>&1)"; then
+		return 0
+	fi
+	printf '%s\n' "$output"
+	return 1
+}
+
+check_sty_rust_018() {
+	local id="STY-RUST-018"
+	local rule_id="sty-rust-018"
+	local model_dir="src/lib/domain/model"
+	local output
+
+	if [ ! -d "$model_dir" ]; then
+		printf 'error: %s: missing %s\n' "$id" "$model_dir" >&2
+		return 1
+	fi
+
+	if output="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
+		--report-style=short --color=never "$model_dir" 2>&1)"; then
+		return 0
+	fi
+	printf '%s\n' "$output"
+	return 1
+}
+
+check_sty_rust_020() {
+	local id="STY-RUST-020"
+	local rule_id="sty-rust-020"
+	local output
+
+	if output="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
+		--report-style=short --color=never src 2>&1)"; then
+		return 0
+	fi
+	printf '%s\n' "$output"
+	return 1
+}
+
 check_sty_rust_013() {
 	local id="STY-RUST-013"
 	local rule_id="sty-rust-013"
@@ -426,9 +507,89 @@ check_sty_rust_013() {
 	return "$result"
 }
 
+check_sty_rust_019() {
+	local id="STY-RUST-019"
+	local rule_id="sty-rust-019"
+	local model_dir="src/lib/domain/model"
+	local matches file struct impl name ret key result=0
+	local -A fields=()
+	# Return types that are never `Copy`: a `&self` getter returning one can
+	# only hand back an owned clone, which the rule forbids.
+	local owned='^(Option<)?(String|Vec<.*>|Box<.*>|PathBuf|OsString|CString|VecDeque<.*>|LinkedList<.*>|HashMap<.*>|HashSet<.*>|BTreeMap<.*>|BTreeSet<.*>)(>)?$'
+
+	if [ ! -d "$model_dir" ]; then
+		printf 'error: %s: missing %s\n' "$id" "$model_dir" >&2
+		return 1
+	fi
+
+	# sty-rust-019 extracts each struct field and each `&self` method; the
+	# field-name-to-getter pairing happens here because an ast-grep rule cannot
+	# relate two identifiers.
+	if ! matches="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
+		--json=stream "$model_dir" 2>&1)"; then
+		printf '%s\n' "$matches"
+		return 1
+	fi
+	if [ -z "$matches" ]; then
+		printf 'error: %s: extracted no field or getter from %s\n' "$id" "$model_dir" >&2
+		return 1
+	fi
+
+	# Fields, keyed by the struct that declares them.
+	while IFS=$'\t' read -r file struct name; do
+		[ -n "$name" ] || continue
+		fields["${file}:${struct}:${name}"]=1
+	done < <(printf '%s\n' "$matches" |
+		jq -r 'select(.metaVariables.single.FIELD) | [.file, .metaVariables.single.STRUCT.text, .metaVariables.single.FIELD.text] | @tsv')
+
+	# A getter is a `&self` method named after a field of the same struct. It
+	# must return a borrowed reference or a Copy value, never an owned type.
+	while IFS=$'\t' read -r file impl name ret; do
+		[ -n "$name" ] || continue
+		key="${file}:${impl}:${name}"
+		if [ -z "${fields[$key]+set}" ]; then
+			continue
+		fi
+		if [[ $ret =~ $owned ]]; then
+			printf 'error: %s: %s: getter %s returns owned %s; return a borrowed reference or a Copy value\n' \
+				"$id" "$file" "$name" "$ret" >&2
+			result=1
+		fi
+	done < <(printf '%s\n' "$matches" |
+		jq -r 'select(.metaVariables.single.METHOD) | [.file, .metaVariables.single.IMPL.text, .metaVariables.single.METHOD.text, .metaVariables.single.RET.text] | @tsv')
+
+	return "$result"
+}
+
 check_sty_rust_008() {
 	local id="STY-RUST-008"
 	local rule_id="sty-rust-008"
+	local output
+
+	if output="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
+		--report-style=short --color=never src 2>&1)"; then
+		return 0
+	fi
+	printf '%s\n' "$output"
+	return 1
+}
+
+check_sty_rust_009() {
+	local id="STY-RUST-009"
+	local rule_id="sty-rust-009"
+	local output
+
+	if output="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
+		--report-style=short --color=never src 2>&1)"; then
+		return 0
+	fi
+	printf '%s\n' "$output"
+	return 1
+}
+
+check_sty_rust_010() {
+	local id="STY-RUST-010"
+	local rule_id="sty-rust-010"
 	local output
 
 	if output="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
@@ -485,9 +646,9 @@ check_sty_rust_012() {
 	return "$result"
 }
 
-check_sty_rust_068() {
-	local id="STY-RUST-068"
-	local rule_id="sty-rust-068"
+check_sty_rust_067() {
+	local id="STY-RUST-067"
+	local rule_id="sty-rust-067"
 	local output
 
 	if output="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \

@@ -103,7 +103,7 @@ impl LocalMediaProbe {
     /// Build the permit pool bounding concurrent probes.
     ///
     /// Called once by the composition root and shared by every probe instance, so
-    /// the process-lifetime resource is sized where it is owned (`STY-RUST-068`).
+    /// the process-lifetime resource is sized where it is owned (`STY-RUST-067`).
     #[must_use]
     pub fn new_permits() -> Arc<Semaphore> {
         Arc::new(Semaphore::new(MAX_CONCURRENT_PROBES))

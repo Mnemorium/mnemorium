@@ -104,8 +104,8 @@ findings; you never modify the repository.
   § 6. Read it at review time; resolve every citation against the section
   registry before judging.
 - `docs/development/TechnicalDesign.md` § 1 (Code Style Guidelines)
-  `STY-RUST-022`, `STY-RUST-034`, `STY-RUST-035`, `STY-RUST-075` and
-  `STY-RUST-077` bound adjacent behaviour; they must not carry a logging
+  `STY-RUST-021`, `STY-RUST-033`, `STY-RUST-034`, `STY-RUST-074` and
+  `STY-RUST-076` bound adjacent behaviour; they must not carry a logging
   obligation — that lives only in `OBS-*`. Report a restated logging rule in a
   `STY-*` row as drift.
 - `src/lib/infrastructure/logging.rs` installs the subscriber; read it to judge

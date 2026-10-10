@@ -1,5 +1,5 @@
 ---
-id: sty-rust-068
+id: sty-rust-067
 language: Rust
 severity: error
 message: only the composition root builds AppState or a process-lifetime adapter
