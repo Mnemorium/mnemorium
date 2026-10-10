@@ -1,52 +1,16 @@
 use axum::extract::Path;
 use axum::extract::State;
 use axum::response::Response;
-use serde::{Deserialize, Serialize};
-use utoipa::ToSchema;
 
 use crate::application::port::get_user::GetUserCommand;
 use crate::application::port::get_user::GetUserError;
-use crate::application::port::get_user::GetUserResponse as GetUserResponseData;
 use crate::domain::alias::NumericID;
-use crate::domain::model::user::Role;
 use crate::infrastructure::inbound::rest::api_error::ApiError;
 use crate::infrastructure::inbound::rest::api_error::ErrorBody;
 use crate::infrastructure::inbound::rest::app_state::AppState;
-use crate::infrastructure::inbound::rest::hal::SelfLinks;
 use crate::infrastructure::inbound::rest::hal::hal_json;
-use crate::infrastructure::inbound::rest::handler::user::user_self_href;
+use crate::infrastructure::inbound::rest::handler::user::GetUserResponse;
 use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
-
-/// User returned by a successful lookup.
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
-#[non_exhaustive]
-pub struct GetUserResponse {
-    /// Email address of the user, when one was provided.
-    #[schema(format = "email")]
-    pub email: Option<String>,
-    /// Unique identifier of the user.
-    pub id: NumericID,
-    /// Link to the user resource itself.
-    #[serde(rename = "_links")]
-    pub links: SelfLinks,
-    /// Role of the user.
-    pub role: Role,
-    /// Username of the user.
-    pub username: String,
-}
-
-/// Map the fetched-user response onto its HTTP representation.
-impl From<GetUserResponseData> for GetUserResponse {
-    fn from(response: GetUserResponseData) -> Self {
-        Self {
-            email: response.email().map(str::to_owned),
-            id: response.id(),
-            links: SelfLinks::new(&user_self_href(response.id())),
-            role: response.role(),
-            username: response.username().to_owned(),
-        }
-    }
-}
 
 /// Map a fetch-user error to its API error.
 impl From<GetUserError> for ApiError {

@@ -101,6 +101,13 @@
       pass_filenames = true;
       files = "^src/lib/domain/port/.*_repository\\.rs$";
     };
+    rest-handler-files = {
+      enable = true;
+      name = "Endpoint-only REST handler files";
+      entry = "script/check_rest_handler_files.sh";
+      language = "system";
+      pass_filenames = false;
+    };
     # === repository governance (GOV-001)
     scopes = {
       enable = true;

@@ -8,8 +8,8 @@ use crate::infrastructure::inbound::rest::api_error::ApiError;
 use crate::infrastructure::inbound::rest::api_error::ErrorBody;
 use crate::infrastructure::inbound::rest::app_state::AppState;
 use crate::infrastructure::inbound::rest::hal::hal_json;
-use crate::infrastructure::inbound::rest::handler::library::get_gallery::parse_gallery_id;
-use crate::infrastructure::inbound::rest::handler::library::representation::GalleryResponse;
+use crate::infrastructure::inbound::rest::handler::library::GalleryResponse;
+use crate::infrastructure::inbound::rest::handler::library::parse_gallery_id;
 use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 
 /// List the items of a gallery.

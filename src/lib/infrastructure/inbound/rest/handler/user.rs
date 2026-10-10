@@ -7,15 +7,52 @@ use axum::Router;
 use axum::middleware;
 use axum::routing::get;
 use axum::routing::patch;
+use serde::Deserialize;
+use serde::Serialize;
+use utoipa::ToSchema;
 
+use crate::application::port::get_user::GetUserResponse as GetUserResponseData;
 use crate::domain::alias::NumericID;
+use crate::domain::model::user::Role;
 use crate::infrastructure::inbound::rest::app_state::AppState;
+use crate::infrastructure::inbound::rest::hal::SelfLinks;
 use crate::infrastructure::inbound::rest::handler::user::get_me::get_me;
 use crate::infrastructure::inbound::rest::handler::user::get_user::get_user;
 use crate::infrastructure::inbound::rest::handler::user::get_user_list::get_user_list;
 use crate::infrastructure::inbound::rest::handler::user::patch_user::patch_user;
 use crate::infrastructure::inbound::rest::middleware::auth::authenticate;
 use crate::infrastructure::outbound::jwt::token_provider::JwtTokenProvider;
+
+/// User returned by a successful lookup.
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[non_exhaustive]
+pub struct GetUserResponse {
+    /// Email address of the user, when one was provided.
+    #[schema(format = "email")]
+    pub email: Option<String>,
+    /// Unique identifier of the user.
+    pub id: NumericID,
+    /// Link to the user resource itself.
+    #[serde(rename = "_links")]
+    pub links: SelfLinks,
+    /// Role of the user.
+    pub role: Role,
+    /// Username of the user.
+    pub username: String,
+}
+
+/// Map the fetched-user response onto its HTTP representation.
+impl From<GetUserResponseData> for GetUserResponse {
+    fn from(response: GetUserResponseData) -> Self {
+        Self {
+            email: response.email().map(str::to_owned),
+            id: response.id(),
+            links: SelfLinks::new(&user_self_href(response.id())),
+            role: response.role(),
+            username: response.username().to_owned(),
+        }
+    }
+}
 
 /// Canonical URI reference of the user resource identified by `id`.
 ///

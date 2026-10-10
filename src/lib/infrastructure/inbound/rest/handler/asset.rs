@@ -1,9 +1,7 @@
 pub mod get_upload;
-pub mod links;
 pub mod post_upload;
 pub mod post_upload_complete;
 pub mod put_upload_chunk;
-pub mod upload_session;
 
 use axum::Router;
 use axum::extract::DefaultBodyLimit;
@@ -11,14 +9,125 @@ use axum::middleware;
 use axum::routing::get;
 use axum::routing::post;
 use axum::routing::put;
+use chrono::NaiveDateTime;
+use serde::Deserialize;
+use serde::Serialize;
+use utoipa::ToSchema;
 
+use crate::domain::alias::NumericID;
 use crate::infrastructure::inbound::rest::app_state::AppState;
+use crate::infrastructure::inbound::rest::hal::Link;
 use crate::infrastructure::inbound::rest::handler::asset::get_upload::get_upload;
 use crate::infrastructure::inbound::rest::handler::asset::post_upload::post_upload;
 use crate::infrastructure::inbound::rest::handler::asset::post_upload_complete::post_upload_complete;
 use crate::infrastructure::inbound::rest::handler::asset::put_upload_chunk::put_upload_chunk;
 use crate::infrastructure::inbound::rest::middleware::auth::authenticate;
 use crate::infrastructure::outbound::jwt::token_provider::JwtTokenProvider;
+
+/// HAL links exposed by an upload-session representation.
+///
+/// The `self` link addresses the session itself; the templated `chunk` link
+/// lets clients discover where to store a chunk instead of building the URL
+/// from the identifiers (`API-037`); the `complete` link lets clients discover
+/// how to finish the session.
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[non_exhaustive]
+pub struct UploadSessionLinks {
+    /// URI template for storing one chunk of the upload session.
+    pub chunk: Link,
+    /// Link completing the upload session.
+    pub complete: Link,
+    /// Link to the upload-session resource itself.
+    #[serde(rename = "self")]
+    pub self_link: Link,
+}
+
+impl UploadSessionLinks {
+    /// Build the links of the upload session identified by `upload_id`.
+    #[must_use]
+    pub fn for_upload(upload_id: NumericID) -> Self {
+        Self {
+            chunk: Link::templated(&upload_chunk_href(upload_id)),
+            complete: Link::new(&upload_complete_href(upload_id)),
+            self_link: Link::new(&upload_self_href(upload_id)),
+        }
+    }
+}
+
+/// State of an upload session returned by a successful lookup or chunk store.
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[non_exhaustive]
+pub struct UploadSessionResponse {
+    /// One character per chunk, `1` when received and `0` otherwise.
+    #[schema(example = json!("110"))]
+    pub bitmap: String,
+    /// Date and time at which the upload session expires, as
+    /// `YYYY-MM-DDTHH:MM:SS`.
+    #[schema(example = json!("2026-01-01T12:00:00"))]
+    pub expires_at: String,
+    /// Unique identifier of the caller's file for the session digest, when one
+    /// exists.
+    pub file_id: Option<NumericID>,
+    /// Whether the upload session has been finished.
+    pub is_finished: bool,
+    /// Links to the upload session, its chunk endpoint and its completion.
+    #[serde(rename = "_links")]
+    pub links: UploadSessionLinks,
+    /// Total number of chunks the upload is split into.
+    pub total_chunks: usize,
+}
+
+impl UploadSessionResponse {
+    /// Map the state of the upload session identified by `upload_id` onto its
+    /// HTTP representation.
+    #[must_use]
+    pub fn new(
+        upload_id: NumericID,
+        bitmap: String,
+        total_chunks: usize,
+        expires_at: NaiveDateTime,
+        is_finished: bool,
+        file_id: Option<NumericID>,
+    ) -> Self {
+        Self {
+            bitmap,
+            expires_at: expires_at.format("%Y-%m-%dT%H:%M:%S").to_string(),
+            file_id,
+            is_finished,
+            links: UploadSessionLinks::for_upload(upload_id),
+            total_chunks,
+        }
+    }
+}
+
+/// Canonical URI reference of the upload session identified by `upload_id`.
+///
+/// Shared by the upload-session representations and the completion response so
+/// the `_links.self` target cannot drift (`API-032`).
+#[must_use]
+pub(crate) fn upload_self_href(upload_id: NumericID) -> String {
+    format!("/api/v1/asset/upload/{upload_id}")
+}
+
+/// Templated URI reference of the chunk endpoint of `upload_id`.
+#[expect(
+    clippy::single_call_fn,
+    reason = "centralising the templated chunk URI keeps the session links discoverable from one place (`API-037`)"
+)]
+#[must_use]
+pub(crate) fn upload_chunk_href(upload_id: NumericID) -> String {
+    format!("/api/v1/asset/upload/{upload_id}/chunk/{{chunk_number}}")
+}
+
+/// Canonical URI reference of the completion endpoint of `upload_id`.
+#[expect(
+    clippy::single_call_fn,
+    reason = "centralising the completion URI keeps the session links discoverable from one place (`API-037`)"
+)]
+#[must_use]
+pub(crate) fn upload_complete_href(upload_id: NumericID) -> String {
+    format!("/api/v1/asset/upload/{upload_id}/complete")
+}
 
 /// Routes of the asset bounded context.
 ///

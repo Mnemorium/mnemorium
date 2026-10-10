@@ -17,6 +17,7 @@ use crate::infrastructure::inbound::rest::api_error::ErrorBody;
 use crate::infrastructure::inbound::rest::app_state::AppState;
 use crate::infrastructure::inbound::rest::hal::HAL_CONTENT_TYPE;
 use crate::infrastructure::inbound::rest::hal::SelfLinks;
+use crate::infrastructure::inbound::rest::handler::asset::upload_self_href;
 use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 
 /// File finalized by a successful completion.
@@ -42,7 +43,7 @@ impl PostUploadCompleteResponse {
         Self {
             file_id: response.file_id(),
             is_finished: response.is_finished(),
-            links: SelfLinks::new(&format!("/api/v1/asset/upload/{upload_id}")),
+            links: SelfLinks::new(&upload_self_href(upload_id)),
         }
     }
 }
