@@ -125,6 +125,7 @@ RULES=(
 	"STY-RUST-081:check_sty_rust_081"
 	"STY-RUST-082:check_sty_rust_082"
 	"STY-RUST-083:check_sty_rust_083"
+	"DOC-003:check_doc_003"
 )
 
 # --- Rulebook ---------------------------------------------------------------
@@ -2928,6 +2929,34 @@ check_sty_rust_083() {
 			result=1
 		fi
 	done < <(find "$handler_dir" -mindepth 1 -maxdepth 1 | sort)
+
+	return "$result"
+}
+
+check_doc_003() {
+	local id="DOC-003"
+	local file line result=0
+
+	# `.artifacts/` is machine-local, git-ignored scratch: the tooling that
+	# produces it names it as a destination, while the documentation and the
+	# production source never cite it. The surface is the Rust source under src/
+	# and the Markdown documentation under docs/ and at the repository root. The
+	# rulebook itself is excluded — it must name the directory to state the
+	# prohibition.
+	while IFS= read -r file; do
+		[ -n "$file" ] || continue
+		[ "$file" != "$RULEBOOK" ] || continue
+
+		while IFS=: read -r line _; do
+			[ -n "$line" ] || continue
+			printf 'error: %s: %s:%s: cites the untracked .artifacts/ scratch directory; cite a path the repository tracks\n' \
+				"$id" "$file" "$line" >&2
+			result=1
+		done < <(grep -nF '.artifacts/' -- "$file")
+	done < <({
+		git ls-files -- 'src/**/*.rs' 'docs/**/*.md'
+		git ls-files -- '*.md' | grep -v /
+	} | sort -u)
 
 	return "$result"
 }

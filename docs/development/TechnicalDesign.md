@@ -2655,13 +2655,14 @@ CI `scopes` job; a failure cites `GOV-001`.
 
 ## Documentation
 
-This section governs the examples, diagrams and excerpts the documentation publishes. It keeps every published example
-traceable to the code it restates, so a reader can verify it and a reviewer can catch it going stale.
+This section governs the examples, diagrams, citations and excerpts the documentation publishes. It keeps every
+published example traceable to the code it restates, so a reader can verify it and a reviewer can catch it going stale.
 
 | ID        | Section               | Rule                                                                                                                                                                                                                                                               | More info                       |
 | --------- | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------- |
 | `DOC-001` | Code examples         | An example that restates production code names the source path it is drawn from, is updated in the same change as that code, and may elide omitted regions with a `// [...]` marker.                                                                               | [§ 1](#1-code-examples)         |
 | `DOC-002` | Domain model diagrams | A domain model diagram that the documentation publishes represents the domain's real-world concepts — conceptual classes, typed attributes, and named associations with multiplicity — and never software methods, database tables or other implementation detail. | [§ 2](#2-domain-model-diagrams) |
+| `DOC-003` | Citations             | Documentation (`docs/`, the root Markdown) and production source (`src/`) cite only paths the repository tracks; they never name the local, untracked `.artifacts/` scratch directory, which a reader cannot resolve.                                              | [§ 3](#3-citations)             |
 
 ---
 
@@ -2753,6 +2754,22 @@ The examples above use the project's concepts for familiarity but are conceptual
 production code and are not bound by [`DOC-001`](#1-code-examples).
 
 **Reference** — Craig Larman, _Applying UML and Patterns_, conceptual modeling, the source of the conventions above.
+
+---
+
+### 3. Citations
+
+A citation is a promise to the reader: the named path can be opened at the revision being read, and it supports what the
+text says. Cite a path the repository tracks — a source file, `docs/development/UseCases.md`, a migration — and prefer
+the source that owns the statement, as [`DOC-001`](#1-code-examples) does for an example's origin.
+
+`.artifacts/` is machine-local scratch: git-ignored, written per change by the execution and review agents and by CI,
+and absent from a fresh clone. A citation into it leaves the reader nothing to open, so documentation and production
+source never name it. The tooling that produces or consumes the directory — `script/`, `devenv.nix`, `.github/`, the
+ignore files and the agent harness under `.opencode/` — names it as a destination, not as a source, and is out of scope.
+
+When a citation's target has been removed, replace it with the artifact the code now implements — a use case in
+`docs/development/UseCases.md`, a rule in this document — or state the obligation in the comment itself.
 
 ---
 

@@ -1,8 +1,8 @@
 //! Authorization predicates and the caller load shared by the Library use cases.
 //!
-//! The authorization matrix (`.artifacts/gallery-implementation-plan.md` § 4) is
-//! enforced here, in the application layer: the REST handlers only authenticate
-//! the caller and map the errors this module's callers return.
+//! The authorization decision is enforced here, in the application layer: the
+//! REST handlers only authenticate the caller and map the errors this module's
+//! callers return.
 
 use crate::domain::alias::NumericID;
 use crate::domain::model::gallery::Gallery;
@@ -15,8 +15,7 @@ use crate::domain::port::user_unit_of_work::UserUnitOfWork;
 /// Return whether `caller` may read `gallery`.
 ///
 /// Any authenticated caller may read a public gallery; a private gallery is
-/// readable by its owner or the Root Admin
-/// (`gallery-implementation-plan.md` § 4).
+/// readable by its owner or the Root Admin.
 pub(crate) fn can_read_gallery(gallery: &Gallery, caller: &User) -> bool {
     gallery.is_public() || gallery.is_owned_by(caller.id()) || caller.is_root_admin()
 }
