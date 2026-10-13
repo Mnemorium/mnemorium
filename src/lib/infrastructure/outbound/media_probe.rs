@@ -200,7 +200,28 @@ impl MediaProbe for LocalMediaProbe {
                 IMAGE_DECODE_TIMEOUT,
                 spawn_blocking(move || {
                     let _permit = permit;
-                    decode_image(&owned)
+                    let reader = match image::ImageReader::open(&owned) {
+                        Ok(reader) => reader,
+                        Err(err) if err.kind() == ErrorKind::NotFound => return Ok(None),
+                        Err(err) => return Err(io_fault(err)),
+                    };
+                    let (width, height) = reader
+                        .with_guessed_format()
+                        .map_err(|error| classify_image_error(image::ImageError::IoError(error)))?
+                        .into_dimensions()
+                        .map_err(classify_image_error)?;
+
+                    let orientation = match width.cmp(&height) {
+                        Ordering::Greater => Orientation::Landscape,
+                        Ordering::Less => Orientation::Portrait,
+                        Ordering::Equal => Orientation::Square,
+                    };
+
+                    Ok(Some(ProbedImage {
+                        height_px: i64::from(height),
+                        orientation,
+                        width_px: i64::from(width),
+                    }))
                 }),
             )
             .await;
@@ -226,7 +247,206 @@ impl MediaProbe for LocalMediaProbe {
         let program = self.program.clone();
         let probe_timeout = self.probe_timeout;
         let permits = Arc::clone(&self.permits);
-        async move { run_video_probe(&program, probe_timeout, &permits, &owned).await }
+        async move {
+            match fs::metadata(&owned).await {
+                Ok(_) => {}
+                Err(err) if err.kind() == ErrorKind::NotFound => return Ok(None),
+                Err(err) => return Err(io_fault(err)),
+            }
+
+            // Untrusted uploaded bytes are handed to `ffprobe` as itself. The
+            // probe is bounded by a wall clock, a stdout cap, a concurrency
+            // permit and an explicit `-protocol_whitelist file`; a fuller sandbox
+            // (rlimits, uid-drop, namespaces) is a separate architectural
+            // decision tracked by https://github.com/Mnemorium/mnemorium/issues/242.
+            let _permit = acquire_probe_permit(&permits).await?;
+
+            let mut command = Command::new(&program);
+            command.kill_on_drop(true);
+            command.stdin(Stdio::null());
+            command.stdout(Stdio::piped());
+            // The probe's stderr is never surfaced: discarding it means a chatty
+            // `ffprobe` cannot fill the pipe and stall the probe into a false
+            // timeout.
+            command.stderr(Stdio::null());
+            command.args([
+                "-v",
+                "error",
+                // Only the local file protocol is allowed, so a crafted container
+                // cannot make `ffprobe` open a nested network protocol.
+                "-protocol_whitelist",
+                "file",
+                "-print_format",
+                "json",
+                "-show_format",
+                "-show_streams",
+            ]);
+            // Bound a single allocation the memory-unsafe parser can make.
+            command.arg("-max_alloc");
+            command.arg(MAX_PROBE_ALLOCATION_BYTES.to_string());
+            command.arg(&owned);
+            let mut child = match command.spawn() {
+                Ok(child) => child,
+                Err(err) if err.kind() == ErrorKind::NotFound => {
+                    log_fault("missing_binary");
+                    return Err(MediaProbeError::OperationFailed);
+                }
+                Err(err) => {
+                    log_fault("spawn_failure");
+                    return Err(MediaProbeError::Unknown(err.into()));
+                }
+            };
+
+            let piped_stdout = child.stdout.take();
+            let read = timeout(probe_timeout, async {
+                let mut buffer = Vec::new();
+                if let Some(stdout) = piped_stdout {
+                    stdout
+                        .take(MAX_PROBE_STDOUT_BYTES)
+                        .read_to_end(&mut buffer)
+                        .await?;
+                }
+                let truncated =
+                    u64::try_from(buffer.len()).unwrap_or(u64::MAX) >= MAX_PROBE_STDOUT_BYTES;
+                if truncated {
+                    // Kill before waiting so a probe flooding the pipe cannot
+                    // deadlock.
+                    child.kill().await?;
+                }
+                let status = child.wait().await?;
+                Ok::<_, Error>((status, buffer, truncated))
+            })
+            .await;
+
+            let (status, buffer, truncated) = match read {
+                Ok(Ok(output)) => output,
+                Ok(Err(err)) => return Err(io_fault(err)),
+                Err(_elapsed) => {
+                    log_fault("timeout");
+                    return Err(MediaProbeError::Timeout);
+                }
+            };
+
+            if truncated {
+                // The probe's output overran the cap: the content is
+                // client-fixable noise and the event matches the returned client
+                // rejection (`OBS-005`, `OBS-006`).
+                log_validation_failure("output_too_large");
+                return Err(MediaProbeError::UnsupportedMedia);
+            }
+            if !status.success() {
+                // A valid binary that exits non-zero on existing bytes reports
+                // input it cannot decode, a client rejection rather than a
+                // dependency fault.
+                log_validation_failure("exit_status");
+                return Err(MediaProbeError::UnsupportedMedia);
+            }
+
+            let output: ProbeOutput = serde_json::from_slice(&buffer).map_err(|_| {
+                log_fault("malformed_output");
+                MediaProbeError::OperationFailed
+            })?;
+
+            let streams = output.streams.unwrap_or_default();
+            let Some(stream) = streams
+                .iter()
+                .find(|stream| stream.codec_type.as_deref() == Some("video"))
+            else {
+                log_validation_failure("unsupported_media");
+                return Err(MediaProbeError::UnsupportedMedia);
+            };
+
+            let Some(width) = stream.width.map(i64::from).filter(|value| *value > 0) else {
+                log_validation_failure("unsupported_media");
+                return Err(MediaProbeError::UnsupportedMedia);
+            };
+            let Some(height) = stream.height.map(i64::from).filter(|value| *value > 0) else {
+                log_validation_failure("unsupported_media");
+                return Err(MediaProbeError::UnsupportedMedia);
+            };
+            let Some(codec) = stream.codec_name.clone().filter(|name| !name.is_empty()) else {
+                log_validation_failure("unsupported_media");
+                return Err(MediaProbeError::UnsupportedMedia);
+            };
+
+            let duration_s = output
+                .format
+                .as_ref()
+                .and_then(|format| format.duration.as_deref())
+                .or(stream.duration.as_deref())
+                .and_then(parse_finite)
+                .unwrap_or(0.0f64);
+            let frames_per_second = [
+                stream.avg_frame_rate.as_deref(),
+                stream.r_frame_rate.as_deref(),
+            ]
+            .into_iter()
+            .flatten()
+            .map(|rate| {
+                let mut parts = rate.split('/');
+                let numerator = parts.next().and_then(parse_finite).unwrap_or(0.0f64);
+                let denominator = parts.next().and_then(parse_finite).unwrap_or(1.0f64);
+                if denominator < f64::EPSILON {
+                    0.0f64
+                } else {
+                    numerator / denominator
+                }
+            })
+            .find(|rate| rate.is_finite() && *rate > 0.0f64)
+            .unwrap_or(0.0f64);
+
+            let frame_count = stream
+                .nb_frames
+                .as_deref()
+                .and_then(|frames| frames.parse::<i64>().ok())
+                .filter(|frames| *frames > 0)
+                .or_else(|| {
+                    if frames_per_second <= 0.0f64 {
+                        return None;
+                    }
+                    let frames = (duration_s * frames_per_second).round();
+                    if frames < 1.0f64 {
+                        return None;
+                    }
+                    #[expect(
+                        clippy::cast_possible_truncation,
+                        reason = "the rounded frame count is bounded by the video's duration"
+                    )]
+                    let rounded_frames = frames as i64;
+                    Some(rounded_frames)
+                })
+                .ok_or_else(|| {
+                    log_validation_failure("missing_frame_count");
+                    MediaProbeError::UnsupportedMedia
+                })?;
+
+            Ok(Some(ProbedVideo {
+                codec,
+                color_id: match stream.pix_fmt.as_deref() {
+                    None => DEFAULT_COLOR_ID.to_owned(),
+                    Some(pixel_format) => if pixel_format.starts_with("yuv")
+                        || pixel_format.starts_with("nv12")
+                    {
+                        "YCbCr"
+                    } else if pixel_format.starts_with("gray") {
+                        "Grayscale"
+                    } else if pixel_format.starts_with("rgb") || pixel_format.starts_with("bgr") {
+                        "sRGB"
+                    } else {
+                        DEFAULT_COLOR_ID
+                    }
+                    .to_owned(),
+                },
+                duration_ms: duration_s * MILLIS_PER_SECOND,
+                frame_count,
+                height,
+                scan_type: match stream.field_order.as_deref() {
+                    Some("tt" | "bb" | "tb" | "bt") => ScanType::Interlaced,
+                    _ => ScanType::Progressive,
+                },
+                width,
+            }))
+        }
     }
 }
 
@@ -243,74 +463,6 @@ impl MediaProbe for LocalMediaProbe {
 fn test_permits() -> Arc<Semaphore> {
     static PERMITS: OnceLock<Arc<Semaphore>> = OnceLock::new();
     Arc::clone(PERMITS.get_or_init(|| Arc::new(Semaphore::new(MAX_CONCURRENT_PROBES))))
-}
-
-/// Build the `ffprobe` invocation for `path`.
-///
-/// The path is passed as a single argument to the program; no shell interprets
-/// it, so a path containing shell metacharacters cannot inject a command.
-#[expect(
-    clippy::single_call_fn,
-    reason = "the argument vector is named after the rule it encodes"
-)]
-fn probe_command(program: &OsString, path: &Path) -> Command {
-    let mut command = Command::new(program);
-    command.kill_on_drop(true);
-    command.stdin(Stdio::null());
-    command.stdout(Stdio::piped());
-    // The probe's stderr is never surfaced: discarding it means a chatty
-    // `ffprobe` cannot fill the pipe and stall the probe into a false timeout.
-    command.stderr(Stdio::null());
-    command.args([
-        "-v",
-        "error",
-        // Only the local file protocol is allowed, so a crafted container
-        // cannot make `ffprobe` open a nested network protocol.
-        "-protocol_whitelist",
-        "file",
-        "-print_format",
-        "json",
-        "-show_format",
-        "-show_streams",
-    ]);
-    // Bound a single allocation the memory-unsafe parser can make.
-    command.arg("-max_alloc");
-    command.arg(MAX_PROBE_ALLOCATION_BYTES.to_string());
-    command.arg(path);
-    command
-}
-
-/// Decode an image and return its dimensions.
-///
-/// A file absent at `path` is `Ok(None)`; a malformed or unsupported image is
-/// an error.
-#[expect(
-    clippy::single_call_fn,
-    reason = "the image decoding is named after the step it performs"
-)]
-fn decode_image(path: &Path) -> Result<Option<ProbedImage>, MediaProbeError> {
-    let reader = match image::ImageReader::open(path) {
-        Ok(reader) => reader,
-        Err(err) if err.kind() == ErrorKind::NotFound => return Ok(None),
-        Err(err) => return Err(io_fault(err)),
-    };
-    let (width, height) = reader
-        .with_guessed_format()
-        .map_err(|error| classify_image_error(image::ImageError::IoError(error)))?
-        .into_dimensions()
-        .map_err(classify_image_error)?;
-
-    let orientation = match width.cmp(&height) {
-        Ordering::Greater => Orientation::Landscape,
-        Ordering::Less => Orientation::Portrait,
-        Ordering::Equal => Orientation::Square,
-    };
-
-    Ok(Some(ProbedImage {
-        height_px: i64::from(height),
-        orientation,
-        width_px: i64::from(width),
-    }))
 }
 
 /// Classify an image decode error and log the matching security event.
@@ -362,172 +514,6 @@ fn io_fault(error: impl Into<anyhow::Error>) -> MediaProbeError {
     MediaProbeError::Unknown(error.into())
 }
 
-/// Run `ffprobe` against `path` and map its JSON output onto [`ProbedVideo`].
-///
-/// # Errors
-///
-/// Returns [`MediaProbeError::Timeout`] when the probe exceeds `probe_timeout`,
-/// [`MediaProbeError::UnsupportedMedia`] when the file has no usable video
-/// stream, and [`MediaProbeError::OperationFailed`] or
-/// [`MediaProbeError::Unknown`] when the probe cannot complete.
-#[expect(
-    clippy::single_call_fn,
-    reason = "the video probe is named after the step it performs"
-)]
-async fn run_video_probe(
-    program: &OsString,
-    probe_timeout: Duration,
-    permits: &Arc<Semaphore>,
-    path: &Path,
-) -> Result<Option<ProbedVideo>, MediaProbeError> {
-    match fs::metadata(path).await {
-        Ok(_) => {}
-        Err(err) if err.kind() == ErrorKind::NotFound => return Ok(None),
-        Err(err) => return Err(io_fault(err)),
-    }
-
-    // Untrusted uploaded bytes are handed to `ffprobe` as itself. The probe is
-    // bounded by a wall clock, a stdout cap, a concurrency permit and an
-    // explicit `-protocol_whitelist file`; a fuller sandbox (rlimits, uid-drop,
-    // namespaces) is a separate architectural decision tracked by
-    // https://github.com/Mnemorium/mnemorium/issues/242.
-    let _permit = acquire_probe_permit(permits).await?;
-
-    let mut child = match probe_command(program, path).spawn() {
-        Ok(child) => child,
-        Err(err) if err.kind() == ErrorKind::NotFound => {
-            log_fault("missing_binary");
-            return Err(MediaProbeError::OperationFailed);
-        }
-        Err(err) => {
-            log_fault("spawn_failure");
-            return Err(MediaProbeError::Unknown(err.into()));
-        }
-    };
-
-    let piped_stdout = child.stdout.take();
-    let read = timeout(probe_timeout, async {
-        let mut buffer = Vec::new();
-        if let Some(stdout) = piped_stdout {
-            stdout
-                .take(MAX_PROBE_STDOUT_BYTES)
-                .read_to_end(&mut buffer)
-                .await?;
-        }
-        let truncated = u64::try_from(buffer.len()).unwrap_or(u64::MAX) >= MAX_PROBE_STDOUT_BYTES;
-        if truncated {
-            // Kill before waiting so a probe flooding the pipe cannot deadlock.
-            child.kill().await?;
-        }
-        let status = child.wait().await?;
-        Ok::<_, Error>((status, buffer, truncated))
-    })
-    .await;
-
-    let (status, buffer, truncated) = match read {
-        Ok(Ok(output)) => output,
-        Ok(Err(err)) => return Err(io_fault(err)),
-        Err(_elapsed) => {
-            log_fault("timeout");
-            return Err(MediaProbeError::Timeout);
-        }
-    };
-
-    if truncated {
-        // The probe's output overran the cap: the content is client-fixable
-        // noise and the event matches the returned client rejection
-        // (`OBS-005`, `OBS-006`).
-        log_validation_failure("output_too_large");
-        return Err(MediaProbeError::UnsupportedMedia);
-    }
-    if !status.success() {
-        // A valid binary that exits non-zero on existing bytes reports input it
-        // cannot decode, a client rejection rather than a dependency fault.
-        log_validation_failure("exit_status");
-        return Err(MediaProbeError::UnsupportedMedia);
-    }
-
-    Ok(Some(parse_video(&buffer)?))
-}
-
-/// Parse the `ffprobe` JSON document `buffer` into [`ProbedVideo`].
-///
-/// # Errors
-///
-/// Returns [`MediaProbeError::UnsupportedMedia`] when the document carries no
-/// usable video stream, and [`MediaProbeError::OperationFailed`] when the
-/// document is malformed.
-#[expect(
-    clippy::single_call_fn,
-    reason = "the output parsing is named after the step it performs"
-)]
-fn parse_video(buffer: &[u8]) -> Result<ProbedVideo, MediaProbeError> {
-    let output: ProbeOutput = serde_json::from_slice(buffer).map_err(|_| {
-        log_fault("malformed_output");
-        MediaProbeError::OperationFailed
-    })?;
-
-    let streams = output.streams.unwrap_or_default();
-    let Some(stream) = streams
-        .iter()
-        .find(|stream| stream.codec_type.as_deref() == Some("video"))
-    else {
-        log_validation_failure("unsupported_media");
-        return Err(MediaProbeError::UnsupportedMedia);
-    };
-
-    let Some(width) = stream.width.map(i64::from).filter(|value| *value > 0) else {
-        log_validation_failure("unsupported_media");
-        return Err(MediaProbeError::UnsupportedMedia);
-    };
-    let Some(height) = stream.height.map(i64::from).filter(|value| *value > 0) else {
-        log_validation_failure("unsupported_media");
-        return Err(MediaProbeError::UnsupportedMedia);
-    };
-    let Some(codec) = stream.codec_name.clone().filter(|name| !name.is_empty()) else {
-        log_validation_failure("unsupported_media");
-        return Err(MediaProbeError::UnsupportedMedia);
-    };
-
-    let duration_s = output
-        .format
-        .as_ref()
-        .and_then(|format| format.duration.as_deref())
-        .or(stream.duration.as_deref())
-        .and_then(parse_finite)
-        .unwrap_or(0.0f64);
-    let frames_per_second = [
-        stream.avg_frame_rate.as_deref(),
-        stream.r_frame_rate.as_deref(),
-    ]
-    .into_iter()
-    .flatten()
-    .map(parse_frames_per_second)
-    .find(|rate| rate.is_finite() && *rate > 0.0f64)
-    .unwrap_or(0.0f64);
-
-    let frame_count = stream
-        .nb_frames
-        .as_deref()
-        .and_then(|frames| frames.parse::<i64>().ok())
-        .filter(|frames| *frames > 0)
-        .or_else(|| frames_from_rate(duration_s, frames_per_second))
-        .ok_or_else(|| {
-            log_validation_failure("missing_frame_count");
-            MediaProbeError::UnsupportedMedia
-        })?;
-
-    Ok(ProbedVideo {
-        codec,
-        color_id: color_id(stream.pix_fmt.as_deref()),
-        duration_ms: duration_s * MILLIS_PER_SECOND,
-        frame_count,
-        height,
-        scan_type: scan_type(stream.field_order.as_deref()),
-        width,
-    })
-}
-
 /// Parse a non-negative, finite floating-point value, or `None`.
 fn parse_finite(value: &str) -> Option<f64> {
     value
@@ -535,85 +521,6 @@ fn parse_finite(value: &str) -> Option<f64> {
         .parse::<f64>()
         .ok()
         .filter(|parsed| parsed.is_finite() && *parsed >= 0.0f64)
-}
-
-/// Parse an `ffprobe` frame rate (`"30000/1001"`) into frames per second.
-#[expect(
-    clippy::single_call_fn,
-    reason = "the frame-rate parsing is named after the grammar it decodes"
-)]
-fn parse_frames_per_second(rate: &str) -> f64 {
-    let mut parts = rate.split('/');
-    let numerator = parts.next().and_then(parse_finite).unwrap_or(0.0f64);
-    let denominator = parts.next().and_then(parse_finite).unwrap_or(1.0f64);
-    if denominator < f64::EPSILON {
-        0.0f64
-    } else {
-        numerator / denominator
-    }
-}
-
-/// Derive a frame count from `duration_s` and `frames_per_second`.
-///
-/// Returns `None` when either input is unusable or the product does not reach a
-/// single frame.
-#[expect(
-    clippy::single_call_fn,
-    reason = "the frame-count fallback is named after the rule it encodes"
-)]
-fn frames_from_rate(duration_s: f64, frames_per_second: f64) -> Option<i64> {
-    if frames_per_second <= 0.0f64 {
-        return None;
-    }
-    let frames = (duration_s * frames_per_second).round();
-    if frames < 1.0f64 {
-        return None;
-    }
-    #[expect(
-        clippy::cast_possible_truncation,
-        reason = "the rounded frame count is bounded by the video's duration"
-    )]
-    Some(frames as i64)
-}
-
-/// Map an `ffprobe` pixel format onto a seeded `color` identifier.
-///
-/// The mapping follows the accepted design: `yuv*`/`nv12` are `YCbCr`,
-/// `gray*` is `Grayscale`, and `rgb*`/`bgr*` are `sRGB`; every other format
-/// defaults to `YCbCr`, the common video colour space.
-#[expect(
-    clippy::single_call_fn,
-    reason = "the colour-space mapping is named after the rule it encodes"
-)]
-fn color_id(pix_fmt: Option<&str>) -> String {
-    let Some(pixel_format) = pix_fmt else {
-        return DEFAULT_COLOR_ID.to_owned();
-    };
-    if pixel_format.starts_with("yuv") || pixel_format.starts_with("nv12") {
-        "YCbCr"
-    } else if pixel_format.starts_with("gray") {
-        "Grayscale"
-    } else if pixel_format.starts_with("rgb") || pixel_format.starts_with("bgr") {
-        "sRGB"
-    } else {
-        DEFAULT_COLOR_ID
-    }
-    .to_owned()
-}
-
-/// Map an `ffprobe` `field_order` value onto a [`ScanType`].
-///
-/// A field-first order is interlaced; `progressive`, absent or unknown values
-/// are progressive.
-#[expect(
-    clippy::single_call_fn,
-    reason = "the scan-type mapping is named after the rule it encodes"
-)]
-fn scan_type(field_order: Option<&str>) -> ScanType {
-    match field_order {
-        Some("tt" | "bb" | "tb" | "bt") => ScanType::Interlaced,
-        _ => ScanType::Progressive,
-    }
 }
 
 /// Acquire a probe permit within the admission bound, or a bounded error.

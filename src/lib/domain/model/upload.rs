@@ -317,15 +317,25 @@ impl Upload {
         is_finished: bool,
         created_at: NaiveDateTime,
     ) -> Result<Self, UploadError> {
-        let validated_file_name = Self::validate_file_name(file_name)?;
-        let validated_file_size = Self::validate_file_size(file_size)?;
-        let validated_chunk_size = Self::validate_chunk_size(chunk_size)?;
+        let is_safe_file_name = !file_name.is_empty()
+            && !file_name.starts_with('.')
+            && !file_name.contains(['/', '\\'])
+            && !file_name.contains("..");
+        if !is_safe_file_name {
+            return Err(UploadError::InvalidFileName);
+        }
+        if file_size == 0 {
+            return Err(UploadError::InvalidFileSize);
+        }
+        if chunk_size == 0 {
+            return Err(UploadError::InvalidChunkSize);
+        }
         Ok(Self {
             chunk_bitmap,
-            chunk_size: validated_chunk_size,
+            chunk_size,
             created_at,
-            file_name: validated_file_name,
-            file_size: validated_file_size,
+            file_name,
+            file_size,
             integrity_hash,
             is_finished,
             mime_type_id,
@@ -344,60 +354,6 @@ impl Upload {
     #[must_use]
     pub fn user_id(&self) -> NumericID {
         self.user_id
-    }
-
-    /// Validate `chunk_size`.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`UploadError::InvalidChunkSize`] when `chunk_size` is zero.
-    #[expect(
-        clippy::single_call_fn,
-        reason = "the validation is named after the field it guards for readability"
-    )]
-    fn validate_chunk_size(chunk_size: u64) -> Result<u64, UploadError> {
-        if chunk_size == 0 {
-            return Err(UploadError::InvalidChunkSize);
-        }
-        Ok(chunk_size)
-    }
-
-    /// Validate `file_name`.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`UploadError::InvalidFileName`] when `file_name` is empty,
-    /// starts with a dot, contains a path separator, or contains `..`.
-    #[expect(
-        clippy::single_call_fn,
-        reason = "the validation is named after the field it guards for readability"
-    )]
-    fn validate_file_name(file_name: String) -> Result<String, UploadError> {
-        let is_safe = !file_name.is_empty()
-            && !file_name.starts_with('.')
-            && !file_name.contains(['/', '\\'])
-            && !file_name.contains("..");
-        if is_safe {
-            Ok(file_name)
-        } else {
-            Err(UploadError::InvalidFileName)
-        }
-    }
-
-    /// Validate `file_size`.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`UploadError::InvalidFileSize`] when `file_size` is zero.
-    #[expect(
-        clippy::single_call_fn,
-        reason = "the validation is named after the field it guards for readability"
-    )]
-    fn validate_file_size(file_size: u64) -> Result<u64, UploadError> {
-        if file_size == 0 {
-            return Err(UploadError::InvalidFileSize);
-        }
-        Ok(file_size)
     }
 }
 

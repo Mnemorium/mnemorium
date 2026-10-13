@@ -265,18 +265,6 @@ impl From<QueryRejection> for ApiError {
 
 impl From<BytesRejection> for ApiError {
     fn from(rejection: BytesRejection) -> Self {
-        Self::from_bytes_rejection(&rejection)
-    }
-}
-
-impl ApiError {
-    /// Map a failed body buffer to a `413` or a generic `400`.
-    #[expect(
-        clippy::single_call_fn,
-        reason = "the bytes-rejection mapping is named for readability"
-    )]
-    #[must_use]
-    fn from_bytes_rejection(rejection: &BytesRejection) -> Self {
         if rejection.status() == StatusCode::PAYLOAD_TOO_LARGE {
             warn!(
                 target: "security",

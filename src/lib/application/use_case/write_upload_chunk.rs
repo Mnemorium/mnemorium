@@ -1,5 +1,4 @@
 use std::future::Future;
-use std::path::Path;
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -82,17 +81,206 @@ where
         let hasher = &self.hasher;
 
         Box::pin(async move {
-            match execute_attempt(
-                &unit_of_work_factory,
-                &file_storage,
-                hasher,
-                &root,
-                &command,
-                expiry_seconds,
-            )
-            .await
-            {
+            let mut unit_of_work = unit_of_work_factory
+                .begin()
+                .await
+                .map_err(|error| WriteUploadChunkError::Unknown(error.into()))?;
+
+            let result = async {
+                let upload = unit_of_work
+                    .uploads()
+                    .search(&UploadFilter {
+                        upload_id: Some(command.upload_id()),
+                        ..UploadFilter::default()
+                    })
+                    .await
+                    .map_err(|error| {
+                        AttemptError::Business(WriteUploadChunkError::Unknown(error.into()))
+                    })?
+                    .into_iter()
+                    .next()
+                    .ok_or(AttemptError::Business(WriteUploadChunkError::NoSuchUpload))?;
+
+                // Owner-only: a caller who is not the upload's owner must not see it.
+                if upload.user_id() != command.user_id() {
+                    return Err(AttemptError::Business(WriteUploadChunkError::NoSuchUpload));
+                }
+
+                let expires_at = expiry(expiry_seconds, upload.created_at()).map_err(|error| {
+                    AttemptError::Business(WriteUploadChunkError::Unknown(error))
+                })?;
+                if !upload.is_finished() && Utc::now().naive_utc() > expires_at {
+                    // TODO(reaper): move the expiry cleanup to a background task; this
+                    // lazy delete keeps the row and the staged file only until the next
+                    // access. The adapters own the failure logs (`OBS-002`), so a failed
+                    // cleanup is swallowed here.
+                    if file_storage
+                        .delete_upload_file(&staged_path(&root, upload.upload_id()))
+                        .await
+                        .is_err()
+                    {
+                        // The file-storage adapter owns the failure log (`OBS-002`).
+                    }
+                    if unit_of_work
+                        .uploads()
+                        .delete(upload.upload_id())
+                        .await
+                        .is_err()
+                    {
+                        // The repository adapter owns the failure log (`OBS-002`).
+                    }
+                    return Err(AttemptError::Expired);
+                }
+
+                if upload.is_finished() {
+                    return Err(AttemptError::Business(
+                        WriteUploadChunkError::AlreadyFinished,
+                    ));
+                }
+
+                let total_chunks = upload.total_chunks();
+                let chunk_number = usize::try_from(command.chunk_number()).map_err(|error| {
+                    security_event::application_error("write_upload_chunk");
+                    AttemptError::Business(WriteUploadChunkError::Unknown(anyhow::anyhow!(error)))
+                })?;
+                if chunk_number >= total_chunks {
+                    return Err(AttemptError::Business(
+                        WriteUploadChunkError::InvalidChunkNumber,
+                    ));
+                }
+
+                let chunk_size = usize::try_from(upload.chunk_size()).map_err(|error| {
+                    security_event::application_error("write_upload_chunk");
+                    AttemptError::Business(WriteUploadChunkError::Unknown(anyhow::anyhow!(error)))
+                })?;
+                let remaining = upload
+                    .file_size()
+                    .saturating_sub(command.chunk_number().saturating_mul(upload.chunk_size()));
+                let expected_len = remaining.min(upload.chunk_size());
+                let chunk_len = u64::try_from(command.chunk().len()).map_err(|error| {
+                    security_event::application_error("write_upload_chunk");
+                    AttemptError::Business(WriteUploadChunkError::Unknown(anyhow::anyhow!(error)))
+                })?;
+                if chunk_len != expected_len {
+                    return Err(AttemptError::Business(WriteUploadChunkError::InvalidChunk));
+                }
+                // The last chunk may be shorter than `chunk_size`; every other chunk
+                // must be exactly `chunk_size`.
+                if chunk_number < total_chunks.saturating_sub(1)
+                    && chunk_size != command.chunk().len()
+                {
+                    return Err(AttemptError::Business(WriteUploadChunkError::InvalidChunk));
+                }
+
+                let declared = command.content_digest();
+                // Recompute the digest of the received bytes and compare: a chunk whose
+                // digest does not match its `Content-Digest` header is rejected.
+                let mut session = hasher.hasher();
+                session.update(command.chunk());
+                let computed = session.finalize().map_err(|error| {
+                    AttemptError::Business(WriteUploadChunkError::Unknown(error.into()))
+                })?;
+                if computed != *declared {
+                    return Err(AttemptError::Business(
+                        WriteUploadChunkError::InvalidContentDigest,
+                    ));
+                }
+
+                let offset = command
+                    .chunk_number()
+                    .checked_mul(upload.chunk_size())
+                    .ok_or(AttemptError::Business(
+                        WriteUploadChunkError::InvalidChunkNumber,
+                    ))?;
+                // The chunk size is the one persisted when the session began, never the
+                // current configuration: the range must match the session's geometry.
+                if command.start() != offset {
+                    return Err(AttemptError::Business(
+                        WriteUploadChunkError::InvalidChunkRange,
+                    ));
+                }
+
+                match file_storage
+                    .add_chunk(
+                        &staged_path(&root, upload.upload_id()),
+                        offset,
+                        command.chunk().to_vec(),
+                    )
+                    .await
+                {
+                    // The staged file vanished between reading the upload row and
+                    // writing the chunk: report the upload as absent so the caller gets
+                    // the same response as the repository's missing-entity outcome.
+                    Ok(false) => {
+                        return Err(AttemptError::Business(WriteUploadChunkError::NoSuchUpload));
+                    }
+                    Ok(true) => {}
+                    Err(error) => {
+                        return Err(AttemptError::Business(WriteUploadChunkError::Unknown(
+                            error.into(),
+                        )));
+                    }
+                }
+
+                match unit_of_work
+                    .uploads()
+                    .record_chunk(upload.upload_id(), command.chunk_number())
+                    .await
+                {
+                    Ok(()) => {}
+                    Err(RepositoryError::Conflict) => {
+                        return Err(AttemptError::Business(
+                            WriteUploadChunkError::AlreadyFinished,
+                        ));
+                    }
+                    Err(error) => {
+                        return Err(AttemptError::Business(WriteUploadChunkError::Unknown(
+                            error.into(),
+                        )));
+                    }
+                }
+
+                // Re-read the upload inside the same transaction so the response
+                // reports the authoritative bitmap, chunk count and status, including a
+                // concurrent completion that landed after the upload was read above.
+                let saved = unit_of_work
+                    .uploads()
+                    .search(&UploadFilter {
+                        upload_id: Some(upload.upload_id()),
+                        ..UploadFilter::default()
+                    })
+                    .await
+                    .map_err(|error| {
+                        AttemptError::Business(WriteUploadChunkError::Unknown(error.into()))
+                    })?
+                    .into_iter()
+                    .next()
+                    .ok_or(AttemptError::Business(WriteUploadChunkError::NoSuchUpload))?;
+
+                let bitmap = received_bitmap(&saved);
+                let chunk_count = saved.total_chunks();
+                let is_finished = saved.is_finished();
+                let file_id = caller_file_id(&mut unit_of_work, &saved, command.user_id())
+                    .await
+                    .map_err(|error| {
+                        AttemptError::Business(WriteUploadChunkError::Unknown(error.into()))
+                    })?;
+                Ok(WriteUploadChunkResponse::new(
+                    bitmap,
+                    expires_at,
+                    file_id,
+                    is_finished,
+                    chunk_count,
+                ))
+            }
+            .await;
+
+            match result {
                 Ok(value) => {
+                    unit_of_work
+                        .commit()
+                        .await
+                        .map_err(|error| WriteUploadChunkError::Unknown(error.into()))?;
                     security_event::upload(
                         command.user_id(),
                         &command.upload_id().to_string(),
@@ -100,16 +288,27 @@ where
                     );
                     Ok(value)
                 }
-                Err(failure) => {
-                    let error = match failure {
-                        AttemptError::Business(error) => error,
-                        AttemptError::Expired => WriteUploadChunkError::Expired,
-                    };
+                Err(AttemptError::Expired) => {
+                    unit_of_work
+                        .commit()
+                        .await
+                        .map_err(|error| WriteUploadChunkError::Unknown(error.into()))?;
+                    security_event::suspicious_business_logic(
+                        command.user_id(),
+                        "write_chunk",
+                        "expired",
+                    );
+                    Err(WriteUploadChunkError::Expired)
+                }
+                Err(AttemptError::Business(error)) => {
+                    if unit_of_work.rollback().await.is_err() {
+                        // The unit-of-work adapter owns the rollback-failure log (OBS-002).
+                    }
                     let reason = match error {
                         WriteUploadChunkError::AlreadyFinished => Some("already_finished"),
-                        WriteUploadChunkError::Expired => Some("expired"),
                         WriteUploadChunkError::InvalidChunkNumber => Some("out_of_range"),
-                        WriteUploadChunkError::InvalidChunk
+                        WriteUploadChunkError::Expired
+                        | WriteUploadChunkError::InvalidChunk
                         | WriteUploadChunkError::InvalidChunkRange
                         | WriteUploadChunkError::InvalidContentDigest
                         | WriteUploadChunkError::NoSuchUpload
@@ -136,241 +335,6 @@ enum AttemptError {
     /// The upload expired: its row and staged file have been deleted, so the
     /// unit of work must be committed before returning `Expired`.
     Expired,
-}
-
-/// Run the chunk-write attempt inside its own unit of work.
-///
-/// The attempt opens one transaction, persists the chunk, and closes the
-/// transaction according to the outcome.
-#[expect(
-    clippy::single_call_fn,
-    reason = "the attempt body is extracted so the attempt owns its unit of work"
-)]
-async fn execute_attempt<F, S, H>(
-    unit_of_work_factory: &Arc<F>,
-    file_storage: &Arc<S>,
-    hasher: &H,
-    root: &Path,
-    command: &WriteUploadChunkCommand,
-    expiry_seconds: u64,
-) -> Result<WriteUploadChunkResponse, AttemptError>
-where
-    F: UnitOfWorkFactory,
-    F::Uow: AssetUnitOfWork,
-    S: FileStorage,
-    H: ContentHasher,
-{
-    let mut unit_of_work = unit_of_work_factory
-        .begin()
-        .await
-        .map_err(|error| AttemptError::Business(WriteUploadChunkError::Unknown(error.into())))?;
-
-    let result = async {
-        let upload = unit_of_work
-            .uploads()
-            .search(&UploadFilter {
-                upload_id: Some(command.upload_id()),
-                ..UploadFilter::default()
-            })
-            .await
-            .map_err(|error| AttemptError::Business(WriteUploadChunkError::Unknown(error.into())))?
-            .into_iter()
-            .next()
-            .ok_or(AttemptError::Business(WriteUploadChunkError::NoSuchUpload))?;
-
-        // Owner-only: a caller who is not the upload's owner must not see it.
-        if upload.user_id() != command.user_id() {
-            return Err(AttemptError::Business(WriteUploadChunkError::NoSuchUpload));
-        }
-
-        let expires_at = expiry(expiry_seconds, upload.created_at())
-            .map_err(|error| AttemptError::Business(WriteUploadChunkError::Unknown(error)))?;
-        if !upload.is_finished() && Utc::now().naive_utc() > expires_at {
-            // TODO(reaper): move the expiry cleanup to a background task; this
-            // lazy delete keeps the row and the staged file only until the next
-            // access. The adapters own the failure logs (`OBS-002`), so a failed
-            // cleanup is swallowed here.
-            if file_storage
-                .delete_upload_file(&staged_path(root, upload.upload_id()))
-                .await
-                .is_err()
-            {
-                // The file-storage adapter owns the failure log (`OBS-002`).
-            }
-            if unit_of_work
-                .uploads()
-                .delete(upload.upload_id())
-                .await
-                .is_err()
-            {
-                // The repository adapter owns the failure log (`OBS-002`).
-            }
-            return Err(AttemptError::Expired);
-        }
-
-        if upload.is_finished() {
-            return Err(AttemptError::Business(
-                WriteUploadChunkError::AlreadyFinished,
-            ));
-        }
-
-        let total_chunks = upload.total_chunks();
-        let chunk_number = usize::try_from(command.chunk_number()).map_err(|error| {
-            security_event::application_error("write_upload_chunk");
-            AttemptError::Business(WriteUploadChunkError::Unknown(anyhow::anyhow!(error)))
-        })?;
-        if chunk_number >= total_chunks {
-            return Err(AttemptError::Business(
-                WriteUploadChunkError::InvalidChunkNumber,
-            ));
-        }
-
-        let chunk_size = usize::try_from(upload.chunk_size()).map_err(|error| {
-            security_event::application_error("write_upload_chunk");
-            AttemptError::Business(WriteUploadChunkError::Unknown(anyhow::anyhow!(error)))
-        })?;
-        let remaining = upload
-            .file_size()
-            .saturating_sub(command.chunk_number().saturating_mul(upload.chunk_size()));
-        let expected_len = remaining.min(upload.chunk_size());
-        let chunk_len = u64::try_from(command.chunk().len()).map_err(|error| {
-            security_event::application_error("write_upload_chunk");
-            AttemptError::Business(WriteUploadChunkError::Unknown(anyhow::anyhow!(error)))
-        })?;
-        if chunk_len != expected_len {
-            return Err(AttemptError::Business(WriteUploadChunkError::InvalidChunk));
-        }
-        // The last chunk may be shorter than `chunk_size`; every other chunk
-        // must be exactly `chunk_size`.
-        if chunk_number < total_chunks.saturating_sub(1) && chunk_size != command.chunk().len() {
-            return Err(AttemptError::Business(WriteUploadChunkError::InvalidChunk));
-        }
-
-        let declared = command.content_digest();
-        // Recompute the digest of the received bytes and compare: a chunk whose
-        // digest does not match its `Content-Digest` header is rejected.
-        let mut session = hasher.hasher();
-        session.update(command.chunk());
-        let computed = session.finalize().map_err(|error| {
-            AttemptError::Business(WriteUploadChunkError::Unknown(error.into()))
-        })?;
-        if computed != *declared {
-            return Err(AttemptError::Business(
-                WriteUploadChunkError::InvalidContentDigest,
-            ));
-        }
-
-        let offset = command
-            .chunk_number()
-            .checked_mul(upload.chunk_size())
-            .ok_or(AttemptError::Business(
-                WriteUploadChunkError::InvalidChunkNumber,
-            ))?;
-        // The chunk size is the one persisted when the session began, never the
-        // current configuration: the range must match the session's geometry.
-        if command.start() != offset {
-            return Err(AttemptError::Business(
-                WriteUploadChunkError::InvalidChunkRange,
-            ));
-        }
-
-        match file_storage
-            .add_chunk(
-                &staged_path(root, upload.upload_id()),
-                offset,
-                command.chunk().to_vec(),
-            )
-            .await
-        {
-            // The staged file vanished between reading the upload row and
-            // writing the chunk: report the upload as absent so the caller gets
-            // the same response as the repository's missing-entity outcome.
-            Ok(false) => {
-                return Err(AttemptError::Business(WriteUploadChunkError::NoSuchUpload));
-            }
-            Ok(true) => {}
-            Err(error) => {
-                return Err(AttemptError::Business(WriteUploadChunkError::Unknown(
-                    error.into(),
-                )));
-            }
-        }
-
-        match unit_of_work
-            .uploads()
-            .record_chunk(upload.upload_id(), command.chunk_number())
-            .await
-        {
-            Ok(()) => {}
-            Err(RepositoryError::Conflict) => {
-                return Err(AttemptError::Business(
-                    WriteUploadChunkError::AlreadyFinished,
-                ));
-            }
-            Err(error) => {
-                return Err(AttemptError::Business(WriteUploadChunkError::Unknown(
-                    error.into(),
-                )));
-            }
-        }
-
-        // Re-read the upload inside the same transaction so the response
-        // reports the authoritative bitmap, chunk count and status, including a
-        // concurrent completion that landed after the upload was read above.
-        let saved = unit_of_work
-            .uploads()
-            .search(&UploadFilter {
-                upload_id: Some(upload.upload_id()),
-                ..UploadFilter::default()
-            })
-            .await
-            .map_err(|error| AttemptError::Business(WriteUploadChunkError::Unknown(error.into())))?
-            .into_iter()
-            .next()
-            .ok_or(AttemptError::Business(WriteUploadChunkError::NoSuchUpload))?;
-
-        let bitmap = received_bitmap(&saved);
-        let chunk_count = saved.total_chunks();
-        let is_finished = saved.is_finished();
-        let file_id = caller_file_id(&mut unit_of_work, &saved, command.user_id())
-            .await
-            .map_err(|error| {
-                AttemptError::Business(WriteUploadChunkError::Unknown(error.into()))
-            })?;
-        Ok(WriteUploadChunkResponse::new(
-            bitmap,
-            expires_at,
-            file_id,
-            is_finished,
-            chunk_count,
-        ))
-    }
-    .await;
-
-    match result {
-        Ok(value) => {
-            unit_of_work.commit().await.map_err(|error| {
-                AttemptError::Business(WriteUploadChunkError::Unknown(error.into()))
-            })?;
-            Ok(value)
-        }
-        Err(AttemptError::Expired) => {
-            // The expired upload row and staged file were already deleted
-            // inside the transaction; commit so the deletion survives, then
-            // report the expiry. A commit failure is a server error and takes
-            // precedence.
-            unit_of_work.commit().await.map_err(|error| {
-                AttemptError::Business(WriteUploadChunkError::Unknown(error.into()))
-            })?;
-            Err(AttemptError::Business(WriteUploadChunkError::Expired))
-        }
-        Err(error) => {
-            if unit_of_work.rollback().await.is_err() {
-                // The unit-of-work adapter owns the rollback-failure log (OBS-002).
-            }
-            Err(error)
-        }
-    }
 }
 
 #[cfg(test)]

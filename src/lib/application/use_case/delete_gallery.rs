@@ -68,10 +68,10 @@ where
                     .next()
                     .ok_or(DeleteGalleryError::NoSuchGallery)?;
 
-                if library_access::is_default_gallery(&gallery) {
+                if gallery.is_system() {
                     return Err(DeleteGalleryError::DefaultGallery);
                 }
-                if !library_access::can_delete_gallery(&gallery, &caller) {
+                if !gallery.is_owned_by(caller.id()) {
                     security_event::authorization_failed(caller.id(), "delete", "gallery");
                     return Err(DeleteGalleryError::Forbidden);
                 }

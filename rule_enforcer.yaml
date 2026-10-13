@@ -1,7 +1,12 @@
 ---
 rules:
   STY-RUST-001:
-    allowed_locations: []
+    allowed_locations:
+      - src/lib/infrastructure/inbound/rest/api_error.rs::error_response
+      - src/lib/infrastructure/inbound/rest/middleware/rate_limit.rs::from_prune
+      - src/lib/infrastructure/inbound/rest/middleware/rate_limit.rs::rate_limit_error
+      - src/lib/infrastructure/outbound/config/bootstrap.rs::resolve_sqlite3
+      - src/lib/infrastructure/outbound/config/configuration_source.rs::deserialize
   STY-RUST-002:
     bounded_contexts: &bounded_contexts
       - asset

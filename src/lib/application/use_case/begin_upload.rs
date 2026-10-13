@@ -99,7 +99,19 @@ where
                 );
                 return Err(BeginUploadError::FileTooLarge);
             }
-            let total_chunks = validate_total_chunks(command.user_id(), file_size, chunk_size)?;
+            let total = file_size.div_ceil(chunk_size);
+            let total_chunks = usize::try_from(total).map_err(|error| {
+                security_event::application_error("begin_upload");
+                BeginUploadError::Unknown(anyhow::anyhow!(error))
+            })?;
+            if total_chunks > MAX_TOTAL_CHUNKS {
+                security_event::suspicious_business_logic(
+                    command.user_id(),
+                    "begin_upload",
+                    "total_chunks_exceeded",
+                );
+                return Err(BeginUploadError::FileTooLarge);
+            }
 
             let mut unit_of_work = unit_of_work_factory
                 .begin()
@@ -241,34 +253,6 @@ where
     {
         // The file-storage adapter owns the failure log (`OBS-002`).
     }
-}
-
-/// Compute the upload's total chunk count, rejecting a count above
-/// [`MAX_TOTAL_CHUNKS`].
-///
-/// # Errors
-///
-/// Returns [`BeginUploadError::FileTooLarge`] when the file splits into more
-/// than [`MAX_TOTAL_CHUNKS`] chunks.
-#[expect(
-    clippy::single_call_fn,
-    reason = "the chunk-count bound is named after the rule it enforces"
-)]
-fn validate_total_chunks(
-    actor: i64,
-    file_size: u64,
-    chunk_size: u64,
-) -> Result<usize, BeginUploadError> {
-    let total = file_size.div_ceil(chunk_size);
-    let total_chunks = usize::try_from(total).map_err(|error| {
-        security_event::application_error("begin_upload");
-        BeginUploadError::Unknown(anyhow::anyhow!(error))
-    })?;
-    if total_chunks > MAX_TOTAL_CHUNKS {
-        security_event::suspicious_business_logic(actor, "begin_upload", "total_chunks_exceeded");
-        return Err(BeginUploadError::FileTooLarge);
-    }
-    Ok(total_chunks)
 }
 
 #[cfg(test)]

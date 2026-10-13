@@ -1,3 +1,14 @@
+#![cfg_attr(
+    test,
+    allow(
+        clippy::missing_trait_methods,
+        reason = "We are less strict about test code"
+    ),
+    allow(
+        clippy::too_many_arguments,
+        reason = "We are less strict about test code"
+    )
+)]
 pub mod application;
 pub mod domain;
 pub mod infrastructure;

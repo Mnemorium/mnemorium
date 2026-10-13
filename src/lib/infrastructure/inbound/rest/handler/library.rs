@@ -62,8 +62,8 @@ impl GalleryLinks {
     #[must_use]
     pub fn for_gallery(gallery_id: NumericID) -> Self {
         Self {
-            items: Link::new(&gallery_items_href(gallery_id)),
-            self_link: Link::new(&gallery_self_href(gallery_id)),
+            items: Link::new(&format!("/api/v1/library/gallery/{gallery_id}/item")),
+            self_link: Link::new(&format!("/api/v1/library/gallery/{gallery_id}")),
         }
     }
 }
@@ -285,33 +285,6 @@ impl From<GetGalleryResponseData> for GalleryResponse {
             owner_id: response.user_id(),
         }
     }
-}
-
-/// Canonical URI reference of the gallery resource identified by `gallery_id`.
-///
-/// Shared by the gallery representations and the creation response so the
-/// `_links.self` target and the `Location` header cannot drift (`API-032`).
-#[expect(
-    clippy::single_call_fn,
-    reason = "centralising the canonical URI so `_links.self` and `Location` cannot drift is the point"
-)]
-#[must_use]
-pub(crate) fn gallery_self_href(gallery_id: NumericID) -> String {
-    format!("/api/v1/library/gallery/{gallery_id}")
-}
-
-/// Canonical URI reference of the item collection of `gallery_id`.
-///
-/// This is the alias path of `GET /library/gallery/{id}/item`; the `_links.self`
-/// of the collection representation keeps pointing at the canonical gallery
-/// resource (`API-042`).
-#[expect(
-    clippy::single_call_fn,
-    reason = "centralising the items URI keeps the gallery links discoverable from one place (`API-037`)"
-)]
-#[must_use]
-pub(crate) fn gallery_items_href(gallery_id: NumericID) -> String {
-    format!("/api/v1/library/gallery/{gallery_id}/item")
 }
 
 /// Canonical URI reference of the gallery item identified by `item_id`.

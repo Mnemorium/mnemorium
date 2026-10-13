@@ -73,9 +73,21 @@ impl TrustedProxyKeyExtractor {
     fn header_chain(&self, headers: &HeaderMap) -> Option<Vec<IpAddr>> {
         let value = headers.get(self.header.as_str())?.to_str().ok()?;
         match self.header {
-            ClientIpHeader::XForwardedFor => parse_address_list(value),
+            ClientIpHeader::XForwardedFor => {
+                let addresses: Vec<IpAddr> = value.split(',').filter_map(parse_address).collect();
+                (!addresses.is_empty()).then_some(addresses)
+            }
             ClientIpHeader::XRealIp => parse_address(value).map(|address| vec![address]),
-            ClientIpHeader::Forwarded => parse_forwarded(value),
+            ClientIpHeader::Forwarded => {
+                let addresses: Vec<IpAddr> = value
+                    .split(',')
+                    .flat_map(|element| element.split(';'))
+                    .filter_map(|parameter| parameter.split_once('='))
+                    .filter(|&(name, _value)| name.trim().eq_ignore_ascii_case("for"))
+                    .filter_map(|(_name, address)| parse_address(address))
+                    .collect();
+                (!addresses.is_empty()).then_some(addresses)
+            }
         }
     }
 
@@ -223,32 +235,6 @@ fn parse_address(value: &str) -> Option<IpAddr> {
         .trim_end_matches(']')
         .parse()
         .ok()
-}
-
-/// Parse a comma-separated list of addresses, discarding unparseable entries.
-#[expect(
-    clippy::single_call_fn,
-    reason = "the header parsing helpers are named for readability"
-)]
-fn parse_address_list(value: &str) -> Option<Vec<IpAddr>> {
-    let addresses: Vec<IpAddr> = value.split(',').filter_map(parse_address).collect();
-    (!addresses.is_empty()).then_some(addresses)
-}
-
-/// Parse the `for=` element of an RFC 7239 `Forwarded` header.
-#[expect(
-    clippy::single_call_fn,
-    reason = "the RFC 7239 parser is named for readability"
-)]
-fn parse_forwarded(value: &str) -> Option<Vec<IpAddr>> {
-    let addresses: Vec<IpAddr> = value
-        .split(',')
-        .flat_map(|element| element.split(';'))
-        .filter_map(|parameter| parameter.split_once('='))
-        .filter(|&(name, _value)| name.trim().eq_ignore_ascii_case("for"))
-        .filter_map(|(_name, address)| parse_address(address))
-        .collect();
-    (!addresses.is_empty()).then_some(addresses)
 }
 
 /// Map a governor rejection onto the API error envelope.

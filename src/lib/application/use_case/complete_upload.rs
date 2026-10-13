@@ -11,17 +11,14 @@ use crate::application::port::complete_upload::CompleteUploadError;
 use crate::application::port::complete_upload::CompleteUploadResponse;
 use crate::application::port::complete_upload::CompleteUploadUseCase;
 use crate::application::security_event;
-use crate::application::use_case::upload_layout::final_path;
-use crate::application::use_case::upload_layout::is_path_safe;
-use crate::application::use_case::upload_layout::relative_final;
+use crate::application::use_case::upload_layout::FILES_FOLDER;
+use crate::application::use_case::upload_layout::files_path;
 use crate::application::use_case::upload_layout::staged_path;
 use crate::application::use_case::upload_session::caller_file_id;
 use crate::application::use_case::upload_session::expiry;
 use crate::domain::alias::NumericID;
 use crate::domain::model::file::File;
 use crate::domain::model::image::Image;
-use crate::domain::model::integrity_hash::IntegrityHash;
-use crate::domain::model::integrity_hash::SHA256_HEX_LENGTH;
 use crate::domain::model::upload::Upload;
 use crate::domain::model::video::Video;
 use crate::domain::port::asset_unit_of_work::AssetUnitOfWork;
@@ -86,24 +83,6 @@ enum MediaKind {
     Video,
 }
 
-impl MediaKind {
-    /// Classify `mime_type_id`, or `None` when the file is neither image nor
-    /// video (a completion without media registration).
-    #[expect(
-        clippy::single_call_fn,
-        reason = "the mime classification is named after the rule it encodes"
-    )]
-    fn from_mime_type_id(mime_type_id: &str) -> Option<Self> {
-        if mime_type_id.starts_with("image/") {
-            Some(Self::Image)
-        } else if mime_type_id.starts_with("video/") {
-            Some(Self::Video)
-        } else {
-            None
-        }
-    }
-}
-
 /// The probed metadata of a media upload.
 enum Probed {
     /// Image metadata.
@@ -159,10 +138,6 @@ where
     S: FileStorage,
     P: MediaProbe,
 {
-    #[expect(
-        clippy::too_many_lines,
-        reason = "the two-phase completion plus media registration is one cohesive flow"
-    )]
     fn execute<'future>(
         &'future self,
         command: CompleteUploadCommand,
@@ -203,8 +178,16 @@ where
                         // the connection before hashing. The media kind and the
                         // staged path are kept so the probe runs with no unit of
                         // work open.
-                        let staged_media = MediaKind::from_mime_type_id(upload.mime_type_id())
-                            .map(|kind| (kind, staged_path(&root, upload.upload_id())));
+                        let mime_type_id = upload.mime_type_id();
+                        let media_kind = if mime_type_id.starts_with("image/") {
+                            Some(MediaKind::Image)
+                        } else if mime_type_id.starts_with("video/") {
+                            Some(MediaKind::Video)
+                        } else {
+                            None
+                        };
+                        let staged_media =
+                            media_kind.map(|kind| (kind, staged_path(&root, upload.upload_id())));
                         discard(unit_of_work).await;
                         staged_media
                     }
@@ -252,13 +235,30 @@ where
             // The staged content is hashed with no unit of work open, so the
             // pooled connection is free and a concurrent writer cannot
             // invalidate a read snapshot underneath the hash.
-            let computed =
-                compute_integrity_hash(&file_storage, &root, command.upload_id()).await?;
+            let computed = match file_storage
+                .integrity_hash(&staged_path(&root, command.upload_id()))
+                .await
+            {
+                Ok(Some(digest)) => digest,
+                Ok(None) => return Err(CompleteUploadError::NoSuchUpload),
+                Err(error) => return Err(CompleteUploadError::Unknown(error.into())),
+            };
 
             // The media probe runs with no unit of work open, alongside the
             // hash, so the 30-second probe never holds a pooled connection.
             let probed = match staged_media {
-                Some((kind, path)) => Some(probe_media(&*media_probe, kind, &path).await?),
+                Some((kind, path)) => Some(match kind {
+                    MediaKind::Image => match media_probe.probe_image(&path).await {
+                        Ok(Some(image)) => Probed::Image(image),
+                        Ok(None) => return Err(CompleteUploadError::NoSuchUpload),
+                        Err(error) => return Err(probe_fault(error)),
+                    },
+                    MediaKind::Video => match media_probe.probe_video(&path).await {
+                        Ok(Some(video)) => Probed::Video(video),
+                        Ok(None) => return Err(CompleteUploadError::NoSuchUpload),
+                        Err(error) => return Err(probe_fault(error)),
+                    },
+                }),
                 None => None,
             };
 
@@ -310,14 +310,20 @@ where
                     }
                 }
 
-                if !is_path_safe(upload.file_name()) {
+                let file_name = upload.file_name();
+                if file_name.is_empty()
+                    || file_name.starts_with('.')
+                    || file_name.contains(['/', '\\'])
+                    || file_name.contains("..")
+                {
                     security_event::application_error("complete_upload");
                     return Flow::Failed(CompleteUploadError::Unknown(anyhow::anyhow!(
                         "the upload file name is not a safe path segment"
                     )));
                 }
                 let staged = staged_path(&root, upload.upload_id());
-                let final_file = final_path(&root, upload.upload_id(), upload.file_name());
+                let final_file =
+                    files_path(&root).join(format!("{}_{}", upload.upload_id(), file_name));
                 match file_storage.promote(&staged, &final_file).await {
                     // The staged file vanished after it was hashed: the upload
                     // is absent, mirroring the repository's missing-entity
@@ -331,7 +337,8 @@ where
                     staged_path: staged,
                 });
 
-                let relative = relative_final(upload.upload_id(), upload.file_name())
+                let relative = PathBuf::from(FILES_FOLDER)
+                    .join(format!("{}_{}", upload.upload_id(), file_name))
                     .to_string_lossy()
                     .into_owned();
                 let pending = match File::try_new(
@@ -377,12 +384,66 @@ where
                 // The media insert shares the completion's unit of work, so the
                 // file row and its image or video row commit together
                 // (`STY-RUST-040`).
-                if let Some(media) = probed
-                    && let Err(error) =
-                        register_media(&mut unit_of_work, file.id(), upload.file_name(), media)
-                            .await
-                {
-                    return Flow::Failed(error);
+                if let Some(media) = probed {
+                    let registered = match media {
+                        Probed::Image(image) => {
+                            let pending_image = match Image::try_new(
+                                0,
+                                file_name.to_owned(),
+                                image.width_px,
+                                image.height_px,
+                                image.orientation,
+                                Utc::now().date_naive(),
+                                file.id(),
+                            ) {
+                                Ok(pending_image) => pending_image,
+                                Err(error) => {
+                                    security_event::application_error("complete_upload");
+                                    return Flow::Failed(CompleteUploadError::Unknown(
+                                        anyhow::Error::new(error),
+                                    ));
+                                }
+                            };
+                            match unit_of_work.media().create_image(pending_image).await {
+                                // `Ok` and the defensive `AlreadyExist` are both
+                                // success: the file row was created in this unit
+                                // of work, so the insert cannot race.
+                                Ok(_) | Err(RepositoryError::AlreadyExist) => Ok(()),
+                                Err(error) => Err(CompleteUploadError::Unknown(error.into())),
+                            }
+                        }
+                        Probed::Video(video) => {
+                            let pending_video = match Video::try_new(
+                                0,
+                                video.duration_ms,
+                                video.codec,
+                                video.frame_count,
+                                video.width,
+                                video.height,
+                                video.color_id,
+                                video.scan_type,
+                                file.id(),
+                            ) {
+                                Ok(pending_video) => pending_video,
+                                Err(error) => {
+                                    security_event::application_error("complete_upload");
+                                    return Flow::Failed(CompleteUploadError::Unknown(
+                                        anyhow::Error::new(error),
+                                    ));
+                                }
+                            };
+                            match unit_of_work.media().create_video(pending_video).await {
+                                // `Ok` and the defensive `AlreadyExist` are both
+                                // success: the file row was created in this unit
+                                // of work, so the insert cannot race.
+                                Ok(_) | Err(RepositoryError::AlreadyExist) => Ok(()),
+                                Err(error) => Err(CompleteUploadError::Unknown(error.into())),
+                            }
+                        }
+                    };
+                    if let Err(error) = registered {
+                        return Flow::Failed(error);
+                    }
                 }
 
                 match unit_of_work.uploads().finish(upload.upload_id()).await {
@@ -486,7 +547,26 @@ where
         Err(error) => return Resolution::Failed(CompleteUploadError::Unknown(error)),
     };
     if !upload.is_finished() && Utc::now().naive_utc() > expires_at {
-        return expire(unit_of_work, file_storage, root, command.upload_id()).await;
+        // TODO(reaper): move the expiry cleanup to a background task; this lazy
+        // delete keeps the row and the staged file only until the next access.
+        // The file-storage and repository adapters own the failure logs
+        // (`OBS-002`), so a failed cleanup is swallowed here.
+        if file_storage
+            .delete_upload_file(&staged_path(root, command.upload_id()))
+            .await
+            .is_err()
+        {
+            // The file-storage adapter owns the failure log (`OBS-002`).
+        }
+        if unit_of_work
+            .uploads()
+            .delete(command.upload_id())
+            .await
+            .is_err()
+        {
+            // The repository adapter owns the failure log (`OBS-002`).
+        }
+        return Resolution::Expired;
     }
 
     // Idempotent completion: an already finished upload returns the caller's
@@ -510,74 +590,6 @@ where
     }
 
     Resolution::Ready(Box::new(upload))
-}
-
-/// Best-effort delete the expired upload's staged file and row, then signal the
-/// caller to commit before returning the expiry error.
-///
-/// The row deletion is left to the reaper once one exists.
-#[expect(
-    clippy::single_call_fn,
-    reason = "the expiry cleanup is named after the rule it enforces"
-)]
-async fn expire<U, S>(
-    unit_of_work: &mut U,
-    file_storage: &Arc<S>,
-    root: &Path,
-    upload_id: i64,
-) -> Resolution
-where
-    U: AssetUnitOfWork,
-    S: FileStorage,
-{
-    // TODO(reaper): move the expiry cleanup to a background task; this lazy
-    // delete keeps the row and the staged file only until the next access.
-    // The file-storage and repository adapters own the failure logs
-    // (`OBS-002`), so a failed cleanup is swallowed here.
-    if file_storage
-        .delete_upload_file(&staged_path(root, upload_id))
-        .await
-        .is_err()
-    {
-        // The file-storage adapter owns the failure log (`OBS-002`).
-    }
-    if unit_of_work.uploads().delete(upload_id).await.is_err() {
-        // The repository adapter owns the failure log (`OBS-002`).
-    }
-    Resolution::Expired
-}
-
-/// Stream the staged file's content and return its digest.
-///
-/// The hash is computed with no unit of work open, so it neither holds the
-/// pooled connection nor sits inside a transaction a concurrent writer could
-/// invalidate. A staged file that no longer exists is reported as
-/// [`CompleteUploadError::NoSuchUpload`]: it is absent, not a storage failure.
-///
-/// # Errors
-///
-/// Returns [`CompleteUploadError::NoSuchUpload`] when the staged file is absent,
-/// and [`CompleteUploadError::Unknown`] when the digest cannot be computed.
-#[expect(
-    clippy::single_call_fn,
-    reason = "the staged-content hashing is named after the step it performs"
-)]
-async fn compute_integrity_hash<S>(
-    file_storage: &Arc<S>,
-    root: &Path,
-    upload_id: i64,
-) -> Result<IntegrityHash<SHA256_HEX_LENGTH>, CompleteUploadError>
-where
-    S: FileStorage,
-{
-    match file_storage
-        .integrity_hash(&staged_path(root, upload_id))
-        .await
-    {
-        Ok(Some(digest)) => Ok(digest),
-        Ok(None) => Err(CompleteUploadError::NoSuchUpload),
-        Err(error) => Err(CompleteUploadError::Unknown(error.into())),
-    }
 }
 
 /// Best-effort roll back a unit of work, logging a failure.
@@ -613,37 +625,6 @@ where
     }
 }
 
-/// Probe the staged file according to its media kind.
-///
-/// # Errors
-///
-/// Returns [`CompleteUploadError::UnsupportedMedia`] when the bytes are not a
-/// decodable image or video, [`CompleteUploadError::NoSuchUpload`] when the
-/// staged file vanished, and [`CompleteUploadError::Unknown`] when the probe
-/// cannot complete.
-#[expect(
-    clippy::single_call_fn,
-    reason = "the probe dispatch is named after the step it performs"
-)]
-async fn probe_media<P: MediaProbe + ?Sized>(
-    media_probe: &P,
-    kind: MediaKind,
-    path: &Path,
-) -> Result<Probed, CompleteUploadError> {
-    match kind {
-        MediaKind::Image => match media_probe.probe_image(path).await {
-            Ok(Some(image)) => Ok(Probed::Image(image)),
-            Ok(None) => Err(CompleteUploadError::NoSuchUpload),
-            Err(error) => Err(probe_fault(error)),
-        },
-        MediaKind::Video => match media_probe.probe_video(path).await {
-            Ok(Some(video)) => Ok(Probed::Video(video)),
-            Ok(None) => Err(CompleteUploadError::NoSuchUpload),
-            Err(error) => Err(probe_fault(error)),
-        },
-    }
-}
-
 /// Map a media-probe failure onto the completion error.
 fn probe_fault(error: MediaProbeError) -> CompleteUploadError {
     match error {
@@ -651,74 +632,6 @@ fn probe_fault(error: MediaProbeError) -> CompleteUploadError {
         MediaProbeError::OperationFailed
         | MediaProbeError::Timeout
         | MediaProbeError::Unknown(_) => CompleteUploadError::Unknown(anyhow::Error::new(error)),
-    }
-}
-
-/// Insert the image or video row for `file_id` in the completion transaction.
-///
-/// Idempotency is enforced upstream by file-level deduplication: `complete_upload`
-/// returns an existing file row (matched by `caller_file_id` and integrity hash)
-/// before it reaches this step, so the insert runs at most once per created file.
-/// The [`RepositoryError::AlreadyExist`] arm is defensive only — `file_id` names a
-/// row created in this same unit of work, so no concurrent transaction can have
-/// inserted a media row for it.
-#[expect(
-    clippy::single_call_fn,
-    reason = "the media persistence is named after the step it performs"
-)]
-async fn register_media<U: LibraryUnitOfWork>(
-    unit_of_work: &mut U,
-    file_id: NumericID,
-    name: &str,
-    media: Probed,
-) -> Result<(), CompleteUploadError> {
-    match media {
-        Probed::Image(image) => {
-            let pending = Image::try_new(
-                0,
-                name.to_owned(),
-                image.width_px,
-                image.height_px,
-                image.orientation,
-                Utc::now().date_naive(),
-                file_id,
-            )
-            .map_err(|error| {
-                security_event::application_error("complete_upload");
-                CompleteUploadError::Unknown(anyhow::Error::new(error))
-            })?;
-            match unit_of_work.media().create_image(pending).await {
-                // `Ok` and the defensive `AlreadyExist` are both success: the
-                // file row was created in this unit of work, so the insert
-                // cannot race (see the doc comment above).
-                Ok(_) | Err(RepositoryError::AlreadyExist) => Ok(()),
-                Err(error) => Err(CompleteUploadError::Unknown(error.into())),
-            }
-        }
-        Probed::Video(video) => {
-            let pending = Video::try_new(
-                0,
-                video.duration_ms,
-                video.codec,
-                video.frame_count,
-                video.width,
-                video.height,
-                video.color_id,
-                video.scan_type,
-                file_id,
-            )
-            .map_err(|error| {
-                security_event::application_error("complete_upload");
-                CompleteUploadError::Unknown(anyhow::Error::new(error))
-            })?;
-            match unit_of_work.media().create_video(pending).await {
-                // `Ok` and the defensive `AlreadyExist` are both success: the
-                // file row was created in this unit of work, so the insert
-                // cannot race (see the doc comment above).
-                Ok(_) | Err(RepositoryError::AlreadyExist) => Ok(()),
-                Err(error) => Err(CompleteUploadError::Unknown(error.into())),
-            }
-        }
     }
 }
 
@@ -806,10 +719,6 @@ mod tests {
         buffer: Arc<Mutex<Vec<u8>>>,
     }
 
-    #[expect(
-        clippy::missing_trait_methods,
-        reason = "only the raw `write` and `flush` are meaningful for an in-memory capture buffer"
-    )]
     impl stdio::Write for CaptureWriter {
         fn flush(&mut self) -> stdio::Result<()> {
             Ok(())
@@ -823,10 +732,6 @@ mod tests {
     }
 
     /// Hand every formatted event to a fresh clone of the shared buffer.
-    #[expect(
-        clippy::missing_trait_methods,
-        reason = "the default `make_writer_for` already routes through `make_writer`"
-    )]
     impl<'writer> fmt::MakeWriter<'writer> for CaptureWriter {
         type Writer = Self;
 
@@ -905,10 +810,6 @@ mod tests {
 
     /// Build a completion whose phases carry explicit media repositories and a
     /// configured media probe, for the registration paths.
-    #[expect(
-        clippy::too_many_arguments,
-        reason = "the registration harness names every mock the test wires"
-    )]
     fn use_case_with_media(
         phase_one_uploads: MockUploadRepository,
         phase_one_files: MockFileRepository,

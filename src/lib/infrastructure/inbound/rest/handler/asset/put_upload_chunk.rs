@@ -17,7 +17,6 @@ use crate::application::port::write_upload_chunk::WriteUploadChunkCommand;
 use crate::application::port::write_upload_chunk::WriteUploadChunkError;
 use crate::domain::alias::NumericID;
 use crate::domain::model::integrity_hash::IntegrityHash;
-use crate::domain::model::integrity_hash::SHA256_HEX_LENGTH;
 use crate::infrastructure::inbound::rest::api_error::ApiError;
 use crate::infrastructure::inbound::rest::api_error::ErrorBody;
 use crate::infrastructure::inbound::rest::app_state::AppState;
@@ -179,8 +178,83 @@ pub async fn put_upload_chunk(
         return Err(ApiError::BadRequest("invalid chunk number".to_owned()));
     };
 
-    let (start, end) = parse_content_range(&headers)?;
-    let content_digest = parse_content_digest(&headers)?;
+    let raw = headers
+        .get(header::CONTENT_RANGE)
+        .and_then(|value| value.to_str().ok())
+        .ok_or_else(|| ApiError::BadRequest("missing Content-Range header".to_owned()))?;
+    let rest = raw
+        .strip_prefix("bytes ")
+        .ok_or_else(|| ApiError::BadRequest("malformed Content-Range header".to_owned()))?;
+    let (range, total) = rest
+        .split_once('/')
+        .ok_or_else(|| ApiError::BadRequest("malformed Content-Range header".to_owned()))?;
+    let (start_raw, end_raw) = range
+        .split_once('-')
+        .ok_or_else(|| ApiError::BadRequest("malformed Content-Range header".to_owned()))?;
+    let start = start_raw
+        .parse::<u64>()
+        .map_err(|_| ApiError::BadRequest("malformed Content-Range header".to_owned()))?;
+    let end = end_raw
+        .parse::<u64>()
+        .map_err(|_| ApiError::BadRequest("malformed Content-Range header".to_owned()))?;
+    let _total = total
+        .parse::<u64>()
+        .map_err(|_| ApiError::BadRequest("malformed Content-Range header".to_owned()))?;
+    if end < start {
+        return Err(ApiError::UnprocessableEntity(
+            "the Content-Range end precedes its start".to_owned(),
+        ));
+    }
+
+    let raw_digest = headers
+        .get("content-digest")
+        .and_then(|value| value.to_str().ok())
+        .ok_or_else(|| ApiError::BadRequest("missing Content-Digest header".to_owned()))?;
+    let mut parsed_any = false;
+    let mut parsed_digest = None;
+    for parameter in raw_digest.split(',').map(str::trim) {
+        let Some((algorithm, value)) = parameter.split_once('=') else {
+            continue;
+        };
+        parsed_any = true;
+        if algorithm.trim() != "sha-256" {
+            continue;
+        }
+        let encoded = value
+            .trim()
+            .strip_prefix(':')
+            .and_then(|after_colon| after_colon.strip_suffix(':'))
+            .ok_or_else(|| ApiError::BadRequest("malformed Content-Digest header".to_owned()))?;
+        let bytes = STANDARD
+            .decode(encoded)
+            .map_err(|_| ApiError::BadRequest("malformed Content-Digest header".to_owned()))?;
+        if bytes.len() != SHA256_BYTE_LENGTH {
+            return Err(ApiError::BadRequest(
+                "malformed Content-Digest header".to_owned(),
+            ));
+        }
+        let mut hex = String::with_capacity(bytes.len().saturating_mul(2));
+        {
+            use std::fmt::Write as _;
+
+            for byte in &bytes {
+                let _result = write!(hex, "{byte:02x}");
+            }
+        }
+        parsed_digest = Some(
+            IntegrityHash::try_new(hex)
+                .map_err(|_| ApiError::BadRequest("malformed Content-Digest header".to_owned()))?,
+        );
+        break;
+    }
+    let Some(content_digest) = parsed_digest else {
+        let error = if parsed_any {
+            "unsupported Content-Digest algorithm"
+        } else {
+            "malformed Content-Digest header"
+        };
+        return Err(ApiError::BadRequest(error.to_owned()));
+    };
 
     let body_len = u64::try_from(body.len())
         .map_err(|_| ApiError::BadRequest("invalid chunk length".to_owned()))?;
@@ -216,111 +290,6 @@ pub async fn put_upload_chunk(
         HeaderValue::from_static(HAL_CONTENT_TYPE),
     );
     Ok(http_response)
-}
-
-/// Parse the `Content-Range` header.
-///
-/// The header must be `bytes {start}-{end}/{total}` with `end >= start`. The
-/// `start` offset is checked against the session's persisted chunk size by the
-/// use case.
-#[expect(
-    clippy::single_call_fn,
-    reason = "the header parser is named after the format it decodes"
-)]
-fn parse_content_range(headers: &HeaderMap) -> Result<(u64, u64), ApiError> {
-    let raw = headers
-        .get(header::CONTENT_RANGE)
-        .and_then(|value| value.to_str().ok())
-        .ok_or_else(|| ApiError::BadRequest("missing Content-Range header".to_owned()))?;
-    let rest = raw
-        .strip_prefix("bytes ")
-        .ok_or_else(|| ApiError::BadRequest("malformed Content-Range header".to_owned()))?;
-    let (range, total) = rest
-        .split_once('/')
-        .ok_or_else(|| ApiError::BadRequest("malformed Content-Range header".to_owned()))?;
-    let (start_raw, end_raw) = range
-        .split_once('-')
-        .ok_or_else(|| ApiError::BadRequest("malformed Content-Range header".to_owned()))?;
-    let start = start_raw
-        .parse::<u64>()
-        .map_err(|_| ApiError::BadRequest("malformed Content-Range header".to_owned()))?;
-    let end = end_raw
-        .parse::<u64>()
-        .map_err(|_| ApiError::BadRequest("malformed Content-Range header".to_owned()))?;
-    let _total = total
-        .parse::<u64>()
-        .map_err(|_| ApiError::BadRequest("malformed Content-Range header".to_owned()))?;
-
-    if end < start {
-        return Err(ApiError::UnprocessableEntity(
-            "the Content-Range end precedes its start".to_owned(),
-        ));
-    }
-    Ok((start, end))
-}
-
-/// Parse and validate the RFC 9530 `Content-Digest` header.
-///
-/// The header must carry a `sha-256` member whose value is a Byte Sequence, the
-/// base64-encoded raw 32-byte digest wrapped in colons (`sha-256=:<base64>:`).
-/// The decoded bytes are re-encoded as lowercase hexadecimal.
-#[expect(
-    clippy::single_call_fn,
-    reason = "the header parser is named after the format it decodes"
-)]
-fn parse_content_digest(headers: &HeaderMap) -> Result<IntegrityHash<SHA256_HEX_LENGTH>, ApiError> {
-    let raw = headers
-        .get("content-digest")
-        .and_then(|value| value.to_str().ok())
-        .ok_or_else(|| ApiError::BadRequest("missing Content-Digest header".to_owned()))?;
-
-    let mut parsed_any = false;
-    for parameter in raw.split(',').map(str::trim) {
-        let Some((algorithm, value)) = parameter.split_once('=') else {
-            continue;
-        };
-        parsed_any = true;
-        if algorithm.trim() != "sha-256" {
-            continue;
-        }
-        let encoded = value
-            .trim()
-            .strip_prefix(':')
-            .and_then(|rest| rest.strip_suffix(':'))
-            .ok_or_else(|| ApiError::BadRequest("malformed Content-Digest header".to_owned()))?;
-        let bytes = STANDARD
-            .decode(encoded)
-            .map_err(|_| ApiError::BadRequest("malformed Content-Digest header".to_owned()))?;
-        if bytes.len() != SHA256_BYTE_LENGTH {
-            return Err(ApiError::BadRequest(
-                "malformed Content-Digest header".to_owned(),
-            ));
-        }
-        return IntegrityHash::try_new(hex_encode(&bytes))
-            .map_err(|_| ApiError::BadRequest("malformed Content-Digest header".to_owned()));
-    }
-
-    let error = if parsed_any {
-        "unsupported Content-Digest algorithm"
-    } else {
-        "malformed Content-Digest header"
-    };
-    Err(ApiError::BadRequest(error.to_owned()))
-}
-
-/// Hexadecimal-encode `bytes`, lowercase.
-#[expect(
-    clippy::single_call_fn,
-    reason = "the digest encoding is named for readability"
-)]
-fn hex_encode(bytes: &[u8]) -> String {
-    use std::fmt::Write as _;
-
-    let mut hex = String::with_capacity(bytes.len().saturating_mul(2));
-    for byte in bytes {
-        let _result = write!(hex, "{byte:02x}");
-    }
-    hex
 }
 
 #[cfg(test)]

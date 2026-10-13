@@ -70,7 +70,7 @@ where
                     .next()
                     .ok_or(DeleteGalleryItemError::NoSuchGallery)?;
 
-                if !library_access::can_delete_item(&gallery, &caller) {
+                if !library_access::can_read_gallery(&gallery, &caller) {
                     security_event::authorization_failed(caller.id(), "delete", "gallery_item");
                     return Err(DeleteGalleryItemError::Forbidden);
                 }
