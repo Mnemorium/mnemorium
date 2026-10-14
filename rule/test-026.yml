@@ -1,0 +1,24 @@
+---
+id: test-026
+language: Rust
+severity: error
+message: >-
+  a domain service is pure and its tests need no doubles (TEST-026): remove the
+  mock from src/lib/domain/service/ and test the service against real values
+rule:
+  any:
+    # The mockall crate and its automock attribute, wherever the name appears.
+    - kind: identifier
+      regex: '^(mockall|automock)$'
+    # The mock type mockall generates (`MockPasswordHasher`, ...). It is an
+    # `identifier` in expression position and a `type_identifier` in type
+    # position, so both are matched.
+    - kind: identifier
+      regex: '^Mock[A-Z0-9]'
+    - kind: type_identifier
+      regex: '^Mock[A-Z0-9]'
+    # The `mock! { ... }` macro, bare or crate-qualified.
+    - kind: macro_invocation
+      has:
+        field: macro
+        regex: '^(mockall::)?mock$'

@@ -1,0 +1,22 @@
+---
+id: test-024
+language: Rust
+severity: hint
+message: >-
+  inline unit test module of a domain service, for TEST-024
+rule:
+  kind: mod_item
+  all:
+    # The test gate is the attribute preceding the module. `stopBy` walks the
+    # attribute run and stops at the first non-attribute sibling, so a
+    # production module never inherits the `#[cfg(test)]` of an earlier item.
+    - follows:
+        kind: attribute_item
+        regex: 'cfg\([^)]*\btest\b'
+        stopBy:
+          not:
+            kind: attribute_item
+    # An inline module (`mod tests { … }`) declares its body here; a file
+    # module (`mod tests;`) has none and lives in another file.
+    - has:
+        kind: declaration_list

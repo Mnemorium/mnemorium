@@ -1,0 +1,26 @@
+---
+id: api-024
+language: Rust
+severity: error
+message: >-
+  a response declared in `responses(...)` carries no description; add
+  `description = "…"` to the response entry
+rule:
+  kind: token_tree
+  all:
+    - regex: '(?s)^\(\s*status\b'
+    - inside:
+        kind: token_tree
+        follows:
+          kind: identifier
+          regex: "^responses$"
+    - inside:
+        kind: attribute_item
+        regex: '#\[utoipa::path'
+        stopBy: end
+    - not:
+        has:
+          kind: identifier
+          regex: "^description$"
+          stopBy:
+            kind: token_tree

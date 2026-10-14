@@ -23,7 +23,12 @@ pub struct HealthResponse {
         (url = "http://0.0.0.0:4080", description = "Root of the service, outside /api/v1")
     ),
     responses(
-        (status = OK, body = HealthResponse, description = "Service is healthy"),
+        (
+            status = OK,
+            body = HealthResponse,
+            content_type = "application/json",
+            description = "Service is healthy",
+        ),
     ),
     security(()),
     summary = "Check service health"

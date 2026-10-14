@@ -1,0 +1,8 @@
+---
+id: api-043
+language: Rust
+severity: hint
+message: >-
+  extract the path argument of the single error-envelope builder for API-043
+rule:
+  pattern: error_response($STATUS, $MESSAGE, $PATH)

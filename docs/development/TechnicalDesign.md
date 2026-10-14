@@ -23,20 +23,21 @@ written to be cited and checked.
 
 ### Section registry
 
-| #   | Section                        | Status   | Canonical source           | Owner                                           |
-| --- | ------------------------------ | -------- | -------------------------- | ----------------------------------------------- |
-| 1   | Code Style Guidelines          | migrated | —                          | rust-developer (Rust), database-engineer (SQL)  |
-| 2   | Architecture                   | linked   | [Overview.md](Overview.md) | system-architect                                |
-| 3   | API                            | migrated | —                          | rust-developer                                  |
-| 4   | Persistence                    | migrated | —                          | database-engineer                               |
-| 5   | Testing                        | migrated | —                          | rust-developer (unit/integration), qa-e2e (E2E) |
-| 6   | Dependencies & Dev Environment | migrated | —                          | devops                                          |
-| 7   | Repository Governance          | migrated | —                          | technical-writer (docs), devops (gates)         |
-| 8   | Documentation                  | migrated | —                          | technical-writer                                |
-| 9   | Logging & Observability        | migrated | —                          | logging-specialist                              |
+| #   | Section                        | Status   | Canonical source | Owner                                           |
+| --- | ------------------------------ | -------- | ---------------- | ----------------------------------------------- |
+| 1   | Code Style Guidelines          | migrated | —                | rust-developer (Rust), database-engineer (SQL)  |
+| 2   | Architecture                   | migrated | —                | system-architect                                |
+| 3   | API                            | migrated | —                | rust-developer                                  |
+| 4   | Persistence                    | migrated | —                | database-engineer                               |
+| 5   | Testing                        | migrated | —                | rust-developer (unit/integration), qa-e2e (E2E) |
+| 6   | Dependencies & Dev Environment | migrated | —                | devops                                          |
+| 7   | Repository Governance          | migrated | —                | technical-writer (docs), devops (gates)         |
+| 8   | Documentation                  | migrated | —                | technical-writer                                |
+| 9   | Logging & Observability        | migrated | —                | logging-specialist                              |
+| 10  | Security                       | migrated | —                | security-specialist                             |
 
 Rule-ID prefixes: § 1 `STY-*`, § 2 `ARCH-*`, § 3 `API-*`, § 4 `PERS-*`, § 5 `TEST-*`, § 6 `DEPS-*`, § 7 `GOV-*`, § 8
-`DOC-*`, § 9 `OBS-*`.
+`DOC-*`, § 9 `OBS-*`, § 10 `SEC-*`.
 
 - **migrated** — the content lives in this document.
 - **linked** — the section number is reserved; the canonical content still lives in the linked document and migrates
@@ -144,7 +145,7 @@ material. The `#[utoipa::path(...)]` declaration contract lives in the [API sect
 | `STY-RUST-034` | Unit of Work      | A commit failure maps to the use-case `Unknown(_)`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | [§ 7.1](#71-lifecycle)                                           |
 | `STY-RUST-035` | Unit of Work      | Repository views borrow the unit of work mutably; drop them before `commit`/`rollback`.                                                                                                                                                                                                                                                                                                                                                                                                                                                | [§ 7.1](#71-lifecycle)                                           |
 | `STY-RUST-036` | Unit of Work      | Repository accessors return a short-lived view that borrows the unit of work.                                                                                                                                                                                                                                                                                                                                                                                                                                                          | [§ 7.2](#72-context-views)                                       |
-| `STY-RUST-037` | Unit of Work      | A context view exposes only its own context's repositories.                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | [§ 7.2](#72-context-views)                                       |
+| `STY-RUST-037` | Unit of Work      | A context view exposes only its own context's repositories (`ARCH-002`).                                                                                                                                                                                                                                                                                                                                                                                                                                                               | [§ 7.2](#72-context-views)                                       |
 | `STY-RUST-038` | Unit of Work      | Repositories are obtained **only** from a unit of work; concrete sqlx adapters never leave infrastructure.                                                                                                                                                                                                                                                                                                                                                                                                                             | [§ 7.2](#72-context-views)                                       |
 | `STY-RUST-039` | Unit of Work      | Every repository comes from the **same** unit of work (one `begin()`); opening a second unit of work would be a second transaction and break atomicity.                                                                                                                                                                                                                                                                                                                                                                                | [§ 7.3](#73-cross-context-use-cases)                             |
 | `STY-RUST-040` | Unit of Work      | Cross-context writes stay atomic: Register User (Identity + User), Delete User Account (Identity + User + Library + Asset), Complete Upload (Asset + Library; see [UseCases.md](UseCases.md)).                                                                                                                                                                                                                                                                                                                                         | [§ 7.3](#73-cross-context-use-cases)                             |
@@ -796,7 +797,7 @@ pub trait UserUnitOfWork: UnitOfWork {
 
 ##### 7.3 Cross-context use cases
 
-A use case that spans bounded contexts declares every context view it needs as an `execute` bound.
+A use case that spans bounded contexts declares every context view it needs as an `execute` bound (`ARCH-003`).
 
 Drawn from `src/lib/application/use_case/register_user.rs`:
 
@@ -1021,10 +1022,34 @@ The type prefix of a constraint name:
 
 ## Architecture
 
-**Status** — linked. Canonical source: [Overview.md](Overview.md).
+This section states the invariants the source layout must hold: which way module dependencies point, how bounded
+contexts own their models and ports, how work that spans contexts is orchestrated, and how far a cascade delete may
+reach. The detail — the source layout, the layer map, the bounded contexts, the composition root and the server
+lifecycle — lives in [Overview.md](Overview.md), which these rules constrain.
 
-Covers the source layout and layer map, the hexagonal dependency direction, bounded contexts, the composition root, and
-the server lifecycle. The content migrates here in a later change; until then `Overview.md` is normative.
+| ID         | Section         | Rule                                                                                                                                                                                                             | More info                            |
+| ---------- | --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------ |
+| `ARCH-001` | Layer direction | Dependencies point inward only: `domain` ← `application` ← `infrastructure`; no module imports outward (see `AGENTS.md`, "Special Rules").                                                                       | [Overview.md](Overview.md)           |
+| `ARCH-002` | Bounded context | Each domain model and port belongs to exactly one bounded context; a context view exposes only its own context's repositories (`STY-RUST-037`).                                                                  | [§ 7.2](#72-context-views)           |
+| `ARCH-003` | Cross-context   | Work that spans bounded contexts is orchestrated in the application layer, never by a domain model or an outbound adapter.                                                                                       | [§ 7.3](#73-cross-context-use-cases) |
+| `ARCH-004` | Cascade scope   | `ON DELETE CASCADE` is used only between tables of one bounded context; a foreign key that crosses a bounded-context boundary declares no cascade, and the owning use case orchestrates the delete (`PERS-020`). | [§ 1](#1-cascade-scope)              |
+
+No mechanical check enforces these rules: architecture is judged by review, and they stay listed by
+`script/rule_enforcer.sh uncovered`.
+
+---
+
+### 1. Cascade scope
+
+`ON DELETE CASCADE` is used only within one bounded context: `gallery` → `gallery_item` cascades because both tables are
+owned by the Library context. A foreign key that crosses a context boundary does not cascade — `image.file_id` and
+`video.file_id` into `file` (Asset-owned) — because deleting a `file` row would reach into Library-owned rows. The
+application orchestrates that deletion instead; [`PERS-020`](#persistence) is the persistence restatement of this rule.
+
+---
+
+**References** — [Overview.md](Overview.md) for the source layout, layer map, bounded contexts, composition root and
+server lifecycle.
 
 ---
 
@@ -1739,7 +1764,7 @@ enforce invariants.
 | `PERS-017` | Datastore & migrations      | Map SQLite's `SQLITE_CONSTRAINT_TRIGGER` extended result code (`1811`, a trigger `RAISE(ABORT)`) to `RepositoryError::Conflict` in `error_mapping.rs`; repositories must not test the extended result code themselves.                         | [§ 8.2](#82-repository-adapter)           |
 | `PERS-018` | Invariants                  | A `gallery_item` references exactly one media row: either `image_id` or `video_id` is set, never both and never neither (`chk_gallery_item_one_media`).                                                                                        |                                           |
 | `PERS-019` | Invariants                  | A media row belongs to at most one gallery: the partial unique indexes `uq_gallery_item_image_id` and `uq_gallery_item_video_id` enforce one `gallery_item` per `image`/`video`.                                                               |                                           |
-| `PERS-020` | Datastore & migrations      | Cascade deletes only within one bounded context; a cross-context foreign key (for example `image.file_id` and `video.file_id` into `file`) does not use `ON DELETE CASCADE`, so the application orchestrates the deletion.                     |                                           |
+| `PERS-020` | Datastore & migrations      | Cascade deletes only within one bounded context (`ARCH-004`); a cross-context foreign key (for example `image.file_id` and `video.file_id` into `file`) does not use `ON DELETE CASCADE`, so the application orchestrates the deletion.        |                                           |
 | `PERS-021` | Invariants                  | Two galleries owned by the same user cannot share a name (`uq_gallery_user_id_name`). SQLite treats `NULL` owner identifiers as distinct, so the ownerless default gallery (identifier `0`) stays outside the constraint.                      |                                           |
 
 Editing an already-applied migration (`PERS-014`) changes its checksum, and deleting an applied pair removes its
@@ -2180,6 +2205,8 @@ the flows the E2E suite covers come from the critical exception paths in [UseCas
 | `TEST-050` | Shell script       | Shell scripts in the `script/` folder are tooling and CI glue and are exempt from the unit, integration and E2E test requirements; they are validated by their own gates — `shellcheck` and `shfmt` plus their pre-commit and CI execution — not by a test module.                                                                                                                                                                                                                                                                                                                                                                                                                                            | [§ Shell script](#shell-script)                 |
 | `TEST-051` | CI / prompt assets | GitHub workflow files (`.github/workflows/*`) and the opencode agent, command and skill prompts (`.opencode/agents/*`, `.opencode/commands/*`, `.opencode/skills/*/SKILL.md`, `.agents/skills/**`) are tooling and agent configuration, not application code; they are exempt from the unit, integration and E2E test requirements. A workflow's YAML is validated by `yamllint`. The triage workflow's `gh`-driven inline prompt, its `OPENCODE_CONFIG_CONTENT` shell permission allowlist, and its effect on issues are exercised only when the workflow runs; they have no automated behavioural gate and no dry-run rehearsal — an explicit residual, validated by review rather than asserted by a test. | [§ CI and prompt assets](#ci-and-prompt-assets) |
 | `TEST-052` | E2E                | A golden file or a test media file the E2E suite consumes is stored under `test/e2e/fixture/`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | [§ E2E test](#e2e-test)                         |
+| `TEST-053` | E2E                | A use case whose catalog entry names more than one bounded context keeps a single E2E file, placed in the folder of the context that owns the use case's primary endpoint (`TEST-042`).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | [§ E2E test](#e2e-test)                         |
+| `TEST-054` | Integration test   | An outbound adapter that drives a native binary is covered by an integration test in the same file; the child process is replaced by a stub executable through the adapter's test-only program seam, every child outcome is asserted, and the real binary is exercised by the container E2E suite.                                                                                                                                                                                                                                                                                                                                                                                                            | [§ Native binary](#native-binary)               |
 
 ---
 
@@ -2252,7 +2279,22 @@ The moka cache adapter wraps another repository, which the test mocks.
 
 #### External service
 
-External service clients are exercised against a stubbed HTTP server.
+External service clients are exercised against a stubbed HTTP server ([`TEST-036`](#integration-test)); the strategy is
+scoped to an HTTP client. An adapter that instead drives a native binary follows [Native binary](#native-binary).
+
+---
+
+#### Native binary
+
+An outbound adapter that drives a native binary — `LocalMediaProbe` in `src/lib/infrastructure/outbound/media_probe.rs`
+runs `ffprobe` — is an outbound-port adapter, so [`TEST-027`](#integration-test) puts its integration test in the same
+file. The child process is replaced through the adapter's test-only program seam (`LocalMediaProbe::with_program`), so
+the test drives every child outcome without the binary: a success, a non-zero exit, non-JSON output, and a timeout
+([`TEST-054`](#native-binary)). The real binary is a container concern, exercised by the E2E suite, which supplies it on
+the image.
+
+Handing the staged, caller-supplied bytes to `ffprobe` is a security event governed by
+[`OBS-008`](#logging--observability); the test seam does not replace that obligation.
 
 ---
 
@@ -2267,6 +2309,11 @@ request is exercised by the black-box suite as well as by the repository integra
 A golden file or a test media file the suite consumes is stored under `test/e2e/fixture/` and loaded from there by the
 test that needs it ([TEST-052](#e2e-test)); such files are kept out of the per-context test folders
 ([TEST-042](#e2e-test)).
+
+A use case whose catalog entry names more than one bounded context ([UseCases.md](UseCases.md)) keeps one file, in the
+folder of the context that owns the use case's primary endpoint ([TEST-053](#e2e-test)): UC-006 (Upload Media File;
+Asset and Library) is served under `/api/v1/asset/`, so its file stays in `test/e2e/asset/`. `TEST-042` names the folder
+for a single-context use case.
 
 ---
 
@@ -2621,6 +2668,7 @@ longest-prefix match, and every scope owns at least one path. Adding or removing
 | Tooling | `config`         | `.prettierrc`                             | Prettier configuration          |
 | Tooling | `config`         | `.prettierignore`                         | Prettier ignore rules           |
 | Tooling | `config`         | `.releaserc.json`                         | semantic-release configuration  |
+| Tooling | `config`         | `.sqlfluff`                               | SQL linter configuration        |
 | Tooling | `config`         | `.taplo.toml`                             | TOML linter configuration       |
 | Tooling | `config`         | `.yamllint`                               | YAML linter configuration       |
 | Tooling | `config`         | `clippy.toml`                             | Clippy configuration            |
@@ -2655,7 +2703,7 @@ CI `scopes` job; a failure cites `GOV-001`.
 
 ## Documentation
 
-This section governs the examples, diagrams, citations and excerpts the documentation publishes. It keeps every
+This section governs the examples, diagrams, citations, routes and excerpts the documentation publishes. It keeps every
 published example traceable to the code it restates, so a reader can verify it and a reviewer can catch it going stale.
 
 | ID        | Section               | Rule                                                                                                                                                                                                                                                               | More info                       |
@@ -2663,6 +2711,7 @@ published example traceable to the code it restates, so a reader can verify it a
 | `DOC-001` | Code examples         | An example that restates production code names the source path it is drawn from, is updated in the same change as that code, and may elide omitted regions with a `// [...]` marker.                                                                               | [§ 1](#1-code-examples)         |
 | `DOC-002` | Domain model diagrams | A domain model diagram that the documentation publishes represents the domain's real-world concepts — conceptual classes, typed attributes, and named associations with multiplicity — and never software methods, database tables or other implementation detail. | [§ 2](#2-domain-model-diagrams) |
 | `DOC-003` | Citations             | Documentation (`docs/`, the root Markdown) and production source (`src/`) cite only paths the repository tracks; they never name the local, untracked `.artifacts/` scratch directory, which a reader cannot resolve.                                              | [§ 3](#3-citations)             |
+| `DOC-004` | Published route       | A route the documentation publishes names a path the generated specification declares in `docs/openapi.json`.                                                                                                                                                      | [§ 4](#4-published-routes)      |
 
 ---
 
@@ -2770,6 +2819,19 @@ ignore files and the agent harness under `.opencode/` — names it as a destinat
 
 When a citation's target has been removed, replace it with the artifact the code now implements — a use case in
 `docs/development/UseCases.md`, a rule in this document — or state the obligation in the comment itself.
+
+---
+
+### 4. Published routes
+
+`docs/openapi.json` is generated from the handler annotations (`cargo run --bin openapi_gen`) and committed, so it is
+the machine-checked contract of the HTTP surface ([`API-001`](#openapi-generation)). A route the documentation publishes
+— the § Response-codes examples and the `_links.self` examples in § 2.5 — is written as `METHOD /api/v1/...` and names a
+path the specification declares, with the `/api/v1` base removed: `GET /api/v1/user/{id}` corresponds to the spec path
+`/user/{id}`, and `/health` is declared as itself.
+
+No check asserts this correspondence yet ([`DOC-004`](#4-published-routes)); the rule is validated by review. A route
+example is updated in the same change that moves the endpoint.
 
 ---
 
@@ -2949,3 +3011,46 @@ The media probe is the current instance: it runs `ffprobe` on the staged file wi
 
 **Reference** — [OWASP Logging Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Logging_Cheat_Sheet.html),
 filtered to the events this server can emit.
+
+---
+
+## Security
+
+This section governs how a type that carries a secret crosses the HTTP boundary: which types are secret-bearing, and the
+access control every endpoint that exposes or mutates one must satisfy. Keeping secrets out of log sinks is a separate
+concern, governed by [§ 9 (Logging & Observability)](#logging--observability); this section cites an `OBS-*` rule for it
+and never restates one.
+
+| ID        | Section | Rule                                                                                                                                                                                                                                                                                                                                                                              | More info                        |
+| --------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------- |
+| `SEC-001` | Secrets | A struct that carries a secret — a password or password hash, a signing or encryption key, or an access token — is reachable only through a protected endpoint: every endpoint that returns or mutates one declares `("bearer_auth" = [])` and is guarded by the authentication middleware (`API-011`), the sole exception being token issuance at `POST /api/v1/identity/login`. | [§ 1](#1-secret-bearing-structs) |
+
+No mechanical check enforces this rule: it is validated by review, and it stays listed by
+`script/rule_enforcer.sh uncovered`.
+
+---
+
+### 1. Secret-bearing structs
+
+A **secret-bearing struct** is a type that declares a field holding a password or password hash, a signing or encryption
+key, or an access token. The canonical set is the one `OBS-004` names — `Security`, `Jwt`, `Configuration` and
+`Credential`, all in `src/lib/domain/model/` — and every new type that adds such a field joins it.
+
+`SEC-001` binds the HTTP boundary in three ways:
+
+- **Outbound.** A secret-bearing struct is never part of a response payload a public endpoint returns. The server's only
+  unauthenticated operations are `GET /health` and `POST /api/v1/identity/login`.
+- **Mutation.** An endpoint that creates or changes a secret is protected: `POST /api/v1/identity/register` (initial
+  credential), `PATCH /api/v1/identity/credential/{id}` (password change) and `PATCH /api/v1/user/{id}` (role change)
+  each declare `("bearer_auth" = [])` and sit in the route group wrapped by `authenticate` (`API-011`).
+- **Token issuance is the single exception.** `POST /api/v1/identity/login` returns the caller's own freshly minted
+  access token — a secret the caller is entitled to — because issuing it is that operation's purpose. It is the sole
+  secret that crosses a public boundary, and it is still withheld from every log sink (`OBS-004`).
+
+A raw secret supplied _in_ a request body — a login password — is an input, not a secret-bearing struct. It is governed
+by the endpoint's own authentication requirement and by the log-content rules (`OBS-003`, `OBS-004`), not by `SEC-001`.
+
+---
+
+**References** — [§ 9 (Logging & Observability)](#logging--observability) for secret redaction; `API-011` for the
+`security(...)` declaration that guards an operation.

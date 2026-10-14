@@ -1,0 +1,19 @@
+---
+id: test-022
+language: Rust
+severity: hint
+message: >-
+  extract each mock expectation configured to return a dependency failure, for
+  TEST-022
+rule:
+  kind: call_expression
+  all:
+    - has:
+        field: function
+        kind: field_expression
+        has:
+          field: field
+          regex: '^(returning|return_once)$'
+    - has:
+        field: arguments
+        regex: 'Err\('

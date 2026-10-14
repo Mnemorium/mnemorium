@@ -1,0 +1,15 @@
+---
+id: api-031
+language: Rust
+severity: hint
+message: >-
+  every response that carries a body is a HAL representation: serve it as
+  application/hal+json, or list the body in non_hal_bodies
+files:
+  - src/lib/infrastructure/inbound/rest/**/*.rs
+rule:
+  kind: token_tree
+  all:
+    - regex: '(?s)^\(\s*status\s*=.*?\bbody\s*='
+    - not:
+        regex: 'application/hal\+json'

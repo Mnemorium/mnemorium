@@ -70,7 +70,12 @@ impl From<LoginUserError> for ApiError {
     tag = "identity",
     request_body = LoginRequest,
     responses(
-        (status = OK, body = LoginResponse, description = "User authenticated"),
+        (
+            status = OK,
+            body = LoginResponse,
+            content_type = "application/json",
+            description = "User authenticated",
+        ),
         (
             status = BAD_REQUEST,
             body = ErrorBody,

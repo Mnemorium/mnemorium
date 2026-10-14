@@ -1,0 +1,16 @@
+---
+id: test-007
+language: Rust
+severity: error
+message: >-
+  a password-behavior test uses the shared secret SECRET_PASSWORD; keep its own
+  explicit password, for TEST-007
+rule:
+  kind: function_item
+  all:
+    - has:
+        regex: 'SECRET_PASSWORD'
+    - has:
+        kind: block
+        has:
+          regex: 'assert.*(InvalidPassword|PasswordPolicyError|hash_password|verify_password)'

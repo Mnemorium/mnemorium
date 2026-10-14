@@ -1,0 +1,50 @@
+---
+id: test-033
+language: Rust
+severity: hint
+message: extract SQLite connection calls from a test module for TEST-033
+files:
+  - src/lib/infrastructure/outbound/sqlx/**/*.rs
+rule:
+  any:
+    # A connection created inside a function of a `#[cfg(test)]` module:
+    # capture the enclosing function so the wrapper can require a per-test
+    # helper.
+    - all:
+        - any:
+            - pattern: $POOL.connect($ARG)
+            - pattern: $POOL.connect_lazy($ARG)
+        - inside:
+            kind: mod_item
+            follows:
+              kind: attribute_item
+              regex: 'cfg\([^)]*\btest\b'
+              stopBy:
+                not:
+                  kind: attribute_item
+            stopBy: end
+        - inside:
+            kind: function_item
+            has:
+              field: name
+              pattern: $HELPER
+            stopBy: end
+    # A connection created outside any function is a shared pool, not one
+    # connection per test; it carries no HELPER and the wrapper flags it.
+    - all:
+        - any:
+            - pattern: $POOL.connect($ARG)
+            - pattern: $POOL.connect_lazy($ARG)
+        - inside:
+            kind: mod_item
+            follows:
+              kind: attribute_item
+              regex: 'cfg\([^)]*\btest\b'
+              stopBy:
+                not:
+                  kind: attribute_item
+            stopBy: end
+        - not:
+            inside:
+              kind: function_item
+              stopBy: end

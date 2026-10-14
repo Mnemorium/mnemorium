@@ -1,0 +1,23 @@
+---
+id: obs-007
+language: Rust
+severity: hint
+message: >-
+  extract the suppression guards and the non-suppressible security floor for
+  OBS-007
+rule:
+  any:
+    # `Logging::try_new` rejects `off`/`none` as a whole-level value.
+    - pattern: 'matches!($DISABLING_LEVEL.to_ascii_lowercase().as_str(), "off" | "none")'
+    # `Logging::try_new` rejects a directive that targets the security target.
+    - pattern: >-
+        $SECURITY_DIRECTIVES.split($SEP).any(|$DIRECTIVE|
+        $DIRECTIVE.trim().starts_with(SECURITY_TARGET))
+    # The reserved target's name is pinned to `security`.
+    - pattern: 'const SECURITY_TARGET: &str = $SECURITY_VALUE;'
+    # The floor constant pins the reserved target's lowest catalogued level.
+    - pattern: 'const SECURITY_FLOOR: &str = $FLOOR_VALUE;'
+    # `logging::setup` appends the floor to the filter's directives.
+    - all:
+        - pattern: 'format!($$$ARGS)'
+        - regex: 'SECURITY_FLOOR'

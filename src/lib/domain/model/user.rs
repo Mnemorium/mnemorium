@@ -29,6 +29,23 @@ pub enum Role {
     Standard,
 }
 
+impl Role {
+    /// Parse a role from its wire representation (`ADMIN`, `STANDARD`).
+    ///
+    /// Returns `None` when `value` is not a member of the discrete list, so an
+    /// inbound handler can classify the rejection as `enum_validation_failed`
+    /// (`OBS-006`). The names match the `serde(rename_all = "UPPERCASE")`
+    /// representation of [`Role`].
+    #[must_use]
+    pub fn from_wire(value: &str) -> Option<Self> {
+        match value {
+            "ADMIN" => Some(Self::Admin),
+            "STANDARD" => Some(Self::Standard),
+            _ => None,
+        }
+    }
+}
+
 /// A user account.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct User {

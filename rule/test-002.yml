@@ -1,0 +1,19 @@
+---
+id: test-002
+language: Rust
+severity: hint
+message: >-
+  extract external-dependency traits (ports) declared without mockall's
+  automock attribute, for TEST-002
+rule:
+  all:
+    - kind: trait_item
+    - not:
+        follows:
+          kind: attribute_item
+          regex: '(mockall::)?automock'
+          stopBy:
+            kind: trait_item
+    - any:
+        - pattern: 'pub trait $TRAIT: $$$BOUNDS { $$$BODY }'
+        - pattern: 'pub trait $TRAIT { $$$BODY }'

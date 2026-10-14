@@ -1,0 +1,9 @@
+---
+id: api-007
+language: Rust
+severity: hint
+message: >-
+  extract an endpoint's `#[utoipa::path]` attribute for API-007
+rule:
+  kind: attribute_item
+  regex: '#\[utoipa::path'

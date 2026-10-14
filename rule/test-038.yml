@@ -1,0 +1,27 @@
+---
+id: test-038
+language: Rust
+severity: error
+message: >-
+  an external-service test module lives in the same file as the client under
+  test: declare it inline (`#[cfg(test)] mod tests { … }`), never as a
+  separate-file module
+files:
+  - src/lib/infrastructure/outbound/**/*.rs
+rule:
+  all:
+    - kind: mod_item
+    # The test gate is the attribute preceding the module. `stopBy` walks the
+    # attribute run and stops at the first non-attribute sibling, so a
+    # production `mod …;` never inherits the `#[cfg(test)]` of an earlier item.
+    - follows:
+        kind: attribute_item
+        regex: 'cfg\([^)]*\btest\b'
+        stopBy:
+          not:
+            kind: attribute_item
+    # A file module (`mod tests;`) has no body: it lives in another file. An
+    # inline module (`mod tests { … }`) declares its body here and is compliant.
+    - not:
+        has:
+          kind: declaration_list

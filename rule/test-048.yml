@@ -1,0 +1,32 @@
+---
+id: test-048
+language: Rust
+severity: error
+message: >-
+  a production factory struct has no dedicated test of its own (TEST-048):
+  remove the test construct from the factory and cover the assembled use cases
+  instead — the per-context use cases, and the repository integration tests for
+  SqlxUnitOfWorkFactory
+rule:
+  any:
+    # #[cfg(test)] and #[cfg(any(test, ...))].
+    - all:
+        - kind: attribute_item
+        - regex: 'cfg\(.*\btest\b'
+    # #[cfg_attr(test, ...)].
+    - all:
+        - kind: attribute_item
+        - regex: 'cfg_attr\(\s*test\b'
+    # #[test], #[tokio::test], #[async_std::test], ...
+    - all:
+        - kind: attribute_item
+        - regex: '#\[\s*([A-Za-z_][A-Za-z0-9_]*::)*test\s*\]'
+    # mod test / mod tests / pub mod tests.
+    - all:
+        - kind: mod_item
+        - has:
+            field: name
+            regex: '^tests?$'
+    # mockall / automock, wherever the name appears.
+    - kind: identifier
+      regex: '^(mockall|automock)$'

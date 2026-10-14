@@ -1,0 +1,25 @@
+---
+id: api-016
+language: Rust
+severity: error
+message: >-
+  a parameter declared in `params(...)` carries no description; add
+  `description = "…"` to the parameter tuple
+files:
+  - src/lib/infrastructure/inbound/rest/handler/**/*.rs
+rule:
+  kind: token_tree
+  all:
+    # An inline parameter tuple opens with the quoted parameter name.
+    - regex: '(?s)^\(\s*"'
+    # It is a direct element of a `params(...)` token tree.
+    - inside:
+        kind: token_tree
+        follows:
+          kind: identifier
+          regex: '^params$'
+    # The tuple declares `description`; without it the rule fires.
+    - not:
+        has:
+          kind: identifier
+          regex: '^description$'

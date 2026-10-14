@@ -80,6 +80,21 @@ pub enum GalleryItemType {
 }
 
 impl GalleryItemType {
+    /// Parse a medium kind from its wire representation (`image`, `video`).
+    ///
+    /// Returns `None` when `value` is not a member of the discrete list, so the
+    /// inbound handler can classify the rejection as `enum_validation_failed`
+    /// (`OBS-006`). The names match the `serde(rename_all = "lowercase")`
+    /// representation of [`GalleryItemType`].
+    #[must_use]
+    pub fn from_wire(value: &str) -> Option<Self> {
+        match value {
+            "image" => Some(Self::Image),
+            "video" => Some(Self::Video),
+            _ => None,
+        }
+    }
+
     /// Build the medium reference of `media_id` for this kind.
     #[must_use]
     pub fn media(self, media_id: NumericID) -> GalleryItemMedia {

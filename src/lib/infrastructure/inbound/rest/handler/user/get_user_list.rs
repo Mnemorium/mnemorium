@@ -29,7 +29,11 @@ pub struct ListUsersQuery {
     #[param(format = "email")]
     pub email: Option<String>,
     /// Only return users holding this role.
-    pub role: Option<Role>,
+    // The raw wire value is validated by the handler so a value outside the
+    // discrete list is classified as `enum_validation_failed` (`OBS-006`)
+    // rather than a generic query rejection.
+    #[param(value_type = Option<Role>)]
+    pub role: Option<String>,
     /// Only return users whose username matches this value.
     #[param(min_length = 4, max_length = 100)]
     pub username: Option<String>,
@@ -137,13 +141,23 @@ pub async fn get_user_list(
     caller: AuthenticatedUser,
     State(state): State<AppState>,
 ) -> Result<Response, ApiError> {
+    let role = query
+        .role
+        .as_deref()
+        .map(|value| {
+            Role::from_wire(value).ok_or_else(|| {
+                ApiError::log_enum_rejection("role");
+                ApiError::BadRequest("the request contains an unrecognised value".to_owned())
+            })
+        })
+        .transpose()?;
     let users = state
         .user_use_case_factory()
         .list_users()
         .execute(ListUsersCommand::new(
             caller.user_id(),
             query.email,
-            query.role,
+            role,
             query.username,
         ))
         .await?;

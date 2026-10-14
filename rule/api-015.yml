@@ -1,0 +1,19 @@
+---
+id: api-015
+language: Rust
+severity: error
+message: >-
+  write a parameter's Rust type as `= Type` after the name in `params(...)`
+rule:
+  all:
+    - kind: token_tree
+    - inside:
+        kind: attribute_item
+        regex: '#\[utoipa::path'
+        stopBy: end
+    - inside:
+        kind: token_tree
+        follows:
+          kind: identifier
+          regex: "^params$"
+    - regex: '^\(\s*"[^"]*"\s*[^=,)\s]'

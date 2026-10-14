@@ -1,0 +1,48 @@
+---
+id: api-034
+language: Rust
+severity: hint
+message: >-
+  extract each HAL `_links` field and each struct field with its owner and type,
+  for API-034
+rule:
+  any:
+    # The `_links` field of a HAL representation: capture the declaring struct
+    # and the type that holds the links.
+    - all:
+        - kind: field_declaration
+        - pattern: 'pub $LINKS: $TYPE'
+        - follows:
+            kind: attribute_item
+            regex: 'serde\(rename = "_links"\)'
+        - inside:
+            kind: field_declaration_list
+            inside:
+              kind: struct_item
+              pattern: 'pub struct $REP { $$$FIELDS }'
+              stopBy: end
+        - not:
+            inside:
+              kind: mod_item
+              stopBy: end
+              follows:
+                kind: attribute_item
+                regex: cfg\(test\)
+    # Every struct field, with its owning struct, so the wrapper can resolve a
+    # `_links` type to the members it holds.
+    - all:
+        - kind: field_declaration
+        - pattern: 'pub $FIELD: $TYPE'
+        - inside:
+            kind: field_declaration_list
+            inside:
+              kind: struct_item
+              pattern: 'pub struct $STRUCT { $$$FIELDS }'
+              stopBy: end
+        - not:
+            inside:
+              kind: mod_item
+              stopBy: end
+              follows:
+                kind: attribute_item
+                regex: cfg\(test\)

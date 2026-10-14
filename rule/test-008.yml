@@ -1,0 +1,30 @@
+---
+id: test-008
+language: Rust
+severity: error
+message: >-
+  HTTP handler tests are `async` — TEST-008
+files:
+  - src/lib/infrastructure/inbound/rest/handler/**/*.rs
+rule:
+  all:
+    - kind: function_item
+    # A test carries a test attribute as a preceding sibling. `stopBy` halts the
+    # backward search at the first real item (skipping the attribute/comment
+    # block that decorates this function), so a helper that merely follows a
+    # test is not mistaken for one.
+    - follows:
+        kind: attribute_item
+        regex: '#\[(test|tokio::test|rstest)\b'
+        stopBy:
+          all:
+            - not:
+                kind: attribute_item
+            - not:
+                kind: line_comment
+            - not:
+                kind: block_comment
+    - not:
+        has:
+          kind: function_modifiers
+          regex: 'async'

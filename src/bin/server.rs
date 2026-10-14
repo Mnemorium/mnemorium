@@ -135,11 +135,25 @@ async fn main() -> Result<(), anyhow::Error> {
         }
     });
 
-    info!("Starting Mnemorium server");
+    // Server startup, readiness and shutdown are lifecycle events (`OBS-006`):
+    // the catalog declares them at `info` with fields `component` and `outcome`.
+    info!(
+        target: "security",
+        event = "lifecycle",
+        component = "server",
+        outcome = "starting",
+        "starting Mnemorium server"
+    );
 
     match TcpListener::bind("0.0.0.0:4080").await {
         Ok(listener) => {
-            info!("Mnemorium server listening on 0.0.0.0:4080");
+            info!(
+                target: "security",
+                event = "lifecycle",
+                component = "server",
+                outcome = "started",
+                "Mnemorium server listening on 0.0.0.0:4080"
+            );
 
             let shutdown_signal = async {
                 let interrupt = async {
@@ -167,7 +181,13 @@ async fn main() -> Result<(), anyhow::Error> {
                     () = terminate => {}
                 }
 
-                info!("Shutdown signal received; draining in-flight requests");
+                info!(
+                    target: "security",
+                    event = "lifecycle",
+                    component = "server",
+                    outcome = "draining",
+                    "shutdown signal received; draining in-flight requests"
+                );
             };
 
             match axum::serve(
@@ -178,7 +198,13 @@ async fn main() -> Result<(), anyhow::Error> {
             .await
             {
                 Ok(()) => {
-                    info!("Mnemorium server stopped");
+                    info!(
+                        target: "security",
+                        event = "lifecycle",
+                        component = "server",
+                        outcome = "stopped",
+                        "Mnemorium server stopped"
+                    );
                 }
                 Err(err) => {
                     error!(kind = ?err.kind(), "Fail to run axum server");

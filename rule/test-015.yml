@@ -1,0 +1,18 @@
+---
+id: test-015
+language: Rust
+severity: error
+message: >-
+  set the use-case factory expectation with `times(0..=1)`; the handler can
+  reject the request before reaching the use case
+files:
+  - src/lib/infrastructure/inbound/rest/handler/**/*.rs
+rule:
+  pattern: $FACTORY.$METHOD().times($COUNT)
+constraints:
+  METHOD:
+    not:
+      regex: ^expect_execute$
+  COUNT:
+    not:
+      regex: ^0\.\.=1$

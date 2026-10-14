@@ -1,6 +1,7 @@
 use std::io::stdout;
 
 use anyhow::Context as _;
+use tracing::info;
 use tracing_appender::non_blocking::WorkerGuard;
 use tracing_appender::rolling::RollingFileAppender;
 use tracing_appender::rolling::Rotation as FileRotation;
@@ -68,7 +69,15 @@ pub fn setup(logging: &Logging) -> anyhow::Result<WorkerGuard> {
         .with(stdout_layer)
         .init();
 
-    tracing::info!("Logging initialized");
+    // The logging initialization is a lifecycle event (`OBS-006`): the catalog
+    // declares it at `info` with fields `component` and `outcome`.
+    info!(
+        target: "security",
+        event = "lifecycle",
+        component = "logging",
+        outcome = "initialized",
+        "logging initialized"
+    );
 
     Ok(guard)
 }

@@ -1,0 +1,20 @@
+---
+id: api-027
+language: Rust
+severity: hint
+message: >-
+  extract the #[utoipa::path] declaration and every response header the handler
+  inserts, for API-027
+rule:
+  all:
+    - not:
+        inside:
+          kind: mod_item
+          stopBy: end
+          follows:
+            kind: attribute_item
+            regex: cfg\(test\)
+    - any:
+        - kind: attribute_item
+          regex: '#\[utoipa::path'
+        - pattern: $RECV.insert(header::$CONST, $$$REST)

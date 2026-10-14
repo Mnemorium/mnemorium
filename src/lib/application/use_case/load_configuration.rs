@@ -219,6 +219,8 @@ where
                         .map_err(|error| LoadConfigurationError::Unknown(error.into()))?;
                     if created {
                         security_event::system_object("configuration", "create");
+                        security_event::secret_initialized("pepper");
+                        security_event::secret_initialized("jwt_secret");
                     }
                     Ok(value)
                 }

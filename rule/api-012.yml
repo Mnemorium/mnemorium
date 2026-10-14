@@ -1,0 +1,18 @@
+---
+id: api-012
+language: Rust
+severity: error
+message: >-
+  declare `summary`, a one-line human-readable summary, in
+  `#[utoipa::path(...)]`
+rule:
+  kind: attribute_item
+  regex: '#\[utoipa::path'
+  not:
+    has:
+      kind: attribute
+      has:
+        kind: token_tree
+        has:
+          kind: identifier
+          regex: "^summary$"

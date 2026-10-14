@@ -1,0 +1,29 @@
+---
+id: api-036
+language: Rust
+severity: error
+message: >-
+  expose search and filtering through a URI-templated link: build it with
+  `Link::templated`, never `Link::new`
+rule:
+  any:
+    - all:
+        - pattern: Link::new($TEMPLATE)
+        - not:
+            inside:
+              kind: field_initializer
+              has:
+                kind: field_identifier
+                regex: "^search$"
+    - kind: field_initializer
+      all:
+        - has:
+            kind: field_identifier
+            regex: "^search$"
+        - has:
+            kind: call_expression
+            pattern: Link::new($HREF)
+constraints:
+  TEMPLATE:
+    kind: string_literal
+    regex: '\{'
