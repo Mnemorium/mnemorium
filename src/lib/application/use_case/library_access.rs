@@ -52,8 +52,9 @@ mod tests {
     use crate::domain::port::error::RepositoryError;
     use crate::domain::port::file_repository::MockFileRepository;
     use crate::domain::port::gallery_repository::MockGalleryRepository;
-    use crate::domain::port::media_repository::MockMediaRepository;
+    use crate::domain::port::image_repository::MockImageRepository;
     use crate::domain::port::user_repository::MockUserRepository;
+    use crate::domain::port::video_repository::MockVideoRepository;
     use crate::test_helpers::gallery_unit_of_work;
 
     use super::load_caller;
@@ -69,7 +70,8 @@ mod tests {
             .return_once(move |_| Box::pin(async move { Ok(vec![caller]) }));
         let (mut unit_of_work, _, _) = gallery_unit_of_work(
             MockGalleryRepository::new(),
-            MockMediaRepository::new(),
+            MockImageRepository::new(),
+            MockVideoRepository::new(),
             users,
             MockFileRepository::new(),
         );
@@ -92,7 +94,8 @@ mod tests {
             .returning(|_| Box::pin(async { Ok(Vec::new()) }));
         let (mut unit_of_work, _, _) = gallery_unit_of_work(
             MockGalleryRepository::new(),
-            MockMediaRepository::new(),
+            MockImageRepository::new(),
+            MockVideoRepository::new(),
             users,
             MockFileRepository::new(),
         );
@@ -115,7 +118,8 @@ mod tests {
             .returning(|_| Box::pin(async { Err(RepositoryError::OperationFailed) }));
         let (mut unit_of_work, _, _) = gallery_unit_of_work(
             MockGalleryRepository::new(),
-            MockMediaRepository::new(),
+            MockImageRepository::new(),
+            MockVideoRepository::new(),
             users,
             MockFileRepository::new(),
         );

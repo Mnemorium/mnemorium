@@ -664,8 +664,8 @@ mod tests {
         Ok(())
     }
 
-    #[test]
-    fn credential_debug_redacts_password_hash_but_keeps_id() -> Result<(), Box<dyn Error>> {
+    #[tokio::test]
+    async fn credential_debug_redacts_password_hash_but_keeps_id() -> Result<(), Box<dyn Error>> {
         // Arrange
         let password_hash = "hashed-password".to_owned();
         let updated_at = NaiveDateTime::parse_from_str("2026-01-01 12:00:00", "%F %T")?;

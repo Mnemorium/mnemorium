@@ -145,8 +145,9 @@ mod tests {
     use crate::domain::port::file_repository::MockFileRepository;
     use crate::domain::port::gallery_repository::GalleryItemDetail;
     use crate::domain::port::gallery_repository::MockGalleryRepository;
-    use crate::domain::port::media_repository::MockMediaRepository;
+    use crate::domain::port::image_repository::MockImageRepository;
     use crate::domain::port::user_repository::MockUserRepository;
+    use crate::domain::port::video_repository::MockVideoRepository;
     use crate::test_helpers::GalleryFactoryHarness;
     use crate::test_helpers::TestFactory;
     use crate::test_helpers::gallery_factory;
@@ -197,7 +198,8 @@ mod tests {
     ) -> GalleryFactoryHarness {
         gallery_factory(
             galleries,
-            MockMediaRepository::new(),
+            MockImageRepository::new(),
+            MockVideoRepository::new(),
             users,
             MockFileRepository::new(),
         )

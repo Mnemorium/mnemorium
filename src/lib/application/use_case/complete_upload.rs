@@ -26,15 +26,16 @@ use crate::domain::port::error::MediaProbeError;
 use crate::domain::port::error::RepositoryError;
 use crate::domain::port::file_repository::FileRepository as _;
 use crate::domain::port::file_storage::FileStorage;
+use crate::domain::port::image_repository::ImageRepository as _;
 use crate::domain::port::library_unit_of_work::LibraryUnitOfWork;
 use crate::domain::port::media_probe::MediaProbe;
 use crate::domain::port::media_probe::ProbedImage;
 use crate::domain::port::media_probe::ProbedVideo;
-use crate::domain::port::media_repository::MediaRepository as _;
 use crate::domain::port::unit_of_work::UnitOfWork;
 use crate::domain::port::unit_of_work::UnitOfWorkFactory;
 use crate::domain::port::upload_repository::UploadFilter;
 use crate::domain::port::upload_repository::UploadRepository as _;
+use crate::domain::port::video_repository::VideoRepository as _;
 
 /// Outcome of the business logic wrapped by the unit-of-work lifecycle.
 enum Flow<T, E> {
@@ -404,7 +405,7 @@ where
                                     ));
                                 }
                             };
-                            match unit_of_work.media().create_image(pending_image).await {
+                            match unit_of_work.images().create(pending_image).await {
                                 // `Ok` and the defensive `AlreadyExist` are both
                                 // success: the file row was created in this unit
                                 // of work, so the insert cannot race.
@@ -432,7 +433,7 @@ where
                                     ));
                                 }
                             };
-                            match unit_of_work.media().create_video(pending_video).await {
+                            match unit_of_work.videos().create(pending_video).await {
                                 // `Ok` and the defensive `AlreadyExist` are both
                                 // success: the file row was created in this unit
                                 // of work, so the insert cannot race.
@@ -670,13 +671,14 @@ mod tests {
     use crate::domain::port::file_repository::MockFileRepository;
     use crate::domain::port::file_storage::MockFileStorage;
     use crate::domain::port::gallery_repository::MockGalleryRepository;
+    use crate::domain::port::image_repository::MockImageRepository;
     use crate::domain::port::media_probe::MockMediaProbe;
     use crate::domain::port::media_probe::ProbedImage;
     use crate::domain::port::media_probe::ProbedVideo;
-    use crate::domain::port::media_repository::MockMediaRepository;
     use crate::domain::port::mime_type_repository::MockMimeTypeRepository;
     use crate::domain::port::upload_repository::MockUploadRepository;
     use crate::domain::port::user_repository::MockUserRepository;
+    use crate::domain::port::video_repository::MockVideoRepository;
     use crate::test_helpers::TestFactory;
     use crate::test_helpers::TestUnitOfWorkFactory;
     use crate::test_helpers::TestUow;
@@ -784,11 +786,12 @@ mod tests {
         }
     }
 
-    /// Build one phase's unit of work around an explicit media repository.
+    /// Build one phase's unit of work around explicit media repositories.
     fn phase_unit_of_work(
         uploads: MockUploadRepository,
         files: MockFileRepository,
-        media: MockMediaRepository,
+        images: MockImageRepository,
+        videos: MockVideoRepository,
     ) -> (TestUow, Arc<AtomicBool>, Arc<AtomicBool>) {
         let committed = Arc::new(AtomicBool::new(false));
         let rolled_back = Arc::new(AtomicBool::new(false));
@@ -799,11 +802,12 @@ mod tests {
             credentials: MockCredentialRepository::new(),
             files,
             galleries: MockGalleryRepository::new(),
-            media,
+            images,
             mime_types: MockMimeTypeRepository::new(),
             rolled_back: Arc::clone(&rolled_back),
             uploads,
             users: MockUserRepository::new(),
+            videos,
         };
         (unit_of_work, committed, rolled_back)
     }
@@ -813,17 +817,27 @@ mod tests {
     fn use_case_with_media(
         phase_one_uploads: MockUploadRepository,
         phase_one_files: MockFileRepository,
-        phase_one_media: MockMediaRepository,
+        phase_one_images: MockImageRepository,
+        phase_one_videos: MockVideoRepository,
         phase_two_uploads: MockUploadRepository,
         phase_two_files: MockFileRepository,
-        phase_two_media: MockMediaRepository,
+        phase_two_images: MockImageRepository,
+        phase_two_videos: MockVideoRepository,
         file_storage: MockFileStorage,
         media_probe: MockMediaProbe,
     ) -> Harness {
-        let (phase_one, phase_one_committed, phase_one_rolled_back) =
-            phase_unit_of_work(phase_one_uploads, phase_one_files, phase_one_media);
-        let (phase_two, phase_two_committed, phase_two_rolled_back) =
-            phase_unit_of_work(phase_two_uploads, phase_two_files, phase_two_media);
+        let (phase_one, phase_one_committed, phase_one_rolled_back) = phase_unit_of_work(
+            phase_one_uploads,
+            phase_one_files,
+            phase_one_images,
+            phase_one_videos,
+        );
+        let (phase_two, phase_two_committed, phase_two_rolled_back) = phase_unit_of_work(
+            phase_two_uploads,
+            phase_two_files,
+            phase_two_images,
+            phase_two_videos,
+        );
         let phase_one_commit_fails = Arc::clone(&phase_one.commit_fails);
         let phase_two_commit_fails = Arc::clone(&phase_two.commit_fails);
         let factory = TestUnitOfWorkFactory {
@@ -2010,9 +2024,9 @@ mod tests {
             .expect_create()
             .times(1)
             .returning(|file| Box::pin(async move { Ok(file) }));
-        let mut phase_two_media = MockMediaRepository::new();
-        phase_two_media
-            .expect_create_image()
+        let mut phase_two_images = MockImageRepository::new();
+        phase_two_images
+            .expect_create()
             .times(1)
             .withf(|image| image.file_id() == 0 && image.width_px() == 640)
             .returning(|image| Box::pin(async move { Ok(image) }));
@@ -2030,10 +2044,12 @@ mod tests {
         let harness = use_case_with_media(
             phase_one_uploads,
             MockFileRepository::new(),
-            MockMediaRepository::new(),
+            MockImageRepository::new(),
+            MockVideoRepository::new(),
             phase_two_uploads,
             phase_two_files,
-            phase_two_media,
+            phase_two_images,
+            MockVideoRepository::new(),
             file_storage,
             media_probe,
         );
@@ -2076,9 +2092,9 @@ mod tests {
             .expect_create()
             .times(1)
             .returning(|file| Box::pin(async move { Ok(file) }));
-        let mut phase_two_media = MockMediaRepository::new();
-        phase_two_media
-            .expect_create_video()
+        let mut phase_two_videos = MockVideoRepository::new();
+        phase_two_videos
+            .expect_create()
             .times(1)
             .withf(|video| video.file_id() == 0 && video.codec() == "h264")
             .returning(|video| Box::pin(async move { Ok(video) }));
@@ -2096,10 +2112,12 @@ mod tests {
         let harness = use_case_with_media(
             phase_one_uploads,
             MockFileRepository::new(),
-            MockMediaRepository::new(),
+            MockImageRepository::new(),
+            MockVideoRepository::new(),
             phase_two_uploads,
             phase_two_files,
-            phase_two_media,
+            MockImageRepository::new(),
+            phase_two_videos,
             file_storage,
             media_probe,
         );
@@ -2141,9 +2159,9 @@ mod tests {
             .expect_create()
             .times(1)
             .returning(|file| Box::pin(async move { Ok(file) }));
-        let mut phase_two_media = MockMediaRepository::new();
-        phase_two_media
-            .expect_create_video()
+        let mut phase_two_videos = MockVideoRepository::new();
+        phase_two_videos
+            .expect_create()
             .times(1)
             .returning(|_| Box::pin(async { Err(RepositoryError::AlreadyExist) }));
         let mut file_storage = MockFileStorage::new();
@@ -2160,10 +2178,12 @@ mod tests {
         let harness = use_case_with_media(
             phase_one_uploads,
             MockFileRepository::new(),
-            MockMediaRepository::new(),
+            MockImageRepository::new(),
+            MockVideoRepository::new(),
             phase_two_uploads,
             phase_two_files,
-            phase_two_media,
+            MockImageRepository::new(),
+            phase_two_videos,
             file_storage,
             media_probe,
         );
@@ -2197,9 +2217,9 @@ mod tests {
             .expect_create()
             .times(1)
             .returning(|file| Box::pin(async move { Ok(file) }));
-        let mut phase_two_media = MockMediaRepository::new();
-        phase_two_media
-            .expect_create_video()
+        let mut phase_two_videos = MockVideoRepository::new();
+        phase_two_videos
+            .expect_create()
             .times(1)
             .returning(|_| Box::pin(async { Err(RepositoryError::OperationFailed) }));
         let mut file_storage = MockFileStorage::new();
@@ -2220,10 +2240,12 @@ mod tests {
         let harness = use_case_with_media(
             phase_one_uploads,
             MockFileRepository::new(),
-            MockMediaRepository::new(),
+            MockImageRepository::new(),
+            MockVideoRepository::new(),
             phase_two_uploads,
             phase_two_files,
-            phase_two_media,
+            MockImageRepository::new(),
+            phase_two_videos,
             file_storage,
             media_probe,
         );
@@ -2260,10 +2282,12 @@ mod tests {
         let harness = use_case_with_media(
             phase_one_uploads,
             MockFileRepository::new(),
-            MockMediaRepository::new(),
+            MockImageRepository::new(),
+            MockVideoRepository::new(),
             MockUploadRepository::new(),
             MockFileRepository::new(),
-            MockMediaRepository::new(),
+            MockImageRepository::new(),
+            MockVideoRepository::new(),
             file_storage,
             media_probe,
         );
@@ -2301,10 +2325,12 @@ mod tests {
         let harness = use_case_with_media(
             phase_one_uploads,
             MockFileRepository::new(),
-            MockMediaRepository::new(),
+            MockImageRepository::new(),
+            MockVideoRepository::new(),
             MockUploadRepository::new(),
             MockFileRepository::new(),
-            MockMediaRepository::new(),
+            MockImageRepository::new(),
+            MockVideoRepository::new(),
             file_storage,
             media_probe,
         );
@@ -2339,10 +2365,12 @@ mod tests {
         let harness = use_case_with_media(
             phase_one_uploads,
             MockFileRepository::new(),
-            MockMediaRepository::new(),
+            MockImageRepository::new(),
+            MockVideoRepository::new(),
             MockUploadRepository::new(),
             MockFileRepository::new(),
-            MockMediaRepository::new(),
+            MockImageRepository::new(),
+            MockVideoRepository::new(),
             file_storage,
             media_probe,
         );
@@ -2407,10 +2435,12 @@ mod tests {
         let harness = use_case_with_media(
             phase_one_uploads,
             MockFileRepository::new(),
-            MockMediaRepository::new(),
+            MockImageRepository::new(),
+            MockVideoRepository::new(),
             MockUploadRepository::new(),
             MockFileRepository::new(),
-            MockMediaRepository::new(),
+            MockImageRepository::new(),
+            MockVideoRepository::new(),
             file_storage,
             media_probe,
         );
@@ -2445,10 +2475,12 @@ mod tests {
         let harness = use_case_with_media(
             phase_one_uploads,
             MockFileRepository::new(),
-            MockMediaRepository::new(),
+            MockImageRepository::new(),
+            MockVideoRepository::new(),
             MockUploadRepository::new(),
             MockFileRepository::new(),
-            MockMediaRepository::new(),
+            MockImageRepository::new(),
+            MockVideoRepository::new(),
             file_storage,
             media_probe,
         );
@@ -2484,10 +2516,12 @@ mod tests {
         let harness = use_case_with_media(
             phase_one_uploads,
             MockFileRepository::new(),
-            MockMediaRepository::new(),
+            MockImageRepository::new(),
+            MockVideoRepository::new(),
             MockUploadRepository::new(),
             MockFileRepository::new(),
-            MockMediaRepository::new(),
+            MockImageRepository::new(),
+            MockVideoRepository::new(),
             file_storage,
             media_probe,
         );
@@ -2522,9 +2556,9 @@ mod tests {
             });
         let mut phase_two_files = MockFileRepository::new();
         expect_file_create(&mut phase_two_files);
-        let mut phase_two_media = MockMediaRepository::new();
-        phase_two_media
-            .expect_create_image()
+        let mut phase_two_images = MockImageRepository::new();
+        phase_two_images
+            .expect_create()
             .times(1)
             .returning(|_| Box::pin(async { Err(RepositoryError::AlreadyExist) }));
         let mut file_storage = MockFileStorage::new();
@@ -2538,10 +2572,12 @@ mod tests {
         let harness = use_case_with_media(
             phase_one_uploads,
             MockFileRepository::new(),
-            MockMediaRepository::new(),
+            MockImageRepository::new(),
+            MockVideoRepository::new(),
             phase_two_uploads,
             phase_two_files,
-            phase_two_media,
+            phase_two_images,
+            MockVideoRepository::new(),
             file_storage,
             media_probe,
         );
@@ -2568,9 +2604,9 @@ mod tests {
         expect_upload(&mut phase_two_uploads, resolved);
         let mut phase_two_files = MockFileRepository::new();
         expect_file_create(&mut phase_two_files);
-        let mut phase_two_media = MockMediaRepository::new();
-        phase_two_media
-            .expect_create_image()
+        let mut phase_two_images = MockImageRepository::new();
+        phase_two_images
+            .expect_create()
             .times(1)
             .returning(|_| Box::pin(async { Err(RepositoryError::OperationFailed) }));
         let mut file_storage = MockFileStorage::new();
@@ -2585,10 +2621,12 @@ mod tests {
         let harness = use_case_with_media(
             phase_one_uploads,
             MockFileRepository::new(),
-            MockMediaRepository::new(),
+            MockImageRepository::new(),
+            MockVideoRepository::new(),
             phase_two_uploads,
             phase_two_files,
-            phase_two_media,
+            phase_two_images,
+            MockVideoRepository::new(),
             file_storage,
             media_probe,
         );
@@ -2636,10 +2674,12 @@ mod tests {
         let harness = use_case_with_media(
             phase_one_uploads,
             MockFileRepository::new(),
-            MockMediaRepository::new(),
+            MockImageRepository::new(),
+            MockVideoRepository::new(),
             phase_two_uploads,
             phase_two_files,
-            MockMediaRepository::new(),
+            MockImageRepository::new(),
+            MockVideoRepository::new(),
             file_storage,
             media_probe,
         );
@@ -2700,10 +2740,12 @@ mod tests {
         let harness = use_case_with_media(
             phase_one_uploads,
             MockFileRepository::new(),
-            MockMediaRepository::new(),
+            MockImageRepository::new(),
+            MockVideoRepository::new(),
             phase_two_uploads,
             phase_two_files,
-            MockMediaRepository::new(),
+            MockImageRepository::new(),
+            MockVideoRepository::new(),
             file_storage,
             media_probe,
         );

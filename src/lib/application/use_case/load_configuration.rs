@@ -899,8 +899,8 @@ mod tests {
         Ok(())
     }
 
-    #[test]
-    fn default_sqlite3_max_conn_always_allows_a_concurrent_request() {
+    #[tokio::test]
+    async fn default_sqlite3_max_conn_always_allows_a_concurrent_request() {
         // Act
         let connections = super::default_sqlite3_max_conn();
 
@@ -911,8 +911,9 @@ mod tests {
         );
     }
 
-    #[test]
-    fn configuration_round_trips_trusted_proxies_through_json() -> Result<(), Box<dyn Error>> {
+    #[tokio::test]
+    async fn configuration_round_trips_trusted_proxies_through_json() -> Result<(), Box<dyn Error>>
+    {
         // Arrange: a non-empty trusted-proxy list is the case that must survive
         // the `DbSqlite3Source` JSON round-trip (`security.rate_limit`).
         let mut security = Security::try_new(Jwt::try_new(hex64('a'), 3600)?, hex64('b'), true)?;
@@ -941,8 +942,8 @@ mod tests {
         Ok(())
     }
 
-    #[test]
-    fn jwt_debug_redacts_secret_but_keeps_ttl() -> Result<(), Box<dyn Error>> {
+    #[tokio::test]
+    async fn jwt_debug_redacts_secret_but_keeps_ttl() -> Result<(), Box<dyn Error>> {
         // Arrange
         let secret = hex64('a');
         let jwt = Jwt::try_new(secret.clone(), 3600)?;
@@ -962,8 +963,8 @@ mod tests {
         Ok(())
     }
 
-    #[test]
-    fn security_debug_redacts_secrets_but_keeps_rate_limit() -> Result<(), Box<dyn Error>> {
+    #[tokio::test]
+    async fn security_debug_redacts_secrets_but_keeps_rate_limit() -> Result<(), Box<dyn Error>> {
         // Arrange
         let secret = hex64('a');
         let pepper = hex64('b');
@@ -989,8 +990,9 @@ mod tests {
         Ok(())
     }
 
-    #[test]
-    fn configuration_debug_redacts_secrets_but_keeps_persistence() -> Result<(), Box<dyn Error>> {
+    #[tokio::test]
+    async fn configuration_debug_redacts_secrets_but_keeps_persistence()
+    -> Result<(), Box<dyn Error>> {
         // Arrange
         let secret = hex64('a');
         let pepper = hex64('b');

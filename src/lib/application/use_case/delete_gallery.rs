@@ -11,11 +11,12 @@ use crate::domain::model::gallery_item::GalleryItemMedia;
 use crate::domain::port::gallery_repository::GalleryFilter;
 use crate::domain::port::gallery_repository::GalleryItemFilter;
 use crate::domain::port::gallery_repository::GalleryRepository as _;
+use crate::domain::port::image_repository::ImageRepository as _;
 use crate::domain::port::library_unit_of_work::LibraryUnitOfWork;
-use crate::domain::port::media_repository::MediaRepository as _;
 use crate::domain::port::unit_of_work::UnitOfWork as _;
 use crate::domain::port::unit_of_work::UnitOfWorkFactory;
 use crate::domain::port::user_unit_of_work::UserUnitOfWork;
+use crate::domain::port::video_repository::VideoRepository as _;
 
 /// Use case implementation for deleting a gallery and its items.
 pub struct DeleteGallery<F> {
@@ -92,10 +93,10 @@ where
                         .map_err(|error| DeleteGalleryError::Unknown(error.into()))?;
                     let deleted = match detail.item().media() {
                         GalleryItemMedia::Image(image_id) => {
-                            unit_of_work.media().delete_image(image_id).await
+                            unit_of_work.images().delete(image_id).await
                         }
                         GalleryItemMedia::Video(video_id) => {
-                            unit_of_work.media().delete_video(video_id).await
+                            unit_of_work.videos().delete(video_id).await
                         }
                     }
                     .map_err(|error| DeleteGalleryError::Unknown(error.into()))?;
@@ -157,8 +158,9 @@ mod tests {
     use crate::domain::port::file_repository::MockFileRepository;
     use crate::domain::port::gallery_repository::GalleryItemDetail;
     use crate::domain::port::gallery_repository::MockGalleryRepository;
-    use crate::domain::port::media_repository::MockMediaRepository;
+    use crate::domain::port::image_repository::MockImageRepository;
     use crate::domain::port::user_repository::MockUserRepository;
+    use crate::domain::port::video_repository::MockVideoRepository;
     use crate::test_helpers::GalleryFactoryHarness;
     use crate::test_helpers::TestFactory;
     use crate::test_helpers::gallery_factory;
@@ -210,9 +212,10 @@ mod tests {
     fn harness_with(
         users: MockUserRepository,
         galleries: MockGalleryRepository,
-        media: MockMediaRepository,
+        images: MockImageRepository,
+        videos: MockVideoRepository,
     ) -> GalleryFactoryHarness {
-        gallery_factory(galleries, media, users, MockFileRepository::new())
+        gallery_factory(galleries, images, videos, users, MockFileRepository::new())
     }
 
     fn expect_caller(
@@ -265,18 +268,19 @@ mod tests {
             .times(1)
             .withf(|id| *id == 3)
             .returning(|_| Box::pin(async { Ok(true) }));
-        let mut media = MockMediaRepository::new();
-        media
-            .expect_delete_image()
+        let mut images = MockImageRepository::new();
+        images
+            .expect_delete()
             .times(1)
             .withf(|id| *id == 7)
             .returning(|_| Box::pin(async { Ok(true) }));
-        media
-            .expect_delete_video()
+        let mut videos = MockVideoRepository::new();
+        videos
+            .expect_delete()
             .times(1)
             .withf(|id| *id == 8)
             .returning(|_| Box::pin(async { Ok(true) }));
-        let harness = harness_with(users, galleries, media);
+        let harness = harness_with(users, galleries, images, videos);
         let use_case: UseCase = DeleteGallery::new(Arc::clone(&harness.factory));
 
         // Act
@@ -299,7 +303,12 @@ mod tests {
         expect_gallery(&mut galleries, gallery(0, None, "Default", true)?);
         galleries.expect_search_items().times(0);
         galleries.expect_delete().times(0);
-        let harness = harness_with(users, galleries, MockMediaRepository::new());
+        let harness = harness_with(
+            users,
+            galleries,
+            MockImageRepository::new(),
+            MockVideoRepository::new(),
+        );
         let use_case: UseCase = DeleteGallery::new(Arc::clone(&harness.factory));
 
         // Act
@@ -319,7 +328,12 @@ mod tests {
         let mut galleries = MockGalleryRepository::new();
         expect_gallery(&mut galleries, gallery(3, Some(4), "Mine", false)?);
         galleries.expect_delete().times(0);
-        let harness = harness_with(users, galleries, MockMediaRepository::new());
+        let harness = harness_with(
+            users,
+            galleries,
+            MockImageRepository::new(),
+            MockVideoRepository::new(),
+        );
         let use_case: UseCase = DeleteGallery::new(Arc::clone(&harness.factory));
 
         // Act
@@ -342,7 +356,12 @@ mod tests {
             .expect_search()
             .times(1)
             .returning(|_| Box::pin(async { Ok(Vec::new()) }));
-        let harness = harness_with(users, galleries, MockMediaRepository::new());
+        let harness = harness_with(
+            users,
+            galleries,
+            MockImageRepository::new(),
+            MockVideoRepository::new(),
+        );
         let use_case: UseCase = DeleteGallery::new(Arc::clone(&harness.factory));
 
         // Act
@@ -365,7 +384,8 @@ mod tests {
         let harness = harness_with(
             users,
             MockGalleryRepository::new(),
-            MockMediaRepository::new(),
+            MockImageRepository::new(),
+            MockVideoRepository::new(),
         );
         let use_case: UseCase = DeleteGallery::new(Arc::clone(&harness.factory));
 
@@ -389,7 +409,12 @@ mod tests {
             .expect_search_items()
             .times(1)
             .returning(|_| Box::pin(async { Err(RepositoryError::OperationFailed) }));
-        let harness = harness_with(users, galleries, MockMediaRepository::new());
+        let harness = harness_with(
+            users,
+            galleries,
+            MockImageRepository::new(),
+            MockVideoRepository::new(),
+        );
         let use_case: UseCase = DeleteGallery::new(Arc::clone(&harness.factory));
 
         // Act
@@ -416,7 +441,12 @@ mod tests {
             .expect_delete()
             .times(1)
             .returning(|_| Box::pin(async { Ok(true) }));
-        let harness = harness_with(users, galleries, MockMediaRepository::new());
+        let harness = harness_with(
+            users,
+            galleries,
+            MockImageRepository::new(),
+            MockVideoRepository::new(),
+        );
         harness.commit_fails.store(true, Ordering::SeqCst);
         let use_case: UseCase = DeleteGallery::new(Arc::clone(&harness.factory));
 
