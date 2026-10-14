@@ -173,7 +173,7 @@ mod tests {
     use crate::application::port::complete_upload::CompleteUploadResponse;
     use crate::application::port::complete_upload::CompleteUploadUseCase;
     use crate::application::port::complete_upload::MockCompleteUploadUseCase;
-    use crate::domain::model::asset::DEFAULT_CHUNK_SIZE_BYTES;
+    use crate::domain::model::configuration::DEFAULT_CHUNK_SIZE_BYTES;
     use crate::domain::port::token_provider::TokenProvider as _;
     use crate::infrastructure::inbound::rest::handler::asset::asset_routes;
     use crate::infrastructure::outbound::jwt::token_provider::JwtTokenProvider;

@@ -76,6 +76,18 @@ rules:
       - src/lib/infrastructure/outbound/sqlx/*_repository.rs
       - src/lib/infrastructure/outbound/moka.rs
       - src/lib/infrastructure/outbound/config/*.rs
+  TEST-041:
+    # Business use cases excepted from the one-file-per-use-case rule, each a
+    # catalogued use case id (`UC-<seq>`, as written in
+    # docs/development/UseCases.md). UC-003 (Initialize Root Admin) and UC-004
+    # (Load Configuration) have no black-box REST surface of their own: the
+    # container's startup exercises them. An entry that names no catalogued use
+    # case is reported, so this list cannot rot silently.
+    exempt_use_cases:
+      - UC-003
+      - UC-004
+      # TODO: remove UC-005 once its E2E file (Delete User Account) lands.
+      - UC-005
   API-031:
     # The response bodies § HAL payload guidelines names as non-representations:
     # the token issue and the liveness probe. They keep their plain

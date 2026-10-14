@@ -137,6 +137,28 @@ jobs:
       - name: Check commit scope taxonomy
         run: script/check_scopes.sh
 
+  rules:
+    needs: [changes, betterleaks]
+    if: needs.changes.outputs.lint == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+        with:
+          python-version: "3.14"
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v7.0.0
+        with:
+          node-version: "24.19.0"
+      - name: Install rule-checking tools
+        run: |
+          pip install -r requirements.txt
+          pip install yq==3.4.3
+          npm install -g @ast-grep/cli@0.45.1
+      - name: Run rulebook checks
+        run: script/rule_enforcer.sh check
+
   docs-only:
     needs: [gatekeeper]
     if: >-
@@ -282,14 +304,6 @@ jobs:
           -- -D warnings
       - name: Build
         run: cargo build --bin server
-      - name: No tests in domain/model
-        run: script/no_domain_model_tests.sh
-      - name: No outward imports
-        run: script/no_outward_imports.sh
-      - name: Repository port declaration order
-        run: script/check_repository_declaration_order.sh
-      - name: Endpoint-only REST handler files
-        run: script/check_rest_handler_files.sh
       - name: Verify OpenAPI spec is current
         run: |
           cargo run --bin openapi_gen
@@ -491,10 +505,6 @@ jobs:
         run: shellcheck script/*.sh
       - name: shfmt
         run: shfmt -d script/*.sh
-      - name: Endpoint-only REST handler files
-        run: script/check_rest_handler_files.sh
-      - name: Endpoint-only REST handler files (self-test)
-        run: script/check_rest_handler_files.sh --self-test
 
   nix:
     needs: [changes, betterleaks]

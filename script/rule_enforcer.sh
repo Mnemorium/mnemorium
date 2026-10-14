@@ -47,6 +47,7 @@ VERBOSE=0
 # 	"DOC-001:check_doc_001"
 # )
 RULES=(
+	"ARCH-001:check_arch_001"
 	"STY-RUST-001:check_sty_rust_001"
 	"STY-RUST-002:check_sty_rust_002"
 	"STY-RUST-003:check_sty_rust_003"
@@ -4441,7 +4442,7 @@ check_obs_006() {
 check_obs_007() {
 	local id="OBS-007"
 	local rule_id="obs-007"
-	local domain="src/lib/domain/model/logging.rs"
+	local domain="src/lib/domain/model/configuration.rs"
 	local infra="src/lib/infrastructure/logging.rs"
 	local matches result=0
 
@@ -5186,13 +5187,18 @@ check_test_040() {
 # function. Every Python file under test/e2e/ is named `uc<seq>_<name>.py` after
 # a catalogued use case, one file per use case, and every use case has its file.
 # `conftest.py` holds the shared fixtures, not a use case, so it is exempt.
+# A use case listed in TEST-041's `exempt_use_cases` is excepted from the file
+# requirement: it has no black-box REST surface of its own, or carries a
+# recorded, temporary exception.
 check_test_041() {
 	local id="TEST-041"
 	local e2e_dir="test/e2e"
 	local catalog="docs/development/UseCases.md"
-	local file base seq num result=0
+	local file base seq num entry result=0
+	local config
 	local -A use_cases=()
 	local -A files_of=()
+	local -A exempt=()
 
 	if [ ! -d "$e2e_dir" ]; then
 		printf 'error: %s: missing %s\n' "$id" "$e2e_dir" >&2
@@ -5216,6 +5222,32 @@ check_test_041() {
 		printf 'error: %s: parsed no use case from %s\n' "$id" "$catalog" >&2
 		return 1
 	fi
+
+	config="$(rule_config "$id")" || return 2
+
+	# The excepted use cases, as data in rule_enforcer.yaml: a use case whose
+	# behaviour the container does not expose through its REST API, or one
+	# carrying a recorded, temporary exception. An empty list exempts none, so
+	# every catalogued use case is reported until it is reviewed and recorded.
+	# An entry that names no catalogued use case is reported too, so a typo or a
+	# stale exception cannot rot silently.
+	while IFS= read -r entry; do
+		[ -n "$entry" ] || continue
+		if [[ ! $entry =~ ^UC-([0-9]+)$ ]]; then
+			printf 'error: %s: exempt use case %s is not a use case id (expected UC-<seq>)\n' \
+				"$id" "$entry" >&2
+			result=1
+			continue
+		fi
+		num=$((10#${BASH_REMATCH[1]}))
+		if [ -z "${use_cases[$num]+set}" ]; then
+			printf 'error: %s: exempt use case %s is not in %s\n' \
+				"$id" "$entry" "$catalog" >&2
+			result=1
+			continue
+		fi
+		exempt["$num"]=1
+	done < <(jq -r '.exempt_use_cases[]?' <<<"$config")
 
 	# Every E2E file is named after a catalogued use case, and one use case
 	# keeps one file: `uc<seq>_<name>.py`.
@@ -5245,10 +5277,10 @@ check_test_041() {
 		! -name 'conftest.py' ! -path "${e2e_dir}/fixture/*" \
 		! -path '*/__pycache__/*' | sort)
 
-	# Every catalogued business use case has its one file.
+	# Every catalogued business use case has its one file, unless it is exempt.
 	while IFS= read -r num; do
 		[ -n "$num" ] || continue
-		if [ -z "${files_of[$num]+set}" ]; then
+		if [ -z "${files_of[$num]+set}" ] && [ -z "${exempt[$num]+set}" ]; then
 			printf 'error: %s: catalogued use case %s has no E2E file under %s\n' \
 				"$id" "${use_cases[$num]}" "$e2e_dir" >&2
 			result=1
@@ -7502,6 +7534,62 @@ check_api_043() {
 	done < <(printf '%s\n' "$matches" |
 		jq -r '[.file, ((.range.start.line + 1) | tostring),
 			.metaVariables.single.PATH.text] | @tsv')
+
+	return "$result"
+}
+
+# check_arch_001 — the hexagonal dependency direction: dependencies point inward
+# only, `domain` ← `application` ← `infrastructure` (ARCH-001). A module points
+# outward when it reaches toward an outer layer by path: a file under
+# src/lib/domain/ that imports `crate::application` or `crate::infrastructure`,
+# and a file under src/lib/application/ that imports `crate::infrastructure`.
+# The rule is syntactic — only `use` declarations match, so a doc-comment
+# mention of an outer path is not a violation. The file's own layer decides
+# whether the import points outward, which happens here because an ast-grep rule
+# cannot see the file it matched in. The tree has no outward import today, so
+# the check is green and expectedly vacuous until one lands.
+check_arch_001() {
+	local id="ARCH-001"
+	local rule_id="arch-001"
+	local domain_dir="src/lib/domain"
+	local application_dir="src/lib/application"
+	local matches file line text result=0
+
+	if [ ! -d "$domain_dir" ] || [ ! -d "$application_dir" ]; then
+		printf 'error: %s: missing %s or %s\n' "$id" "$domain_dir" "$application_dir" >&2
+		return 1
+	fi
+
+	# arch-001 extracts every `use` declaration that reaches toward an outer
+	# layer; the scan covers the whole tree, and the file path classifies each
+	# match below.
+	if ! matches="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
+		--json=stream src 2>&1)"; then
+		printf '%s\n' "$matches"
+		return 1
+	fi
+	[ -n "$matches" ] || return 0
+
+	while IFS=$'\t' read -r file line text; do
+		[ -n "$file" ] || continue
+		case "$file" in
+		"$domain_dir"/*)
+			printf 'error: %s: %s:%s: the domain imports %s; dependencies point inward only, so the domain must not reach the application or infrastructure layer\n' \
+				"$id" "$file" "$line" "$text" >&2
+			result=1
+			;;
+		"$application_dir"/*)
+			if printf '%s' "$text" |
+				grep -qE 'crate[[:space:]]*::[[:space:]]*infrastructure'; then
+				printf 'error: %s: %s:%s: the application layer imports %s; dependencies point inward only, so it must not reach the infrastructure layer\n' \
+					"$id" "$file" "$line" "$text" >&2
+				result=1
+			fi
+			;;
+		esac
+	done < <(printf '%s\n' "$matches" |
+		jq -r '[.file, ((.range.start.line + 1) | tostring),
+			(.text | gsub("\\s+"; " "))] | @tsv')
 
 	return "$result"
 }

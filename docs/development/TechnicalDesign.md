@@ -882,7 +882,7 @@ A repository port file declares, in order:
 Anything else the file needs — a read model returned by `search`, or the `#[cfg(test)]` `&mut T` impl — follows the
 trait.
 
-`script/check_repository_declaration_order.sh` enforces this order.
+The `STY-RUST-051` and `STY-RUST-052` checks in `script/rule_enforcer.sh` enforce this order.
 
 ---
 
@@ -1034,8 +1034,8 @@ lifecycle — lives in [Overview.md](Overview.md), which these rules constrain.
 | `ARCH-003` | Cross-context   | Work that spans bounded contexts is orchestrated in the application layer, never by a domain model or an outbound adapter.                                                                                       | [§ 7.3](#73-cross-context-use-cases) |
 | `ARCH-004` | Cascade scope   | `ON DELETE CASCADE` is used only between tables of one bounded context; a foreign key that crosses a bounded-context boundary declares no cascade, and the owning use case orchestrates the delete (`PERS-020`). | [§ 1](#1-cascade-scope)              |
 
-No mechanical check enforces these rules: architecture is judged by review, and they stay listed by
-`script/rule_enforcer.sh uncovered`.
+The layer direction (`ARCH-001`) has a mechanical check in `script/rule_enforcer.sh`; the remaining rules are judged by
+review, so `ARCH-002`–`ARCH-004` stay listed by `script/rule_enforcer.sh uncovered`.
 
 ---
 
@@ -1983,17 +1983,19 @@ entity stream {
 }
 
 entity audio_stream {
-   * stream_id: INTEGER <<FK, PK>>
+   * audio_stream_id: INTEGER <<PK>>
    --
    * is_commentary: BOOLEAN <<NN, DF(0)>>
+   * stream_id: INTEGER <<FK, NN, UN>>
    * audio_id: INTEGER <<FK, NN>>
    * language_id: INTEGER <<FK, NN>>
 }
 
 entity subtitle_stream {
-   * stream_id: INTEGER <<FK, PK>>
+   * subtitle_stream_id: INTEGER <<PK>>
    --
    * is_forced: BOOLEAN <<NN, DF(0)>>
+   * stream_id: INTEGER <<FK, NN, UN>>
    * language_id: INTEGER <<FK, NN>>
 }
 
@@ -2103,8 +2105,8 @@ image ||--|| file
 movie ||--|| video
 movie ||--o{ movie_genre
 
-stream ||--o{ audio_stream
-stream ||--o{ subtitle_stream
+stream ||--o| audio_stream
+stream ||--o| subtitle_stream
 
 audio_stream ||--|| audio
 language ||--o{ audio_stream
@@ -2230,7 +2232,7 @@ its own middleware-level test module.
 Application tests exercise a use case with its ports replaced by mocks.
 
 Domain models (`src/lib/domain/model/`) have no dedicated test of their own ([TEST-019](#application-strategy)); they
-are covered here. `script/no_domain_model_tests.sh` enforces this in pre-commit and CI.
+are covered here. The `TEST-019` check in `script/rule_enforcer.sh` enforces this in pre-commit and CI.
 
 ---
 

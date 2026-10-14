@@ -1,8 +1,12 @@
 CREATE TABLE subtitle_stream (
-    stream_id INTEGER NOT NULL,
+    subtitle_stream_id INTEGER NOT NULL,
     is_forced BOOLEAN NOT NULL DEFAULT 0,
     language_id INTEGER NOT NULL,
-    CONSTRAINT pk_subtitle_stream_stream_id PRIMARY KEY (stream_id),
+    stream_id INTEGER NOT NULL,
+    CONSTRAINT pk_subtitle_stream_subtitle_stream_id PRIMARY KEY (
+        subtitle_stream_id
+    ),
+    CONSTRAINT uq_subtitle_stream_stream_id UNIQUE (stream_id),
     CONSTRAINT fk_subtitle_stream_stream FOREIGN KEY (
         stream_id
     ) REFERENCES stream (stream_id),

@@ -8,7 +8,7 @@ use sqlx::sqlite::SqliteJournalMode;
 use sqlx::sqlite::SqlitePoolOptions;
 use tracing::warn;
 
-use crate::domain::model::sqlite3::Sqlite3;
+use crate::domain::model::configuration::Sqlite3;
 
 /// Time a connection waits for a lock held by another connection, in seconds.
 const BUSY_TIMEOUT_SECONDS: u64 = 5;
@@ -67,9 +67,10 @@ mod tests {
     use tempfile::tempdir;
 
     use sqlx::SqlitePool;
+    use sqlx::sqlite::SqlitePoolOptions;
 
     use super::init_db;
-    use crate::domain::model::sqlite3::Sqlite3;
+    use crate::domain::model::configuration::Sqlite3;
     use crate::domain::port::error::RepositoryError;
 
     /// A 64-character hexadecimal digest accepted by `chk_file_integrity_hash`.
@@ -146,14 +147,21 @@ mod tests {
         Ok(())
     }
 
-    /// Build a migrated on-disk database through [`init_db`] so the tests
-    /// exercise the same connection options the server uses.
-    async fn migrated_pool() -> Result<(tempfile::TempDir, SqlitePool), Box<dyn Error>> {
-        let tmp = tempdir()?;
-        let db_path = tmp.path().join("test.db");
-        let settings = Sqlite3::try_new(db_path.to_string_lossy().into_owned(), 1)?;
-        let pool = init_db(&settings).await?;
-        Ok((tmp, pool))
+    /// Open a migrated in-memory database, one connection per call, so each
+    /// test runs against a fresh database (TEST-033). The two pragmas mirror
+    /// [`init_db`]: foreign-key enforcement backs the cascade tests and
+    /// recursive triggers make the implicit delete of an `INSERT OR REPLACE`
+    /// fire the default-gallery guard.
+    async fn in_memory_pool() -> Result<SqlitePool, Box<dyn Error>> {
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await?;
+        sqlx::raw_sql("PRAGMA foreign_keys = ON; PRAGMA recursive_triggers = ON;")
+            .execute(&pool)
+            .await?;
+        sqlx::migrate!("./migrations").run(&pool).await?;
+        Ok(pool)
     }
 
     /// Seed one owner, one image and one video, each backed by its own file.
@@ -212,7 +220,7 @@ mod tests {
     #[tokio::test]
     async fn gallery_item_rejects_neither_media() -> Result<(), Box<dyn Error>> {
         // Arrange
-        let (_tmp, pool) = migrated_pool().await?;
+        let pool = in_memory_pool().await?;
         seed_media(&pool).await?;
         seed_gallery(&pool, 1).await?;
 
@@ -236,7 +244,7 @@ mod tests {
     #[tokio::test]
     async fn gallery_item_rejects_both_media() -> Result<(), Box<dyn Error>> {
         // Arrange
-        let (_tmp, pool) = migrated_pool().await?;
+        let pool = in_memory_pool().await?;
         seed_media(&pool).await?;
         seed_gallery(&pool, 1).await?;
 
@@ -260,7 +268,7 @@ mod tests {
     #[tokio::test]
     async fn gallery_item_rejects_negative_index() -> Result<(), Box<dyn Error>> {
         // Arrange
-        let (_tmp, pool) = migrated_pool().await?;
+        let pool = in_memory_pool().await?;
         seed_media(&pool).await?;
         seed_gallery(&pool, 1).await?;
 
@@ -284,7 +292,7 @@ mod tests {
     #[tokio::test]
     async fn gallery_item_rejects_duplicate_index_within_a_gallery() -> Result<(), Box<dyn Error>> {
         // Arrange
-        let (_tmp, pool) = migrated_pool().await?;
+        let pool = in_memory_pool().await?;
         seed_media(&pool).await?;
         seed_gallery(&pool, 1).await?;
         sqlx::query(
@@ -311,7 +319,7 @@ mod tests {
     #[tokio::test]
     async fn gallery_item_rejects_media_already_assigned() -> Result<(), Box<dyn Error>> {
         // Arrange
-        let (_tmp, pool) = migrated_pool().await?;
+        let pool = in_memory_pool().await?;
         seed_media(&pool).await?;
         seed_gallery(&pool, 1).await?;
         seed_gallery(&pool, 2).await?;
@@ -339,7 +347,7 @@ mod tests {
     #[tokio::test]
     async fn deleting_gallery_cascades_its_items() -> Result<(), Box<dyn Error>> {
         // Arrange
-        let (_tmp, pool) = migrated_pool().await?;
+        let pool = in_memory_pool().await?;
         seed_media(&pool).await?;
         seed_gallery(&pool, 1).await?;
         sqlx::query(
@@ -365,7 +373,7 @@ mod tests {
     #[tokio::test]
     async fn deleting_image_cascades_its_item() -> Result<(), Box<dyn Error>> {
         // Arrange
-        let (_tmp, pool) = migrated_pool().await?;
+        let pool = in_memory_pool().await?;
         seed_media(&pool).await?;
         seed_gallery(&pool, 1).await?;
         sqlx::query(
@@ -391,7 +399,7 @@ mod tests {
     #[tokio::test]
     async fn deleting_video_cascades_its_item() -> Result<(), Box<dyn Error>> {
         // Arrange
-        let (_tmp, pool) = migrated_pool().await?;
+        let pool = in_memory_pool().await?;
         seed_media(&pool).await?;
         seed_gallery(&pool, 1).await?;
         sqlx::query(
@@ -417,7 +425,7 @@ mod tests {
     #[tokio::test]
     async fn deleting_file_referenced_by_media_is_rejected() -> Result<(), Box<dyn Error>> {
         // Arrange
-        let (_tmp, pool) = migrated_pool().await?;
+        let pool = in_memory_pool().await?;
         seed_media(&pool).await?;
 
         // Act
@@ -437,7 +445,7 @@ mod tests {
     #[tokio::test]
     async fn default_gallery_is_seeded_public_and_ownerless() -> Result<(), Box<dyn Error>> {
         // Arrange
-        let (_tmp, pool) = migrated_pool().await?;
+        let pool = in_memory_pool().await?;
 
         // Act
         let (name, is_public, user_id): (String, bool, Option<i64>) =
@@ -455,7 +463,7 @@ mod tests {
     #[tokio::test]
     async fn default_gallery_cannot_be_deleted() -> Result<(), Box<dyn Error>> {
         // Arrange
-        let (_tmp, pool) = migrated_pool().await?;
+        let pool = in_memory_pool().await?;
 
         // Act
         let result = sqlx::query("DELETE FROM gallery WHERE gallery_id = 0")
@@ -471,7 +479,7 @@ mod tests {
     #[tokio::test]
     async fn default_gallery_cannot_be_renamed() -> Result<(), Box<dyn Error>> {
         // Arrange
-        let (_tmp, pool) = migrated_pool().await?;
+        let pool = in_memory_pool().await?;
 
         // Act
         let result = sqlx::query("UPDATE gallery SET name = 'Other' WHERE gallery_id = 0")
@@ -487,7 +495,7 @@ mod tests {
     #[tokio::test]
     async fn default_gallery_cannot_change_owner() -> Result<(), Box<dyn Error>> {
         // Arrange
-        let (_tmp, pool) = migrated_pool().await?;
+        let pool = in_memory_pool().await?;
         seed_media(&pool).await?;
 
         // Act
@@ -504,7 +512,7 @@ mod tests {
     #[tokio::test]
     async fn default_gallery_cannot_be_rekeyed() -> Result<(), Box<dyn Error>> {
         // Arrange
-        let (_tmp, pool) = migrated_pool().await?;
+        let pool = in_memory_pool().await?;
 
         // Act
         let result = sqlx::query("UPDATE gallery SET gallery_id = 5 WHERE gallery_id = 0")
@@ -520,7 +528,7 @@ mod tests {
     #[tokio::test]
     async fn default_gallery_cannot_be_replaced() -> Result<(), Box<dyn Error>> {
         // Arrange
-        let (_tmp, pool) = migrated_pool().await?;
+        let pool = in_memory_pool().await?;
 
         // Act
         let result = sqlx::query(
@@ -540,7 +548,7 @@ mod tests {
     #[tokio::test]
     async fn default_gallery_last_modified_at_can_be_touched() -> Result<(), Box<dyn Error>> {
         // Arrange
-        let (_tmp, pool) = migrated_pool().await?;
+        let pool = in_memory_pool().await?;
 
         // Act
         let affected = sqlx::query(

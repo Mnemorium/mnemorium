@@ -10,8 +10,8 @@ use tracing_subscriber::fmt;
 use tracing_subscriber::layer::SubscriberExt as _;
 use tracing_subscriber::util::SubscriberInitExt as _;
 
-use crate::domain::model::logging::Logging;
-use crate::domain::model::logging::Rotation;
+use crate::domain::model::configuration::Logging;
+use crate::domain::model::configuration::Rotation;
 
 /// Directory holding the log files, relative to the process working directory.
 const LOG_DIRECTORY: &str = "logs";

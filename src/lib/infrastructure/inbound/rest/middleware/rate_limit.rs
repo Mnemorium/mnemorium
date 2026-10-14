@@ -22,8 +22,8 @@ use tower_governor::key_extractor::PeerIpKeyExtractor;
 use tracing::error;
 use tracing::warn;
 
-use crate::domain::model::rate_limit::ClientIpHeader;
-use crate::domain::model::rate_limit::RateLimit;
+use crate::domain::model::configuration::ClientIpHeader;
+use crate::domain::model::configuration::RateLimit;
 use crate::infrastructure::inbound::rest::api_error::ApiError;
 use crate::infrastructure::inbound::rest::app_state::AppState;
 
@@ -290,7 +290,7 @@ mod tests {
     use tower_governor::GovernorError;
     use tower_governor::key_extractor::KeyExtractor as _;
 
-    use crate::domain::model::rate_limit::ClientIpHeader;
+    use crate::domain::model::configuration::ClientIpHeader;
     use crate::test_helpers::error_message_of;
 
     use super::RateLimitCleanup;

@@ -99,14 +99,14 @@ mod tests {
 
     use config::Config;
 
-    use crate::domain::model::asset::Asset;
+    use crate::domain::model::configuration::Asset;
     use crate::domain::model::configuration::Configuration;
-    use crate::domain::model::jwt::Jwt;
-    use crate::domain::model::logging::Logging;
-    use crate::domain::model::logging::Rotation;
-    use crate::domain::model::persistence::Persistence;
-    use crate::domain::model::security::Security;
-    use crate::domain::model::sqlite3::Sqlite3;
+    use crate::domain::model::configuration::Jwt;
+    use crate::domain::model::configuration::Logging;
+    use crate::domain::model::configuration::Persistence;
+    use crate::domain::model::configuration::Rotation;
+    use crate::domain::model::configuration::Security;
+    use crate::domain::model::configuration::Sqlite3;
 
     use super::DbSqlite3Source;
 

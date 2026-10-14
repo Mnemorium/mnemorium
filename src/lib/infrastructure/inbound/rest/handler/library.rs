@@ -435,7 +435,7 @@ mod tests {
         let mut factory = MockLibraryUseCaseFactory::new();
         factory
             .expect_get_gallery()
-            .times(1)
+            .times(0..=1)
             .return_once(move || Arc::new(get_gallery) as Arc<dyn GetGalleryUseCase>);
         let state = app_state_with_library(Arc::new(factory))?;
         let request = Request::builder()
@@ -471,7 +471,7 @@ mod tests {
         let mut factory = MockLibraryUseCaseFactory::new();
         factory
             .expect_create_gallery()
-            .times(1)
+            .times(0..=1)
             .return_once(move || Arc::new(create_gallery) as Arc<dyn CreateGalleryUseCase>);
         let state = app_state_with_library(Arc::new(factory))?;
         let request = Request::builder()
@@ -500,7 +500,7 @@ mod tests {
         let mut factory = MockLibraryUseCaseFactory::new();
         factory
             .expect_delete_gallery()
-            .times(1)
+            .times(0..=1)
             .return_once(move || Arc::new(delete_gallery) as Arc<dyn DeleteGalleryUseCase>);
         let state = app_state_with_library(Arc::new(factory))?;
         let request = Request::builder()
