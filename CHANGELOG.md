@@ -1,3 +1,9 @@
+## [0.17.1](https://github.com/Mnemorium/mnemorium/compare/v0.17.0...v0.17.1) (2026-10-15)
+
+### Bug Fixes
+
+* complete the security-event catalog and redaction gaps ([#268](https://github.com/Mnemorium/mnemorium/issues/268)) ([#271](https://github.com/Mnemorium/mnemorium/issues/271)) ([a38bb15](https://github.com/Mnemorium/mnemorium/commit/a38bb1547e00c7677dda644032d08fac4a6d4ed7))
+
 ## [0.17.0](https://github.com/Mnemorium/mnemorium/compare/v0.16.0...v0.17.0) (2026-10-09)
 
 ### Features
