@@ -5290,7 +5290,7 @@ Used by:
   - regex 1.13.1 (https://github.com/rust-lang/regex)
   - ron 0.12.2 (https://github.com/ron-rs/ron)
   - rustls-native-certs 0.8.4 (https://github.com/rustls/rustls-native-certs)
-  - rustls 0.23.45 (https://github.com/rustls/rustls)
+  - rustls 0.23.46 (https://github.com/rustls/rustls)
   - scopeguard 1.2.0 (https://github.com/bluss/scopeguard)
   - signal-hook-registry 1.4.8 (https://github.com/vorner/signal-hook)
   - smallvec 1.15.2 (https://github.com/servo/rust-smallvec)
