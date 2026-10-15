@@ -352,7 +352,10 @@ where
                     upload.integrity_hash().clone(),
                 ) {
                     Ok(pending) => pending,
-                    Err(error) => return Flow::Failed(CompleteUploadError::Unknown(error.into())),
+                    Err(error) => {
+                        security_event::application_error("complete_upload");
+                        return Flow::Failed(CompleteUploadError::Unknown(error.into()));
+                    }
                 };
                 let created = unit_of_work.files().create(pending).await;
                 let file = match created {
@@ -538,8 +541,12 @@ where
         return Resolution::Failed(CompleteUploadError::NoSuchUpload);
     };
 
-    // Owner-only: a caller who is not the upload's owner must not see it.
+    // Owner-only: a caller who is not the upload's owner must not see it. The
+    // denial is a security decision the use case owns, so it logs the
+    // catalogued `authz_failed` event once (`OBS-002`, `OBS-006`); the caller
+    // still receives the not-found result, never a disclosure of the owner.
     if upload.user_id() != command.user_id() {
+        security_event::authorization_failed(command.user_id(), "complete", "upload");
         return Resolution::Failed(CompleteUploadError::NoSuchUpload);
     }
 
@@ -1149,6 +1156,7 @@ mod tests {
     #[tokio::test]
     async fn complete_upload_other_user_returns_no_such_upload() -> Result<(), Box<dyn Error>> {
         // Arrange
+        let (buffer, _capture) = capture_logs();
         let mut phase_one_uploads = MockUploadRepository::new();
         expect_upload(&mut phase_one_uploads, upload(5, 3, 4, &[0], false)?);
         let harness = use_case_with(
@@ -1166,6 +1174,35 @@ mod tests {
         // Assert
         assert!(matches!(result, Err(CompleteUploadError::NoSuchUpload)));
         assert!(harness.phase_one_rolled_back.load(Ordering::SeqCst));
+        // The owner check aborts the read-only phase, so the mutating phase is
+        // never reached: the denial must be logged exactly once (`OBS-002`).
+        let logs = captured_logs(&buffer);
+        assert_eq!(
+            logs.matches("WARN").count(),
+            1,
+            "the owner check must emit exactly one warn event: {logs}"
+        );
+        assert_eq!(
+            logs.matches("event=\"authz_failed\"").count(),
+            1,
+            "the owner check must emit exactly one authz_failed event: {logs}"
+        );
+        assert!(
+            logs.contains("security"),
+            "the event must target the reserved security target: {logs}"
+        );
+        assert!(
+            logs.contains(" actor=99 "),
+            "the event must carry the caller as the actor: {logs}"
+        );
+        assert!(
+            logs.contains("action=complete"),
+            "the event must classify the denied action as a completion: {logs}"
+        );
+        assert!(
+            logs.contains("target=upload"),
+            "the event must name the denied target: {logs}"
+        );
         Ok(())
     }
 

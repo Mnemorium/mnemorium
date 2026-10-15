@@ -121,7 +121,10 @@ impl From<Error> for UnitOfWorkError {
 /// operator-actionable dependency fault logged at `error` as `port_fault`
 /// (`OBS-005`). Only the stable `kind` and `operation` are logged, never the
 /// `sqlx` error `Debug` or a driver code (`OBS-003`).
-fn emit_catalogued_failure(kind: &str, operation: &str, expected_constraint: bool) {
+///
+/// Exposed to the other `SQLx` outbound adapters so a failure they classify
+/// themselves is logged once, at the adapter that owns it (`OBS-002`).
+pub(crate) fn emit_catalogued_failure(kind: &str, operation: &str, expected_constraint: bool) {
     if expected_constraint {
         warn!(
             target: "security",

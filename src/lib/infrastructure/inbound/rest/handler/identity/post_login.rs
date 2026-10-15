@@ -1,3 +1,7 @@
+use std::fmt::Debug;
+use std::fmt::Formatter;
+use std::fmt::Result as FmtResult;
+
 use axum::Json;
 use axum::extract::State;
 use axum::extract::rejection::JsonRejection;
@@ -12,7 +16,7 @@ use crate::infrastructure::inbound::rest::api_error::ErrorBody;
 use crate::infrastructure::inbound::rest::app_state::AppState;
 
 /// Payload to authenticate a user.
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Deserialize, ToSchema)]
 #[non_exhaustive]
 pub struct LoginRequest {
     /// Password used to authenticate.
@@ -23,8 +27,19 @@ pub struct LoginRequest {
     pub username: String,
 }
 
+impl Debug for LoginRequest {
+    /// Redact the plaintext password (`OBS-004`): it never reaches a log sink,
+    /// while the submitted username stays readable for correlation.
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        f.debug_struct("LoginRequest")
+            .field("password", &"**")
+            .field("username", &self.username)
+            .finish_non_exhaustive()
+    }
+}
+
 /// Token issued by a successful authentication.
-#[derive(Debug, Serialize, ToSchema)]
+#[derive(Serialize, ToSchema)]
 #[non_exhaustive]
 pub struct LoginResponse {
     /// Token to present in the `Authorization` header of subsequent requests.
@@ -33,6 +48,18 @@ pub struct LoginResponse {
     pub expires_in: u64,
     /// Token type, always `bearer`.
     pub token_type: String,
+}
+
+impl Debug for LoginResponse {
+    /// Redact the issued access token (`OBS-004`): it never reaches a log sink,
+    /// while the token metadata stays readable.
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        f.debug_struct("LoginResponse")
+            .field("access_token", &"**")
+            .field("expires_in", &self.expires_in)
+            .field("token_type", &self.token_type)
+            .finish_non_exhaustive()
+    }
 }
 
 /// Map the login-user response onto its HTTP representation.

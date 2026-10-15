@@ -339,4 +339,41 @@ mod tests {
         assert!(harness.rolled_back.load(Ordering::SeqCst));
         Ok(())
     }
+
+    #[tokio::test]
+    async fn user_debug_redacts_personal_data_but_keeps_id_and_role() -> Result<(), Box<dyn Error>>
+    {
+        // Arrange: the domain model has no test module of its own (`TEST-019`),
+        // so its redaction contract is covered here, as `load_configuration` does
+        // for `Jwt`, `Security` and `Configuration`.
+        let user = User::try_new(
+            7,
+            "alice".to_owned(),
+            Some("alice@example.com".to_owned()),
+            9,
+            Role::Standard,
+        )?;
+
+        // Act
+        let debug = format!("{user:?}");
+
+        // Assert
+        assert!(
+            !debug.contains("alice@example.com"),
+            "Debug output must not contain the email address, got: {debug}"
+        );
+        assert!(
+            !debug.contains("alice"),
+            "Debug output must not contain the username, got: {debug}"
+        );
+        assert!(
+            debug.contains("id: 7"),
+            "Debug output must still contain the user identifier, got: {debug}"
+        );
+        assert!(
+            debug.contains("role: Standard"),
+            "Debug output must still contain the role, got: {debug}"
+        );
+        Ok(())
+    }
 }

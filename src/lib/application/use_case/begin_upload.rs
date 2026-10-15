@@ -89,6 +89,7 @@ where
             // from a client-declared size above the configured maximum.
             let file_size = command.file_size();
             if file_size == 0 {
+                security_event::input_validation_failed("file_size", "zero");
                 return Err(BeginUploadError::InvalidFileSize);
             }
             if file_size > max_file_size_bytes {
@@ -151,7 +152,10 @@ where
                     created_at,
                 )
                 .map_err(|error| match error {
-                    UploadError::InvalidFileName => BeginUploadError::InvalidFileName,
+                    UploadError::InvalidFileName => {
+                        security_event::input_validation_failed("file_name", "invalid");
+                        BeginUploadError::InvalidFileName
+                    }
                     UploadError::InvalidFileSize => BeginUploadError::InvalidFileSize,
                     other @ (UploadError::InvalidChunkSize
                     | UploadError::ChunkNumberOutOfRange
@@ -556,6 +560,7 @@ mod tests {
     #[tokio::test]
     async fn begin_upload_invalid_file_name_returns_error() -> Result<(), Box<dyn Error>> {
         // Arrange
+        let (buffer, _capture) = capture_logs();
         let harness = use_case_with(|_, mime_types, _| {
             expect_mime_type(mime_types, true);
             Ok(())
@@ -573,6 +578,33 @@ mod tests {
 
         // Assert
         assert!(matches!(result, Err(BeginUploadError::InvalidFileName)));
+        let logs = captured_logs(&buffer);
+        assert_eq!(
+            logs.matches("WARN").count(),
+            1,
+            "the invalid-name rejection must emit exactly one warn event: {logs}"
+        );
+        assert_eq!(
+            logs.matches("event=\"input_validation_failed\"").count(),
+            1,
+            "the invalid-name rejection must emit exactly one input_validation_failed event: {logs}"
+        );
+        assert!(
+            logs.contains("security"),
+            "the event must target the reserved security target: {logs}"
+        );
+        assert!(
+            logs.contains("field=file_name"),
+            "the event must name the rejected field: {logs}"
+        );
+        assert!(
+            logs.contains("reason=invalid"),
+            "the event must classify the reason as an invalid name: {logs}"
+        );
+        assert!(
+            !logs.contains("escape.mp4"),
+            "the event must not echo the client-supplied file name: {logs}"
+        );
         Ok(())
     }
 
@@ -812,6 +844,9 @@ mod tests {
     #[tokio::test]
     async fn begin_upload_zero_file_size_returns_invalid_file_size() -> Result<(), Box<dyn Error>> {
         // Arrange
+        // No repository or storage expectation: the rejection must happen before
+        // any of them is reached (mockall fails the test on an unexpected call).
+        let (buffer, _capture) = capture_logs();
         let harness = use_case_with_max(|_, _, _| Ok(()), DEFAULT_MAX_FILE_SIZE)?;
         let command = command(0);
 
@@ -822,6 +857,33 @@ mod tests {
         assert!(matches!(result, Err(BeginUploadError::InvalidFileSize)));
         assert!(!harness.committed.load(Ordering::SeqCst));
         assert!(!harness.rolled_back.load(Ordering::SeqCst));
+        let logs = captured_logs(&buffer);
+        assert_eq!(
+            logs.matches("WARN").count(),
+            1,
+            "the zero-size rejection must emit exactly one warn event: {logs}"
+        );
+        assert_eq!(
+            logs.matches("event=\"input_validation_failed\"").count(),
+            1,
+            "the zero-size rejection must emit exactly one input_validation_failed event: {logs}"
+        );
+        assert!(
+            logs.contains("security"),
+            "the event must target the reserved security target: {logs}"
+        );
+        assert!(
+            logs.contains("field=file_size"),
+            "the event must name the rejected field: {logs}"
+        );
+        assert!(
+            logs.contains("reason=zero"),
+            "the event must classify the reason as the declared size: {logs}"
+        );
+        assert!(
+            !logs.contains("clip.mp4"),
+            "the event must not echo the client-supplied file name: {logs}"
+        );
         Ok(())
     }
 

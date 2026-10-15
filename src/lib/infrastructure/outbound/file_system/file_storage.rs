@@ -189,13 +189,33 @@ impl FileStorage for FileSystemStorage {
                 if read == 0 {
                     break;
                 }
-                let chunk = buffer.get(..read).ok_or(StorageError::OperationFailed)?;
+                // The read length can never exceed the buffer, so this guard is
+                // unreachable; if it ever fires it is an adapter fault the
+                // outbound layer owns, logged once as the catalogued
+                // `port_fault` with only its stable `kind` (`OBS-002`,
+                // `OBS-003`, `OBS-006`).
+                let chunk = buffer.get(..read).ok_or_else(|| {
+                    error!(
+                        target: "security",
+                        event = "port_fault",
+                        kind = "buffer_slice",
+                        operation = "integrity_hash",
+                        "an outbound dependency failed"
+                    );
+                    StorageError::OperationFailed
+                })?;
                 session.update(chunk);
             }
-            session
-                .finalize()
-                .map(Some)
-                .map_err(|error| StorageError::Unknown(error.into()))
+            session.finalize().map(Some).map_err(|error| {
+                error!(
+                    target: "security",
+                    event = "port_fault",
+                    kind = "hash_finalize",
+                    operation = "integrity_hash",
+                    "an outbound dependency failed"
+                );
+                StorageError::Unknown(error.into())
+            })
         }
     }
 

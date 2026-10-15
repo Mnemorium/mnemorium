@@ -4217,18 +4217,22 @@ check_obs_003() {
 	return "$result"
 }
 
-# check_obs_004 — a type that holds a secret must not derive a `Debug` that
-# exposes it (OBS-004). § 4 names the secret-bearing types; obs-004 extracts
-# each struct declaration, each struct that derives `Debug`, and each manual
-# `Debug` impl under src/lib/domain/model/. The secret-field comparison happens
-# here because an ast-grep rule cannot read rule_enforcer.yaml.
+# check_obs_004 — a type that holds a secret or personal data must not derive a
+# `Debug` that exposes it (OBS-004). § 4 names the secret-bearing and the
+# personal-data-bearing types; obs-004 extracts each struct declaration, each
+# struct that derives `Debug`, and each manual `Debug` impl under
+# src/lib/domain/model/. The field-name comparison happens here because an
+# ast-grep rule cannot read rule_enforcer.yaml.
 check_obs_004() {
 	local id="OBS-004"
 	local rule_id="obs-004"
 	local model_dir="src/lib/domain/model"
 	local config matches file type name body result=0
 	local -a secret_names=()
+	local -a personal_names=()
+	local -a protected_names=()
 	local -A secret_types=()
+	local -A personal_types=()
 	local -A declared=()
 
 	config="$(rule_config "$id")" || return 2
@@ -4237,15 +4241,28 @@ check_obs_004() {
 		[ -n "$type" ] || continue
 		secret_types["$type"]=1
 	done < <(jq -r '.secret_types[]?' <<<"$config")
+	while IFS= read -r type; do
+		[ -n "$type" ] || continue
+		personal_types["$type"]=1
+	done < <(jq -r '.personal_data_types[]?' <<<"$config")
 	while IFS= read -r name; do
 		[ -n "$name" ] || continue
 		secret_names+=("$name")
 	done < <(jq -r '.secret_fields[]?' <<<"$config")
+	while IFS= read -r name; do
+		[ -n "$name" ] || continue
+		personal_names+=("$name")
+	done < <(jq -r '.personal_data_fields[]?' <<<"$config")
 
-	if [ "${#secret_types[@]}" -eq 0 ] || [ "${#secret_names[@]}" -eq 0 ]; then
-		printf 'error: %s: rule_enforcer.yaml declares no secret_types or secret_fields\n' "$id" >&2
+	if [ "${#secret_types[@]}" -eq 0 ] || [ "${#secret_names[@]}" -eq 0 ] ||
+		[ "${#personal_types[@]}" -eq 0 ] || [ "${#personal_names[@]}" -eq 0 ]; then
+		printf 'error: %s: rule_enforcer.yaml declares no secret_types, secret_fields, personal_data_types or personal_data_fields\n' "$id" >&2
 		return 2
 	fi
+
+	# A derived or manual `Debug` must print neither a secret nor a
+	# personal-data field.
+	protected_names=("${secret_names[@]}" "${personal_names[@]}")
 
 	if [ ! -d "$model_dir" ]; then
 		printf 'error: %s: missing %s\n' "$id" "$model_dir" >&2
@@ -4277,12 +4294,20 @@ check_obs_004() {
 			result=1
 		fi
 	done
+	for type in "${!personal_types[@]}"; do
+		if [ -z "${declared[$type]+set}" ]; then
+			printf 'error: %s: personal-data-bearing type %s is not declared in %s\n' \
+				"$id" "$type" "$model_dir" >&2
+			result=1
+		fi
+	done
 
-	# A `Debug` derive prints every field; a field named after a secret exposes it.
+	# A `Debug` derive prints every field; a field named after a secret or a
+	# piece of personal data exposes it.
 	while IFS=$'\t' read -r file type name; do
 		[ -n "$name" ] || continue
-		if printf '%s\n' "${secret_names[@]}" | grep -qxF "$name"; then
-			printf 'error: %s: %s: %s derives Debug, exposing secret field %s\n' \
+		if printf '%s\n' "${protected_names[@]}" | grep -qxF "$name"; then
+			printf 'error: %s: %s: %s derives Debug, exposing protected field %s\n' \
 				"$id" "$file" "$type" "$name" >&2
 			result=1
 		fi
@@ -4294,12 +4319,12 @@ check_obs_004() {
 			[$file, $type,
 				(capture("(?<name>[A-Za-z_][A-Za-z0-9_]*)[[:space:]]*:").name)] | @tsv')
 
-	# A manual `Debug` impl must not print a secret field.
+	# A manual `Debug` impl must not print a secret or personal-data field.
 	while IFS=$'\t' read -r file type body; do
 		[ -n "$type" ] || continue
-		for name in "${secret_names[@]}"; do
+		for name in "${protected_names[@]}"; do
 			if printf '%s' "$body" | grep -Eq "self\\.${name}\\b"; then
-				printf 'error: %s: %s: impl Debug for %s prints secret field %s\n' \
+				printf 'error: %s: %s: impl Debug for %s prints protected field %s\n' \
 					"$id" "$file" "$type" "$name" >&2
 				result=1
 			fi

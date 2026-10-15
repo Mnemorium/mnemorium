@@ -64,6 +64,15 @@ rules:
       - pepper
       - secret
       - password_hash
+    # The types § 4 names as personal-data-bearing, all declared in
+    # src/lib/domain/model/; a rename or removal cannot silently drop one.
+    personal_data_types:
+      - User
+    # A field name that carries personal data, compared exactly as a secret
+    # field is: a derived or manual `Debug` must not print it.
+    personal_data_fields:
+      - email
+      - username
   OBS-008:
     allowed_protocols:
       - file

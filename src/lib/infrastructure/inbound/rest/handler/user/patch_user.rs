@@ -16,6 +16,7 @@ use crate::infrastructure::inbound::rest::api_error::ErrorBody;
 use crate::infrastructure::inbound::rest::app_state::AppState;
 use crate::infrastructure::inbound::rest::hal::SelfLinks;
 use crate::infrastructure::inbound::rest::hal::hal_json;
+use crate::infrastructure::inbound::rest::handler::user::parse_user_id;
 use crate::infrastructure::inbound::rest::handler::user::user_self_href;
 use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 
@@ -165,9 +166,7 @@ pub async fn patch_user(
     Path(id): Path<String>,
     payload: Result<Json<PatchUserRequest>, JsonRejection>,
 ) -> Result<Response, ApiError> {
-    let Ok(user_id) = id.parse::<NumericID>() else {
-        return Err(ApiError::BadRequest("invalid user identifier".to_owned()));
-    };
+    let user_id = parse_user_id(&id)?;
     let Json(request) = payload.map_err(ApiError::from)?;
     let role = request
         .role
@@ -191,7 +190,10 @@ pub async fn patch_user(
 #[cfg(test)]
 mod tests {
     use std::error::Error;
+    use std::io as stdio;
     use std::sync::Arc;
+    use std::sync::Mutex;
+    use std::sync::PoisonError;
 
     use axum::body::Body;
     use axum::body::to_bytes;
@@ -204,6 +206,9 @@ mod tests {
     use serde_json::Value;
     use serde_json::json;
     use tower::ServiceExt as _;
+    use tracing::subscriber::set_default;
+    use tracing_subscriber::fmt;
+    use tracing_subscriber::layer::SubscriberExt as _;
 
     use super::patch_user;
     use crate::application::port::update_user::MockUpdateUserUseCase;
@@ -217,6 +222,42 @@ mod tests {
     use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
     use crate::test_helpers::app_state_with_user;
     use crate::test_helpers::error_message_of;
+
+    /// Append-only sink that lets a test read back the lines [`fmt`] emits.
+    #[derive(Clone)]
+    struct CaptureWriter {
+        /// Buffer shared with the test that asserts on the captured output.
+        buffer: Arc<Mutex<Vec<u8>>>,
+    }
+
+    #[expect(
+        clippy::missing_trait_methods,
+        reason = "only the raw `write` and `flush` are meaningful for an in-memory capture buffer"
+    )]
+    impl stdio::Write for CaptureWriter {
+        fn flush(&mut self) -> stdio::Result<()> {
+            Ok(())
+        }
+
+        fn write(&mut self, buf: &[u8]) -> stdio::Result<usize> {
+            let mut buffer = self.buffer.lock().unwrap_or_else(PoisonError::into_inner);
+            buffer.extend_from_slice(buf);
+            Ok(buf.len())
+        }
+    }
+
+    /// Hand every formatted event to a fresh clone of the shared buffer.
+    #[expect(
+        clippy::missing_trait_methods,
+        reason = "the default `make_writer_for` already routes through `make_writer`"
+    )]
+    impl<'writer> fmt::MakeWriter<'writer> for CaptureWriter {
+        type Writer = Self;
+
+        fn make_writer(&'writer self) -> Self::Writer {
+            self.clone()
+        }
+    }
 
     /// Send `body` through the endpoint router on behalf of `caller_id`,
     /// targeting user `user_id`, injecting the caller the way the auth
@@ -566,6 +607,17 @@ mod tests {
     #[tokio::test]
     async fn patch_user_invalid_id_returns_bad_request() -> Result<(), Box<dyn Error>> {
         // Arrange
+        // Install a capturing subscriber on the current thread. The guard must
+        // stay alive for the whole request: `#[tokio::test]` runs on a
+        // current-thread runtime, so the awaited request is polled on this
+        // thread and sees the scoped default dispatcher.
+        let buffer = Arc::new(Mutex::new(Vec::new()));
+        let subscriber = tracing_subscriber::registry().with(
+            fmt::layer().with_ansi(false).with_writer(CaptureWriter {
+                buffer: Arc::clone(&buffer),
+            }),
+        );
+        let _capture = set_default(subscriber);
         let use_case = MockUpdateUserUseCase::new();
 
         // Act
@@ -576,6 +628,34 @@ mod tests {
         assert_eq!(
             error_message_of(&response).as_deref(),
             Some("invalid user identifier")
+        );
+        let bytes = buffer.lock().unwrap_or_else(PoisonError::into_inner);
+        let logs = String::from_utf8_lossy(bytes.as_slice()).into_owned();
+        assert_eq!(
+            logs.matches("WARN").count(),
+            1,
+            "the malformed identifier must emit exactly one warn event: {logs}"
+        );
+        assert_eq!(
+            logs.matches("event=\"input_validation_failed\"").count(),
+            1,
+            "the malformed identifier must emit exactly one input_validation_failed event: {logs}"
+        );
+        assert!(
+            logs.contains("security"),
+            "the event must target the reserved security target: {logs}"
+        );
+        assert!(
+            logs.contains("field=\"user_id\""),
+            "the event must name the rejected field: {logs}"
+        );
+        assert!(
+            logs.contains("reason=\"invalid_identifier\""),
+            "the event must classify the reason as a malformed identifier: {logs}"
+        );
+        assert!(
+            !logs.contains("abc"),
+            "the event must not echo the rejected identifier: {logs}"
         );
         Ok(())
     }
