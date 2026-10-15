@@ -2920,21 +2920,24 @@ Never log:
 - the pepper or the JWT signing secret;
 - personal data.
 
-A type that holds a secret must not derive a `Debug` that exposes it. `Security`, `Jwt`, `Configuration` and
-`Credential` (`src/lib/domain/model/`) carry a pepper, a signing secret, a configuration dump and a password hash; each
-must implement `Debug` by redaction, or hold its secret in a type whose `Debug` prints a placeholder.
+A type that holds a secret or personal data must not derive a `Debug` that exposes it. `Security`, `Jwt`,
+`Configuration` and `Credential` (`src/lib/domain/model/`) carry a pepper, a signing secret, a configuration dump and a
+password hash; `User` (`src/lib/domain/model/`) carries an email address and a username. Each must implement `Debug` by
+redaction, or hold its value in a type whose `Debug` prints a placeholder. The clause binds a secret-bearing type
+wherever it lives, `domain/model/` or not — `IssuedToken` (`src/lib/domain/port/`) holds an access token and redacts it
+the same way.
 
 ---
 
 ### 5. Severity
 
-| Level   | Use                                                   | Examples                                                                                                                                                                                                |
-| ------- | ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `error` | An operator-actionable fault the caller cannot fix.   | datastore or filesystem unavailable, a commit or rollback failure, a token-provider operational failure, an inbound path extractor misconfiguration, an unhandled `500`.                                |
-| `warn`  | A reviewable security event; not necessarily a fault. | input or output validation failure, discrete-list rejection, authentication or authorization failure, an invalid or expired token, a deserialization failure, a limit exceeded, an out-of-order action. |
-| `info`  | A security success or a lifecycle event.              | startup, shutdown, logging initialization, authentication success, a user-administration or credential change, an accepted upload, a generated secret.                                                  |
-| `debug` | Diagnostics with no security relevance.               | request tracing, internal state.                                                                                                                                                                        |
-| `trace` | Driver or framework detail.                           | —                                                                                                                                                                                                       |
+| Level   | Use                                                                   | Examples                                                                                                                                                                                                |
+| ------- | --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `error` | An operator-actionable fault the caller cannot fix.                   | datastore or filesystem unavailable, a commit or rollback failure, a token-provider operational failure, an inbound path extractor misconfiguration, an unhandled `500`.                                |
+| `warn`  | A reviewable security event; not necessarily a fault.                 | input or output validation failure, discrete-list rejection, authentication or authorization failure, an invalid or expired token, a deserialization failure, a limit exceeded, an out-of-order action. |
+| `info`  | A security success or a lifecycle event.                              | startup, shutdown, logging initialization, authentication success, a user-administration or credential change, an accepted upload, a generated secret.                                                  |
+| `debug` | Low-volume diagnostics, including the lowest-severity catalog events. | request tracing, internal state, a personal-data read (`sensitive_data_access`).                                                                                                                        |
+| `trace` | Driver or framework detail.                                           | —                                                                                                                                                                                                       |
 
 `error` is reserved for faults an operator must act on; an expected business-rule violation is not an `error`.
 
@@ -2955,7 +2958,7 @@ code or a classification — never a value.
 | `authz_failed`              | `warn`  | `actor`, `action`, `target`  | an authorization decision denies an action                                                  |
 | `session_validation_failed` | `warn`  | `reason`                     | a token is missing, invalid or expired                                                      |
 | `rate_limit_exceeded`       | `warn`  | `route`, `reason`            | a request is rejected by a rate limiter                                                     |
-| `limit_exceeded`            | `warn`  | `source`, `reason`           | a request body exceeds a configured size limit                                              |
+| `limit_exceeded`            | `warn`  | `source`, `reason`           | a request body or query string exceeds a configured size limit                              |
 | `deserialization_failed`    | `warn`  | `source`, `reason`           | a JSON body or the configuration fails to deserialize                                       |
 | `extractor_fault`           | `error` | `reason`                     | an inbound path extractor rejects a request for a server-side routing fault                 |
 | `application_error`         | `error` | `operation`                  | a use case originates an internal `Unknown`                                                 |
@@ -2977,7 +2980,7 @@ because it is the only identity available when authentication fails and no ident
 escapes control characters and bounds its length, so it cannot forge a log record (`OBS-003`); `OBS-003` and `OBS-004`
 remain in force for every other event: they still forbid a raw client-supplied request-body field and personal data.
 
-A transport body-size rejection is `limit_exceeded`; an application-declared business-limit rejection is
+A transport body- or query-size rejection is `limit_exceeded`; an application-declared business-limit rejection is
 `suspicious_business_logic`.
 
 Events with no surface in this server are deliberately absent: import/export, network and TLS failures, payment,
