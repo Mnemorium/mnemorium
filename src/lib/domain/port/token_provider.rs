@@ -1,10 +1,13 @@
+use std::fmt::Debug;
+use std::fmt::Formatter;
+use std::fmt::Result as FmtResult;
 use std::future::Future;
 
 use crate::domain::alias::NumericID;
 use crate::domain::port::error::TokenProviderError;
 
 /// Token issued by a successful authentication.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct IssuedToken {
     /// Lifetime of the token, in seconds.
@@ -33,6 +36,17 @@ impl IssuedToken {
     }
 }
 
+impl Debug for IssuedToken {
+    /// Redact the issued token (`OBS-004`): the token value never reaches a log
+    /// sink, while the lifetime stays readable.
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        f.debug_struct("IssuedToken")
+            .field("expires_in", &self.expires_in)
+            .field("value", &"**")
+            .finish_non_exhaustive()
+    }
+}
+
 /// Port for issuing and validating security tokens (for example, sessions or
 /// JWTs).
 #[cfg_attr(test, mockall::automock)]
@@ -48,4 +62,28 @@ pub trait TokenProvider: Send + Sync {
         &self,
         token: &str,
     ) -> impl Future<Output = Result<NumericID, TokenProviderError>> + Send;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::IssuedToken;
+
+    #[test]
+    fn issued_token_debug_redacts_the_value_but_keeps_the_lifetime() {
+        // Arrange
+        let token = IssuedToken::new("LEAK_SENTINEL".to_owned(), 3600);
+
+        // Act
+        let debug = format!("{token:?}");
+
+        // Assert
+        assert!(
+            !debug.contains("LEAK_SENTINEL"),
+            "Debug output must not contain the token value, got: {debug}"
+        );
+        assert!(
+            debug.contains("3600"),
+            "Debug output must still contain the lifetime, got: {debug}"
+        );
+    }
 }

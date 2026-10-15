@@ -1,3 +1,7 @@
+use std::fmt::Debug;
+use std::fmt::Formatter;
+use std::fmt::Result as FmtResult;
+
 use crate::domain::alias::NumericID;
 
 /// Minimum number of characters allowed in `User::username`.
@@ -47,7 +51,7 @@ impl Role {
 }
 
 /// A user account.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct User {
     /// Identifier of the credential used to authenticate the user.
     credential_id: NumericID,
@@ -179,5 +183,20 @@ impl User {
         } else {
             Err(UserError::UsernameTooShort)
         }
+    }
+}
+
+impl Debug for User {
+    /// Redact the personal-data fields (`OBS-004`): the email address and the
+    /// username never reach a log sink, while the identifiers and the role the
+    /// server uses to correlate an event stay readable.
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        f.debug_struct("User")
+            .field("credential_id", &self.credential_id)
+            .field("email", &"**")
+            .field("id", &self.id)
+            .field("role", &self.role)
+            .field("username", &"**")
+            .finish_non_exhaustive()
     }
 }
