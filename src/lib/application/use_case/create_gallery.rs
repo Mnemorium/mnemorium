@@ -8,6 +8,7 @@ use crate::application::port::create_gallery::CreateGalleryCommand;
 use crate::application::port::create_gallery::CreateGalleryError;
 use crate::application::port::create_gallery::CreateGalleryResponse;
 use crate::application::port::create_gallery::CreateGalleryUseCase;
+use crate::application::security_event;
 use crate::application::use_case::library_access;
 use crate::domain::model::gallery::Gallery;
 use crate::domain::model::gallery::GalleryError;
@@ -76,8 +77,14 @@ where
                     now,
                 )
                 .map_err(|error| match error {
-                    GalleryError::NameEmpty => CreateGalleryError::InvalidName,
-                    GalleryError::NameTooLong => CreateGalleryError::NameTooLong,
+                    GalleryError::NameEmpty => {
+                        security_event::input_validation_failed("name", "empty");
+                        CreateGalleryError::InvalidName
+                    }
+                    GalleryError::NameTooLong => {
+                        security_event::input_validation_failed("name", "too_long");
+                        CreateGalleryError::NameTooLong
+                    }
                     _ => CreateGalleryError::Unknown(anyhow::Error::new(error)),
                 })?;
 
@@ -139,10 +146,17 @@ where
 #[cfg(test)]
 mod tests {
     use std::error::Error;
+    use std::io as stdio;
     use std::sync::Arc;
+    use std::sync::Mutex;
+    use std::sync::PoisonError;
     use std::sync::atomic::Ordering;
 
     use chrono::NaiveDateTime;
+    use tracing::subscriber::DefaultGuard;
+    use tracing::subscriber::set_default;
+    use tracing_subscriber::fmt;
+    use tracing_subscriber::layer::SubscriberExt as _;
 
     use crate::application::port::create_gallery::CreateGalleryCommand;
     use crate::application::port::create_gallery::CreateGalleryError;
@@ -165,6 +179,42 @@ mod tests {
     use super::CreateGallery;
 
     type UseCase = CreateGallery<TestFactory>;
+
+    /// Append-only sink that lets a test read back the lines [`fmt`] emits.
+    #[derive(Clone)]
+    struct CaptureWriter {
+        /// Buffer shared with the test that asserts on the captured output.
+        buffer: Arc<Mutex<Vec<u8>>>,
+    }
+
+    #[expect(
+        clippy::missing_trait_methods,
+        reason = "only the raw `write` and `flush` are meaningful for an in-memory capture buffer"
+    )]
+    impl stdio::Write for CaptureWriter {
+        fn flush(&mut self) -> stdio::Result<()> {
+            Ok(())
+        }
+
+        fn write(&mut self, buf: &[u8]) -> stdio::Result<usize> {
+            let mut buffer = self.buffer.lock().unwrap_or_else(PoisonError::into_inner);
+            buffer.extend_from_slice(buf);
+            Ok(buf.len())
+        }
+    }
+
+    /// Hand every formatted event to a fresh clone of the shared buffer.
+    #[expect(
+        clippy::missing_trait_methods,
+        reason = "the default `make_writer_for` already routes through `make_writer`"
+    )]
+    impl<'writer> fmt::MakeWriter<'writer> for CaptureWriter {
+        type Writer = Self;
+
+        fn make_writer(&'writer self) -> Self::Writer {
+            self.clone()
+        }
+    }
 
     fn gallery(
         gallery_id: i64,
@@ -218,6 +268,29 @@ mod tests {
             .withf(move |filter| filter.id == Some(caller_id))
             .return_once(move |_| Box::pin(async move { Ok(vec![caller]) }));
         Ok(())
+    }
+
+    /// Install a capturing subscriber on the current thread and return the
+    /// shared buffer plus the guard that keeps it active.
+    ///
+    /// The guard must stay alive for the whole execute: `#[tokio::test]` runs on
+    /// a current-thread runtime, so the awaited call is polled on this thread and
+    /// sees the scoped default dispatcher.
+    fn capture_logs() -> (Arc<Mutex<Vec<u8>>>, DefaultGuard) {
+        let buffer = Arc::new(Mutex::new(Vec::new()));
+        let subscriber = tracing_subscriber::registry().with(
+            fmt::layer().with_ansi(false).with_writer(CaptureWriter {
+                buffer: Arc::clone(&buffer),
+            }),
+        );
+        let guard = set_default(subscriber);
+        (buffer, guard)
+    }
+
+    /// Read the captured bytes back as a lossy UTF-8 string.
+    fn captured_logs(buffer: &Mutex<Vec<u8>>) -> String {
+        let bytes = buffer.lock().unwrap_or_else(PoisonError::into_inner);
+        String::from_utf8_lossy(bytes.as_slice()).into_owned()
     }
 
     #[tokio::test]
@@ -294,6 +367,7 @@ mod tests {
     #[tokio::test]
     async fn create_gallery_empty_name_returns_invalid_name() -> Result<(), Box<dyn Error>> {
         // Arrange
+        let (buffer, _capture) = capture_logs();
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 1)?;
         let mut galleries = MockGalleryRepository::new();
@@ -309,12 +383,40 @@ mod tests {
         // Assert
         assert!(matches!(result, Err(CreateGalleryError::InvalidName)));
         assert!(harness.rolled_back.load(Ordering::SeqCst));
+        let logs = captured_logs(&buffer);
+        assert_eq!(
+            logs.matches("WARN").count(),
+            1,
+            "the empty-name rejection must emit exactly one warn event: {logs}"
+        );
+        assert_eq!(
+            logs.matches("event=\"input_validation_failed\"").count(),
+            1,
+            "the empty-name rejection must emit exactly one input_validation_failed event: {logs}"
+        );
+        assert!(
+            logs.contains("security"),
+            "the event must target the reserved security target: {logs}"
+        );
+        assert!(
+            logs.contains("field=name"),
+            "the event must name the rejected field: {logs}"
+        );
+        assert!(
+            logs.contains("reason=empty"),
+            "the event must classify the reason as an empty name: {logs}"
+        );
+        assert!(
+            !logs.contains("\"   \""),
+            "the event must not echo the rejected name: {logs}"
+        );
         Ok(())
     }
 
     #[tokio::test]
     async fn create_gallery_long_name_returns_name_too_long() -> Result<(), Box<dyn Error>> {
         // Arrange
+        let (buffer, _capture) = capture_logs();
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 1)?;
         let mut galleries = MockGalleryRepository::new();
@@ -325,12 +427,39 @@ mod tests {
 
         // Act
         let result = use_case
-            .execute(CreateGalleryCommand::new(1, name, false))
+            .execute(CreateGalleryCommand::new(1, name.clone(), false))
             .await;
 
         // Assert
         assert!(matches!(result, Err(CreateGalleryError::NameTooLong)));
         assert!(harness.rolled_back.load(Ordering::SeqCst));
+        let logs = captured_logs(&buffer);
+        assert_eq!(
+            logs.matches("WARN").count(),
+            1,
+            "the over-long-name rejection must emit exactly one warn event: {logs}"
+        );
+        assert_eq!(
+            logs.matches("event=\"input_validation_failed\"").count(),
+            1,
+            "the over-long-name rejection must emit exactly one input_validation_failed event: {logs}"
+        );
+        assert!(
+            logs.contains("security"),
+            "the event must target the reserved security target: {logs}"
+        );
+        assert!(
+            logs.contains("field=name"),
+            "the event must name the rejected field: {logs}"
+        );
+        assert!(
+            logs.contains("reason=too_long"),
+            "the event must classify the reason as an over-long name: {logs}"
+        );
+        assert!(
+            !logs.contains(&name),
+            "the event must not echo the client-supplied name: {logs}"
+        );
         Ok(())
     }
 

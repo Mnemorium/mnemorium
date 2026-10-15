@@ -9,6 +9,7 @@ use crate::application::port::get_upload::GetUploadCommand;
 use crate::application::port::get_upload::GetUploadError;
 use crate::application::port::get_upload::GetUploadResponse;
 use crate::application::port::get_upload::GetUploadUseCase;
+use crate::application::security_event;
 use crate::application::use_case::upload_layout::staged_path;
 use crate::application::use_case::upload_session::caller_file_id;
 use crate::application::use_case::upload_session::expiry;
@@ -100,8 +101,12 @@ where
                     return Flow::Failed(GetUploadError::NoSuchUpload);
                 };
 
-                // Owner-only: a caller who is not the upload's owner must not see it.
+                // Owner-only: a caller who is not the upload's owner must not see
+                // it. The denial is a security decision the use case owns, so it
+                // logs the catalogued `authz_failed` event (`OBS-002`,
+                // `OBS-006`); the caller still receives the not-found result.
                 if upload.user_id() != command.user_id() {
+                    security_event::authorization_failed(command.user_id(), "read", "upload");
                     return Flow::Failed(GetUploadError::NoSuchUpload);
                 }
 
@@ -189,13 +194,19 @@ where
 #[cfg(test)]
 mod tests {
     use std::error::Error;
+    use std::io as stdio;
     use std::path::PathBuf;
     use std::sync::Arc;
+    use std::sync::Mutex;
+    use std::sync::PoisonError;
     use std::sync::atomic::AtomicBool;
     use std::sync::atomic::Ordering;
 
     use chrono::NaiveDate;
     use chrono::NaiveDateTime;
+    use tracing::subscriber::set_default;
+    use tracing_subscriber::fmt;
+    use tracing_subscriber::layer::SubscriberExt as _;
 
     use crate::application::port::get_upload::GetUploadCommand;
     use crate::application::port::get_upload::GetUploadError;
@@ -232,6 +243,42 @@ mod tests {
         rolled_back: Arc<AtomicBool>,
         /// The use case under test.
         use_case: UseCase,
+    }
+
+    /// Append-only sink that lets a test read back the lines [`fmt`] emits.
+    #[derive(Clone)]
+    struct CaptureWriter {
+        /// Buffer shared with the test that asserts on the captured output.
+        buffer: Arc<Mutex<Vec<u8>>>,
+    }
+
+    #[expect(
+        clippy::missing_trait_methods,
+        reason = "only the raw `write` and `flush` are meaningful for an in-memory capture buffer"
+    )]
+    impl stdio::Write for CaptureWriter {
+        fn flush(&mut self) -> stdio::Result<()> {
+            Ok(())
+        }
+
+        fn write(&mut self, buf: &[u8]) -> stdio::Result<usize> {
+            let mut buffer = self.buffer.lock().unwrap_or_else(PoisonError::into_inner);
+            buffer.extend_from_slice(buf);
+            Ok(buf.len())
+        }
+    }
+
+    /// Hand every formatted event to a fresh clone of the shared buffer.
+    #[expect(
+        clippy::missing_trait_methods,
+        reason = "the default `make_writer_for` already routes through `make_writer`"
+    )]
+    impl<'writer> fmt::MakeWriter<'writer> for CaptureWriter {
+        type Writer = Self;
+
+        fn make_writer(&'writer self) -> Self::Writer {
+            self.clone()
+        }
     }
 
     fn use_case_with(
@@ -414,6 +461,17 @@ mod tests {
     #[tokio::test]
     async fn get_upload_other_user_returns_no_such_upload() -> Result<(), Box<dyn Error>> {
         // Arrange
+        // Install a capturing subscriber on the current thread. The guard must
+        // stay alive for the whole execute: `#[tokio::test]` runs on a
+        // current-thread runtime, so the awaited call is polled on this thread
+        // and sees the scoped default dispatcher.
+        let buffer = Arc::new(Mutex::new(Vec::new()));
+        let subscriber = tracing_subscriber::registry().with(
+            fmt::layer().with_ansi(false).with_writer(CaptureWriter {
+                buffer: Arc::clone(&buffer),
+            }),
+        );
+        let _capture = set_default(subscriber);
         let mut uploads = MockUploadRepository::new();
         expect_upload(&mut uploads, upload(5, 3, 4, &[0], false, timestamp())?);
         let harness = use_case_with(uploads, MockFileRepository::new(), MockFileStorage::new());
@@ -424,6 +482,34 @@ mod tests {
 
         // Assert
         assert!(matches!(result, Err(GetUploadError::NoSuchUpload)));
+        let bytes = buffer.lock().unwrap_or_else(PoisonError::into_inner);
+        let logs = String::from_utf8_lossy(bytes.as_slice()).into_owned();
+        assert_eq!(
+            logs.matches("WARN").count(),
+            1,
+            "the owner check must emit exactly one warn event: {logs}"
+        );
+        assert_eq!(
+            logs.matches("event=\"authz_failed\"").count(),
+            1,
+            "the owner check must emit exactly one authz_failed event: {logs}"
+        );
+        assert!(
+            logs.contains("security"),
+            "the event must target the reserved security target: {logs}"
+        );
+        assert!(
+            logs.contains(" actor=99 "),
+            "the event must carry the caller as the actor: {logs}"
+        );
+        assert!(
+            logs.contains("action=read"),
+            "the event must classify the denied action as a read: {logs}"
+        );
+        assert!(
+            logs.contains("target=upload"),
+            "the event must name the denied target: {logs}"
+        );
         Ok(())
     }
 

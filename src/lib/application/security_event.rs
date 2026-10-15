@@ -66,6 +66,21 @@ pub fn authorization_failed(actor: i64, action: &str, target: &str) {
     );
 }
 
+/// A client-supplied value failed validation (`input_validation_failed`,
+/// `warn`).
+///
+/// The `field` names the rejected attribute and `reason` its classification;
+/// the rejected value itself never reaches the sink (`OBS-003`, `OBS-006`).
+pub fn input_validation_failed(field: &str, reason: &str) {
+    warn!(
+        target: "security",
+        event = "input_validation_failed",
+        field = %field,
+        reason = %reason,
+        "rejected a client-supplied value"
+    );
+}
+
 /// A use case originated an internal `Unknown` (`application_error`, `error`).
 pub fn application_error(operation: &str) {
     error!(
