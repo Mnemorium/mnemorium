@@ -1,0 +1,15 @@
+---
+id: sty-rust-006
+language: Rust
+severity: hint
+message: REST endpoint handler function, named after its file
+rule:
+  all:
+    - kind: function_item
+    - follows:
+        kind: attribute_item
+        regex: '#\[utoipa::path'
+        stopBy: end
+    - any:
+        - pattern: pub async fn $FUNC($$$A) -> $$$RET { $$$BODY }
+        - pattern: pub async fn $FUNC($$$A) { $$$BODY }

@@ -1,0 +1,41 @@
+---
+id: sty-rust-053
+language: Rust
+severity: error
+message: >-
+  a use case trait declares exactly one method, named `execute`
+files:
+  - src/**/*.rs
+rule:
+  kind: trait_item
+  all:
+    # A use case trait is `<UseCaseName>UseCase`; the `$` anchor excludes
+    # `<Context>UseCaseFactory`, whose one-method-per-use-case shape is
+    # required by STY-RUST-060.
+    - has:
+        field: name
+        regex: 'UseCase$'
+  any:
+    # A method other than `execute` — a second method, or the sole method
+    # under a different name.
+    - has:
+        field: body
+        has:
+          all:
+            - any:
+                - kind: function_signature_item
+                - kind: function_item
+            - not:
+                has:
+                  field: name
+                  regex: '^execute$'
+        stopBy: end
+    # No `execute` method at all — a trait with zero methods, or a trait
+    # whose only method is named otherwise.
+    - not:
+        has:
+          field: body
+          has:
+            field: name
+            regex: '^execute$'
+          stopBy: end

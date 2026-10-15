@@ -5,7 +5,7 @@ use axum::http::HeaderValue;
 use axum::http::header;
 use axum::response::IntoResponse as _;
 use axum::response::Response;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use utoipa::ToSchema;
 
 use crate::application::port::complete_upload::CompleteUploadCommand;
@@ -21,7 +21,7 @@ use crate::infrastructure::inbound::rest::handler::asset::upload_self_href;
 use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 
 /// File finalized by a successful completion.
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Serialize, ToSchema)]
 #[non_exhaustive]
 pub struct PostUploadCompleteResponse {
     /// Unique identifier of the stored file.

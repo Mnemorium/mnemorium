@@ -1,0 +1,19 @@
+---
+id: sty-rust-044
+language: Rust
+severity: hint
+message: >-
+  extract the insert statement of a repository adapter `create`, for
+  STY-RUST-044
+rule:
+  all:
+    - kind: string_literal
+    - regex: 'INSERT INTO'
+    - inside:
+        kind: function_item
+        pattern: $ENCLOSING
+        has:
+          field: name
+          pattern: $FUNC
+          regex: '^create'
+        stopBy: end

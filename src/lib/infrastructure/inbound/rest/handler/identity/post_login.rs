@@ -12,7 +12,7 @@ use crate::infrastructure::inbound::rest::api_error::ErrorBody;
 use crate::infrastructure::inbound::rest::app_state::AppState;
 
 /// Payload to authenticate a user.
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema)]
 #[non_exhaustive]
 pub struct LoginRequest {
     /// Password used to authenticate.
@@ -24,7 +24,7 @@ pub struct LoginRequest {
 }
 
 /// Token issued by a successful authentication.
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Serialize, ToSchema)]
 #[non_exhaustive]
 pub struct LoginResponse {
     /// Token to present in the `Authorization` header of subsequent requests.
@@ -70,7 +70,12 @@ impl From<LoginUserError> for ApiError {
     tag = "identity",
     request_body = LoginRequest,
     responses(
-        (status = OK, body = LoginResponse, description = "User authenticated"),
+        (
+            status = OK,
+            body = LoginResponse,
+            content_type = "application/json",
+            description = "User authenticated",
+        ),
         (
             status = BAD_REQUEST,
             body = ErrorBody,

@@ -1,0 +1,19 @@
+---
+id: sty-rust-003
+language: Rust
+severity: error
+message: a bounded-context file declares exactly one endpoint
+rule:
+  any:
+    - kind: attribute_item
+      regex: '#\[utoipa::path'
+      follows:
+        kind: attribute_item
+        regex: '#\[utoipa::path'
+        stopBy: end
+    - kind: source_file
+      not:
+        has:
+          kind: attribute_item
+          regex: '#\[utoipa::path'
+          stopBy: end

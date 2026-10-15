@@ -1,0 +1,119 @@
+---
+rules:
+  STY-RUST-001:
+    allowed_locations:
+      - src/lib/infrastructure/inbound/rest/api_error.rs::error_response
+      - src/lib/infrastructure/inbound/rest/middleware/rate_limit.rs::from_prune
+      - src/lib/infrastructure/inbound/rest/middleware/rate_limit.rs::rate_limit_error
+      - src/lib/infrastructure/outbound/config/bootstrap.rs::resolve_sqlite3
+      - src/lib/infrastructure/outbound/config/configuration_source.rs::deserialize
+  STY-RUST-002:
+    bounded_contexts: &bounded_contexts
+      - asset
+      - identity
+      - library
+      - user
+  STY-RUST-075:
+    allowed_crates:
+      - anyhow
+      - chrono
+      - tracing
+  STY-RUST-083:
+    bounded_contexts: *bounded_contexts
+  STY-SQL-006:
+    singular_exceptions: []
+  TEST-002:
+    exempt_traits:
+      - AssetUnitOfWork
+      - ConfigurationUnitOfWork
+      - IdentityUnitOfWork
+      - LibraryUnitOfWork
+      - UnitOfWork
+      - UnitOfWorkFactory
+      - UserUnitOfWork
+  OBS-003:
+    denied_values:
+      - err
+      - error
+      - rejection
+      - failure
+      - cause
+      - exception
+      - query
+      - query_string
+      - raw_query
+      - uri
+      - url
+      - file_name
+      - filename
+      - body
+      - request_body
+      - raw_body
+      - payload
+  OBS-004:
+    # The types § 4 names as secret-bearing, all declared in
+    # src/lib/domain/model/; a rename or removal cannot silently drop one.
+    secret_types:
+      - Security
+      - Jwt
+      - Configuration
+      - Credential
+    # A field name that carries a secret. A `Debug` derive prints every field,
+    # and a manual `impl Debug` must not print these; compare against both.
+    secret_fields:
+      - pepper
+      - secret
+      - password_hash
+  OBS-008:
+    allowed_protocols:
+      - file
+  TEST-027:
+    # The adapter families TEST-027 names: the repository (SQLite, moka cache)
+    # and the configuration source. The external-services family has no
+    # adapter yet (nothing raises ExternalServiceError); its path is appended
+    # here when that client lands.
+    adapter_surfaces:
+      - src/lib/infrastructure/outbound/sqlx/*_repository.rs
+      - src/lib/infrastructure/outbound/moka.rs
+      - src/lib/infrastructure/outbound/config/*.rs
+  TEST-041:
+    # Business use cases excepted from the one-file-per-use-case rule, each a
+    # catalogued use case id (`UC-<seq>`, as written in
+    # docs/development/UseCases.md). UC-003 (Initialize Root Admin) and UC-004
+    # (Load Configuration) have no black-box REST surface of their own: the
+    # container's startup exercises them. An entry that names no catalogued use
+    # case is reported, so this list cannot rot silently.
+    exempt_use_cases:
+      - UC-003
+      - UC-004
+      # TODO: remove UC-005 once its E2E file (Delete User Account) lands.
+      - UC-005
+  API-031:
+    # The response bodies § HAL payload guidelines names as non-representations:
+    # the token issue and the liveness probe. They keep their plain
+    # `application/json` representation; every other response body is a HAL
+    # representation or the error envelope and must be `application/hal+json`.
+    non_hal_bodies:
+      - HealthResponse
+      - LoginResponse
+  API-033:
+    # The root keys a HAL representation's business data must not be nested
+    # under. `_embedded` is HAL's own nesting key (`API-035` governs when an
+    # `_embedded` of related resources is permitted); the rest are the
+    # conventional payload-envelope keys of a REST API.
+    wrapper_keys:
+      - _embedded
+      - data
+      - payload
+      - body
+      - result
+      - resource
+  API-035:
+    # A HAL payload must not use `_embedded`: HAL nests a representation's
+    # related resources under it, and this API exposes them through `_links`
+    # (API-034). A location listed here is the record of the proven performance
+    # need the rule requires — the enclosing `<file>::<struct>` (a
+    # representation) or `<file>::<function>` (a handler that builds a payload)
+    # permitted to use `_embedded`. Empty by default, so every use is reported
+    # until a need is reviewed and recorded.
+    allowed_locations: []

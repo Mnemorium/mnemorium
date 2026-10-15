@@ -1,0 +1,26 @@
+---
+id: sty-rust-060
+language: Rust
+severity: hint
+message: >-
+  extract the use-case-factory traits and their accessor signatures, for
+  STY-RUST-060
+rule:
+  any:
+    # A use-case-factory trait with supertraits.
+    - all:
+        - kind: trait_item
+        - regex: 'trait \w*UseCaseFactory\b'
+        - pattern: 'pub trait $TRAIT: $$$BOUNDS { $$$BODY }'
+    # A use-case-factory trait without supertraits.
+    - all:
+        - kind: trait_item
+        - regex: 'trait \w*UseCaseFactory\b'
+        - pattern: 'pub trait $TRAIT { $$$BODY }'
+    # An accessor signature declared inside a use-case-factory trait.
+    - all:
+        - kind: function_signature_item
+        - inside:
+            kind: trait_item
+            regex: 'trait \w*UseCaseFactory\b'
+            stopBy: end

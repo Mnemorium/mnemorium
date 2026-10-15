@@ -1,0 +1,15 @@
+---
+id: api-014
+language: Rust
+severity: hint
+message: >-
+  extract the parameter tuples of a utoipa handler annotation, for API-014
+rule:
+  kind: token_tree
+  follows:
+    kind: identifier
+    regex: '^params$'
+  inside:
+    stopBy: end
+    kind: attribute_item
+    regex: '(?s)^#\[utoipa::path\s*\('

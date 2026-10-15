@@ -1,9 +1,9 @@
 use axum::response::Json;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use utoipa::ToSchema;
 
 /// Service health status.
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Serialize, ToSchema)]
 #[non_exhaustive]
 pub struct HealthResponse {
     /// Service status.
@@ -23,7 +23,12 @@ pub struct HealthResponse {
         (url = "http://0.0.0.0:4080", description = "Root of the service, outside /api/v1")
     ),
     responses(
-        (status = OK, body = HealthResponse, description = "Service is healthy"),
+        (
+            status = OK,
+            body = HealthResponse,
+            content_type = "application/json",
+            description = "Service is healthy",
+        ),
     ),
     security(()),
     summary = "Check service health"

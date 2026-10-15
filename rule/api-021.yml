@@ -1,0 +1,50 @@
+---
+id: api-021
+language: Rust
+severity: error
+message: >-
+  an endpoint's request_body must declare the schema of the body: name it with
+  `content = <Type>` inside `request_body(...)`, or use the
+  `request_body = <Type>` shorthand
+rule:
+  any:
+    # The `request_body(...)` argument group, and the schema it must name. The
+    # group is the token tree whose immediately preceding sibling is the
+    # `request_body` key; `request_body = <Type>` has no such group — it names
+    # the schema directly and is therefore not matched.
+    - all:
+        - kind: token_tree
+        - inside:
+            kind: attribute_item
+            regex: '(?s)^#\[utoipa::path\('
+            stopBy: end
+        - follows:
+            kind: identifier
+            regex: "^request_body$"
+        # The schema is the `content` attribute of the group. `content_type` is
+        # a different identifier, and a `content` inside a string literal is a
+        # string_literal node, not an identifier, so
+        # `example = json!({"content": 1})` cannot satisfy this clause.
+        - not:
+            has:
+              kind: identifier
+              regex: "^content$"
+              stopBy: end
+    # A `content(...)` entry that names only a media type declares no schema:
+    # the entry's first child is its media-type string literal.
+    - all:
+        - kind: token_tree
+        - inside:
+            kind: token_tree
+            follows:
+              kind: identifier
+              regex: "^content$"
+        - inside:
+            kind: token_tree
+            follows:
+              kind: identifier
+              regex: "^request_body$"
+            stopBy: end
+        - has:
+            kind: string_literal
+            nthChild: 1

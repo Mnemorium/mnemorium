@@ -23,21 +23,25 @@ use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 ///
 /// Every attribute is optional; an omitted attribute leaves the stored value
 /// unchanged.
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema)]
 #[non_exhaustive]
 pub struct PatchUserRequest {
     /// New email address.
     #[schema(format = "email")]
     pub email: Option<String>,
     /// New role. Only the Root Admin may change the role of a user.
-    pub role: Option<Role>,
+    // The raw wire value is validated by the handler so a value outside the
+    // discrete list is classified as `enum_validation_failed` (`OBS-006`)
+    // rather than a generic deserialization failure.
+    #[schema(value_type = Option<Role>)]
+    pub role: Option<String>,
     /// New username; must be at least 4 characters long.
     #[schema(min_length = 4)]
     pub username: Option<String>,
 }
 
 /// Updated user returned by a successful update.
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Serialize, ToSchema)]
 #[non_exhaustive]
 pub struct PatchUserResponse {
     /// Email address of the user, when one was provided.
@@ -165,6 +169,11 @@ pub async fn patch_user(
         return Err(ApiError::BadRequest("invalid user identifier".to_owned()));
     };
     let Json(request) = payload.map_err(ApiError::from)?;
+    let role = request
+        .role
+        .as_deref()
+        .map(|value| Role::from_wire(value).ok_or_else(|| ApiError::reject_enum("role")))
+        .transpose()?;
     let response = state
         .user_use_case_factory()
         .update_user()
@@ -173,7 +182,7 @@ pub async fn patch_user(
             user_id,
             request.username,
             request.email,
-            request.role,
+            role,
         ))
         .await?;
     Ok(hal_json(PatchUserResponse::from(response)))
@@ -582,6 +591,29 @@ mod tests {
             1,
             "2",
             Body::from(json!({ "username": 1i64 }).to_string()),
+        )
+        .await?;
+
+        // Assert
+        assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+        assert!(
+            error_message_of(&response).is_some(),
+            "an unprocessable entity must carry an error message"
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn patch_user_invalid_role_returns_unprocessable_entity() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let use_case = MockUpdateUserUseCase::new();
+
+        // Act
+        let response = send(
+            use_case,
+            0,
+            "2",
+            Body::from(json!({ "role": "WIZARD" }).to_string()),
         )
         .await?;
 

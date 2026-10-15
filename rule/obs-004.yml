@@ -1,0 +1,27 @@
+---
+id: obs-004
+language: Rust
+severity: hint
+message: extract Debug-deriving structs, struct declarations and manual Debug impls for OBS-004
+files:
+  - src/lib/domain/model/*.rs
+rule:
+  any:
+    # A struct that derives `Debug`: its derived output prints every field.
+    - all:
+        - pattern: 'pub struct $DERIVED { $$$DERIVED_FIELDS }'
+        - follows:
+            kind: attribute_item
+            regex: 'derive\([^)]*\bDebug\b'
+            stopBy:
+              not:
+                kind: attribute_item
+    # Every (other) struct declaration: proves the configured secret types exist.
+    - pattern: 'pub struct $DECL { $$$FIELDS }'
+    # A manual `impl Debug for T`: its body must redact the secret fields.
+    - all:
+        - kind: impl_item
+        - has:
+            field: trait
+            regex: 'Debug$'
+        - pattern: 'impl $TRAIT for $IMPL { $$$BODY }'

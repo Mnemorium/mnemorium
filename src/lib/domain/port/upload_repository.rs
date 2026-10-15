@@ -10,7 +10,7 @@ use crate::domain::port::error::RepositoryError;
 #[non_exhaustive]
 pub struct UploadFilter {
     /// Filter on the upload identifier.
-    pub id: Option<NumericID>,
+    pub upload_id: Option<NumericID>,
     /// Filter on the owning user identifier.
     pub user_id: Option<NumericID>,
 }

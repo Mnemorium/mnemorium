@@ -1,0 +1,22 @@
+---
+id: sty-rust-023
+language: Rust
+severity: hint
+message: >-
+  extract the sqlx CHECK-constraint enums and the model struct fields that use them, for STY-RUST-023
+files:
+  - src/lib/infrastructure/outbound/sqlx/model/*.rs
+rule:
+  any:
+    # A CHECK-constraint enum: a `sqlx::Type` enum declared in a model file.
+    - all:
+        - kind: enum_item
+        - pattern: "pub enum $ENUM"
+        - follows:
+            kind: attribute_item
+            regex: "sqlx::Type"
+            stopBy: end
+    # A model attribute: a public struct field.
+    - all:
+        - kind: field_declaration
+        - pattern: "pub $FIELD: $TYPE"

@@ -1,0 +1,11 @@
+---
+id: sty-rust-070
+language: Rust
+severity: hint
+message: >-
+  extract every `Arc<dyn Trait>` trait object for STY-RUST-070
+files:
+  - src/**/*.rs
+rule:
+  kind: generic_type
+  regex: '^Arc<dyn '

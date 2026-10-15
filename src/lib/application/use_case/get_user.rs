@@ -295,16 +295,17 @@ mod tests {
             let admin = user(1, "admin", None, Role::Admin)?;
             user_repository
                 .expect_search()
-                .times(2)
-                .withf(|filter| filter.id == Some(1) || filter.id == Some(2))
-                .returning(move |filter| {
-                    if filter.id == Some(1) {
-                        let found = admin.clone();
-                        Box::pin(async move { Ok(vec![found]) })
-                    } else {
-                        Box::pin(async { Ok(Vec::new()) })
-                    }
+                .times(1)
+                .withf(|filter| filter.id == Some(1))
+                .return_once(move |_| {
+                    let found = admin;
+                    Box::pin(async move { Ok(vec![found]) })
                 });
+            user_repository
+                .expect_search()
+                .times(1)
+                .withf(|filter| filter.id == Some(2))
+                .return_once(|_| Box::pin(async { Ok(Vec::new()) }));
             Ok(())
         })?;
         let command = GetUserCommand::new(1, 2);

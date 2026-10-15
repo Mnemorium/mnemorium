@@ -1,0 +1,19 @@
+---
+id: api-039
+language: Rust
+severity: hint
+message: >-
+  extract the HAL error envelope struct and the root router's middleware layers,
+  for API-039
+rule:
+  any:
+    - pattern: 'pub struct ErrorBody { $$$FIELDS }'
+    - all:
+        - kind: call_expression
+        - pattern: '$RECV.layer($MIDDLEWARE)'
+        - inside:
+            kind: function_item
+            has:
+              field: name
+              regex: '^setup_routes$'
+            stopBy: end

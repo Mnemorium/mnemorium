@@ -1,0 +1,32 @@
+---
+id: api-009
+language: Rust
+severity: error
+message: >-
+  declare `params(...)` in `#[utoipa::path(...)]` for the path, query, header
+  and cookie parameters of this endpoint
+rule:
+  all:
+    # The endpoint's `#[utoipa::path(...)]` annotation.
+    - kind: attribute_item
+    - regex: '#\[utoipa::path'
+    # The annotation omits the parameter declarations.
+    - not:
+        regex: '\bparams\s*\('
+    - any:
+        # A path parameter: the route template names one with `{...}`.
+        - regex: 'path\s*=\s*"[^"]*\{'
+        # A path, query, header or cookie extractor in the handler signature.
+        # The handler is the first function item the annotation precedes; the
+        # test module's helpers are children of a `mod_item`, never siblings,
+        # so the `stopBy: end` search cannot reach them.
+        - precedes:
+            kind: function_item
+            stopBy: end
+            has:
+              any:
+                - regex: 'Path\s*[<(]'
+                - regex: 'Query\s*[<(]'
+                - regex: "HeaderMap"
+                - regex: 'TypedHeader\s*[<(]'
+                - regex: 'Cookie\s*[<(]'

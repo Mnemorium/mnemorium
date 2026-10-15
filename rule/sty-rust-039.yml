@@ -1,0 +1,14 @@
+---
+id: sty-rust-039
+language: Rust
+severity: hint
+message: extract unit-of-work begin() call sites for STY-RUST-039
+rule:
+  pattern: $RECV.begin()
+  inside:
+    kind: function_item
+    pattern: $ENCLOSING
+    has:
+      field: name
+      pattern: $FUNC
+    stopBy: end

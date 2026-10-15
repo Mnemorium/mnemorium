@@ -1,0 +1,18 @@
+---
+id: sty-rust-071
+language: Rust
+severity: hint
+message: >-
+  extract every repository-trait method signature for STY-RUST-071
+rule:
+  all:
+    - kind: function_signature_item
+    - inside:
+        kind: trait_item
+        has:
+          field: name
+          regex: 'Repository$'
+        stopBy: end
+    - any:
+        - pattern: 'fn $METHOD($$$PARAMS) -> $RET;'
+        - pattern: 'fn $METHOD($$$PARAMS);'

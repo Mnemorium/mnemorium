@@ -1,0 +1,13 @@
+---
+id: sty-rust-038
+language: Rust
+severity: error
+message: >-
+  a concrete sqlx adapter must not leave infrastructure; obtain repositories
+  from a unit of work, never name a Sqlx adapter outside src/lib/infrastructure
+rule:
+  any:
+    - kind: identifier
+      regex: '^Sqlx'
+    - kind: type_identifier
+      regex: '^Sqlx'

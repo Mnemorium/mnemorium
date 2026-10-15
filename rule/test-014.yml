@@ -1,0 +1,21 @@
+---
+id: test-014
+language: Rust
+severity: hint
+message: extract every router-state construction in a handler test module
+rule:
+  all:
+    - any:
+        - all:
+            - kind: call_expression
+            - has:
+                field: function
+                kind: identifier
+                regex: '^app_state'
+        - pattern: AppState::new($$$ARGS)
+    - inside:
+        kind: mod_item
+        stopBy: end
+        follows:
+          kind: attribute_item
+          regex: 'cfg\(test\)'

@@ -1,0 +1,13 @@
+---
+id: obs-001
+language: Rust
+severity: error
+message: the domain must not log; emit log events only from application and infrastructure
+rule:
+  any:
+    - kind: use_declaration
+      regex: '(?s)^\s*(pub\s+)?use\s+tracing\b'
+    - kind: scoped_identifier
+      regex: '^tracing\b'
+    - kind: extern_crate_declaration
+      regex: '\btracing\b'

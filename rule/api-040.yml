@@ -1,0 +1,21 @@
+---
+id: api-040
+language: Rust
+severity: error
+message: >-
+  attach a stable, server-authored `error` message: an extractor or framework
+  rejection is logged, never returned (API-040)
+rule:
+  pattern: $TYPE::$VARIANT($ARG)
+constraints:
+  TYPE:
+    regex: '^(ApiError|Self)$'
+  VARIANT:
+    regex: "^(BadRequest|Conflict|Forbidden|Gone|NotFound|PayloadTooLarge|\
+      TooManyRequests|Unauthorized|UnprocessableEntity|UnsupportedMediaType)$"
+  # The message is a string literal (`"…"`), optionally wrapped by
+  # `.to_owned()`/`.to_string()`; anything else is a value the server did not
+  # author — the rejection, a field of it, or its `Display`/`Debug`.
+  ARG:
+    not:
+      regex: '^\s*(r#)?"'

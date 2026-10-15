@@ -1,0 +1,29 @@
+---
+id: sty-rust-029
+language: Rust
+severity: error
+message: >-
+  a test function keeps control flow out of its body: no `if`, `match`, or loops
+files:
+  - src/**/*.rs
+rule:
+  kind: function_item
+  all:
+    # A test attribute precedes the function as a sibling, so `follows` — not
+    # `has` — reaches it. `stopBy` the previous function keeps a non-test item
+    # from inheriting its neighbour's #[test]; `stopBy: end` would cross that
+    # boundary.
+    - follows:
+        kind: attribute_item
+        regex: '#\[(rstest|([a-z0-9_]+::)*test)\b'
+        stopBy:
+          kind: function_item
+    # Control flow anywhere in the test body, including nested closures.
+    - has:
+        stopBy: end
+        any:
+          - kind: if_expression
+          - kind: match_expression
+          - kind: loop_expression
+          - kind: while_expression
+          - kind: for_expression

@@ -1,0 +1,21 @@
+---
+id: sty-rust-052
+language: Rust
+severity: error
+message: >-
+  Declare the repository trait second in a repository port file: a
+  non-`*Filter` struct must not precede the `<Aggregate>Repository` trait.
+files:
+  - src/lib/domain/port/*_repository.rs
+rule:
+  all:
+    - kind: struct_item
+    - pattern: pub struct $NAME
+    - inside:
+        kind: source_file
+    - not:
+        regex: 'pub struct \w*Filter\b'
+    - precedes:
+        kind: trait_item
+        pattern: 'pub trait $TRAIT: Send + Sync'
+        stopBy: end

@@ -1,0 +1,55 @@
+---
+id: api-008
+language: Rust
+severity: error
+message: >-
+  an endpoint whose handler extracts a request body must declare request_body in
+  its #[utoipa::path(...)] annotation
+rule:
+  all:
+    - kind: function_item
+    # A handler is the endpoint function of its file: the top-level `pub async
+    # fn` shape STY-RUST-006 recognises. A `pub(crate)`/`pub(super)` helper and
+    # a helper inside a `#[cfg(test)]` module are not handlers.
+    - regex: "^pub async fn "
+    - not:
+        inside:
+          kind: mod_item
+          stopBy: end
+          follows:
+            kind: attribute_item
+            regex: cfg\(test\)
+    # An endpoint carries a body when its handler extracts one: a body extractor
+    # parameter. `Json<T>`, `Form<T>`, `Bytes`, `RawBody` and `Multipart` are
+    # the body-consuming axum extractors; `Path<String>`/`Query<…>` are not.
+    - any:
+        - has:
+            kind: parameter
+            regex: "Json<"
+            stopBy: end
+        - has:
+            kind: parameter
+            regex: "Form<"
+            stopBy: end
+        - has:
+            kind: parameter
+            regex: '\bBytes\b'
+            stopBy: end
+        - has:
+            kind: parameter
+            regex: "RawBody"
+            stopBy: end
+        - has:
+            kind: parameter
+            regex: "Multipart"
+            stopBy: end
+    # The `request_body` declaration must sit in the handler's own
+    # `#[utoipa::path(...)]` attribute: the `stopBy` idiom keeps a preceding
+    # item's attribute from satisfying this function.
+    - not:
+        follows:
+          kind: attribute_item
+          regex: '(?s)^#\[utoipa::path\(.*request_body'
+          stopBy:
+            not:
+              kind: attribute_item

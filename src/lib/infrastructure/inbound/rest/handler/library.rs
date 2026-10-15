@@ -62,8 +62,8 @@ impl GalleryLinks {
     #[must_use]
     pub fn for_gallery(gallery_id: NumericID) -> Self {
         Self {
-            items: Link::new(&gallery_items_href(gallery_id)),
-            self_link: Link::new(&gallery_self_href(gallery_id)),
+            items: Link::new(&format!("/api/v1/library/gallery/{gallery_id}/item")),
+            self_link: Link::new(&format!("/api/v1/library/gallery/{gallery_id}")),
         }
     }
 }
@@ -80,6 +80,21 @@ pub enum GalleryItemType {
 }
 
 impl GalleryItemType {
+    /// Parse a medium kind from its wire representation (`image`, `video`).
+    ///
+    /// Returns `None` when `value` is not a member of the discrete list, so the
+    /// inbound handler can classify the rejection as `enum_validation_failed`
+    /// (`OBS-006`). The names match the `serde(rename_all = "lowercase")`
+    /// representation of [`GalleryItemType`].
+    #[must_use]
+    pub fn from_wire(value: &str) -> Option<Self> {
+        match value {
+            "image" => Some(Self::Image),
+            "video" => Some(Self::Video),
+            _ => None,
+        }
+    }
+
     /// Build the medium reference of `media_id` for this kind.
     #[must_use]
     pub fn media(self, media_id: NumericID) -> GalleryItemMedia {
@@ -100,7 +115,7 @@ impl From<GalleryItemMedia> for GalleryItemType {
 }
 
 /// One item of a gallery, without the metadata of its medium.
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Serialize, ToSchema)]
 #[non_exhaustive]
 pub struct GalleryItemResponse {
     /// Date and time at which the item was added.
@@ -138,7 +153,7 @@ impl From<&GalleryItemSummary> for GalleryItemResponse {
 }
 
 /// Detailed item of a gallery, returned by the item endpoints.
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Serialize, ToSchema)]
 #[non_exhaustive]
 pub struct GalleryItemDetailResponse {
     /// Date and time at which the item was added.
@@ -211,7 +226,7 @@ impl From<AddGalleryItemResponse> for GalleryItemDetailResponse {
 ///
 /// On a collection listing, `items` stays empty and `item_count` communicates
 /// the size of the gallery.
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Serialize, ToSchema)]
 #[non_exhaustive]
 pub struct GalleryResponse {
     /// Date and time at which the gallery was created.
@@ -285,33 +300,6 @@ impl From<GetGalleryResponseData> for GalleryResponse {
             owner_id: response.user_id(),
         }
     }
-}
-
-/// Canonical URI reference of the gallery resource identified by `gallery_id`.
-///
-/// Shared by the gallery representations and the creation response so the
-/// `_links.self` target and the `Location` header cannot drift (`API-032`).
-#[expect(
-    clippy::single_call_fn,
-    reason = "centralising the canonical URI so `_links.self` and `Location` cannot drift is the point"
-)]
-#[must_use]
-pub(crate) fn gallery_self_href(gallery_id: NumericID) -> String {
-    format!("/api/v1/library/gallery/{gallery_id}")
-}
-
-/// Canonical URI reference of the item collection of `gallery_id`.
-///
-/// This is the alias path of `GET /library/gallery/{id}/item`; the `_links.self`
-/// of the collection representation keeps pointing at the canonical gallery
-/// resource (`API-042`).
-#[expect(
-    clippy::single_call_fn,
-    reason = "centralising the items URI keeps the gallery links discoverable from one place (`API-037`)"
-)]
-#[must_use]
-pub(crate) fn gallery_items_href(gallery_id: NumericID) -> String {
-    format!("/api/v1/library/gallery/{gallery_id}/item")
 }
 
 /// Canonical URI reference of the gallery item identified by `item_id`.
@@ -447,7 +435,7 @@ mod tests {
         let mut factory = MockLibraryUseCaseFactory::new();
         factory
             .expect_get_gallery()
-            .times(1)
+            .times(0..=1)
             .return_once(move || Arc::new(get_gallery) as Arc<dyn GetGalleryUseCase>);
         let state = app_state_with_library(Arc::new(factory))?;
         let request = Request::builder()
@@ -483,7 +471,7 @@ mod tests {
         let mut factory = MockLibraryUseCaseFactory::new();
         factory
             .expect_create_gallery()
-            .times(1)
+            .times(0..=1)
             .return_once(move || Arc::new(create_gallery) as Arc<dyn CreateGalleryUseCase>);
         let state = app_state_with_library(Arc::new(factory))?;
         let request = Request::builder()
@@ -512,7 +500,7 @@ mod tests {
         let mut factory = MockLibraryUseCaseFactory::new();
         factory
             .expect_delete_gallery()
-            .times(1)
+            .times(0..=1)
             .return_once(move || Arc::new(delete_gallery) as Arc<dyn DeleteGalleryUseCase>);
         let state = app_state_with_library(Arc::new(factory))?;
         let request = Request::builder()

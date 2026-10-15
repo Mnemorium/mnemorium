@@ -1,0 +1,18 @@
+---
+id: test-045
+language: Python
+severity: hint
+message: extract every E2E call that names the Root Admin, for TEST-045
+files:
+  - test/e2e/**/*.py
+rule:
+  kind: call
+  any:
+    - has:
+        kind: identifier
+        regex: '^ROOT_ADMIN_USERNAME$'
+        stopBy: end
+    - has:
+        kind: string
+        regex: '^["'']root["'']$'
+        stopBy: end

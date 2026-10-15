@@ -1,0 +1,16 @@
+---
+id: sty-rust-014
+language: Rust
+severity: error
+message: a use-case error enum in src/lib/application/port must declare an Unknown(_) variant
+files:
+  - src/lib/application/port/**/*.rs
+rule:
+  all:
+    - kind: enum_item
+    - regex: 'enum \w+Error\b'
+    - not:
+        has:
+          kind: enum_variant
+          regex: 'Unknown\s*\('
+          stopBy: end

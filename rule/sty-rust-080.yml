@@ -1,0 +1,32 @@
+---
+id: sty-rust-080
+language: Rust
+severity: hint
+message: >-
+  extract filter struct fields and aggregate accessors for STY-RUST-080
+files:
+  - src/lib/domain/port/*.rs
+  - src/lib/domain/model/*.rs
+rule:
+  any:
+    # A public field of a filter struct: capture the declaring struct and the
+    # field name. The Bash layer keeps only names ending in `Filter`.
+    - all:
+        - kind: field_declaration
+        - pattern: 'pub $FIELD: $TYPE'
+        - inside:
+            kind: field_declaration_list
+            inside:
+              kind: struct_item
+              pattern: 'pub struct $FILTER { $$$FIELDS }'
+              stopBy: end
+    # A public accessor of an aggregate: capture the impl target and the method
+    # name. Every aggregate getter takes `&self`.
+    - all:
+        - pattern: 'pub fn $METHOD(&self) -> $RET { $$$BODY }'
+        - inside:
+            kind: impl_item
+            has:
+              field: type
+              pattern: $IMPL
+            stopBy: end

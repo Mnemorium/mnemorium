@@ -1,0 +1,20 @@
+---
+id: sty-rust-013
+language: Rust
+severity: hint
+message: extract the domain error enums and the model structs
+files:
+  - src/lib/domain/model/*.rs
+rule:
+  any:
+    - all:
+        - kind: enum_item
+        - pattern: pub enum $ERROR_ENUM
+        - regex: '^pub enum \w+Error\b'
+        - follows:
+            kind: attribute_item
+            regex: 'thiserror::Error'
+            stopBy: end
+    - all:
+        - kind: struct_item
+        - pattern: pub struct $MODEL

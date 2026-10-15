@@ -1,0 +1,32 @@
+---
+id: sty-rust-019
+language: Rust
+severity: hint
+message: >-
+  extract domain-model struct fields and `&self` methods for STY-RUST-019
+files:
+  - src/lib/domain/model/*.rs
+rule:
+  any:
+    # A struct field: capture the declaring struct and the field name.
+    - all:
+        - kind: field_declaration
+        - pattern: '$FIELD: $TYPE'
+        - inside:
+            kind: field_declaration_list
+            inside:
+              kind: struct_item
+              pattern: 'pub struct $STRUCT { $$$FIELDS }'
+              stopBy: end
+    # A `&self` method: capture the impl target, the method name and its
+    # return type. Both `pub` and private methods are matched.
+    - all:
+        - any:
+            - pattern: 'pub fn $METHOD(&self) -> $RET { $$$BODY }'
+            - pattern: 'fn $METHOD(&self) -> $RET { $$$BODY }'
+        - inside:
+            kind: impl_item
+            has:
+              field: type
+              pattern: $IMPL
+            stopBy: end

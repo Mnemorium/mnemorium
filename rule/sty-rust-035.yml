@@ -1,0 +1,25 @@
+---
+id: sty-rust-035
+language: Rust
+severity: error
+message: >-
+  a repository view borrows the unit of work mutably: the accessor must take
+  `&mut self`, so no view can be alive across commit/rollback
+rule:
+  all:
+    # A context-view accessor is a method returning a repository view; it is
+    # declared without a body (trait) or with one (impl).
+    - any:
+        - kind: function_item
+        - kind: function_signature_item
+    - has:
+        field: return_type
+        regex: "Repository \\+ '_"
+    # "borrow the unit of work mutably" is exactly `&mut self`: a shared or
+    # by-value receiver does not borrow, so a view could outlive commit/rollback.
+    - has:
+        field: parameters
+        has:
+          kind: self_parameter
+          not:
+            regex: '^&mut '

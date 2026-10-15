@@ -7,7 +7,6 @@ use axum::Router;
 use axum::middleware;
 use axum::routing::get;
 use axum::routing::patch;
-use serde::Deserialize;
 use serde::Serialize;
 use utoipa::ToSchema;
 
@@ -24,7 +23,7 @@ use crate::infrastructure::inbound::rest::middleware::auth::authenticate;
 use crate::infrastructure::outbound::jwt::token_provider::JwtTokenProvider;
 
 /// User returned by a successful lookup.
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Serialize, ToSchema)]
 #[non_exhaustive]
 pub struct GetUserResponse {
     /// Email address of the user, when one was provided.

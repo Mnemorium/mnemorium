@@ -1,0 +1,28 @@
+---
+id: api-041
+language: Rust
+severity: hint
+message: >-
+  extract an `ApiError` status mapping and a `JsonRejection` classification, for
+  API-041
+rule:
+  all:
+    - kind: match_arm
+    - not:
+        inside:
+          kind: mod_item
+          stopBy: end
+          follows:
+            kind: attribute_item
+            regex: cfg\(test\)
+    - any:
+        - inside:
+            kind: function_item
+            has:
+              field: name
+              pattern: status_and_message
+            stopBy: end
+        - inside:
+            kind: impl_item
+            regex: 'From<JsonRejection>'
+            stopBy: end

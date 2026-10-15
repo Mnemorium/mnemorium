@@ -1,0 +1,21 @@
+---
+id: test-049
+language: Rust
+severity: error
+message: >-
+  an endpoint test asserts behaviour owned by middleware — authentication,
+  body-size limits, the HAL error envelope, or cross-origin handling; drive the
+  bare router and leave the middleware to its own middleware-level test module
+rule:
+  all:
+    - inside:
+        kind: mod_item
+        stopBy: end
+        follows:
+          kind: attribute_item
+          regex: cfg\(test\)
+    - any:
+        - kind: identifier
+          regex: '^(hal_errors|authenticate|DefaultBodyLimit|RequestBodyLimit|CorsLayer)$'
+        - kind: string_literal
+          regex: 'Access-Control'

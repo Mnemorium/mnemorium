@@ -1,0 +1,45 @@
+---
+id: sty-rust-020
+language: Rust
+severity: error
+message: >-
+  a setter is named set_<field>(&mut self, <value>) and returns Result<(), _>
+  when it validates the field, () otherwise
+files:
+  - src/lib/domain/model/*.rs
+rule:
+  kind: function_item
+  has:
+    field: name
+    regex: '^set_[a-z0-9_]'
+  any:
+    # receiver must be `&mut self`
+    - not:
+        has:
+          field: parameters
+          has:
+            kind: self_parameter
+            regex: '^&.*mut self$'
+    # an explicit return type must be `Result<(), _>` (an explicit `()` is fine)
+    - has:
+        field: return_type
+        not:
+          regex: '^Result<\(\)|^\(\)$'
+    # exactly one value parameter besides the receiver
+    - not:
+        has:
+          field: parameters
+          has:
+            kind: parameter
+    - all:
+        - has:
+            field: parameters
+            has:
+              kind: parameter
+        - has:
+            field: parameters
+            has:
+              kind: parameter
+              follows:
+                kind: parameter
+                stopBy: end

@@ -5,7 +5,7 @@ use config::File;
 
 use crate::application::use_case::load_configuration::DEFAULT_SQLITE3_PATH;
 use crate::application::use_case::load_configuration::default_sqlite3_max_conn;
-use crate::domain::model::sqlite3::Sqlite3;
+use crate::domain::model::configuration::Sqlite3;
 use crate::infrastructure::outbound::config::configuration_source::USER_CONFIG_PATH;
 
 // TODO(refactor): the bootstrap reads the file and the environment here because

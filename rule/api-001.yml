@@ -1,0 +1,32 @@
+---
+id: api-001
+language: Rust
+severity: error
+message: >-
+  every REST handler in src/lib/infrastructure/inbound/rest/handler is annotated
+  with #[utoipa::path(...)] so the endpoint is published in docs/openapi.json
+rule:
+  all:
+    - kind: function_item
+    # A handler is the endpoint function of its file: the top-level `pub async
+    # fn` shape STY-RUST-006 recognises. A `pub(crate)`/`pub(super)` helper and
+    # a helper inside a `#[cfg(test)]` module are not handlers.
+    - regex: '^pub async fn '
+    - not:
+        inside:
+          kind: mod_item
+          stopBy: end
+          follows:
+            kind: attribute_item
+            regex: cfg\(test\)
+    # The annotation must sit in the handler's own attribute run: walking back
+    # only through contiguous attributes keeps a preceding item's
+    # `#[utoipa::path]` from satisfying this function (the `stopBy` idiom of
+    # test-001).
+    - not:
+        follows:
+          kind: attribute_item
+          regex: '#\[utoipa::path'
+          stopBy:
+            not:
+              kind: attribute_item

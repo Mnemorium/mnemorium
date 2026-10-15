@@ -1,0 +1,29 @@
+---
+id: test-017
+language: Rust
+severity: error
+message: >-
+  an application test is `async` — annotate it `#[tokio::test]`
+rule:
+  kind: function_item
+  all:
+    # A test carries a test attribute as a preceding sibling. `stopBy` halts the
+    # backward search at the first real item (skipping the attribute/comment
+    # block that decorates this function), so a helper that merely follows a
+    # test — or sits below an unrelated item — is not mistaken for one.
+    - follows:
+        kind: attribute_item
+        regex: '#\[(test|tokio::test|rstest)\b'
+        stopBy:
+          all:
+            - not:
+                kind: attribute_item
+            - not:
+                kind: line_comment
+            - not:
+                kind: block_comment
+    # ...and the function itself is not `async`.
+    - not:
+        has:
+          kind: function_modifiers
+          regex: '\basync\b'

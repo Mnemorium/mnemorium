@@ -1,0 +1,26 @@
+---
+id: sty-rust-034
+language: Rust
+severity: error
+message: a commit failure must map to the use-case Unknown(_)
+rule:
+  pattern: $RECV.commit()
+  not:
+    inside:
+      any:
+        - all:
+            - pattern: $R.commit().await.map_err($C)
+            - has:
+                regex: Unknown
+                stopBy: end
+        - all:
+            - pattern: match $R.commit().await { $$$ARMS }
+            - has:
+                regex: Unknown
+                stopBy: end
+        - all:
+            - pattern: if let $P = $R.commit().await { $$$BODY }
+            - has:
+                regex: Unknown
+                stopBy: end
+      stopBy: end

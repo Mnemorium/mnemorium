@@ -1,0 +1,21 @@
+---
+id: api-020
+language: Rust
+severity: error
+message: >-
+  declare `content_type`, the media type of the body, inside request_body(...)
+rule:
+  all:
+    - kind: token_tree
+    - follows:
+        kind: identifier
+        regex: "^request_body$"
+    - inside:
+        kind: attribute_item
+        regex: '#\[utoipa::path'
+        stopBy: end
+    - not:
+        has:
+          kind: identifier
+          regex: "^content_type$"
+          stopBy: end

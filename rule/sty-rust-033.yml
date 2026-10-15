@@ -1,0 +1,13 @@
+---
+id: sty-rust-033
+language: Rust
+severity: error
+message: >-
+  a rollback failure must return the original business error; discard the
+  rollback result (OBS-002 logs it), never propagate it with `?`
+rule:
+  kind: try_expression
+  has:
+    kind: field_identifier
+    regex: '^rollback$'
+    stopBy: end

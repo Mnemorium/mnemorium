@@ -7,7 +7,6 @@ use axum::http::StatusCode;
 use axum::http::header;
 use axum::response::Response;
 use serde::Deserialize;
-use serde::Serialize;
 use utoipa::ToSchema;
 
 use crate::application::port::add_gallery_item::AddGalleryItemCommand;
@@ -23,7 +22,7 @@ use crate::infrastructure::inbound::rest::handler::library::parse_gallery_id;
 use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 
 /// Payload to add one of the caller's media to a gallery.
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema)]
 #[non_exhaustive]
 pub struct PostGalleryItemRequest {
     /// Identifier of the backing file of the medium to add.
@@ -33,8 +32,12 @@ pub struct PostGalleryItemRequest {
     /// reports the resolved medium's own identifier separately.
     pub media_id: NumericID,
     /// Kind of the medium to add.
+    // The raw wire value is validated by the handler so a value outside the
+    // discrete list is classified as `enum_validation_failed` (`OBS-006`)
+    // rather than a generic deserialization failure.
     #[serde(rename = "type")]
-    pub media_type: GalleryItemType,
+    #[schema(value_type = GalleryItemType)]
+    pub media_type: String,
 }
 
 /// Map an add-gallery-item error to its API error.
@@ -149,7 +152,9 @@ pub async fn post_gallery_item(
 ) -> Result<Response, ApiError> {
     let gallery_id = parse_gallery_id(&id)?;
     let Json(request) = payload.map_err(ApiError::from)?;
-    let media = request.media_type.media(request.media_id);
+    let media_type = GalleryItemType::from_wire(&request.media_type)
+        .ok_or_else(|| ApiError::reject_enum("type"))?;
+    let media = media_type.media(request.media_id);
     let response = state
         .library_use_case_factory()
         .add_gallery_item()

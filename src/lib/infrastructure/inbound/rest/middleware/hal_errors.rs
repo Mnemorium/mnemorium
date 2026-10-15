@@ -2,9 +2,7 @@
 
 use axum::body::to_bytes;
 use axum::extract::Request;
-use axum::http::StatusCode;
 use axum::http::header;
-use axum::http::response::Parts;
 use axum::middleware::Next;
 use axum::response::Response;
 use serde_json::Value;
@@ -29,7 +27,37 @@ pub async fn hal_errors(request: Request, next: Next) -> Response {
 
     let (parts, body) = response.into_parts();
     let bytes = to_bytes(body, usize::MAX).await.unwrap_or_default();
-    let mut wrapped = error_response(status, error_message(&parts, status, &bytes), &path);
+    // The message attached by `ApiError` takes precedence; otherwise a JSON body
+    // the application authored — served as `application/json` or
+    // `application/hal+json` and carrying `error` as its only top-level key — is
+    // reused, and finally the status reason phrase is synthesized. A body that is
+    // neither is never reused verbatim, because an unverified plain-text or JSON
+    // body may carry extractor or framework wording, an expected type name, or a
+    // rejected value, which `API-040` forbids (`API-040`, § 2.5).
+    let message = if let Some(message) = parts.extensions.get::<ApiErrorMessage>() {
+        message.0.clone()
+    } else {
+        let authored_json = parts
+            .headers
+            .get(header::CONTENT_TYPE)
+            .and_then(|value| value.to_str().ok())
+            .is_some_and(|media_type| {
+                matches!(
+                    media_type.split(';').next().map(str::trim),
+                    Some("application/json" | "application/hal+json")
+                )
+            });
+        if authored_json
+            && let Ok(object) = serde_json::from_slice::<serde_json::Map<String, Value>>(&bytes)
+            && object.len() == 1
+            && let Some(message) = object.get("error").and_then(Value::as_str)
+        {
+            message.to_owned()
+        } else {
+            status.canonical_reason().unwrap_or("error").to_owned()
+        }
+    };
+    let mut wrapped = error_response(status, message, &path);
 
     let mut headers = parts.headers;
     headers.remove(header::CONTENT_TYPE);
@@ -37,46 +65,6 @@ pub async fn hal_errors(request: Request, next: Next) -> Response {
     wrapped.headers_mut().extend(headers);
 
     wrapped
-}
-
-/// Extract the human-readable message of a failed response.
-///
-/// The message attached by [`ApiError`](crate::infrastructure::inbound::rest::api_error::ApiError)
-/// takes precedence; otherwise a JSON body the application authored — served
-/// as `application/json` or `application/hal+json` and carrying `error` as its
-/// only top-level key — is reused, and finally the status reason phrase is
-/// synthesized, because the default `404`/`405` bodies are empty or textual.
-///
-/// A body that is neither is never reused verbatim: an unverified plain-text
-/// or JSON body may carry extractor or framework wording, an expected type
-/// name, or a rejected value, which `API-040` forbids. Such a body falls
-/// through to the status reason phrase (`API-040`, § 2.5).
-#[expect(
-    clippy::single_call_fn,
-    reason = "the message extraction order is named for readability"
-)]
-fn error_message(parts: &Parts, status: StatusCode, body: &[u8]) -> String {
-    if let Some(message) = parts.extensions.get::<ApiErrorMessage>() {
-        return message.0.clone();
-    }
-    let authored_json = parts
-        .headers
-        .get(header::CONTENT_TYPE)
-        .and_then(|value| value.to_str().ok())
-        .is_some_and(|media_type| {
-            matches!(
-                media_type.split(';').next().map(str::trim),
-                Some("application/json" | "application/hal+json")
-            )
-        });
-    if authored_json
-        && let Ok(object) = serde_json::from_slice::<serde_json::Map<String, Value>>(body)
-        && object.len() == 1
-        && let Some(message) = object.get("error").and_then(Value::as_str)
-    {
-        return message.to_owned();
-    }
-    status.canonical_reason().unwrap_or("error").to_owned()
 }
 
 #[cfg(test)]

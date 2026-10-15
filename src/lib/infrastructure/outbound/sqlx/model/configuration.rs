@@ -5,7 +5,7 @@ use crate::domain::alias::NumericID;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, sqlx::Type)]
 #[sqlx(rename_all = "UPPERCASE")]
 #[non_exhaustive]
-pub enum Rotation {
+pub enum LogRotation {
     Daily,
     Hourly,
     Minutely,
@@ -27,7 +27,7 @@ pub struct Configuration {
     pub jwt_ttl: i64,
     pub log_level: String,
     pub log_max_files: i64,
-    pub log_rotation: Rotation,
+    pub log_rotation: LogRotation,
     pub pepper: String,
     pub rate_limit_burst_size: i64,
     pub rate_limit_client_ip_header: String,

@@ -1,5 +1,4 @@
 use std::future::Future;
-use std::path::Path;
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -89,7 +88,7 @@ where
                 let found = match unit_of_work
                     .uploads()
                     .search(&UploadFilter {
-                        id: Some(command.upload_id()),
+                        upload_id: Some(command.upload_id()),
                         ..UploadFilter::default()
                     })
                     .await
@@ -111,8 +110,27 @@ where
                     Err(error) => return Flow::Failed(GetUploadError::Unknown(error)),
                 };
                 if !upload.is_finished() && Utc::now().naive_utc() > expires_at {
-                    return expire(&mut unit_of_work, &file_storage, &root, command.upload_id())
-                        .await;
+                    // TODO(reaper): move the expiry cleanup to a background task;
+                    // this lazy delete keeps the row and the staged file only
+                    // until the next access. The file-storage and repository
+                    // adapters own the failure logs (`OBS-002`), so a failed
+                    // cleanup is swallowed here.
+                    if file_storage
+                        .delete_upload_file(&staged_path(&root, command.upload_id()))
+                        .await
+                        .is_err()
+                    {
+                        // The file-storage adapter owns the failure log (`OBS-002`).
+                    }
+                    if unit_of_work
+                        .uploads()
+                        .delete(command.upload_id())
+                        .await
+                        .is_err()
+                    {
+                        // The repository adapter owns the failure log (`OBS-002`).
+                    }
+                    return Flow::Reaped;
                 }
 
                 let bitmap = received_bitmap(&upload);
@@ -166,43 +184,6 @@ where
             }
         })
     }
-}
-
-/// Best-effort delete the expired upload's staged file and row, then signal the
-/// caller to commit before reporting the session as unknown.
-///
-/// The read path treats an expired session exactly like a missing one, so the
-/// caller never distinguishes the two; the deletion is an internal side effect.
-/// The row deletion is left to the reaper once one exists.
-#[expect(
-    clippy::single_call_fn,
-    reason = "the expiry cleanup is named after the rule it enforces"
-)]
-async fn expire<U, S>(
-    unit_of_work: &mut U,
-    file_storage: &Arc<S>,
-    root: &Path,
-    upload_id: i64,
-) -> Flow<GetUploadResponse, GetUploadError>
-where
-    U: AssetUnitOfWork,
-    S: FileStorage,
-{
-    // TODO(reaper): move the expiry cleanup to a background task; this lazy
-    // delete keeps the row and the staged file only until the next access.
-    // The file-storage and repository adapters own the failure logs
-    // (`OBS-002`), so a failed cleanup is swallowed here.
-    if file_storage
-        .delete_upload_file(&staged_path(root, upload_id))
-        .await
-        .is_err()
-    {
-        // The file-storage adapter owns the failure log (`OBS-002`).
-    }
-    if unit_of_work.uploads().delete(upload_id).await.is_err() {
-        // The repository adapter owns the failure log (`OBS-002`).
-    }
-    Flow::Reaped
 }
 
 #[cfg(test)]

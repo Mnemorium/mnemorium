@@ -1,0 +1,23 @@
+---
+id: sty-rust-058
+language: Rust
+severity: error
+message: >-
+  declare the error enum third in a use-case port file: after the command and
+  response objects, before the use-case trait
+rule:
+  all:
+    - kind: enum_item
+    - regex: '^pub enum \w*Error\b'
+    - any:
+        - follows:
+            kind: trait_item
+            stopBy: end
+        - precedes:
+            kind: struct_item
+            regex: 'struct \w*Command\b'
+            stopBy: end
+        - precedes:
+            kind: struct_item
+            regex: 'struct \w*Response\b'
+            stopBy: end

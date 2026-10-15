@@ -1,0 +1,17 @@
+---
+id: sty-rust-074
+language: Rust
+severity: hint
+message: >-
+  extract the logging::setup install call and the LoadConfiguration startup
+  binding for STY-RUST-074
+rule:
+  any:
+    # The single subscriber install site: logging::setup(...).
+    - pattern: 'logging::setup($$$ARGS)'
+    # The composition root binds the LoadConfiguration use case before running it.
+    - all:
+        - pattern: 'let $VAR = $INIT;'
+        - has:
+            pattern: 'LoadConfiguration::new($$$ARGS)'
+            stopBy: end

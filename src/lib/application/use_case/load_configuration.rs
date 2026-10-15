@@ -9,14 +9,14 @@ use crate::application::port::load_configuration::LoadConfigurationError;
 use crate::application::port::load_configuration::LoadConfigurationResponse;
 use crate::application::port::load_configuration::LoadConfigurationUseCase;
 use crate::application::security_event;
-use crate::domain::model::asset::Asset;
+use crate::domain::model::configuration::Asset;
 use crate::domain::model::configuration::Configuration;
-use crate::domain::model::jwt::Jwt;
-use crate::domain::model::logging::Logging;
-use crate::domain::model::logging::Rotation;
-use crate::domain::model::persistence::Persistence;
-use crate::domain::model::security::Security;
-use crate::domain::model::sqlite3::Sqlite3;
+use crate::domain::model::configuration::Jwt;
+use crate::domain::model::configuration::Logging;
+use crate::domain::model::configuration::Persistence;
+use crate::domain::model::configuration::Rotation;
+use crate::domain::model::configuration::Security;
+use crate::domain::model::configuration::Sqlite3;
 use crate::domain::port::configuration_repository::ConfigurationRepository;
 use crate::domain::port::configuration_source::ConfigurationSource;
 use crate::domain::port::configuration_unit_of_work::ConfigurationUnitOfWork;
@@ -219,6 +219,8 @@ where
                         .map_err(|error| LoadConfigurationError::Unknown(error.into()))?;
                     if created {
                         security_event::system_object("configuration", "create");
+                        security_event::secret_initialized("pepper");
+                        security_event::secret_initialized("jwt_secret");
                     }
                     Ok(value)
                 }
@@ -265,20 +267,20 @@ mod tests {
 
     use crate::application::port::load_configuration::LoadConfigurationError;
     use crate::application::port::load_configuration::LoadConfigurationUseCase as _;
-    use crate::domain::model::asset::Asset;
-    use crate::domain::model::asset::AssetStorage;
-    use crate::domain::model::asset::AssetUpload;
+    use crate::domain::model::configuration::Asset;
+    use crate::domain::model::configuration::AssetStorage;
+    use crate::domain::model::configuration::AssetUpload;
+    use crate::domain::model::configuration::ClientIpHeader;
     use crate::domain::model::configuration::Configuration;
-    use crate::domain::model::jwt::Jwt;
-    use crate::domain::model::logging::Logging;
-    use crate::domain::model::logging::LoggingError;
-    use crate::domain::model::logging::Rotation;
-    use crate::domain::model::persistence::Persistence;
-    use crate::domain::model::rate_limit::ClientIpHeader;
-    use crate::domain::model::rate_limit::RateLimit;
-    use crate::domain::model::security::Security;
-    use crate::domain::model::sqlite3::Sqlite3;
-    use crate::domain::model::sqlite3::Sqlite3Error;
+    use crate::domain::model::configuration::Jwt;
+    use crate::domain::model::configuration::Logging;
+    use crate::domain::model::configuration::LoggingError;
+    use crate::domain::model::configuration::Persistence;
+    use crate::domain::model::configuration::RateLimit;
+    use crate::domain::model::configuration::Rotation;
+    use crate::domain::model::configuration::Security;
+    use crate::domain::model::configuration::Sqlite3;
+    use crate::domain::model::configuration::Sqlite3Error;
     use crate::domain::port::configuration_repository::MockConfigurationRepository;
     use crate::domain::port::configuration_source::MockConfigurationSource;
     use crate::domain::port::credential_repository::MockCredentialRepository;
@@ -581,6 +583,33 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn logging_rejects_bare_off() {
+        // Act
+        let result = Logging::try_new(false, "off".to_owned(), 7, Rotation::Daily);
+
+        // Assert
+        assert!(matches!(result, Err(LoggingError::LevelDisablesLogging)));
+    }
+
+    #[tokio::test]
+    async fn logging_rejects_bare_none() {
+        // Act
+        let result = Logging::try_new(false, "none".to_owned(), 7, Rotation::Daily);
+
+        // Assert
+        assert!(matches!(result, Err(LoggingError::LevelDisablesLogging)));
+    }
+
+    #[tokio::test]
+    async fn logging_rejects_security_target() {
+        // Act
+        let result = Logging::try_new(false, "error,security=error".to_owned(), 7, Rotation::Daily);
+
+        // Assert
+        assert!(matches!(result, Err(LoggingError::LevelTargetsSecurity)));
+    }
+
+    #[tokio::test]
     async fn sqlite3_rejects_zero_max_connections() {
         // Act
         let result = Sqlite3::try_new("mnemorium.db".to_owned(), 0);
@@ -870,8 +899,8 @@ mod tests {
         Ok(())
     }
 
-    #[test]
-    fn default_sqlite3_max_conn_always_allows_a_concurrent_request() {
+    #[tokio::test]
+    async fn default_sqlite3_max_conn_always_allows_a_concurrent_request() {
         // Act
         let connections = super::default_sqlite3_max_conn();
 
@@ -882,8 +911,9 @@ mod tests {
         );
     }
 
-    #[test]
-    fn configuration_round_trips_trusted_proxies_through_json() -> Result<(), Box<dyn Error>> {
+    #[tokio::test]
+    async fn configuration_round_trips_trusted_proxies_through_json() -> Result<(), Box<dyn Error>>
+    {
         // Arrange: a non-empty trusted-proxy list is the case that must survive
         // the `DbSqlite3Source` JSON round-trip (`security.rate_limit`).
         let mut security = Security::try_new(Jwt::try_new(hex64('a'), 3600)?, hex64('b'), true)?;
@@ -912,8 +942,8 @@ mod tests {
         Ok(())
     }
 
-    #[test]
-    fn jwt_debug_redacts_secret_but_keeps_ttl() -> Result<(), Box<dyn Error>> {
+    #[tokio::test]
+    async fn jwt_debug_redacts_secret_but_keeps_ttl() -> Result<(), Box<dyn Error>> {
         // Arrange
         let secret = hex64('a');
         let jwt = Jwt::try_new(secret.clone(), 3600)?;
@@ -933,8 +963,8 @@ mod tests {
         Ok(())
     }
 
-    #[test]
-    fn security_debug_redacts_secrets_but_keeps_rate_limit() -> Result<(), Box<dyn Error>> {
+    #[tokio::test]
+    async fn security_debug_redacts_secrets_but_keeps_rate_limit() -> Result<(), Box<dyn Error>> {
         // Arrange
         let secret = hex64('a');
         let pepper = hex64('b');
@@ -960,8 +990,9 @@ mod tests {
         Ok(())
     }
 
-    #[test]
-    fn configuration_debug_redacts_secrets_but_keeps_persistence() -> Result<(), Box<dyn Error>> {
+    #[tokio::test]
+    async fn configuration_debug_redacts_secrets_but_keeps_persistence()
+    -> Result<(), Box<dyn Error>> {
         // Arrange
         let secret = hex64('a');
         let pepper = hex64('b');

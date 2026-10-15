@@ -1,0 +1,31 @@
+---
+id: api-002
+language: Rust
+severity: hint
+message: >-
+  extract the struct deriving `utoipa::OpenApi` and its `#[openapi(...)]`
+  aggregation attribute, for API-002
+rule:
+  any:
+    # The OpenAPI aggregator struct.
+    - all:
+        - kind: struct_item
+        - follows:
+            kind: attribute_item
+            regex: 'derive\([^)]*\bOpenApi\b'
+            stopBy:
+              not:
+                kind: attribute_item
+        - has:
+            field: name
+            pattern: $AGGREGATOR
+    # The `#[openapi(...)]` attribute that carries the aggregation.
+    - all:
+        - kind: attribute_item
+        - regex: '#\[openapi\('
+        - follows:
+            kind: attribute_item
+            regex: 'derive\([^)]*\bOpenApi\b'
+            stopBy:
+              not:
+                kind: attribute_item

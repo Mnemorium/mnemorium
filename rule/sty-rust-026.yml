@@ -1,0 +1,38 @@
+---
+id: sty-rust-026
+language: Rust
+severity: error
+message: >-
+  name tests `<UnitOfWork>_<Scenario>_<ExpectedResult>` — at least three
+  underscore-separated parts, with no `test_` prefix
+files:
+  - src/**/*.rs
+rule:
+  all:
+    - kind: function_item
+    # A test carries a test attribute as a preceding sibling. `stopBy` halts the
+    # backward search at the first real item (skipping the attribute/comment
+    # block that decorates this function), so a function that merely follows a
+    # test — or sits below an unrelated item — is not mistaken for one.
+    - follows:
+        kind: attribute_item
+        regex: '#\[(test|tokio::test|rstest)\b'
+        stopBy:
+          all:
+            - not:
+                kind: attribute_item
+            - not:
+                kind: line_comment
+            - not:
+                kind: block_comment
+    - any:
+        # Reject the legacy `test_` prefix outright, even when the rest of the
+        # name already has three parts.
+        - has:
+            field: name
+            regex: '^test_'
+        # Require at least three underscore-separated parts.
+        - not:
+            has:
+              field: name
+              regex: '^[a-z0-9]+(_[a-z0-9]+){2,}$'

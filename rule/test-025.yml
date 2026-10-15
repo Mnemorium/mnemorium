@@ -1,0 +1,25 @@
+---
+id: test-025
+language: Rust
+severity: hint
+message: >-
+  extract a domain service's error-enum variants and the identifiers its own
+  test module references, for TEST-025
+rule:
+  any:
+    - all:
+        - kind: enum_variant
+        - pattern: $VARIANT
+        - inside:
+            kind: enum_item
+            regex: '^pub enum \w+Error\b'
+            stopBy: end
+    - all:
+        - kind: identifier
+        - pattern: $IDENT
+        - inside:
+            kind: mod_item
+            stopBy: end
+            follows:
+              kind: attribute_item
+              regex: 'cfg\(test\)'

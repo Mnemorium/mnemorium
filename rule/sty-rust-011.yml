@@ -1,0 +1,27 @@
+---
+id: sty-rust-011
+language: Rust
+severity: error
+message: >-
+  a payload uses a struct, never a raw value, even when it would hold a single
+  attribute
+files:
+  - src/lib/infrastructure/inbound/rest/handler/**/*.rs
+rule:
+  all:
+    - kind: generic_type
+    - has:
+        field: type
+        regex: '^(Json|Query)$'
+    - has:
+        field: type_arguments
+        has:
+          stopBy: neighbor
+          regex: '^(String|str|bool|char|[iu](8|16|32|64|128)|usize|isize|f(32|64))$'
+    - not:
+        inside:
+          kind: mod_item
+          stopBy: end
+          follows:
+            kind: attribute_item
+            regex: cfg\(test\)

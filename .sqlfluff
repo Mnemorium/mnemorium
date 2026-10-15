@@ -1,0 +1,9 @@
+[sqlfluff]
+dialect = sqlite
+
+[sqlfluff:rules:capitalisation.identifiers]
+capitalisation_policy = lower
+
+[sqlfluff:rules:references.quoting]
+prefer_quoted_identifiers = False
+case_sensitive = False

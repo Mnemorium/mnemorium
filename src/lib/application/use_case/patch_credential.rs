@@ -181,15 +181,15 @@ mod tests {
     use crate::application::port::patch_credential::PatchCredentialCommand;
     use crate::application::port::patch_credential::PatchCredentialError;
     use crate::application::port::patch_credential::PatchCredentialUseCase as _;
-    use crate::domain::model::asset::Asset;
+    use crate::domain::model::configuration::Asset;
     use crate::domain::model::configuration::Configuration;
+    use crate::domain::model::configuration::Jwt;
+    use crate::domain::model::configuration::Logging;
+    use crate::domain::model::configuration::Persistence;
+    use crate::domain::model::configuration::Rotation;
+    use crate::domain::model::configuration::Security;
+    use crate::domain::model::configuration::Sqlite3;
     use crate::domain::model::credential::Credential;
-    use crate::domain::model::jwt::Jwt;
-    use crate::domain::model::logging::Logging;
-    use crate::domain::model::logging::Rotation;
-    use crate::domain::model::persistence::Persistence;
-    use crate::domain::model::security::Security;
-    use crate::domain::model::sqlite3::Sqlite3;
     use crate::domain::model::user::Role;
     use crate::domain::model::user::User;
     use crate::domain::model::user::UserError;
@@ -664,8 +664,8 @@ mod tests {
         Ok(())
     }
 
-    #[test]
-    fn credential_debug_redacts_password_hash_but_keeps_id() -> Result<(), Box<dyn Error>> {
+    #[tokio::test]
+    async fn credential_debug_redacts_password_hash_but_keeps_id() -> Result<(), Box<dyn Error>> {
         // Arrange
         let password_hash = "hashed-password".to_owned();
         let updated_at = NaiveDateTime::parse_from_str("2026-01-01 12:00:00", "%F %T")?;

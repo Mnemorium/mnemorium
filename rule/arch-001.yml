@@ -1,0 +1,11 @@
+---
+id: arch-001
+language: Rust
+severity: hint
+message: >-
+  an import points outward in the hexagon: the domain must not import
+  crate::application or crate::infrastructure, and the application layer must
+  not import crate::infrastructure
+rule:
+  kind: use_declaration
+  regex: 'crate\s*::\s*(application|infrastructure)([^A-Za-z0-9_]|$)'

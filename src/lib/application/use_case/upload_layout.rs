@@ -23,39 +23,7 @@ pub(crate) fn files_path(root: &Path) -> PathBuf {
     root.join(FILES_FOLDER)
 }
 
-/// Return whether `file_name` is a safe single path segment.
-#[expect(
-    clippy::single_call_fn,
-    reason = "the safety rule is named for readability and mirrors the domain model"
-)]
-pub(crate) fn is_path_safe(file_name: &str) -> bool {
-    !file_name.is_empty()
-        && !file_name.starts_with('.')
-        && !file_name.contains(['/', '\\'])
-        && !file_name.contains("..")
-}
-
-/// Return the path of a finished file relative to the storage root.
-///
-/// This is the path persisted on the file row.
-#[expect(
-    clippy::single_call_fn,
-    reason = "the relative-path composition is named after the layout rule it encodes"
-)]
-pub(crate) fn relative_final(upload_id: NumericID, file_name: &str) -> PathBuf {
-    PathBuf::from(FILES_FOLDER).join(format!("{upload_id}_{file_name}"))
-}
-
 /// Return the absolute path of the staging file of `upload_id` under `root`.
 pub(crate) fn staged_path(root: &Path, upload_id: NumericID) -> PathBuf {
     uploads_path(root).join(upload_id.to_string())
-}
-
-/// Return the absolute path of the finished file of `upload_id` under `root`.
-#[expect(
-    clippy::single_call_fn,
-    reason = "the final-path composition is named after the layout rule it encodes"
-)]
-pub(crate) fn final_path(root: &Path, upload_id: NumericID, file_name: &str) -> PathBuf {
-    files_path(root).join(format!("{upload_id}_{file_name}"))
 }

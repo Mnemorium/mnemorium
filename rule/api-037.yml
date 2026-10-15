@@ -1,0 +1,25 @@
+---
+id: api-037
+language: Rust
+severity: hint
+message: >-
+  extract every HAL link constructor and every href helper, for API-037
+rule:
+  all:
+    - any:
+        - pattern: Link::new($ARG)
+        - pattern: Link::templated($ARG)
+        - pattern: SelfLinks::new($ARG)
+        - kind: function_item
+          has:
+            field: name
+            regex: "_href$"
+    # A link built inside a #[cfg(test)] module is a fixture, not a served
+    # representation.
+    - not:
+        inside:
+          kind: mod_item
+          stopBy: end
+          follows:
+            kind: attribute_item
+            regex: cfg\(test\)

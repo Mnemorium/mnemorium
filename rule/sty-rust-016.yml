@@ -1,0 +1,13 @@
+---
+id: sty-rust-016
+language: Rust
+severity: error
+message: >-
+  a missing entity is not an outbound-port error; express absence as a value
+  (Option/None or a bool result), never a port error variant
+files:
+  - src/lib/domain/port/error.rs
+rule:
+  all:
+    - kind: enum_variant
+    - regex: '(NotFound|NoSuch|Missing|DoesNotExist|NotExist|NotPresent|Absent)'

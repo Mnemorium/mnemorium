@@ -2,14 +2,9 @@
 
 ## Architecture rules
 
-The architecture is normative here (see `docs/development/TechnicalDesign.md` § 2, Architecture). Its invariants carry
-`ARCH-*` IDs so a review can cite them.
-
-| ID         | Topic           | Rule                                                                                                                                            |
-| ---------- | --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| `ARCH-001` | Layer direction | Dependencies point inward only: `domain` ← `application` ← `infrastructure`; no module imports outward (see `AGENTS.md`, "Special Rules").      |
-| `ARCH-002` | Bounded context | Each domain model and port belongs to exactly one bounded context; a context view exposes only its own context's repositories (`STY-RUST-042`). |
-| `ARCH-003` | Cross-context   | Work that spans bounded contexts is orchestrated in the application layer, never by a domain model or an outbound adapter.                      |
+The architecture invariants — layer direction, bounded-context ownership, cross-context orchestration and cascade scope
+— are normative in `docs/development/TechnicalDesign.md` § 2 (Architecture), where their `ARCH-*` rules live. This
+document describes the source layout those rules constrain.
 
 ## Source code structure
 
@@ -359,7 +354,7 @@ GalleryItem "1" -- "0..1" Video: References >
 **Architecture decision (cascade scope):** `ON DELETE CASCADE` is used only within one bounded context (for example
 `gallery` → `gallery_item`). A cross-context link — `image`/`video` → `file` — does not cascade: deleting an Asset-owned
 `file` row would cascade into Library-owned `image`/`video` rows and thereby violate the Library context's ownership, so
-the application orchestrates the deletion instead (`PERS-020`).
+the application orchestrates the deletion instead (`ARCH-004`; `PERS-020` states the persistence form).
 
 ## Branch naming and PR title naming
 

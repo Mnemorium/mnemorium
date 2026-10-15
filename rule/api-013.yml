@@ -1,0 +1,19 @@
+---
+id: api-013
+language: Rust
+severity: error
+message: >-
+  declare `name`, the parameter name as it appears in the URL, header or cookie
+rule:
+  all:
+    - kind: token_tree
+    - inside:
+        kind: token_tree
+        follows:
+          kind: identifier
+          regex: "^params$"
+    - inside:
+        kind: attribute_item
+        regex: '#\[utoipa::path'
+        stopBy: end
+    - regex: '^\(\s*[^"\s/]'

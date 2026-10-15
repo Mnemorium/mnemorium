@@ -1,0 +1,23 @@
+---
+id: test-009
+language: Rust
+severity: hint
+message: >-
+  HTTP handler tests drive the router through
+  `.oneshot(Request::builder()...)` from `tower::ServiceExt`
+files:
+  - src/lib/infrastructure/inbound/rest/handler/**/*.rs
+  - src/lib/infrastructure/inbound/rest/handler.rs
+rule:
+  all:
+    - inside:
+        kind: mod_item
+        stopBy: end
+        follows:
+          kind: attribute_item
+          regex: cfg\(test\)
+    - any:
+        - kind: call_expression
+          pattern: Request::builder()
+        - kind: call_expression
+          pattern: $RECV.oneshot($$$ARGS)

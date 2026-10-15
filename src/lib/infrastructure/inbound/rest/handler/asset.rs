@@ -47,15 +47,17 @@ impl UploadSessionLinks {
     #[must_use]
     pub fn for_upload(upload_id: NumericID) -> Self {
         Self {
-            chunk: Link::templated(&upload_chunk_href(upload_id)),
-            complete: Link::new(&upload_complete_href(upload_id)),
+            chunk: Link::templated(&format!(
+                "/api/v1/asset/upload/{upload_id}/chunk/{{chunk_number}}"
+            )),
+            complete: Link::new(&format!("/api/v1/asset/upload/{upload_id}/complete")),
             self_link: Link::new(&upload_self_href(upload_id)),
         }
     }
 }
 
 /// State of an upload session returned by a successful lookup or chunk store.
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Serialize, ToSchema)]
 #[non_exhaustive]
 pub struct UploadSessionResponse {
     /// One character per chunk, `1` when received and `0` otherwise.
@@ -107,26 +109,6 @@ impl UploadSessionResponse {
 #[must_use]
 pub(crate) fn upload_self_href(upload_id: NumericID) -> String {
     format!("/api/v1/asset/upload/{upload_id}")
-}
-
-/// Templated URI reference of the chunk endpoint of `upload_id`.
-#[expect(
-    clippy::single_call_fn,
-    reason = "centralising the templated chunk URI keeps the session links discoverable from one place (`API-037`)"
-)]
-#[must_use]
-pub(crate) fn upload_chunk_href(upload_id: NumericID) -> String {
-    format!("/api/v1/asset/upload/{upload_id}/chunk/{{chunk_number}}")
-}
-
-/// Canonical URI reference of the completion endpoint of `upload_id`.
-#[expect(
-    clippy::single_call_fn,
-    reason = "centralising the completion URI keeps the session links discoverable from one place (`API-037`)"
-)]
-#[must_use]
-pub(crate) fn upload_complete_href(upload_id: NumericID) -> String {
-    format!("/api/v1/asset/upload/{upload_id}/complete")
 }
 
 /// Routes of the asset bounded context.
@@ -191,7 +173,7 @@ mod tests {
     use crate::application::port::complete_upload::CompleteUploadResponse;
     use crate::application::port::complete_upload::CompleteUploadUseCase;
     use crate::application::port::complete_upload::MockCompleteUploadUseCase;
-    use crate::domain::model::asset::DEFAULT_CHUNK_SIZE_BYTES;
+    use crate::domain::model::configuration::DEFAULT_CHUNK_SIZE_BYTES;
     use crate::domain::port::token_provider::TokenProvider as _;
     use crate::infrastructure::inbound::rest::handler::asset::asset_routes;
     use crate::infrastructure::outbound::jwt::token_provider::JwtTokenProvider;

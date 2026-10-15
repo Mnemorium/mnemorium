@@ -5,7 +5,7 @@ use axum::extract::rejection::JsonRejection;
 use axum::extract::rejection::PathRejection;
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use utoipa::ToSchema;
 
 use crate::application::port::patch_credential::PatchCredentialCommand;
@@ -17,7 +17,7 @@ use crate::infrastructure::inbound::rest::app_state::AppState;
 use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 
 /// Payload to change the password behind a credential.
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema)]
 #[non_exhaustive]
 pub struct PatchCredentialRequest {
     /// New password; never returned by the API.

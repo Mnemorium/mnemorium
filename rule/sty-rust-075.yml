@@ -1,0 +1,15 @@
+---
+id: sty-rust-075
+language: Rust
+severity: hint
+message: extract every non-test `use` in an application use case
+rule:
+  all:
+    - kind: use_declaration
+    - not:
+        inside:
+          kind: mod_item
+          stopBy: end
+          follows:
+            kind: attribute_item
+            regex: cfg\(test\)

@@ -1,0 +1,15 @@
+---
+id: sty-rust-069
+language: Rust
+severity: hint
+message: extract outbound port trait declarations for STY-RUST-069
+files:
+  - src/lib/domain/port/**/*.rs
+rule:
+  any:
+    - all:
+        - kind: trait_item
+        - pattern: 'pub trait $TRAIT: $$$BOUNDS { $$$BODY }'
+    - all:
+        - kind: trait_item
+        - pattern: 'pub trait $TRAIT { $$$BODY }'

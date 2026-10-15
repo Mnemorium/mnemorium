@@ -1,0 +1,26 @@
+---
+id: sty-rust-049
+language: Rust
+severity: error
+message: >-
+  a repository adapter holds the unit-of-work transaction
+  (`&'transaction mut Transaction<'static, Sqlite>` for SQLite), never a
+  connection pool
+files:
+  - src/lib/infrastructure/outbound/sqlx/*.rs
+rule:
+  all:
+    - kind: struct_item
+    - has:
+        field: name
+        regex: 'Repository$'
+    - any:
+        - not:
+            has:
+              kind: field_declaration
+              regex: 'Transaction'
+              stopBy: end
+        - has:
+            kind: field_declaration
+            regex: 'Pool'
+            stopBy: end

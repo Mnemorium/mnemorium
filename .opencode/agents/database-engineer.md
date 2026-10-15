@@ -52,12 +52,12 @@ Datastore map (navigation):
 - `src/lib/infrastructure/outbound/sqlx/sqlite3.rs` opens the pool and applies the
   migrations at boot (`PERS-003`, `PERS-004`).
 - `src/lib/infrastructure/outbound/sqlx/unit_of_work.rs` owns the transaction and
-  the per-context repository accessors (`STY-RUST-037`–`048`).
+  the per-context repository accessors (`STY-RUST-032`–`047`).
 - `src/lib/infrastructure/outbound/sqlx/model/` holds the sqlx row models, and
-  `*_repository.rs` implements the repository ports (`STY-RUST-028`–`030`,
-  `STY-RUST-049`–`057`).
+  `*_repository.rs` implements the repository ports (`STY-RUST-023`–`029`,
+  `STY-RUST-044`–`056`).
 - `src/lib/infrastructure/outbound/sqlx/error_mapping.rs` maps `sqlx::Error` into
-  the port error (`STY-RUST-055`).
+  the port error (`STY-RUST-050`).
 - `src/lib/infrastructure/outbound/config/bootstrap.rs` reads the datastore
   settings before the pool exists.
 

@@ -215,6 +215,28 @@ impl From<ErrorKind> for ApiError {
 }
 
 impl ApiError {
+    /// Log a discrete-list rejection (`enum_validation_failed`, `OBS-006`).
+    ///
+    /// The catalog declares `enum_validation_failed` at `warn` with fields
+    /// `field` and `reason`; the rejected value itself never reaches the sink
+    /// (`OBS-003`). A caller maps it to the status its request part implies: a
+    /// body value to `422`, a query value to `400`.
+    pub(crate) fn log_enum_rejection(field: &str) {
+        warn!(
+            target: "security",
+            event = "enum_validation_failed",
+            field = %field,
+            reason = "invalid_value",
+            "rejected a discrete value"
+        );
+    }
+
+    /// Log a discrete-list rejection and map it to a `422`.
+    pub(crate) fn reject_enum(field: &str) -> Self {
+        Self::log_enum_rejection(field);
+        Self::UnprocessableEntity("the request contains an unrecognised value".to_owned())
+    }
+
     /// Log an operator-actionable path-extraction fault and return a generic
     /// `500`.
     fn reject_misconfigured_path(reason: &'static str) -> Self {
@@ -265,18 +287,6 @@ impl From<QueryRejection> for ApiError {
 
 impl From<BytesRejection> for ApiError {
     fn from(rejection: BytesRejection) -> Self {
-        Self::from_bytes_rejection(&rejection)
-    }
-}
-
-impl ApiError {
-    /// Map a failed body buffer to a `413` or a generic `400`.
-    #[expect(
-        clippy::single_call_fn,
-        reason = "the bytes-rejection mapping is named for readability"
-    )]
-    #[must_use]
-    fn from_bytes_rejection(rejection: &BytesRejection) -> Self {
         if rejection.status() == StatusCode::PAYLOAD_TOO_LARGE {
             warn!(
                 target: "security",
@@ -860,6 +870,66 @@ mod tests {
         assert!(
             !logs.contains("input_validation_failed"),
             "a server fault must not be logged as a client-validation event: {logs}"
+        );
+    }
+
+    #[test]
+    fn reject_enum_logs_one_enum_validation_failed() {
+        // Arrange
+        let (buffer, _capture) = capture_logs();
+
+        // Act
+        let (status, _message) = ApiError::reject_enum("role").status_and_message();
+
+        // Assert
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+        let logs = captured_logs(&buffer);
+        assert_eq!(
+            logs.matches("event=\"enum_validation_failed\"").count(),
+            1,
+            "a discrete-list rejection must emit exactly one enum_validation_failed: {logs}"
+        );
+        assert_eq!(
+            logs.matches("WARN").count(),
+            1,
+            "a discrete-list rejection must emit exactly one warn event: {logs}"
+        );
+        assert!(
+            logs.contains("field=role"),
+            "the event must name the rejected field: {logs}"
+        );
+        assert!(
+            logs.contains("reason=\"invalid_value\""),
+            "the event must classify the reason: {logs}"
+        );
+        assert!(
+            logs.contains("security"),
+            "the event must target the reserved security target: {logs}"
+        );
+    }
+
+    #[test]
+    fn log_enum_rejection_logs_one_enum_validation_failed() {
+        // Arrange
+        let (buffer, _capture) = capture_logs();
+
+        // Act
+        ApiError::log_enum_rejection("role");
+
+        // Assert
+        let logs = captured_logs(&buffer);
+        assert_eq!(
+            logs.matches("event=\"enum_validation_failed\"").count(),
+            1,
+            "a discrete-list query rejection must emit exactly one enum_validation_failed: {logs}"
+        );
+        assert!(
+            logs.contains("field=role"),
+            "the event must name the rejected field: {logs}"
+        );
+        assert!(
+            logs.contains("reason=\"invalid_value\""),
+            "the event must classify the reason: {logs}"
         );
     }
 }

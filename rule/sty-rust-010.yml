@@ -1,0 +1,46 @@
+---
+id: sty-rust-010
+language: Rust
+severity: error
+message: >-
+  a response body struct is named <Context>Response and derives at least
+  Serialize and ToSchema
+files:
+  - src/lib/infrastructure/inbound/rest/handler/**/*.rs
+rule:
+  any:
+    # A struct named *Response must derive Serialize and ToSchema. The derive
+    # attribute precedes the struct (a following sibling is unreachable by
+    # `has`), so each required trait is matched with `follows`; `stopBy: end`
+    # skips intervening attributes such as #[non_exhaustive] and doc comments.
+    - all:
+        - kind: struct_item
+        - regex: 'struct \w*Response\b'
+        - not:
+            all:
+              - follows:
+                  kind: attribute_item
+                  regex: 'derive\([^)]*Serialize'
+                  stopBy: end
+              - follows:
+                  kind: attribute_item
+                  regex: 'derive\([^)]*ToSchema'
+                  stopBy: end
+    # A response body returned as Json<T> must be named *Response; the Json<T>
+    # parameter case is a request (STY-RUST-009), so a return is any Json<T>
+    # inside a function that is not inside its parameters.
+    - all:
+        - kind: generic_type
+        - regex: '^Json<'
+        - inside:
+            kind: function_item
+            stopBy: end
+        - not:
+            inside:
+              kind: parameters
+              stopBy: end
+        - not:
+            has:
+              kind: type_identifier
+              regex: 'Response$'
+              stopBy: end

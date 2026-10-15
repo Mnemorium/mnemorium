@@ -35,3 +35,6 @@ events.ndjson
 
 # Security scan artifacts
 .artifacts/
+
+# Personal plans
+.opencode/plan/

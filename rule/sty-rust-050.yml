@@ -1,0 +1,24 @@
+---
+id: sty-rust-050
+language: Rust
+severity: error
+message: >-
+  sqlx types must not cross into the domain or application layers; the
+  sqlx::Error-to-RepositoryError mapping lives in error_mapping.rs
+files:
+  - src/lib/domain/**/*.rs
+  - src/lib/application/**/*.rs
+rule:
+  any:
+    # `use sqlx::...` / `use sqlx::{...}` — an import of a sqlx type.
+    - kind: use_declaration
+      regex: '\bsqlx\b'
+    # `#[sqlx(...)]` / `#[derive(sqlx::Type)]` — a sqlx attribute.
+    - kind: attribute_item
+      regex: '\bsqlx\b'
+    # `sqlx::query(...)` and any other `sqlx::...` value path.
+    - kind: scoped_identifier
+      regex: '^sqlx::'
+    # `sqlx::SqlitePool` and any other `sqlx::...` type path.
+    - kind: scoped_type_identifier
+      regex: '^sqlx::'

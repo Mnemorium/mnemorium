@@ -1,0 +1,29 @@
+---
+id: sty-rust-022
+language: Rust
+severity: error
+message: >-
+  a catch-all `Err` arm over a port error must default to `500`
+  (`ApiError::InternalServerError`); it must never collapse a server-side
+  failure into a misleading `401` (`ApiError::Unauthorized`)
+files:
+  - src/lib/infrastructure/inbound/rest/middleware/*.rs
+rule:
+  kind: match_arm
+  all:
+    - has:
+        field: pattern
+        stopBy: end
+        has:
+          kind: tuple_struct_pattern
+          regex: '^Err\((_|[a-z][a-z0-9_]*)\)$'
+    - any:
+        - has:
+            field: value
+            regex: 'ApiError::Unauthorized'
+            stopBy: end
+        - not:
+            has:
+              field: value
+              regex: 'ApiError::InternalServerError'
+              stopBy: end

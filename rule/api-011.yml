@@ -1,0 +1,15 @@
+---
+id: api-011
+language: Rust
+severity: error
+message: >-
+  Declare `security` on every operation: `security(("bearer_auth" = []))` for an
+  operation guarded by `authenticate`, or `security(())` for a public operation.
+rule:
+  all:
+    - kind: attribute_item
+    - regex: '#\[utoipa::path'
+    - not:
+        any:
+          - regex: 'security\(\s*\(\s*\)\s*\)'
+          - regex: 'security\(\s*\(\s*"bearer_auth"\s*=\s*\[\s*\]\s*\)\s*\)'

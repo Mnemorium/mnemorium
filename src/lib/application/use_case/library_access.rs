@@ -1,8 +1,8 @@
 //! Authorization predicates and the caller load shared by the Library use cases.
 //!
-//! The authorization matrix (`.artifacts/gallery-implementation-plan.md` § 4) is
-//! enforced here, in the application layer: the REST handlers only authenticate
-//! the caller and map the errors this module's callers return.
+//! The authorization decision is enforced here, in the application layer: the
+//! REST handlers only authenticate the caller and map the errors this module's
+//! callers return.
 
 use crate::domain::alias::NumericID;
 use crate::domain::model::gallery::Gallery;
@@ -12,64 +12,12 @@ use crate::domain::port::user_repository::UserFilter;
 use crate::domain::port::user_repository::UserRepository as _;
 use crate::domain::port::user_unit_of_work::UserUnitOfWork;
 
-/// Return whether `caller` may add `media` owned by `owner_id`.
-///
-/// Every caller may use their own media; only the Root Admin may use any media
-/// (`gallery-implementation-plan.md` § 4, own-media gate).
-#[expect(
-    clippy::single_call_fn,
-    reason = "the predicate is named after the rule it enforces"
-)]
-pub(crate) fn can_add_media(caller: &User, owner_id: NumericID) -> bool {
-    caller.is_root_admin() || caller.id() == owner_id
-}
-
-/// Return whether `caller` may add items to `gallery`.
-#[expect(
-    clippy::single_call_fn,
-    reason = "the predicate is named after the rule it enforces"
-)]
-pub(crate) fn can_add_item(gallery: &Gallery, caller: &User) -> bool {
-    can_read_gallery(gallery, caller)
-}
-
-/// Return whether `caller` may delete `gallery`.
-///
-/// Gallery deletion is owner-only: an administrator has no override
-/// (`gallery-implementation-plan.md` § 4).
-#[expect(
-    clippy::single_call_fn,
-    reason = "the predicate is named after the rule it enforces"
-)]
-pub(crate) fn can_delete_gallery(gallery: &Gallery, caller: &User) -> bool {
-    gallery.is_owned_by(caller.id())
-}
-
-/// Return whether `caller` may delete items of `gallery`.
-#[expect(
-    clippy::single_call_fn,
-    reason = "the predicate is named after the rule it enforces"
-)]
-pub(crate) fn can_delete_item(gallery: &Gallery, caller: &User) -> bool {
-    can_read_gallery(gallery, caller)
-}
-
 /// Return whether `caller` may read `gallery`.
 ///
 /// Any authenticated caller may read a public gallery; a private gallery is
-/// readable by its owner or the Root Admin
-/// (`gallery-implementation-plan.md` § 4).
+/// readable by its owner or the Root Admin.
 pub(crate) fn can_read_gallery(gallery: &Gallery, caller: &User) -> bool {
     gallery.is_public() || gallery.is_owned_by(caller.id()) || caller.is_root_admin()
-}
-
-/// Return whether `gallery` is the seeded, undeletable system gallery.
-#[expect(
-    clippy::single_call_fn,
-    reason = "the predicate is named after the rule it enforces"
-)]
-pub(crate) fn is_default_gallery(gallery: &Gallery) -> bool {
-    gallery.is_system()
 }
 
 /// Load the authenticated caller, or `None` when the account no longer exists.
@@ -104,8 +52,9 @@ mod tests {
     use crate::domain::port::error::RepositoryError;
     use crate::domain::port::file_repository::MockFileRepository;
     use crate::domain::port::gallery_repository::MockGalleryRepository;
-    use crate::domain::port::media_repository::MockMediaRepository;
+    use crate::domain::port::image_repository::MockImageRepository;
     use crate::domain::port::user_repository::MockUserRepository;
+    use crate::domain::port::video_repository::MockVideoRepository;
     use crate::test_helpers::gallery_unit_of_work;
 
     use super::load_caller;
@@ -121,7 +70,8 @@ mod tests {
             .return_once(move |_| Box::pin(async move { Ok(vec![caller]) }));
         let (mut unit_of_work, _, _) = gallery_unit_of_work(
             MockGalleryRepository::new(),
-            MockMediaRepository::new(),
+            MockImageRepository::new(),
+            MockVideoRepository::new(),
             users,
             MockFileRepository::new(),
         );
@@ -144,7 +94,8 @@ mod tests {
             .returning(|_| Box::pin(async { Ok(Vec::new()) }));
         let (mut unit_of_work, _, _) = gallery_unit_of_work(
             MockGalleryRepository::new(),
-            MockMediaRepository::new(),
+            MockImageRepository::new(),
+            MockVideoRepository::new(),
             users,
             MockFileRepository::new(),
         );
@@ -167,7 +118,8 @@ mod tests {
             .returning(|_| Box::pin(async { Err(RepositoryError::OperationFailed) }));
         let (mut unit_of_work, _, _) = gallery_unit_of_work(
             MockGalleryRepository::new(),
-            MockMediaRepository::new(),
+            MockImageRepository::new(),
+            MockVideoRepository::new(),
             users,
             MockFileRepository::new(),
         );

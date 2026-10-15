@@ -1,0 +1,26 @@
+---
+id: api-038
+language: Rust
+severity: hint
+message: >-
+  extract a struct that carries a HAL navigation field, for API-038
+rule:
+  all:
+    - kind: struct_item
+    - pattern: 'pub struct $NAME { $$$FIELDS }'
+    - any:
+        - has:
+            kind: attribute_item
+            regex: 'serde\([^)]*rename[[:space:]]*=[[:space:]]*"(_links|_embedded)"'
+            stopBy: end
+        - has:
+            kind: field_declaration
+            regex: '(^|[[:space:]])pub[[:space:]]+(_links|_embedded)[[:space:]]*:'
+            stopBy: end
+  not:
+    inside:
+      kind: mod_item
+      stopBy: end
+      follows:
+        kind: attribute_item
+        regex: cfg\(test\)

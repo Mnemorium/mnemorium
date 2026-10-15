@@ -1,0 +1,10 @@
+---
+id: sty-rust-043
+language: Rust
+severity: hint
+message: extract the trait declarations of the unit-of-work port file
+files:
+  - src/lib/domain/port/unit_of_work.rs
+rule:
+  kind: trait_item
+  pattern: pub trait $NAME

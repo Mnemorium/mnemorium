@@ -1,0 +1,27 @@
+---
+id: api-025
+language: Rust
+severity: error
+message: >-
+  a response row that declares a payload media type must declare its body
+  schema: add `body = <Type>` inside the `responses(...)` row
+rule:
+  all:
+    - kind: token_tree
+    - inside:
+        kind: token_tree
+        follows:
+          kind: identifier
+          regex: "^responses$"
+    - inside:
+        kind: attribute_item
+        regex: '#\[utoipa::path'
+        stopBy: end
+    - has:
+        kind: identifier
+        regex: "^content_type$"
+    - not:
+        has:
+          kind: identifier
+          regex: "^body$"
+          stopBy: end

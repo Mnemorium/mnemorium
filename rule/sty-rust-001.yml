@@ -1,0 +1,37 @@
+---
+id: sty-rust-001
+language: Rust
+severity: hint
+message: extract single-use extraction exemptions for STY-RUST-001
+rule:
+  all:
+    - kind: attribute_item
+    - regex: "single_call_fn"
+    - precedes:
+        kind: function_item
+        has:
+          field: name
+          pattern: $FUNC
+        stopBy:
+          not:
+            kind: attribute_item
+    - not:
+        any:
+          - follows:
+              kind: attribute_item
+              regex: 'cfg\(test\)'
+          - inside:
+              kind: mod_item
+              stopBy: end
+              follows:
+                kind: attribute_item
+                regex: 'cfg\(test\)'
+          - inside:
+              kind: function_item
+              stopBy: end
+              follows:
+                kind: attribute_item
+                regex: 'cfg\(test\)'
+                stopBy:
+                  not:
+                    kind: attribute_item

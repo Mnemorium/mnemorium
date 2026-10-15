@@ -1,0 +1,8 @@
+---
+id: test-013
+language: Rust
+severity: hint
+message: >-
+  application use-case accessor an endpoint handler drives, for TEST-013
+rule:
+  pattern: state.$FACTORY().$ACCESSOR().execute($$$ARGS)

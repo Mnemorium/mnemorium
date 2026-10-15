@@ -1,0 +1,19 @@
+---
+id: sty-rust-012
+language: Rust
+severity: hint
+message: >-
+  ApiError is declared in
+  src/lib/infrastructure/inbound/rest/api_error.rs and is not derived with
+  thiserror
+files:
+  - src/**/*.rs
+rule:
+  all:
+    - kind: enum_item
+    - regex: 'enum ApiError\b'
+    - not:
+        follows:
+          kind: attribute_item
+          regex: 'thiserror'
+          stopBy: end

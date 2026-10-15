@@ -81,35 +81,13 @@
       pass_filenames = false; # It work on a package basis
       files = "\\.rs$";
     };
-    domain-model-tests = {
+    rule-enforcer = {
       enable = true;
-      name = "No tests in domain/model";
-      entry = "script/no_domain_model_tests.sh";
-      language = "system";
-      pass_filenames = true;
-      files = "^src/lib/domain/model/.*\\.rs$";
-    };
-    outward-imports = {
-      enable = true;
-      name = "No outward imports";
-      entry = "script/no_outward_imports.sh";
+      name = "Rulebook checks";
+      entry = "script/rule_enforcer.sh check";
       language = "system";
       pass_filenames = false;
-    };
-    declaration-order = {
-      enable = true;
-      name = "Repository port declaration order";
-      entry = "script/check_repository_declaration_order.sh";
-      language = "system";
-      pass_filenames = true;
-      files = "^src/lib/domain/port/.*_repository\\.rs$";
-    };
-    rest-handler-files = {
-      enable = true;
-      name = "Endpoint-only REST handler files";
-      entry = "script/check_rest_handler_files.sh";
-      language = "system";
-      pass_filenames = false;
+      files = "(\\.rs$|\\.md$|^migrations/.*\\.sql$|^rule/.*|^rule_enforcer\\.yaml$|^script/rule_enforcer\\.sh$)";
     };
     # === repository governance (GOV-001)
     scopes = {

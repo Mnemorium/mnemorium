@@ -1,5 +1,7 @@
+use axum::http::StatusCode;
 use axum::{body::Body, http::Request, middleware::Next, response::Response};
 use tracing::debug;
+use tracing::warn;
 
 pub async fn tracing(req: Request<Body>, next: Next) -> Response {
     let method = req.method().clone();
@@ -10,6 +12,20 @@ pub async fn tracing(req: Request<Body>, next: Next) -> Response {
     debug!(method = %method, path = %path, "request");
 
     let response = next.run(req).await;
+
+    // A method the route does not support is a reviewable security event
+    // (`OBS-006`): the catalog declares `unexpected_http_method` at `warn` with
+    // fields `method` and `path`, and the path only, never the query string
+    // (`OBS-003`).
+    if response.status() == StatusCode::METHOD_NOT_ALLOWED {
+        warn!(
+            target: "security",
+            event = "unexpected_http_method",
+            method = %method,
+            path = %path,
+            "rejected an unsupported HTTP method"
+        );
+    }
 
     debug!(status = %response.status(), path = %path, "response");
 
@@ -80,10 +96,6 @@ mod tests {
     /// The guard must stay alive for the whole probe: `#[tokio::test]` runs on a
     /// current-thread runtime, so the awaited request is polled on this thread
     /// and sees the scoped default dispatcher.
-    #[expect(
-        clippy::single_call_fn,
-        reason = "the module-local capture helper mirrors the pattern the other middleware suites use"
-    )]
     fn capture_logs() -> (Arc<Mutex<Vec<u8>>>, DefaultGuard) {
         let buffer = Arc::new(Mutex::new(Vec::new()));
         let subscriber = tracing_subscriber::registry().with(
@@ -96,20 +108,12 @@ mod tests {
     }
 
     /// Read the captured bytes back as a lossy UTF-8 string.
-    #[expect(
-        clippy::single_call_fn,
-        reason = "the module-local read-back helper mirrors the pattern the other middleware suites use"
-    )]
     fn captured_logs(buffer: &Mutex<Vec<u8>>) -> String {
         let bytes = buffer.lock().unwrap_or_else(PoisonError::into_inner);
         String::from_utf8_lossy(bytes.as_slice()).into_owned()
     }
 
     /// Router running the trace middleware over a trivial success route.
-    #[expect(
-        clippy::single_call_fn,
-        reason = "the probe router exists only for the one middleware test"
-    )]
     fn router() -> Router {
         Router::new()
             .route("/probe", get(|| async { "ok" }))
@@ -134,6 +138,46 @@ mod tests {
         assert!(
             logs.contains("/probe"),
             "the request path must reach the sink: {logs}"
+        );
+        assert!(
+            !logs.contains("LEAK_SENTINEL"),
+            "the query string must never reach the sink: {logs}"
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn tracing_logs_unexpected_http_method_on_method_not_allowed()
+    -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let (buffer, _capture) = capture_logs();
+        let request = Request::builder()
+            .method("POST")
+            .uri("/probe?token=LEAK_SENTINEL")
+            .body(Body::empty())?;
+
+        // Act
+        let response = router().oneshot(request).await?;
+
+        // Assert
+        assert_eq!(response.status(), StatusCode::METHOD_NOT_ALLOWED);
+        let logs = captured_logs(&buffer);
+        assert_eq!(
+            logs.matches("event=\"unexpected_http_method\"").count(),
+            1,
+            "an unsupported method must emit exactly one unexpected_http_method: {logs}"
+        );
+        assert!(
+            logs.contains("WARN"),
+            "the event must be emitted at warn: {logs}"
+        );
+        assert!(
+            logs.contains("method=POST"),
+            "the event must carry the method: {logs}"
+        );
+        assert!(
+            logs.contains("path=/probe"),
+            "the event must carry the path: {logs}"
         );
         assert!(
             !logs.contains("LEAK_SENTINEL"),

@@ -1,23 +1,23 @@
 use sqlx::Sqlite;
 use sqlx::Transaction;
 
-use crate::domain::model::asset::Asset;
-use crate::domain::model::asset::AssetStorage;
-use crate::domain::model::asset::AssetUpload;
+use crate::domain::model::configuration::Asset;
+use crate::domain::model::configuration::AssetStorage;
+use crate::domain::model::configuration::AssetUpload;
+use crate::domain::model::configuration::ClientIpHeader;
 use crate::domain::model::configuration::Configuration;
-use crate::domain::model::jwt::Jwt;
-use crate::domain::model::logging::Logging;
-use crate::domain::model::logging::Rotation;
-use crate::domain::model::persistence::Persistence;
-use crate::domain::model::rate_limit::ClientIpHeader;
-use crate::domain::model::rate_limit::RateLimit;
-use crate::domain::model::rate_limit::parse_trusted_proxies;
-use crate::domain::model::security::Security;
-use crate::domain::model::sqlite3::Sqlite3;
+use crate::domain::model::configuration::Jwt;
+use crate::domain::model::configuration::Logging;
+use crate::domain::model::configuration::Persistence;
+use crate::domain::model::configuration::RateLimit;
+use crate::domain::model::configuration::Rotation;
+use crate::domain::model::configuration::Security;
+use crate::domain::model::configuration::Sqlite3;
+use crate::domain::model::configuration::parse_trusted_proxies;
 use crate::domain::port::configuration_repository::ConfigurationRepository;
 use crate::domain::port::error::RepositoryError;
 use crate::infrastructure::outbound::sqlx::model::configuration::Configuration as SqlxConfiguration;
-use crate::infrastructure::outbound::sqlx::model::configuration::Rotation as SqlxRotation;
+use crate::infrastructure::outbound::sqlx::model::configuration::LogRotation;
 
 /// Repository persisting the configuration singleton, backed by a `SQLite`
 /// transaction.
@@ -40,10 +40,10 @@ impl ConfigurationRepository for SqlxConfigurationRepository<'_> {
         configuration: Configuration,
     ) -> Result<Configuration, RepositoryError> {
         let log_rotation = match configuration.logging().rotation() {
-            Rotation::Daily => SqlxRotation::Daily,
-            Rotation::Hourly => SqlxRotation::Hourly,
-            Rotation::Minutely => SqlxRotation::Minutely,
-            Rotation::Never => SqlxRotation::Never,
+            Rotation::Daily => LogRotation::Daily,
+            Rotation::Hourly => LogRotation::Hourly,
+            Rotation::Minutely => LogRotation::Minutely,
+            Rotation::Never => LogRotation::Never,
         };
         let row = sqlx::query_as::<_, SqlxConfiguration>(
             "INSERT INTO configuration (
@@ -154,10 +154,10 @@ impl ConfigurationRepository for SqlxConfigurationRepository<'_> {
         configuration: Configuration,
     ) -> Result<Configuration, RepositoryError> {
         let log_rotation = match configuration.logging().rotation() {
-            Rotation::Daily => SqlxRotation::Daily,
-            Rotation::Hourly => SqlxRotation::Hourly,
-            Rotation::Minutely => SqlxRotation::Minutely,
-            Rotation::Never => SqlxRotation::Never,
+            Rotation::Daily => LogRotation::Daily,
+            Rotation::Hourly => LogRotation::Hourly,
+            Rotation::Minutely => LogRotation::Minutely,
+            Rotation::Never => LogRotation::Never,
         };
         let row = sqlx::query_as::<_, SqlxConfiguration>(
             "INSERT INTO configuration (
@@ -369,10 +369,10 @@ fn domain_configuration(row: SqlxConfiguration) -> Result<Configuration, Reposit
         )
     })?;
     let rotation = match row.log_rotation {
-        SqlxRotation::Daily => Rotation::Daily,
-        SqlxRotation::Hourly => Rotation::Hourly,
-        SqlxRotation::Minutely => Rotation::Minutely,
-        SqlxRotation::Never => Rotation::Never,
+        LogRotation::Daily => Rotation::Daily,
+        LogRotation::Hourly => Rotation::Hourly,
+        LogRotation::Minutely => Rotation::Minutely,
+        LogRotation::Never => Rotation::Never,
     };
     let logging = Logging::try_new(row.is_log_ansi, row.log_level, log_max_files, rotation)
         .map_err(|_| RepositoryError::DataIntegrityViolation)?;
@@ -415,18 +415,18 @@ mod tests {
     use sqlx::sqlite::SqlitePoolOptions;
     use std::net::IpAddr;
 
-    use crate::domain::model::asset::Asset;
-    use crate::domain::model::asset::AssetStorage;
-    use crate::domain::model::asset::AssetUpload;
+    use crate::domain::model::configuration::Asset;
+    use crate::domain::model::configuration::AssetStorage;
+    use crate::domain::model::configuration::AssetUpload;
+    use crate::domain::model::configuration::ClientIpHeader;
     use crate::domain::model::configuration::Configuration;
-    use crate::domain::model::jwt::Jwt;
-    use crate::domain::model::logging::Logging;
-    use crate::domain::model::logging::Rotation;
-    use crate::domain::model::persistence::Persistence;
-    use crate::domain::model::rate_limit::ClientIpHeader;
-    use crate::domain::model::rate_limit::RateLimit;
-    use crate::domain::model::security::Security;
-    use crate::domain::model::sqlite3::Sqlite3;
+    use crate::domain::model::configuration::Jwt;
+    use crate::domain::model::configuration::Logging;
+    use crate::domain::model::configuration::Persistence;
+    use crate::domain::model::configuration::RateLimit;
+    use crate::domain::model::configuration::Rotation;
+    use crate::domain::model::configuration::Security;
+    use crate::domain::model::configuration::Sqlite3;
     use crate::domain::port::configuration_repository::ConfigurationRepository as _;
     use crate::domain::port::error::RepositoryError;
 

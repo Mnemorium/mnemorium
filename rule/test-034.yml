@@ -1,0 +1,32 @@
+---
+id: test-034
+language: Rust
+severity: error
+message: >-
+  a SQLite test pool is not capped at one connection: build it with
+  `SqlitePoolOptions::new().max_connections(1)` (TEST-034)
+rule:
+  all:
+    # The pool-options constructor, named short (`SqlitePoolOptions::new`) or
+    # fully qualified (`sqlx::sqlite::SqlitePoolOptions::new`).
+    - kind: call_expression
+    - has:
+        field: function
+        kind: scoped_identifier
+        regex: '(^|::)SqlitePoolOptions::new$'
+    # Only a `#[cfg(test)]` module is in scope: the production `init_db` pool is
+    # configurable by design and never capped at one connection.
+    - inside:
+        kind: mod_item
+        stopBy: end
+        follows:
+          kind: attribute_item
+          regex: 'cfg\(test\)'
+    # ...and the enclosing chain must not carry `.max_connections(1)`.
+    - not:
+        inside:
+          kind: call_expression
+          stopBy: end
+          has:
+            pattern: $R.max_connections(1)
+            stopBy: end

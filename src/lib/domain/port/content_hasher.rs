@@ -43,6 +43,7 @@ mod tests {
 
     #[test]
     fn content_hasher_session_is_send_and_sync() {
+        // Act & Assert
         assert_send_sync::<dyn ContentHasherSession>();
     }
 }

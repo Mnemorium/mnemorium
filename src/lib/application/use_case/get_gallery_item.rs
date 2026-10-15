@@ -64,7 +64,7 @@ where
                 let gallery = unit_of_work
                     .galleries()
                     .search(&GalleryFilter {
-                        id: Some(command.gallery_id()),
+                        gallery_id: Some(command.gallery_id()),
                         ..GalleryFilter::default()
                     })
                     .await
@@ -82,7 +82,7 @@ where
                     .galleries()
                     .search_items(&GalleryItemFilter {
                         gallery_id: Some(command.gallery_id()),
-                        id: Some(command.gallery_item_id()),
+                        gallery_item_id: Some(command.gallery_item_id()),
                         ..GalleryItemFilter::default()
                     })
                     .await
@@ -144,8 +144,9 @@ mod tests {
     use crate::domain::port::file_repository::MockFileRepository;
     use crate::domain::port::gallery_repository::GalleryItemDetail;
     use crate::domain::port::gallery_repository::MockGalleryRepository;
-    use crate::domain::port::media_repository::MockMediaRepository;
+    use crate::domain::port::image_repository::MockImageRepository;
     use crate::domain::port::user_repository::MockUserRepository;
+    use crate::domain::port::video_repository::MockVideoRepository;
     use crate::test_helpers::GalleryFactoryHarness;
     use crate::test_helpers::TestFactory;
     use crate::test_helpers::gallery_factory;
@@ -192,7 +193,8 @@ mod tests {
     ) -> GalleryFactoryHarness {
         gallery_factory(
             galleries,
-            MockMediaRepository::new(),
+            MockImageRepository::new(),
+            MockVideoRepository::new(),
             users,
             MockFileRepository::new(),
         )
@@ -217,7 +219,7 @@ mod tests {
         galleries
             .expect_search()
             .times(1)
-            .withf(move |filter| filter.id == Some(gallery_id))
+            .withf(move |filter| filter.gallery_id == Some(gallery_id))
             .return_once(move |_| Box::pin(async move { Ok(vec![gallery]) }));
     }
 
@@ -232,7 +234,7 @@ mod tests {
         galleries
             .expect_search_items()
             .times(1)
-            .withf(|filter| filter.gallery_id == Some(3) && filter.id == Some(42))
+            .withf(|filter| filter.gallery_id == Some(3) && filter.gallery_item_id == Some(42))
             .return_once(move |_| {
                 let value = found.clone();
                 Box::pin(async move { Ok(vec![value]) })

@@ -1,0 +1,36 @@
+---
+id: sty-rust-057
+language: Rust
+severity: error
+message: >-
+  declare the response object second in a use-case port file: after the command
+  object and before the error enum and the use-case trait
+files:
+  - src/lib/application/port/**/*.rs
+rule:
+  all:
+    - kind: struct_item
+    - regex: '^pub struct \w+Response\b'
+    - not:
+        inside:
+          kind: mod_item
+          stopBy: end
+          follows:
+            kind: attribute_item
+            regex: cfg\(test\)
+    - any:
+        # A response declared after the error enum is not second.
+        - follows:
+            kind: enum_item
+            regex: '^pub enum \w+Error\b'
+            stopBy: end
+        # A response declared after the use-case trait is not second.
+        - follows:
+            kind: trait_item
+            regex: '^pub trait \w+UseCase\b'
+            stopBy: end
+        # A response declared before the command object is not second.
+        - precedes:
+            kind: struct_item
+            regex: '^pub struct \w+Command\b'
+            stopBy: end

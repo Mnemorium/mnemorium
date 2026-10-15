@@ -1,0 +1,9 @@
+---
+id: obs-006
+language: Rust
+severity: hint
+message: >-
+  extract every security-target log emission, for OBS-006
+rule:
+  kind: macro_invocation
+  regex: '(?s)target:\s*"security"'

@@ -1,0 +1,33 @@
+---
+id: api-032
+language: Rust
+severity: hint
+message: >-
+  extract HAL representation response rows and every serde-renamed `_links` /
+  `self` struct field, for API-032
+rule:
+  any:
+    - all:
+        - kind: token_tree
+        - inside:
+            kind: token_tree
+            follows:
+              kind: identifier
+              regex: "^responses$"
+        - inside:
+            kind: attribute_item
+            regex: '#\[utoipa::path'
+            stopBy: end
+    - all:
+        - kind: field_declaration
+        - pattern: 'pub $FIELD: $TYPE'
+        - follows:
+            kind: attribute_item
+            pattern: '#[serde(rename = $RENAME)]'
+            regex: 'serde\(rename = "(_links|self)"\)'
+        - inside:
+            kind: field_declaration_list
+            inside:
+              kind: struct_item
+              pattern: 'pub struct $REP { $$$FIELDS }'
+              stopBy: end

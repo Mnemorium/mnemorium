@@ -1,0 +1,24 @@
+---
+id: sty-rust-024
+language: Rust
+severity: error
+message: >-
+  an enum deriving sqlx::Type declares
+  #[sqlx(rename_all = "UPPERCASE")] to match the SQL CHECK constraint strings
+files:
+  - src/lib/infrastructure/outbound/sqlx/model/*.rs
+rule:
+  all:
+    - kind: enum_item
+    # The derive attribute precedes the enum as a sibling, so `follows` — not
+    # `has` — reaches it; `stopBy: end` skips intervening attributes such as
+    # #[non_exhaustive] and doc comments.
+    - follows:
+        kind: attribute_item
+        regex: 'derive\([^)]*sqlx::Type'
+        stopBy: end
+    - not:
+        follows:
+          kind: attribute_item
+          regex: 'sqlx\(rename_all\s*=\s*"UPPERCASE"\)'
+          stopBy: end

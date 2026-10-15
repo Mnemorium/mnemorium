@@ -1,0 +1,20 @@
+---
+id: sty-rust-041
+language: Rust
+severity: error
+message: >-
+  a unit-of-work accessor must borrow `&mut self` so repositories are requested
+  sequentially, never held two at a time
+rule:
+  all:
+    - any:
+        - kind: function_item
+        - kind: function_signature_item
+    - has:
+        field: return_type
+        regex: "^impl .*Repository [+] '_$"
+    - has:
+        field: parameters
+        has:
+          kind: self_parameter
+          regex: '^&self$'

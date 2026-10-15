@@ -85,6 +85,12 @@ See `docs/development/TechnicalDesign.md` § 9 (Logging & Observability),
 `OBS-001`–`OBS-008` for what the server logs, from which layer, at what severity,
 and what must never reach a log sink.
 
+## Security
+
+See `docs/development/TechnicalDesign.md` § 10 (Security), `SEC-001` for how a
+struct carrying a secret (password, hash, key or token) crosses the HTTP
+boundary.
+
 ## Special Rules
 
 - Respect the hexagonal dependency direction: `domain` ← `application` ←

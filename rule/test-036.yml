@@ -1,0 +1,36 @@
+---
+id: test-036
+language: Rust
+severity: hint
+message: >-
+  extract the `wiremock` stub and any inline canned response of an
+  external-service test, for TEST-036
+files:
+  - src/lib/infrastructure/outbound/**/*.rs
+rule:
+  all:
+    - inside:
+        kind: mod_item
+        stopBy: end
+        follows:
+          kind: attribute_item
+          regex: 'cfg\([^)]*\btest\b'
+    - any:
+        # The stub the rule requires: the wiremock mock server.
+        - pattern: MockServer::start()
+        # A canned response built from an inline literal: the payload must be
+        # loaded from a golden file instead.
+        - pattern: $RECV.set_body_string($INLINE)
+        - pattern: $RECV.set_body_raw($INLINE, $TYPE)
+        - pattern: $RECV.set_body_bytes($INLINE)
+        - pattern: $RECV.set_body_json($INLINE)
+constraints:
+  INLINE:
+    any:
+      - regex: '^\s*".+"'
+      - regex: '^\s*r#".+"#'
+      - regex: '^\s*b".+"'
+      - regex: '^\s*br#".+"#'
+      - regex: '^\s*(serde_json::)?json!\('
+      - regex: '^\s*(std::)?format!\('
+      - regex: '^\s*(std::string::)?String::from\('
