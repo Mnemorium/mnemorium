@@ -9,6 +9,7 @@ use mnemorium::application::port::ensure_storage_directories::EnsureStorageDirec
 use mnemorium::application::port::ensure_storage_directories::EnsureStorageDirectoriesUseCase as _;
 use mnemorium::application::port::initialize_root_admin::InitializeRootAdminUseCase as _;
 use mnemorium::application::port::load_configuration::LoadConfigurationUseCase as _;
+use mnemorium::application::security_event;
 use mnemorium::application::use_case::ensure_storage_directories::EnsureStorageDirectories;
 use mnemorium::application::use_case::initialize_root_admin::InitializeRootAdmin;
 use mnemorium::application::use_case::load_configuration::LoadConfiguration;
@@ -49,10 +50,22 @@ async fn main() -> Result<(), anyhow::Error> {
         configuration_source,
         Arc::new(ChaChaSecretGenerator::new()),
     ));
-    let loaded_configuration = load_configuration.execute().await?.configuration().clone();
-    let configuration = Arc::new(ArcSwap::from_pointee(loaded_configuration));
+    let loaded_configuration = load_configuration.execute().await?;
+    let configuration_created = loaded_configuration.created();
+    let configuration = Arc::new(ArcSwap::from_pointee(
+        loaded_configuration.configuration().clone(),
+    ));
 
     let _log_guard = logging::setup(configuration.load().logging())?;
+
+    // The first-boot lifecycle events are emitted here, after `logging::setup`,
+    // so they reach a sink (`#187`, `OBS-006`); the use case runs before the
+    // subscriber exists and only reports that it created the singleton.
+    if configuration_created {
+        security_event::system_object("configuration", "create");
+        security_event::secret_initialized("pepper");
+        security_event::secret_initialized("jwt_secret");
+    }
 
     // The bootstrap sizes the pool before the configuration singleton is
     // reachable, so `max_connections` is a startup-only setting and cannot be

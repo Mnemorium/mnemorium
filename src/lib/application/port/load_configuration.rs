@@ -9,6 +9,12 @@ use crate::domain::model::configuration::Configuration;
 pub struct LoadConfigurationResponse {
     /// The loaded configuration.
     configuration: Configuration,
+    /// Whether this call created the configuration singleton.
+    ///
+    /// On first boot the singleton is created with freshly generated secrets,
+    /// so the composition root emits `system_object` and `secret_initialized`
+    /// after the logging subscriber is installed (`OBS-006`).
+    created: bool,
 }
 
 impl LoadConfigurationResponse {
@@ -18,10 +24,19 @@ impl LoadConfigurationResponse {
         &self.configuration
     }
 
+    /// Return whether this call created the configuration singleton.
+    #[must_use]
+    pub fn created(&self) -> bool {
+        self.created
+    }
+
     /// Create a new load response.
     #[must_use]
-    pub fn new(configuration: Configuration) -> Self {
-        Self { configuration }
+    pub fn new(configuration: Configuration, created: bool) -> Self {
+        Self {
+            configuration,
+            created,
+        }
     }
 }
 
