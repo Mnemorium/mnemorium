@@ -267,8 +267,23 @@ impl From<QueryRejection> for ApiError {
         // The framework rejection text carries the offending field, the
         // expected type and parser detail, so only its classification is logged
         // (`OBS-003`) and the client receives a stable, server-authored message
-        // (`API-040`). The catalogued event carries its declared field set
-        // (`OBS-006`): `field` and `reason` for `input_validation_failed`.
+        // (`API-040`). A size-limit rejection is classified before the malformed
+        // value it is not (`OBS-006`), so a catalog-driven consumer can tell a
+        // too-large query string from an invalid one: the catalogued event
+        // carries its declared field set — `source` and `reason` for
+        // `limit_exceeded`, `field` and `reason` for `input_validation_failed`.
+        if rejection.status() == StatusCode::PAYLOAD_TOO_LARGE {
+            warn!(
+                target: "security",
+                event = "limit_exceeded",
+                source = "query",
+                reason = "size_limit_exceeded",
+                "rejected an oversized request query string"
+            );
+            return Self::PayloadTooLarge(
+                "the request query string exceeds the maximum allowed size".to_owned(),
+            );
+        }
         warn!(
             target: "security",
             event = "input_validation_failed",
@@ -276,11 +291,6 @@ impl From<QueryRejection> for ApiError {
             reason = "invalid_value",
             "rejected a request query string"
         );
-        if rejection.status() == StatusCode::PAYLOAD_TOO_LARGE {
-            return Self::PayloadTooLarge(
-                "the request query string exceeds the maximum allowed size".to_owned(),
-            );
-        }
         Self::BadRequest("the request query string is invalid".to_owned())
     }
 }
@@ -349,6 +359,7 @@ mod tests {
     use axum::body::Body;
     use axum::body::Bytes;
     use axum::extract::DefaultBodyLimit;
+    use axum::extract::Query;
     use axum::extract::Request;
     use axum::extract::State;
     use axum::extract::path::ErrorKind;
@@ -357,6 +368,7 @@ mod tests {
     use axum::extract::rejection::MissingPathParams;
     use axum::extract::rejection::PathRejection;
     use axum::http::StatusCode;
+    use axum::http::Uri;
     use axum::http::header;
     use axum::response::Response;
     use axum::routing::post;
@@ -386,6 +398,15 @@ mod tests {
     /// `JsonDataError` rather than a `JsonSyntaxError`.
     #[derive(serde::Deserialize, serde::Serialize)]
     struct Probe {
+        count: u64,
+    }
+
+    /// Query schema the query rejection is exercised against.
+    ///
+    /// The field is never read: it exists only so a malformed query yields a
+    /// `FailedToDeserializeQueryString` rather than a missing-field error.
+    #[derive(serde::Deserialize, serde::Serialize)]
+    struct QueryProbe {
         count: u64,
     }
 
@@ -931,5 +952,60 @@ mod tests {
             logs.contains("reason=\"invalid_value\""),
             "the event must classify the reason: {logs}"
         );
+    }
+
+    #[tokio::test]
+    async fn query_rejection_invalid_value_logs_one_input_validation_failed()
+    -> Result<(), Box<dyn Error>> {
+        // Arrange: a `QueryRejection` cannot be constructed directly, so the
+        // test obtains a real one from the extractor's own entry point. The
+        // `Query` extractor rejects only with `FailedToDeserializeQueryString`
+        // (`400 Bad Request`), so the size-limit arm of the `From<QueryRejection>`
+        // impl is a defensive classification that no extractor reaches today.
+        let (buffer, _capture) = capture_logs();
+        let uri: Uri = "/probe?count=LEAK_SENTINEL".parse()?;
+
+        // Act
+        let rejection = Query::<QueryProbe>::try_from_uri(&uri)
+            .err()
+            .ok_or_else(|| "a malformed query must be rejected".to_owned())?;
+        let (status, message) = ApiError::from(rejection).status_and_message();
+
+        // Assert: the client message is server-authored and stable (`API-040`),
+        // and the malformed value never reaches the sink (`OBS-003`).
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(message, "the request query string is invalid");
+        let logs = captured_logs(&buffer);
+        assert_eq!(
+            logs.matches("WARN").count(),
+            1,
+            "an invalid query string must emit exactly one warn event: {logs}"
+        );
+        assert_eq!(
+            logs.matches("event=\"input_validation_failed\"").count(),
+            1,
+            "an invalid query string must emit exactly one input_validation_failed event: {logs}"
+        );
+        assert!(
+            !logs.contains("limit_exceeded"),
+            "an invalid query string must not be classified as a size-limit rejection: {logs}"
+        );
+        assert!(
+            logs.contains("security"),
+            "the event must target the reserved security target: {logs}"
+        );
+        assert!(
+            logs.contains("field=\"query\""),
+            "the event must identify the query field: {logs}"
+        );
+        assert!(
+            logs.contains("reason=\"invalid_value\""),
+            "the event must classify the reason as an invalid value: {logs}"
+        );
+        assert!(
+            !logs.contains("LEAK_SENTINEL"),
+            "the event must not echo the rejected value: {logs}"
+        );
+        Ok(())
     }
 }

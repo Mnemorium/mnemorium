@@ -8,11 +8,13 @@ use axum::middleware;
 use axum::routing::get;
 use axum::routing::patch;
 use serde::Serialize;
+use tracing::warn;
 use utoipa::ToSchema;
 
 use crate::application::port::get_user::GetUserResponse as GetUserResponseData;
 use crate::domain::alias::NumericID;
 use crate::domain::model::user::Role;
+use crate::infrastructure::inbound::rest::api_error::ApiError;
 use crate::infrastructure::inbound::rest::app_state::AppState;
 use crate::infrastructure::inbound::rest::hal::SelfLinks;
 use crate::infrastructure::inbound::rest::handler::user::get_me::get_me;
@@ -60,6 +62,23 @@ impl From<GetUserResponseData> for GetUserResponse {
 #[must_use]
 pub(crate) fn user_self_href(id: NumericID) -> String {
     format!("/api/v1/user/{id}")
+}
+
+/// Parse a user identifier from a path segment.
+pub(crate) fn parse_user_id(value: &str) -> Result<NumericID, ApiError> {
+    value.parse::<NumericID>().map_err(|_| {
+        // The malformed value and the parser detail never reach the log
+        // (`OBS-003`); only the classification and its declared fields do
+        // (`OBS-006`).
+        warn!(
+            target: "security",
+            event = "input_validation_failed",
+            field = "user_id",
+            reason = "invalid_identifier",
+            "rejected a malformed user identifier"
+        );
+        ApiError::BadRequest("invalid user identifier".to_owned())
+    })
 }
 
 /// Routes of the user bounded context.
