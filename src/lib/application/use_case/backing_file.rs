@@ -172,42 +172,6 @@ mod tests {
         )?)
     }
 
-    /// Build an image referencing `file_id`.
-    #[expect(
-        clippy::single_call_fn,
-        reason = "the referencing fixture is named for readability"
-    )]
-    fn image(image_id: i64, file_id: i64) -> Result<Image, Box<dyn Error>> {
-        Ok(Image::try_new(
-            image_id,
-            "photo.png".to_owned(),
-            10,
-            10,
-            Orientation::Square,
-            NaiveDate::from_ymd_opt(2026, 10, 16).ok_or("invalid fixture date")?,
-            file_id,
-        )?)
-    }
-
-    /// Build a video referencing `file_id`.
-    #[expect(
-        clippy::single_call_fn,
-        reason = "the referencing fixture is named for readability"
-    )]
-    fn video(video_id: i64, file_id: i64) -> Result<Video, Box<dyn Error>> {
-        Ok(Video::try_new(
-            video_id,
-            1_000.0,
-            "H264".to_owned(),
-            24,
-            640,
-            480,
-            "YCbCr".to_owned(),
-            ScanType::Progressive,
-            file_id,
-        )?)
-    }
-
     /// A unit of work whose Library and Asset repositories are mocked.
     fn unit_of_work(
         images: MockImageRepository,
@@ -259,7 +223,15 @@ mod tests {
     async fn remove_row_keeps_a_file_an_image_still_references() -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut images = MockImageRepository::new();
-        let referencing = image(1, 7)?;
+        let referencing = Image::try_new(
+            1,
+            "photo.png".to_owned(),
+            10,
+            10,
+            Orientation::Square,
+            NaiveDate::from_ymd_opt(2026, 10, 16).ok_or("invalid fixture date")?,
+            7,
+        )?;
         images.expect_search().times(1).return_once(move |_| {
             let value = referencing.clone();
             Box::pin(async move { Ok(vec![value]) })
@@ -288,7 +260,17 @@ mod tests {
             .times(1)
             .returning(|_| Box::pin(async { Ok(Vec::new()) }));
         let mut videos = MockVideoRepository::new();
-        let referencing = video(2, 7)?;
+        let referencing = Video::try_new(
+            2,
+            1_000.0,
+            "H264".to_owned(),
+            24,
+            640,
+            480,
+            "YCbCr".to_owned(),
+            ScanType::Progressive,
+            7,
+        )?;
         videos.expect_search().times(1).return_once(move |_| {
             let value = referencing.clone();
             Box::pin(async move { Ok(vec![value]) })
