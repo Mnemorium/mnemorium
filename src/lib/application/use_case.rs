@@ -1,5 +1,4 @@
 pub mod add_gallery_item;
-pub(crate) mod backing_file;
 pub mod begin_upload;
 pub mod complete_upload;
 pub mod create_gallery;

@@ -9,21 +9,23 @@ use crate::application::port::delete_gallery_item::DeleteGalleryItemCommand;
 use crate::application::port::delete_gallery_item::DeleteGalleryItemError;
 use crate::application::port::delete_gallery_item::DeleteGalleryItemUseCase;
 use crate::application::security_event;
-use crate::application::use_case::backing_file;
 use crate::application::use_case::library_access;
 use crate::domain::model::gallery_item::GalleryItemMedia;
 use crate::domain::port::asset_unit_of_work::AssetUnitOfWork;
+use crate::domain::port::error::RepositoryError;
 use crate::domain::port::file_repository::FileFilter;
 use crate::domain::port::file_repository::FileRepository as _;
 use crate::domain::port::file_storage::FileStorage;
 use crate::domain::port::gallery_repository::GalleryFilter;
 use crate::domain::port::gallery_repository::GalleryItemFilter;
 use crate::domain::port::gallery_repository::GalleryRepository as _;
+use crate::domain::port::image_repository::ImageFilter;
 use crate::domain::port::image_repository::ImageRepository as _;
 use crate::domain::port::library_unit_of_work::LibraryUnitOfWork;
 use crate::domain::port::unit_of_work::UnitOfWork as _;
 use crate::domain::port::unit_of_work::UnitOfWorkFactory;
 use crate::domain::port::user_unit_of_work::UserUnitOfWork;
+use crate::domain::port::video_repository::VideoFilter;
 use crate::domain::port::video_repository::VideoRepository as _;
 
 /// Use case implementation for deleting one item of a gallery.
@@ -152,9 +154,47 @@ where
                 let removable =
                     stored.filter(|file| caller.is_root_admin() || caller.id() == file.user_id());
                 let file_path = match removable.as_ref() {
-                    Some(file) => backing_file::remove_row(&mut unit_of_work, file)
-                        .await
-                        .map_err(|error| DeleteGalleryItemError::Unknown(error.into()))?,
+                    Some(file) => {
+                        // A `file` is shared per `(user_id, integrity_hash)`, so
+                        // another media row may still reference it; the delete is
+                        // confirmed safe first (`ARCH-004`, `PERS-020`). The image
+                        // probe runs first; a hit short-circuits the video probe.
+                        let still_referenced = !unit_of_work
+                            .images()
+                            .search(&ImageFilter {
+                                file_id: Some(file.id()),
+                                ..ImageFilter::default()
+                            })
+                            .await
+                            .map_err(|error| DeleteGalleryItemError::Unknown(error.into()))?
+                            .is_empty()
+                            || !unit_of_work
+                                .videos()
+                                .search(&VideoFilter {
+                                    file_id: Some(file.id()),
+                                    ..VideoFilter::default()
+                                })
+                                .await
+                                .map_err(|error| DeleteGalleryItemError::Unknown(error.into()))?
+                                .is_empty();
+                        if still_referenced {
+                            None
+                        } else {
+                            match unit_of_work.files().delete(file.id()).await {
+                                Ok(true) => Some(PathBuf::from(file.path())),
+                                // The row was already gone — the removal that
+                                // deleted it owns the bytes — or the datastore
+                                // rejected the delete because a reference this
+                                // guard cannot see survived (the Asset-owned
+                                // `audio.file_id`): the file is kept, bytes
+                                // included (`STY-RUST-016`).
+                                Ok(false) | Err(RepositoryError::DataIntegrityViolation) => None,
+                                Err(error) => {
+                                    return Err(DeleteGalleryItemError::Unknown(error.into()));
+                                }
+                            }
+                        }
+                    }
                     None => None,
                 };
 
@@ -177,7 +217,16 @@ where
                         .map_err(|error| DeleteGalleryItemError::Unknown(error.into()))?;
                     // The rows have committed; the bytes cannot join the
                     // transaction, so they are removed best-effort afterwards.
-                    backing_file::remove_bytes(&file_storage, &root, file_path).await;
+                    if let Some(stored_path) = file_path
+                        && file_storage
+                            .delete_upload_file(&root.join(stored_path))
+                            .await
+                            .is_err()
+                    {
+                        // The file-storage adapter owns the failure log
+                        // (`OBS-002`); the committed deletion stands, so the
+                        // removal is not failed.
+                    }
                     Ok(())
                 }
                 Err(error) => {
@@ -209,9 +258,13 @@ mod tests {
     use crate::domain::model::gallery::Gallery;
     use crate::domain::model::gallery_item::GalleryItem;
     use crate::domain::model::gallery_item::GalleryItemMedia;
+    use crate::domain::model::image::Image;
+    use crate::domain::model::image::Orientation;
     use crate::domain::model::integrity_hash::IntegrityHash;
     use crate::domain::model::user::Role;
     use crate::domain::model::user::User;
+    use crate::domain::model::video::ScanType;
+    use crate::domain::model::video::Video;
     use crate::domain::port::error::RepositoryError;
     use crate::domain::port::error::StorageError;
     use crate::domain::port::file_repository::MockFileRepository;
@@ -693,6 +746,340 @@ mod tests {
             .expect_delete()
             .times(1)
             .returning(|_| Box::pin(async { Err(RepositoryError::OperationFailed) }));
+        let mut file_storage = MockFileStorage::new();
+        file_storage.expect_delete_upload_file().times(0);
+        let harness = harness_with(users, galleries, images, videos, files);
+        let use_case = use_case(&harness, file_storage);
+
+        // Act
+        let result = use_case
+            .execute(DeleteGalleryItemCommand::new(4, 3, 42))
+            .await;
+
+        // Assert
+        assert!(matches!(result, Err(DeleteGalleryItemError::Unknown(_))));
+        assert!(harness.rolled_back.load(Ordering::SeqCst));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn delete_gallery_item_keeps_a_file_an_image_still_references()
+    -> Result<(), Box<dyn Error>> {
+        // Arrange: the item's own image is deleted, but another image still
+        // references the shared file, so its row and bytes are kept.
+        let mut users = MockUserRepository::new();
+        expect_caller(&mut users, 4, Role::Standard)?;
+        let mut galleries = MockGalleryRepository::new();
+        expect_gallery(&mut galleries, gallery(3, Some(4), "Mine", false)?);
+        let found = detail(42, 3, GalleryItemMedia::Image(7))?;
+        galleries
+            .expect_search_items()
+            .times(1)
+            .return_once(move |_| {
+                let value = found.clone();
+                Box::pin(async move { Ok(vec![value]) })
+            });
+        galleries
+            .expect_delete_item()
+            .times(1)
+            .returning(|_| Box::pin(async { Ok(true) }));
+        galleries
+            .expect_save()
+            .times(1)
+            .returning(|saved| Box::pin(async move { Ok(saved) }));
+        let mut images = MockImageRepository::new();
+        images
+            .expect_delete()
+            .times(1)
+            .withf(|id| *id == 7)
+            .returning(|_| Box::pin(async { Ok(true) }));
+        let referencing = Image::try_new(
+            1,
+            "other.png".to_owned(),
+            10,
+            10,
+            Orientation::Square,
+            NaiveDate::from_ymd_opt(2026, 10, 16).ok_or("invalid fixture date")?,
+            100,
+        )?;
+        images.expect_search().times(1).return_once(move |_| {
+            let value = referencing.clone();
+            Box::pin(async move { Ok(vec![value]) })
+        });
+        let mut videos = MockVideoRepository::new();
+        // The image reference is found first, so the video probe never runs.
+        videos.expect_search().times(0);
+        let mut files = MockFileRepository::new();
+        let stored = backing_file(4)?;
+        files.expect_search().times(1).return_once(move |_| {
+            let value = stored.clone();
+            Box::pin(async move { Ok(vec![value]) })
+        });
+        files.expect_delete().times(0);
+        let mut file_storage = MockFileStorage::new();
+        file_storage.expect_delete_upload_file().times(0);
+        let harness = harness_with(users, galleries, images, videos, files);
+        let use_case = use_case(&harness, file_storage);
+
+        // Act
+        let result = use_case
+            .execute(DeleteGalleryItemCommand::new(4, 3, 42))
+            .await;
+
+        // Assert: the removal commits, keeping the shared file.
+        assert!(result.is_ok());
+        assert!(harness.committed.load(Ordering::SeqCst));
+        assert!(!harness.rolled_back.load(Ordering::SeqCst));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn delete_gallery_item_keeps_a_file_a_video_still_references()
+    -> Result<(), Box<dyn Error>> {
+        // Arrange: the item's own image is deleted, but a video still references
+        // the shared file, so its row and bytes are kept.
+        let mut users = MockUserRepository::new();
+        expect_caller(&mut users, 4, Role::Standard)?;
+        let mut galleries = MockGalleryRepository::new();
+        expect_gallery(&mut galleries, gallery(3, Some(4), "Mine", false)?);
+        let found = detail(42, 3, GalleryItemMedia::Image(7))?;
+        galleries
+            .expect_search_items()
+            .times(1)
+            .return_once(move |_| {
+                let value = found.clone();
+                Box::pin(async move { Ok(vec![value]) })
+            });
+        galleries
+            .expect_delete_item()
+            .times(1)
+            .returning(|_| Box::pin(async { Ok(true) }));
+        galleries
+            .expect_save()
+            .times(1)
+            .returning(|saved| Box::pin(async move { Ok(saved) }));
+        let mut images = MockImageRepository::new();
+        images
+            .expect_delete()
+            .times(1)
+            .withf(|id| *id == 7)
+            .returning(|_| Box::pin(async { Ok(true) }));
+        images
+            .expect_search()
+            .times(1)
+            .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+        let mut videos = MockVideoRepository::new();
+        let referencing = Video::try_new(
+            2,
+            1_000.0,
+            "H264".to_owned(),
+            24,
+            640,
+            480,
+            "YCbCr".to_owned(),
+            ScanType::Progressive,
+            100,
+        )?;
+        videos.expect_search().times(1).return_once(move |_| {
+            let value = referencing.clone();
+            Box::pin(async move { Ok(vec![value]) })
+        });
+        let mut files = MockFileRepository::new();
+        let stored = backing_file(4)?;
+        files.expect_search().times(1).return_once(move |_| {
+            let value = stored.clone();
+            Box::pin(async move { Ok(vec![value]) })
+        });
+        files.expect_delete().times(0);
+        let mut file_storage = MockFileStorage::new();
+        file_storage.expect_delete_upload_file().times(0);
+        let harness = harness_with(users, galleries, images, videos, files);
+        let use_case = use_case(&harness, file_storage);
+
+        // Act
+        let result = use_case
+            .execute(DeleteGalleryItemCommand::new(4, 3, 42))
+            .await;
+
+        // Assert: the removal commits, keeping the shared file.
+        assert!(result.is_ok());
+        assert!(harness.committed.load(Ordering::SeqCst));
+        assert!(!harness.rolled_back.load(Ordering::SeqCst));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn delete_gallery_item_missing_file_row_removes_no_bytes() -> Result<(), Box<dyn Error>> {
+        // Arrange: the file row is already gone when the delete runs, so the
+        // removal that deleted it owns the bytes and none are removed here.
+        let mut users = MockUserRepository::new();
+        expect_caller(&mut users, 4, Role::Standard)?;
+        let mut galleries = MockGalleryRepository::new();
+        expect_gallery(&mut galleries, gallery(3, Some(4), "Mine", false)?);
+        let found = detail(42, 3, GalleryItemMedia::Image(7))?;
+        galleries
+            .expect_search_items()
+            .times(1)
+            .return_once(move |_| {
+                let value = found.clone();
+                Box::pin(async move { Ok(vec![value]) })
+            });
+        galleries
+            .expect_delete_item()
+            .times(1)
+            .returning(|_| Box::pin(async { Ok(true) }));
+        galleries
+            .expect_save()
+            .times(1)
+            .returning(|saved| Box::pin(async move { Ok(saved) }));
+        let mut images = MockImageRepository::new();
+        images
+            .expect_delete()
+            .times(1)
+            .returning(|_| Box::pin(async { Ok(true) }));
+        images
+            .expect_search()
+            .times(1)
+            .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+        let mut videos = MockVideoRepository::new();
+        videos
+            .expect_search()
+            .times(1)
+            .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+        let mut files = MockFileRepository::new();
+        let stored = backing_file(4)?;
+        files.expect_search().times(1).return_once(move |_| {
+            let value = stored.clone();
+            Box::pin(async move { Ok(vec![value]) })
+        });
+        files
+            .expect_delete()
+            .times(1)
+            .returning(|_| Box::pin(async { Ok(false) }));
+        let mut file_storage = MockFileStorage::new();
+        file_storage.expect_delete_upload_file().times(0);
+        let harness = harness_with(users, galleries, images, videos, files);
+        let use_case = use_case(&harness, file_storage);
+
+        // Act
+        let result = use_case
+            .execute(DeleteGalleryItemCommand::new(4, 3, 42))
+            .await;
+
+        // Assert
+        assert!(result.is_ok());
+        assert!(harness.committed.load(Ordering::SeqCst));
+        assert!(!harness.rolled_back.load(Ordering::SeqCst));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn delete_gallery_item_rejected_file_delete_keeps_the_file() -> Result<(), Box<dyn Error>>
+    {
+        // Arrange: the datastore rejects the delete because a reference the guard
+        // cannot see survives (`audio.file_id` today has no port to query); the
+        // file is kept and the removal still commits.
+        let mut users = MockUserRepository::new();
+        expect_caller(&mut users, 4, Role::Standard)?;
+        let mut galleries = MockGalleryRepository::new();
+        expect_gallery(&mut galleries, gallery(3, Some(4), "Mine", false)?);
+        let found = detail(42, 3, GalleryItemMedia::Image(7))?;
+        galleries
+            .expect_search_items()
+            .times(1)
+            .return_once(move |_| {
+                let value = found.clone();
+                Box::pin(async move { Ok(vec![value]) })
+            });
+        galleries
+            .expect_delete_item()
+            .times(1)
+            .returning(|_| Box::pin(async { Ok(true) }));
+        galleries
+            .expect_save()
+            .times(1)
+            .returning(|saved| Box::pin(async move { Ok(saved) }));
+        let mut images = MockImageRepository::new();
+        images
+            .expect_delete()
+            .times(1)
+            .returning(|_| Box::pin(async { Ok(true) }));
+        images
+            .expect_search()
+            .times(1)
+            .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+        let mut videos = MockVideoRepository::new();
+        videos
+            .expect_search()
+            .times(1)
+            .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+        let mut files = MockFileRepository::new();
+        let stored = backing_file(4)?;
+        files.expect_search().times(1).return_once(move |_| {
+            let value = stored.clone();
+            Box::pin(async move { Ok(vec![value]) })
+        });
+        files
+            .expect_delete()
+            .times(1)
+            .returning(|_| Box::pin(async { Err(RepositoryError::DataIntegrityViolation) }));
+        let mut file_storage = MockFileStorage::new();
+        file_storage.expect_delete_upload_file().times(0);
+        let harness = harness_with(users, galleries, images, videos, files);
+        let use_case = use_case(&harness, file_storage);
+
+        // Act
+        let result = use_case
+            .execute(DeleteGalleryItemCommand::new(4, 3, 42))
+            .await;
+
+        // Assert
+        assert!(result.is_ok());
+        assert!(harness.committed.load(Ordering::SeqCst));
+        assert!(!harness.rolled_back.load(Ordering::SeqCst));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn delete_gallery_item_reference_probe_failure_returns_unknown()
+    -> Result<(), Box<dyn Error>> {
+        // Arrange: the image reference probe fails, so the removal rolls back
+        // rather than leaking or wrongly deleting the shared file.
+        let mut users = MockUserRepository::new();
+        expect_caller(&mut users, 4, Role::Standard)?;
+        let mut galleries = MockGalleryRepository::new();
+        expect_gallery(&mut galleries, gallery(3, Some(4), "Mine", false)?);
+        let found = detail(42, 3, GalleryItemMedia::Image(7))?;
+        galleries
+            .expect_search_items()
+            .times(1)
+            .return_once(move |_| {
+                let value = found.clone();
+                Box::pin(async move { Ok(vec![value]) })
+            });
+        galleries
+            .expect_delete_item()
+            .times(1)
+            .returning(|_| Box::pin(async { Ok(true) }));
+        galleries.expect_save().times(0);
+        let mut images = MockImageRepository::new();
+        images
+            .expect_delete()
+            .times(1)
+            .returning(|_| Box::pin(async { Ok(true) }));
+        images
+            .expect_search()
+            .times(1)
+            .returning(|_| Box::pin(async { Err(RepositoryError::OperationFailed) }));
+        let mut videos = MockVideoRepository::new();
+        videos.expect_search().times(0);
+        let mut files = MockFileRepository::new();
+        let stored = backing_file(4)?;
+        files.expect_search().times(1).return_once(move |_| {
+            let value = stored.clone();
+            Box::pin(async move { Ok(vec![value]) })
+        });
+        files.expect_delete().times(0);
         let mut file_storage = MockFileStorage::new();
         file_storage.expect_delete_upload_file().times(0);
         let harness = harness_with(users, galleries, images, videos, files);
