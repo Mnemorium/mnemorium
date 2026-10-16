@@ -1,4 +1,5 @@
 {
+  config,
   multiverse,
   pkgs,
   lib,
@@ -12,7 +13,16 @@
     LLVM_COV = "${pkgs.llvm}/bin/llvm-cov";
     LLVM_PROFDATA = "${pkgs.llvm}/bin/llvm-profdata";
     DATABASE_URL = "sqlite://dev.db";
+    # npm global installs go to a user-writable prefix inside the devenv state
+    # directory, so `npm install -g` never needs sudo and is not wiped by nix.
+    NPM_CONFIG_PREFIX = "${config.devenv.state}/npm";
   };
+
+  # Put the npm global prefix's binaries on PATH so the task-installed CLIs
+  # (e.g. openspec) are runnable directly.
+  enterShell = ''
+    export PATH="$NPM_CONFIG_PREFIX/bin:$PATH"
+  '';
 
   # https://devenv.sh/packages/
   packages = [
@@ -251,6 +261,13 @@
   tasks."test:e2e" = {
     exec = "pytest test/e2e";
     description = "Run the E2E tests against a running server";
+  };
+
+  # Tooling
+
+  tasks."setup:openspec" = {
+    exec = "npm install -g --prefix \"$NPM_CONFIG_PREFIX\" @fission-ai/openspec@latest";
+    description = "Install the OpenSpec CLI globally into the devenv state prefix";
   };
 
   # Formatting tasks
