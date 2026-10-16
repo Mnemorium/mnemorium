@@ -42,7 +42,12 @@ document describes the source layout those rules constrain.
             │       │   ├── library.rs
             │       │   ├── user
             │       │   └── user.rs
-            │       └── middleware.rs
+            │       ├── middleware.rs
+            │       └── middleware
+            │           ├── auth.rs
+            │           ├── hal_errors.rs
+            │           ├── rate_limit.rs
+            │           └── trace.rs
             ├── logging.rs
             ├── outbound
             │   ├── argon2
@@ -82,9 +87,9 @@ document describes the source layout those rules constrain.
 | `src/lib/infrastructure/inbound/rest/app_state.rs`    | Application state shared by the HTTP layer: live configuration and per-context use-case factories                               |
 | `src/lib/infrastructure/inbound/rest/hal.rs`          | Shared HAL types and helpers: link types, the `application/hal+json` media type, and the `hal_json` wrapper                     |
 | `src/lib/infrastructure/inbound/rest.rs`              | REST module root: declares the submodules and aggregates the OpenAPI document (`ApiDoc`)                                        |
-| `src/lib/infrastructure/inbound/rest/handler.rs`      | Declares the route table (`setup_routes`) and installs the tracing middleware                                                   |
+| `src/lib/infrastructure/inbound/rest/handler.rs`      | Declares the route table (`setup_routes`) and installs the `tracing` and `hal_errors` middleware                                |
 | `src/lib/infrastructure/inbound/rest/handler`         | Endpoint-only HTTP handlers, one folder per bounded context; shared payloads, links and helpers live in the context module file |
-| `src/lib/infrastructure/inbound/rest/middleware`      | Axum middleware (authentication, rate limiting, tracing)                                                                        |
+| `src/lib/infrastructure/inbound/rest/middleware`      | Axum middleware (authentication, rate limiting, tracing, HAL error envelope)                                                    |
 | `src/lib/infrastructure/outbound`                     | Outbound Port adapter declaration                                                                                               |
 | `src/lib/infrastructure/outbound/argon2`              | Argon2 password hasher adapter                                                                                                  |
 | `src/lib/infrastructure/outbound/config`              | Configuration source adapters                                                                                                   |
@@ -253,7 +258,6 @@ class Image {
   width_px: int
   height_px: int
   orientation: string
-  color_depth: int
   created_at: date
 }
 
@@ -279,19 +283,19 @@ Person "*" -- "*" Movie: Acted in >
 Person "*" -- "*" MusicGroup: Is part of >
 
 
-MusicAlbum "1" -- "*" MusicMedium : Contains >
+MusicAlbum "1" -- "*" MusicMedium : Packages >
 MusicAlbum "*" -- "*" Genre: Categorize by >
 
-MusicMedium "1" -- "*" MusicTrack : Contains >
+MusicMedium "1" -- "*" MusicTrack : Positions >
 
-MusicPlaylist "1" -- "*" MusicTrack : Contains >
+MusicPlaylist "1" -- "*" MusicTrack : Sequences >
 
 MusicTrack "*" -- "1" MusicRecording : Reference >
 
 MusicRecording "*" -- "*" MusicGroup: Made by >
 
-Video "1" -- "*" AudioStream: Contains >
-Video "1" -- "*" SubtitleStream: Contains >
+Video "1" -- "*" AudioStream: Embeds >
+Video "1" -- "*" SubtitleStream: Embeds >
 Video "1" -- "1" File: Stored in >
 
 AudioStream "*" -- "1" Language: Is in >
@@ -302,7 +306,7 @@ Image "1" -- "*" Movie: Is thumbnail for >
 Image "1" -- "1" File: Store in >
 
 
-User "1" -- "1" Credential: Has >
+User "1" -- "1" Credential: Authenticates with >
 User "1" -- "*" MusicPlaylist : Creates >
 User "1" -- "*" Gallery: Creates >
 User "1" -- "*" File : Manage >
@@ -311,35 +315,39 @@ Audio "1" -- "*" AudioStream: Describe >
 Audio "1" -- "*" MusicRecording: Describe >
 Audio "1" -- "1" File: Store in >
 
-Gallery "1" -- "*" GalleryItem: Contains >
+Gallery "1" -- "*" GalleryItem: Collects >
 GalleryItem "1" -- "0..1" Image: References >
 GalleryItem "1" -- "0..1" Video: References >
+
+note bottom of GalleryItem
+  Exactly one of Image or Video is referenced, never both.
+end note
 
 @enduml
 ```
 
-| **Term**           | **Description**                                                                                                                                                                                                                                                                                                        |
-| ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Person**         | Fundamental identifying information representing an individual human being (e.g., real name, date of birth).                                                                                                                                                                                                           |
-| **User**           | An account or actor actively interacting with the application.                                                                                                                                                                                                                                                         |
-| **Credential**     | An authentication factor (e.g., password hash, API token, OAuth secret) used to verify a User's identity.                                                                                                                                                                                                              |
-| **MusicGroup**     | An entity representing a musical performer or ensemble, such as a band, orchestra, choir, or solo artist.                                                                                                                                                                                                              |
-| **MusicPlaylist**  | A user-created, ordered collection of **MusicRecording**.                                                                                                                                                                                                                                                              |
-| **MusicAlbum**     | A curated, top-level commercial or conceptual collection of **MusicRecording** by an **MusicGroup**.                                                                                                                                                                                                                   |
-| **MusicMedium**    | The specific physical or digital container holding a sequence of **MusicTracks** (e.g., a specific CD, cassette tape, vinyl disc side, or digital volume).                                                                                                                                                             |
-| **MusicTrack**     | An ordered slot or position entry on a specific **MusicMedium** that points to an underlying **MusicRecording**.                                                                                                                                                                                                       |
-| **MusicRecording** | A unique master audio capture or sound recording session, independent of the physical formats on which it is distributed.                                                                                                                                                                                              |
-| **Movie**          | A self-contained, long-form narrative or documentary film produced for artistic, cinematic, or entertainment purposes.                                                                                                                                                                                                 |
-| **Video**          | An abstract domain representation of a video file                                                                                                                                                                                                                                                                      |
-| **SubtitleStream** | A text data stream embedded within a video container that provides timed subtitle or caption text.                                                                                                                                                                                                                     |
-| **AudioStream**    | A discrete audio track or channel stream embedded within a multi-stream media file.                                                                                                                                                                                                                                    |
-| **Language**       | A standardized natural human language used for text, speech, or subtitle localization (e.g., ISO 639-1 code).                                                                                                                                                                                                          |
-| **Genre**          | A categorical classification used to group media assets (e.g., **Movie**, **MusicAlbum**) by shared stylistic, thematic, or musical conventions.                                                                                                                                                                       |
-| **File**           | A physical computer file stored within a file system or object storage.                                                                                                                                                                                                                                                |
-| **Image**          | An abstract domain representation of an image file                                                                                                                                                                                                                                                                     |
-| **Gallery**        | An aggregated, ordered collection of visual assets, such as **ImageObjects** and **VideoObjects**. A media item belongs to at most one **Gallery**. Gallery `0` is the system-owned default gallery: public, undeletable, and it holds no media automatically. Deleting an item deletes it permanently from the system |
-| **GalleryItem**    | A position-aware entry within a **Gallery** that references exactly one **ImageObject** or **VideoObject**.                                                                                                                                                                                                            |
-| **Audio**          | An abstract domain representation of an audio file or a Audio Stream details                                                                                                                                                                                                                                           |
+| **Term**           | **Description**                                                                                                                                                                                                                                                                                          |
+| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Person**         | Fundamental identifying information representing an individual human being (e.g., real name, date of birth).                                                                                                                                                                                             |
+| **User**           | An account or actor actively interacting with the application.                                                                                                                                                                                                                                           |
+| **Credential**     | An authentication factor (e.g., password hash, API token, OAuth secret) used to verify a User's identity.                                                                                                                                                                                                |
+| **MusicGroup**     | An entity representing a musical performer or ensemble, such as a band, orchestra, choir, or solo artist.                                                                                                                                                                                                |
+| **MusicPlaylist**  | A user-created, ordered collection of **MusicRecording**.                                                                                                                                                                                                                                                |
+| **MusicAlbum**     | A curated, top-level commercial or conceptual collection of **MusicRecording** by an **MusicGroup**.                                                                                                                                                                                                     |
+| **MusicMedium**    | The specific physical or digital container holding a sequence of **MusicTracks** (e.g., a specific CD, cassette tape, vinyl disc side, or digital volume).                                                                                                                                               |
+| **MusicTrack**     | An ordered slot or position entry on a specific **MusicMedium** that points to an underlying **MusicRecording**.                                                                                                                                                                                         |
+| **MusicRecording** | A unique master audio capture or sound recording session, independent of the physical formats on which it is distributed.                                                                                                                                                                                |
+| **Movie**          | A self-contained, long-form narrative or documentary film produced for artistic, cinematic, or entertainment purposes.                                                                                                                                                                                   |
+| **Video**          | An abstract domain representation of a video file                                                                                                                                                                                                                                                        |
+| **SubtitleStream** | A text data stream embedded within a video container that provides timed subtitle or caption text.                                                                                                                                                                                                       |
+| **AudioStream**    | A discrete audio track or channel stream embedded within a multi-stream media file.                                                                                                                                                                                                                      |
+| **Language**       | A standardized natural human language used for text, speech, or subtitle localization (e.g., ISO 639-1 code).                                                                                                                                                                                            |
+| **Genre**          | A categorical classification used to group media assets (e.g., **Movie**, **MusicAlbum**) by shared stylistic, thematic, or musical conventions.                                                                                                                                                         |
+| **File**           | A physical computer file stored within a file system or object storage.                                                                                                                                                                                                                                  |
+| **Image**          | An abstract domain representation of an image file                                                                                                                                                                                                                                                       |
+| **Gallery**        | An aggregated, ordered collection of visual assets, such as **Image** and **Video**. A media item belongs to at most one **Gallery**. Gallery `0` is the system-owned default gallery: public, undeletable, and it holds no media automatically. Deleting an item deletes it permanently from the system |
+| **GalleryItem**    | A position-aware entry within a **Gallery** that references exactly one **Image** or **Video**.                                                                                                                                                                                                          |
+| **Audio**          | An abstract domain representation of an audio file or a Audio Stream details                                                                                                                                                                                                                             |
 
 ## Bounded context
 

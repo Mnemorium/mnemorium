@@ -293,12 +293,12 @@ Drawn from `src/lib/infrastructure/inbound/rest/handler/identity/post_register.r
 impl From<RegisterUserError> for ApiError {
     fn from(err: RegisterUserError) -> Self {
         match err {
-            RegisterUserError::Forbidden => ApiError::Forbidden(err.to_string()),
+            RegisterUserError::Forbidden => Self::Forbidden(err.to_string()),
             RegisterUserError::InvalidEmail
             | RegisterUserError::InvalidPassword
-            | RegisterUserError::InvalidUsername => ApiError::BadRequest(err.to_string()),
-            RegisterUserError::Unknown(_) => ApiError::InternalServerError,
-            RegisterUserError::UserAlreadyExists => ApiError::Conflict(err.to_string()),
+            | RegisterUserError::InvalidUsername => Self::UnprocessableEntity(err.to_string()),
+            RegisterUserError::Unknown(_) => Self::InternalServerError,
+            RegisterUserError::UserAlreadyExists => Self::Conflict(err.to_string()),
         }
     }
 }
@@ -320,6 +320,8 @@ single envelope builder: it reads the attached message and serves the one `Error
 Every error response carries the same body, a HAL representation served as `application/hal+json`: the human-readable
 `error` message at the root (`API-033`) and a `_links.self` whose `href` is the request path the client called
 (`API-039`, `API-043`).
+
+Drawn from `src/lib/infrastructure/inbound/rest/api_error.rs`:
 
 ```json
 {
@@ -667,11 +669,14 @@ hold concrete adapters (`Arc<SqlxUnitOfWorkFactory>`, ...) and build concrete pe
 Repository methods mutate the shared transaction, so they take `&mut self`. Return an explicitly `Send` future instead
 of relying on the default (which is not guaranteed to be `Send`):
 
+Drawn from `src/lib/domain/port/user_repository.rs`:
+
 ```rust
 use std::future::Future;
 
 pub trait UserRepository: Send + Sync {
     fn create(&mut self, user: User) -> impl Future<Output = Result<User, RepositoryError>> + Send;
+    // [...]
 }
 ```
 
@@ -786,6 +791,8 @@ The factory is generic with an associated `Uow` type: no `dyn`, and the concrete
 
 Each bounded context (see [Bounded context](Overview.md#bounded-context)) has a view trait over the unit of work,
 declared in its own `domain/port/<context>_unit_of_work.rs`:
+
+Drawn from `src/lib/domain/port/user_unit_of_work.rs`:
 
 ```rust
 pub trait UserUnitOfWork: UnitOfWork {
@@ -1161,6 +1168,8 @@ pub async fn create_note() -> axum::response::Json<CreateNoteResponse> {
 
 An endpoint that is deliberately public declares an empty security requirement instead of a scheme:
 
+Drawn from `src/lib/infrastructure/inbound/rest/handler/get_health.rs`:
+
 ```rust
 /// Check the service health.
 ///
@@ -1170,6 +1179,9 @@ An endpoint that is deliberately public declares an empty security requirement i
     operation_id = "get_health",
     path = "/health",
     tag = "system",
+    servers(
+        (url = "http://0.0.0.0:4080", description = "Root of the service, outside /api/v1")
+    ),
     responses(
         (status = OK, body = HealthResponse, description = "Service is healthy"),
     ),
@@ -2836,6 +2848,11 @@ No check asserts this correspondence yet ([`DOC-004`](#4-published-routes)); the
 example is updated in the same change that moves the endpoint.
 
 ---
+
+<!-- GitHub slugs this heading to `logging--observability`, mkdocs to `logging-observability`. This explicit anchor
+keeps the GitHub-style links to this section resolvable in the published mkdocs site. -->
+
+<a id="logging--observability"></a>
 
 ## Logging & Observability
 
