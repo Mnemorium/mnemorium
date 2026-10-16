@@ -10,29 +10,14 @@ https://github.com/Mnemorium/mnemorium/issues/242), so that case is marked
 
 import base64
 import hashlib
-import struct
-import zlib
 from collections.abc import Callable
 
 import pytest
 import requests
+from conftest import png
 
 _API_PREFIX = "/api/v1"
 _UPLOAD_PATH = f"{_API_PREFIX}/asset/upload"
-
-
-def _chunk(chunk_type: bytes, data: bytes) -> bytes:
-    """Build one PNG chunk with its CRC."""
-    crc = zlib.crc32(chunk_type + data) & 0xFFFFFFFF
-    return struct.pack(">I", len(data)) + chunk_type + data + struct.pack(">I", crc)
-
-
-def _png(width: int, height: int) -> bytes:
-    """Build a minimal valid RGB PNG of the given dimensions."""
-    header = struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0)
-    scanline = b"\x00" + b"\xff\x00\x00" * width
-    pixels = zlib.compress(scanline * height)
-    return b"\x89PNG\r\n\x1a\n" + _chunk(b"IHDR", header) + _chunk(b"IDAT", pixels) + _chunk(b"IEND", b"")
 
 
 def _upload_and_complete(
@@ -88,7 +73,7 @@ def test_uc006_upload_image_completion(
         standard_user_token,
         "image/png",
         "pixel.png",
-        _png(2, 3),
+        png(2, 3),
     )
 
     assert response.status_code == 200, f"complete failed: {response.status_code} {response.text}"
@@ -135,6 +120,6 @@ def test_uc006_upload_video_completion(
         standard_user_token,
         "video/mp4",
         "clip.mp4",
-        _png(2, 2),
+        png(2, 2),
     )
     assert response.status_code == 500, f"unexpected: {response.status_code} {response.text}"

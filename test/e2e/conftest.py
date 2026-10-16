@@ -2,9 +2,13 @@ import base64
 import hashlib
 import os
 import re
+import struct
 import subprocess
 import time
+import zlib
 from collections.abc import Callable
+from itertools import count
+from pathlib import Path
 
 import pytest
 import requests
@@ -51,6 +55,84 @@ ADMIN_USER_USERNAME = "mallory"
 ADMIN_USER_EMAIL = "mallory@example.com"
 ADMIN_USER_PASSWORD = SECRET_PASSWORD
 ADMIN_USER_ROLE = "ADMIN"
+
+# The seeded default gallery: undeletable, and visible to every user.
+DEFAULT_GALLERY_ID = 0
+
+# An identifier no gallery, item or medium ever carries.
+UNKNOWN_ID = 999_999_999
+
+# The tiny, real H.264 fixture the container's `ffprobe` can probe (TEST-052).
+_VIDEO_FIXTURE = Path(__file__).resolve().parent / "fixture" / "tiny_video.mp4"
+
+# Each generated medium must have distinct bytes: the upload-completion handler
+# deduplicates by integrity hash, so identical bytes would reuse a file (and its
+# already-registered medium) across tests. The counters are seeded from the clock
+# so a second run against the same container still produces distinct bytes.
+_IMAGE_NONCE = count(time.time_ns() & 0xFFFFFF)
+_VIDEO_NONCE = count(time.time_ns() & 0xFFFFFF)
+
+
+def _png_chunk(chunk_type: bytes, data: bytes) -> bytes:
+    """Build one PNG chunk with its CRC."""
+    crc = zlib.crc32(chunk_type + data) & 0xFFFFFFFF
+    return struct.pack(">I", len(data)) + chunk_type + data + struct.pack(">I", crc)
+
+
+def png(width: int, height: int) -> bytes:
+    """Build a minimal valid, unique RGB PNG of the given dimensions."""
+    nonce = next(_IMAGE_NONCE)
+    colour = bytes([nonce & 0xFF, (nonce >> 8) & 0xFF, (nonce >> 16) & 0xFF])
+    header = struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0)
+    scanline = b"\x00" + colour * width
+    pixels = zlib.compress(scanline * height)
+    return b"\x89PNG\r\n\x1a\n" + _png_chunk(b"IHDR", header) + _png_chunk(b"IDAT", pixels) + _png_chunk(b"IEND", b"")
+
+
+def video() -> bytes:
+    """Return the fixture's bytes with a unique trailing `free` box.
+
+    The padding is valid MP4 and leaves the container metadata the probe reads
+    untouched, while the bytes stay unique per upload (see `_VIDEO_NONCE`).
+    """
+    padding = struct.pack(">I", next(_VIDEO_NONCE))
+    return _VIDEO_FIXTURE.read_bytes() + struct.pack(">I", 8 + len(padding)) + b"free" + padding
+
+
+def register_image(
+    upload_media: Callable[[str, str, bytes, str], int],
+    register_media: Callable[[str, int], int],
+    token: str,
+    file_name: str,
+    data: bytes,
+) -> int:
+    """Stage and register an image, returning its medium identifier."""
+    upload_id = upload_media(token, file_name, data)
+    return register_media(token, upload_id)
+
+
+def create_owned_gallery(
+    create_gallery: Callable[[str, str, bool], requests.Response],
+    token: str,
+    is_public: bool = False,
+) -> int:
+    """Create a gallery owned by `token`'s caller and return its identifier."""
+    created = create_gallery(token, f"Gallery {time.time_ns()}", is_public)
+    assert created.status_code == 201, f"create failed: {created.status_code} {created.text}"
+    return created.json()["id"]
+
+
+def add_item(
+    add_gallery_item: Callable[[str, int, str, int], requests.Response],
+    token: str,
+    gallery_id: int,
+    media_type: str,
+    media_id: int,
+) -> int:
+    """Add `media_id` to the gallery and return the created item's identifier."""
+    added = add_gallery_item(token, gallery_id, media_type, media_id)
+    assert added.status_code == 201, f"add failed: {added.status_code} {added.text}"
+    return added.json()["id"]
 
 
 @pytest.fixture(scope="session")

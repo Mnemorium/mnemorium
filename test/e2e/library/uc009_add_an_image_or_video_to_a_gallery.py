@@ -11,69 +11,14 @@ registers the image or video as a side effect. The video fixture is a real,
 tiny H.264 file the container's `ffprobe` can probe.
 """
 
-import struct
 import time
-import zlib
 from collections.abc import Callable
-from itertools import count
-from pathlib import Path
 
 import requests
+from conftest import UNKNOWN_ID, create_owned_gallery, png, register_image, video
 
 _API_PREFIX = "/api/v1"
 _GALLERY_PATH = f"{_API_PREFIX}/library/gallery"
-
-_UNKNOWN_ID = 999_999_999
-
-_VIDEO_FIXTURE = Path(__file__).resolve().parents[1] / "fixture" / "tiny_video.mp4"
-
-# Each generated image must have distinct bytes: the upload-completion handler
-# deduplicates by integrity hash, so identical bytes would reuse a file (and its
-# already-registered medium) across tests.
-_IMAGE_NONCE = count(1)
-
-
-def _chunk(chunk_type: bytes, data: bytes) -> bytes:
-    """Build one PNG chunk with its CRC."""
-    crc = zlib.crc32(chunk_type + data) & 0xFFFFFFFF
-    return struct.pack(">I", len(data)) + chunk_type + data + struct.pack(">I", crc)
-
-
-def _png(width: int, height: int) -> bytes:
-    """Build a minimal valid, unique RGB PNG of the given dimensions."""
-    nonce = next(_IMAGE_NONCE)
-    colour = bytes([nonce & 0xFF, (nonce >> 8) & 0xFF, (nonce >> 16) & 0xFF])
-    header = struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0)
-    scanline = b"\x00" + colour * width
-    pixels = zlib.compress(scanline * height)
-    return b"\x89PNG\r\n\x1a\n" + _chunk(b"IHDR", header) + _chunk(b"IDAT", pixels) + _chunk(b"IEND", b"")
-
-
-def _video() -> bytes:
-    """Return the bytes of the bundled, real video fixture."""
-    return _VIDEO_FIXTURE.read_bytes()
-
-
-def _register_image(
-    upload_media: Callable[[str, str, bytes, str], int],
-    register_media: Callable[[str, int], int],
-    token: str,
-    file_name: str,
-    data: bytes,
-) -> int:
-    """Stage and register an image, returning its medium identifier."""
-    upload_id = upload_media(token, file_name, data)
-    return register_media(token, upload_id)
-
-
-def _create_public_gallery(
-    create_gallery: Callable[[str, str, bool], requests.Response],
-    token: str,
-) -> int:
-    """Create a public gallery owned by `token`'s caller and return its id."""
-    created = create_gallery(token, f"Gallery {time.time_ns()}", is_public=True)
-    assert created.status_code == 201, f"create failed: {created.status_code} {created.text}"
-    return created.json()["id"]
 
 
 def test_adding_an_owned_image_to_a_public_gallery_appends_it(
@@ -84,9 +29,9 @@ def test_adding_an_owned_image_to_a_public_gallery_appends_it(
     get_gallery: Callable[[str, int], requests.Response],
     standard_user_token: str,
 ) -> None:
-    gallery_id = _create_public_gallery(create_gallery, standard_user_token)
+    gallery_id = create_owned_gallery(create_gallery, standard_user_token, is_public=True)
     file_name = f"sunset-{time.time_ns()}.png"
-    file_id = _register_image(upload_media, register_media, standard_user_token, file_name, _png(4, 3))
+    file_id = register_image(upload_media, register_media, standard_user_token, file_name, png(4, 3))
 
     added = add_gallery_item(standard_user_token, gallery_id, "image", file_id)
 
@@ -118,10 +63,10 @@ def test_adding_an_owned_video_to_a_gallery_appends_it(
     get_gallery: Callable[[str, int], requests.Response],
     standard_user_token: str,
 ) -> None:
-    gallery_id = _create_public_gallery(create_gallery, standard_user_token)
+    gallery_id = create_owned_gallery(create_gallery, standard_user_token, is_public=True)
     file_id = register_media(
         standard_user_token,
-        upload_media(standard_user_token, f"clip-{time.time_ns()}.mp4", _video(), "video/mp4"),
+        upload_media(standard_user_token, f"clip-{time.time_ns()}.mp4", video(), "video/mp4"),
     )
 
     added = add_gallery_item(standard_user_token, gallery_id, "video", file_id)
@@ -150,12 +95,12 @@ def test_adding_to_another_users_private_gallery_is_forbidden(
     private = create_gallery(standard_user_token, f"Secret {time.time_ns()}")
     assert private.status_code == 201, f"create failed: {private.status_code} {private.text}"
     gallery_id = private.json()["id"]
-    file_id = _register_image(
+    file_id = register_image(
         upload_media,
         register_media,
         second_standard_user_token,
         f"own-{time.time_ns()}.png",
-        _png(2, 2),
+        png(2, 2),
     )
 
     response = add_gallery_item(second_standard_user_token, gallery_id, "image", file_id)
@@ -172,13 +117,13 @@ def test_adding_media_owned_by_another_user_is_forbidden(
     second_standard_user_token: str,
     assert_error_body: Callable[[requests.Response, int], None],
 ) -> None:
-    gallery_id = _create_public_gallery(create_gallery, second_standard_user_token)
-    file_id = _register_image(
+    gallery_id = create_owned_gallery(create_gallery, second_standard_user_token, is_public=True)
+    file_id = register_image(
         upload_media,
         register_media,
         standard_user_token,
         f"alice-{time.time_ns()}.png",
-        _png(2, 2),
+        png(2, 2),
     )
 
     response = add_gallery_item(second_standard_user_token, gallery_id, "image", file_id)
@@ -195,13 +140,13 @@ def test_an_admin_cannot_add_another_users_media(
     admin_token: str,
     assert_error_body: Callable[[requests.Response, int], None],
 ) -> None:
-    gallery_id = _create_public_gallery(create_gallery, admin_token)
-    file_id = _register_image(
+    gallery_id = create_owned_gallery(create_gallery, admin_token, is_public=True)
+    file_id = register_image(
         upload_media,
         register_media,
         standard_user_token,
         f"alice-{time.time_ns()}.png",
-        _png(2, 2),
+        png(2, 2),
     )
 
     response = add_gallery_item(admin_token, gallery_id, "image", file_id)
@@ -217,13 +162,13 @@ def test_the_root_admin_can_add_another_users_media(
     standard_user_token: str,
     root_admin_token: str,
 ) -> None:
-    gallery_id = _create_public_gallery(create_gallery, standard_user_token)
-    file_id = _register_image(
+    gallery_id = create_owned_gallery(create_gallery, standard_user_token, is_public=True)
+    file_id = register_image(
         upload_media,
         register_media,
         standard_user_token,
         f"alice-{time.time_ns()}.png",
-        _png(2, 2),
+        png(2, 2),
     )
 
     added = add_gallery_item(root_admin_token, gallery_id, "image", file_id)
@@ -238,9 +183,9 @@ def test_adding_an_unknown_media_is_not_found(
     standard_user_token: str,
     assert_error_body: Callable[[requests.Response, int], None],
 ) -> None:
-    gallery_id = _create_public_gallery(create_gallery, standard_user_token)
+    gallery_id = create_owned_gallery(create_gallery, standard_user_token, is_public=True)
 
-    response = add_gallery_item(standard_user_token, gallery_id, "image", _UNKNOWN_ID)
+    response = add_gallery_item(standard_user_token, gallery_id, "image", UNKNOWN_ID)
 
     assert_error_body(response, 404)
 
@@ -252,15 +197,15 @@ def test_adding_to_an_unknown_gallery_is_not_found(
     standard_user_token: str,
     assert_error_body: Callable[[requests.Response, int], None],
 ) -> None:
-    file_id = _register_image(
+    file_id = register_image(
         upload_media,
         register_media,
         standard_user_token,
         f"nowhere-{time.time_ns()}.png",
-        _png(2, 2),
+        png(2, 2),
     )
 
-    response = add_gallery_item(standard_user_token, _UNKNOWN_ID, "image", file_id)
+    response = add_gallery_item(standard_user_token, UNKNOWN_ID, "image", file_id)
 
     assert_error_body(response, 404)
 
@@ -273,13 +218,13 @@ def test_adding_media_already_in_a_gallery_is_conflict(
     standard_user_token: str,
     assert_error_body: Callable[[requests.Response, int], None],
 ) -> None:
-    gallery_id = _create_public_gallery(create_gallery, standard_user_token)
-    file_id = _register_image(
+    gallery_id = create_owned_gallery(create_gallery, standard_user_token, is_public=True)
+    file_id = register_image(
         upload_media,
         register_media,
         standard_user_token,
         f"once-{time.time_ns()}.png",
-        _png(2, 2),
+        png(2, 2),
     )
     first = add_gallery_item(standard_user_token, gallery_id, "image", file_id)
     assert first.status_code == 201, f"add failed: {first.status_code} {first.text}"
@@ -295,7 +240,7 @@ def test_adding_an_invalid_media_type_is_unprocessable(
     standard_user_token: str,
     assert_error_body: Callable[[requests.Response, int], None],
 ) -> None:
-    gallery_id = _create_public_gallery(create_gallery, standard_user_token)
+    gallery_id = create_owned_gallery(create_gallery, standard_user_token, is_public=True)
 
     response = add_gallery_item(standard_user_token, gallery_id, "audio", 1)
 

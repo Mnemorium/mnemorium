@@ -58,7 +58,14 @@ impl LibraryUseCaseFactory for RuntimeLibraryUseCaseFactory {
     }
 
     fn delete_gallery(&self) -> Arc<dyn DeleteGalleryUseCase> {
-        Arc::new(DeleteGallery::new(Arc::clone(&self.unit_of_work_factory)))
+        let live = self.configuration.load();
+        // The file storage adapter is stateless and rebuilt per accessor from
+        // the live storage root, like the item deletion's.
+        Arc::new(DeleteGallery::new(
+            Arc::clone(&self.unit_of_work_factory),
+            Arc::new(FileSystemStorage::new()),
+            PathBuf::from(live.asset().storage().root()),
+        ))
     }
 
     fn delete_gallery_item(&self) -> Arc<dyn DeleteGalleryItemUseCase> {

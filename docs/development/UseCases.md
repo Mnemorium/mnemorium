@@ -543,3 +543,53 @@ when the caller owns the file — the backing file.
 
 - The item and its image or video record no longer exist.
 - The backing file's row and bytes no longer exist when the caller owned the file.
+
+## UC-011 - Remove a Gallery
+
+### Description
+
+Allow the owner to delete a gallery together with its items, their media, and the backing files.
+
+### Primary actor
+
+- Standard User
+- Admin
+
+### Pre condition(s)
+
+- The caller is authenticated.
+
+### Trigger(s)
+
+- `DELETE /api/v1/library/gallery/{id}`
+
+### Bounded context(s)
+
+- Library
+- Asset
+
+### Business rules
+
+- Only the gallery owner may delete it; the Root Admin has no override.
+- The seeded default gallery (identifier `0`) is never deletable.
+- Deletion is permanent and removes every item, its image or video record, and its backing file before deleting the
+  gallery.
+
+### Happy path
+
+1. The caller submits a gallery deletion request identifying the gallery.
+2. The system verifies the gallery is not the default gallery.
+3. The system verifies the caller owns the gallery.
+4. The system deletes every item, its image or video record, and its backing file.
+5. The system deletes the gallery.
+6. The system confirms the deletion.
+
+### Alternative flow
+
+- 1a. No gallery matches the requested identifier; the system rejects the request.
+- 2a. The gallery is the default gallery; the system rejects the request.
+- 3a. The caller is not the owner; the system rejects the request.
+
+### Post condition(s)
+
+- The gallery, its items, their media, and their backing files no longer exist.
