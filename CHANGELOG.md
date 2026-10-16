@@ -1,3 +1,9 @@
+## [0.19.0](https://github.com/Mnemorium/mnemorium/compare/v0.18.0...v0.19.0) (2026-10-16)
+
+### Features
+
+* **application:** add the Remove a Gallery use case ([#279](https://github.com/Mnemorium/mnemorium/issues/279)) ([58e1764](https://github.com/Mnemorium/mnemorium/commit/58e17644e575a0b6601c7a5ac481157abacd2957))
+
 ## [0.18.0](https://github.com/Mnemorium/mnemorium/compare/v0.17.1...v0.18.0) (2026-10-16)
 
 ### Features
