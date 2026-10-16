@@ -109,19 +109,21 @@ async fn main() -> Result<(), anyhow::Error> {
     let user_use_case_factory = Arc::new(RuntimeUserUseCaseFactory::new(Arc::clone(
         &unit_of_work_factory,
     )));
-    let library_use_case_factory = Arc::new(RuntimeLibraryUseCaseFactory::new(Arc::clone(
-        &unit_of_work_factory,
-    )));
+    let library_use_case_factory = Arc::new(RuntimeLibraryUseCaseFactory::new(
+        Arc::clone(&configuration),
+        Arc::clone(&unit_of_work_factory),
+    ));
 
+    // The startup storage directories are created once from the root the Asset
+    // and Library factories read live.
     let storage_root = PathBuf::from(configuration.load().asset().storage().root());
     let file_storage = Arc::new(FileSystemStorage::new());
-    EnsureStorageDirectories::new(Arc::clone(&file_storage), storage_root.clone())
+    EnsureStorageDirectories::new(Arc::clone(&file_storage), storage_root)
         .execute(EnsureStorageDirectoriesCommand::new())
         .await?;
 
     let asset_use_case_factory = Arc::new(RuntimeAssetUseCaseFactory::new(
         Arc::clone(&configuration),
-        storage_root,
         Arc::clone(&unit_of_work_factory),
         LocalMediaProbe::new_permits(),
     ));

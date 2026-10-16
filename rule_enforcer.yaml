@@ -1,6 +1,7 @@
 ---
 rules:
   STY-RUST-001:
+    # The production single-use extractions the rule permits.
     allowed_locations:
       - src/lib/infrastructure/inbound/rest/api_error.rs::error_response
       - src/lib/infrastructure/inbound/rest/middleware/rate_limit.rs::from_prune

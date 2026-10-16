@@ -588,3 +588,62 @@ Allow an authenticated user to append one of their images or videos to a gallery
 
 - The gallery holds the new item at the next order position.
 - The image or video belongs to this gallery.
+
+## UC-010 - Remove an Image or Video from a Gallery
+
+### Description
+
+Allow an authenticated user to remove an image or video from a gallery, permanently deleting the item, its medium, and —
+when the caller owns the file — the backing file.
+
+### Primary actor
+
+- Standard User
+- Admin
+- Root Admin
+
+### Pre condition(s)
+
+- The caller is authenticated.
+
+### Trigger(s)
+
+- `DELETE /api/v1/library/gallery/{id}/item/{item_id}`
+
+### Bounded context(s)
+
+- Library
+- Asset
+
+### Application use case(s)
+
+- `delete_gallery_item.rs`
+
+### Business rules
+
+- The caller may remove an item of a public gallery.
+- An item of a private gallery may be removed by the gallery owner or by the Root Admin only.
+- The item must belong to the gallery named in the request.
+- The item and its image or video record are deleted permanently.
+- The backing file's row and bytes are deleted when the caller owns the file or is the Root Admin, and kept otherwise.
+  The row deletion is part of the removal's transaction; the byte removal is best-effort.
+- Removing an item updates the gallery's last-modified time.
+
+### Happy path
+
+1. The caller submits a removal request identifying the gallery and the item.
+2. The system verifies the caller may remove items of the gallery.
+3. The system locates the item within the gallery.
+4. The system deletes the item and its image or video record, and the backing file when the caller owns it.
+5. The system confirms the removal.
+
+### Alternative flow
+
+- 2a. The gallery is private and the caller is neither its owner nor the Root Admin; the system rejects the request.
+- 2b. No gallery matches the requested identifier; the system rejects the request.
+- 3a. No item matching the requested identifier belongs to the gallery; the system rejects the request.
+
+### Post condition(s)
+
+- The item and its image or video record no longer exist.
+- The backing file's row and bytes no longer exist when the caller owned the file.

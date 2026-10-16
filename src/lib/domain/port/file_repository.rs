@@ -27,6 +27,21 @@ pub trait FileRepository: Send + Sync {
     /// identity.
     fn create(&mut self, file: File) -> impl Future<Output = Result<File, RepositoryError>> + Send;
 
+    /// Delete the file identified by `id`.
+    ///
+    /// Returns `Ok(true)` when a file matched `id` and was deleted, and
+    /// `Ok(false)` when no file matched. A missing file is a valid outcome,
+    /// not an error.
+    ///
+    /// The `file` foreign keys of the Library media (`image.file_id`,
+    /// `video.file_id`) do not cascade (`ARCH-004`, `PERS-020`), so the delete
+    /// is rejected while a media row still references the file. The caller
+    /// confirms no media row references it first.
+    fn delete(
+        &mut self,
+        id: NumericID,
+    ) -> impl Future<Output = Result<bool, RepositoryError>> + Send;
+
     /// Search files matching `filter`, returned as `Vec<File>`.
     ///
     /// Returns an empty list when no file matches; a missing match is a valid
@@ -41,6 +56,13 @@ pub trait FileRepository: Send + Sync {
 impl<T: FileRepository + ?Sized> FileRepository for &mut T {
     fn create(&mut self, file: File) -> impl Future<Output = Result<File, RepositoryError>> + Send {
         (**self).create(file)
+    }
+
+    fn delete(
+        &mut self,
+        id: NumericID,
+    ) -> impl Future<Output = Result<bool, RepositoryError>> + Send {
+        (**self).delete(id)
     }
 
     fn search(

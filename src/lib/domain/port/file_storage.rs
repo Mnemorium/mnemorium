@@ -11,6 +11,10 @@ use crate::domain::port::error::StorageError;
 /// session, write chunks into it at their offset, promote it to its final path
 /// once complete, and delete it when the session is abandoned.
 ///
+/// It also covers removing a file promoted into the media library, addressed by
+/// its stored path: the media-library use cases delete the bytes of a file whose
+/// `file` row they removed (`delete_upload_file`).
+///
 /// The adapter knows nothing about the media-library layout: every method takes
 /// the filesystem location it operates on. Composing those locations (the upload
 /// and file folders, the naming scheme) is the caller's responsibility.
@@ -49,7 +53,9 @@ pub trait FileStorage: Send + Sync {
 
     /// Delete the file at `path`.
     ///
-    /// A missing file is treated as success.
+    /// The path addresses any stored file: an upload's staging file under the
+    /// upload folder, or a file promoted into the media library under the file
+    /// folder. A missing file is treated as success.
     fn delete_upload_file(
         &self,
         path: &Path,

@@ -1,4 +1,7 @@
+use std::path::PathBuf;
 use std::sync::Arc;
+
+use arc_swap::ArcSwap;
 
 use crate::application::port::add_gallery_item::AddGalleryItemUseCase;
 use crate::application::port::create_gallery::CreateGalleryUseCase;
@@ -15,10 +18,18 @@ use crate::application::use_case::delete_gallery_item::DeleteGalleryItem;
 use crate::application::use_case::get_gallery::GetGallery;
 use crate::application::use_case::get_gallery_item::GetGalleryItem;
 use crate::application::use_case::list_galleries::ListGalleries;
+use crate::domain::model::configuration::Configuration;
+use crate::infrastructure::outbound::file_system::file_storage::FileSystemStorage;
 use crate::infrastructure::outbound::sqlx::unit_of_work::SqlxUnitOfWorkFactory;
 
-/// Builds the Library use cases over the shared unit of work factory.
+/// Builds the Library use cases from the live configuration.
+///
+/// Every accessor reads the current storage root and rebuilds the stateless file
+/// storage adapter from it, so the media-library use cases compose the same paths
+/// the Asset use cases write.
 pub struct RuntimeLibraryUseCaseFactory {
+    /// Live application configuration.
+    configuration: Arc<ArcSwap<Configuration>>,
     /// Factory opening the unit of work wrapping the Library use cases.
     unit_of_work_factory: Arc<SqlxUnitOfWorkFactory>,
 }
@@ -26,8 +37,12 @@ pub struct RuntimeLibraryUseCaseFactory {
 impl RuntimeLibraryUseCaseFactory {
     /// Create a new factory.
     #[must_use]
-    pub fn new(unit_of_work_factory: Arc<SqlxUnitOfWorkFactory>) -> Self {
+    pub fn new(
+        configuration: Arc<ArcSwap<Configuration>>,
+        unit_of_work_factory: Arc<SqlxUnitOfWorkFactory>,
+    ) -> Self {
         Self {
+            configuration,
             unit_of_work_factory,
         }
     }
@@ -47,9 +62,14 @@ impl LibraryUseCaseFactory for RuntimeLibraryUseCaseFactory {
     }
 
     fn delete_gallery_item(&self) -> Arc<dyn DeleteGalleryItemUseCase> {
-        Arc::new(DeleteGalleryItem::new(Arc::clone(
-            &self.unit_of_work_factory,
-        )))
+        let live = self.configuration.load();
+        // The file storage adapter is stateless and rebuilt per accessor from
+        // the live storage root, like the Asset factory's.
+        Arc::new(DeleteGalleryItem::new(
+            Arc::clone(&self.unit_of_work_factory),
+            Arc::new(FileSystemStorage::new()),
+            PathBuf::from(live.asset().storage().root()),
+        ))
     }
 
     fn get_gallery(&self) -> Arc<dyn GetGalleryUseCase> {
