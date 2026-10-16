@@ -568,10 +568,6 @@ Allow the owner to delete a gallery together with its items, their media, and th
 - Library
 - Asset
 
-### Application use case(s)
-
-- `delete_gallery.rs`
-
 ### Business rules
 
 - Only the gallery owner may delete it; the Root Admin has no override.
