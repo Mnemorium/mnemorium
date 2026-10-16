@@ -4,73 +4,10 @@ Catalog of the **business use cases** of Mnemorium. Each entry describes a capab
 business-level view, not a one-to-one list of the application's implementation units.
 
 A business use case is implemented by one or more **application use cases** — the `port/<name>.rs` /
-`use_case/<name>.rs` pair governed by [TechnicalDesign.md](TechnicalDesign.md) § 1 (Code Style Guidelines), § 1.9 (Use
-cases). Each entry lists the application use cases that implement it, so several application use cases may appear under
-a single entry. Application use cases not yet grouped under a catalogued business use case may exist; this catalog does
-not enumerate every one.
+`use_case/<name>.rs` pair governed by [TechnicalDesign.md](TechnicalDesign.md) § 9 (Use cases). The catalog does not
+list them: an entry describes the capability, not the code that implements it.
 
-IDs are sequential across the whole catalog: `UC-001`, `UC-002`, …
-
-## Field rules
-
-### Title
-
-- `## UC-<seq> - <Name>` heading, e.g. `## UC-001 - Create a User Account`.
-- The name states the business capability, not an application use-case file name.
-
-### Description
-
-- One or two sentences stating the business intent of the use case.
-
-### Primary actor
-
-- The actor who initiates the use case.
-- Use the actor terms from the Glossary (`Standard User`, `Admin`, `Root Admin`).
-
-### Secondary actor (optional)
-
-- Other actors or systems that participate without initiating.
-- Remove the section when there is none.
-
-### Pre condition(s)
-
-- Bullet list, one condition per bullet.
-- Every condition must hold before the use case can run.
-
-### Trigger(s)
-
-- Bullet list of what initiates the use case (REST endpoint, scheduler, …).
-
-### Bounded context(s)
-
-- Bullet list of the bounded contexts the use case touches.
-- The available bounded contexts are listed in the
-  [Bounded context section of the Overview](Overview.md#bounded-context).
-
-### Application use case(s)
-
-- Bullet list of the application use-case files implementing this business use case, e.g. `register_user.rs`.
-- One or more files; the same file may appear under several entries.
-
-### Business rules
-
-- Bullet list of the business rules the input must satisfy.
-
-### Happy path
-
-- Numbered steps of the main success scenario.
-
-### Alternative flow
-
-- Numbered steps, each branch starting from a happy-path step (e.g. `3a.` when branching from step 3).
-- Every flow listed here is a `Critical exception path` (see Glossary): a scenario worth testing, covered following
-  [TechnicalDesign.md](TechnicalDesign.md) § 5.
-- List a flow only when it is needed; business rules do not require a one-to-one branch.
-
-### Post condition(s)
-
-- Bullet list, one condition per bullet.
-- Every condition is guaranteed after the use case succeeds.
+The entry format is defined in [TechnicalDesign.md](TechnicalDesign.md) § 8 (Documentation), `DOC-005`.
 
 ## Catalog
 
@@ -96,10 +33,6 @@ Allow an Administrator to create a new user in the system and assign the appropr
 
 - Identity
 - User
-
-### Application use case(s)
-
-- `register_user.rs`
 
 ### Business rules
 
@@ -150,9 +83,11 @@ features and resources.
 - Identity
 - User
 
-### Application use case(s)
+### Business rules
 
-- `login_user.rs`
+- The username must name an existing account and the password must verify against that account's stored hash.
+- A failed authentication does not reveal whether the username exists or the password was wrong.
+- A successful authentication issues a token identifying the user; a failed one issues no token.
 
 ### Happy path
 
@@ -197,11 +132,6 @@ changed.
 - Identity
 - User
 - Configuration
-
-### Application use case(s)
-
-- `initialize_root_admin.rs`
-- `patch_credential.rs`
 
 ### Business rules
 
@@ -258,10 +188,6 @@ the optional configuration file and the environment, generating the secrets on t
 
 - Configuration
 
-### Application use case(s)
-
-- `load_configuration.rs`
-
 ### Business rules
 
 - The configuration is merged following the persistence → file → environment precedence: the persisted singleton row is
@@ -317,10 +243,6 @@ accessing the system.
 - Library
 - Asset
 
-### Application use case(s)
-
-- Not yet implemented: no application use case.
-
 ### Business rules
 
 - The Root Admin account cannot be deleted.
@@ -353,7 +275,8 @@ accessing the system.
 
 ### Description
 
-Allow a user to upload a supported media file to the service for storage, processing, cataloging, and distribution.
+Allow a user to upload a supported media file to the service for storage, processing, cataloging, and distribution. The
+upload is resumable and chunked, so it spans several requests.
 
 ### Primary actor
 
@@ -371,15 +294,6 @@ Allow a user to upload a supported media file to the service for storage, proces
 
 - Asset
 - Library
-
-### Application use case(s)
-
-- `begin_upload.rs`
-- `write_upload_chunk.rs`
-- `complete_upload.rs`
-- `get_upload.rs`
-
-The upload flow is resumable and chunked, so it spans several requests.
 
 ### Business rules
 
@@ -437,10 +351,6 @@ Allow an authenticated user to create a gallery they own to collect images and v
 
 - Library
 
-### Application use case(s)
-
-- `create_gallery.rs`
-
 ### Business rules
 
 - The gallery name is required, must not be empty or only whitespace, and must be at most 100 characters long.
@@ -494,12 +404,6 @@ Allow an authenticated user to browse the galleries and items they may see.
 
 - Library
 
-### Application use case(s)
-
-- `list_galleries.rs`
-- `get_gallery.rs`
-- `get_gallery_item.rs`
-
 ### Business rules
 
 - The listing shows every public gallery plus the caller's own galleries.
@@ -550,10 +454,6 @@ Allow an authenticated user to append one of their images or videos to a gallery
 ### Bounded context(s)
 
 - Library
-
-### Application use case(s)
-
-- `add_gallery_item.rs`
 
 ### Business rules
 
@@ -614,10 +514,6 @@ when the caller owns the file — the backing file.
 
 - Library
 - Asset
-
-### Application use case(s)
-
-- `delete_gallery_item.rs`
 
 ### Business rules
 
