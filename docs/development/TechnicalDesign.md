@@ -925,10 +925,11 @@ A factory accessor constructs the adapters its use case needs, classified as:
 - **Stateless adapter** — it has no runtime state and its behaviour is independent of the configuration (for example
   `Sha2ContentHasher`, `RandomPasswordGenerator`). The accessor builds it at the point of use and never stores it in a
   struct reachable from `AppState` across requests. An adapter may likewise build a stateless adapter it owns at the
-  point of use rather than storing it (`STY-RUST-062`).
-- **Resource-owning adapter** — it owns a resource created once at startup (for example the file storage rooted at
-  `asset.storage.root`). The composition root captures the startup value and the accessor builds the adapter afresh per
-  use from it; the adapter is never a long-lived field of the factory.
+  point of use rather than storing it (`STY-RUST-062`). The file-storage adapter is stateless: the accessor reads its
+  root from the live configuration (`asset.storage.root`) when it builds it.
+- **Resource-owning adapter** — it owns a resource created once at startup (for example the media-probe permit pool).
+  The composition root captures the startup value and the accessor builds the adapter afresh per use from it; the
+  adapter is never a long-lived field of the factory.
 
 Nothing outside the composition root builds a process-lifetime adapter (`STY-RUST-067`); building a per-use adapter
 inside an accessor is not a violation.
@@ -979,7 +980,6 @@ are the **startup-only settings**; this table is their registry.
 | `persistence.sqlite3.path`             | The bootstrap that opens the pool (`src/lib/infrastructure/outbound/config/bootstrap.rs`).                                                             | A startup warning when the stored value differs (`src/bin/server.rs`). |
 | `persistence.sqlite3.max_connections`  | The pool sizing in the same bootstrap.                                                                                                                 | None.                                                                  |
 | `asset.upload.chunk_size_bytes`        | The axum body limit fixed when the router is built (`src/lib/infrastructure/inbound/rest/handler/asset.rs`); the upload use cases read the live value. | None (`TODO(hot-reload)` in the same handler).                         |
-| `asset.storage.root`                   | The `FileSystemStorage` adapter built per use from the root captured in `src/bin/server.rs`.                                                           | None.                                                                  |
 | `logging.level`                        | `logging::setup` (`src/lib/infrastructure/logging.rs`) when the `tracing` subscriber is installed.                                                     | None.                                                                  |
 | `security.rate_limit.trusted_proxies`  | The login limiter built in the composition root (`src/bin/server.rs`) when the router is built.                                                        | None.                                                                  |
 | `security.rate_limit.client_ip_header` | The login limiter built in the composition root (`src/bin/server.rs`) when the router is built.                                                        | None.                                                                  |
