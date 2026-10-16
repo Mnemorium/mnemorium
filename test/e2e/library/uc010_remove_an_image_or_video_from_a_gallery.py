@@ -14,90 +14,14 @@ the item and its medium are gone, which the not-found answer to re-adding the
 same media proves.
 """
 
-import struct
 import time
-import zlib
 from collections.abc import Callable
-from itertools import count
-from pathlib import Path
 
 import requests
+from conftest import UNKNOWN_ID, add_item, create_owned_gallery, png, register_image, video
 
 _API_PREFIX = "/api/v1"
 _GALLERY_PATH = f"{_API_PREFIX}/library/gallery"
-
-_UNKNOWN_ID = 999_999_999
-
-_VIDEO_FIXTURE = Path(__file__).resolve().parents[1] / "fixture" / "tiny_video.mp4"
-
-# Each generated image must have distinct bytes: the upload-completion handler
-# deduplicates by integrity hash, so identical bytes would reuse a file (and its
-# already-registered medium) across tests. The counter is seeded from the clock
-# so a second run against the same container still produces distinct bytes.
-_IMAGE_NONCE = count(time.time_ns() & 0xFFFFFF)
-
-# The video fixture is shared, so each upload gets a unique trailing `free` box:
-# the padding is valid MP4 and leaves the container metadata the probe reads
-# untouched, while the bytes stay unique per test for the same reason.
-_VIDEO_NONCE = count(time.time_ns() & 0xFFFFFF)
-
-
-def _chunk(chunk_type: bytes, data: bytes) -> bytes:
-    """Build one PNG chunk with its CRC."""
-    crc = zlib.crc32(chunk_type + data) & 0xFFFFFFFF
-    return struct.pack(">I", len(data)) + chunk_type + data + struct.pack(">I", crc)
-
-
-def _png(width: int, height: int) -> bytes:
-    """Build a minimal valid, unique RGB PNG of the given dimensions."""
-    nonce = next(_IMAGE_NONCE)
-    colour = bytes([nonce & 0xFF, (nonce >> 8) & 0xFF, (nonce >> 16) & 0xFF])
-    header = struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0)
-    scanline = b"\x00" + colour * width
-    pixels = zlib.compress(scanline * height)
-    return b"\x89PNG\r\n\x1a\n" + _chunk(b"IHDR", header) + _chunk(b"IDAT", pixels) + _chunk(b"IEND", b"")
-
-
-def _video() -> bytes:
-    """Return the fixture's bytes with a unique trailing `free` box."""
-    padding = struct.pack(">I", next(_VIDEO_NONCE))
-    return _VIDEO_FIXTURE.read_bytes() + struct.pack(">I", 8 + len(padding)) + b"free" + padding
-
-
-def _register_image(
-    upload_media: Callable[[str, str, bytes, str], int],
-    register_media: Callable[[str, int], int],
-    token: str,
-    file_name: str,
-    data: bytes,
-) -> int:
-    """Stage and register an image, returning its medium identifier."""
-    upload_id = upload_media(token, file_name, data)
-    return register_media(token, upload_id)
-
-
-def _create_gallery(
-    create_gallery: Callable[[str, str, bool], requests.Response],
-    token: str,
-    is_public: bool,
-) -> int:
-    """Create a gallery owned by `token`'s caller and return its identifier."""
-    created = create_gallery(token, f"Gallery {time.time_ns()}", is_public)
-    assert created.status_code == 201, f"create failed: {created.status_code} {created.text}"
-    return created.json()["id"]
-
-
-def _add_item(
-    add_gallery_item: Callable[[str, int, str, int], requests.Response],
-    token: str,
-    gallery_id: int,
-    media_type: str,
-    media_id: int,
-) -> int:
-    """Add `media_id` to the gallery and return the created item's identifier."""
-    added = add_gallery_item(token, gallery_id, media_type, media_id)
-    assert added.status_code == 201, f"add failed: {added.status_code} {added.text}"
-    return added.json()["id"]
 
 
 def _assert_item_and_medium_are_gone(
@@ -136,15 +60,15 @@ def test_the_owner_removes_its_own_item(
     delete_gallery_item: Callable[[str, int, int], requests.Response],
     standard_user_token: str,
 ) -> None:
-    gallery_id = _create_gallery(create_gallery, standard_user_token, is_public=False)
-    media_id = _register_image(
+    gallery_id = create_owned_gallery(create_gallery, standard_user_token, is_public=False)
+    media_id = register_image(
         upload_media,
         register_media,
         standard_user_token,
         f"mine-{time.time_ns()}.png",
-        _png(4, 3),
+        png(4, 3),
     )
-    item_id = _add_item(add_gallery_item, standard_user_token, gallery_id, "image", media_id)
+    item_id = add_item(add_gallery_item, standard_user_token, gallery_id, "image", media_id)
 
     removed = delete_gallery_item(standard_user_token, gallery_id, item_id)
 
@@ -173,12 +97,12 @@ def test_any_user_removes_an_item_from_a_public_gallery(
     standard_user_token: str,
     second_standard_user_token: str,
 ) -> None:
-    gallery_id = _create_gallery(create_gallery, second_standard_user_token, is_public=True)
+    gallery_id = create_owned_gallery(create_gallery, second_standard_user_token, is_public=True)
     media_id = register_media(
         second_standard_user_token,
-        upload_media(second_standard_user_token, f"clip-{time.time_ns()}.mp4", _video(), "video/mp4"),
+        upload_media(second_standard_user_token, f"clip-{time.time_ns()}.mp4", video(), "video/mp4"),
     )
-    item_id = _add_item(add_gallery_item, second_standard_user_token, gallery_id, "video", media_id)
+    item_id = add_item(add_gallery_item, second_standard_user_token, gallery_id, "video", media_id)
 
     # Any authenticated user may remove an item of a public gallery, not only the
     # gallery's owner.
@@ -208,15 +132,15 @@ def test_an_admin_cannot_remove_an_item_from_a_private_gallery(
     admin_token: str,
     assert_error_body: Callable[[requests.Response, int], None],
 ) -> None:
-    gallery_id = _create_gallery(create_gallery, standard_user_token, is_public=False)
-    media_id = _register_image(
+    gallery_id = create_owned_gallery(create_gallery, standard_user_token, is_public=False)
+    media_id = register_image(
         upload_media,
         register_media,
         standard_user_token,
         f"private-{time.time_ns()}.png",
-        _png(2, 2),
+        png(2, 2),
     )
-    item_id = _add_item(add_gallery_item, standard_user_token, gallery_id, "image", media_id)
+    item_id = add_item(add_gallery_item, standard_user_token, gallery_id, "image", media_id)
 
     response = delete_gallery_item(admin_token, gallery_id, item_id)
 
@@ -236,15 +160,15 @@ def test_another_user_cannot_remove_an_item_from_a_private_gallery(
     second_standard_user_token: str,
     assert_error_body: Callable[[requests.Response, int], None],
 ) -> None:
-    gallery_id = _create_gallery(create_gallery, standard_user_token, is_public=False)
-    media_id = _register_image(
+    gallery_id = create_owned_gallery(create_gallery, standard_user_token, is_public=False)
+    media_id = register_image(
         upload_media,
         register_media,
         standard_user_token,
         f"private-other-{time.time_ns()}.png",
-        _png(2, 2),
+        png(2, 2),
     )
-    item_id = _add_item(add_gallery_item, standard_user_token, gallery_id, "image", media_id)
+    item_id = add_item(add_gallery_item, standard_user_token, gallery_id, "image", media_id)
 
     response = delete_gallery_item(second_standard_user_token, gallery_id, item_id)
 
@@ -264,15 +188,15 @@ def test_the_root_admin_can_remove_an_item_from_a_private_gallery(
     standard_user_token: str,
     root_admin_token: str,
 ) -> None:
-    gallery_id = _create_gallery(create_gallery, standard_user_token, is_public=False)
-    media_id = _register_image(
+    gallery_id = create_owned_gallery(create_gallery, standard_user_token, is_public=False)
+    media_id = register_image(
         upload_media,
         register_media,
         standard_user_token,
         f"override-{time.time_ns()}.png",
-        _png(3, 2),
+        png(3, 2),
     )
-    item_id = _add_item(add_gallery_item, standard_user_token, gallery_id, "image", media_id)
+    item_id = add_item(add_gallery_item, standard_user_token, gallery_id, "image", media_id)
 
     removed = delete_gallery_item(root_admin_token, gallery_id, item_id)
 
@@ -298,16 +222,16 @@ def test_removing_an_item_not_in_the_gallery_is_not_found(
     standard_user_token: str,
     assert_error_body: Callable[[requests.Response, int], None],
 ) -> None:
-    holding_gallery_id = _create_gallery(create_gallery, standard_user_token, is_public=False)
-    media_id = _register_image(
+    holding_gallery_id = create_owned_gallery(create_gallery, standard_user_token, is_public=False)
+    media_id = register_image(
         upload_media,
         register_media,
         standard_user_token,
         f"elsewhere-{time.time_ns()}.png",
-        _png(2, 3),
+        png(2, 3),
     )
-    item_id = _add_item(add_gallery_item, standard_user_token, holding_gallery_id, "image", media_id)
-    other_gallery_id = _create_gallery(create_gallery, standard_user_token, is_public=True)
+    item_id = add_item(add_gallery_item, standard_user_token, holding_gallery_id, "image", media_id)
+    other_gallery_id = create_owned_gallery(create_gallery, standard_user_token, is_public=True)
 
     # The item is scoped to the gallery named in the path.
     response = delete_gallery_item(standard_user_token, other_gallery_id, item_id)
@@ -320,6 +244,6 @@ def test_removing_from_an_unknown_gallery_is_not_found(
     standard_user_token: str,
     assert_error_body: Callable[[requests.Response, int], None],
 ) -> None:
-    response = delete_gallery_item(standard_user_token, _UNKNOWN_ID, 1)
+    response = delete_gallery_item(standard_user_token, UNKNOWN_ID, 1)
 
     assert_error_body(response, 404)

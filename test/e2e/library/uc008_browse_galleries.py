@@ -11,44 +11,14 @@ registers the image as a side effect, and the completed upload's finalized file
 identifier is the medium identifier the tests add to a gallery.
 """
 
-import struct
 import time
-import zlib
 from collections.abc import Callable
 
 import requests
+from conftest import DEFAULT_GALLERY_ID, UNKNOWN_ID, png, register_image
 
 _API_PREFIX = "/api/v1"
 _GALLERY_PATH = f"{_API_PREFIX}/library/gallery"
-
-# The seeded, undeletable default gallery.
-_DEFAULT_GALLERY_ID = 0
-
-
-def _png(width: int, height: int) -> bytes:
-    """Build a minimal valid RGB PNG of the given dimensions."""
-    header = struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0)
-    scanline = b"\x00" + b"\xff\x00\x00" * width
-    pixels = zlib.compress(scanline * height)
-    return b"\x89PNG\r\n\x1a\n" + _chunk(b"IHDR", header) + _chunk(b"IDAT", pixels) + _chunk(b"IEND", b"")
-
-
-def _chunk(chunk_type: bytes, data: bytes) -> bytes:
-    """Build one PNG chunk with its CRC."""
-    crc = zlib.crc32(chunk_type + data) & 0xFFFFFFFF
-    return struct.pack(">I", len(data)) + chunk_type + data + struct.pack(">I", crc)
-
-
-def _register_image(
-    upload_media: Callable[[str, str, bytes, str], int],
-    register_media: Callable[[str, int], int],
-    token: str,
-    file_name: str,
-    data: bytes,
-) -> int:
-    """Stage and register an image, returning its medium identifier."""
-    upload_id = upload_media(token, file_name, data)
-    return register_media(token, upload_id)
 
 
 def _list_galleries(
@@ -109,20 +79,20 @@ def test_the_default_gallery_is_visible_to_every_user(
         root_admin_token,
     ):
         response = requests.get(
-            f"{server_url}{_GALLERY_PATH}/{_DEFAULT_GALLERY_ID}",
+            f"{server_url}{_GALLERY_PATH}/{DEFAULT_GALLERY_ID}",
             headers={"Authorization": f"Bearer {token}"},
             timeout=10,
         )
         assert response.status_code == 200, f"default gallery not readable: {response.status_code} {response.text}"
         body = response.json()
-        assert body["id"] == _DEFAULT_GALLERY_ID
+        assert body["id"] == DEFAULT_GALLERY_ID
         assert body["name"] == "Default"
         assert body["is_public"] is True
         assert body["owner_id"] is None
 
     listed = _list_galleries(server_url, standard_user_token)
     assert listed.status_code == 200, f"list failed: {listed.status_code} {listed.text}"
-    assert any(item["id"] == _DEFAULT_GALLERY_ID for item in listed.json()["items"]), (
+    assert any(item["id"] == DEFAULT_GALLERY_ID for item in listed.json()["items"]), (
         "the default gallery must appear in the listing"
     )
 
@@ -141,8 +111,8 @@ def test_get_gallery_returns_its_ordered_items(
 
     first_name = f"first-{time.time_ns()}.png"
     second_name = f"second-{time.time_ns()}.png"
-    first_file = _register_image(upload_media, register_media, standard_user_token, first_name, _png(2, 2))
-    second_file = _register_image(upload_media, register_media, standard_user_token, second_name, _png(3, 3))
+    first_file = register_image(upload_media, register_media, standard_user_token, first_name, png(2, 2))
+    second_file = register_image(upload_media, register_media, standard_user_token, second_name, png(3, 3))
 
     first_added = add_gallery_item(standard_user_token, gallery_id, "image", first_file)
     assert first_added.status_code == 201, f"add failed: {first_added.status_code} {first_added.text}"
@@ -172,7 +142,7 @@ def test_get_gallery_item_returns_the_media_metadata(
     assert created.status_code == 201, f"create failed: {created.status_code} {created.text}"
     gallery_id = created.json()["id"]
     file_name = f"sunset-{time.time_ns()}.png"
-    file_id = _register_image(upload_media, register_media, standard_user_token, file_name, _png(4, 5))
+    file_id = register_image(upload_media, register_media, standard_user_token, file_name, png(4, 5))
     added = add_gallery_item(standard_user_token, gallery_id, "image", file_id)
     assert added.status_code == 201, f"add failed: {added.status_code} {added.text}"
     item_id = added.json()["id"]
@@ -270,7 +240,7 @@ def test_reading_an_unknown_gallery_is_not_found(
     standard_user_token: str,
     assert_error_body: Callable[[requests.Response, int], None],
 ) -> None:
-    response = get_gallery(standard_user_token, 999_999_999)
+    response = get_gallery(standard_user_token, UNKNOWN_ID)
 
     assert_error_body(response, 404)
 
@@ -285,6 +255,6 @@ def test_reading_an_unknown_item_is_not_found(
     assert created.status_code == 201, f"create failed: {created.status_code} {created.text}"
     gallery_id = created.json()["id"]
 
-    response = get_gallery_item(standard_user_token, gallery_id, 999_999_999)
+    response = get_gallery_item(standard_user_token, gallery_id, UNKNOWN_ID)
 
     assert_error_body(response, 404)
