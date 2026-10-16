@@ -1,3 +1,9 @@
+## [0.19.1](https://github.com/Mnemorium/mnemorium/compare/v0.19.0...v0.19.1) (2026-10-16)
+
+### Bug Fixes
+
+* **persistence:** install the genre upper-id update trigger ([#280](https://github.com/Mnemorium/mnemorium/issues/280)) ([cee6aa3](https://github.com/Mnemorium/mnemorium/commit/cee6aa36dd137350f8dd13c9178fd5d21f1ba6b8))
+
 ## [0.19.0](https://github.com/Mnemorium/mnemorium/compare/v0.18.0...v0.19.0) (2026-10-16)
 
 ### Features
