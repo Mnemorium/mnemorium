@@ -1,3 +1,9 @@
+## [0.18.0](https://github.com/Mnemorium/mnemorium/compare/v0.17.1...v0.18.0) (2026-10-16)
+
+### Features
+
+* **application:** add the Remove an Image or Video from a Gallery use case ([#276](https://github.com/Mnemorium/mnemorium/issues/276)) ([4921e21](https://github.com/Mnemorium/mnemorium/commit/4921e2183733e3a2a8e812692281402dbaf6fc9c))
+
 ## [0.17.1](https://github.com/Mnemorium/mnemorium/compare/v0.17.0...v0.17.1) (2026-10-15)
 
 ### Bug Fixes
