@@ -562,4 +562,113 @@ mod tests {
         assert_eq!(affected, 1, "touching last_modified_at must be allowed");
         Ok(())
     }
+
+    #[tokio::test]
+    async fn genre_insert_normalises_genre_id_uppercase() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let pool = in_memory_pool().await?;
+
+        // Act
+        sqlx::query("INSERT INTO genre (genre_id) VALUES ('rock')")
+            .execute(&pool)
+            .await?;
+
+        // Assert
+        let stored: String = sqlx::query_scalar("SELECT genre_id FROM genre")
+            .fetch_one(&pool)
+            .await?;
+        assert_eq!(
+            stored, "ROCK",
+            "the insert trigger must normalise genre_id to uppercase"
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn genre_update_normalises_genre_id_uppercase() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let pool = in_memory_pool().await?;
+        sqlx::query("INSERT INTO genre (genre_id) VALUES ('JAZZ')")
+            .execute(&pool)
+            .await?;
+
+        // Act
+        sqlx::query("UPDATE genre SET genre_id = 'jazz' WHERE genre_id = 'JAZZ'")
+            .execute(&pool)
+            .await?;
+
+        // Assert
+        let stored: String = sqlx::query_scalar("SELECT genre_id FROM genre")
+            .fetch_one(&pool)
+            .await?;
+        assert_eq!(
+            stored, "JAZZ",
+            "the update trigger must normalise genre_id to uppercase"
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn genre_update_normalises_referenced_genre_id() -> Result<(), Box<dyn Error>> {
+        // Arrange: a genre referenced by a music album.
+        let pool = in_memory_pool().await?;
+        sqlx::query(
+            "INSERT INTO music_album (music_album_id, name, release_date)
+             VALUES (1, 'Album', '2026-01-01')",
+        )
+        .execute(&pool)
+        .await?;
+        sqlx::query("INSERT INTO genre (genre_id) VALUES ('ROCK')")
+            .execute(&pool)
+            .await?;
+        sqlx::query("INSERT INTO music_album_genre (music_album_id, genre_id) VALUES (1, 'ROCK')")
+            .execute(&pool)
+            .await?;
+
+        // Act
+        sqlx::query("UPDATE genre SET genre_id = 'rock' WHERE genre_id = 'ROCK'")
+            .execute(&pool)
+            .await
+            .map_err(RepositoryError::from)?;
+
+        // Assert: the parent keeps its normalised key and the child still resolves.
+        let stored: String = sqlx::query_scalar("SELECT genre_id FROM genre")
+            .fetch_one(&pool)
+            .await?;
+        assert_eq!(
+            stored, "ROCK",
+            "the update must keep the genre key uppercase"
+        );
+        let children: i64 =
+            sqlx::query_scalar("SELECT count(*) FROM music_album_genre WHERE genre_id = 'ROCK'")
+                .fetch_one(&pool)
+                .await?;
+        assert_eq!(
+            children, 1,
+            "the child row must still resolve to its parent"
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn genre_update_colliding_with_existing_key_is_rejected() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let pool = in_memory_pool().await?;
+        sqlx::query("INSERT INTO genre (genre_id) VALUES ('ROCK')")
+            .execute(&pool)
+            .await?;
+        sqlx::query("INSERT INTO genre (genre_id) VALUES ('POP')")
+            .execute(&pool)
+            .await?;
+
+        // Act: the normalising update collides with the existing uppercase row.
+        let result = sqlx::query("UPDATE genre SET genre_id = 'rock' WHERE genre_id = 'POP'")
+            .execute(&pool)
+            .await
+            .map_err(RepositoryError::from);
+
+        // Assert
+        assert!(matches!(result, Err(RepositoryError::AlreadyExist)));
+        Ok(())
+    }
 }
