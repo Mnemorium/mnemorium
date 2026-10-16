@@ -127,6 +127,7 @@ RULES=(
 	"STY-RUST-082:check_sty_rust_082"
 	"STY-RUST-083:check_sty_rust_083"
 	"DOC-003:check_doc_003"
+	"DOC-005:check_doc_005"
 	"STY-SQL-001:check_sty_sql_001"
 	"STY-SQL-003:check_sty_sql_003"
 	"STY-SQL-004:check_sty_sql_004"
@@ -3046,6 +3047,140 @@ check_doc_003() {
 	return "$result"
 }
 
+# check_doc_005 — every business use case entry in the catalog follows the entry
+# format of § 5 (DOC-005). The catalog (docs/development/UseCases.md) is the
+# rule's data: each `## UC-<seq> - <Name>` entry's `###` field headings are read
+# at run time, as check_test_041 reads the entries, so a new use case is covered
+# by cataloguing it, never by editing this function. `Secondary actor (optional)`
+# and `Alternative flow` are optional and may sit anywhere; every other required
+# heading must appear once, in the documented order, and no entry carries the
+# removed `### Application use case(s)` heading. The entry IDs are sequential and
+# zero-padded across the catalog.
+check_doc_005() {
+	local id="DOC-005"
+	local catalog="docs/development/UseCases.md"
+	local kind seq num line hline heading rank idx=0 i last=0
+	local result=0
+	local -a required=(
+		"Description"
+		"Primary actor"
+		"Pre condition(s)"
+		"Trigger(s)"
+		"Bounded context(s)"
+		"Business rules"
+		"Happy path"
+		"Post condition(s)"
+	)
+	local -A order=()
+	local -A seen=()
+	local -A entry_seq=()
+	local -A entry_line=()
+	local -A entry_headings=()
+
+	if [ ! -f "$catalog" ]; then
+		printf 'error: %s: missing %s\n' "$id" "$catalog" >&2
+		return 1
+	fi
+
+	for rank in "${!required[@]}"; do
+		order["${required[$rank]}"]=$((rank + 1))
+	done
+
+	# Each `## UC-<seq> - <Name>` entry and each `###` heading under it, one
+	# `E`/`H` record per line. A `###` heading that sits before the first `## UC-`
+	# entry has no index and is dropped.
+	while IFS=$'\t' read -r kind seq line hline; do
+		case "$kind" in
+		E)
+			idx=$((idx + 1))
+			entry_seq["$idx"]="$seq"
+			entry_line["$idx"]="$line"
+			;;
+		H)
+			[ "$idx" -gt 0 ] || continue
+			entry_headings["$idx"]+="$line"$'\t'"$hline"$'\n'
+			;;
+		esac
+	done < <(awk '
+		function trim(s) { gsub(/^[[:space:]]+|[[:space:]]+$/, "", s); return s }
+
+		/^## UC-[0-9]+ - / {
+			seq = $0
+			sub(/^## UC-/, "", seq); sub(/ - .*$/, "", seq)
+			printf "E\t%s\t%d\n", seq, NR
+			in_entry = 1
+			next
+		}
+		/^## / { in_entry = 0; next }
+		in_entry && /^### / {
+			printf "H\t%s\t%d\t%s\n", seq, NR, trim(substr($0, 5))
+			next
+		}
+	' "$catalog")
+
+	if [ "$idx" -eq 0 ]; then
+		printf 'error: %s: parsed no use case entry from %s\n' "$id" "$catalog" >&2
+		return 1
+	fi
+
+	# The catalog numbers its entries UC-001, UC-002, … in order.
+	for ((i = 1; i <= idx; i++)); do
+		seq="${entry_seq[$i]}"
+		line="${entry_line[$i]}"
+		num=$((10#$seq))
+		if [ "$seq" != "$(printf '%03d' "$num")" ]; then
+			printf 'error: %s: %s:%s: use case id UC-%s is not written UC-%s; number entries UC-001, UC-002, …\n' \
+				"$id" "$catalog" "$line" "$seq" "$(printf '%03d' "$num")" >&2
+			result=1
+		fi
+		if [ "$num" -ne "$i" ]; then
+			printf 'error: %s: %s:%s: use case UC-%s is not sequential; expected UC-%03d\n' \
+				"$id" "$catalog" "$line" "$seq" "$i" >&2
+			result=1
+		fi
+	done
+
+	# Each entry carries the required field headings in the documented order and
+	# none carries the removed `### Application use case(s)`.
+	for ((i = 1; i <= idx; i++)); do
+		seq="${entry_seq[$i]}"
+		line="${entry_line[$i]}"
+		last=0
+		seen=()
+
+		while IFS=$'\t' read -r hline heading; do
+			[ -n "$heading" ] || continue
+			if [ "$heading" = "Application use case(s)" ]; then
+				printf 'error: %s: %s:%s: UC-%s carries the removed "### Application use case(s)" heading; the entry format (TechnicalDesign.md § 5) has no such field\n' \
+					"$id" "$catalog" "$hline" "$seq" >&2
+				result=1
+				continue
+			fi
+			if [ -n "${order[$heading]+set}" ]; then
+				seen["$heading"]=1
+				rank="${order[$heading]}"
+				if [ "$rank" -le "$last" ]; then
+					printf 'error: %s: %s:%s: "### %s" is out of order in UC-%s; the entry format (TechnicalDesign.md § 5) fixes the field order\n' \
+						"$id" "$catalog" "$hline" "$heading" "$seq" >&2
+					result=1
+				else
+					last="$rank"
+				fi
+			fi
+		done < <(printf '%s' "${entry_headings[$i]:-}")
+
+		for heading in "${required[@]}"; do
+			if [ -z "${seen[$heading]+set}" ]; then
+				printf 'error: %s: %s:%s: UC-%s is missing the required field heading "### %s" (TechnicalDesign.md § 5)\n' \
+					"$id" "$catalog" "$line" "$seq" "$heading" >&2
+				result=1
+			fi
+		done
+	done
+
+	return "$result"
+}
+
 check_sty_sql_001() {
 	local id="STY-SQL-001"
 	local config=".sqlfluff"
@@ -3930,9 +4065,8 @@ check_test_053() {
 	fi
 
 	# The bounded contexts each catalogued use case names: one `seq<TAB>context`
-	# row per bullet under the entry's `### Bounded context(s)` heading. The
-	# "Field rules" prose at the top of the catalog also carries that heading;
-	# it sits before the first `## UC-` entry, so a row without an entry is
+	# row per bullet under the entry's `### Bounded context(s)` heading. A bullet
+	# that sits before the first `## UC-` entry has no entry to attach to and is
 	# dropped.
 	while IFS=$'\t' read -r seq ctx; do
 		[ -n "$seq" ] || continue

@@ -2718,15 +2718,17 @@ CI `scopes` job; a failure cites `GOV-001`.
 
 ## Documentation
 
-This section governs the examples, diagrams, citations, routes and excerpts the documentation publishes. It keeps every
-published example traceable to the code it restates, so a reader can verify it and a reviewer can catch it going stale.
+This section governs the examples, diagrams, citations, routes, excerpts and business-use-case entries the documentation
+publishes. It keeps every published example traceable to the code it restates, so a reader can verify it and a reviewer
+can catch it going stale.
 
-| ID        | Section               | Rule                                                                                                                                                                                                                                                               | More info                       |
-| --------- | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------- |
-| `DOC-001` | Code examples         | An example that restates production code names the source path it is drawn from, is updated in the same change as that code, and may elide omitted regions with a `// [...]` marker.                                                                               | [§ 1](#1-code-examples)         |
-| `DOC-002` | Domain model diagrams | A domain model diagram that the documentation publishes represents the domain's real-world concepts — conceptual classes, typed attributes, and named associations with multiplicity — and never software methods, database tables or other implementation detail. | [§ 2](#2-domain-model-diagrams) |
-| `DOC-003` | Citations             | Documentation (`docs/`, the root Markdown) and production source (`src/`) cite only paths the repository tracks; they never name the local, untracked `.artifacts/` scratch directory, which a reader cannot resolve.                                              | [§ 3](#3-citations)             |
-| `DOC-004` | Published route       | A route the documentation publishes names a path the generated specification declares in `docs/openapi.json`.                                                                                                                                                      | [§ 4](#4-published-routes)      |
+| ID        | Section               | Rule                                                                                                                                                                                                                                                               | More info                          |
+| --------- | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------- |
+| `DOC-001` | Code examples         | An example that restates production code names the source path it is drawn from, is updated in the same change as that code, and may elide omitted regions with a `// [...]` marker.                                                                               | [§ 1](#1-code-examples)            |
+| `DOC-002` | Domain model diagrams | A domain model diagram that the documentation publishes represents the domain's real-world concepts — conceptual classes, typed attributes, and named associations with multiplicity — and never software methods, database tables or other implementation detail. | [§ 2](#2-domain-model-diagrams)    |
+| `DOC-003` | Citations             | Documentation (`docs/`, the root Markdown) and production source (`src/`) cite only paths the repository tracks; they never name the local, untracked `.artifacts/` scratch directory, which a reader cannot resolve.                                              | [§ 3](#3-citations)                |
+| `DOC-004` | Published route       | A route the documentation publishes names a path the generated specification declares in `docs/openapi.json`.                                                                                                                                                      | [§ 4](#4-published-routes)         |
+| `DOC-005` | Business use cases    | Every business use case entry in [UseCases.md](UseCases.md) carries the § 5 field headings in the documented order, carries no `### Application use case(s)` heading, and is numbered sequentially `UC-001`, `UC-002`, ….                                          | [§ 5](#5-business-use-case-format) |
 
 ---
 
@@ -2847,6 +2849,34 @@ path the specification declares, with the `/api/v1` base removed: `GET /api/v1/u
 
 No check asserts this correspondence yet ([`DOC-004`](#4-published-routes)); the rule is validated by review. A route
 example is updated in the same change that moves the endpoint.
+
+---
+
+### 5. Business use case format
+
+A business use case is one `## UC-<seq> - <Name>` entry in [UseCases.md](UseCases.md). IDs are sequential, zero-padded
+and gap-free across the whole catalog: `UC-001`, `UC-002`, …. The name states the business capability, not an
+application use-case file name.
+
+Each entry carries the field headings below, in this order. Only `### Secondary actor (optional)` and
+`### Alternative flow` may be omitted; every other field is required.
+
+| Field                            | Required | Content                                                                                                                                                                                                                             |
+| -------------------------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `### Description`                | yes      | One or two sentences stating the business intent of the use case.                                                                                                                                                                   |
+| `### Primary actor`              | yes      | The actor who initiates the use case, named with the [Glossary](Glossary.md) actor terms (`Standard User`, `Admin`, `Root Admin`).                                                                                                  |
+| `### Secondary actor (optional)` | no       | Other actors or systems that participate without initiating; remove the heading when there is none.                                                                                                                                 |
+| `### Pre condition(s)`           | yes      | One condition per bullet; every condition holds before the use case can run.                                                                                                                                                        |
+| `### Trigger(s)`                 | yes      | One bullet per trigger (a REST endpoint, a scheduler, …).                                                                                                                                                                           |
+| `### Bounded context(s)`         | yes      | One bullet per bounded context the use case touches; the available contexts are listed in the [Overview](Overview.md#bounded-context).                                                                                              |
+| `### Business rules`             | yes      | One bullet per business rule the input must satisfy.                                                                                                                                                                                |
+| `### Happy path`                 | yes      | Numbered steps of the main success scenario.                                                                                                                                                                                        |
+| `### Alternative flow`           | no       | Numbered steps, each branch starting from a happy-path step (e.g. `3a.`); every flow is a `Critical exception path` (see [Glossary](Glossary.md)), covered following [§ 5 (Testing)](#testing); list a flow only when it is needed. |
+| `### Post condition(s)`          | yes      | One condition per bullet, guaranteed after the use case succeeds.                                                                                                                                                                   |
+
+An entry never carries an `### Application use case(s)` heading: the catalog describes capabilities, not the code that
+implements them. A business use case is implemented by one or more application use cases, governed by
+[§ 9 (Use cases)](#9-use-cases).
 
 ---
 
