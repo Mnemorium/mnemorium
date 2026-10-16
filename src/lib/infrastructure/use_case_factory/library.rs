@@ -1,3 +1,4 @@
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use crate::application::port::add_gallery_item::AddGalleryItemUseCase;
@@ -15,10 +16,17 @@ use crate::application::use_case::delete_gallery_item::DeleteGalleryItem;
 use crate::application::use_case::get_gallery::GetGallery;
 use crate::application::use_case::get_gallery_item::GetGalleryItem;
 use crate::application::use_case::list_galleries::ListGalleries;
+use crate::infrastructure::outbound::file_system::file_storage::FileSystemStorage;
 use crate::infrastructure::outbound::sqlx::unit_of_work::SqlxUnitOfWorkFactory;
 
 /// Builds the Library use cases over the shared unit of work factory.
+///
+/// The file storage adapter is stateless and rebuilt per accessor from the
+/// startup-captured storage root, so the media-library use cases compose the
+/// same paths the Asset use cases write.
 pub struct RuntimeLibraryUseCaseFactory {
+    /// Root directory holding the upload and file folders.
+    storage_root: PathBuf,
     /// Factory opening the unit of work wrapping the Library use cases.
     unit_of_work_factory: Arc<SqlxUnitOfWorkFactory>,
 }
@@ -26,8 +34,9 @@ pub struct RuntimeLibraryUseCaseFactory {
 impl RuntimeLibraryUseCaseFactory {
     /// Create a new factory.
     #[must_use]
-    pub fn new(unit_of_work_factory: Arc<SqlxUnitOfWorkFactory>) -> Self {
+    pub fn new(storage_root: PathBuf, unit_of_work_factory: Arc<SqlxUnitOfWorkFactory>) -> Self {
         Self {
+            storage_root,
             unit_of_work_factory,
         }
     }
@@ -47,9 +56,13 @@ impl LibraryUseCaseFactory for RuntimeLibraryUseCaseFactory {
     }
 
     fn delete_gallery_item(&self) -> Arc<dyn DeleteGalleryItemUseCase> {
-        Arc::new(DeleteGalleryItem::new(Arc::clone(
-            &self.unit_of_work_factory,
-        )))
+        // The file storage adapter is stateless and rebuilt per accessor from
+        // the startup-captured storage root, like the Asset factory's.
+        Arc::new(DeleteGalleryItem::new(
+            Arc::clone(&self.unit_of_work_factory),
+            Arc::new(FileSystemStorage::new()),
+            self.storage_root.clone(),
+        ))
     }
 
     fn get_gallery(&self) -> Arc<dyn GetGalleryUseCase> {

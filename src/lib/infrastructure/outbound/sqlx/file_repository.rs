@@ -2,6 +2,7 @@ use sqlx::QueryBuilder;
 use sqlx::Sqlite;
 use sqlx::Transaction;
 
+use crate::domain::alias::NumericID;
 use crate::domain::model::file::File;
 use crate::domain::model::integrity_hash::IntegrityHash;
 use crate::domain::port::error::RepositoryError;
@@ -55,6 +56,14 @@ impl FileRepository for SqlxFileRepository<'_> {
         .await?;
 
         domain_file(row)
+    }
+
+    async fn delete(&mut self, id: NumericID) -> Result<bool, RepositoryError> {
+        let result = sqlx::query("DELETE FROM file WHERE file_id = ?")
+            .bind(id)
+            .execute(&mut **self.transaction)
+            .await?;
+        Ok(result.rows_affected() > 0)
     }
 
     async fn search(&mut self, filter: &FileFilter) -> Result<Vec<File>, RepositoryError> {
@@ -271,6 +280,92 @@ mod tests {
         assert_eq!(by_user.len(), 1);
         assert_eq!(by_user.first().map(File::path), Some("files/2_other.mp4"));
         assert_eq!(all.len(), 2);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn delete_reports_matched_and_missing_rows() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let mut transaction = begin_transaction().await?;
+        seed_user(&mut transaction, 1).await?;
+        let mut repository = SqlxFileRepository::new(&mut transaction);
+        let stored = repository
+            .create(file(0, "files/1_clip.mp4", 1, DIGEST)?)
+            .await?;
+
+        // Act
+        let deleted = repository.delete(stored.id()).await?;
+        let missing = repository.delete(stored.id()).await?;
+
+        // Assert
+        assert!(deleted);
+        assert!(!missing);
+        assert!(repository.search(&FileFilter::default()).await?.is_empty());
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn delete_referenced_file_returns_data_integrity_violation() -> Result<(), Box<dyn Error>>
+    {
+        // Arrange
+        let mut transaction = begin_transaction().await?;
+        seed_user(&mut transaction, 1).await?;
+        sqlx::query(
+            "INSERT INTO file (file_id, path, user_id, is_public, mime_type_id, integrity_hash)
+             VALUES (10, 'files/1_photo.png', 1, 0, 'image/png', ?1)",
+        )
+        .bind(DIGEST)
+        .execute(&mut *transaction)
+        .await?;
+        sqlx::query(
+            "INSERT INTO image (image_id, name, width_px, height_px, orientation, created_at, file_id)
+             VALUES (1, 'photo.png', 10, 10, 'SQUARE', '2026-10-06', 10)",
+        )
+        .execute(&mut *transaction)
+        .await?;
+
+        // Act
+        let mut repository = SqlxFileRepository::new(&mut transaction);
+        let result = repository.delete(10).await;
+
+        // Assert: `fk_image_file` crosses a bounded-context boundary and does
+        // not cascade (`ARCH-004`, `PERS-020`), so the delete is rejected.
+        assert!(matches!(
+            result,
+            Err(RepositoryError::DataIntegrityViolation)
+        ));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn search_filters_by_id_returns_only_the_matching_file() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let mut transaction = begin_transaction().await?;
+        seed_user(&mut transaction, 1).await?;
+        let mut repository = SqlxFileRepository::new(&mut transaction);
+        let first = repository
+            .create(file(0, "files/1_clip.mp4", 1, DIGEST)?)
+            .await?;
+        repository
+            .create(file(
+                0,
+                "files/1_other.mp4",
+                1,
+                "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+            )?)
+            .await?;
+
+        // Act
+        let found = repository
+            .search(&FileFilter {
+                id: Some(first.id()),
+                ..FileFilter::default()
+            })
+            .await?;
+
+        // Assert: a media removal addresses the row it read the stored path from,
+        // so the identifier filter must select exactly that row.
+        assert_eq!(found, vec![first]);
         Ok(())
     }
 

@@ -342,10 +342,6 @@ mod tests {
 
     /// Install a capturing subscriber on the current thread and return the
     /// shared buffer plus the guard that keeps it active.
-    #[expect(
-        clippy::single_call_fn,
-        reason = "the module-local capture helper mirrors the pattern the other adapter suites use"
-    )]
     fn capture_logs() -> (Arc<Mutex<Vec<u8>>>, DefaultGuard) {
         let buffer = Arc::new(Mutex::new(Vec::new()));
         let subscriber = tracing_subscriber::registry().with(
@@ -358,10 +354,6 @@ mod tests {
     }
 
     /// Read the captured bytes back as a lossy UTF-8 string.
-    #[expect(
-        clippy::single_call_fn,
-        reason = "the module-local read-back helper mirrors the pattern the other adapter suites use"
-    )]
     fn captured_logs(buffer: &Mutex<Vec<u8>>) -> String {
         let bytes = buffer.lock().unwrap_or_else(PoisonError::into_inner);
         String::from_utf8_lossy(bytes.as_slice()).into_owned()
@@ -552,6 +544,47 @@ mod tests {
 
         // Assert
         assert!(result.is_ok());
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn delete_upload_file_failure_logs_a_port_fault() -> Result<(), Box<dyn Error>> {
+        // Arrange: a directory cannot be removed by `remove_file`, so the failure
+        // branch maps the I/O error and emits the catalogued fault.
+        let (buffer, _capture) = capture_logs();
+        let tmp = tempdir()?;
+        let storage = FileSystemStorage::new();
+        let directory = tmp.path().join("files");
+        storage.create_directory(&directory).await?;
+
+        // Act
+        let result = storage.delete_upload_file(&directory).await;
+
+        // Assert
+        assert!(matches!(result, Err(StorageError::Unknown(_))));
+        let logs = captured_logs(&buffer);
+        assert_eq!(
+            logs.matches("ERROR").count(),
+            1,
+            "a delete fault must emit exactly one error event: {logs}"
+        );
+        assert!(
+            logs.contains("event=\"port_fault\""),
+            "the event must be port_fault: {logs}"
+        );
+        assert!(
+            logs.contains("kind=IsADirectory"),
+            "the event must carry the stable kind: {logs}"
+        );
+        assert!(
+            logs.contains("operation=\"delete_upload_file\""),
+            "the event must name the owning operation: {logs}"
+        );
+        let directory_text = directory.to_string_lossy();
+        assert!(
+            !logs.contains(directory_text.as_ref()),
+            "the sink must never carry the path: {logs}"
+        );
         Ok(())
     }
 

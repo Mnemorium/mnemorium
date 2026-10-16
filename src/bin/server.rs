@@ -109,11 +109,14 @@ async fn main() -> Result<(), anyhow::Error> {
     let user_use_case_factory = Arc::new(RuntimeUserUseCaseFactory::new(Arc::clone(
         &unit_of_work_factory,
     )));
-    let library_use_case_factory = Arc::new(RuntimeLibraryUseCaseFactory::new(Arc::clone(
-        &unit_of_work_factory,
-    )));
-
+    // The media-library use cases remove a deleted file's bytes, so the Library
+    // factory captures the same storage root the Asset use cases write under.
     let storage_root = PathBuf::from(configuration.load().asset().storage().root());
+    let library_use_case_factory = Arc::new(RuntimeLibraryUseCaseFactory::new(
+        storage_root.clone(),
+        Arc::clone(&unit_of_work_factory),
+    ));
+
     let file_storage = Arc::new(FileSystemStorage::new());
     EnsureStorageDirectories::new(Arc::clone(&file_storage), storage_root.clone())
         .execute(EnsureStorageDirectoriesCommand::new())

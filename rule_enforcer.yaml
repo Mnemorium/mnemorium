@@ -1,7 +1,13 @@
 ---
 rules:
   STY-RUST-001:
+    # The production single-use extractions the rule permits. `backing_file`'s
+    # two halves are the shared Asset-side cleanup of a removed gallery medium;
+    # they are extracted for the Delete a Gallery use case to reuse for every
+    # item it deletes.
     allowed_locations:
+      - src/lib/application/use_case/backing_file.rs::remove_row
+      - src/lib/application/use_case/backing_file.rs::remove_bytes
       - src/lib/infrastructure/inbound/rest/api_error.rs::error_response
       - src/lib/infrastructure/inbound/rest/middleware/rate_limit.rs::from_prune
       - src/lib/infrastructure/inbound/rest/middleware/rate_limit.rs::rate_limit_error
