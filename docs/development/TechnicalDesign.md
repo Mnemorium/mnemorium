@@ -2341,11 +2341,15 @@ sanctioned exception to [TEST-001](#unit-test) (a test module lives with the cod
 (shared test fixtures are exempt from the extract-function rule).
 
 It holds the fixtures the in-crate tests share: the secrets `SECRET_PASSWORD` and `TEST_JWT_SECRET`; the unit-of-work
-doubles `TestUnitOfWork`/`TestUow`, `TestUnitOfWorkFactory`/`TestFactory`, and their builders `unit_of_work_factory`,
-`asset_factory`, `asset_unit_of_work`, `gallery_factory`, `gallery_unit_of_work`, and `configuration_with_jwt_secret`;
-the harnesses `AssetFactoryHarness` and `GalleryFactoryHarness`; the app-state builders `app_state`,
-`app_state_with_identity`, `app_state_with_user`, `app_state_with_asset`, `app_state_with_library`; and the response
-assertion helper `error_message_of`.
+double `TestUnitOfWork`/`TestUow` and its factory double `TestUnitOfWorkFactory`/`TestFactory`, wrapped by
+`AssetFactoryHarness::new` and `GalleryFactoryHarness::new`; `configuration_with_jwt_secret`; the app-state builders
+`app_state`, `app_state_with_identity`, `app_state_with_user`, `app_state_with_asset`, `app_state_with_library`; and the
+response assertion helper `error_message_of`.
+
+`TestUnitOfWork` implements `Default`, and a test names only the repositories it stubs —
+`TestUnitOfWork { galleries, ..TestUnitOfWork::default() }` — so adding a repository to a unit of work changes this
+module, the context's `UnitOfWork` implementation, and the tests of the use cases that reach it, never the test modules
+of the other use cases.
 
 Helpers are never scattered into per-module files — for example a `test_helper.rs` beside the code under test, or a
 second helper module. A new shared helper is added to this single module, and only with the developer's explicit

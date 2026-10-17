@@ -167,15 +167,11 @@ mod tests {
     use crate::domain::model::user::Role;
     use crate::domain::model::user::User;
     use crate::domain::port::error::RepositoryError;
-    use crate::domain::port::file_repository::MockFileRepository;
     use crate::domain::port::gallery_repository::MockGalleryRepository;
-    use crate::domain::port::image_repository::MockImageRepository;
-    use crate::domain::port::music_album_repository::MockMusicAlbumRepository;
     use crate::domain::port::user_repository::MockUserRepository;
-    use crate::domain::port::video_repository::MockVideoRepository;
     use crate::test_helpers::GalleryFactoryHarness;
     use crate::test_helpers::TestFactory;
-    use crate::test_helpers::gallery_factory;
+    use crate::test_helpers::TestUnitOfWork;
 
     use super::CreateGallery;
 
@@ -238,14 +234,12 @@ mod tests {
         users: MockUserRepository,
         galleries: MockGalleryRepository,
     ) -> GalleryFactoryHarness {
-        gallery_factory(
+        let unit_of_work = TestUnitOfWork {
             galleries,
-            MockImageRepository::new(),
-            MockVideoRepository::new(),
             users,
-            MockFileRepository::new(),
-            MockMusicAlbumRepository::new(),
-        )
+            ..TestUnitOfWork::default()
+        };
+        GalleryFactoryHarness::new(unit_of_work)
     }
 
     /// Expect the pre-create name-collision search to find no gallery.

@@ -212,7 +212,6 @@ mod tests {
     use crate::domain::model::user::Role;
     use crate::domain::model::user::User;
     use crate::domain::model::user::UserError;
-    use crate::domain::port::configuration_repository::MockConfigurationRepository;
     use crate::domain::port::credential_repository::MockCredentialRepository;
     use crate::domain::port::error::PasswordHasherError;
     use crate::domain::port::error::RepositoryError;
@@ -220,7 +219,7 @@ mod tests {
     use crate::domain::port::user_repository::MockUserRepository;
     use crate::test_helpers::SECRET_PASSWORD;
     use crate::test_helpers::TestFactory;
-    use crate::test_helpers::unit_of_work_factory;
+    use crate::test_helpers::TestUnitOfWork;
 
     use super::RegisterUser;
 
@@ -256,15 +255,14 @@ mod tests {
             &mut password_hasher,
         )?;
 
-        let committed = Arc::new(AtomicBool::new(false));
-        let rolled_back = Arc::new(AtomicBool::new(false));
-        let factory = unit_of_work_factory(
-            user_repository,
-            credential_repository,
-            MockConfigurationRepository::new(),
-            Arc::clone(&committed),
-            Arc::clone(&rolled_back),
-        );
+        let unit_of_work = TestUnitOfWork {
+            users: user_repository,
+            credentials: credential_repository,
+            ..TestUnitOfWork::default()
+        };
+        let committed = Arc::clone(&unit_of_work.committed);
+        let rolled_back = Arc::clone(&unit_of_work.rolled_back);
+        let factory = TestFactory::new(unit_of_work);
 
         Ok(Harness {
             use_case: RegisterUser::new(Arc::new(factory), Arc::new(password_hasher)),

@@ -36,9 +36,9 @@
       `search_tracks`, mirroring `GalleryRepository::search` and `search_items` (§ 8.1). Verified by `cargo test --lib`
       compiling and generating `MockMusicAlbumRepository`.
 - [x] 2.4 Extend `src/lib/domain/port/library_unit_of_work.rs` with a `music_albums()` accessor. Implement it for
-      `TestUnitOfWork` in `src/lib/lib.rs`, add a `MockMusicAlbumRepository` field, and update `gallery_factory` /
-      `gallery_unit_of_work` (and their call sites) for the extra field. Verified by `cargo test --lib` compiling and
-      the existing gallery tests passing.
+      `TestUnitOfWork` in `src/lib/lib.rs` and add a `MockMusicAlbumRepository` field; the fixture carries the
+      repository, so no other test module changes. Verified by `cargo test --lib` compiling and the existing gallery
+      tests passing.
 
 ## 3. SQLx adapter
 

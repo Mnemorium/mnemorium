@@ -218,10 +218,10 @@ mod tests {
     use crate::domain::port::error::RepositoryError;
     use crate::domain::port::file_repository::MockFileRepository;
     use crate::domain::port::file_storage::MockFileStorage;
-    use crate::domain::port::mime_type_repository::MockMimeTypeRepository;
     use crate::domain::port::upload_repository::MockUploadRepository;
+    use crate::test_helpers::AssetFactoryHarness;
     use crate::test_helpers::TestFactory;
-    use crate::test_helpers::asset_factory;
+    use crate::test_helpers::TestUnitOfWork;
 
     use super::GetUpload;
 
@@ -286,7 +286,12 @@ mod tests {
         files: MockFileRepository,
         file_storage: MockFileStorage,
     ) -> Harness {
-        let harness = asset_factory(uploads, files, MockMimeTypeRepository::new());
+        let unit_of_work = TestUnitOfWork {
+            files,
+            uploads,
+            ..TestUnitOfWork::default()
+        };
+        let harness = AssetFactoryHarness::new(unit_of_work);
         Harness {
             use_case: GetUpload::new(
                 Arc::clone(&harness.factory),

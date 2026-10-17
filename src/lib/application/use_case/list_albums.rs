@@ -121,16 +121,12 @@ mod tests {
     use crate::domain::model::user::Role;
     use crate::domain::model::user::User;
     use crate::domain::port::error::RepositoryError;
-    use crate::domain::port::file_repository::MockFileRepository;
-    use crate::domain::port::gallery_repository::MockGalleryRepository;
-    use crate::domain::port::image_repository::MockImageRepository;
     use crate::domain::port::music_album_repository::MockMusicAlbumRepository;
     use crate::domain::port::music_album_repository::MusicAlbumSummary;
     use crate::domain::port::user_repository::MockUserRepository;
-    use crate::domain::port::video_repository::MockVideoRepository;
     use crate::test_helpers::GalleryFactoryHarness;
     use crate::test_helpers::TestFactory;
-    use crate::test_helpers::gallery_factory;
+    use crate::test_helpers::TestUnitOfWork;
 
     use super::ListAlbums;
 
@@ -160,14 +156,12 @@ mod tests {
         users: MockUserRepository,
         albums: MockMusicAlbumRepository,
     ) -> GalleryFactoryHarness {
-        gallery_factory(
-            MockGalleryRepository::new(),
-            MockImageRepository::new(),
-            MockVideoRepository::new(),
+        let unit_of_work = TestUnitOfWork {
+            music_albums: albums,
             users,
-            MockFileRepository::new(),
-            albums,
-        )
+            ..TestUnitOfWork::default()
+        };
+        GalleryFactoryHarness::new(unit_of_work)
     }
 
     /// Expect the caller load to find `caller_id`.

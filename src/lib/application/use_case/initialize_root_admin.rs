@@ -160,7 +160,6 @@ mod tests {
     use crate::application::port::initialize_root_admin::InitializeRootAdminUseCase as _;
     use crate::domain::model::user::Role;
     use crate::domain::model::user::User;
-    use crate::domain::port::configuration_repository::MockConfigurationRepository;
     use crate::domain::port::credential_repository::MockCredentialRepository;
     use crate::domain::port::error::PasswordGeneratorError;
     use crate::domain::port::error::PasswordHasherError;
@@ -169,7 +168,7 @@ mod tests {
     use crate::domain::port::password_hasher::MockPasswordHasher;
     use crate::domain::port::user_repository::MockUserRepository;
     use crate::test_helpers::TestFactory;
-    use crate::test_helpers::unit_of_work_factory;
+    use crate::test_helpers::TestUnitOfWork;
 
     use super::InitializeRootAdmin;
 
@@ -207,15 +206,14 @@ mod tests {
             &mut password_generator,
         )?;
 
-        let committed = Arc::new(AtomicBool::new(false));
-        let rolled_back = Arc::new(AtomicBool::new(false));
-        let factory = unit_of_work_factory(
-            user_repository,
-            credential_repository,
-            MockConfigurationRepository::new(),
-            Arc::clone(&committed),
-            Arc::clone(&rolled_back),
-        );
+        let unit_of_work = TestUnitOfWork {
+            users: user_repository,
+            credentials: credential_repository,
+            ..TestUnitOfWork::default()
+        };
+        let committed = Arc::clone(&unit_of_work.committed);
+        let rolled_back = Arc::clone(&unit_of_work.rolled_back);
+        let factory = TestFactory::new(unit_of_work);
 
         Ok(Harness {
             use_case: InitializeRootAdmin::new(

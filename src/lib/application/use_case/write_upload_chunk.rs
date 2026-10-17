@@ -369,11 +369,10 @@ mod tests {
     use crate::domain::port::error::StorageError;
     use crate::domain::port::file_repository::MockFileRepository;
     use crate::domain::port::file_storage::MockFileStorage;
-    use crate::domain::port::mime_type_repository::MockMimeTypeRepository;
     use crate::domain::port::upload_repository::MockUploadRepository;
-    use crate::test_helpers::TestUnitOfWorkFactory;
-    use crate::test_helpers::asset_factory;
-    use crate::test_helpers::asset_unit_of_work;
+    use crate::test_helpers::AssetFactoryHarness;
+    use crate::test_helpers::TestFactory;
+    use crate::test_helpers::TestUnitOfWork;
 
     use super::WriteUploadChunk;
 
@@ -534,11 +533,14 @@ mod tests {
                     Ok(true)
                 })
             });
-        let (unit_of_work, committed, rolled_back) =
-            asset_unit_of_work(uploads, file_repository, MockMimeTypeRepository::new());
-        let factory = TestUnitOfWorkFactory {
-            unit_of_works: Mutex::new(vec![unit_of_work]),
+        let unit_of_work = TestUnitOfWork {
+            files: file_repository,
+            uploads,
+            ..TestUnitOfWork::default()
         };
+        let committed = Arc::clone(&unit_of_work.committed);
+        let rolled_back = Arc::clone(&unit_of_work.rolled_back);
+        let factory = TestFactory::new(unit_of_work);
         let use_case = WriteUploadChunk::new(
             Arc::new(factory),
             Arc::new(file_storage),
@@ -595,14 +597,13 @@ mod tests {
             .expect_add_chunk()
             .times(1)
             .returning(|_, _, _| Box::pin(async { Ok(true) }));
-        let (unit_of_work, _committed, rolled_back) = asset_unit_of_work(
+        let unit_of_work = TestUnitOfWork {
             uploads,
-            MockFileRepository::new(),
-            MockMimeTypeRepository::new(),
-        );
-        let factory = TestUnitOfWorkFactory {
-            unit_of_works: Mutex::new(vec![unit_of_work]),
+            ..TestUnitOfWork::default()
         };
+        let _committed = Arc::clone(&unit_of_work.committed);
+        let rolled_back = Arc::clone(&unit_of_work.rolled_back);
+        let factory = TestFactory::new(unit_of_work);
         let use_case = WriteUploadChunk::new(
             Arc::new(factory),
             Arc::new(file_storage),
@@ -632,14 +633,13 @@ mod tests {
             .expect_search()
             .times(1)
             .returning(|_| Box::pin(async { Ok(Vec::new()) }));
-        let (unit_of_work, _committed, rolled_back) = asset_unit_of_work(
+        let unit_of_work = TestUnitOfWork {
             uploads,
-            MockFileRepository::new(),
-            MockMimeTypeRepository::new(),
-        );
-        let factory = TestUnitOfWorkFactory {
-            unit_of_works: Mutex::new(vec![unit_of_work]),
+            ..TestUnitOfWork::default()
         };
+        let _committed = Arc::clone(&unit_of_work.committed);
+        let rolled_back = Arc::clone(&unit_of_work.rolled_back);
+        let factory = TestFactory::new(unit_of_work);
         let use_case = WriteUploadChunk::new(
             Arc::new(factory),
             Arc::new(MockFileStorage::new()),
@@ -676,14 +676,13 @@ mod tests {
         let _capture = set_default(subscriber);
         let mut uploads = MockUploadRepository::new();
         expect_upload(&mut uploads, upload(5, 3, 8, &[], false)?);
-        let (unit_of_work, _committed, _rolled_back) = asset_unit_of_work(
+        let unit_of_work = TestUnitOfWork {
             uploads,
-            MockFileRepository::new(),
-            MockMimeTypeRepository::new(),
-        );
-        let factory = TestUnitOfWorkFactory {
-            unit_of_works: Mutex::new(vec![unit_of_work]),
+            ..TestUnitOfWork::default()
         };
+        let _committed = Arc::clone(&unit_of_work.committed);
+        let _rolled_back = Arc::clone(&unit_of_work.rolled_back);
+        let factory = TestFactory::new(unit_of_work);
         let use_case = WriteUploadChunk::new(
             Arc::new(factory),
             Arc::new(MockFileStorage::new()),
@@ -763,19 +762,18 @@ mod tests {
             .expect_delete()
             .times(1)
             .returning(|_| Box::pin(async { Ok(true) }));
-        let (unit_of_work, committed, rolled_back) = asset_unit_of_work(
+        let unit_of_work = TestUnitOfWork {
             uploads,
-            MockFileRepository::new(),
-            MockMimeTypeRepository::new(),
-        );
+            ..TestUnitOfWork::default()
+        };
+        let committed = Arc::clone(&unit_of_work.committed);
+        let rolled_back = Arc::clone(&unit_of_work.rolled_back);
         let mut file_storage = MockFileStorage::new();
         file_storage
             .expect_delete_upload_file()
             .times(1)
             .returning(|_| Box::pin(async { Ok(()) }));
-        let factory = TestUnitOfWorkFactory {
-            unit_of_works: Mutex::new(vec![unit_of_work]),
-        };
+        let factory = TestFactory::new(unit_of_work);
         let use_case = WriteUploadChunk::new(
             Arc::new(factory),
             Arc::new(file_storage),
@@ -835,11 +833,11 @@ mod tests {
             .expect_delete_upload_file()
             .times(1)
             .returning(|_| Box::pin(async { Ok(()) }));
-        let harness = asset_factory(
+        let unit_of_work = TestUnitOfWork {
             uploads,
-            MockFileRepository::new(),
-            MockMimeTypeRepository::new(),
-        );
+            ..TestUnitOfWork::default()
+        };
+        let harness = AssetFactoryHarness::new(unit_of_work);
         harness.commit_fails.store(true, Ordering::SeqCst);
         let use_case = WriteUploadChunk::new(
             Arc::clone(&harness.factory),
@@ -868,14 +866,13 @@ mod tests {
         // Arrange
         let mut uploads = MockUploadRepository::new();
         expect_upload(&mut uploads, upload(5, 3, 4, &[0], true)?);
-        let (unit_of_work, _committed, _rolled_back) = asset_unit_of_work(
+        let unit_of_work = TestUnitOfWork {
             uploads,
-            MockFileRepository::new(),
-            MockMimeTypeRepository::new(),
-        );
-        let factory = TestUnitOfWorkFactory {
-            unit_of_works: Mutex::new(vec![unit_of_work]),
+            ..TestUnitOfWork::default()
         };
+        let _committed = Arc::clone(&unit_of_work.committed);
+        let _rolled_back = Arc::clone(&unit_of_work.rolled_back);
+        let factory = TestFactory::new(unit_of_work);
         let use_case = WriteUploadChunk::new(
             Arc::new(factory),
             Arc::new(MockFileStorage::new()),
@@ -904,14 +901,13 @@ mod tests {
         // Arrange
         let mut uploads = MockUploadRepository::new();
         expect_upload(&mut uploads, upload(5, 3, 4, &[], false)?);
-        let (unit_of_work, _committed, _rolled_back) = asset_unit_of_work(
+        let unit_of_work = TestUnitOfWork {
             uploads,
-            MockFileRepository::new(),
-            MockMimeTypeRepository::new(),
-        );
-        let factory = TestUnitOfWorkFactory {
-            unit_of_works: Mutex::new(vec![unit_of_work]),
+            ..TestUnitOfWork::default()
         };
+        let _committed = Arc::clone(&unit_of_work.committed);
+        let _rolled_back = Arc::clone(&unit_of_work.rolled_back);
+        let factory = TestFactory::new(unit_of_work);
         let use_case = WriteUploadChunk::new(
             Arc::new(factory),
             Arc::new(MockFileStorage::new()),
@@ -953,14 +949,13 @@ mod tests {
         // Arrange
         let mut uploads = MockUploadRepository::new();
         expect_upload(&mut uploads, upload(5, 3, 8, &[], false)?);
-        let (unit_of_work, _committed, _rolled_back) = asset_unit_of_work(
+        let unit_of_work = TestUnitOfWork {
             uploads,
-            MockFileRepository::new(),
-            MockMimeTypeRepository::new(),
-        );
-        let factory = TestUnitOfWorkFactory {
-            unit_of_works: Mutex::new(vec![unit_of_work]),
+            ..TestUnitOfWork::default()
         };
+        let _committed = Arc::clone(&unit_of_work.committed);
+        let _rolled_back = Arc::clone(&unit_of_work.rolled_back);
+        let factory = TestFactory::new(unit_of_work);
         let use_case = WriteUploadChunk::new(
             Arc::new(factory),
             Arc::new(MockFileStorage::new()),
@@ -989,14 +984,13 @@ mod tests {
         // Arrange
         let mut uploads = MockUploadRepository::new();
         expect_upload(&mut uploads, upload(5, 3, 8, &[], false)?);
-        let (unit_of_work, _committed, _rolled_back) = asset_unit_of_work(
+        let unit_of_work = TestUnitOfWork {
             uploads,
-            MockFileRepository::new(),
-            MockMimeTypeRepository::new(),
-        );
-        let factory = TestUnitOfWorkFactory {
-            unit_of_works: Mutex::new(vec![unit_of_work]),
+            ..TestUnitOfWork::default()
         };
+        let _committed = Arc::clone(&unit_of_work.committed);
+        let _rolled_back = Arc::clone(&unit_of_work.rolled_back);
+        let factory = TestFactory::new(unit_of_work);
         let use_case = WriteUploadChunk::new(
             Arc::new(factory),
             Arc::new(MockFileStorage::new()),
@@ -1034,14 +1028,13 @@ mod tests {
         // Arrange
         let mut uploads = MockUploadRepository::new();
         expect_upload(&mut uploads, upload(5, 3, 8, &[], false)?);
-        let (unit_of_work, _committed, _rolled_back) = asset_unit_of_work(
+        let unit_of_work = TestUnitOfWork {
             uploads,
-            MockFileRepository::new(),
-            MockMimeTypeRepository::new(),
-        );
-        let factory = TestUnitOfWorkFactory {
-            unit_of_works: Mutex::new(vec![unit_of_work]),
+            ..TestUnitOfWork::default()
         };
+        let _committed = Arc::clone(&unit_of_work.committed);
+        let _rolled_back = Arc::clone(&unit_of_work.rolled_back);
+        let factory = TestFactory::new(unit_of_work);
         let use_case = WriteUploadChunk::new(
             Arc::new(factory),
             Arc::new(MockFileStorage::new()),
@@ -1087,14 +1080,13 @@ mod tests {
             .expect_add_chunk()
             .times(1)
             .returning(|_, _, _| Box::pin(async { Err(StorageError::Unavailable) }));
-        let (unit_of_work, _committed, rolled_back) = asset_unit_of_work(
+        let unit_of_work = TestUnitOfWork {
             uploads,
-            MockFileRepository::new(),
-            MockMimeTypeRepository::new(),
-        );
-        let factory = TestUnitOfWorkFactory {
-            unit_of_works: Mutex::new(vec![unit_of_work]),
+            ..TestUnitOfWork::default()
         };
+        let _committed = Arc::clone(&unit_of_work.committed);
+        let rolled_back = Arc::clone(&unit_of_work.rolled_back);
+        let factory = TestFactory::new(unit_of_work);
         let use_case = WriteUploadChunk::new(
             Arc::new(factory),
             Arc::new(file_storage),
@@ -1139,14 +1131,13 @@ mod tests {
             .expect_add_chunk()
             .times(1)
             .returning(|_, _, _| Box::pin(async { Ok(false) }));
-        let (unit_of_work, _committed, rolled_back) = asset_unit_of_work(
+        let unit_of_work = TestUnitOfWork {
             uploads,
-            MockFileRepository::new(),
-            MockMimeTypeRepository::new(),
-        );
-        let factory = TestUnitOfWorkFactory {
-            unit_of_works: Mutex::new(vec![unit_of_work]),
+            ..TestUnitOfWork::default()
         };
+        let _committed = Arc::clone(&unit_of_work.committed);
+        let rolled_back = Arc::clone(&unit_of_work.rolled_back);
+        let factory = TestFactory::new(unit_of_work);
         let use_case = WriteUploadChunk::new(
             Arc::new(factory),
             Arc::new(file_storage),
@@ -1196,14 +1187,13 @@ mod tests {
             .expect_add_chunk()
             .times(1)
             .returning(|_, _, _| Box::pin(async { Ok(true) }));
-        let (unit_of_work, _committed, rolled_back) = asset_unit_of_work(
+        let unit_of_work = TestUnitOfWork {
             uploads,
-            MockFileRepository::new(),
-            MockMimeTypeRepository::new(),
-        );
-        let factory = TestUnitOfWorkFactory {
-            unit_of_works: Mutex::new(vec![unit_of_work]),
+            ..TestUnitOfWork::default()
         };
+        let _committed = Arc::clone(&unit_of_work.committed);
+        let rolled_back = Arc::clone(&unit_of_work.rolled_back);
+        let factory = TestFactory::new(unit_of_work);
         let use_case = WriteUploadChunk::new(
             Arc::new(factory),
             Arc::new(file_storage),
@@ -1231,14 +1221,13 @@ mod tests {
         // Arrange
         let mut uploads = MockUploadRepository::new();
         expect_upload(&mut uploads, upload(5, 3, 8, &[], false)?);
-        let (unit_of_work, _committed, rolled_back) = asset_unit_of_work(
+        let unit_of_work = TestUnitOfWork {
             uploads,
-            MockFileRepository::new(),
-            MockMimeTypeRepository::new(),
-        );
-        let factory = TestUnitOfWorkFactory {
-            unit_of_works: Mutex::new(vec![unit_of_work]),
+            ..TestUnitOfWork::default()
         };
+        let _committed = Arc::clone(&unit_of_work.committed);
+        let rolled_back = Arc::clone(&unit_of_work.rolled_back);
+        let factory = TestFactory::new(unit_of_work);
         let mut hasher = MockContentHasher::new();
         hasher.expect_hasher().times(1).returning(|| {
             let mut session = MockContentHasherSession::new();

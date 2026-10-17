@@ -670,27 +670,21 @@ mod tests {
     use crate::domain::model::upload::ChunkBitmap;
     use crate::domain::model::upload::Upload;
     use crate::domain::model::video::ScanType;
-    use crate::domain::port::configuration_repository::MockConfigurationRepository;
-    use crate::domain::port::credential_repository::MockCredentialRepository;
     use crate::domain::port::error::MediaProbeError;
     use crate::domain::port::error::RepositoryError;
     use crate::domain::port::error::StorageError;
     use crate::domain::port::file_repository::MockFileRepository;
     use crate::domain::port::file_storage::MockFileStorage;
-    use crate::domain::port::gallery_repository::MockGalleryRepository;
     use crate::domain::port::image_repository::MockImageRepository;
     use crate::domain::port::media_probe::MockMediaProbe;
     use crate::domain::port::media_probe::ProbedImage;
     use crate::domain::port::media_probe::ProbedVideo;
-    use crate::domain::port::mime_type_repository::MockMimeTypeRepository;
-    use crate::domain::port::music_album_repository::MockMusicAlbumRepository;
     use crate::domain::port::upload_repository::MockUploadRepository;
-    use crate::domain::port::user_repository::MockUserRepository;
     use crate::domain::port::video_repository::MockVideoRepository;
     use crate::test_helpers::TestFactory;
+    use crate::test_helpers::TestUnitOfWork;
     use crate::test_helpers::TestUnitOfWorkFactory;
     use crate::test_helpers::TestUow;
-    use crate::test_helpers::asset_unit_of_work;
 
     use super::CompleteUpload;
 
@@ -762,16 +756,20 @@ mod tests {
         phase_two_files: MockFileRepository,
         file_storage: MockFileStorage,
     ) -> Harness {
-        let (phase_one, phase_one_committed, phase_one_rolled_back) = asset_unit_of_work(
-            phase_one_uploads,
-            phase_one_files,
-            MockMimeTypeRepository::new(),
-        );
-        let (phase_two, phase_two_committed, phase_two_rolled_back) = asset_unit_of_work(
-            phase_two_uploads,
-            phase_two_files,
-            MockMimeTypeRepository::new(),
-        );
+        let phase_one = TestUnitOfWork {
+            files: phase_one_files,
+            uploads: phase_one_uploads,
+            ..TestUnitOfWork::default()
+        };
+        let phase_one_committed = Arc::clone(&phase_one.committed);
+        let phase_one_rolled_back = Arc::clone(&phase_one.rolled_back);
+        let phase_two = TestUnitOfWork {
+            files: phase_two_files,
+            uploads: phase_two_uploads,
+            ..TestUnitOfWork::default()
+        };
+        let phase_two_committed = Arc::clone(&phase_two.committed);
+        let phase_two_rolled_back = Arc::clone(&phase_two.rolled_back);
         let phase_one_commit_fails = Arc::clone(&phase_one.commit_fails);
         let phase_two_commit_fails = Arc::clone(&phase_two.commit_fails);
         let factory = TestUnitOfWorkFactory {
@@ -801,23 +799,15 @@ mod tests {
         images: MockImageRepository,
         videos: MockVideoRepository,
     ) -> (TestUow, Arc<AtomicBool>, Arc<AtomicBool>) {
-        let committed = Arc::new(AtomicBool::new(false));
-        let rolled_back = Arc::new(AtomicBool::new(false));
-        let unit_of_work = TestUow {
-            committed: Arc::clone(&committed),
-            commit_fails: Arc::new(AtomicBool::new(false)),
-            configuration: MockConfigurationRepository::new(),
-            credentials: MockCredentialRepository::new(),
+        let unit_of_work = TestUnitOfWork {
             files,
-            galleries: MockGalleryRepository::new(),
             images,
-            mime_types: MockMimeTypeRepository::new(),
-            music_albums: MockMusicAlbumRepository::new(),
-            rolled_back: Arc::clone(&rolled_back),
             uploads,
-            users: MockUserRepository::new(),
             videos,
+            ..TestUnitOfWork::default()
         };
+        let committed = Arc::clone(&unit_of_work.committed);
+        let rolled_back = Arc::clone(&unit_of_work.rolled_back);
         (unit_of_work, committed, rolled_back)
     }
 
@@ -1734,11 +1724,12 @@ mod tests {
         let resolved = upload(5, 3, 4, &[0], false)?;
         let mut phase_one_uploads = MockUploadRepository::new();
         expect_upload(&mut phase_one_uploads, resolved.clone());
-        let (phase_one, _phase_one_committed, phase_one_rolled_back) = asset_unit_of_work(
-            phase_one_uploads,
-            MockFileRepository::new(),
-            MockMimeTypeRepository::new(),
-        );
+        let phase_one = TestUnitOfWork {
+            uploads: phase_one_uploads,
+            ..TestUnitOfWork::default()
+        };
+        let _phase_one_committed = Arc::clone(&phase_one.committed);
+        let phase_one_rolled_back = Arc::clone(&phase_one.rolled_back);
 
         // The hash closure records that the read-only phase has been rolled
         // back, releasing its connection, before the staged content is read.
@@ -1797,11 +1788,13 @@ mod tests {
             .expect_create()
             .times(1)
             .returning(|file| Box::pin(async move { Ok(file) }));
-        let (phase_two, phase_two_committed, _phase_two_rolled_back) = asset_unit_of_work(
-            phase_two_uploads,
-            phase_two_files,
-            MockMimeTypeRepository::new(),
-        );
+        let phase_two = TestUnitOfWork {
+            files: phase_two_files,
+            uploads: phase_two_uploads,
+            ..TestUnitOfWork::default()
+        };
+        let phase_two_committed = Arc::clone(&phase_two.committed);
+        let _phase_two_rolled_back = Arc::clone(&phase_two.rolled_back);
         let factory = TestUnitOfWorkFactory {
             unit_of_works: Mutex::new(vec![phase_one, phase_two]),
         };
