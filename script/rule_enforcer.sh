@@ -7549,14 +7549,20 @@ check_api_040() {
 # section names are checked at their classification site: a body that is not
 # JSON (`JsonSyntaxError`) is a `400`, a body that parses but does not match the
 # schema (`JsonDataError`) is a `422`, and a missing or unsupported media type
-# (`MissingJsonContentType`) is a `415`. The mapping of a domain or framing
+# (`MissingJsonContentType`) is a `415`. The unclassified wildcard of the
+# `#[non_exhaustive]` `JsonRejection` enum carries no status literal, so it is
+# checked apart from the table: it must route to a server fault and must not
+# classify the failure as a client-status variant, because the server has
+# established no cause (`API-041`). The mapping of a domain or framing
 # failure to an `ApiError` variant is a semantic judgement and stays a review
 # residual, as does a name that does not derive from a status code.
 check_api_041() {
 	local id="API-041"
 	local rule_id="api-041"
 	local api_error="src/lib/infrastructure/inbound/rest/api_error.rs"
-	local matches file line text variant status classifier expected result=0
+	local matches file line text variant status classifier expected entry result=0
+	local -A status_of=()
+	local -a terminal_arms=()
 	local table=0 rejections=0
 
 	if [ ! -f "$api_error" ]; then
@@ -7601,6 +7607,19 @@ check_api_041() {
 			continue
 		fi
 
+		# The unclassified rejection arm: an arm of the `JsonRejection` impl
+		# that names no `JsonRejection::` classifier carries no status literal.
+		# It is the `#[non_exhaustive]` forward-compatibility guard and must
+		# route to a server fault, never to a client-classifying variant
+		# (`API-041`). Collect it; the status table below supplies the class of
+		# each variant.
+		if [[ $text != *"StatusCode::"* ]]; then
+			variant="$(printf '%s' "$text" |
+				sed -nE 's/.*Self::([A-Za-z0-9_]+).*/\1/p')"
+			terminal_arms+=("$file"$'\t'"$line"$'\t'"$variant")
+			continue
+		fi
+
 		# The status table: the status must name the failure class the variant
 		# encodes (`UnprocessableEntity` -> `UNPROCESSABLE_ENTITY`).
 		variant="$(printf '%s' "$text" |
@@ -7610,6 +7629,7 @@ check_api_041() {
 		if [ -z "$variant" ] || [ -z "$status" ]; then
 			continue
 		fi
+		status_of[$variant]="$status"
 		table=$((table + 1))
 		expected="$(printf '%s' "$variant" |
 			sed -E 's/([a-z0-9])([A-Z])/\1_\2/g' | tr '[:lower:]' '[:upper:]')"
@@ -7621,6 +7641,22 @@ check_api_041() {
 	done < <(printf '%s\n' "$matches" |
 		jq -r '[.file, ((.range.start.line + 1) | tostring),
 			(.text | gsub("\\s+"; " "))] | @tsv')
+
+	# The unclassified arm must route to a server fault. Its classification is
+	# compared against the status table so a `Self::` variant that maps to a
+	# client status is rejected, while a server-fault helper stays allowed
+	# (`API-041`).
+	if [ "${#terminal_arms[@]}" -gt 0 ]; then
+		for entry in "${terminal_arms[@]}"; do
+			IFS=$'\t' read -r file line variant <<<"$entry"
+			[ -n "${status_of[$variant]:-}" ] || continue
+			if [ "${status_of[$variant]}" != "INTERNAL_SERVER_ERROR" ]; then
+				printf 'error: %s: %s:%s: the unclassified JsonRejection arm classifies the failure as ApiError::%s (%s); API-041 requires a server fault\n' \
+					"$id" "$file" "$line" "$variant" "${status_of[$variant]}" >&2
+				result=1
+			fi
+		done
+	fi
 
 	if [ "$table" -eq 0 ]; then
 		printf 'error: %s: extracted no ApiError variant/status mapping from %s\n' \

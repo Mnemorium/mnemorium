@@ -102,10 +102,6 @@ impl IntoResponse for ApiError {
 }
 
 impl From<JsonRejection> for ApiError {
-    #[expect(
-        clippy::cognitive_complexity,
-        reason = "each rejection arm emits its catalogued event inline so the field sets stay aligned with OBS-006"
-    )]
     fn from(rejection: JsonRejection) -> Self {
         // The client receives a stable, server-authored message only
         // (`API-040`): the framework rejection text carries deserialization and
@@ -113,7 +109,10 @@ impl From<JsonRejection> for ApiError {
         // logged (`OBS-003`) and it is never echoed (`API-039`, § 2.5). Each
         // catalog event carries its declared field set (`OBS-006`): `field` and
         // `reason` for `input_validation_failed`, `source` and `reason` for
-        // `deserialization_failed`.
+        // `deserialization_failed`. `JsonRejection` is `#[non_exhaustive]`, so
+        // the wildcard is the forward-compatibility guard; an unclassified
+        // variant is an internal `500` and an operator-actionable
+        // `extractor_fault` (`API-041`, `OBS-005`), never a client error.
         match rejection {
             JsonRejection::BytesRejection(bytes_rejection) => Self::from(bytes_rejection),
             JsonRejection::MissingJsonContentType(_) => {
@@ -150,16 +149,7 @@ impl From<JsonRejection> for ApiError {
                 );
                 Self::BadRequest("the request body is not valid JSON".to_owned())
             }
-            _unknown => {
-                warn!(
-                    target: "security",
-                    event = "deserialization_failed",
-                    source = "json_body",
-                    reason = "unknown",
-                    "rejected a request body"
-                );
-                Self::BadRequest("the request body is invalid".to_owned())
-            }
+            _unknown => Self::reject_misconfigured_extractor("unclassified_rejection"),
         }
     }
 }
@@ -178,9 +168,9 @@ impl From<PathRejection> for ApiError {
                 Self::from(failure.into_kind())
             }
             PathRejection::MissingPathParams(_) => {
-                Self::reject_misconfigured_path("missing_path_params")
+                Self::reject_misconfigured_extractor("missing_path_params")
             }
-            _unknown => Self::reject_misconfigured_path("unclassified_rejection"),
+            _unknown => Self::reject_misconfigured_extractor("unclassified_rejection"),
         }
     }
 }
@@ -204,12 +194,12 @@ impl From<ErrorKind> for ApiError {
             ErrorKind::InvalidUtf8InPathParam { .. } => Self::reject_path("invalid_utf8"),
             ErrorKind::Message(_) => Self::reject_path("custom_message"),
             ErrorKind::WrongNumberOfParameters { .. } => {
-                Self::reject_misconfigured_path("wrong_number_of_parameters")
+                Self::reject_misconfigured_extractor("wrong_number_of_parameters")
             }
             ErrorKind::UnsupportedType { .. } => {
-                Self::reject_misconfigured_path("unsupported_type")
+                Self::reject_misconfigured_extractor("unsupported_type")
             }
-            _unknown => Self::reject_misconfigured_path("unclassified_rejection"),
+            _unknown => Self::reject_misconfigured_extractor("unclassified_rejection"),
         }
     }
 }
@@ -237,14 +227,13 @@ impl ApiError {
         Self::UnprocessableEntity("the request contains an unrecognised value".to_owned())
     }
 
-    /// Log an operator-actionable path-extraction fault and return a generic
-    /// `500`.
-    fn reject_misconfigured_path(reason: &'static str) -> Self {
+    /// Log an operator-actionable extraction fault and return a generic `500`.
+    fn reject_misconfigured_extractor(reason: &'static str) -> Self {
         error!(
             target: "security",
             event = "extractor_fault",
             reason,
-            "rejected a misconfigured request path"
+            "rejected a misconfigured request"
         );
         Self::InternalServerError
     }
