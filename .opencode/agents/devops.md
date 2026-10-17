@@ -110,8 +110,10 @@ The surface is fixed; its contents are not. Read the files at run time.
 - Docs tooling — `mkdocs.yml` and the `docs` / `openapi-spec` processes.
 - Git conventions — branch and PR-title naming, Conventional Commits, scopes.
 
-`clippy.toml`, `deny.toml`, and `Cargo.toml` are locked: you may review them and
-prescribe a change, but they are not yours to apply (the orchestrator does).
+`clippy.toml`, `deny.toml`, `Cargo.toml`, and the rule configuration
+(`rule_enforcer.yaml`, `rule/**`, `sgconfig.yaml`) are locked: you may review
+them and prescribe a change, but they are not yours to apply (the orchestrator
+does).
 
 # Grounding
 

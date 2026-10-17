@@ -1,24 +1,20 @@
 {
   "$schema": "https://opencode.ai/config.json",
   "permissions": [
-    {
-      "action": "edit",
-      "resource": "Cargo.toml",
-      "effect": "deny"
-    },
-    {
-      "action": "edit",
-      "resource": "clippy.toml",
-      "effect": "deny"
-    },
-    {
-        "action": "edit",
-        "resource": "deny.toml",
-        "effect": "deny"
-    }
+    { "action": "edit", "resource": "Cargo.toml", "effect": "deny" },
+    { "action": "edit", "resource": "clippy.toml", "effect": "deny" },
+    { "action": "edit", "resource": "deny.toml", "effect": "deny" },
+    { "action": "edit", "resource": "rule_enforcer.yaml", "effect": "deny" },
+    { "action": "edit", "resource": "rule/**", "effect": "deny" },
+    { "action": "edit", "resource": "sgconfig.yaml", "effect": "deny" },
+    { "action": "shell", "resource": "*Cargo.toml*", "effect": "deny" },
+    { "action": "shell", "resource": "*clippy.toml*", "effect": "deny" },
+    { "action": "shell", "resource": "*deny.toml*", "effect": "deny" },
+    { "action": "shell", "resource": "*rule_enforcer.yaml*", "effect": "deny" },
+    { "action": "shell", "resource": "*rule/*", "effect": "deny" },
+    { "action": "shell", "resource": "*sgconfig.yaml*", "effect": "deny" }
   ],
   "experimental": {
     "subagent_depth": 3
-  },
-
+  }
 }
