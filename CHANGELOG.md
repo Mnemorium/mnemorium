@@ -1,3 +1,9 @@
+## [0.19.4](https://github.com/Mnemorium/mnemorium/compare/v0.19.3...v0.19.4) (2026-10-17)
+
+### Bug Fixes
+
+* **api:** return 422 for missing and value-failing chunk headers ([#300](https://github.com/Mnemorium/mnemorium/issues/300)) ([ab9ac7a](https://github.com/Mnemorium/mnemorium/commit/ab9ac7aaf3c606c611d0c59e256170241c471f6f))
+
 ## [0.19.3](https://github.com/Mnemorium/mnemorium/compare/v0.19.2...v0.19.3) (2026-10-17)
 
 ### Bug Fixes
