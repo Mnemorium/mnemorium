@@ -1223,7 +1223,7 @@
                 }
               }
             },
-            "description": "The chunk number, range or digest fails validation"
+            "description": "A required header is missing, or the chunk number, range or digest fails validation"
           },
           "500": {
             "content": {

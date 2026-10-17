@@ -104,7 +104,7 @@ impl From<WriteUploadChunkError> for ApiError {
             status = UNPROCESSABLE_ENTITY,
             body = ErrorBody,
             content_type = "application/hal+json",
-            description = "The chunk number, range or digest fails validation"
+            description = "A required header is missing, or the chunk number, range or digest fails validation"
         ),
         (
             status = UNAUTHORIZED,
@@ -178,10 +178,16 @@ pub async fn put_upload_chunk(
         return Err(ApiError::BadRequest("invalid chunk number".to_owned()));
     };
 
-    let raw = headers
-        .get(header::CONTENT_RANGE)
-        .and_then(|value| value.to_str().ok())
-        .ok_or_else(|| ApiError::BadRequest("missing Content-Range header".to_owned()))?;
+    let raw = match headers.get(header::CONTENT_RANGE) {
+        None => {
+            return Err(ApiError::UnprocessableEntity(
+                "missing Content-Range header".to_owned(),
+            ));
+        }
+        Some(value) => value
+            .to_str()
+            .map_err(|_| ApiError::BadRequest("malformed Content-Range header".to_owned()))?,
+    };
     let rest = raw
         .strip_prefix("bytes ")
         .ok_or_else(|| ApiError::BadRequest("malformed Content-Range header".to_owned()))?;
@@ -206,16 +212,25 @@ pub async fn put_upload_chunk(
         ));
     }
 
-    let raw_digest = headers
-        .get("content-digest")
-        .and_then(|value| value.to_str().ok())
-        .ok_or_else(|| ApiError::BadRequest("missing Content-Digest header".to_owned()))?;
+    let raw_digest = match headers.get("content-digest") {
+        None => {
+            return Err(ApiError::UnprocessableEntity(
+                "missing Content-Digest header".to_owned(),
+            ));
+        }
+        Some(value) => value
+            .to_str()
+            .map_err(|_| ApiError::BadRequest("malformed Content-Digest header".to_owned()))?,
+    };
     let mut parsed_any = false;
     let mut parsed_digest = None;
     for parameter in raw_digest.split(',').map(str::trim) {
         let Some((algorithm, value)) = parameter.split_once('=') else {
             continue;
         };
+        if algorithm.trim().is_empty() {
+            continue;
+        }
         parsed_any = true;
         if algorithm.trim() != "sha-256" {
             continue;
@@ -229,8 +244,8 @@ pub async fn put_upload_chunk(
             .decode(encoded)
             .map_err(|_| ApiError::BadRequest("malformed Content-Digest header".to_owned()))?;
         if bytes.len() != SHA256_BYTE_LENGTH {
-            return Err(ApiError::BadRequest(
-                "malformed Content-Digest header".to_owned(),
+            return Err(ApiError::UnprocessableEntity(
+                "the Content-Digest value is not a 32-byte SHA-256 digest".to_owned(),
             ));
         }
         let mut hex = String::with_capacity(bytes.len().saturating_mul(2));
@@ -241,19 +256,20 @@ pub async fn put_upload_chunk(
                 let _result = write!(hex, "{byte:02x}");
             }
         }
-        parsed_digest = Some(
-            IntegrityHash::try_new(hex)
-                .map_err(|_| ApiError::BadRequest("malformed Content-Digest header".to_owned()))?,
-        );
+        parsed_digest = Some(IntegrityHash::try_new(hex).map_err(|_| {
+            ApiError::UnprocessableEntity(
+                "the Content-Digest value is not a valid SHA-256 digest".to_owned(),
+            )
+        })?);
         break;
     }
     let Some(content_digest) = parsed_digest else {
         let error = if parsed_any {
-            "unsupported Content-Digest algorithm"
+            ApiError::UnprocessableEntity("unsupported Content-Digest algorithm".to_owned())
         } else {
-            "malformed Content-Digest header"
+            ApiError::BadRequest("malformed Content-Digest header".to_owned())
         };
-        return Err(ApiError::BadRequest(error.to_owned()));
+        return Err(error);
     };
 
     let body_len = u64::try_from(body.len())
@@ -300,6 +316,7 @@ mod tests {
     use axum::body::Body;
     use axum::body::to_bytes;
     use axum::extract::Request;
+    use axum::http::HeaderValue;
     use axum::http::StatusCode;
     use axum::http::header;
     use axum::response::Response;
@@ -343,7 +360,6 @@ mod tests {
     /// Build the domain digest of `CHUNK`.
     #[expect(
         clippy::expect_used,
-        clippy::single_call_fn,
         reason = "the helper drives a valid SHA-256 digest through the value object and is named for readability"
     )]
     fn chunk_integrity_hash() -> IntegrityHash<64> {
@@ -396,6 +412,49 @@ mod tests {
         Ok(router.oneshot(request).await?)
     }
 
+    /// Send a chunk PUT whose `Content-Range` and `Content-Digest` headers carry
+    /// raw bytes, exercising each header's `to_str` failure (`API-041`).
+    ///
+    /// A value that is not visible ASCII cannot be expressed as a `&str`, so this
+    /// builder is local to the module and bypasses the `&str` parameters of
+    /// [`send`].
+    async fn send_with_raw_header_values(
+        use_case: MockWriteUploadChunkUseCase,
+        caller_id: NumericID,
+        uri: &str,
+        content_range: &[u8],
+        content_digest: &[u8],
+        body: Body,
+    ) -> Result<Response, Box<dyn Error>> {
+        let mut factory = MockAssetUseCaseFactory::new();
+        factory
+            .expect_write_upload_chunk()
+            .times(0..=1)
+            .return_once(move || Arc::new(use_case) as Arc<dyn WriteUploadChunkUseCase>);
+
+        let mut request = Request::builder()
+            .method("PUT")
+            .uri(uri)
+            .header(header::CONTENT_TYPE, "application/octet-stream")
+            .header(
+                header::CONTENT_RANGE,
+                HeaderValue::from_bytes(content_range)?,
+            )
+            .header("content-digest", HeaderValue::from_bytes(content_digest)?)
+            .body(body)?;
+        request
+            .extensions_mut()
+            .insert(AuthenticatedUser::from(caller_id));
+
+        let router = axum::Router::new()
+            .route(
+                "/api/v1/asset/upload/{upload_id}/chunk/{chunk_number}",
+                put(put_upload_chunk),
+            )
+            .with_state(app_state_with_asset(Arc::new(factory))?);
+        Ok(router.oneshot(request).await?)
+    }
+
     /// Split `response` into its status and decoded JSON body.
     #[expect(
         clippy::single_call_fn,
@@ -417,10 +476,6 @@ mod tests {
     }
 
     /// Fixed expiry used by the stubbed success response.
-    #[expect(
-        clippy::single_call_fn,
-        reason = "the fixture is named for readability"
-    )]
     fn expiry() -> NaiveDateTime {
         NaiveDate::from_ymd_opt(2026, 1, 1)
             .unwrap_or_default()
@@ -494,7 +549,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn put_upload_chunk_missing_content_range_returns_bad_request()
+    async fn put_upload_chunk_missing_content_range_returns_unprocessable_entity()
     -> Result<(), Box<dyn Error>> {
         // Arrange
         let use_case = MockWriteUploadChunkUseCase::new();
@@ -511,7 +566,7 @@ mod tests {
         .await?;
 
         // Assert
-        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
         assert_eq!(
             error_message_of(&response).as_deref(),
             Some("missing Content-Range header")
@@ -625,7 +680,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn put_upload_chunk_missing_content_digest_returns_bad_request()
+    async fn put_upload_chunk_missing_content_digest_returns_unprocessable_entity()
     -> Result<(), Box<dyn Error>> {
         // Arrange
         let use_case = MockWriteUploadChunkUseCase::new();
@@ -642,7 +697,7 @@ mod tests {
         .await?;
 
         // Assert
-        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
         assert_eq!(
             error_message_of(&response).as_deref(),
             Some("missing Content-Digest header")
@@ -677,7 +732,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn put_upload_chunk_unsupported_content_digest_algorithm_returns_bad_request()
+    async fn put_upload_chunk_unsupported_content_digest_algorithm_returns_unprocessable_entity()
     -> Result<(), Box<dyn Error>> {
         // Arrange
         let use_case = MockWriteUploadChunkUseCase::new();
@@ -694,10 +749,160 @@ mod tests {
         .await?;
 
         // Assert
-        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
         assert_eq!(
             error_message_of(&response).as_deref(),
             Some("unsupported Content-Digest algorithm")
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn put_upload_chunk_content_digest_wrong_length_returns_unprocessable_entity()
+    -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let use_case = MockWriteUploadChunkUseCase::new();
+
+        // Act
+        let response = send(
+            use_case,
+            3,
+            "/api/v1/asset/upload/7/chunk/0",
+            Some(RANGE_CHUNK_ZERO),
+            Some("sha-256=:AAAA:"),
+            Body::from(CHUNK),
+        )
+        .await?;
+
+        // Assert
+        assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+        assert_eq!(
+            error_message_of(&response).as_deref(),
+            Some("the Content-Digest value is not a 32-byte SHA-256 digest")
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn put_upload_chunk_content_digest_mixed_algorithms_stores_chunk()
+    -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let expected_command =
+            WriteUploadChunkCommand::new(7, 0, 0, CHUNK.to_vec(), chunk_integrity_hash(), 3);
+        let mut use_case = MockWriteUploadChunkUseCase::new();
+        use_case
+            .expect_execute()
+            .times(1)
+            .with(eq(expected_command))
+            .return_once(move |_| {
+                Box::pin(async move {
+                    Ok(WriteUploadChunkResponse::new(
+                        "100".to_owned(),
+                        expiry(),
+                        None,
+                        false,
+                        3,
+                    ))
+                })
+            });
+        let digest = format!("sha-512=:AAAA:, {}", chunk_content_digest());
+
+        // Act
+        let response = send(
+            use_case,
+            3,
+            "/api/v1/asset/upload/7/chunk/0",
+            Some(RANGE_CHUNK_ZERO),
+            Some(&digest),
+            Body::from(CHUNK),
+        )
+        .await?;
+
+        // Assert
+        assert_eq!(response.status(), StatusCode::OK);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn put_upload_chunk_non_utf8_content_digest_returns_bad_request()
+    -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let use_case = MockWriteUploadChunkUseCase::new();
+
+        // Act
+        let response = send_with_raw_header_values(
+            use_case,
+            3,
+            "/api/v1/asset/upload/7/chunk/0",
+            RANGE_CHUNK_ZERO.as_bytes(),
+            b"sha-256=:\xff\xfe:",
+            Body::from(CHUNK),
+        )
+        .await?;
+
+        // Assert
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        let message = error_message_of(&response);
+        assert_eq!(message.as_deref(), Some("malformed Content-Digest header"));
+        assert_ne!(
+            message.as_deref(),
+            Some("missing Content-Digest header"),
+            "a present but undecodable header must not be reported as missing (`API-041`)"
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn put_upload_chunk_non_utf8_content_range_returns_bad_request()
+    -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let use_case = MockWriteUploadChunkUseCase::new();
+
+        // Act
+        let response = send_with_raw_header_values(
+            use_case,
+            3,
+            "/api/v1/asset/upload/7/chunk/0",
+            b"bytes 0-3/\xff",
+            chunk_content_digest().as_bytes(),
+            Body::from(CHUNK),
+        )
+        .await?;
+
+        // Assert
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        let message = error_message_of(&response);
+        assert_eq!(message.as_deref(), Some("malformed Content-Range header"));
+        assert_ne!(
+            message.as_deref(),
+            Some("missing Content-Range header"),
+            "a present but undecodable header must not be reported as missing (`API-041`)"
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn put_upload_chunk_content_digest_missing_algorithm_returns_bad_request()
+    -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let use_case = MockWriteUploadChunkUseCase::new();
+
+        // Act
+        let response = send(
+            use_case,
+            3,
+            "/api/v1/asset/upload/7/chunk/0",
+            Some(RANGE_CHUNK_ZERO),
+            Some("=:AAAA:"),
+            Body::from(CHUNK),
+        )
+        .await?;
+
+        // Assert
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(
+            error_message_of(&response).as_deref(),
+            Some("malformed Content-Digest header")
         );
         Ok(())
     }
