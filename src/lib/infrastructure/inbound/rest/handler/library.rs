@@ -504,8 +504,8 @@ pub struct TrackResponse {
     pub links: TrackLinks,
     /// Index of the medium the track is positioned on.
     pub medium_index: u32,
-    /// Name of the track.
-    pub name: String,
+    /// Name of the recording, when it has one.
+    pub name: Option<String>,
     /// Position of the track within its medium.
     pub track_index: i64,
 }
@@ -520,7 +520,7 @@ impl From<&ListAlbumTracksItem> for TrackResponse {
             isrc_code: item.isrc_code().map(str::to_owned),
             links: TrackLinks::for_track(item.album_id(), item.track_id()),
             medium_index: item.medium_index(),
-            name: item.name().to_owned(),
+            name: item.name().map(str::to_owned),
             track_index: item.track_index(),
         }
     }
@@ -536,7 +536,7 @@ impl From<GetAlbumTrackResponse> for TrackResponse {
             isrc_code: response.isrc_code().map(str::to_owned),
             links: TrackLinks::for_track(response.album_id(), response.track_id()),
             medium_index: response.medium_index(),
-            name: response.name().to_owned(),
+            name: response.name().map(str::to_owned),
             track_index: response.track_index(),
         }
     }

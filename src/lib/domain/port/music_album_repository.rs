@@ -161,8 +161,8 @@ pub struct MusicTrackDetail {
     isrc_code: Option<String>,
     /// Index of the medium the track is positioned on.
     medium_index: u32,
-    /// Name of the track: the recording name, or the audio name as a fallback.
-    name: String,
+    /// Name of the recording, when it has one.
+    name: Option<String>,
     /// The music track itself.
     track: MusicTrack,
 }
@@ -198,10 +198,10 @@ impl MusicTrackDetail {
         self.medium_index
     }
 
-    /// Return the name of the track.
+    /// Return the name of the recording, if it has one.
     #[must_use]
-    pub fn name(&self) -> &str {
-        &self.name
+    pub fn name(&self) -> Option<&str> {
+        self.name.as_deref()
     }
 
     /// Create a new track detail.
@@ -211,7 +211,7 @@ impl MusicTrackDetail {
         album_id: NumericID,
         medium_index: u32,
         file_id: NumericID,
-        name: String,
+        name: Option<String>,
         isrc_code: Option<String>,
         first_release_date: NaiveDate,
     ) -> Self {

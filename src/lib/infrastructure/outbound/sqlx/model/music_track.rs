@@ -5,8 +5,8 @@ use crate::domain::alias::NumericID;
 /// Read-model row for a music track joined to its medium, recording, audio and
 /// backing file.
 ///
-/// `name` is the recording name, falling back to the audio name; `file_id` is
-/// the identifier of the backing file the recording's audio references.
+/// `name` is the recording's own name, when it has one; `file_id` is the
+/// identifier of the backing file the recording's audio references.
 #[derive(Debug, Clone, sqlx::FromRow)]
 pub struct MusicTrackDetail {
     /// Identifier of the backing file.
@@ -26,8 +26,8 @@ pub struct MusicTrackDetail {
     /// Unique identifier of the track.
     #[sqlx(primary_key)]
     pub music_track_id: NumericID,
-    /// Name of the track: the recording name, or the audio name as a fallback.
-    pub name: String,
+    /// Name of the recording, when it has one.
+    pub name: Option<String>,
     /// Position of the track within its medium.
     pub track_index: i64,
 }

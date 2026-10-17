@@ -128,7 +128,7 @@ impl MusicAlbumRepository for SqlxMusicAlbumRepository<'_> {
                 music_medium.medium_index,
                 music_recording.first_release_date,
                 music_recording.isrc_code,
-                COALESCE(music_recording.name, audio.name) AS name,
+                music_recording.name AS name,
                 file.file_id
             FROM music_track
             JOIN music_medium
@@ -602,13 +602,13 @@ mod tests {
         assert_eq!(first.file_id(), 11);
         assert_eq!(
             first.name(),
-            "b.mp3",
-            "a recording without a name must fall back to the audio name"
+            None,
+            "a nameless recording has no display name"
         );
         assert_eq!(first.isrc_code(), None);
         let second = tracks.get(1).ok_or("the second track must be found")?;
         assert_eq!(second.file_id(), 10);
-        assert_eq!(second.name(), "So What");
+        assert_eq!(second.name(), Some("So What"));
         assert_eq!(second.track().recording_id(), 30);
         Ok(())
     }

@@ -2729,13 +2729,14 @@ This section governs the examples, diagrams, citations, routes, excerpts and bus
 publishes. It keeps every published example traceable to the code it restates, so a reader can verify it and a reviewer
 can catch it going stale.
 
-| ID        | Section               | Rule                                                                                                                                                                                                                                                               | More info                          |
-| --------- | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------- |
-| `DOC-001` | Code examples         | An example that restates production code names the source path it is drawn from, is updated in the same change as that code, and may elide omitted regions with a `// [...]` marker.                                                                               | [§ 1](#1-code-examples)            |
-| `DOC-002` | Domain model diagrams | A domain model diagram that the documentation publishes represents the domain's real-world concepts — conceptual classes, typed attributes, and named associations with multiplicity — and never software methods, database tables or other implementation detail. | [§ 2](#2-domain-model-diagrams)    |
-| `DOC-003` | Citations             | Documentation (`docs/`, the root Markdown) and production source (`src/`) cite only paths the repository tracks; they never name the local, untracked `.artifacts/` scratch directory, which a reader cannot resolve.                                              | [§ 3](#3-citations)                |
-| `DOC-004` | Published route       | A route the documentation publishes names a path the generated specification declares in `docs/openapi.json`.                                                                                                                                                      | [§ 4](#4-published-routes)         |
-| `DOC-005` | Business use cases    | Every business use case entry in [UseCases.md](UseCases.md) carries the § 5 field headings in the documented order, carries no `### Application use case(s)` heading, and is numbered sequentially `UC-001`, `UC-002`, ….                                          | [§ 5](#5-business-use-case-format) |
+| ID        | Section               | Rule                                                                                                                                                                                                                                                                                                    | More info                          |
+| --------- | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------- |
+| `DOC-001` | Code examples         | An example that restates production code names the source path it is drawn from, is updated in the same change as that code, and may elide omitted regions with a `// [...]` marker.                                                                                                                    | [§ 1](#1-code-examples)            |
+| `DOC-002` | Domain model diagrams | A domain model diagram that the documentation publishes represents the domain's real-world concepts — conceptual classes, typed attributes, and named associations with multiplicity — and never software methods, database tables or other implementation detail.                                      | [§ 2](#2-domain-model-diagrams)    |
+| `DOC-003` | Citations             | Documentation (`docs/`, the root Markdown) and production source (`src/`) cite only paths the repository tracks; they never name the local, untracked `.artifacts/` scratch directory, which a reader cannot resolve.                                                                                   | [§ 3](#3-citations)                |
+| `DOC-004` | Published route       | A route the documentation publishes names a path the generated specification declares in `docs/openapi.json`.                                                                                                                                                                                           | [§ 4](#4-published-routes)         |
+| `DOC-005` | Business use cases    | Every business use case entry in [UseCases.md](UseCases.md) carries the § 5 field headings in the documented order, carries no `### Application use case(s)` heading, and is numbered sequentially `UC-001`, `UC-002`, ….                                                                               | [§ 5](#5-business-use-case-format) |
+| `DOC-006` | Business use cases    | A business use case entry states intent and outcome in business terms: it never names a representation format or its mechanics (`HAL`, `application/hal+json`, JSON, `_links`, `_embedded`) nor an HTTP status code; the REST shape belongs to the [API section](#api) and the generated specification. | [§ 5](#5-business-use-case-format) |
 
 ---
 
@@ -2884,6 +2885,10 @@ Each entry carries the field headings below, in this order. Only `### Secondary 
 An entry never carries an `### Application use case(s)` heading: the catalog describes capabilities, not the code that
 implements them. A business use case is implemented by one or more application use cases, governed by
 [§ 9 (Use cases)](#9-use-cases).
+
+A use case stays in business vocabulary. A representation format or its mechanics (`HAL`, `application/hal+json`, JSON,
+`_links`, `_embedded`) and an HTTP status code belong to the [API section](#api) and the generated specification, so an
+entry names neither (`DOC-006`).
 
 ---
 

@@ -194,8 +194,8 @@ GET /api/v1/library/music/album/7/track
 The track representation mirrors a gallery item's: it carries the backing `file_id` and the display name alongside the
 music-specific fields, as `GalleryItemResponse` carries `file_id` and `name`.
 
-The track display name resolves from `music_recording.name`, falling back to the backing `audio.name` (the recording
-name is nullable, the audio name is not).
+The track display name is the recording's own name (`music_recording.name`). The recording name is nullable, so a
+nameless recording yields a track representation without a name.
 
 ## Risks / Trade-offs
 

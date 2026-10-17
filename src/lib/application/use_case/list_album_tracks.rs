@@ -92,7 +92,7 @@ where
                                 detail.medium_index(),
                                 detail.track().track_index(),
                                 detail.file_id(),
-                                detail.name().to_owned(),
+                                detail.name().map(str::to_owned),
                                 detail.isrc_code().map(str::to_owned),
                                 detail.first_release_date(),
                             )
@@ -195,7 +195,7 @@ mod tests {
             album_id,
             1,
             100i64.saturating_add(track_id),
-            format!("Track {track_id}"),
+            Some(format!("Track {track_id}")),
             None,
             release_date()?,
         ))
@@ -278,7 +278,7 @@ mod tests {
                 1,
                 1,
                 201,
-                "Track 101".to_owned(),
+                Some("Track 101".to_owned()),
                 None,
                 release_date()?,
             ))

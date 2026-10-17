@@ -146,7 +146,7 @@ mod tests {
             1,
             1,
             201,
-            "So What".to_owned(),
+            Some("So What".to_owned()),
             Some("USRC17607839".to_owned()),
             released(),
         )

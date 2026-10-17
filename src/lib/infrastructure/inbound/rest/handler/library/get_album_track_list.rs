@@ -127,7 +127,16 @@ mod tests {
         reason = "the track fixture keeps the use-case stub and the assertion in step"
     )]
     fn track_item() -> ListAlbumTracksItem {
-        ListAlbumTracksItem::new(101, 7, 1, 1, 201, "So What".to_owned(), None, released())
+        ListAlbumTracksItem::new(
+            101,
+            7,
+            1,
+            1,
+            201,
+            Some("So What".to_owned()),
+            None,
+            released(),
+        )
     }
 
     /// Send a GET to `/api/v1/library/music/album/{id}/track` on behalf of

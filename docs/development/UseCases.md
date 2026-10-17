@@ -624,21 +624,18 @@ Allow an authenticated user to browse the music albums the server holds and to r
 
 - Albums are not owned and carry no visibility flag: every authenticated caller sees the same albums, and read access is
   never denied.
-- The album collection accepts an optional `name` filter and optional `limit` and `offset` pagination; `limit` defaults
-  to 20 and must be between 1 and 100.
-- An album's genres are the genre identifiers the album is associated with.
+- The album collection can be narrowed by an optional filter.
 - An album's tracks are ordered by ascending medium index, then ascending track index.
 - A track belongs to exactly one album, and a track of another album is reported as not found.
-- A track's display name is its recording name, falling back to the backing audio name.
-- A token naming an account that no longer exists is rejected.
+- A track's name is the name of its music recording.
 
 ### Happy path
 
-1. The caller submits a listing request for music albums, optionally filtered by name and paged.
+1. The caller asks to browse the music albums the server holds.
 2. The system verifies the caller's account still exists.
 3. The system returns the matching albums with their identifier, name, release date, production type, genres and track
    count.
-4. The caller requests the tracks of one album.
+4. The caller asks to browse one specific album and its tracks.
 5. The system verifies the album exists and returns its tracks in play order.
 6. The caller requests one track of the album.
 7. The system verifies the track belongs to the album and returns it.
@@ -654,5 +651,4 @@ Allow an authenticated user to browse the music albums the server holds and to r
 
 ### Post condition(s)
 
-- The caller holds a HAL representation of the requested albums, album tracks or track.
-- No stored data changes.
+- The caller is shown the requested albums, album tracks or track.

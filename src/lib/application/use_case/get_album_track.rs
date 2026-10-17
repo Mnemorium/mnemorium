@@ -94,7 +94,7 @@ where
                     detail.medium_index(),
                     detail.track().track_index(),
                     detail.file_id(),
-                    detail.name().to_owned(),
+                    detail.name().map(str::to_owned),
                     detail.isrc_code().map(str::to_owned),
                     detail.first_release_date(),
                 ))
@@ -190,7 +190,7 @@ mod tests {
             album_id,
             1,
             100i64.saturating_add(track_id),
-            format!("Track {track_id}"),
+            Some(format!("Track {track_id}")),
             Some("USRC17607839".to_owned()),
             release_date()?,
         ))
@@ -269,7 +269,7 @@ mod tests {
         assert_eq!(response.track_id(), 101);
         assert_eq!(response.album_id(), 7);
         assert_eq!(response.file_id(), 201);
-        assert_eq!(response.name(), "Track 101");
+        assert_eq!(response.name(), Some("Track 101"));
         assert!(harness.committed.load(Ordering::SeqCst));
         Ok(())
     }

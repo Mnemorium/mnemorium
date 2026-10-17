@@ -945,8 +945,11 @@
             "type": "integer"
           },
           "name": {
-            "description": "Name of the track.",
-            "type": "string"
+            "description": "Name of the recording, when it has one.",
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "track_index": {
             "description": "Position of the track within its medium.",
@@ -961,7 +964,6 @@
           "id",
           "_links",
           "medium_index",
-          "name",
           "track_index"
         ],
         "type": "object"

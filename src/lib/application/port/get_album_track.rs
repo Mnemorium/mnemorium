@@ -65,8 +65,8 @@ pub struct GetAlbumTrackResponse {
     isrc_code: Option<String>,
     /// Index of the medium the track is positioned on.
     medium_index: u32,
-    /// Name of the track.
-    name: String,
+    /// Name of the recording, when it has one.
+    name: Option<String>,
     /// Unique identifier of the track.
     track_id: NumericID,
     /// Position of the track within its medium.
@@ -104,10 +104,10 @@ impl GetAlbumTrackResponse {
         self.medium_index
     }
 
-    /// Return the name of the track.
+    /// Return the name of the recording, if it has one.
     #[must_use]
-    pub fn name(&self) -> &str {
-        &self.name
+    pub fn name(&self) -> Option<&str> {
+        self.name.as_deref()
     }
 
     /// Create a new fetch-album-track response.
@@ -122,7 +122,7 @@ impl GetAlbumTrackResponse {
         medium_index: u32,
         track_index: i64,
         file_id: NumericID,
-        name: String,
+        name: Option<String>,
         isrc_code: Option<String>,
         first_release_date: NaiveDate,
     ) -> Self {

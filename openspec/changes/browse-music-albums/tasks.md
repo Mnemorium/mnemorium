@@ -50,9 +50,9 @@
 - [x] 3.2 Implement `SqlxMusicAlbumRepository::search_tracks` (join `music_track` → `music_medium` for album scope, →
       `music_recording` → `audio` → `file` for the backing `file_id`; playlist-attached rows stay out), ordered by
       ascending medium index then track index with a `music_track_id` tiebreak, resolving the display name from the
-      recording name with the audio name as fallback. The read model mirrors the gallery item's: it carries `file_id`
-      and `name`, as `GalleryItemDetail` does. Verified by tests for album scoping, ordering across mediums, the detail
-      fields, and a no-match album.
+      recording name alone (the recording name is nullable, so the name is optional). The read model mirrors the gallery
+      item's: it carries `file_id` and `name`, as `GalleryItemDetail` does. Verified by tests for album scoping,
+      ordering across mediums, the detail fields, and a no-match album.
 - [x] 3.3 Implement `music_albums()` on `SqlxUnitOfWork` in `src/lib/infrastructure/outbound/sqlx/unit_of_work.rs`,
       wiring `SqlxMusicAlbumRepository`. Verified by `cargo test --lib` passing the adapter and unit-of-work tests.
 
@@ -123,14 +123,14 @@
 
 ## 8. Pull request
 
-- [ ] 8.1 Stage and commit the work once with a Conventional Commit whose type is `feat` and whose scope is the delivery
+- [x] 8.1 Stage and commit the work once with a Conventional Commit whose type is `feat` and whose scope is the delivery
       scope from § 1.1, running git through the environment (`devenv shell -- git commit`) so the repository's commit
       hook has devenv tooling (`AGENTS.md`), then push with `git push -u origin feat(api)/browse-music-albums`. Verified
       by the branch existing on the remote with the commit.
-- [ ] 8.2 Open a pull request from `feat(api)/browse-music-albums` into `main`, titled `feat(api): browse music albums`
+- [x] 8.2 Open a pull request from `feat(api)/browse-music-albums` into `main`, titled `feat(api): browse music albums`
       — the `{type}({scope}): {description}` convention carrying exactly one `GOV-001` scope. Verified by the semantic
       pull-request gate in `.github/workflows/ci.yml` accepting the title.
-- [ ] 8.3 Fill the pull-request body from `.github/pull_request_template.md`: what changed, the out-of-scope items
+- [x] 8.3 Fill the pull-request body from `.github/pull_request_template.md`: what changed, the out-of-scope items
       listed in the proposal (playlist endpoints, album detail, writes), and the `browse-music-albums` change reference.
       Open it ready for review when § 7 is green, otherwise as a draft. Verified by the opened pull request's
       description and status.
