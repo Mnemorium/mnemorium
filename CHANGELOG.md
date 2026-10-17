@@ -1,3 +1,10 @@
+## [0.19.2](https://github.com/Mnemorium/mnemorium/compare/v0.19.1...v0.19.2) (2026-10-17)
+
+### Bug Fixes
+
+* **api:** classify the get_user_list query rejection ([#284](https://github.com/Mnemorium/mnemorium/issues/284)) ([853d057](https://github.com/Mnemorium/mnemorium/commit/853d0576e8a936266e56ba7121e0dd60e19cbac4))
+* **api:** route unclassified JSON rejection to a server fault ([#285](https://github.com/Mnemorium/mnemorium/issues/285)) ([a3ecdf9](https://github.com/Mnemorium/mnemorium/commit/a3ecdf9062d1257301d9ea79f3be3208c8cc3ff7))
+
 ## [0.19.1](https://github.com/Mnemorium/mnemorium/compare/v0.19.0...v0.19.1) (2026-10-16)
 
 ### Bug Fixes
