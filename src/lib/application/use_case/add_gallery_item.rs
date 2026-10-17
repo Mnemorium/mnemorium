@@ -256,6 +256,7 @@ mod tests {
     use crate::domain::port::gallery_repository::GalleryItemDetail;
     use crate::domain::port::gallery_repository::MockGalleryRepository;
     use crate::domain::port::image_repository::MockImageRepository;
+    use crate::domain::port::music_album_repository::MockMusicAlbumRepository;
     use crate::domain::port::user_repository::MockUserRepository;
     use crate::domain::port::video_repository::MockVideoRepository;
     use crate::test_helpers::GalleryFactoryHarness;
@@ -337,7 +338,14 @@ mod tests {
         videos: MockVideoRepository,
         files: MockFileRepository,
     ) -> GalleryFactoryHarness {
-        gallery_factory(galleries, images, videos, users, files)
+        gallery_factory(
+            galleries,
+            images,
+            videos,
+            users,
+            files,
+            MockMusicAlbumRepository::new(),
+        )
     }
 
     fn expect_caller(

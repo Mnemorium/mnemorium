@@ -7,16 +7,22 @@ use crate::application::port::add_gallery_item::AddGalleryItemUseCase;
 use crate::application::port::create_gallery::CreateGalleryUseCase;
 use crate::application::port::delete_gallery::DeleteGalleryUseCase;
 use crate::application::port::delete_gallery_item::DeleteGalleryItemUseCase;
+use crate::application::port::get_album_track::GetAlbumTrackUseCase;
 use crate::application::port::get_gallery::GetGalleryUseCase;
 use crate::application::port::get_gallery_item::GetGalleryItemUseCase;
 use crate::application::port::library_use_case_factory::LibraryUseCaseFactory;
+use crate::application::port::list_album_tracks::ListAlbumTracksUseCase;
+use crate::application::port::list_albums::ListAlbumsUseCase;
 use crate::application::port::list_galleries::ListGalleriesUseCase;
 use crate::application::use_case::add_gallery_item::AddGalleryItem;
 use crate::application::use_case::create_gallery::CreateGallery;
 use crate::application::use_case::delete_gallery::DeleteGallery;
 use crate::application::use_case::delete_gallery_item::DeleteGalleryItem;
+use crate::application::use_case::get_album_track::GetAlbumTrack;
 use crate::application::use_case::get_gallery::GetGallery;
 use crate::application::use_case::get_gallery_item::GetGalleryItem;
+use crate::application::use_case::list_album_tracks::ListAlbumTracks;
+use crate::application::use_case::list_albums::ListAlbums;
 use crate::application::use_case::list_galleries::ListGalleries;
 use crate::domain::model::configuration::Configuration;
 use crate::infrastructure::outbound::file_system::file_storage::FileSystemStorage;
@@ -79,12 +85,24 @@ impl LibraryUseCaseFactory for RuntimeLibraryUseCaseFactory {
         ))
     }
 
+    fn get_album_track(&self) -> Arc<dyn GetAlbumTrackUseCase> {
+        Arc::new(GetAlbumTrack::new(Arc::clone(&self.unit_of_work_factory)))
+    }
+
     fn get_gallery(&self) -> Arc<dyn GetGalleryUseCase> {
         Arc::new(GetGallery::new(Arc::clone(&self.unit_of_work_factory)))
     }
 
     fn get_gallery_item(&self) -> Arc<dyn GetGalleryItemUseCase> {
         Arc::new(GetGalleryItem::new(Arc::clone(&self.unit_of_work_factory)))
+    }
+
+    fn list_album_tracks(&self) -> Arc<dyn ListAlbumTracksUseCase> {
+        Arc::new(ListAlbumTracks::new(Arc::clone(&self.unit_of_work_factory)))
+    }
+
+    fn list_albums(&self) -> Arc<dyn ListAlbumsUseCase> {
+        Arc::new(ListAlbums::new(Arc::clone(&self.unit_of_work_factory)))
     }
 
     fn list_galleries(&self) -> Arc<dyn ListGalleriesUseCase> {

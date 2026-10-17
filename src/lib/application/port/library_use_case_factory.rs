@@ -4,8 +4,11 @@ use crate::application::port::add_gallery_item::AddGalleryItemUseCase;
 use crate::application::port::create_gallery::CreateGalleryUseCase;
 use crate::application::port::delete_gallery::DeleteGalleryUseCase;
 use crate::application::port::delete_gallery_item::DeleteGalleryItemUseCase;
+use crate::application::port::get_album_track::GetAlbumTrackUseCase;
 use crate::application::port::get_gallery::GetGalleryUseCase;
 use crate::application::port::get_gallery_item::GetGalleryItemUseCase;
+use crate::application::port::list_album_tracks::ListAlbumTracksUseCase;
+use crate::application::port::list_albums::ListAlbumsUseCase;
 use crate::application::port::list_galleries::ListGalleriesUseCase;
 
 /// Builds the use cases of the Library bounded context on demand.
@@ -26,11 +29,20 @@ pub trait LibraryUseCaseFactory: Send + Sync {
     /// Build the use case deleting one item of a gallery.
     fn delete_gallery_item(&self) -> Arc<dyn DeleteGalleryItemUseCase>;
 
+    /// Build the use case fetching one track of a music album.
+    fn get_album_track(&self) -> Arc<dyn GetAlbumTrackUseCase>;
+
     /// Build the use case fetching one gallery and its items.
     fn get_gallery(&self) -> Arc<dyn GetGalleryUseCase>;
 
     /// Build the use case fetching one item of a gallery.
     fn get_gallery_item(&self) -> Arc<dyn GetGalleryItemUseCase>;
+
+    /// Build the use case listing the tracks of a music album.
+    fn list_album_tracks(&self) -> Arc<dyn ListAlbumTracksUseCase>;
+
+    /// Build the use case listing the music albums the caller may see.
+    fn list_albums(&self) -> Arc<dyn ListAlbumsUseCase>;
 
     /// Build the use case listing the galleries the caller may see.
     fn list_galleries(&self) -> Arc<dyn ListGalleriesUseCase>;

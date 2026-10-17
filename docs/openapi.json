@@ -1,6 +1,134 @@
 {
   "components": {
     "schemas": {
+      "AlbumLinks": {
+        "description": "HAL links exposed by a music album representation.\n\nThe `self` link addresses the album; the `tracks` link exposes the track\ncollection of the album (`API-037`).",
+        "properties": {
+          "self": {
+            "$ref": "#/components/schemas/Link",
+            "description": "Link to the album resource itself."
+          },
+          "tracks": {
+            "$ref": "#/components/schemas/Link",
+            "description": "Link to the track collection of the album."
+          }
+        },
+        "required": [
+          "self",
+          "tracks"
+        ],
+        "type": "object"
+      },
+      "AlbumListLinks": {
+        "description": "HAL links exposed by a music album collection representation.\n\nThe `self` link addresses the collection view the representation is about,\n`next` and `prev` navigate that same view when another page exists, and the\ntemplated `search` link exposes the collection filters (`API-037`,\n`API-042`). The active filter and the page size are carried into every link\nso a filtered or paginated listing stays navigable.",
+        "properties": {
+          "next": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/Link",
+                "description": "Link to the next page, when one exists."
+              }
+            ]
+          },
+          "prev": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/Link",
+                "description": "Link to the previous page, when one exists."
+              }
+            ]
+          },
+          "search": {
+            "$ref": "#/components/schemas/Link",
+            "description": "Templated link exposing the collection's search filters."
+          },
+          "self": {
+            "$ref": "#/components/schemas/Link",
+            "description": "Link to the collection itself."
+          }
+        },
+        "required": [
+          "search",
+          "self"
+        ],
+        "type": "object"
+      },
+      "AlbumListResponse": {
+        "description": "Music albums matching the requested filters.",
+        "properties": {
+          "_links": {
+            "$ref": "#/components/schemas/AlbumListLinks",
+            "description": "Navigation links of the collection."
+          },
+          "items": {
+            "description": "The albums of the returned page.",
+            "items": {
+              "$ref": "#/components/schemas/AlbumResponse"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "items",
+          "_links"
+        ],
+        "type": "object"
+      },
+      "AlbumResponse": {
+        "description": "A music album returned by a listing.",
+        "properties": {
+          "_links": {
+            "$ref": "#/components/schemas/AlbumLinks",
+            "description": "Links to the album and its track collection."
+          },
+          "genres": {
+            "description": "Genres of the album, ordered by genre identifier.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "id": {
+            "$ref": "#/components/schemas/i64",
+            "description": "Unique identifier of the album."
+          },
+          "name": {
+            "description": "Name of the album.",
+            "type": "string"
+          },
+          "production_type": {
+            "description": "Production type of the album, when set.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "release_date": {
+            "description": "Date of the release of the album, in `YYYY-MM-DD` form.",
+            "type": "string"
+          },
+          "track_count": {
+            "description": "Number of tracks the album contains.",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "genres",
+          "id",
+          "_links",
+          "name",
+          "release_date",
+          "track_count"
+        ],
+        "type": "object"
+      },
       "ErrorBody": {
         "description": "Standard error payload returned by every failed request.\n\nThe envelope is uniform across every error the server emits, including\nrouting fallbacks and extractor rejections (`API-039`). The `error_response`\nhelper builds it, and the root `hal_errors` middleware applies it to every\n`4xx`/`5xx` response.",
         "properties": {
@@ -738,6 +866,103 @@
         },
         "required": [
           "self"
+        ],
+        "type": "object"
+      },
+      "TrackLinks": {
+        "description": "HAL links exposed by a music track representation.\n\nThe `self` link addresses the track; the `album` link exposes the album the\ntrack belongs to (`API-034`, `API-037`).",
+        "properties": {
+          "album": {
+            "$ref": "#/components/schemas/Link",
+            "description": "Link to the album the track belongs to."
+          },
+          "self": {
+            "$ref": "#/components/schemas/Link",
+            "description": "Link to the track resource itself."
+          }
+        },
+        "required": [
+          "album",
+          "self"
+        ],
+        "type": "object"
+      },
+      "TrackListResponse": {
+        "description": "Tracks of one music album.",
+        "properties": {
+          "_links": {
+            "$ref": "#/components/schemas/SelfLinks",
+            "description": "Navigation links of the collection."
+          },
+          "items": {
+            "description": "The tracks of the album.",
+            "items": {
+              "$ref": "#/components/schemas/TrackResponse"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "items",
+          "_links"
+        ],
+        "type": "object"
+      },
+      "TrackResponse": {
+        "description": "One music track of an album.",
+        "properties": {
+          "_links": {
+            "$ref": "#/components/schemas/TrackLinks",
+            "description": "Links to the track and its album."
+          },
+          "album_id": {
+            "$ref": "#/components/schemas/i64",
+            "description": "Identifier of the album the track belongs to."
+          },
+          "file_id": {
+            "$ref": "#/components/schemas/i64",
+            "description": "Identifier of the backing file."
+          },
+          "first_release_date": {
+            "description": "Date of the first release of the recording, in `YYYY-MM-DD` form.",
+            "type": "string"
+          },
+          "id": {
+            "$ref": "#/components/schemas/i64",
+            "description": "Unique identifier of the track."
+          },
+          "isrc_code": {
+            "description": "ISRC code of the recording, when set.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "medium_index": {
+            "description": "Index of the medium the track is positioned on.",
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "name": {
+            "description": "Name of the track.",
+            "type": "string"
+          },
+          "track_index": {
+            "description": "Position of the track within its medium.",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "album_id",
+          "file_id",
+          "first_release_date",
+          "id",
+          "_links",
+          "medium_index",
+          "name",
+          "track_index"
         ],
         "type": "object"
       },
@@ -2576,6 +2801,272 @@
           }
         ],
         "summary": "Fetch a gallery item",
+        "tags": [
+          "library"
+        ]
+      }
+    },
+    "/library/music/album": {
+      "get": {
+        "description": "Any authenticated caller may list albums: an album is not owned and carries\nno visibility flag, so the collection is the same for every caller. It is\npaginated and filterable, and returned as a HAL collection with navigation\nand search links.",
+        "operationId": "list_albums",
+        "parameters": [
+          {
+            "description": "Maximum number of albums to return, between 1 and 100.",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Only return albums whose name matches this value.",
+            "in": "query",
+            "name": "name",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Number of matching albums to skip before returning the page.",
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AlbumListResponse"
+                }
+              }
+            },
+            "description": "Music albums matching the filters"
+          },
+          "400": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Invalid filter values"
+          },
+          "401": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid credentials"
+          },
+          "422": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The limit is out of range"
+          },
+          "500": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unexpected error"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ],
+        "summary": "List music albums",
+        "tags": [
+          "library"
+        ]
+      }
+    },
+    "/library/music/album/{album_id}/track": {
+      "get": {
+        "description": "Any authenticated caller may read an album's tracks; the album is not owned\nand carries no visibility flag. The collection is returned in play order,\nordered by ascending medium index then track index.",
+        "operationId": "get_album_track_list",
+        "parameters": [
+          {
+            "description": "Identifier of the album whose tracks are listed",
+            "in": "path",
+            "name": "album_id",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/i64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrackListResponse"
+                }
+              }
+            },
+            "description": "Tracks of the album"
+          },
+          "400": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Invalid music album identifier"
+          },
+          "401": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid credentials"
+          },
+          "404": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unknown music album"
+          },
+          "500": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unexpected error"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ],
+        "summary": "List the tracks of a music album",
+        "tags": [
+          "library"
+        ]
+      }
+    },
+    "/library/music/album/{album_id}/track/{track_id}": {
+      "get": {
+        "description": "Any authenticated caller may read a track; the album is not owned and carries\nno visibility flag. The track is scoped to the album named in the path, so a\ntrack of another album is reported as missing.",
+        "operationId": "get_album_track",
+        "parameters": [
+          {
+            "description": "Identifier of the album the track belongs to",
+            "in": "path",
+            "name": "album_id",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/i64"
+            }
+          },
+          {
+            "description": "Identifier of the track to fetch",
+            "in": "path",
+            "name": "track_id",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/i64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrackResponse"
+                }
+              }
+            },
+            "description": "Track found"
+          },
+          "400": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Invalid music album or track identifier"
+          },
+          "401": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid credentials"
+          },
+          "404": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unknown music album, or unknown track of the album"
+          },
+          "500": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unexpected error"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ],
+        "summary": "Fetch a music track",
         "tags": [
           "library"
         ]

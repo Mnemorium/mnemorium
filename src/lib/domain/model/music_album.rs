@@ -25,6 +25,47 @@ pub enum ProductionType {
     Studio,
 }
 
+impl ProductionType {
+    /// Render the production type as its stored representation (`STUDIO`).
+    ///
+    /// The names match the `chk_music_album_production_type` values of the
+    /// `music_album` table.
+    #[must_use]
+    pub fn as_wire(self) -> &'static str {
+        match self {
+            Self::Compilation => "COMPILATION",
+            Self::Demo => "DEMO",
+            Self::DjMix => "DJMIX",
+            Self::Live => "LIVE",
+            Self::Mixtape => "MIXTAPE",
+            Self::Remix => "REMIX",
+            Self::Soundtrack => "SOUNDTRACK",
+            Self::Studio => "STUDIO",
+        }
+    }
+
+    /// Parse a production type from its stored representation (`STUDIO`).
+    ///
+    /// Returns `None` when `value` is not one of the tokens the
+    /// `chk_music_album_production_type` check constraint admits, so a stored
+    /// value outside the discrete list is reported as an absent production type
+    /// rather than failing the read.
+    #[must_use]
+    pub fn from_wire(value: &str) -> Option<Self> {
+        match value {
+            "COMPILATION" => Some(Self::Compilation),
+            "DEMO" => Some(Self::Demo),
+            "DJMIX" => Some(Self::DjMix),
+            "LIVE" => Some(Self::Live),
+            "MIXTAPE" => Some(Self::Mixtape),
+            "REMIX" => Some(Self::Remix),
+            "SOUNDTRACK" => Some(Self::Soundtrack),
+            "STUDIO" => Some(Self::Studio),
+            _ => None,
+        }
+    }
+}
+
 /// Error returned when initialising a `MusicAlbum`.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
