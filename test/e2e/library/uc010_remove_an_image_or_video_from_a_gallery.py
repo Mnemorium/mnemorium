@@ -10,8 +10,8 @@ Removal is destructive: the item and its image or video row are deleted, and
 the backing file with its bytes is deleted when the caller owns the file. No
 endpoint exposes files, so the backing file's deletion is asserted by the
 repository and storage integration tests; these tests assert the observable:
-the item and its medium are gone, which the not-found answer to re-adding the
-same media proves.
+the item and its medium are gone, which the rejection of re-adding the same
+media proves.
 """
 
 import time
@@ -45,9 +45,9 @@ def _assert_item_and_medium_are_gone(
     assert fetched.status_code == 404, f"the removed item is still readable: {fetched.text}"
 
     # The image or video row is gone too: the file identifier no longer resolves
-    # to a medium, so adding it again is a not-found.
+    # to a medium, so adding it again fails the media body rule (`422`).
     readded = add_gallery_item(token, gallery_id, media_type, media_id)
-    assert readded.status_code == 404, f"the medium still exists: {readded.status_code} {readded.text}"
+    assert readded.status_code == 422, f"the medium still exists: {readded.status_code} {readded.text}"
 
 
 def test_the_owner_removes_its_own_item(

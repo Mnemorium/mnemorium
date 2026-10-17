@@ -41,16 +41,23 @@ pub struct PostGalleryItemRequest {
 }
 
 /// Map an add-gallery-item error to its API error.
+///
+/// The missing and the unowned medium are one client-visible outcome: a medium
+/// the caller does not own is indistinguishable from one that does not exist
+/// (`API-044`). Both fail the `media_id` body value and answer `422` with one
+/// stable, server-authored message (`API-040`, `API-041`); `404` stays for the
+/// URI-addressed gallery and `403` for the gallery-permission outcome.
 impl From<AddGalleryItemError> for ApiError {
     fn from(err: AddGalleryItemError) -> Self {
         match err {
             AddGalleryItemError::AlreadyAssigned => Self::Conflict(err.to_string()),
-            AddGalleryItemError::Forbidden | AddGalleryItemError::NotOwnedMedia => {
-                Self::Forbidden(err.to_string())
-            }
+            AddGalleryItemError::Forbidden => Self::Forbidden(err.to_string()),
             AddGalleryItemError::NoSuchCaller => Self::Unauthorized(err.to_string()),
-            AddGalleryItemError::NoSuchGallery | AddGalleryItemError::NoSuchMedia => {
-                Self::NotFound(err.to_string())
+            AddGalleryItemError::NoSuchGallery => Self::NotFound(err.to_string()),
+            AddGalleryItemError::NoSuchMedia | AddGalleryItemError::NotOwnedMedia => {
+                Self::UnprocessableEntity(
+                    "the medium does not exist or does not belong to the caller".to_owned(),
+                )
             }
             AddGalleryItemError::Unknown(_) => Self::InternalServerError,
         }
@@ -112,19 +119,19 @@ impl From<AddGalleryItemError> for ApiError {
             status = UNPROCESSABLE_ENTITY,
             body = ErrorBody,
             content_type = "application/hal+json",
-            description = "The request body does not match the expected schema"
+            description = "The request body does not match the expected schema, or the medium does not exist or belongs to another caller"
         ),
         (
             status = FORBIDDEN,
             body = ErrorBody,
             content_type = "application/hal+json",
-            description = "Caller may not add items to the gallery, or does not own the medium"
+            description = "Caller may not add items to the gallery"
         ),
         (
             status = NOT_FOUND,
             body = ErrorBody,
             content_type = "application/hal+json",
-            description = "Unknown gallery or medium"
+            description = "Unknown gallery"
         ),
         (
             status = CONFLICT,
@@ -388,8 +395,8 @@ mod tests {
     #[case::not_owned_media(
         1,
         AddGalleryItemError::NotOwnedMedia,
-        StatusCode::FORBIDDEN,
-        "the caller does not own this medium"
+        StatusCode::UNPROCESSABLE_ENTITY,
+        "the medium does not exist or does not belong to the caller"
     )]
     #[case::forbidden(
         1,
@@ -400,8 +407,8 @@ mod tests {
     #[case::unknown_media(
         1,
         AddGalleryItemError::NoSuchMedia,
-        StatusCode::NOT_FOUND,
-        "a medium with this identifier does not exist"
+        StatusCode::UNPROCESSABLE_ENTITY,
+        "the medium does not exist or does not belong to the caller"
     )]
     #[case::unknown_gallery(
         1,
@@ -444,6 +451,56 @@ mod tests {
         // Assert
         assert_eq!(response.status(), status);
         assert_eq!(error_message_of(&response).as_deref(), Some(message));
+        Ok(())
+    }
+
+    /// A missing medium and a medium owned by another caller must be one
+    /// client-visible outcome — equal status and one handler-owned message — so
+    /// no caller can probe for a medium it does not own (`API-044`). The root
+    /// `hal_errors` middleware renders that one message into the one error
+    /// envelope, so the handler-level equality is the caller-visible equality.
+    #[tokio::test]
+    async fn post_gallery_item_missing_and_unowned_media_are_indistinguishable()
+    -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let mut missing = MockAddGalleryItemUseCase::new();
+        missing
+            .expect_execute()
+            .times(1)
+            .return_once(|_| Box::pin(async { Err(AddGalleryItemError::NoSuchMedia) }));
+        let mut unowned = MockAddGalleryItemUseCase::new();
+        unowned
+            .expect_execute()
+            .times(1)
+            .return_once(|_| Box::pin(async { Err(AddGalleryItemError::NotOwnedMedia) }));
+
+        // Act
+        let missing_response = send(
+            missing,
+            1,
+            "3",
+            Body::from(json!({ "type": "image", "media_id": 7i64 }).to_string()),
+        )
+        .await?;
+        let unowned_response = send(
+            unowned,
+            1,
+            "3",
+            Body::from(json!({ "type": "image", "media_id": 7i64 }).to_string()),
+        )
+        .await?;
+
+        // Assert
+        assert_eq!(missing_response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+        assert_eq!(missing_response.status(), unowned_response.status());
+        assert_eq!(
+            error_message_of(&missing_response),
+            error_message_of(&unowned_response)
+        );
+        assert_eq!(
+            error_message_of(&missing_response).as_deref(),
+            Some("the medium does not exist or does not belong to the caller")
+        );
         Ok(())
     }
 

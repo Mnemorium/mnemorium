@@ -3,12 +3,14 @@ use axum::extract::State;
 use axum::extract::rejection::QueryRejection;
 use axum::response::Response;
 use serde::{Deserialize, Serialize};
+use tracing::warn;
 use utoipa::IntoParams;
 use utoipa::ToSchema;
 
 use crate::application::port::list_users::ListUsersCommand;
 use crate::application::port::list_users::ListUsersError;
 use crate::application::port::list_users::ListUsersResponse as ListUsersResponseData;
+use crate::domain::model::user::MIN_USERNAME_LENGTH;
 use crate::domain::model::user::Role;
 use crate::infrastructure::inbound::rest::api_error::ApiError;
 use crate::infrastructure::inbound::rest::api_error::ErrorBody;
@@ -19,6 +21,12 @@ use crate::infrastructure::inbound::rest::hal::hal_json;
 use crate::infrastructure::inbound::rest::handler::user::GetUserResponse;
 use crate::infrastructure::inbound::rest::handler::user::user_self_href;
 use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
+
+/// Maximum number of characters accepted in the `username` filter.
+///
+/// Mirrors the `max_length` the `ListUsersQuery` declaration publishes, so the
+/// enforced bound and the published one cannot drift (`API-017`).
+const MAX_USERNAME_LENGTH: usize = 100;
 
 /// Filters restricting the returned users.
 ///
@@ -112,7 +120,7 @@ impl From<ListUsersError> for ApiError {
             status = BAD_REQUEST,
             body = ErrorBody,
             content_type = "application/hal+json",
-            description = "Invalid filter values"
+            description = "Malformed query string"
         ),
         (
             status = UNAUTHORIZED,
@@ -125,6 +133,12 @@ impl From<ListUsersError> for ApiError {
             body = ErrorBody,
             content_type = "application/hal+json",
             description = "Caller is not an administrator"
+        ),
+        (
+            status = UNPROCESSABLE_ENTITY,
+            body = ErrorBody,
+            content_type = "application/hal+json",
+            description = "Invalid filter values"
         ),
         (
             status = INTERNAL_SERVER_ERROR,
@@ -144,15 +158,54 @@ pub async fn get_user_list(
     State(state): State<AppState>,
 ) -> Result<Response, ApiError> {
     let Query(query) = raw_query.map_err(ApiError::from)?;
+    if let Some(username) = query.username.as_deref() {
+        let length = username.chars().count();
+        if length < MIN_USERNAME_LENGTH {
+            warn!(
+                target: "security",
+                event = "input_validation_failed",
+                field = "username",
+                reason = "too_short",
+                "rejected a username filter"
+            );
+            return Err(ApiError::UnprocessableEntity(format!(
+                "username must be at least {MIN_USERNAME_LENGTH} characters long"
+            )));
+        }
+        if length > MAX_USERNAME_LENGTH {
+            warn!(
+                target: "security",
+                event = "input_validation_failed",
+                field = "username",
+                reason = "too_long",
+                "rejected a username filter"
+            );
+            return Err(ApiError::UnprocessableEntity(format!(
+                "username must be at most {MAX_USERNAME_LENGTH} characters long"
+            )));
+        }
+    }
+    // The email-format rule is the domain's (`User::validate_email`); a filter
+    // value is held to the same constraint the query declares (`API-017`,
+    // `API-045`).
+    if let Some(email) = query.email.as_deref()
+        && !email_address::EmailAddress::is_valid(email)
+    {
+        warn!(
+            target: "security",
+            event = "input_validation_failed",
+            field = "email",
+            reason = "invalid_format",
+            "rejected an email filter"
+        );
+        return Err(ApiError::UnprocessableEntity(
+            "email must be a valid email address".to_owned(),
+        ));
+    }
     let role = query
         .role
         .as_deref()
-        .map(|value| {
-            Role::from_wire(value).ok_or_else(|| {
-                ApiError::log_enum_rejection("role");
-                ApiError::BadRequest("the request contains an unrecognised value".to_owned())
-            })
-        })
+        .map(|value| Role::from_wire(value).ok_or_else(|| ApiError::reject_enum("role")))
         .transpose()?;
     let users = state
         .user_use_case_factory()
@@ -179,7 +232,10 @@ pub async fn get_user_list(
 #[cfg(test)]
 mod tests {
     use std::error::Error;
+    use std::io as stdio;
     use std::sync::Arc;
+    use std::sync::Mutex;
+    use std::sync::PoisonError;
 
     use axum::body::Body;
     use axum::body::to_bytes;
@@ -192,6 +248,10 @@ mod tests {
     use serde_json::Value;
     use serde_json::json;
     use tower::ServiceExt as _;
+    use tracing::subscriber::DefaultGuard;
+    use tracing::subscriber::set_default;
+    use tracing_subscriber::fmt;
+    use tracing_subscriber::layer::SubscriberExt as _;
 
     use super::get_user_list;
     use crate::application::port::list_users::ListUsersCommand;
@@ -205,6 +265,61 @@ mod tests {
     use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
     use crate::test_helpers::app_state_with_user;
     use crate::test_helpers::error_message_of;
+
+    /// Append-only sink that lets a test read back the lines [`fmt`] emits.
+    #[derive(Clone)]
+    struct CaptureWriter {
+        /// Buffer shared with the test that asserts on the captured output.
+        buffer: Arc<Mutex<Vec<u8>>>,
+    }
+
+    #[expect(
+        clippy::missing_trait_methods,
+        reason = "only the raw `write` and `flush` are meaningful for an in-memory capture buffer"
+    )]
+    impl stdio::Write for CaptureWriter {
+        fn flush(&mut self) -> stdio::Result<()> {
+            Ok(())
+        }
+
+        fn write(&mut self, buf: &[u8]) -> stdio::Result<usize> {
+            let mut buffer = self.buffer.lock().unwrap_or_else(PoisonError::into_inner);
+            buffer.extend_from_slice(buf);
+            Ok(buf.len())
+        }
+    }
+
+    /// Hand every formatted event to a fresh clone of the shared buffer.
+    #[expect(
+        clippy::missing_trait_methods,
+        reason = "the default `make_writer_for` already routes through `make_writer`"
+    )]
+    impl<'writer> fmt::MakeWriter<'writer> for CaptureWriter {
+        type Writer = Self;
+
+        fn make_writer(&'writer self) -> Self::Writer {
+            self.clone()
+        }
+    }
+
+    /// Install a capturing subscriber on the current thread and return the
+    /// shared buffer plus the guard that keeps it active.
+    fn capture_logs() -> (Arc<Mutex<Vec<u8>>>, DefaultGuard) {
+        let buffer = Arc::new(Mutex::new(Vec::new()));
+        let subscriber = tracing_subscriber::registry().with(
+            fmt::layer().with_ansi(false).with_writer(CaptureWriter {
+                buffer: Arc::clone(&buffer),
+            }),
+        );
+        let guard = set_default(subscriber);
+        (buffer, guard)
+    }
+
+    /// Read the captured bytes back as a lossy UTF-8 string.
+    fn captured_logs(buffer: &Mutex<Vec<u8>>) -> String {
+        let bytes = buffer.lock().unwrap_or_else(PoisonError::into_inner);
+        String::from_utf8_lossy(bytes.as_slice()).into_owned()
+    }
 
     /// Send a GET to `/api/v1/user{query}` on behalf of `caller_id`, injecting
     /// the caller identifier the way the auth middleware does.
@@ -483,15 +598,143 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn get_user_list_invalid_role_returns_bad_request() -> Result<(), Box<dyn Error>> {
+    async fn get_user_list_invalid_role_returns_unprocessable_entity() -> Result<(), Box<dyn Error>>
+    {
         // Arrange
+        let (buffer, _capture) = capture_logs();
         let use_case = MockListUsersUseCase::new();
 
         // Act
         let response = send(use_case, 1, "?role=WIZARD").await?;
 
         // Assert
-        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+        assert_eq!(
+            error_message_of(&response).as_deref(),
+            Some("the request contains an unrecognised value")
+        );
+        let logs = captured_logs(&buffer);
+        assert_eq!(
+            logs.matches("event=\"enum_validation_failed\"").count(),
+            1,
+            "an invalid role must emit exactly one enum_validation_failed: {logs}"
+        );
+        assert!(
+            logs.contains("field=role"),
+            "the event must name the role field: {logs}"
+        );
+        assert!(
+            !logs.contains("WIZARD"),
+            "the event must not echo the rejected value: {logs}"
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn get_user_list_short_username_returns_unprocessable_entity()
+    -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let (buffer, _capture) = capture_logs();
+        let use_case = MockListUsersUseCase::new();
+
+        // Act
+        let response = send(use_case, 1, "?username=abc").await?;
+
+        // Assert
+        assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+        assert_eq!(
+            error_message_of(&response).as_deref(),
+            Some("username must be at least 4 characters long")
+        );
+        let logs = captured_logs(&buffer);
+        assert_eq!(
+            logs.matches("event=\"input_validation_failed\"").count(),
+            1,
+            "a too-short username must emit exactly one input_validation_failed: {logs}"
+        );
+        assert!(
+            logs.contains("field=\"username\""),
+            "the event must name the username field: {logs}"
+        );
+        assert!(
+            logs.contains("reason=\"too_short\""),
+            "the event must classify the reason: {logs}"
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn get_user_list_long_username_returns_unprocessable_entity() -> Result<(), Box<dyn Error>>
+    {
+        // Arrange
+        let (buffer, _capture) = capture_logs();
+        let use_case = MockListUsersUseCase::new();
+        let query = format!("?username={}", "a".repeat(101));
+
+        // Act
+        let response = send(use_case, 1, &query).await?;
+
+        // Assert
+        assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+        assert_eq!(
+            error_message_of(&response).as_deref(),
+            Some("username must be at most 100 characters long")
+        );
+        let logs = captured_logs(&buffer);
+        assert_eq!(
+            logs.matches("event=\"input_validation_failed\"").count(),
+            1,
+            "an over-long username must emit exactly one input_validation_failed: {logs}"
+        );
+        assert!(
+            logs.contains("field=\"username\""),
+            "the event must name the username field: {logs}"
+        );
+        assert!(
+            logs.contains("reason=\"too_long\""),
+            "the event must classify the reason: {logs}"
+        );
+        assert!(
+            !logs.contains(&"a".repeat(101)),
+            "the event must not echo the rejected value: {logs}"
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn get_user_list_invalid_email_returns_unprocessable_entity() -> Result<(), Box<dyn Error>>
+    {
+        // Arrange
+        let (buffer, _capture) = capture_logs();
+        let use_case = MockListUsersUseCase::new();
+
+        // Act
+        let response = send(use_case, 1, "?email=not-an-email").await?;
+
+        // Assert
+        assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+        assert_eq!(
+            error_message_of(&response).as_deref(),
+            Some("email must be a valid email address")
+        );
+        let logs = captured_logs(&buffer);
+        assert_eq!(
+            logs.matches("event=\"input_validation_failed\"").count(),
+            1,
+            "an invalid email must emit exactly one input_validation_failed: {logs}"
+        );
+        assert!(
+            logs.contains("field=\"email\""),
+            "the event must name the email field: {logs}"
+        );
+        assert!(
+            logs.contains("reason=\"invalid_format\""),
+            "the event must classify the reason: {logs}"
+        );
+        assert!(
+            !logs.contains("not-an-email"),
+            "the event must not echo the rejected value: {logs}"
+        );
         Ok(())
     }
 

@@ -2322,7 +2322,7 @@
                 }
               }
             },
-            "description": "Caller may not add items to the gallery, or does not own the medium"
+            "description": "Caller may not add items to the gallery"
           },
           "404": {
             "content": {
@@ -2332,7 +2332,7 @@
                 }
               }
             },
-            "description": "Unknown gallery or medium"
+            "description": "Unknown gallery"
           },
           "409": {
             "content": {
@@ -2372,7 +2372,7 @@
                 }
               }
             },
-            "description": "The request body does not match the expected schema"
+            "description": "The request body does not match the expected schema, or the medium does not exist or belongs to another caller"
           },
           "500": {
             "content": {
@@ -2636,7 +2636,7 @@
                 }
               }
             },
-            "description": "Invalid filter values"
+            "description": "Malformed query string"
           },
           "401": {
             "content": {
@@ -2657,6 +2657,16 @@
               }
             },
             "description": "Caller is not an administrator"
+          },
+          "422": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Invalid filter values"
           },
           "500": {
             "content": {

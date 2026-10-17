@@ -1114,6 +1114,8 @@ are documented inline, at the source, with `#[utoipa::path(...)]` macros.
 | `API-041` | Responses                 | Return the status code that reflects _why_ the request failed, independently of the layer that caught it. `400 Bad Request` when the server cannot parse the request; `422 Unprocessable Content` when it parses but its shape or values fail a schema, framing or business rule; `401 Unauthorized` for any authentication outcome; `415 Unsupported Media Type` for an unsupported request or declared media type. An unclassified variant of a `#[non_exhaustive]` framework rejection enum is a `500`, because the server cannot establish why the request failed and must not report a client status. | [§ Response codes](#response-codes)         |
 | `API-042` | HAL payload               | `_links.self` carries the canonical relative URI of the resource the representation is about: when a representation reports the outcome of an action, `self` is the addressed resource and a resource the payload reports or references is exposed as a named link (`API-034`), never as `self`; error responses follow `API-039`.                                                                                                                                                                                                                                                                         | [§ HAL payload](#hal-payload-guidelines)    |
 | `API-043` | HAL payload               | An error envelope's `_links.self` carries the request path component of the request URI, never the query string; the query is a raw client-supplied value that may carry personal data or a token, withheld for the reason `OBS-003` withholds it from logs.                                                                                                                                                                                                                                                                                                                                               | [§ 2.5](#25-error-public-payload)           |
+| `API-044` | Responses                 | A request whose client-visible outcome depends on whether a resource the caller does not own exists must not disclose that existence: the "does not exist" and "not owned" outcomes of one request return one status and one client-safe message. `404` is reserved for the URI-addressed resource; a resource named by the request body is a body value under `API-041`.                                                                                                                                                                                                                                  | [§ Response codes](#response-codes)         |
+| `API-045` | Parameters                | A constraint attribute a parameter or a `#[schema(...)]` model property declares is enforced by the handler or use case: a value that violates it answers `422` (`API-041`), or the attribute is not declared.                                                                                                                                                                                                                                                                                                                                                                                             | [§ 3](#3-constraint-attributes)             |
 
 ---
 
@@ -1149,12 +1151,32 @@ struct ApiDoc;
         (
             status = BAD_REQUEST,
             body = ErrorBody,
+            content_type = "application/hal+json",
             description = "Invalid payload"
         ),
         (
             status = UNAUTHORIZED,
             body = ErrorBody,
+            content_type = "application/hal+json",
             description = "Missing or invalid credentials"
+        ),
+        (
+            status = PAYLOAD_TOO_LARGE,
+            body = ErrorBody,
+            content_type = "application/hal+json",
+            description = "The request body exceeds the maximum allowed size"
+        ),
+        (
+            status = UNSUPPORTED_MEDIA_TYPE,
+            body = ErrorBody,
+            content_type = "application/hal+json",
+            description = "The request body is not application/json"
+        ),
+        (
+            status = UNPROCESSABLE_ENTITY,
+            body = ErrorBody,
+            content_type = "application/hal+json",
+            description = "The request body does not match the expected schema"
         ),
     ),
     security(
@@ -1305,7 +1327,8 @@ model):
 
 These attributes are declarative: utoipa emits them into the OpenAPI schema, but nothing enforces them during
 deserialization. A value that violates a `#[schema(...)]` constraint still deserializes; the handler or use case
-validates it and answers `422` (`API-041`, [§ Response codes](#response-codes)).
+validates it and answers `422` (`API-045`, `API-041`, [§ Response codes](#response-codes)). A declared constraint is
+therefore a promise the handler keeps, or the attribute is not declared.
 
 These attributes apply identically on request/response body models through the `#[schema(...)]` attribute of the
 `ToSchema` derive:
@@ -1382,7 +1405,36 @@ pub struct CreateNoteRequest {
     ),
     responses(
         (status = CREATED, body = CreateNoteResponse, description = "Note created"),
-        (status = BAD_REQUEST, body = ErrorBody, description = "Invalid payload"),
+        (
+            status = BAD_REQUEST,
+            body = ErrorBody,
+            content_type = "application/hal+json",
+            description = "Invalid payload"
+        ),
+        (
+            status = UNAUTHORIZED,
+            body = ErrorBody,
+            content_type = "application/hal+json",
+            description = "Missing or invalid credentials"
+        ),
+        (
+            status = PAYLOAD_TOO_LARGE,
+            body = ErrorBody,
+            content_type = "application/hal+json",
+            description = "The request body exceeds the maximum allowed size"
+        ),
+        (
+            status = UNSUPPORTED_MEDIA_TYPE,
+            body = ErrorBody,
+            content_type = "application/hal+json",
+            description = "The request body is not application/json"
+        ),
+        (
+            status = UNPROCESSABLE_ENTITY,
+            body = ErrorBody,
+            content_type = "application/hal+json",
+            description = "The request body does not match the expected schema"
+        ),
     ),
     security(
         ("bearer_auth" = [])
@@ -1440,6 +1492,24 @@ use utoipa::openapi::{
             body = ErrorBody,
             content_type = "application/hal+json",
             description = "Missing or invalid credentials"
+        ),
+        (
+            status = PAYLOAD_TOO_LARGE,
+            body = ErrorBody,
+            content_type = "application/hal+json",
+            description = "The request body exceeds the maximum allowed size"
+        ),
+        (
+            status = UNSUPPORTED_MEDIA_TYPE,
+            body = ErrorBody,
+            content_type = "application/hal+json",
+            description = "The request body is not application/json"
+        ),
+        (
+            status = UNPROCESSABLE_ENTITY,
+            body = ErrorBody,
+            content_type = "application/hal+json",
+            description = "The request body does not match the expected schema"
         ),
     ),
     security(
@@ -2736,6 +2806,7 @@ can catch it going stale.
 | `DOC-003` | Citations             | Documentation (`docs/`, the root Markdown) and production source (`src/`) cite only paths the repository tracks; they never name the local, untracked `.artifacts/` scratch directory, which a reader cannot resolve.                                              | [§ 3](#3-citations)                |
 | `DOC-004` | Published route       | A route the documentation publishes names a path the generated specification declares in `docs/openapi.json`.                                                                                                                                                      | [§ 4](#4-published-routes)         |
 | `DOC-005` | Business use cases    | Every business use case entry in [UseCases.md](UseCases.md) carries the § 5 field headings in the documented order, carries no `### Application use case(s)` heading, and is numbered sequentially `UC-001`, `UC-002`, ….                                          | [§ 5](#5-business-use-case-format) |
+| `DOC-006` | Code examples         | An example that illustrates the § 3 (API) endpoint-handler contract rather than restating a cited source file has no source to cite, but is kept in step with § 3: when a rule it illustrates changes, the example changes with it.                                | [§ 1](#1-code-examples)            |
 
 ---
 
@@ -2749,6 +2820,9 @@ A code example drawn from production code has two duties and one allowance:
   the code disagree.
 - **Elide, don't paraphrase.** Mark each run of omitted lines with `// [...]`, keep the lines that remain in the
   source's order, and keep their attributes. Doc comments may be dropped without a marker.
+
+An example that illustrates the [§ 3](#api) endpoint-handler contract rather than restating a named source file has no
+source to cite; it is kept in step with § 3 instead, so a contract change carries the example with it (`DOC-006`).
 
 For example, drawn from `src/lib/domain/model/user.rs`:
 
