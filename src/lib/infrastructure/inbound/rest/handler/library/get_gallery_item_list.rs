@@ -88,7 +88,7 @@ mod tests {
     use std::sync::Arc;
 
     use axum::body::Body;
-    use axum::body::to_bytes;
+
     use axum::extract::Request;
     use axum::http::StatusCode;
     use axum::response::Response;
@@ -108,6 +108,7 @@ mod tests {
     use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
     use crate::test_helpers::app_state_with_library;
     use crate::test_helpers::error_message_of;
+    use crate::test_helpers::into_status_and_body;
 
     /// A fixed instant the fixtures timestamp with.
     fn ts() -> NaiveDateTime {
@@ -148,18 +149,6 @@ mod tests {
         Ok(router.oneshot(request).await?)
     }
 
-    /// Split `response` into its status and decoded JSON body.
-    #[expect(
-        clippy::single_call_fn,
-        reason = "the response splitter keeps the alias test readable"
-    )]
-    async fn into_parts(response: Response) -> Result<(StatusCode, Value), Box<dyn Error>> {
-        let status = response.status();
-        let bytes = to_bytes(response.into_body(), usize::MAX).await?;
-        let body = serde_json::from_slice(&bytes)?;
-        Ok((status, body))
-    }
-
     #[tokio::test]
     async fn get_gallery_item_list_is_an_alias_with_canonical_self() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -179,7 +168,7 @@ mod tests {
         });
 
         // Act
-        let (status, payload) = into_parts(send(use_case, 1, "3").await?).await?;
+        let (status, payload) = into_status_and_body(send(use_case, 1, "3").await?).await?;
 
         // Assert
         assert_eq!(status, StatusCode::OK);

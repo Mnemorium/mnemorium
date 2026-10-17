@@ -196,14 +196,14 @@ mod tests {
     use std::sync::PoisonError;
 
     use axum::body::Body;
-    use axum::body::to_bytes;
+
     use axum::extract::Request;
     use axum::http::StatusCode;
     use axum::http::header;
     use axum::response::Response;
     use axum::routing::patch;
     use mockall::predicate::eq;
-    use serde_json::Value;
+
     use serde_json::json;
     use tower::ServiceExt as _;
     use tracing::subscriber::set_default;
@@ -222,6 +222,7 @@ mod tests {
     use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
     use crate::test_helpers::app_state_with_user;
     use crate::test_helpers::error_message_of;
+    use crate::test_helpers::into_parts;
 
     /// Append-only sink that lets a test read back the lines [`fmt`] emits.
     #[derive(Clone)]
@@ -287,22 +288,6 @@ mod tests {
             .route("/api/v1/user/{id}", patch(patch_user))
             .with_state(app_state_with_user(Arc::new(factory))?);
         Ok(router.oneshot(request).await?)
-    }
-
-    /// Split `response` into its status, `Content-Type` header and decoded
-    /// JSON body.
-    async fn into_parts(
-        response: Response,
-    ) -> Result<(StatusCode, Option<String>, Value), Box<dyn Error>> {
-        let status = response.status();
-        let content_type = response
-            .headers()
-            .get(header::CONTENT_TYPE)
-            .and_then(|value| value.to_str().ok())
-            .map(str::to_owned);
-        let bytes = to_bytes(response.into_body(), usize::MAX).await?;
-        let body = serde_json::from_slice(&bytes)?;
-        Ok((status, content_type, body))
     }
 
     /// Make the mocked use case fail with `error`.

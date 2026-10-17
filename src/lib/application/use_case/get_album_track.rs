@@ -138,8 +138,6 @@ mod tests {
     use std::sync::Arc;
     use std::sync::atomic::Ordering;
 
-    use chrono::NaiveDate;
-
     use crate::application::port::get_album_track::GetAlbumTrackCommand;
     use crate::application::port::get_album_track::GetAlbumTrackError;
     use crate::application::port::get_album_track::GetAlbumTrackUseCase as _;
@@ -156,6 +154,7 @@ mod tests {
     use crate::test_helpers::GalleryFactoryHarness;
     use crate::test_helpers::TestFactory;
     use crate::test_helpers::TestUnitOfWork;
+    use crate::test_helpers::album_release_date;
 
     use super::GetAlbumTrack;
 
@@ -165,11 +164,6 @@ mod tests {
     /// The use case under test, bound to the mocked unit-of-work factory.
     type UseCase = GetAlbumTrack<TestFactory>;
 
-    /// Build a domain release date.
-    fn release_date() -> Result<NaiveDate, Box<dyn Error>> {
-        NaiveDate::from_ymd_opt(1959, 8, 17).ok_or_else(|| "invalid fixture date".into())
-    }
-
     /// Build an album holding one medium with the recordings of `track_ids`.
     fn album(album_id: i64, track_ids: &[i64]) -> Result<MusicAlbum, Box<dyn Error>> {
         let tracks = track_ids
@@ -178,7 +172,7 @@ mod tests {
                 Ok(MusicRecording::try_new(
                     900i64.saturating_add(*track_id),
                     Some(format!("Track {track_id}")),
-                    release_date()?,
+                    album_release_date(),
                     Some("USRC17607839".to_owned()),
                     *track_id,
                     100i64.saturating_add(*track_id),
@@ -189,7 +183,7 @@ mod tests {
         Ok(MusicAlbum::try_new(
             album_id,
             format!("Album {album_id}"),
-            release_date()?,
+            album_release_date(),
             None,
             Vec::new(),
             None,
@@ -199,37 +193,6 @@ mod tests {
                 "CD".to_owned(),
                 tracks,
             )],
-        )?)
-    }
-
-    /// Build an album holding no medium.
-    #[expect(
-        clippy::single_call_fn,
-        reason = "the fixture names what the empty-medium test excludes"
-    )]
-    fn album_without_medium(album_id: i64) -> Result<MusicAlbum, Box<dyn Error>> {
-        Ok(MusicAlbum::try_new(
-            album_id,
-            "Empty".to_owned(),
-            release_date()?,
-            None,
-            Vec::new(),
-            None,
-            Vec::new(),
-        )?)
-    }
-
-    /// Build one track of the album fixture.
-    #[expect(
-        clippy::single_call_fn,
-        reason = "the track fixture keeps the repository stub and the assertion in step"
-    )]
-    fn track(track_id: i64) -> Result<MusicTrack, Box<dyn Error>> {
-        Ok(MusicTrack::try_new(
-            track_id,
-            MusicTrackPosition::Medium(MEDIUM_ID),
-            900i64.saturating_add(track_id),
-            1,
         )?)
     }
 
@@ -281,7 +244,8 @@ mod tests {
         expect_caller(&mut users, 1, Role::Standard)?;
         let mut albums = MockMusicAlbumRepository::new();
         expect_album(&mut albums, album(7, &[101])?);
-        let track = track(101)?;
+        // The album fixture above pairs track 101 with recording 1001.
+        let track = MusicTrack::try_new(101, MusicTrackPosition::Medium(MEDIUM_ID), 1001, 1)?;
         albums
             .expect_search_tracks()
             .times(1)
@@ -363,7 +327,18 @@ mod tests {
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 1, Role::Standard)?;
         let mut albums = MockMusicAlbumRepository::new();
-        expect_album(&mut albums, album_without_medium(7)?);
+        expect_album(
+            &mut albums,
+            MusicAlbum::try_new(
+                7,
+                "Empty".to_owned(),
+                album_release_date(),
+                None,
+                Vec::new(),
+                None,
+                Vec::new(),
+            )?,
+        );
         albums.expect_search_tracks().times(0);
         let harness = harness_with(users, albums);
         let use_case: UseCase = GetAlbumTrack::new(Arc::clone(&harness.factory));

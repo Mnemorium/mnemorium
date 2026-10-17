@@ -89,6 +89,7 @@ mod tests {
 
     use super::hal_errors;
     use crate::infrastructure::inbound::rest::api_error::ApiError;
+    use crate::test_helpers::into_status_and_body;
 
     /// Router exercising the middleware over an `ApiError`, a raw JSON error, a
     /// textual error, a framework path rejection, a healthy route and a method
@@ -142,13 +143,6 @@ mod tests {
         Ok(router.oneshot(request).await?)
     }
 
-    /// Split `response` into its status and decoded JSON body.
-    async fn into_parts(response: Response) -> Result<(StatusCode, Value), Box<dyn Error>> {
-        let status = response.status();
-        let bytes = to_bytes(response.into_body(), usize::MAX).await?;
-        Ok((status, serde_json::from_slice(&bytes)?))
-    }
-
     /// Return the media type declared by `response`.
     fn content_type(response: &Response) -> Option<&str> {
         response
@@ -164,7 +158,7 @@ mod tests {
 
         // Assert
         assert_eq!(content_type(&response), Some("application/hal+json"));
-        let (status, payload) = into_parts(response).await?;
+        let (status, payload) = into_status_and_body(response).await?;
         assert_eq!(status, StatusCode::BAD_REQUEST);
         assert_eq!(
             payload,
@@ -183,7 +177,7 @@ mod tests {
 
         // Assert
         assert_eq!(content_type(&response), Some("application/hal+json"));
-        let (status, payload) = into_parts(response).await?;
+        let (status, payload) = into_status_and_body(response).await?;
         assert_eq!(status, StatusCode::BAD_REQUEST);
         assert_eq!(
             payload,
@@ -202,7 +196,7 @@ mod tests {
         let response = send(router(), "GET", "/multi-key").await?;
 
         // Assert
-        let (status, payload) = into_parts(response).await?;
+        let (status, payload) = into_status_and_body(response).await?;
         assert_eq!(status, StatusCode::BAD_REQUEST);
         assert_eq!(
             payload,
@@ -222,7 +216,7 @@ mod tests {
         let response = send(router(), "GET", "/plain-json").await?;
 
         // Assert
-        let (status, payload) = into_parts(response).await?;
+        let (status, payload) = into_status_and_body(response).await?;
         assert_eq!(status, StatusCode::BAD_REQUEST);
         assert_eq!(
             payload,
@@ -245,7 +239,7 @@ mod tests {
         let response = send(router(), "GET", "/broken?page=2&size=10").await?;
 
         // Assert
-        let (status, payload) = into_parts(response).await?;
+        let (status, payload) = into_status_and_body(response).await?;
         assert_eq!(status, StatusCode::BAD_REQUEST);
         assert_eq!(
             payload,
@@ -263,7 +257,7 @@ mod tests {
         let response = send(router(), "GET", "/broken?token=SECRET&page=2").await?;
 
         // Assert
-        let (status, payload) = into_parts(response).await?;
+        let (status, payload) = into_status_and_body(response).await?;
         assert_eq!(status, StatusCode::BAD_REQUEST);
         assert_eq!(
             payload.pointer("/_links/self/href").and_then(Value::as_str),
@@ -291,7 +285,7 @@ mod tests {
         let response = send(router(), "GET", uri).await?;
 
         // Assert
-        let (status, payload) = into_parts(response).await?;
+        let (status, payload) = into_status_and_body(response).await?;
         assert_eq!(status, expected_status);
         assert_eq!(
             payload.pointer("/_links/self/href").and_then(Value::as_str),
@@ -307,7 +301,7 @@ mod tests {
 
         // Assert
         assert_eq!(content_type(&response), Some("application/hal+json"));
-        let (status, payload) = into_parts(response).await?;
+        let (status, payload) = into_status_and_body(response).await?;
         assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
         assert_eq!(
             payload,
@@ -330,7 +324,7 @@ mod tests {
 
         // Assert
         assert_eq!(content_type(&response), Some("application/hal+json"));
-        let (status, payload) = into_parts(response).await?;
+        let (status, payload) = into_status_and_body(response).await?;
         assert_eq!(status, StatusCode::BAD_REQUEST);
         assert_eq!(
             payload,
@@ -352,7 +346,7 @@ mod tests {
 
         // Assert
         assert_eq!(content_type(&response), Some("application/hal+json"));
-        let (status, payload) = into_parts(response).await?;
+        let (status, payload) = into_status_and_body(response).await?;
         assert_eq!(status, StatusCode::NOT_FOUND);
         assert_eq!(
             payload,
@@ -375,7 +369,7 @@ mod tests {
             response.headers().get(header::ALLOW).is_some(),
             "the Allow header must survive the rewrite"
         );
-        let (status, payload) = into_parts(response).await?;
+        let (status, payload) = into_status_and_body(response).await?;
         assert_eq!(status, StatusCode::METHOD_NOT_ALLOWED);
         assert_eq!(
             payload,

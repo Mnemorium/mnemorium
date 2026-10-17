@@ -298,7 +298,7 @@ mod tests {
     use std::sync::Arc;
 
     use axum::body::Body;
-    use axum::body::to_bytes;
+
     use axum::extract::Request;
     use axum::http::StatusCode;
     use axum::http::header;
@@ -309,7 +309,7 @@ mod tests {
     use chrono::NaiveDate;
     use chrono::NaiveDateTime;
     use mockall::predicate::eq;
-    use serde_json::Value;
+
     use serde_json::json;
     use sha2::Digest as _;
     use sha2::Sha256;
@@ -327,6 +327,7 @@ mod tests {
     use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
     use crate::test_helpers::app_state_with_asset;
     use crate::test_helpers::error_message_of;
+    use crate::test_helpers::into_status_and_body;
 
     /// Chunk the tests upload, and its digest.
     const CHUNK: &[u8] = b"1234";
@@ -396,18 +397,6 @@ mod tests {
         Ok(router.oneshot(request).await?)
     }
 
-    /// Split `response` into its status and decoded JSON body.
-    #[expect(
-        clippy::single_call_fn,
-        reason = "the success test reads the decoded body through a named helper"
-    )]
-    async fn into_parts(response: Response) -> Result<(StatusCode, Value), Box<dyn Error>> {
-        let status = response.status();
-        let bytes = to_bytes(response.into_body(), usize::MAX).await?;
-        let body = serde_json::from_slice(&bytes)?;
-        Ok((status, body))
-    }
-
     /// Make the mocked use case fail with `error`.
     fn expect_error(use_case: &mut MockWriteUploadChunkUseCase, error: WriteUploadChunkError) {
         use_case
@@ -468,7 +457,7 @@ mod tests {
             Some("application/hal+json"),
             "the response must declare the HAL media type"
         );
-        let (status, payload) = into_parts(response).await?;
+        let (status, payload) = into_status_and_body(response).await?;
 
         // Assert
         assert_eq!(status, StatusCode::OK);

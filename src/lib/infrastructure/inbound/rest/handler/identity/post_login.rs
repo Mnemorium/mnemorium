@@ -171,7 +171,7 @@ mod tests {
     use std::sync::Arc;
 
     use axum::body::Body;
-    use axum::body::to_bytes;
+
     use axum::extract::Request;
     use axum::http::StatusCode;
     use axum::http::header;
@@ -193,6 +193,7 @@ mod tests {
     use crate::test_helpers::SECRET_PASSWORD;
     use crate::test_helpers::app_state_with_identity;
     use crate::test_helpers::error_message_of;
+    use crate::test_helpers::into_parts;
 
     /// Send `body` through the endpoint router.
     async fn send(
@@ -215,26 +216,6 @@ mod tests {
             .route("/api/v1/identity/login", post(post_login))
             .with_state(app_state_with_identity(Arc::new(factory))?);
         Ok(router.oneshot(request).await?)
-    }
-
-    /// Split `response` into its status, `Content-Type` header and decoded
-    /// JSON body.
-    #[expect(
-        clippy::single_call_fn,
-        reason = "the success test reads the decoded body through a named helper"
-    )]
-    async fn into_parts(
-        response: Response,
-    ) -> Result<(StatusCode, Option<String>, Value), Box<dyn Error>> {
-        let status = response.status();
-        let content_type = response
-            .headers()
-            .get(header::CONTENT_TYPE)
-            .and_then(|value| value.to_str().ok())
-            .map(str::to_owned);
-        let bytes = to_bytes(response.into_body(), usize::MAX).await?;
-        let body = serde_json::from_slice(&bytes)?;
-        Ok((status, content_type, body))
     }
 
     /// Build a valid JSON request body for a login.

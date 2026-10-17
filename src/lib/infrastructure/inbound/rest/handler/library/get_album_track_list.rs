@@ -88,14 +88,10 @@ mod tests {
     use std::sync::Arc;
 
     use axum::body::Body;
-    use axum::body::to_bytes;
     use axum::extract::Request;
     use axum::http::StatusCode;
-    use axum::http::header;
     use axum::response::Response;
     use axum::routing::get;
-    use chrono::NaiveDate;
-    use serde_json::Value;
     use serde_json::json;
     use tower::ServiceExt as _;
 
@@ -109,35 +105,10 @@ mod tests {
     use crate::domain::alias::NumericID;
     use crate::infrastructure::inbound::rest::handler::library::library_routes;
     use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
+    use crate::test_helpers::album_release_date;
     use crate::test_helpers::app_state_with_library;
     use crate::test_helpers::error_message_of;
-
-    /// Build the release date the fixtures use.
-    #[expect(
-        clippy::single_call_fn,
-        reason = "the release date keeps the fixture and its assertion in step"
-    )]
-    fn released() -> NaiveDate {
-        NaiveDate::from_ymd_opt(1959, 8, 17).unwrap_or_default()
-    }
-
-    /// One track of album `7`, without an ISRC code.
-    #[expect(
-        clippy::single_call_fn,
-        reason = "the track fixture keeps the use-case stub and the assertion in step"
-    )]
-    fn track_item() -> ListAlbumTracksItem {
-        ListAlbumTracksItem::new(
-            101,
-            7,
-            1,
-            1,
-            201,
-            Some("So What".to_owned()),
-            None,
-            released(),
-        )
-    }
+    use crate::test_helpers::into_parts;
 
     /// Send a GET to `/api/v1/library/music/album/{id}/track` on behalf of
     /// `caller_id`, injecting the caller identifier the way the auth
@@ -170,26 +141,6 @@ mod tests {
         Ok(router.oneshot(request).await?)
     }
 
-    /// Split `response` into its status, `Content-Type` header and decoded
-    /// JSON body.
-    #[expect(
-        clippy::single_call_fn,
-        reason = "the response splitter keeps the handler test readable"
-    )]
-    async fn into_parts(
-        response: Response,
-    ) -> Result<(StatusCode, Option<String>, Value), Box<dyn Error>> {
-        let status = response.status();
-        let content_type = response
-            .headers()
-            .get(header::CONTENT_TYPE)
-            .and_then(|value| value.to_str().ok())
-            .map(str::to_owned);
-        let bytes = to_bytes(response.into_body(), usize::MAX).await?;
-        let body = serde_json::from_slice(&bytes)?;
-        Ok((status, content_type, body))
-    }
-
     #[tokio::test]
     async fn get_album_track_list_returns_the_collection() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -199,7 +150,16 @@ mod tests {
             .times(1)
             .withf(|command| command.caller_id() == 1 && command.album_id() == 7)
             .return_once(|_| {
-                let item = track_item();
+                let item = ListAlbumTracksItem::new(
+                    101,
+                    7,
+                    1,
+                    1,
+                    201,
+                    Some("So What".to_owned()),
+                    None,
+                    album_release_date(),
+                );
                 Box::pin(async move { Ok(ListAlbumTracksResponse::new(vec![item])) })
             });
 

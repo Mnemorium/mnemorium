@@ -139,8 +139,6 @@ mod tests {
     use std::sync::Arc;
     use std::sync::atomic::Ordering;
 
-    use chrono::NaiveDate;
-
     use crate::application::port::list_album_tracks::ListAlbumTracksCommand;
     use crate::application::port::list_album_tracks::ListAlbumTracksError;
     use crate::application::port::list_album_tracks::ListAlbumTracksItem;
@@ -158,6 +156,7 @@ mod tests {
     use crate::test_helpers::GalleryFactoryHarness;
     use crate::test_helpers::TestFactory;
     use crate::test_helpers::TestUnitOfWork;
+    use crate::test_helpers::album_release_date;
 
     use super::ListAlbumTracks;
 
@@ -167,11 +166,6 @@ mod tests {
     /// The use case under test, bound to the mocked unit-of-work factory.
     type UseCase = ListAlbumTracks<TestFactory>;
 
-    /// Build a domain release date.
-    fn release_date() -> Result<NaiveDate, Box<dyn Error>> {
-        NaiveDate::from_ymd_opt(1959, 8, 17).ok_or_else(|| "invalid fixture date".into())
-    }
-
     /// Build an album holding one medium with the recordings of `track_ids`.
     fn album(album_id: i64, track_ids: &[i64]) -> Result<MusicAlbum, Box<dyn Error>> {
         let tracks = track_ids
@@ -180,7 +174,7 @@ mod tests {
                 Ok(MusicRecording::try_new(
                     900i64.saturating_add(*track_id),
                     Some(format!("Track {track_id}")),
-                    release_date()?,
+                    album_release_date(),
                     None,
                     *track_id,
                     100i64.saturating_add(*track_id),
@@ -191,7 +185,7 @@ mod tests {
         Ok(MusicAlbum::try_new(
             album_id,
             format!("Album {album_id}"),
-            release_date()?,
+            album_release_date(),
             None,
             Vec::new(),
             None,
@@ -201,23 +195,6 @@ mod tests {
                 "CD".to_owned(),
                 tracks,
             )],
-        )?)
-    }
-
-    /// Build an album holding no medium.
-    #[expect(
-        clippy::single_call_fn,
-        reason = "the fixture names what the empty-medium test excludes"
-    )]
-    fn album_without_medium(album_id: i64) -> Result<MusicAlbum, Box<dyn Error>> {
-        Ok(MusicAlbum::try_new(
-            album_id,
-            "Empty".to_owned(),
-            release_date()?,
-            None,
-            Vec::new(),
-            None,
-            Vec::new(),
         )?)
     }
 
@@ -306,7 +283,7 @@ mod tests {
                 201,
                 Some("Track 101".to_owned()),
                 None,
-                release_date()?,
+                album_release_date(),
             ))
         );
         assert_eq!(
@@ -324,7 +301,18 @@ mod tests {
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 1, Role::Standard)?;
         let mut albums = MockMusicAlbumRepository::new();
-        expect_album(&mut albums, album_without_medium(7)?);
+        expect_album(
+            &mut albums,
+            MusicAlbum::try_new(
+                7,
+                "Empty".to_owned(),
+                album_release_date(),
+                None,
+                Vec::new(),
+                None,
+                Vec::new(),
+            )?,
+        );
         albums.expect_search_tracks().times(0);
         let harness = harness_with(users, albums);
         let use_case: UseCase = ListAlbumTracks::new(Arc::clone(&harness.factory));

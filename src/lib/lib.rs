@@ -25,7 +25,12 @@ mod test_helpers {
     use std::sync::atomic::Ordering;
 
     use arc_swap::ArcSwap;
+    use axum::body::to_bytes;
+    use axum::http::StatusCode;
+    use axum::http::header;
     use axum::response::Response;
+    use chrono::NaiveDate;
+    use serde_json::Value;
 
     use crate::application::port::asset_use_case_factory::AssetUseCaseFactory;
     use crate::application::port::asset_use_case_factory::MockAssetUseCaseFactory;
@@ -459,5 +464,44 @@ mod test_helpers {
             .extensions()
             .get::<ApiErrorMessage>()
             .map(|message| message.0.clone())
+    }
+
+    /// The release date the album fixtures carry.
+    #[must_use]
+    pub fn album_release_date() -> NaiveDate {
+        NaiveDate::from_ymd_opt(1959, 8, 17).unwrap_or_default()
+    }
+
+    /// Split `response` into its status, `Content-Type` header and decoded JSON
+    /// body.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the body cannot be read or is not JSON.
+    pub async fn into_parts(
+        response: Response,
+    ) -> Result<(StatusCode, Option<String>, Value), Box<dyn Error>> {
+        let status = response.status();
+        let content_type = response
+            .headers()
+            .get(header::CONTENT_TYPE)
+            .and_then(|value| value.to_str().ok())
+            .map(str::to_owned);
+        let bytes = to_bytes(response.into_body(), usize::MAX).await?;
+        let body = serde_json::from_slice(&bytes)?;
+        Ok((status, content_type, body))
+    }
+
+    /// Split `response` into its status and decoded JSON body.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the body cannot be read or is not JSON.
+    pub async fn into_status_and_body(
+        response: Response,
+    ) -> Result<(StatusCode, Value), Box<dyn Error>> {
+        let status = response.status();
+        let bytes = to_bytes(response.into_body(), usize::MAX).await?;
+        Ok((status, serde_json::from_slice(&bytes)?))
     }
 }

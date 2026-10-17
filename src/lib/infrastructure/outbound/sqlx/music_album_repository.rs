@@ -446,36 +446,6 @@ mod tests {
         Ok(())
     }
 
-    /// Seed a playlist-attached track, owned by `user_id`'s playlist.
-    #[expect(
-        clippy::single_call_fn,
-        reason = "the out-of-scope seed is named so the test states what it excludes"
-    )]
-    async fn seed_playlist_track(
-        transaction: &mut Transaction<'static, Sqlite>,
-        track_id: i64,
-        recording_id: i64,
-        user_id: i64,
-    ) -> Result<(), sqlx::Error> {
-        sqlx::query(
-            "INSERT INTO music_playlist (music_playlist_id, name, user_id) VALUES (1, 'Mix', ?1)",
-        )
-        .bind(user_id)
-        .execute(&mut **transaction)
-        .await?;
-        sqlx::query(
-            "INSERT INTO music_track (
-                music_track_id, track_index, music_playlist_id, music_medium_id, music_recording_id
-             )
-             VALUES (?1, 0, 1, NULL, ?2)",
-        )
-        .bind(track_id)
-        .bind(recording_id)
-        .execute(&mut **transaction)
-        .await?;
-        Ok(())
-    }
-
     #[tokio::test]
     async fn search_returns_albums_with_genres_and_their_tracks() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -716,7 +686,20 @@ mod tests {
         seed_file(&mut transaction, 10, 1, "a.mp3").await?;
         seed_audio(&mut transaction, 20, 10, "a.mp3").await?;
         seed_recording(&mut transaction, 30, Some("So What"), 20).await?;
-        seed_playlist_track(&mut transaction, 60, 30, 1).await?;
+        // A track attached to a playlist rather than a medium is out of scope.
+        sqlx::query(
+            "INSERT INTO music_playlist (music_playlist_id, name, user_id) VALUES (1, 'Mix', 1)",
+        )
+        .execute(&mut *transaction)
+        .await?;
+        sqlx::query(
+            "INSERT INTO music_track (
+                music_track_id, track_index, music_playlist_id, music_medium_id, music_recording_id
+             )
+             VALUES (60, 0, 1, NULL, 30)",
+        )
+        .execute(&mut *transaction)
+        .await?;
         let mut repository = SqlxMusicAlbumRepository::new(&mut transaction);
 
         // Act

@@ -133,16 +133,12 @@ mod tests {
     use crate::test_helpers::GalleryFactoryHarness;
     use crate::test_helpers::TestFactory;
     use crate::test_helpers::TestUnitOfWork;
+    use crate::test_helpers::album_release_date;
 
     use super::ListAlbums;
 
     /// The use case under test, bound to the mocked unit-of-work factory.
     type UseCase = ListAlbums<TestFactory>;
-
-    /// Build a domain release date.
-    fn release_date() -> Result<NaiveDate, Box<dyn Error>> {
-        NaiveDate::from_ymd_opt(1959, 8, 17).ok_or_else(|| "invalid fixture date".into())
-    }
 
     /// Build one album holding `album_id` tracks, named `Album {album_id}`.
     fn album(album_id: i64) -> Result<MusicAlbum, Box<dyn Error>> {
@@ -151,7 +147,7 @@ mod tests {
                 Ok(MusicRecording::try_new(
                     index,
                     Some(format!("Track {index}")),
-                    release_date()?,
+                    album_release_date(),
                     None,
                     index,
                     index,
@@ -162,7 +158,7 @@ mod tests {
         Ok(MusicAlbum::try_new(
             album_id,
             format!("Album {album_id}"),
-            release_date()?,
+            album_release_date(),
             Some(ProductionType::Studio),
             vec!["JAZZ".to_owned()],
             None,
@@ -242,7 +238,7 @@ mod tests {
             Some(&ListAlbumsItem::new(
                 1,
                 "Album 1".to_owned(),
-                release_date()?,
+                album_release_date(),
                 Some(ProductionType::Studio),
                 vec!["JAZZ".to_owned()],
                 1,

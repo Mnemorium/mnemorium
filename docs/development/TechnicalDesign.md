@@ -2422,8 +2422,9 @@ sanctioned exception to [TEST-001](#unit-test) (a test module lives with the cod
 It holds the fixtures the in-crate tests share: the secrets `SECRET_PASSWORD` and `TEST_JWT_SECRET`; the unit-of-work
 double `TestUnitOfWork`/`TestUow` and its factory double `TestUnitOfWorkFactory`/`TestFactory`, wrapped by
 `AssetFactoryHarness::new` and `GalleryFactoryHarness::new`; `configuration_with_jwt_secret`; the app-state builders
-`app_state`, `app_state_with_identity`, `app_state_with_user`, `app_state_with_asset`, `app_state_with_library`; and the
-response assertion helper `error_message_of`.
+`app_state`, `app_state_with_identity`, `app_state_with_user`, `app_state_with_asset`, `app_state_with_library`; the
+album release date `album_release_date`; and the response helpers `error_message_of`, `into_parts` and
+`into_status_and_body`.
 
 `TestUnitOfWork` implements `Default`, and a test names only the repositories it stubs —
 `TestUnitOfWork { galleries, ..TestUnitOfWork::default() }` — so adding a repository to a unit of work changes this
