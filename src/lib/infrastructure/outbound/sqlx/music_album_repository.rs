@@ -105,7 +105,87 @@ impl MusicAlbumRepository for SqlxMusicAlbumRepository<'_> {
             .fetch_all(&mut **self.transaction)
             .await?;
 
-        assemble_albums(&rows)
+        // The rows repeat an album once per track and arrive ordered by album,
+        // then medium index, then track index, so one pass groups them without
+        // re-sorting.
+        let mut mediums: HashMap<NumericID, Vec<HydratedMedium>> = HashMap::new();
+        let mut album_ids: Vec<NumericID> = Vec::new();
+
+        for row in &rows {
+            if album_ids.last() != Some(&row.music_album_id) {
+                album_ids.push(row.music_album_id);
+            }
+            let Some(medium_id) = row.music_medium_id else {
+                continue;
+            };
+            let medium_index = row
+                .medium_index
+                .ok_or(RepositoryError::DataIntegrityViolation)?;
+            let medium_type = row
+                .medium_type
+                .clone()
+                .ok_or(RepositoryError::DataIntegrityViolation)?;
+            let album_mediums = mediums.entry(row.music_album_id).or_default();
+            if album_mediums.last().map(|medium| medium.0) != Some(medium_id) {
+                album_mediums.push((medium_id, medium_index, medium_type, Vec::new()));
+            }
+            let Some(recording_id) = row.music_recording_id else {
+                continue;
+            };
+            let recording = MusicRecording::try_new(
+                recording_id,
+                row.recording_name.clone(),
+                row.first_release_date
+                    .ok_or(RepositoryError::DataIntegrityViolation)?,
+                row.isrc_code.clone(),
+                row.audio_id
+                    .ok_or(RepositoryError::DataIntegrityViolation)?,
+                row.file_id.ok_or(RepositoryError::DataIntegrityViolation)?,
+                None,
+            )
+            .map_err(|_| RepositoryError::DataIntegrityViolation)?;
+            if let Some(medium) = mediums
+                .get_mut(&row.music_album_id)
+                .and_then(|hydrated| hydrated.last_mut())
+            {
+                medium.3.push(recording);
+            }
+        }
+
+        let mut albums = Vec::with_capacity(album_ids.len());
+        for album_id in album_ids {
+            let row = rows
+                .iter()
+                .find(|row| row.music_album_id == album_id)
+                .ok_or(RepositoryError::DataIntegrityViolation)?;
+            let album_mediums = mediums
+                .remove(&album_id)
+                .unwrap_or_default()
+                .into_iter()
+                .map(|(medium_id, medium_index, medium_type, tracks)| {
+                    MusicMedium::new(medium_id, Some(medium_index), medium_type, tracks)
+                })
+                .collect();
+            albums.push(
+                MusicAlbum::try_new(
+                    album_id,
+                    row.name.clone(),
+                    row.release_date,
+                    row.production_type
+                        .as_deref()
+                        .and_then(ProductionType::from_wire),
+                    row.genres
+                        .split(',')
+                        .filter(|genre| !genre.is_empty())
+                        .map(str::to_owned)
+                        .collect(),
+                    None,
+                    album_mediums,
+                )
+                .map_err(|_| RepositoryError::DataIntegrityViolation)?,
+            );
+        }
+        Ok(albums)
     }
 
     async fn search_tracks(
@@ -164,105 +244,6 @@ impl MusicAlbumRepository for SqlxMusicAlbumRepository<'_> {
             })
             .collect()
     }
-}
-
-/// Assemble the album rows, which repeat an album once per track, into one
-/// hydrated [`MusicAlbum`] each.
-///
-/// The rows arrive ordered by album, then by medium index, then by track index,
-/// so one pass groups them without re-sorting.
-#[expect(
-    clippy::single_call_fn,
-    reason = "the assembly is named so `search` states what it returns"
-)]
-fn assemble_albums(rows: &[MusicAlbumRow]) -> Result<Vec<MusicAlbum>, RepositoryError> {
-    let mut mediums: HashMap<NumericID, Vec<HydratedMedium>> = HashMap::new();
-    let mut album_ids: Vec<NumericID> = Vec::new();
-
-    for row in rows {
-        if album_ids.last() != Some(&row.music_album_id) {
-            album_ids.push(row.music_album_id);
-        }
-        let Some(medium_id) = row.music_medium_id else {
-            continue;
-        };
-        let medium_index = row
-            .medium_index
-            .ok_or(RepositoryError::DataIntegrityViolation)?;
-        let medium_type = row
-            .medium_type
-            .clone()
-            .ok_or(RepositoryError::DataIntegrityViolation)?;
-        let album_mediums = mediums.entry(row.music_album_id).or_default();
-        if album_mediums.last().map(|medium| medium.0) != Some(medium_id) {
-            album_mediums.push((medium_id, medium_index, medium_type, Vec::new()));
-        }
-        let Some(recording_id) = row.music_recording_id else {
-            continue;
-        };
-        let recording = MusicRecording::try_new(
-            recording_id,
-            row.recording_name.clone(),
-            row.first_release_date
-                .ok_or(RepositoryError::DataIntegrityViolation)?,
-            row.isrc_code.clone(),
-            row.audio_id
-                .ok_or(RepositoryError::DataIntegrityViolation)?,
-            row.file_id.ok_or(RepositoryError::DataIntegrityViolation)?,
-            None,
-        )
-        .map_err(|_| RepositoryError::DataIntegrityViolation)?;
-        if let Some(medium) = mediums
-            .get_mut(&row.music_album_id)
-            .and_then(|hydrated| hydrated.last_mut())
-        {
-            medium.3.push(recording);
-        }
-    }
-
-    let mut albums = Vec::with_capacity(album_ids.len());
-    for album_id in album_ids {
-        let row = rows
-            .iter()
-            .find(|row| row.music_album_id == album_id)
-            .ok_or(RepositoryError::DataIntegrityViolation)?;
-        let album_mediums = mediums
-            .remove(&album_id)
-            .unwrap_or_default()
-            .into_iter()
-            .map(|(medium_id, medium_index, medium_type, tracks)| {
-                MusicMedium::new(medium_id, Some(medium_index), medium_type, tracks)
-            })
-            .collect();
-        albums.push(
-            MusicAlbum::try_new(
-                album_id,
-                row.name.clone(),
-                row.release_date,
-                row.production_type
-                    .as_deref()
-                    .and_then(ProductionType::from_wire),
-                split_genres(&row.genres),
-                None,
-                album_mediums,
-            )
-            .map_err(|_| RepositoryError::DataIntegrityViolation)?,
-        );
-    }
-    Ok(albums)
-}
-
-/// Split the aggregated `genres` column into the identifiers it lists.
-#[expect(
-    clippy::single_call_fn,
-    reason = "the split is named so `assemble_albums` reads as the mapping it is"
-)]
-fn split_genres(genres: &str) -> Vec<String> {
-    genres
-        .split(',')
-        .filter(|genre| !genre.is_empty())
-        .map(str::to_owned)
-        .collect()
 }
 
 #[cfg(test)]
