@@ -205,13 +205,13 @@ impl From<ErrorKind> for ApiError {
 }
 
 impl ApiError {
-    /// Log a discrete-list rejection (`enum_validation_failed`, `OBS-006`).
+    /// Log a discrete-list rejection and map it to a `422`.
     ///
     /// The catalog declares `enum_validation_failed` at `warn` with fields
     /// `field` and `reason`; the rejected value itself never reaches the sink
-    /// (`OBS-003`). A caller maps it to the status its request part implies: a
-    /// body value to `422`, a query value to `400`.
-    pub(crate) fn log_enum_rejection(field: &str) {
+    /// (`OBS-003`, `OBS-006`). A declared discrete list is a constraint the
+    /// handler enforces, so its violation answers `422` (`API-041`, `API-045`).
+    pub(crate) fn reject_enum(field: &str) -> Self {
         warn!(
             target: "security",
             event = "enum_validation_failed",
@@ -219,11 +219,6 @@ impl ApiError {
             reason = "invalid_value",
             "rejected a discrete value"
         );
-    }
-
-    /// Log a discrete-list rejection and map it to a `422`.
-    pub(crate) fn reject_enum(field: &str) -> Self {
-        Self::log_enum_rejection(field);
         Self::UnprocessableEntity("the request contains an unrecognised value".to_owned())
     }
 
@@ -915,31 +910,6 @@ mod tests {
         assert!(
             logs.contains("security"),
             "the event must target the reserved security target: {logs}"
-        );
-    }
-
-    #[test]
-    fn log_enum_rejection_logs_one_enum_validation_failed() {
-        // Arrange
-        let (buffer, _capture) = capture_logs();
-
-        // Act
-        ApiError::log_enum_rejection("role");
-
-        // Assert
-        let logs = captured_logs(&buffer);
-        assert_eq!(
-            logs.matches("event=\"enum_validation_failed\"").count(),
-            1,
-            "a discrete-list query rejection must emit exactly one enum_validation_failed: {logs}"
-        );
-        assert!(
-            logs.contains("field=role"),
-            "the event must name the rejected field: {logs}"
-        );
-        assert!(
-            logs.contains("reason=\"invalid_value\""),
-            "the event must classify the reason: {logs}"
         );
     }
 

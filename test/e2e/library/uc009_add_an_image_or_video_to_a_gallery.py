@@ -108,7 +108,7 @@ def test_adding_to_another_users_private_gallery_is_forbidden(
     assert_error_body(response, 403)
 
 
-def test_adding_media_owned_by_another_user_is_forbidden(
+def test_adding_media_owned_by_another_user_is_unprocessable(
     create_gallery: Callable[[str, str, bool], requests.Response],
     upload_media: Callable[[str, str, bytes, str], int],
     register_media: Callable[[str, int], int],
@@ -128,7 +128,7 @@ def test_adding_media_owned_by_another_user_is_forbidden(
 
     response = add_gallery_item(second_standard_user_token, gallery_id, "image", file_id)
 
-    assert_error_body(response, 403)
+    assert_error_body(response, 422)
 
 
 def test_an_admin_cannot_add_another_users_media(
@@ -151,7 +151,7 @@ def test_an_admin_cannot_add_another_users_media(
 
     response = add_gallery_item(admin_token, gallery_id, "image", file_id)
 
-    assert_error_body(response, 403)
+    assert_error_body(response, 422)
 
 
 def test_the_root_admin_can_add_another_users_media(
@@ -177,7 +177,7 @@ def test_the_root_admin_can_add_another_users_media(
     assert added.json()["file_id"] == file_id
 
 
-def test_adding_an_unknown_media_is_not_found(
+def test_adding_an_unknown_media_is_unprocessable(
     create_gallery: Callable[[str, str, bool], requests.Response],
     add_gallery_item: Callable[[str, int, str, int], requests.Response],
     standard_user_token: str,
@@ -187,7 +187,7 @@ def test_adding_an_unknown_media_is_not_found(
 
     response = add_gallery_item(standard_user_token, gallery_id, "image", UNKNOWN_ID)
 
-    assert_error_body(response, 404)
+    assert_error_body(response, 422)
 
 
 def test_adding_to_an_unknown_gallery_is_not_found(

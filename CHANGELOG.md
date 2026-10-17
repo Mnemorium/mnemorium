@@ -1,3 +1,9 @@
+## [0.19.3](https://github.com/Mnemorium/mnemorium/compare/v0.19.2...v0.19.3) (2026-10-17)
+
+### Bug Fixes
+
+* **api:** unify the medium rejection and enforce the list filters ([#292](https://github.com/Mnemorium/mnemorium/issues/292)) ([6f0a2c4](https://github.com/Mnemorium/mnemorium/commit/6f0a2c4b49f49550ec4cc29cea6ea184950c1917))
+
 ## [0.19.2](https://github.com/Mnemorium/mnemorium/compare/v0.19.1...v0.19.2) (2026-10-17)
 
 ### Bug Fixes
