@@ -24,14 +24,15 @@ use crate::infrastructure::inbound::rest::middleware::trace::tracing;
 
 /// Build the application router.
 ///
-/// This is the single composition root: the server mounts only this router, and
+/// The composition root (`src/bin/server.rs`, `STY-RUST-067`) builds the
+/// process-lifetime adapters and mounts only the router this function returns.
 /// `hal_errors` is applied **last** so it is the outermost layer. It therefore
 /// rewraps every `4xx`/`5xx` the server emits, including the routing fallback
 /// (an unknown or malformed URL) and framework rejections, as the one HAL error
 /// envelope (`API-039`). It must remain outermost.
 ///
-/// The `limiter` is the process-lifetime login rate limiter the server built;
-/// it is applied to the `login` route here.
+/// The `limiter` is the process-lifetime login rate limiter the composition
+/// root built; it is applied to the `login` route here.
 pub fn setup_routes(state: &AppState, limiter: &LoginRateLimiter) -> axum::Router {
     let v1 = axum::Router::new()
         .nest("/asset", asset_routes(state))
