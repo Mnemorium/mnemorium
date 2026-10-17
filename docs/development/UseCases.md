@@ -642,8 +642,8 @@ Allow an authenticated user to browse the music albums the server holds and to r
 
 ### Alternative flow
 
-- 1a. The requested `limit` is out of range; the system rejects the request.
-- 1b. The query string is malformed; the system rejects the request.
+- 1a. A request filter is invalid (an unknown, malformed or out-of-range query parameter); the system rejects the
+  request.
 - 4a. The `album_id` is not a valid identifier; the system rejects the request.
 - 4b. No album matches the requested identifier; the system rejects the request.
 - 6a. The `track_id` is not a valid identifier; the system rejects the request.
