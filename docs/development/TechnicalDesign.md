@@ -1550,8 +1550,11 @@ which branch the handler happened to take. `400 Bad Request` means the server ca
 undecodable header syntax, an unparseable path or query parameter. `422 Unprocessable Content` means the request parses,
 but its shape (a missing, unknown or wrong-typed field) or its values fail a schema, framing or business rule — this
 includes a well-formed header whose value is inconsistent with the request, such as a `Content-Range` that does not
-match the body length. The status therefore does not depend on which layer caught the failure: the same class of failure
-yields the same code. An unclassified variant of a `#[non_exhaustive]` framework rejection enum is a
+match the body length. A request that parses but omits a required parameter or header is a `422` shape failure, except
+where this section documents another outcome: a missing `Content-Type` is the media-type case that stays `415`, and an
+authentication outcome stays `401`. Malformed or undecodable header syntax is a `400`, and `415` remains scoped to media
+types (a digest algorithm is not one). The status therefore does not depend on which layer caught the failure: the same
+class of failure yields the same code. An unclassified variant of a `#[non_exhaustive]` framework rejection enum is a
 `500 Internal Server Error`: the server cannot establish why the request failed, so it must not report a client status.
 Authentication outcomes are always `401 Unauthorized`, whatever the cause, so a missing token, an unknown user and a
 wrong password share one code, and an unsupported media type — the request's `Content-Type` or a declared upload content
@@ -1560,22 +1563,22 @@ type — is always `415`.
 The table lists every status the server currently emits, with a concrete example drawn from the codebase. It is extended
 as new codes are introduced; completeness is not required.
 
-| Code  | Name                   | Represents                                                                           | Example                                                                                                                  |
-| ----- | ---------------------- | ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------ |
-| `200` | OK                     | The request succeeded; the body carries the representation when there is one.        | `GET /api/v1/user/{id}`; `POST /api/v1/asset/upload/{id}/complete`.                                                      |
-| `201` | Created                | A resource was created; the `Location` header names it.                              | `POST /api/v1/identity/register`; `POST /api/v1/asset/upload`.                                                           |
-| `204` | No Content             | The request succeeded and deliberately carries no body.                              | `PATCH /api/v1/identity/credential/{id}`.                                                                                |
-| `400` | Bad Request            | The server cannot parse the request.                                                 | A register body that is not JSON; a malformed `Content-Range` on `PUT .../chunk/{n}`; a non-numeric `{id}`.              |
-| `401` | Unauthorized           | Authentication is required, or the credentials are invalid.                          | `POST /api/v1/identity/login` with a wrong password; a missing or expired bearer token.                                  |
-| `403` | Forbidden              | The caller is authenticated but not permitted to perform the request.                | A non-admin `PATCH /api/v1/user/{id}`; a non-root admin granting the `ADMIN` role.                                       |
-| `404` | Not Found              | The addressed resource does not exist.                                               | An unknown `{id}` in `GET /api/v1/user/{id}`; an unknown upload session.                                                 |
-| `405` | Method Not Allowed     | The method is not supported on the route; the response carries `Allow`.              | `DELETE /health` (only `GET` is routed; `hal_errors` keeps the `Allow` header).                                          |
-| `409` | Conflict               | The request conflicts with the current state of the resource.                        | Registering a username that is already taken; a chunk on a finished upload.                                              |
-| `410` | Gone                   | The resource existed but is no longer available.                                     | `PUT .../chunk/{n}` against an expired upload session.                                                                   |
-| `413` | Content Too Large      | The request body (or a declared size) exceeds the server limit.                      | A begin-upload declaring a file size above the maximum; a body over `DefaultBodyLimit`.                                  |
-| `415` | Unsupported Media Type | The request's or a declared media type is not supported.                             | A JSON endpoint called without `Content-Type: application/json`; an unsupported upload content type.                     |
-| `422` | Unprocessable Content  | The request parses, but its shape or values fail a schema, framing or business rule. | Registering with an empty username or a weak password; a `Content-Range` that does not match the body.                   |
-| `500` | Internal Server Error  | An unexpected server-side failure occurred.                                          | Any unmapped `Unknown(_)`; an unclassified framework rejection variant; the fixed body `"an unexpected error occurred"`. |
+| Code  | Name                   | Represents                                                                           | Example                                                                                                                           |
+| ----- | ---------------------- | ------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------- |
+| `200` | OK                     | The request succeeded; the body carries the representation when there is one.        | `GET /api/v1/user/{id}`; `POST /api/v1/asset/upload/{id}/complete`.                                                               |
+| `201` | Created                | A resource was created; the `Location` header names it.                              | `POST /api/v1/identity/register`; `POST /api/v1/asset/upload`.                                                                    |
+| `204` | No Content             | The request succeeded and deliberately carries no body.                              | `PATCH /api/v1/identity/credential/{id}`.                                                                                         |
+| `400` | Bad Request            | The server cannot parse the request.                                                 | A register body that is not JSON; a malformed `Content-Range` on `PUT .../chunk/{n}`; a non-numeric `{id}`.                       |
+| `401` | Unauthorized           | Authentication is required, or the credentials are invalid.                          | `POST /api/v1/identity/login` with a wrong password; a missing or expired bearer token.                                           |
+| `403` | Forbidden              | The caller is authenticated but not permitted to perform the request.                | A non-admin `PATCH /api/v1/user/{id}`; a non-root admin granting the `ADMIN` role.                                                |
+| `404` | Not Found              | The addressed resource does not exist.                                               | An unknown `{id}` in `GET /api/v1/user/{id}`; an unknown upload session.                                                          |
+| `405` | Method Not Allowed     | The method is not supported on the route; the response carries `Allow`.              | `DELETE /health` (only `GET` is routed; `hal_errors` keeps the `Allow` header).                                                   |
+| `409` | Conflict               | The request conflicts with the current state of the resource.                        | Registering a username that is already taken; a chunk on a finished upload.                                                       |
+| `410` | Gone                   | The resource existed but is no longer available.                                     | `PUT .../chunk/{n}` against an expired upload session.                                                                            |
+| `413` | Content Too Large      | The request body (or a declared size) exceeds the server limit.                      | A begin-upload declaring a file size above the maximum; a body over `DefaultBodyLimit`.                                           |
+| `415` | Unsupported Media Type | The request's or a declared media type is not supported.                             | A JSON endpoint called without `Content-Type: application/json`; an unsupported upload content type.                              |
+| `422` | Unprocessable Content  | The request parses, but its shape or values fail a schema, framing or business rule. | Registering with an empty username or a weak password; a missing required header; a `Content-Range` that does not match the body. |
+| `500` | Internal Server Error  | An unexpected server-side failure occurred.                                          | Any unmapped `Unknown(_)`; an unclassified framework rejection variant; the fixed body `"an unexpected error occurred"`.          |
 
 ---
 
