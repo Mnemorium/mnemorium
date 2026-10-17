@@ -2903,7 +2903,7 @@ is a security event source (`OBS-008`).
 | `OBS-003` | Content         | Log a stable classification — an event code or a `kind()` — never the `Display`/`Debug` of an extractor, deserializer, database, filesystem or framework error, and never a raw client-supplied value such as a query string, file name or request-body field.                   | [§ 3](#3-log-content)                         |
 | `OBS-004` | Redaction       | Never log application source, session identifiers, access or JWT tokens, passwords or password material, database connection strings, the pepper or JWT signing secret, or personal data; a type that holds a secret must not derive a `Debug` that exposes it.                  | [§ 4](#4-redaction)                           |
 | `OBS-005` | Severity        | Use only the levels `error`, `warn`, `info`, `debug` and `trace`, assigned per [§ 5](#5-severity); `error` is an operator-actionable fault, `warn` a reviewable security event, `info` a security success or lifecycle event.                                                    | [§ 5](#5-severity)                            |
-| `OBS-006` | Catalog         | Emit every event in the catalog in [§ 6](#6-security-event-catalog) at its declared level and with its declared fields.                                                                                                                                                          | [§ 6](#6-security-event-catalog)              |
+| `OBS-006` | Catalog         | Emit every event in the catalog in [§ 6](#6-security-event-catalog) at its declared level and with its declared fields; a `security`-target event must be one the catalog declares.                                                                                              | [§ 6](#6-security-event-catalog)              |
 | `OBS-007` | Suppression     | Security events target the reserved `security` target; `Logging::try_new` rejects `off`/`none` as a whole-level value and any directive that targets `security`, and `logging::setup` appends the non-suppressible floor, so `logging.level` can never suppress a catalog event. | [§ 7](#7-non-suppressible-security-events)    |
 | `OBS-008` | Untrusted input | An adapter that hands caller-supplied content to an external native parser restricts the protocols it may open to an explicit allow-list, bounds the child's wall clock and output, and records the residual isolation gap rather than implying the parser is sandboxed.         | [§ 8](#8-external-parsers-on-untrusted-input) |
 
@@ -2995,8 +2995,8 @@ the same way.
 
 ### 6. Security-event catalog
 
-These events are normative: each is emitted at its declared level with its declared fields. A field is an identifier, a
-code or a classification — never a value.
+These events are normative: each is emitted at its declared level with its declared fields, and a `security`-target
+event must be one this catalog declares. A field is an identifier, a code or a classification — never a value.
 
 | Event                       | Level   | Fields                       | Emitted when                                                                                |
 | --------------------------- | ------- | ---------------------------- | ------------------------------------------------------------------------------------------- |
