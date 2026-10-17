@@ -43,16 +43,16 @@ is positioned by as a `MusicTrackPosition` (`Medium` or `Playlist`); this change
 - The Rust models instead collapse tracks into `MusicPlaylist.tracks: Vec<MusicRecording>` /
   `MusicMedium.tracks: Vec<MusicRecording>`, losing both the track identity and its position.
 
-Two schema/domain mismatches constrain the read model:
+Two schema/domain mismatches had to be reconciled for the endpoints to be served from the aggregate:
 
 - `music_album` has no genre column: genres are a many-to-many join (`music_album_genre` → `genre`, `genre_id TEXT`),
-  while `MusicAlbum.genre` is `Option<String>`.
+  while `MusicAlbum.genre` is `Option<String>` — a field with no column behind it.
 - `music_medium` carries `UNIQUE (music_album_id)`, so an album holds at most one medium, while
   `MusicAlbum.mediums: Vec<MusicMedium>` implies many.
 
-The project's existing precedent for reading data that is not a clean domain entity is the port-level projection
-`GalleryItemDetail` (`domain/port/gallery_repository.rs`), returned by `search_items` and mapped to the response in the
-handler.
+The project reads data that is not a clean domain entity through a port-level projection (`GalleryItemDetail`, returned
+by `GalleryRepository::search_items`), but that precedent does not extend to the classic `search`: a repository's
+aggregate query returns the aggregate, and the application assembles the representation from it.
 
 ## Goals / Non-Goals
 
@@ -64,8 +64,8 @@ handler.
 
 **Non-Goals:**
 
-- Hydrating the full `MusicAlbum` aggregate for responses (its mediums, tracks, genres, music groups). The read models
-  carry only what the endpoints expose; reconciling the aggregate itself belongs to the change that first writes albums.
+- Writing albums: hydrating the aggregate for a response does not reconcile it for storage, and the write path
+  (`music_group_ids`, album mutation) belongs to the change that first writes albums.
 - Playlist endpoints, album detail by identifier, album/track upload, playlist track curation, visibility changes.
 - Paginating the album's track collection (see Decisions).
 
@@ -91,6 +91,9 @@ model, and it is what the two `/track/{track_id}` requirements need: the databas
 `music_track_id`, distinct from `music_recording_id`. Naming the position is also what lets the album-scoped track
 filter declare a field the entity really has (`STY-RUST-080`).
 
+- **Naming:** the entity names its own key `id` and its container `medium_id`/`playlist_id`; the SQL column names
+  (`music_track_id`, `music_medium_id`) are not the source of truth for a domain name (`STY-RUST-084`). The same holds
+  for the track filter, whose fields name the entity's fields (`STY-RUST-080`).
 - **Scope:** one entity models the shared `music_track` table's row, whose two nullable foreign keys give it exactly one
   container. This change reads only the album side: the `MusicAlbumRepository` joins through `music_medium`, so a
   playlist-positioned row is never returned. The playlist-side variant is exercised when the playlist endpoints land.
@@ -99,21 +102,39 @@ filter declare a field the entity really has (`STY-RUST-080`).
 - **Alternative (rejected):** a distinct entity per aggregate. Two types over one table duplicate the identity, position
   and recording reference, and the shared row still gives each track exactly one container.
 
-### 3. Query the `MusicAlbum` aggregate through port read models
+### 3. Query the `MusicAlbum` aggregate through its repository port
 
 The port is named after the aggregate — `MusicAlbumRepository`, in `domain/port/music_album_repository.rs`, adapted as
 `SqlxMusicAlbumRepository` (§ 8.1–8.2, `STY-RUST-079`) — and it queries only that aggregate. Its methods follow the
 canonical repository names: `search` for the album query, and `search_tracks` for the album's tracks, mirroring
-`GalleryRepository::search` and `search_items` (§ 8.1). Both return dedicated read models (`MusicAlbumSummary`,
-`MusicTrackDetail`) built by the SQLx adapter from joins (`STY-RUST-081`), mirroring `GalleryItemDetail`: a result
-carrying data the aggregate does not declare — aggregated genres, a track count, the Asset-owned file identity, and the
-identifier of the medium the album's tracks are positioned by — returns a read model rather than a partly-hydrated
-aggregate. The port file declares the filters first, then the trait, then the read models (§ 8.3).
+`GalleryRepository::search` and `search_items` (§ 8.1).
 
-- **Alternative (considered):** rehydrate `MusicAlbum` with its `MusicMedium`s, each holding `MusicTrack`s. Faithful to
-  the boundary, but the aggregate's `genre: Option<String>` cannot represent `music_album_genre`, and a listing needs an
-  aggregate-wide track count; rehydrating drags a domain/schema reconciliation into a read-only change. Promote the
-  aggregate when a write path needs it.
+Both return domain objects, and the port declares no summary or detail type (`STY-RUST-081`): `search` returns
+`Vec<MusicAlbum>`, `search_tracks` returns `Vec<MusicTrack>`. The use cases assemble the three representations from what
+those aggregates carry — genres and the track count from the album, the display metadata from the recordings the album's
+mediums hold. A port-level read model would hand the application a persistence-shaped projection and let the SQL shape
+the domain, so the rule is stated for the classic query and enforced by a check in `script/rule_enforcer.sh`.
+
+Two models grew to carry what the responses expose:
+
+- `MusicAlbum.genre_ids: Vec<String>` replaces `genre: Option<String>`, a field the schema never had. The many-to-many
+  relation is what the listing exposes, ordered by genre identifier.
+- `MusicRecording.file_id` carries the backing file. `music_recording.audio_id → audio.file_id` is Asset-owned data, and
+  the alternative is a new `AudioRepository` port, a `LibraryUnitOfWork` accessor, an adapter and a mock to reach one
+  identifier.
+
+`search` hydrates the aggregate whole — its genres, and its mediums with the recordings they hold in play order — so a
+caller never stitches a result from per-album lookups. `search_tracks` returns the album's tracks in play order; each
+use case resolves a track's recording against the album it already read, and `uq_music_medium_music_album_id` caps an
+album at one medium, so that is one track query per album.
+
+The classic read also validates what it hydrates: a stored `isrc_code` that is not twelve characters, or an empty
+recording name, fails the read with `RepositoryError::DataIntegrityViolation` rather than serving a value the domain
+model cannot hold.
+
+- **Alternative (rejected):** port read models (`MusicAlbumSummary`, `MusicTrackDetail`) built by the adapter from
+  joins. The first shape of this change; the rule review removed it because the classic query returns the aggregate and
+  the application owns the representation.
 - **Alternative (rejected):** return raw rows from the repository. Leaks persistence shape outward and breaks the
   hexagonal direction.
 
@@ -151,9 +172,9 @@ do (`servers` carries it).
 ### 6. Ordering and pagination
 
 - Album tracks are ordered by ascending `medium_index`, then ascending `track_index`; ties fall back to `music_track_id`
-  for a deterministic order. Album scope is applied by resolving the album's medium through the album projection
-  (`MusicAlbumSummary.music_medium_id`) and joining `music_track` to it (`music_medium.music_medium_id = ?`);
-  playlist-attached rows (`music_playlist_id`) have no medium, so the join keeps them out of the query.
+  for a deterministic order. Album scope is applied by reading the album and querying its mediums' tracks
+  (`music_medium.music_medium_id = ?`); playlist-attached rows (`music_playlist_id`) have no medium, so the adapter's
+  join keeps them out of the query.
 - The album **list** mirrors the gallery list: optional `name` filter, `limit` default 20 / range 1..100, `offset`.
 - The album **track collection** returns every track of that album, unpaginated — the same shape as
   `GET /library/gallery/{id}/item`, which returns the whole collection.
@@ -199,21 +220,26 @@ nameless recording yields a track representation without a name.
 
 ## Risks / Trade-offs
 
-- [Multi-medium albums are impossible today: `uq_music_medium_music_album_id` caps an album at one medium] → The read
-  path still orders by `(medium_index, track_index)` and works with a single medium, so the endpoints are correct either
-  way. Do not change the schema in this read-only change; PERS-014 makes migrations mutable until release, so a later
-  change that needs multi-medium albums drops the constraint.
-- [`MusicAlbum.genre: Option<String>` cannot represent `music_album_genre`] → The listing exposes a `genres` array from
-  the join and leaves the unused aggregate untouched. Reconcile the aggregate in the change that writes albums.
+- [Multi-medium albums are impossible today: `uq_music_medium_music_album_id` caps an album at one medium] → The album
+  read hydrates every medium the album holds and the use cases walk them in order, so the endpoints stay correct if the
+  constraint is ever dropped. Do not change the schema in this read-only change; PERS-014 makes migrations mutable until
+  release, so a later change that needs multi-medium albums drops the constraint.
+- [`MusicAlbum.genre: Option<String>` could not represent `music_album_genre`] → Replaced by `genre_ids: Vec<String>`,
+  hydrated from the join by the album read; `music_album.genre` had no column behind it, so nothing is lost. The music
+  groups the album declares are still not hydrated: no endpoint exposes them yet.
 - [`music_track` has no unique index on `(music_medium_id, track_index)`; duplicate positions are possible] →
   Deterministic ordering breaks ties on `music_track_id`. A uniqueness index is an optional follow-up.
 - [The `music_track` table is shared by the `MusicAlbum` and `MusicPlaylist` aggregates] → One `MusicTrack` entity
   models both sides of the shared row through its `MusicTrackPosition`. This change reads only the album side: the
   repository joins through `music_medium`, so a playlist-positioned row is never returned. The playlist-side variant is
   exercised when the playlist endpoints land.
-- [A recording whose backing audio/file row is missing would leave the track detail incomplete] →
-  `music_recording.audio_id` and `audio.file_id` are `NOT NULL`, so a track always resolves a file; if a join still
-  yields none, the field is omitted rather than failing the request.
+- [Hydrating the aggregate validates what the store holds, so a malformed row fails the read] →
+  `music_recording.isrc_code` is `VARCHAR(12)` with only a uniqueness constraint, and `name` admits an empty string;
+  either one now fails the read with `RepositoryError::DataIntegrityViolation` instead of being served. That is the
+  trade for returning domain objects: the model cannot hold an invalid value, and the adapter will not lie about it.
+- [A recording whose backing audio/file row cannot be joined would fail the read] → `music_recording.audio_id` and
+  `audio.file_id` are `NOT NULL`, so a track always resolves a file; a missing join is reported as
+  `RepositoryError::DataIntegrityViolation` rather than serving a track without its media.
 - [The caller-existence check adds a user query per album read] → Accepted for consistency with galleries and the
   deleted-account rule; it is a single indexed lookup inside the same transaction.
 - [Album reads are public-equivalent, so a track exposes the backing `file_id` of another user's private upload] → This

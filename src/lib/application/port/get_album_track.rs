@@ -7,10 +7,6 @@ use crate::domain::alias::NumericID;
 
 /// Command to fetch one track of a music album.
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[expect(
-    clippy::struct_field_names,
-    reason = "`album_id`, `caller_id` and `track_id` are the identifier names the API and SQL sections mandate"
-)]
 #[non_exhaustive]
 pub struct GetAlbumTrackCommand {
     /// Identifier of the album the track belongs to.
@@ -113,7 +109,7 @@ impl GetAlbumTrackResponse {
     /// Create a new fetch-album-track response.
     #[expect(
         clippy::too_many_arguments,
-        reason = "the constructor mirrors the columns of the track read model"
+        reason = "the constructor mirrors the fields the track representation needs"
     )]
     #[must_use]
     pub fn new(

@@ -6,10 +6,6 @@ use crate::domain::alias::NumericID;
 /// Command to delete one item of a gallery.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-#[expect(
-    clippy::struct_field_names,
-    reason = "`gallery_item_id` is the primary key name mandated by the SQL section and the domain field naming"
-)]
 pub struct DeleteGalleryItemCommand {
     /// Identifier of the authenticated caller.
     caller_id: NumericID,

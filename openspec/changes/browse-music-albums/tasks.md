@@ -31,10 +31,12 @@
       repository integration test (§ 3.2).
 - [x] 2.3 Add `src/lib/domain/port/music_album_repository.rs` named after the aggregate: declare the `MusicAlbumFilter`
       and `MusicTrackFilter` filters first, then the `MusicAlbumRepository` trait (with
-      `#[cfg_attr(test, mockall::automock)]`), then the `MusicAlbumSummary` and `MusicTrackDetail` read models — the §
-      8.3 declaration order (`STY-RUST-051`, `STY-RUST-052`). The trait carries `search` (the album query) and
-      `search_tracks`, mirroring `GalleryRepository::search` and `search_items` (§ 8.1). Verified by `cargo test --lib`
-      compiling and generating `MockMusicAlbumRepository`.
+      `#[cfg_attr(test, mockall::automock)]`) and the `#[cfg(test)]` `&mut T` forwarding impl — the § 8.3 declaration
+      order (`STY-RUST-051`, `STY-RUST-052`). The trait carries `search` (the album query) and `search_tracks`, both
+      returning domain objects (`Vec<MusicAlbum>` and `Vec<MusicTrack>`): the classic query returns the aggregate and
+      the application assembles the representation, so the port declares no summary or detail (`STY-RUST-081`),
+      mirroring `GalleryRepository::search` and `search_items` (§ 8.1). Verified by `cargo test --lib` compiling and
+      generating `MockMusicAlbumRepository`, and by the `STY-RUST-081` check passing.
 - [x] 2.4 Extend `src/lib/domain/port/library_unit_of_work.rs` with a `music_albums()` accessor. Implement it for
       `TestUnitOfWork` in `src/lib/lib.rs` and add a `MockMusicAlbumRepository` field; the fixture carries the
       repository, so no other test module changes. Verified by `cargo test --lib` compiling and the existing gallery
@@ -43,16 +45,19 @@
 ## 3. SQLx adapter
 
 - [x] 3.1 Add the music-album row models under `src/lib/infrastructure/outbound/sqlx/model/` and implement
-      `SqlxMusicAlbumRepository::search` (album fields, the album's medium identifier, aggregated genres from
-      `music_album_genre`, track count, `name` filter, ordered by album identifier, mapping the stored `production_type`
-      token through `ProductionType::from_wire`). Verified by in-memory migrated-database tests covering filter, stable
-      order, genre aggregation, the production-type mapping (a known token and an unknown one) and the empty result.
-- [x] 3.2 Implement `SqlxMusicAlbumRepository::search_tracks` (join `music_track` → `music_medium` for album scope, →
-      `music_recording` → `audio` → `file` for the backing `file_id`; playlist-attached rows stay out), ordered by
-      ascending medium index then track index with a `music_track_id` tiebreak, resolving the display name from the
-      recording name alone (the recording name is nullable, so the name is optional). The read model mirrors the gallery
-      item's: it carries `file_id` and `name`, as `GalleryItemDetail` does. Verified by tests for album scoping,
-      ordering across mediums, the detail fields, and a no-match album.
+      `SqlxMusicAlbumRepository::search`: hydrate each `MusicAlbum` whole — its genre identifiers from
+      `music_album_genre`, its mediums and the recordings they hold in play order (left-joined through `music_track`,
+      `music_recording`, `audio` and `file`) — with the `name` filter, ordered by album identifier, mapping the stored
+      `production_type` token through `ProductionType::from_wire`. Verified by in-memory migrated-database tests
+      covering filter, stable order, genre aggregation, the hydrated medium and its recordings, a medium holding no
+      track, the production-type mapping (a known token and an unknown one), a malformed stored ISRC and the empty
+      result.
+- [x] 3.2 Implement `SqlxMusicAlbumRepository::search_tracks` (join `music_track` → `music_medium` for album scope, so
+      playlist-attached rows stay out), ordered by ascending medium index then track index with a `music_track_id`
+      tiebreak, returning `Vec<MusicTrack>`. Each use case resolves the display metadata — the recording name, optional
+      because the column is nullable, the ISRC code, the first release date and the backing `file_id` — against the
+      recordings the album read carries. Verified by tests for album scoping, ordering across mediums, a no-match album,
+      playlist exclusion and a negative track index.
 - [x] 3.3 Implement `music_albums()` on `SqlxUnitOfWork` in `src/lib/infrastructure/outbound/sqlx/unit_of_work.rs`,
       wiring `SqlxMusicAlbumRepository`. Verified by `cargo test --lib` passing the adapter and unit-of-work tests.
 
@@ -66,12 +71,16 @@
       (rollback), repository failure and commit failure.
 - [x] 4.2 Add `list_album_tracks` (port, use case, factory accessor) returning an album's tracks in order and
       `NoSuchAlbum` when the album does not exist; load the caller through `library_access::load_caller`, mirroring
-      `GetGallery`. Verified by use-case tests for the ordered happy path, unknown album, `NoSuchCaller` and repository
+      `GetGallery`. The use case assembles each item from the album's aggregate and its tracks — the album read supplies
+      the recordings, so an album without a medium yields an empty collection without a track query. Verified by
+      use-case tests for the ordered happy path, an album without a medium, unknown album, `NoSuchCaller` and repository
       failure.
 - [x] 4.3 Add `get_album_track` (port, use case, factory accessor) returning one track scoped to its album, with
       `NoSuchAlbum` and `NoSuchTrack` when either is absent or mismatched; load the caller through
-      `library_access::load_caller`, mirroring `GetGallery`. Verified by use-case tests for the happy path, unknown
-      album, a track outside the album, `NoSuchCaller` and repository failure.
+      `library_access::load_caller`, mirroring `GetGallery`. The track is read within the album's own mediums, which is
+      what makes a track of another album — and an album without a medium — report `NoSuchTrack`. Verified by use-case
+      tests for the happy path, unknown album, a track outside the album, an album without a medium, `NoSuchCaller` and
+      repository failure.
 - [x] 4.4 Wire the three new accessors in `RuntimeLibraryUseCaseFactory`
       (`src/lib/infrastructure/use_case_factory/library.rs`). Verified by
       `cargo test --lib infrastructure::use_case_factory` and the factory's unit tests.

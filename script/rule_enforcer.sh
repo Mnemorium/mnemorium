@@ -2854,65 +2854,60 @@ check_sty_rust_081() {
 	local id="STY-RUST-081"
 	local rule_id="sty-rust-081"
 	local port_dir="src/lib/domain/port"
-	local matches file method ret element key result=0
-	local -A structs=()
-	local -A aggregates=()
+	local matches file ret element key result=0
+	local -A models=()
 
 	if [ ! -d "$port_dir" ]; then
 		printf 'error: %s: missing %s\n' "$id" "$port_dir" >&2
 		return 1
 	fi
 
-	# sty-rust-081 extracts each repository-port method signature and each
-	# struct declared in a port file; the element-type-to-aggregate/read-model
-	# pairing happens here because an ast-grep rule cannot relate two
-	# identifiers.
+	# sty-rust-081 extracts the classic `search` signature of every repository
+	# port together with the domain models each port file imports; the pairing
+	# happens here because an ast-grep rule cannot relate two identifiers. The
+	# classic query is the aggregate query, so it returns a domain model: the
+	# application, not the port, turns the aggregate into the representation. A
+	# feature-named query for an aggregate's child collection (e.g.
+	# `search_items`) is out of scope.
 	if ! matches="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
 		--json=stream "$port_dir" 2>&1)"; then
 		printf '%s\n' "$matches"
 		return 1
 	fi
 	if [ -z "$matches" ]; then
-		printf 'error: %s: extracted no repository-port signature from %s\n' "$id" "$port_dir" >&2
+		printf 'error: %s: extracted no classic query signature from %s\n' "$id" "$port_dir" >&2
 		return 1
 	fi
 
-	# Read models: structs declared in the port file itself.
-	while IFS=$'\t' read -r file element; do
-		[ -n "$element" ] || continue
-		structs["${file}:${element}"]=1
+	# Domain models: every type a port file imports from the domain layer.
+	while IFS=$'\t' read -r file model; do
+		[ -n "$model" ] || continue
+		models["${file}:${model}"]=1
 	done < <(printf '%s\n' "$matches" |
-		jq -r 'select(.metaVariables.single.STRUCT) | [.file, .metaVariables.single.STRUCT.text] | @tsv')
+		jq -r 'select(.text | startswith("use crate::domain::model::")) |
+			.file as $file |
+			(.text | sub("^use crate::domain::model::"; "") | sub(";$"; "") |
+				sub("^.*\\{"; "") | gsub("[{}]"; "") | split(",") | .[] |
+				sub("^ "; "") | sub(" $"; "") | split("::") | last) as $model |
+			[$file, $model] | @tsv')
 
-	# Aggregates: what the trait's non-query methods return, so a query may
-	# return one of the aggregates this repository owns.
-	while IFS=$'\t' read -r file method ret; do
-		[ -n "$method" ] || continue
-		case "$method" in
-		search*) continue ;;
-		esac
-		element="$(printf '%s' "$ret" | sed -E 's/^(Vec|Option)<(.*)>$/\2/')"
-		aggregates["${file}:${element}"]=1
-	done < <(printf '%s\n' "$matches" |
-		jq -r 'select(.metaVariables.single.METHOD) | [.file, .metaVariables.single.METHOD.text, .metaVariables.single.RET.text] | @tsv')
+	if [ "${#models[@]}" -eq 0 ]; then
+		printf 'error: %s: no port file imports a domain model\n' "$id" >&2
+		return 1
+	fi
 
-	# Every query must return the aggregate or a read-model struct declared in
-	# the same port file.
-	while IFS=$'\t' read -r file method ret; do
-		[ -n "$method" ] || continue
-		case "$method" in
-		search*) ;;
-		*) continue ;;
-		esac
+	# The classic query returns the aggregate, a model the domain declares.
+	while IFS=$'\t' read -r file ret; do
+		[ -n "$ret" ] || continue
 		element="$(printf '%s' "$ret" | sed -E 's/^(Vec|Option)<(.*)>$/\2/')"
 		key="${file}:${element}"
-		if [ -z "${structs[$key]+set}" ] && [ -z "${aggregates[$key]+set}" ]; then
-			printf 'error: %s: %s: query %s returns %s; a query result must be an aggregate the repository returns or a read-model struct declared in the port file\n' \
-				"$id" "$file" "$method" "$ret" >&2
+		if [ -z "${models[$key]+set}" ]; then
+			printf 'error: %s: %s: the classic query returns %s; it must return the aggregate, and the application assembles the representation\n' \
+				"$id" "$file" "$ret" >&2
 			result=1
 		fi
 	done < <(printf '%s\n' "$matches" |
-		jq -r 'select(.metaVariables.single.METHOD) | [.file, .metaVariables.single.METHOD.text, .metaVariables.single.RET.text] | @tsv')
+		jq -r 'select(.metaVariables.single.RET) | [.file, .metaVariables.single.RET.text] | @tsv')
 
 	return "$result"
 }

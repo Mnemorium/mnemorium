@@ -1,3 +1,8 @@
+#![allow(
+    clippy::struct_field_names,
+    reason = "a port item names its fields after the identifiers the API and SQL sections mandate, and mockall names a mock's fields after the trait methods"
+)]
+
 pub mod add_gallery_item;
 pub mod asset_use_case_factory;
 pub mod begin_upload;

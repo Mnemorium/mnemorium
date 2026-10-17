@@ -70,33 +70,45 @@ where
                     .next()
                     .ok_or(GetAlbumTrackError::NoSuchAlbum)?;
 
-                // An album without a medium holds no track, so every track
-                // identifier misses it.
-                let medium_id = album
-                    .music_medium_id()
-                    .ok_or(GetAlbumTrackError::NoSuchTrack)?;
-
-                let detail = unit_of_work
-                    .music_albums()
-                    .search_tracks(&MusicTrackFilter {
-                        music_medium_id: Some(medium_id),
-                        music_track_id: Some(command.track_id()),
-                    })
-                    .await
-                    .map_err(|error| GetAlbumTrackError::Unknown(error.into()))?
-                    .into_iter()
-                    .next()
-                    .ok_or(GetAlbumTrackError::NoSuchTrack)?;
+                // A track of another album is not found: the track is read
+                // within the album's own mediums, which is also what makes an
+                // album holding no medium hold no track.
+                let mut found = None;
+                for medium in album.mediums() {
+                    let tracks = unit_of_work
+                        .music_albums()
+                        .search_tracks(&MusicTrackFilter {
+                            id: Some(command.track_id()),
+                            medium_id: Some(medium.id()),
+                            ..MusicTrackFilter::default()
+                        })
+                        .await
+                        .map_err(|error| GetAlbumTrackError::Unknown(error.into()))?;
+                    if let Some(track) = tracks.into_iter().next() {
+                        found = Some((medium, track));
+                        break;
+                    }
+                }
+                let (medium, track) = found.ok_or(GetAlbumTrackError::NoSuchTrack)?;
+                let recording = medium
+                    .tracks()
+                    .iter()
+                    .find(|recording| recording.id() == track.recording_id())
+                    .ok_or_else(|| {
+                        GetAlbumTrackError::Unknown(anyhow::anyhow!(
+                            "the track's recording is missing from its medium"
+                        ))
+                    })?;
 
                 Ok(GetAlbumTrackResponse::new(
-                    detail.track().music_track_id(),
-                    detail.album_id(),
-                    detail.medium_index(),
-                    detail.track().track_index(),
-                    detail.file_id(),
-                    detail.name().map(str::to_owned),
-                    detail.isrc_code().map(str::to_owned),
-                    detail.first_release_date(),
+                    track.id(),
+                    album.id(),
+                    medium.medium_index(),
+                    track.track_index(),
+                    recording.file_id(),
+                    recording.name().map(str::to_owned),
+                    recording.isrc_code().map(str::to_owned),
+                    recording.first_release_date(),
                 ))
             }
             .await;
@@ -131,14 +143,15 @@ mod tests {
     use crate::application::port::get_album_track::GetAlbumTrackCommand;
     use crate::application::port::get_album_track::GetAlbumTrackError;
     use crate::application::port::get_album_track::GetAlbumTrackUseCase as _;
+    use crate::domain::model::music_album::MusicAlbum;
+    use crate::domain::model::music_medium::MusicMedium;
+    use crate::domain::model::music_recording::MusicRecording;
     use crate::domain::model::music_track::MusicTrack;
     use crate::domain::model::music_track::MusicTrackPosition;
     use crate::domain::model::user::Role;
     use crate::domain::model::user::User;
     use crate::domain::port::error::RepositoryError;
     use crate::domain::port::music_album_repository::MockMusicAlbumRepository;
-    use crate::domain::port::music_album_repository::MusicAlbumSummary;
-    use crate::domain::port::music_album_repository::MusicTrackDetail;
     use crate::domain::port::user_repository::MockUserRepository;
     use crate::test_helpers::GalleryFactoryHarness;
     use crate::test_helpers::TestFactory;
@@ -157,39 +170,67 @@ mod tests {
         NaiveDate::from_ymd_opt(1959, 8, 17).ok_or_else(|| "invalid fixture date".into())
     }
 
-    /// Build an album summary holding one medium.
-    fn album(album_id: i64) -> Result<MusicAlbumSummary, Box<dyn Error>> {
-        Ok(MusicAlbumSummary::new(
+    /// Build an album holding one medium with the recordings of `track_ids`.
+    fn album(album_id: i64, track_ids: &[i64]) -> Result<MusicAlbum, Box<dyn Error>> {
+        let tracks = track_ids
+            .iter()
+            .map(|track_id| {
+                Ok(MusicRecording::try_new(
+                    900i64.saturating_add(*track_id),
+                    Some(format!("Track {track_id}")),
+                    release_date()?,
+                    Some("USRC17607839".to_owned()),
+                    *track_id,
+                    100i64.saturating_add(*track_id),
+                    None,
+                )?)
+            })
+            .collect::<Result<Vec<_>, Box<dyn Error>>>()?;
+        Ok(MusicAlbum::try_new(
             album_id,
-            Some(MEDIUM_ID),
             format!("Album {album_id}"),
             release_date()?,
             None,
             Vec::new(),
-            0,
-        ))
+            None,
+            vec![MusicMedium::new(
+                MEDIUM_ID,
+                Some(1),
+                "CD".to_owned(),
+                tracks,
+            )],
+        )?)
     }
 
-    /// Build one track detail of `album_id`.
+    /// Build an album holding no medium.
+    #[expect(
+        clippy::single_call_fn,
+        reason = "the fixture names what the empty-medium test excludes"
+    )]
+    fn album_without_medium(album_id: i64) -> Result<MusicAlbum, Box<dyn Error>> {
+        Ok(MusicAlbum::try_new(
+            album_id,
+            "Empty".to_owned(),
+            release_date()?,
+            None,
+            Vec::new(),
+            None,
+            Vec::new(),
+        )?)
+    }
+
+    /// Build one track of the album fixture.
     #[expect(
         clippy::single_call_fn,
         reason = "the track fixture keeps the repository stub and the assertion in step"
     )]
-    fn track_detail(album_id: i64, track_id: i64) -> Result<MusicTrackDetail, Box<dyn Error>> {
-        Ok(MusicTrackDetail::new(
-            MusicTrack::try_new(
-                track_id,
-                MusicTrackPosition::Medium(MEDIUM_ID),
-                900i64.saturating_add(track_id),
-                1,
-            )?,
-            album_id,
+    fn track(track_id: i64) -> Result<MusicTrack, Box<dyn Error>> {
+        Ok(MusicTrack::try_new(
+            track_id,
+            MusicTrackPosition::Medium(MEDIUM_ID),
+            900i64.saturating_add(track_id),
             1,
-            100i64.saturating_add(track_id),
-            Some(format!("Track {track_id}")),
-            Some("USRC17607839".to_owned()),
-            release_date()?,
-        ))
+        )?)
     }
 
     /// Build a Library test harness around the given mocks.
@@ -220,15 +261,15 @@ mod tests {
         Ok(())
     }
 
-    /// Expect the album lookup to find `summary`.
-    fn expect_album(albums: &mut MockMusicAlbumRepository, summary: MusicAlbumSummary) {
-        let album_id = summary.id();
+    /// Expect the album lookup to find `album`.
+    fn expect_album(albums: &mut MockMusicAlbumRepository, album: MusicAlbum) {
+        let album_id = album.id();
         albums
             .expect_search()
             .times(1)
             .withf(move |filter| filter.id == Some(album_id))
             .return_once(move |_| {
-                let found = vec![summary.clone()];
+                let found = vec![album.clone()];
                 Box::pin(async move { Ok(found) })
             });
     }
@@ -239,16 +280,14 @@ mod tests {
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 1, Role::Standard)?;
         let mut albums = MockMusicAlbumRepository::new();
-        expect_album(&mut albums, album(7)?);
-        let detail = track_detail(7, 101)?;
+        expect_album(&mut albums, album(7, &[101])?);
+        let track = track(101)?;
         albums
             .expect_search_tracks()
             .times(1)
-            .withf(|filter| {
-                filter.music_medium_id == Some(MEDIUM_ID) && filter.music_track_id == Some(101)
-            })
+            .withf(|filter| filter.medium_id == Some(MEDIUM_ID) && filter.id == Some(101))
             .return_once(move |_| {
-                let found = vec![detail.clone()];
+                let found = vec![track.clone()];
                 Box::pin(async move { Ok(found) })
             });
         let harness = harness_with(users, albums);
@@ -300,7 +339,7 @@ mod tests {
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 1, Role::Standard)?;
         let mut albums = MockMusicAlbumRepository::new();
-        expect_album(&mut albums, album(7)?);
+        expect_album(&mut albums, album(7, &[101])?);
         albums
             .expect_search_tracks()
             .times(1)
@@ -324,18 +363,7 @@ mod tests {
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 1, Role::Standard)?;
         let mut albums = MockMusicAlbumRepository::new();
-        expect_album(
-            &mut albums,
-            MusicAlbumSummary::new(
-                7,
-                None,
-                "Empty".to_owned(),
-                release_date()?,
-                None,
-                Vec::new(),
-                0,
-            ),
-        );
+        expect_album(&mut albums, album_without_medium(7)?);
         albums.expect_search_tracks().times(0);
         let harness = harness_with(users, albums);
         let use_case: UseCase = GetAlbumTrack::new(Arc::clone(&harness.factory));
@@ -377,7 +405,7 @@ mod tests {
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 1, Role::Standard)?;
         let mut albums = MockMusicAlbumRepository::new();
-        expect_album(&mut albums, album(7)?);
+        expect_album(&mut albums, album(7, &[101])?);
         albums
             .expect_search_tracks()
             .times(1)

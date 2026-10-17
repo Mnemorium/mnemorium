@@ -189,8 +189,9 @@ material. The `#[utoipa::path(...)]` declaration contract lives in the [API sect
 | `STY-RUST-078` | Configuration     | A configuration value that is **present but malformed or out of range** fails startup: a reader falls back to a default only when the key is absent, and propagates every other read or validation error.                                                                                                                                                                                                                                                                                                                              | [§ 10](#10-configuration)                                        |
 | `STY-RUST-079` | Repository        | A repository persists and queries exactly one aggregate; a port that spans two aggregates is split per aggregate.                                                                                                                                                                                                                                                                                                                                                                                                                      | [§ 8](#8-repository)                                             |
 | `STY-RUST-080` | Repository        | A filter field is named after the aggregate field it constrains, e.g. `UserFilter.user_id` for `User::user_id()`.                                                                                                                                                                                                                                                                                                                                                                                                                      |                                                                  |
-| `STY-RUST-081` | Repository        | A query whose result carries data the aggregate does not declare returns a dedicated read-model type; the use case never stitches it from per-aggregate lookups.                                                                                                                                                                                                                                                                                                                                                                       |                                                                  |
+| `STY-RUST-081` | Repository        | The classic `search` returns the aggregate, never a summary or a detail the port declares; the application assembles the representation.                                                                                                                                                                                                                                                                                                                                                                                               |                                                                  |
 | `STY-RUST-082` | REST handlers     | Shared representations, links and helpers live in the bounded context module file (`<context>.rs`); a context folder holds only endpoint files, and an endpoint file imports no `<context>::<operation>` submodule — it takes shared items from the `<context>.rs` module file and `hal`.                                                                                                                                                                                                                                              |                                                                  |
+| `STY-RUST-084` | Domain models     | A domain model names its fields for the concept it models, not for the SQL column that stores it: the aggregate's own key is `id`, and a reference to another model is named after that model. The SQL schema is not the source of truth for domain naming.                                                                                                                                                                                                                                                                            |                                                                  |
 | `STY-RUST-083` | REST handlers     | `rest/` holds only the known REST infrastructure (`api_error.rs`, `app_state.rs`, `hal.rs`, `handler.rs`, `handler`, `middleware.rs`, `middleware`); `handler/` holds only `get_health.rs` plus each bounded context's `<context>.rs` module file and `<context>/` endpoint folder.                                                                                                                                                                                                                                                    |                                                                  |
 
 ---
@@ -869,6 +870,11 @@ explicit mutators when a whole-row upsert would be wrong — for example `Upload
 a child row (`record_chunk`) and transitions the upload to finished under a guard (`finish`), so no method rewrites a
 stale copy of the whole aggregate.
 
+The classic `search` is the aggregate query: it returns the aggregate (`STY-RUST-081`). The port declares no read model
+for it — a summary or a detail the representation needs is assembled by the application from the aggregate, never
+returned by the port and never stitched from per-aggregate lookups. A query that reads an aggregate's child collection
+is named for the child (`GalleryRepository::search_items`), which is what distinguishes it from the classic query.
+
 ---
 
 ##### 8.2 Repository adapter
@@ -887,8 +893,8 @@ A repository port file declares, in order:
 1. The filter struct(s) — one or more `*Filter` structs.
 2. The `<Aggregate>Repository` trait.
 
-Anything else the file needs — a read model returned by `search`, or the `#[cfg(test)]` `&mut T` impl — follows the
-trait.
+Anything else the file needs — the `#[cfg(test)]` `&mut T` impl — follows the trait. A port declares no read model for a
+query (`STY-RUST-081`).
 
 The `STY-RUST-051` and `STY-RUST-052` checks in `script/rule_enforcer.sh` enforce this order.
 

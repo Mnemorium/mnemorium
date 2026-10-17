@@ -8,6 +8,8 @@ rules:
       - src/lib/infrastructure/inbound/rest/middleware/rate_limit.rs::rate_limit_error
       - src/lib/infrastructure/outbound/config/bootstrap.rs::resolve_sqlite3
       - src/lib/infrastructure/outbound/config/configuration_source.rs::deserialize
+      - src/lib/infrastructure/outbound/sqlx/music_album_repository.rs::assemble_albums
+      - src/lib/infrastructure/outbound/sqlx/music_album_repository.rs::split_genres
   STY-RUST-002:
     bounded_contexts: &bounded_contexts
       - asset

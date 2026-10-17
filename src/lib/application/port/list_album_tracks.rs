@@ -100,7 +100,7 @@ impl ListAlbumTracksItem {
     /// Create a new listed album track.
     #[expect(
         clippy::too_many_arguments,
-        reason = "the constructor mirrors the columns of the track read model"
+        reason = "the constructor mirrors the fields the track representation needs"
     )]
     #[must_use]
     pub fn new(

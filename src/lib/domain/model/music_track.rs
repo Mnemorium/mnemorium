@@ -33,13 +33,9 @@ pub enum MusicTrackPosition {
 /// track by its `MusicPlaylist`. A track carries no container of its own — the
 /// container owns its tracks — and a track only ever names one of the two.
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[expect(
-    clippy::struct_field_names,
-    reason = "`music_track_id` is the primary key name mandated by the SQL section and the domain field naming"
-)]
 pub struct MusicTrack {
     /// Unique identifier of the track.
-    music_track_id: NumericID,
+    id: NumericID,
     /// Container the track is positioned by.
     position: MusicTrackPosition,
     /// Identifier of the recording the track plays.
@@ -49,10 +45,16 @@ pub struct MusicTrack {
 }
 
 impl MusicTrack {
+    /// Return the unique identifier.
+    #[must_use]
+    pub fn id(&self) -> NumericID {
+        self.id
+    }
+
     /// Return the identifier of the positioning medium, when the track is an
     /// album track.
     #[must_use]
-    pub fn music_medium_id(&self) -> Option<NumericID> {
+    pub fn medium_id(&self) -> Option<NumericID> {
         match self.position {
             MusicTrackPosition::Medium(medium_id) => Some(medium_id),
             MusicTrackPosition::Playlist(_) => None,
@@ -62,17 +64,11 @@ impl MusicTrack {
     /// Return the identifier of the positioning playlist, when the track is a
     /// playlist track.
     #[must_use]
-    pub fn music_playlist_id(&self) -> Option<NumericID> {
+    pub fn playlist_id(&self) -> Option<NumericID> {
         match self.position {
             MusicTrackPosition::Playlist(playlist_id) => Some(playlist_id),
             MusicTrackPosition::Medium(_) => None,
         }
-    }
-
-    /// Return the unique identifier.
-    #[must_use]
-    pub fn music_track_id(&self) -> NumericID {
-        self.music_track_id
     }
 
     /// Return the container the track is positioned by.
@@ -99,7 +95,7 @@ impl MusicTrack {
     ///
     /// Returns [`MusicTrackError::InvalidIndex`] when `track_index` is negative.
     pub fn try_new(
-        music_track_id: NumericID,
+        id: NumericID,
         position: MusicTrackPosition,
         recording_id: NumericID,
         track_index: i64,
@@ -108,7 +104,7 @@ impl MusicTrack {
             return Err(MusicTrackError::InvalidIndex);
         }
         Ok(Self {
-            music_track_id,
+            id,
             position,
             recording_id,
             track_index,

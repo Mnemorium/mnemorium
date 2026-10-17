@@ -76,8 +76,12 @@ where
                             album.name().to_owned(),
                             album.release_date(),
                             album.production_type(),
-                            album.genres().to_vec(),
-                            album.track_count(),
+                            album.genre_ids().to_vec(),
+                            album
+                                .mediums()
+                                .iter()
+                                .map(|medium| medium.tracks().len())
+                                .sum(),
                         )
                     })
                     .collect();
@@ -117,12 +121,14 @@ mod tests {
     use crate::application::port::list_albums::ListAlbumsError;
     use crate::application::port::list_albums::ListAlbumsItem;
     use crate::application::port::list_albums::ListAlbumsUseCase as _;
+    use crate::domain::model::music_album::MusicAlbum;
     use crate::domain::model::music_album::ProductionType;
+    use crate::domain::model::music_medium::MusicMedium;
+    use crate::domain::model::music_recording::MusicRecording;
     use crate::domain::model::user::Role;
     use crate::domain::model::user::User;
     use crate::domain::port::error::RepositoryError;
     use crate::domain::port::music_album_repository::MockMusicAlbumRepository;
-    use crate::domain::port::music_album_repository::MusicAlbumSummary;
     use crate::domain::port::user_repository::MockUserRepository;
     use crate::test_helpers::GalleryFactoryHarness;
     use crate::test_helpers::TestFactory;
@@ -138,17 +144,43 @@ mod tests {
         NaiveDate::from_ymd_opt(1959, 8, 17).ok_or_else(|| "invalid fixture date".into())
     }
 
-    /// Build one album summary with a generated name.
-    fn album(album_id: i64) -> Result<MusicAlbumSummary, Box<dyn Error>> {
-        Ok(MusicAlbumSummary::new(
+    /// Build one album holding `album_id` tracks, named `Album {album_id}`.
+    fn album(album_id: i64) -> Result<MusicAlbum, Box<dyn Error>> {
+        let tracks = (0..album_id)
+            .map(|index| {
+                Ok(MusicRecording::try_new(
+                    index,
+                    Some(format!("Track {index}")),
+                    release_date()?,
+                    None,
+                    index,
+                    index,
+                    None,
+                )?)
+            })
+            .collect::<Result<Vec<_>, Box<dyn Error>>>()?;
+        Ok(MusicAlbum::try_new(
             album_id,
-            None,
             format!("Album {album_id}"),
             release_date()?,
             Some(ProductionType::Studio),
             vec!["JAZZ".to_owned()],
-            usize::try_from(album_id).unwrap_or_default(),
-        ))
+            None,
+            vec![MusicMedium::new(album_id, Some(1), "CD".to_owned(), tracks)],
+        )?)
+    }
+
+    /// Build one album holding no medium, named `name`.
+    fn empty_album(album_id: i64, name: &str) -> Result<MusicAlbum, Box<dyn Error>> {
+        Ok(MusicAlbum::try_new(
+            album_id,
+            name.to_owned(),
+            NaiveDate::default(),
+            None,
+            Vec::new(),
+            None,
+            Vec::new(),
+        )?)
     }
 
     /// Build a Library test harness around the given mocks.
@@ -225,44 +257,15 @@ mod tests {
         // Arrange
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 1, Role::Standard)?;
+        let first = empty_album(1, "Kind 1")?;
+        let second = empty_album(2, "Kind 2")?;
+        let third = empty_album(3, "Kind 3")?;
         let mut albums = MockMusicAlbumRepository::new();
         albums
             .expect_search()
             .times(1)
             .withf(|filter| filter.name.as_deref() == Some("Kind"))
-            .return_once(|_| {
-                Box::pin(async {
-                    Ok(vec![
-                        MusicAlbumSummary::new(
-                            1,
-                            None,
-                            "Kind 1".to_owned(),
-                            NaiveDate::default(),
-                            None,
-                            Vec::new(),
-                            0,
-                        ),
-                        MusicAlbumSummary::new(
-                            2,
-                            None,
-                            "Kind 2".to_owned(),
-                            NaiveDate::default(),
-                            None,
-                            Vec::new(),
-                            0,
-                        ),
-                        MusicAlbumSummary::new(
-                            3,
-                            None,
-                            "Kind 3".to_owned(),
-                            NaiveDate::default(),
-                            None,
-                            Vec::new(),
-                            0,
-                        ),
-                    ])
-                })
-            });
+            .return_once(move |_| Box::pin(async move { Ok(vec![first, second, third]) }));
         let harness = harness_with(users, albums);
         let use_case: UseCase = ListAlbums::new(Arc::clone(&harness.factory));
 
