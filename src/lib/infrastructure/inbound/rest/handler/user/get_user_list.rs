@@ -1,5 +1,6 @@
 use axum::extract::Query;
 use axum::extract::State;
+use axum::extract::rejection::QueryRejection;
 use axum::response::Response;
 use serde::{Deserialize, Serialize};
 use utoipa::IntoParams;
@@ -23,6 +24,7 @@ use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 ///
 /// Every filter is optional; an all-`None` query returns every user.
 #[derive(Debug, Deserialize, IntoParams)]
+#[into_params(parameter_in = Query)]
 #[non_exhaustive]
 pub struct ListUsersQuery {
     /// Only return users whose email matches this value.
@@ -137,10 +139,11 @@ impl From<ListUsersError> for ApiError {
     summary = "List users"
 )]
 pub async fn get_user_list(
-    Query(query): Query<ListUsersQuery>,
+    raw_query: Result<Query<ListUsersQuery>, QueryRejection>,
     caller: AuthenticatedUser,
     State(state): State<AppState>,
 ) -> Result<Response, ApiError> {
+    let Query(query) = raw_query.map_err(ApiError::from)?;
     let role = query
         .role
         .as_deref()
@@ -489,6 +492,27 @@ mod tests {
 
         // Assert
         assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn get_user_list_invalid_query_returns_stable_bad_request() -> Result<(), Box<dyn Error>>
+    {
+        // Arrange: every `ListUsersQuery` field is optional, so the only query
+        // string the extractor rejects is a repeated filter key (`serde`
+        // `duplicate_field`). No use-case call is expected (`TEST-015`).
+        let use_case = MockListUsersUseCase::new();
+
+        // Act
+        let response = send(use_case, 1, "?email=a&email=b").await?;
+
+        // Assert: the status is stable and the message is the one only the
+        // handler-owned rejection mapping produces (`TEST-049`).
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(
+            error_message_of(&response).as_deref(),
+            Some("the request query string is invalid")
+        );
         Ok(())
     }
 }

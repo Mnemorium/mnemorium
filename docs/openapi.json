@@ -2593,10 +2593,7 @@
             "required": false,
             "schema": {
               "format": "email",
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": "string"
             }
           },
           {
@@ -2605,14 +2602,7 @@
             "name": "role",
             "required": false,
             "schema": {
-              "oneOf": [
-                {
-                  "type": "null"
-                },
-                {
-                  "$ref": "#/components/schemas/Role"
-                }
-              ]
+              "$ref": "#/components/schemas/Role"
             }
           },
           {
@@ -2623,10 +2613,7 @@
             "schema": {
               "maxLength": 100,
               "minLength": 4,
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": "string"
             }
           }
         ],
