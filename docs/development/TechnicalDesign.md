@@ -469,7 +469,10 @@ let user_id = match token_provider.validate(token).await {
 
 ##### 3.1 Getter and setter
 
-Accessors are named after the field they expose.
+Accessors are named after the field they expose, and the field is named for the concept the model holds: the SQL column
+behind it is not part of the name (`STY-RUST-084`). An aggregate's own key is `id`; a reference to another model is
+named after that model (`recording_id`, `medium_id`). Accessors that predate the rule (`Gallery::gallery_id`,
+`Upload::upload_id`, …) are renamed as their aggregate is next touched.
 
 ```rust
 impl User {
