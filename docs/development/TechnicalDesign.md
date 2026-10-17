@@ -2712,9 +2712,14 @@ longest-prefix match, and every scope owns at least one path. Adding or removing
 Two things are exempt because the release tooling generates them and they bypass the pull-request gate: a bot commit
 (semantic-release, `github-actions[bot]`) and the generated `CHANGELOG.md`. Neither carries a scope.
 
+A tracked path that belongs to no repository area is exempt too. `GOV-001.ignore_paths` in `rule_enforcer.yaml` lists
+those paths as globs; currently that is the OpenSpec workflow tree `openspec/**`, whose change proposals and specs are
+process artifacts rather than a repository area. An entry that matches no tracked path is reported, so the list cannot
+rot silently.
+
 `script/check_scopes.sh` is the enforcement: it parses the table above, asserts it matches the `scopes:` list in
-`.github/workflows/ci.yml`, and verifies every tracked path maps to exactly one scope. It runs in pre-commit and in the
-CI `scopes` job; a failure cites `GOV-001`.
+`.github/workflows/ci.yml`, and verifies every tracked path not exempted above maps to exactly one scope. It runs in
+pre-commit and in the CI `scopes` job; a failure cites `GOV-001`.
 
 ---
 

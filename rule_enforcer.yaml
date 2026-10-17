@@ -127,3 +127,10 @@ rules:
     # permitted to use `_embedded`. Empty by default, so every use is reported
     # until a need is reviewed and recorded.
     allowed_locations: []
+  GOV-001:
+    # Tracked paths exempt from the scope mapping, matched as shell globs. The
+    # OpenSpec workflow tree holds planning artifacts (change proposals, specs)
+    # that belong to no repository area, so no scope owns it. Read by
+    # script/check_scopes.sh; an entry that matches no tracked path is reported.
+    ignore_paths:
+      - "openspec/**"
