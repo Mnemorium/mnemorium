@@ -67,6 +67,15 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "$bot"
 
+      # The release regenerates THIRD_PARTY_NOTICES.txt so the file the image
+      # ships (Dockerfile) tracks the released version and lockfile. Pinned to
+      # the version devenv/nixpkgs ships, like the CI `security` job: the
+      # notices are byte-compared, so every environment runs the same
+      # generator. Bump in lockstep with `pkgs.cargo-about` in devenv.nix.
+      - uses: taiki-e/install-action@f7e5d7c961414b23f5b25b2da9294395d08513ad  # v2
+        with:
+          tool: cargo-about@0.9.0
+
       # conventional-changelog-conventionalcommits is pinned to the exact 9.3.1
       # on purpose: v10 replaced Handlebars templates with render functions and
       # now requires conventional-changelog-writer@9, but the writer bundled by

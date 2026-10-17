@@ -22,13 +22,19 @@
         [
             "@semantic-release/exec",
             {
-                "prepareCmd": "script/version.sh set \"${nextRelease.version}\" && cargo update --workspace && docker buildx build --load --tag wpelletier/mnemorium --cache-from type=local,src=/tmp/.buildx-cache-release --cache-to type=local,dest=/tmp/.buildx-cache-release-new,mode=max ."
+                "prepareCmd": "script/version.sh set \"${nextRelease.version}\" && cargo update --workspace && cargo fetch && script/generate_third_party_notices.sh && docker buildx build --load --tag wpelletier/mnemorium --cache-from type=local,src=/tmp/.buildx-cache-release --cache-to type=local,dest=/tmp/.buildx-cache-release-new,mode=max ."
             }
         ],
         [
             "@semantic-release/git",
             {
-                "assets": ["CHANGELOG.md", "docs/openapi.json", "Cargo.toml", "Cargo.lock"]
+                "assets": [
+                    "CHANGELOG.md",
+                    "docs/openapi.json",
+                    "Cargo.toml",
+                    "Cargo.lock",
+                    "THIRD_PARTY_NOTICES.txt"
+                ]
             }
         ],
         [

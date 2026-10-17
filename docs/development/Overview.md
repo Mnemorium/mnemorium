@@ -438,9 +438,11 @@ merge by [semantic-release](https://semantic-release.org/) from the commits sinc
 
 When a release is needed, the release workflow (`.github/workflows/cd.yml`) runs semantic-release, which:
 
-1. Bumps the version in `Cargo.toml`, `Cargo.lock`, and `docs/openapi.json`.
+1. Bumps the version in `Cargo.toml`, `Cargo.lock`, and `docs/openapi.json`, and regenerates `THIRD_PARTY_NOTICES.txt`
+   from the bumped crate graph.
 2. Builds the Docker image at the new version.
-3. Commits `CHANGELOG.md`, `Cargo.lock`, `docs/openapi.json`, and `Cargo.toml` as `github-actions[bot]`.
+3. Commits `CHANGELOG.md`, `Cargo.lock`, `THIRD_PARTY_NOTICES.txt`, `docs/openapi.json`, and `Cargo.toml` as
+   `github-actions[bot]`.
 4. Tags the commit (`v<version>`) and pushes it.
 5. Publishes the GitHub release (with generated release notes) and pushes the Docker image.
 
@@ -478,7 +480,7 @@ if (Is a release needed?) then (yes)
   :Compute the next version\n(MAJOR, MINOR or PATCH);
   :Update CHANGELOG.md;
   :Bump info.version in\ndocs/openapi.json;
-  :Bump the version in Cargo.toml and Cargo.lock\nand build the Docker image;
+  :Bump the version in Cargo.toml and Cargo.lock,\nregenerate THIRD_PARTY_NOTICES.txt\nand build the Docker image;
   :Commit the updated files;
   :Create the GitHub release with notes\nand tag the new version;
   :Push the image to wpelletier/mnemorium;
