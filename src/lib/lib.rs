@@ -60,6 +60,8 @@ mod test_helpers {
     use crate::domain::port::library_unit_of_work::LibraryUnitOfWork;
     use crate::domain::port::mime_type_repository::MimeTypeRepository;
     use crate::domain::port::mime_type_repository::MockMimeTypeRepository;
+    use crate::domain::port::music_album_repository::MockMusicAlbumRepository;
+    use crate::domain::port::music_album_repository::MusicAlbumRepository;
     use crate::domain::port::unit_of_work::UnitOfWork;
     use crate::domain::port::unit_of_work::UnitOfWorkFactory;
     use crate::domain::port::upload_repository::MockUploadRepository;
@@ -113,6 +115,8 @@ mod test_helpers {
         pub images: I,
         /// Mime type repository.
         pub mime_types: M,
+        /// Music album repository.
+        pub music_albums: MockMusicAlbumRepository,
         /// Set when `rollback` is called.
         pub rolled_back: Arc<AtomicBool>,
         /// Upload repository.
@@ -192,6 +196,10 @@ mod test_helpers {
 
         fn images(&mut self) -> impl ImageRepository + '_ {
             &mut self.images
+        }
+
+        fn music_albums(&mut self) -> impl MusicAlbumRepository + '_ {
+            &mut self.music_albums
         }
 
         fn videos(&mut self) -> impl VideoRepository + '_ {
@@ -364,6 +372,7 @@ mod test_helpers {
                 galleries: MockGalleryRepository::new(),
                 images: MockImageRepository::new(),
                 mime_types: MockMimeTypeRepository::new(),
+                music_albums: MockMusicAlbumRepository::new(),
                 rolled_back,
                 uploads: MockUploadRepository::new(),
                 users,
@@ -441,6 +450,7 @@ mod test_helpers {
             galleries: MockGalleryRepository::new(),
             images: MockImageRepository::new(),
             mime_types,
+            music_albums: MockMusicAlbumRepository::new(),
             rolled_back,
             uploads,
             users: MockUserRepository::new(),
@@ -459,6 +469,7 @@ mod test_helpers {
         videos: MockVideoRepository,
         users: MockUserRepository,
         files: MockFileRepository,
+        music_albums: MockMusicAlbumRepository,
     ) -> GalleryFactoryHarness {
         let committed = Arc::new(AtomicBool::new(false));
         let commit_fails = Arc::new(AtomicBool::new(false));
@@ -470,6 +481,7 @@ mod test_helpers {
                 videos,
                 users,
                 files,
+                music_albums,
                 Arc::clone(&committed),
                 Arc::clone(&commit_fails),
                 Arc::clone(&rolled_back),
@@ -491,6 +503,7 @@ mod test_helpers {
         videos: MockVideoRepository,
         users: MockUserRepository,
         files: MockFileRepository,
+        music_albums: MockMusicAlbumRepository,
     ) -> (TestUow, Arc<AtomicBool>, Arc<AtomicBool>) {
         let committed = Arc::new(AtomicBool::new(false));
         let rolled_back = Arc::new(AtomicBool::new(false));
@@ -500,6 +513,7 @@ mod test_helpers {
             videos,
             users,
             files,
+            music_albums,
             Arc::clone(&committed),
             Arc::new(AtomicBool::new(false)),
             Arc::clone(&rolled_back),
@@ -515,6 +529,7 @@ mod test_helpers {
         videos: MockVideoRepository,
         users: MockUserRepository,
         files: MockFileRepository,
+        music_albums: MockMusicAlbumRepository,
         committed: Arc<AtomicBool>,
         commit_fails: Arc<AtomicBool>,
         rolled_back: Arc<AtomicBool>,
@@ -528,6 +543,7 @@ mod test_helpers {
             galleries,
             images,
             mime_types: MockMimeTypeRepository::new(),
+            music_albums,
             rolled_back,
             uploads: MockUploadRepository::new(),
             users,

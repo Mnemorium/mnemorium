@@ -170,6 +170,7 @@ mod tests {
     use crate::domain::port::file_repository::MockFileRepository;
     use crate::domain::port::gallery_repository::MockGalleryRepository;
     use crate::domain::port::image_repository::MockImageRepository;
+    use crate::domain::port::music_album_repository::MockMusicAlbumRepository;
     use crate::domain::port::user_repository::MockUserRepository;
     use crate::domain::port::video_repository::MockVideoRepository;
     use crate::test_helpers::GalleryFactoryHarness;
@@ -243,6 +244,7 @@ mod tests {
             MockVideoRepository::new(),
             users,
             MockFileRepository::new(),
+            MockMusicAlbumRepository::new(),
         )
     }
 

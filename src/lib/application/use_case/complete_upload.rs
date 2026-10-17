@@ -683,6 +683,7 @@ mod tests {
     use crate::domain::port::media_probe::ProbedImage;
     use crate::domain::port::media_probe::ProbedVideo;
     use crate::domain::port::mime_type_repository::MockMimeTypeRepository;
+    use crate::domain::port::music_album_repository::MockMusicAlbumRepository;
     use crate::domain::port::upload_repository::MockUploadRepository;
     use crate::domain::port::user_repository::MockUserRepository;
     use crate::domain::port::video_repository::MockVideoRepository;
@@ -811,6 +812,7 @@ mod tests {
             galleries: MockGalleryRepository::new(),
             images,
             mime_types: MockMimeTypeRepository::new(),
+            music_albums: MockMusicAlbumRepository::new(),
             rolled_back: Arc::clone(&rolled_back),
             uploads,
             users: MockUserRepository::new(),

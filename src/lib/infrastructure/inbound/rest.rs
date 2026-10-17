@@ -14,6 +14,9 @@ use handler::identity::post_login::__path_post_login;
 use handler::identity::post_register::__path_post_register;
 use handler::library::delete_gallery::__path_delete_gallery;
 use handler::library::delete_gallery_item::__path_delete_gallery_item;
+use handler::library::get_album_list::__path_get_album_list;
+use handler::library::get_album_track::__path_get_album_track;
+use handler::library::get_album_track_list::__path_get_album_track_list;
 use handler::library::get_gallery::__path_get_gallery;
 use handler::library::get_gallery_item::__path_get_gallery_item;
 use handler::library::get_gallery_item_list::__path_get_gallery_item_list;
@@ -40,11 +43,18 @@ use crate::infrastructure::inbound::rest::handler::identity::post_login::LoginRe
 use crate::infrastructure::inbound::rest::handler::identity::post_login::LoginResponse;
 use crate::infrastructure::inbound::rest::handler::identity::post_register::RegisterRequest;
 use crate::infrastructure::inbound::rest::handler::identity::post_register::RegisterResponse;
+use crate::infrastructure::inbound::rest::handler::library::AlbumLinks;
+use crate::infrastructure::inbound::rest::handler::library::AlbumListLinks;
+use crate::infrastructure::inbound::rest::handler::library::AlbumListResponse;
+use crate::infrastructure::inbound::rest::handler::library::AlbumResponse;
 use crate::infrastructure::inbound::rest::handler::library::GalleryItemDetailResponse;
 use crate::infrastructure::inbound::rest::handler::library::GalleryItemResponse;
 use crate::infrastructure::inbound::rest::handler::library::GalleryItemType;
 use crate::infrastructure::inbound::rest::handler::library::GalleryLinks;
 use crate::infrastructure::inbound::rest::handler::library::GalleryResponse;
+use crate::infrastructure::inbound::rest::handler::library::TrackLinks;
+use crate::infrastructure::inbound::rest::handler::library::TrackListResponse;
+use crate::infrastructure::inbound::rest::handler::library::TrackResponse;
 use crate::infrastructure::inbound::rest::handler::library::get_gallery_list::GalleryListLinks;
 use crate::infrastructure::inbound::rest::handler::library::get_gallery_list::GalleryListResponse;
 use crate::infrastructure::inbound::rest::handler::library::post_gallery::PostGalleryRequest;
@@ -86,8 +96,8 @@ impl utoipa::Modify for SecurityAddon {
     servers(
         (url = "http://0.0.0.0:4080/api/v1", description = "Local development server")
     ),
-    paths(get_health, get_upload, patch_credential, post_login, post_register, post_upload, post_upload_complete, put_upload_chunk, get_me, get_user, get_user_list, patch_user, delete_gallery, delete_gallery_item, get_gallery, get_gallery_item, get_gallery_item_list, get_gallery_list, post_gallery, post_gallery_item),
-    components(schemas(ErrorBody, GalleryItemDetailResponse, GalleryItemResponse, GalleryItemType, GalleryLinks, GalleryListLinks, GalleryListResponse, GalleryResponse, GetMeResponse, GetUserListResponse, GetUserResponse, Link, LoginRequest, LoginResponse, PatchCredentialRequest, PatchUserRequest, PatchUserResponse, PostGalleryItemRequest, PostGalleryRequest, PostUploadCompleteResponse, PostUploadRequest, PostUploadResponse, PutUploadChunkRequest, RegisterRequest, RegisterResponse, Role, SelfLinks, UploadSessionLinks, UploadSessionResponse, UserListLinks)),
+    paths(get_health, get_upload, patch_credential, post_login, post_register, post_upload, post_upload_complete, put_upload_chunk, get_me, get_user, get_user_list, patch_user, delete_gallery, delete_gallery_item, get_album_list, get_album_track, get_album_track_list, get_gallery, get_gallery_item, get_gallery_item_list, get_gallery_list, post_gallery, post_gallery_item),
+    components(schemas(AlbumLinks, AlbumListLinks, AlbumListResponse, AlbumResponse, ErrorBody, GalleryItemDetailResponse, GalleryItemResponse, GalleryItemType, GalleryLinks, GalleryListLinks, GalleryListResponse, GalleryResponse, GetMeResponse, GetUserListResponse, GetUserResponse, Link, LoginRequest, LoginResponse, PatchCredentialRequest, PatchUserRequest, PatchUserResponse, PostGalleryItemRequest, PostGalleryRequest, PostUploadCompleteResponse, PostUploadRequest, PostUploadResponse, PutUploadChunkRequest, RegisterRequest, RegisterResponse, Role, SelfLinks, TrackLinks, TrackListResponse, TrackResponse, UploadSessionLinks, UploadSessionResponse, UserListLinks)),
     tags(
         (name = "system", description = "System-level endpoints"),
         (name = "asset", description = "Asset bounded context"),

@@ -30,6 +30,7 @@ REGISTER_PATH = f"{API_PREFIX}/identity/register"
 ME_PATH = f"{API_PREFIX}/user/me"
 
 LIBRARY_GALLERY_PATH = f"{API_PREFIX}/library/gallery"
+LIBRARY_ALBUM_PATH = f"{API_PREFIX}/library/music/album"
 UPLOAD_PATH = f"{API_PREFIX}/asset/upload"
 
 ROOT_ADMIN_USERNAME = "root"
@@ -481,3 +482,45 @@ def delete_gallery_item(server_url: str) -> Callable[[str, int, int], requests.R
         )
 
     return _delete_gallery_item
+
+
+@pytest.fixture
+def list_albums(server_url: str) -> Callable[[str, str], requests.Response]:
+    """Return a callable that GETs the music album collection with a query string."""
+
+    def _list_albums(token: str, query: str = "") -> requests.Response:
+        return requests.get(
+            f"{server_url}{LIBRARY_ALBUM_PATH}{query}",
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=10,
+        )
+
+    return _list_albums
+
+
+@pytest.fixture
+def list_album_tracks(server_url: str) -> Callable[[str, int], requests.Response]:
+    """Return a callable that GETs the tracks of a music album by identifier."""
+
+    def _list_album_tracks(token: str, album_id: int) -> requests.Response:
+        return requests.get(
+            f"{server_url}{LIBRARY_ALBUM_PATH}/{album_id}/track",
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=10,
+        )
+
+    return _list_album_tracks
+
+
+@pytest.fixture
+def get_album_track(server_url: str) -> Callable[[str, int, int], requests.Response]:
+    """Return a callable that GETs one track of a music album."""
+
+    def _get_album_track(token: str, album_id: int, track_id: int) -> requests.Response:
+        return requests.get(
+            f"{server_url}{LIBRARY_ALBUM_PATH}/{album_id}/track/{track_id}",
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=10,
+        )
+
+    return _get_album_track

@@ -13,6 +13,7 @@ use crate::domain::port::identity_unit_of_work::IdentityUnitOfWork;
 use crate::domain::port::image_repository::ImageRepository;
 use crate::domain::port::library_unit_of_work::LibraryUnitOfWork;
 use crate::domain::port::mime_type_repository::MimeTypeRepository;
+use crate::domain::port::music_album_repository::MusicAlbumRepository;
 use crate::domain::port::unit_of_work::UnitOfWork;
 use crate::domain::port::unit_of_work::UnitOfWorkFactory;
 use crate::domain::port::upload_repository::UploadRepository;
@@ -25,6 +26,7 @@ use crate::infrastructure::outbound::sqlx::file_repository::SqlxFileRepository;
 use crate::infrastructure::outbound::sqlx::gallery_repository::SqlxGalleryRepository;
 use crate::infrastructure::outbound::sqlx::image_repository::SqlxImageRepository;
 use crate::infrastructure::outbound::sqlx::mime_type_repository::SqlxMimeTypeRepository;
+use crate::infrastructure::outbound::sqlx::music_album_repository::SqlxMusicAlbumRepository;
 use crate::infrastructure::outbound::sqlx::upload_repository::SqlxUploadRepository;
 use crate::infrastructure::outbound::sqlx::user_repository::SqlxUserRepository;
 use crate::infrastructure::outbound::sqlx::video_repository::SqlxVideoRepository;
@@ -75,6 +77,10 @@ impl LibraryUnitOfWork for SqlxUnitOfWork {
 
     fn images(&mut self) -> impl ImageRepository + '_ {
         SqlxImageRepository::new(self.transaction())
+    }
+
+    fn music_albums(&mut self) -> impl MusicAlbumRepository + '_ {
+        SqlxMusicAlbumRepository::new(self.transaction())
     }
 
     fn videos(&mut self) -> impl VideoRepository + '_ {

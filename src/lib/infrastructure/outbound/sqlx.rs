@@ -6,6 +6,7 @@ pub mod gallery_repository;
 pub mod image_repository;
 pub mod mime_type_repository;
 pub mod model;
+pub mod music_album_repository;
 pub mod query_filter;
 pub mod sqlite3;
 pub mod unit_of_work;
