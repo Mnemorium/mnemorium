@@ -9093,7 +9093,7 @@ SOFTWARE.
 MIT License (MIT)
 
 Used by:
-  - mnemorium 0.19.3 ()
+  - mnemorium 0.20.0 ()
 MIT License
 
 Copyright (c) 2026 Mnemorium

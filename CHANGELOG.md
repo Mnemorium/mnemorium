@@ -1,3 +1,9 @@
+## [0.20.0](https://github.com/Mnemorium/mnemorium/compare/v0.19.4...v0.20.0) (2026-10-18)
+
+### Features
+
+* **api:** browse music albums ([#295](https://github.com/Mnemorium/mnemorium/issues/295)) ([4ba80a1](https://github.com/Mnemorium/mnemorium/commit/4ba80a116cab01595d7e249e39a2dad6a293c730))
+
 ## [0.19.4](https://github.com/Mnemorium/mnemorium/compare/v0.19.3...v0.19.4) (2026-10-17)
 
 ### Bug Fixes
