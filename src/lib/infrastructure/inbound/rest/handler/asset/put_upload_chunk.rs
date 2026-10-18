@@ -326,6 +326,7 @@ mod tests {
     use chrono::NaiveDate;
     use chrono::NaiveDateTime;
     use mockall::predicate::eq;
+    use rstest::rstest;
 
     use serde_json::json;
     use sha2::Digest as _;
@@ -695,7 +696,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn put_upload_chunk_malformed_content_digest_returns_bad_request()
+    async fn put_upload_chunk_content_digest_without_equals_returns_bad_request()
     -> Result<(), Box<dyn Error>> {
         // Arrange
         let use_case = MockWriteUploadChunkUseCase::new();
@@ -707,6 +708,36 @@ mod tests {
             "/api/v1/asset/upload/7/chunk/0",
             Some(RANGE_CHUNK_ZERO),
             Some("oops"),
+            Body::from(CHUNK),
+        )
+        .await?;
+
+        // Assert
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(
+            error_message_of(&response).as_deref(),
+            Some("malformed Content-Digest header")
+        );
+        Ok(())
+    }
+
+    #[rstest]
+    #[case::unwrapped_value("sha-256=AAAA")]
+    #[case::undecodable_value("sha-256=:not-base64:")]
+    #[tokio::test]
+    async fn put_upload_chunk_malformed_content_digest_value_returns_bad_request(
+        #[case] content_digest: &str,
+    ) -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let use_case = MockWriteUploadChunkUseCase::new();
+
+        // Act
+        let response = send(
+            use_case,
+            3,
+            "/api/v1/asset/upload/7/chunk/0",
+            Some(RANGE_CHUNK_ZERO),
+            Some(content_digest),
             Body::from(CHUNK),
         )
         .await?;
