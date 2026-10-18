@@ -50,12 +50,8 @@ mod tests {
     use crate::domain::model::user::Role;
     use crate::domain::model::user::User;
     use crate::domain::port::error::RepositoryError;
-    use crate::domain::port::file_repository::MockFileRepository;
-    use crate::domain::port::gallery_repository::MockGalleryRepository;
-    use crate::domain::port::image_repository::MockImageRepository;
     use crate::domain::port::user_repository::MockUserRepository;
-    use crate::domain::port::video_repository::MockVideoRepository;
-    use crate::test_helpers::gallery_unit_of_work;
+    use crate::test_helpers::TestUnitOfWork;
 
     use super::load_caller;
 
@@ -68,13 +64,10 @@ mod tests {
             .expect_search()
             .times(1)
             .return_once(move |_| Box::pin(async move { Ok(vec![caller]) }));
-        let (mut unit_of_work, _, _) = gallery_unit_of_work(
-            MockGalleryRepository::new(),
-            MockImageRepository::new(),
-            MockVideoRepository::new(),
+        let mut unit_of_work = TestUnitOfWork {
             users,
-            MockFileRepository::new(),
-        );
+            ..TestUnitOfWork::default()
+        };
 
         // Act
         let loaded = load_caller(&mut unit_of_work, 7).await?;
@@ -92,13 +85,10 @@ mod tests {
             .expect_search()
             .times(1)
             .returning(|_| Box::pin(async { Ok(Vec::new()) }));
-        let (mut unit_of_work, _, _) = gallery_unit_of_work(
-            MockGalleryRepository::new(),
-            MockImageRepository::new(),
-            MockVideoRepository::new(),
+        let mut unit_of_work = TestUnitOfWork {
             users,
-            MockFileRepository::new(),
-        );
+            ..TestUnitOfWork::default()
+        };
 
         // Act
         let loaded = load_caller(&mut unit_of_work, 999).await?;
@@ -116,13 +106,10 @@ mod tests {
             .expect_search()
             .times(1)
             .returning(|_| Box::pin(async { Err(RepositoryError::OperationFailed) }));
-        let (mut unit_of_work, _, _) = gallery_unit_of_work(
-            MockGalleryRepository::new(),
-            MockImageRepository::new(),
-            MockVideoRepository::new(),
+        let mut unit_of_work = TestUnitOfWork {
             users,
-            MockFileRepository::new(),
-        );
+            ..TestUnitOfWork::default()
+        };
 
         // Act
         let result = load_caller(&mut unit_of_work, 7).await;

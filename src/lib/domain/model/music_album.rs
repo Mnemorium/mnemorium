@@ -25,12 +25,53 @@ pub enum ProductionType {
     Studio,
 }
 
+impl ProductionType {
+    /// Render the production type as its stored representation (`STUDIO`).
+    ///
+    /// The names match the `chk_music_album_production_type` values of the
+    /// `music_album` table.
+    #[must_use]
+    pub fn as_wire(self) -> &'static str {
+        match self {
+            Self::Compilation => "COMPILATION",
+            Self::Demo => "DEMO",
+            Self::DjMix => "DJMIX",
+            Self::Live => "LIVE",
+            Self::Mixtape => "MIXTAPE",
+            Self::Remix => "REMIX",
+            Self::Soundtrack => "SOUNDTRACK",
+            Self::Studio => "STUDIO",
+        }
+    }
+
+    /// Parse a production type from its stored representation (`STUDIO`).
+    ///
+    /// Returns `None` when `value` is not one of the tokens the
+    /// `chk_music_album_production_type` check constraint admits, so a stored
+    /// value outside the discrete list is reported as an absent production type
+    /// rather than failing the read.
+    #[must_use]
+    pub fn from_wire(value: &str) -> Option<Self> {
+        match value {
+            "COMPILATION" => Some(Self::Compilation),
+            "DEMO" => Some(Self::Demo),
+            "DJMIX" => Some(Self::DjMix),
+            "LIVE" => Some(Self::Live),
+            "MIXTAPE" => Some(Self::Mixtape),
+            "REMIX" => Some(Self::Remix),
+            "SOUNDTRACK" => Some(Self::Soundtrack),
+            "STUDIO" => Some(Self::Studio),
+            _ => None,
+        }
+    }
+}
+
 /// Error returned when initialising a `MusicAlbum`.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum MusicAlbumError {
-    /// The `genre`, when set, is empty.
-    #[error("genre must not be empty when set")]
+    /// A genre identifier is empty.
+    #[error("a genre identifier must not be empty")]
     InvalidGenre,
     /// The `name` is empty.
     #[error("name must not be empty")]
@@ -43,8 +84,8 @@ pub enum MusicAlbumError {
 /// A music album.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MusicAlbum {
-    /// Genre of the album, when set.
-    genre: Option<String>,
+    /// Identifiers of the genres the album is associated with.
+    genre_ids: Vec<String>,
     /// Unique identifier of the album.
     id: NumericID,
     /// Mediums of the album, in order.
@@ -60,10 +101,10 @@ pub struct MusicAlbum {
 }
 
 impl MusicAlbum {
-    /// Return the genre, if any.
+    /// Return the identifiers of the genres the album is associated with.
     #[must_use]
-    pub fn genre(&self) -> Option<&str> {
-        self.genre.as_deref()
+    pub fn genre_ids(&self) -> &[String] {
+        &self.genre_ids
     }
 
     /// Return the unique identifier.
@@ -102,26 +143,26 @@ impl MusicAlbum {
         self.release_date
     }
 
-    /// Initialise a new `MusicAlbum`, validating `name` and `genre`, and
+    /// Initialise a new `MusicAlbum`, validating `name` and `genre_ids`, and
     /// defaulting `music_group_ids` to `None` when empty.
     ///
     /// # Errors
     ///
     /// Returns [`MusicAlbumError::InvalidName`] when `name` is empty, and
-    /// [`MusicAlbumError::InvalidGenre`] when `genre` is set and empty.
+    /// [`MusicAlbumError::InvalidGenre`] when a genre identifier is empty.
     pub fn try_new(
         id: NumericID,
         name: String,
         release_date: NaiveDate,
         production_type: Option<ProductionType>,
-        genre: Option<String>,
+        genre_ids: Vec<String>,
         music_group_ids: Option<Vec<NumericID>>,
         mediums: Vec<MusicMedium>,
     ) -> Result<Self, MusicAlbumError> {
         if name.is_empty() {
             return Err(MusicAlbumError::InvalidName);
         }
-        if genre.as_ref().is_some_and(String::is_empty) {
+        if genre_ids.iter().any(String::is_empty) {
             return Err(MusicAlbumError::InvalidGenre);
         }
         let normalized_music_group_ids = match music_group_ids {
@@ -129,7 +170,7 @@ impl MusicAlbum {
             ids => ids,
         };
         Ok(Self {
-            genre,
+            genre_ids,
             id,
             mediums,
             music_group_ids: normalized_music_group_ids,

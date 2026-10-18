@@ -260,7 +260,7 @@ mod tests {
     use crate::domain::port::video_repository::MockVideoRepository;
     use crate::test_helpers::GalleryFactoryHarness;
     use crate::test_helpers::TestFactory;
-    use crate::test_helpers::gallery_factory;
+    use crate::test_helpers::TestUnitOfWork;
 
     use super::AddGalleryItem;
 
@@ -337,7 +337,15 @@ mod tests {
         videos: MockVideoRepository,
         files: MockFileRepository,
     ) -> GalleryFactoryHarness {
-        gallery_factory(galleries, images, videos, users, files)
+        let unit_of_work = TestUnitOfWork {
+            files,
+            galleries,
+            images,
+            users,
+            videos,
+            ..TestUnitOfWork::default()
+        };
+        GalleryFactoryHarness::new(unit_of_work)
     }
 
     fn expect_caller(

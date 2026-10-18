@@ -13,6 +13,7 @@ pub mod image_repository;
 pub mod library_unit_of_work;
 pub mod media_probe;
 pub mod mime_type_repository;
+pub mod music_album_repository;
 pub mod password_generator;
 pub mod password_hasher;
 pub mod secret_generator;

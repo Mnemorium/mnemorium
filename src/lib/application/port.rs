@@ -1,3 +1,8 @@
+#![allow(
+    clippy::struct_field_names,
+    reason = "a port item names its fields after the identifiers the API and SQL sections mandate, and mockall names a mock's fields after the trait methods"
+)]
+
 pub mod add_gallery_item;
 pub mod asset_use_case_factory;
 pub mod begin_upload;
@@ -6,6 +11,7 @@ pub mod create_gallery;
 pub mod delete_gallery;
 pub mod delete_gallery_item;
 pub mod ensure_storage_directories;
+pub mod get_album_track;
 pub mod get_current_user;
 pub mod get_gallery;
 pub mod get_gallery_item;
@@ -14,6 +20,8 @@ pub mod get_user;
 pub mod identity_use_case_factory;
 pub mod initialize_root_admin;
 pub mod library_use_case_factory;
+pub mod list_album_tracks;
+pub mod list_albums;
 pub mod list_galleries;
 pub mod list_users;
 pub mod load_configuration;

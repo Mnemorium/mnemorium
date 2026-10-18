@@ -15,11 +15,14 @@ permissions:
   - { action: glob, resource: ".devenv/**", effect: deny }
   - { action: glob, resource: "target/**", effect: deny }
   - { action: grep, resource: "*", effect: allow }
-  # Editable, except the locked manifests the repository protects
+  # Editable, except the locked files the repository protects
   - { action: edit, resource: "*", effect: allow }
   - { action: edit, resource: "Cargo.toml", effect: deny }
   - { action: edit, resource: "clippy.toml", effect: deny }
   - { action: edit, resource: "deny.toml", effect: deny }
+  - { action: edit, resource: "rule_enforcer.yaml", effect: deny }
+  - { action: edit, resource: "rule/**", effect: deny }
+  - { action: edit, resource: "sgconfig.yaml", effect: deny }
   # Shell: broadly allowed, then a short, stable guardrail deny list. This is a
   # mistake guardrail, not a sandbox: docker, curl, wget, and Code Mode stay
   # open by design, so it stops a literal dangerous command and injected text,
@@ -30,10 +33,13 @@ permissions:
   - { action: shell, resource: "*.env", effect: deny }
   - { action: shell, resource: "*.env.*", effect: ask }
   - { action: shell, resource: "*.env.example*", effect: allow }
-  # The locked manifests get no shell route around their edit deny
+  # The locked files get no shell route around their edit deny
   - { action: shell, resource: "*Cargo.toml*", effect: deny }
   - { action: shell, resource: "*clippy.toml*", effect: deny }
   - { action: shell, resource: "*deny.toml*", effect: deny }
+  - { action: shell, resource: "*rule_enforcer.yaml*", effect: deny }
+  - { action: shell, resource: "*rule/*", effect: deny }
+  - { action: shell, resource: "*sgconfig.yaml*", effect: deny }
   # Version control history — the caller owns commits, pushes, and branches
   - { action: shell, resource: "git commit*", effect: deny }
   - { action: shell, resource: "git push*", effect: deny }
@@ -122,8 +128,9 @@ assumption: stop and report what is missing.
   `src/**`, `migrations/**`, `test/**`, documentation, and tooling directly, and
   you remove or rename a file the plan names. You do not hand a step to a
   specialist agent.
-- **Most of the tree is editable; the locked manifests are not.** `Cargo.toml`,
-  `clippy.toml`, and `deny.toml` remain denied — never try to bypass that through
+- **Most of the tree is editable; the locked files are not.** `Cargo.toml`,
+  `clippy.toml`, `deny.toml`, and the rule configuration (`rule_enforcer.yaml`,
+  `rule/**`, `sgconfig.yaml`) remain denied — never try to bypass that through
   the shell or any other route. Write the run directory and loop state under
   `.artifacts/execution/**`.
 - **The shell is broad; the deny list is a guardrail, not a sandbox.** Every

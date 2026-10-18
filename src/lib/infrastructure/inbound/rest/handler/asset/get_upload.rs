@@ -128,7 +128,7 @@ mod tests {
     use std::sync::Arc;
 
     use axum::body::Body;
-    use axum::body::to_bytes;
+
     use axum::extract::Request;
     use axum::http::StatusCode;
     use axum::http::header;
@@ -137,7 +137,7 @@ mod tests {
     use chrono::NaiveDate;
     use chrono::NaiveDateTime;
     use mockall::predicate::eq;
-    use serde_json::Value;
+
     use serde_json::json;
     use tower::ServiceExt as _;
 
@@ -152,6 +152,7 @@ mod tests {
     use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
     use crate::test_helpers::app_state_with_asset;
     use crate::test_helpers::error_message_of;
+    use crate::test_helpers::into_status_and_body;
 
     /// Send a GET to `/api/v1/asset/upload/{upload_id}` on behalf of
     /// `caller_id`, injecting the caller the way the auth middleware does.
@@ -178,14 +179,6 @@ mod tests {
             .route("/api/v1/asset/upload/{upload_id}", get(get_upload))
             .with_state(app_state_with_asset(Arc::new(factory))?);
         Ok(router.oneshot(request).await?)
-    }
-
-    /// Split `response` into its status and decoded JSON body.
-    async fn into_parts(response: Response) -> Result<(StatusCode, Value), Box<dyn Error>> {
-        let status = response.status();
-        let bytes = to_bytes(response.into_body(), usize::MAX).await?;
-        let body = serde_json::from_slice(&bytes)?;
-        Ok((status, body))
     }
 
     /// Make the mocked use case fail with `error`.
@@ -234,7 +227,7 @@ mod tests {
             Some("application/hal+json"),
             "the response must declare the HAL media type"
         );
-        let (status, payload) = into_parts(response).await?;
+        let (status, payload) = into_status_and_body(response).await?;
 
         // Assert
         assert_eq!(status, StatusCode::OK);
@@ -285,7 +278,7 @@ mod tests {
             Some("application/hal+json"),
             "the response must declare the HAL media type"
         );
-        let (status, payload) = into_parts(response).await?;
+        let (status, payload) = into_status_and_body(response).await?;
 
         // Assert
         assert_eq!(status, StatusCode::OK);

@@ -11,6 +11,7 @@ pub mod music_album;
 pub mod music_medium;
 pub mod music_playlist;
 pub mod music_recording;
+pub mod music_track;
 pub mod upload;
 pub mod user;
 pub mod video;

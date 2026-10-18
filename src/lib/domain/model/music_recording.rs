@@ -25,6 +25,8 @@ pub enum MusicRecordingError {
 pub struct MusicRecording {
     /// Identifier of the audio backing the recording.
     audio_id: NumericID,
+    /// Identifier of the file the backing audio references.
+    file_id: NumericID,
     /// Date of the first release of the recording.
     first_release_date: NaiveDate,
     /// Unique identifier of the recording.
@@ -42,6 +44,12 @@ impl MusicRecording {
     #[must_use]
     pub fn audio_id(&self) -> NumericID {
         self.audio_id
+    }
+
+    /// Return the identifier of the file the backing audio references.
+    #[must_use]
+    pub fn file_id(&self) -> NumericID {
+        self.file_id
     }
 
     /// Return the date of the first release.
@@ -108,6 +116,7 @@ impl MusicRecording {
         first_release_date: NaiveDate,
         isrc_code: Option<String>,
         audio_id: NumericID,
+        file_id: NumericID,
         music_group_ids: Option<Vec<NumericID>>,
     ) -> Result<Self, MusicRecordingError> {
         let validated_name = Self::validate_name(name)?;
@@ -118,6 +127,7 @@ impl MusicRecording {
         };
         Ok(Self {
             audio_id,
+            file_id,
             first_release_date,
             id,
             isrc_code: validated_isrc_code,

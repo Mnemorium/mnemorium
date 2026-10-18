@@ -290,14 +290,12 @@ mod tests {
     use crate::domain::model::configuration::Sqlite3Error;
     use crate::domain::port::configuration_repository::MockConfigurationRepository;
     use crate::domain::port::configuration_source::MockConfigurationSource;
-    use crate::domain::port::credential_repository::MockCredentialRepository;
     use crate::domain::port::error::ConfigurationSourceError;
     use crate::domain::port::error::RepositoryError;
     use crate::domain::port::error::SecretGeneratorError;
     use crate::domain::port::secret_generator::MockSecretGenerator;
-    use crate::domain::port::user_repository::MockUserRepository;
     use crate::test_helpers::TestFactory;
-    use crate::test_helpers::unit_of_work_factory;
+    use crate::test_helpers::TestUnitOfWork;
 
     use super::LoadConfiguration;
 
@@ -373,15 +371,13 @@ mod tests {
             &mut configuration_source,
         )?;
 
-        let committed = Arc::new(AtomicBool::new(false));
-        let rolled_back = Arc::new(AtomicBool::new(false));
-        let factory = unit_of_work_factory(
-            MockUserRepository::new(),
-            MockCredentialRepository::new(),
-            configuration_repository,
-            Arc::clone(&committed),
-            Arc::clone(&rolled_back),
-        );
+        let unit_of_work = TestUnitOfWork {
+            configuration: configuration_repository,
+            ..TestUnitOfWork::default()
+        };
+        let committed = Arc::clone(&unit_of_work.committed);
+        let rolled_back = Arc::clone(&unit_of_work.rolled_back);
+        let factory = TestFactory::new(unit_of_work);
 
         Ok(Harness {
             use_case: LoadConfiguration::new(

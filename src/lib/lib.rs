@@ -25,7 +25,12 @@ mod test_helpers {
     use std::sync::atomic::Ordering;
 
     use arc_swap::ArcSwap;
+    use axum::body::to_bytes;
+    use axum::http::StatusCode;
+    use axum::http::header;
     use axum::response::Response;
+    use chrono::NaiveDate;
+    use serde_json::Value;
 
     use crate::application::port::asset_use_case_factory::AssetUseCaseFactory;
     use crate::application::port::asset_use_case_factory::MockAssetUseCaseFactory;
@@ -60,6 +65,8 @@ mod test_helpers {
     use crate::domain::port::library_unit_of_work::LibraryUnitOfWork;
     use crate::domain::port::mime_type_repository::MimeTypeRepository;
     use crate::domain::port::mime_type_repository::MockMimeTypeRepository;
+    use crate::domain::port::music_album_repository::MockMusicAlbumRepository;
+    use crate::domain::port::music_album_repository::MusicAlbumRepository;
     use crate::domain::port::unit_of_work::UnitOfWork;
     use crate::domain::port::unit_of_work::UnitOfWorkFactory;
     use crate::domain::port::upload_repository::MockUploadRepository;
@@ -94,98 +101,79 @@ mod test_helpers {
     /// `rolled_back` are shared with the test so it can assert the transaction
     /// lifecycle after the use case has consumed the unit of work.
     ///
-    /// One type serves every bounded context: a context a test does not
-    /// exercise holds fresh mocks supplied by the constructors below.
-    pub struct TestUnitOfWork<U, C, K, F, M, P, G, I, V> {
+    /// One type serves every bounded context, and it implements `Default`: a
+    /// test builds one from `..TestUnitOfWork::default()` and names only the
+    /// repositories it stubs, so adding a repository to a context touches this
+    /// fixture alone.
+    pub struct TestUnitOfWork {
         /// Set to force `commit` to fail.
         pub commit_fails: Arc<AtomicBool>,
         /// Set when `commit` is called.
         pub committed: Arc<AtomicBool>,
         /// Configuration repository.
-        pub configuration: K,
+        pub configuration: MockConfigurationRepository,
         /// Credential repository.
-        pub credentials: C,
+        pub credentials: MockCredentialRepository,
         /// File repository.
-        pub files: F,
+        pub files: MockFileRepository,
         /// Gallery repository.
-        pub galleries: G,
+        pub galleries: MockGalleryRepository,
         /// Image repository.
-        pub images: I,
+        pub images: MockImageRepository,
         /// Mime type repository.
-        pub mime_types: M,
+        pub mime_types: MockMimeTypeRepository,
+        /// Music album repository.
+        pub music_albums: MockMusicAlbumRepository,
         /// Set when `rollback` is called.
         pub rolled_back: Arc<AtomicBool>,
         /// Upload repository.
-        pub uploads: P,
+        pub uploads: MockUploadRepository,
         /// User repository.
-        pub users: U,
+        pub users: MockUserRepository,
         /// Video repository.
-        pub videos: V,
+        pub videos: MockVideoRepository,
     }
 
-    impl<
-        U: UserRepository,
-        C: CredentialRepository,
-        K: ConfigurationRepository,
-        F: FileRepository,
-        M: MimeTypeRepository,
-        P: UploadRepository,
-        G: GalleryRepository,
-        I: ImageRepository,
-        V: VideoRepository,
-    > ConfigurationUnitOfWork for TestUnitOfWork<U, C, K, F, M, P, G, I, V>
-    {
+    impl Default for TestUnitOfWork {
+        /// A unit of work holding a fresh mock per repository.
+        fn default() -> Self {
+            Self {
+                commit_fails: Arc::new(AtomicBool::new(false)),
+                committed: Arc::new(AtomicBool::new(false)),
+                configuration: MockConfigurationRepository::new(),
+                credentials: MockCredentialRepository::new(),
+                files: MockFileRepository::new(),
+                galleries: MockGalleryRepository::new(),
+                images: MockImageRepository::new(),
+                mime_types: MockMimeTypeRepository::new(),
+                music_albums: MockMusicAlbumRepository::new(),
+                rolled_back: Arc::new(AtomicBool::new(false)),
+                uploads: MockUploadRepository::new(),
+                users: MockUserRepository::new(),
+                videos: MockVideoRepository::new(),
+            }
+        }
+    }
+
+    impl ConfigurationUnitOfWork for TestUnitOfWork {
         fn configuration(&mut self) -> impl ConfigurationRepository + '_ {
             &mut self.configuration
         }
     }
 
-    impl<
-        U: UserRepository,
-        C: CredentialRepository,
-        K: ConfigurationRepository,
-        F: FileRepository,
-        M: MimeTypeRepository,
-        P: UploadRepository,
-        G: GalleryRepository,
-        I: ImageRepository,
-        V: VideoRepository,
-    > IdentityUnitOfWork for TestUnitOfWork<U, C, K, F, M, P, G, I, V>
-    {
+    impl IdentityUnitOfWork for TestUnitOfWork {
         fn credentials(&mut self) -> impl CredentialRepository + '_ {
             &mut self.credentials
         }
     }
 
-    impl<
-        U: UserRepository,
-        C: CredentialRepository,
-        K: ConfigurationRepository,
-        F: FileRepository,
-        M: MimeTypeRepository,
-        P: UploadRepository,
-        G: GalleryRepository,
-        I: ImageRepository,
-        V: VideoRepository,
-    > UserUnitOfWork for TestUnitOfWork<U, C, K, F, M, P, G, I, V>
-    {
+    impl UserUnitOfWork for TestUnitOfWork {
         fn users(&mut self) -> impl UserRepository + '_ {
             &mut self.users
         }
     }
 
-    impl<
-        U: UserRepository,
-        C: CredentialRepository,
-        K: ConfigurationRepository,
-        F: FileRepository,
-        M: MimeTypeRepository,
-        P: UploadRepository,
-        G: GalleryRepository,
-        I: ImageRepository,
-        V: VideoRepository,
-    > LibraryUnitOfWork for TestUnitOfWork<U, C, K, F, M, P, G, I, V>
-    {
+    impl LibraryUnitOfWork for TestUnitOfWork {
         fn galleries(&mut self) -> impl GalleryRepository + '_ {
             &mut self.galleries
         }
@@ -194,23 +182,16 @@ mod test_helpers {
             &mut self.images
         }
 
+        fn music_albums(&mut self) -> impl MusicAlbumRepository + '_ {
+            &mut self.music_albums
+        }
+
         fn videos(&mut self) -> impl VideoRepository + '_ {
             &mut self.videos
         }
     }
 
-    impl<
-        U: UserRepository,
-        C: CredentialRepository,
-        K: ConfigurationRepository,
-        F: FileRepository,
-        M: MimeTypeRepository,
-        P: UploadRepository,
-        G: GalleryRepository,
-        I: ImageRepository,
-        V: VideoRepository,
-    > AssetUnitOfWork for TestUnitOfWork<U, C, K, F, M, P, G, I, V>
-    {
+    impl AssetUnitOfWork for TestUnitOfWork {
         fn files(&mut self) -> impl FileRepository + '_ {
             &mut self.files
         }
@@ -224,18 +205,7 @@ mod test_helpers {
         }
     }
 
-    impl<
-        U: UserRepository,
-        C: CredentialRepository,
-        K: ConfigurationRepository,
-        F: FileRepository,
-        M: MimeTypeRepository,
-        P: UploadRepository,
-        G: GalleryRepository,
-        I: ImageRepository,
-        V: VideoRepository,
-    > UnitOfWork for TestUnitOfWork<U, C, K, F, M, P, G, I, V>
-    {
+    impl UnitOfWork for TestUnitOfWork {
         fn commit(self) -> impl Future<Output = Result<(), UnitOfWorkError>> + Send {
             self.committed.store(true, Ordering::SeqCst);
             if self.commit_fails.load(Ordering::SeqCst) {
@@ -251,29 +221,27 @@ mod test_helpers {
     }
 
     /// Units of work handed out one per `begin` call.
-    type UnitOfWorkQueue<U, C, K, F, M, P, G, I, V> =
-        Mutex<Vec<TestUnitOfWork<U, C, K, F, M, P, G, I, V>>>;
+    type UnitOfWorkQueue = Mutex<Vec<TestUnitOfWork>>;
 
     /// Fake factory handing out a queue of prepared [`TestUnitOfWork`]s, one per
     /// `begin` call, so retry loops can bind a unit of work per attempt.
-    pub struct TestUnitOfWorkFactory<U, C, K, F, M, P, G, I, V> {
+    pub struct TestUnitOfWorkFactory {
         /// Popped from the front by each `begin` call.
-        pub unit_of_works: UnitOfWorkQueue<U, C, K, F, M, P, G, I, V>,
+        pub unit_of_works: UnitOfWorkQueue,
     }
 
-    impl<
-        U: UserRepository,
-        C: CredentialRepository,
-        K: ConfigurationRepository,
-        F: FileRepository,
-        M: MimeTypeRepository,
-        P: UploadRepository,
-        G: GalleryRepository,
-        I: ImageRepository,
-        V: VideoRepository,
-    > UnitOfWorkFactory for TestUnitOfWorkFactory<U, C, K, F, M, P, G, I, V>
-    {
-        type Uow = TestUnitOfWork<U, C, K, F, M, P, G, I, V>;
+    impl TestUnitOfWorkFactory {
+        /// Hand out `unit_of_work` on the first `begin` call.
+        #[must_use]
+        pub fn new(unit_of_work: TestUow) -> Self {
+            Self {
+                unit_of_works: Mutex::new(vec![unit_of_work]),
+            }
+        }
+    }
+
+    impl UnitOfWorkFactory for TestUnitOfWorkFactory {
+        type Uow = TestUnitOfWork;
 
         fn begin(&self) -> impl Future<Output = Result<Self::Uow, UnitOfWorkError>> + Send {
             let unit_of_work = match self.unit_of_works.lock() {
@@ -293,32 +261,12 @@ mod test_helpers {
     }
 
     /// The mocked unit of work shared by every fixture.
-    pub type TestUow = TestUnitOfWork<
-        MockUserRepository,
-        MockCredentialRepository,
-        MockConfigurationRepository,
-        MockFileRepository,
-        MockMimeTypeRepository,
-        MockUploadRepository,
-        MockGalleryRepository,
-        MockImageRepository,
-        MockVideoRepository,
-    >;
+    pub type TestUow = TestUnitOfWork;
 
     /// Factory whose unit of work is wired to the `mockall` repository mocks.
-    pub type TestFactory = TestUnitOfWorkFactory<
-        MockUserRepository,
-        MockCredentialRepository,
-        MockConfigurationRepository,
-        MockFileRepository,
-        MockMimeTypeRepository,
-        MockUploadRepository,
-        MockGalleryRepository,
-        MockImageRepository,
-        MockVideoRepository,
-    >;
+    pub type TestFactory = TestUnitOfWorkFactory;
 
-    /// The unit-of-work fixtures produced by [`asset_factory`].
+    /// The Asset fixture produced by [`AssetFactoryHarness::new`].
     pub struct AssetFactoryHarness {
         /// Set to force `commit` to fail.
         pub commit_fails: Arc<AtomicBool>,
@@ -330,7 +278,24 @@ mod test_helpers {
         pub rolled_back: Arc<AtomicBool>,
     }
 
-    /// The unit-of-work fixtures produced by [`gallery_factory`].
+    impl AssetFactoryHarness {
+        /// Wrap an Asset `unit_of_work` in a factory, sharing its
+        /// transaction-lifecycle flags.
+        #[must_use]
+        pub fn new(unit_of_work: TestUow) -> Self {
+            let committed = Arc::clone(&unit_of_work.committed);
+            let commit_fails = Arc::clone(&unit_of_work.commit_fails);
+            let rolled_back = Arc::clone(&unit_of_work.rolled_back);
+            Self {
+                committed,
+                commit_fails,
+                factory: Arc::new(TestFactory::new(unit_of_work)),
+                rolled_back,
+            }
+        }
+    }
+
+    /// The Library fixture produced by [`GalleryFactoryHarness::new`].
     pub struct GalleryFactoryHarness {
         /// Set to force `commit` to fail.
         pub commit_fails: Arc<AtomicBool>,
@@ -342,196 +307,20 @@ mod test_helpers {
         pub rolled_back: Arc<AtomicBool>,
     }
 
-    /// Build a [`TestFactory`] holding the given User, Identity and
-    /// Configuration repositories and transaction-lifecycle flags.
-    ///
-    /// The File, Mime type and Upload repositories are fresh mocks the caller
-    /// never reaches.
-    pub fn unit_of_work_factory(
-        users: MockUserRepository,
-        credentials: MockCredentialRepository,
-        configuration: MockConfigurationRepository,
-        committed: Arc<AtomicBool>,
-        rolled_back: Arc<AtomicBool>,
-    ) -> TestFactory {
-        TestUnitOfWorkFactory {
-            unit_of_works: Mutex::new(vec![TestUnitOfWork {
+    impl GalleryFactoryHarness {
+        /// Wrap a Library `unit_of_work` in a factory, sharing its
+        /// transaction-lifecycle flags.
+        #[must_use]
+        pub fn new(unit_of_work: TestUow) -> Self {
+            let committed = Arc::clone(&unit_of_work.committed);
+            let commit_fails = Arc::clone(&unit_of_work.commit_fails);
+            let rolled_back = Arc::clone(&unit_of_work.rolled_back);
+            Self {
                 committed,
-                commit_fails: Arc::new(AtomicBool::new(false)),
-                configuration,
-                credentials,
-                files: MockFileRepository::new(),
-                galleries: MockGalleryRepository::new(),
-                images: MockImageRepository::new(),
-                mime_types: MockMimeTypeRepository::new(),
+                commit_fails,
+                factory: Arc::new(TestFactory::new(unit_of_work)),
                 rolled_back,
-                uploads: MockUploadRepository::new(),
-                users,
-                videos: MockVideoRepository::new(),
-            }]),
-        }
-    }
-
-    /// Build an Asset [`TestFactory`] around the given mocked repositories.
-    ///
-    /// The User, Identity and Configuration repositories are fresh mocks the
-    /// caller never reaches.
-    #[must_use]
-    pub fn asset_factory(
-        uploads: MockUploadRepository,
-        files: MockFileRepository,
-        mime_types: MockMimeTypeRepository,
-    ) -> AssetFactoryHarness {
-        let committed = Arc::new(AtomicBool::new(false));
-        let commit_fails = Arc::new(AtomicBool::new(false));
-        let rolled_back = Arc::new(AtomicBool::new(false));
-        let factory = TestUnitOfWorkFactory {
-            unit_of_works: Mutex::new(vec![asset_unit_of_work_with(
-                uploads,
-                files,
-                mime_types,
-                Arc::clone(&committed),
-                Arc::clone(&commit_fails),
-                Arc::clone(&rolled_back),
-            )]),
-        };
-        AssetFactoryHarness {
-            committed,
-            commit_fails,
-            factory: Arc::new(factory),
-            rolled_back,
-        }
-    }
-
-    /// Build one Asset [`TestUow`] and its lifecycle flags.
-    #[must_use]
-    pub fn asset_unit_of_work(
-        uploads: MockUploadRepository,
-        files: MockFileRepository,
-        mime_types: MockMimeTypeRepository,
-    ) -> (TestUow, Arc<AtomicBool>, Arc<AtomicBool>) {
-        let committed = Arc::new(AtomicBool::new(false));
-        let rolled_back = Arc::new(AtomicBool::new(false));
-        let unit_of_work = asset_unit_of_work_with(
-            uploads,
-            files,
-            mime_types,
-            Arc::clone(&committed),
-            Arc::new(AtomicBool::new(false)),
-            Arc::clone(&rolled_back),
-        );
-        (unit_of_work, committed, rolled_back)
-    }
-
-    /// Assemble an Asset [`TestUow`] around the given mocks and lifecycle flags.
-    fn asset_unit_of_work_with(
-        uploads: MockUploadRepository,
-        files: MockFileRepository,
-        mime_types: MockMimeTypeRepository,
-        committed: Arc<AtomicBool>,
-        commit_fails: Arc<AtomicBool>,
-        rolled_back: Arc<AtomicBool>,
-    ) -> TestUow {
-        TestUnitOfWork {
-            committed,
-            commit_fails,
-            configuration: MockConfigurationRepository::new(),
-            credentials: MockCredentialRepository::new(),
-            files,
-            galleries: MockGalleryRepository::new(),
-            images: MockImageRepository::new(),
-            mime_types,
-            rolled_back,
-            uploads,
-            users: MockUserRepository::new(),
-            videos: MockVideoRepository::new(),
-        }
-    }
-
-    /// Build a Library [`TestFactory`] around the given mocked repositories.
-    ///
-    /// The Credential, Configuration, Mime type and Upload repositories are
-    /// fresh mocks the caller never reaches.
-    #[must_use]
-    pub fn gallery_factory(
-        galleries: MockGalleryRepository,
-        images: MockImageRepository,
-        videos: MockVideoRepository,
-        users: MockUserRepository,
-        files: MockFileRepository,
-    ) -> GalleryFactoryHarness {
-        let committed = Arc::new(AtomicBool::new(false));
-        let commit_fails = Arc::new(AtomicBool::new(false));
-        let rolled_back = Arc::new(AtomicBool::new(false));
-        let factory = TestUnitOfWorkFactory {
-            unit_of_works: Mutex::new(vec![gallery_unit_of_work_with(
-                galleries,
-                images,
-                videos,
-                users,
-                files,
-                Arc::clone(&committed),
-                Arc::clone(&commit_fails),
-                Arc::clone(&rolled_back),
-            )]),
-        };
-        GalleryFactoryHarness {
-            committed,
-            commit_fails,
-            factory: Arc::new(factory),
-            rolled_back,
-        }
-    }
-
-    /// Build one Library [`TestUow`] and its lifecycle flags.
-    #[must_use]
-    pub fn gallery_unit_of_work(
-        galleries: MockGalleryRepository,
-        images: MockImageRepository,
-        videos: MockVideoRepository,
-        users: MockUserRepository,
-        files: MockFileRepository,
-    ) -> (TestUow, Arc<AtomicBool>, Arc<AtomicBool>) {
-        let committed = Arc::new(AtomicBool::new(false));
-        let rolled_back = Arc::new(AtomicBool::new(false));
-        let unit_of_work = gallery_unit_of_work_with(
-            galleries,
-            images,
-            videos,
-            users,
-            files,
-            Arc::clone(&committed),
-            Arc::new(AtomicBool::new(false)),
-            Arc::clone(&rolled_back),
-        );
-        (unit_of_work, committed, rolled_back)
-    }
-
-    /// Assemble a Library [`TestUow`] around the given mocks and lifecycle
-    /// flags.
-    fn gallery_unit_of_work_with(
-        galleries: MockGalleryRepository,
-        images: MockImageRepository,
-        videos: MockVideoRepository,
-        users: MockUserRepository,
-        files: MockFileRepository,
-        committed: Arc<AtomicBool>,
-        commit_fails: Arc<AtomicBool>,
-        rolled_back: Arc<AtomicBool>,
-    ) -> TestUow {
-        TestUnitOfWork {
-            committed,
-            commit_fails,
-            configuration: MockConfigurationRepository::new(),
-            credentials: MockCredentialRepository::new(),
-            files,
-            galleries,
-            images,
-            mime_types: MockMimeTypeRepository::new(),
-            rolled_back,
-            uploads: MockUploadRepository::new(),
-            users,
-            videos,
+            }
         }
     }
 
@@ -675,5 +464,44 @@ mod test_helpers {
             .extensions()
             .get::<ApiErrorMessage>()
             .map(|message| message.0.clone())
+    }
+
+    /// The release date the album fixtures carry.
+    #[must_use]
+    pub fn album_release_date() -> NaiveDate {
+        NaiveDate::from_ymd_opt(1959, 8, 17).unwrap_or_default()
+    }
+
+    /// Split `response` into its status, `Content-Type` header and decoded JSON
+    /// body.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the body cannot be read or is not JSON.
+    pub async fn into_parts(
+        response: Response,
+    ) -> Result<(StatusCode, Option<String>, Value), Box<dyn Error>> {
+        let status = response.status();
+        let content_type = response
+            .headers()
+            .get(header::CONTENT_TYPE)
+            .and_then(|value| value.to_str().ok())
+            .map(str::to_owned);
+        let bytes = to_bytes(response.into_body(), usize::MAX).await?;
+        let body = serde_json::from_slice(&bytes)?;
+        Ok((status, content_type, body))
+    }
+
+    /// Split `response` into its status and decoded JSON body.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the body cannot be read or is not JSON.
+    pub async fn into_status_and_body(
+        response: Response,
+    ) -> Result<(StatusCode, Value), Box<dyn Error>> {
+        let status = response.status();
+        let bytes = to_bytes(response.into_body(), usize::MAX).await?;
+        Ok((status, serde_json::from_slice(&bytes)?))
     }
 }

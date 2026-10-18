@@ -189,9 +189,10 @@ material. The `#[utoipa::path(...)]` declaration contract lives in the [API sect
 | `STY-RUST-078` | Configuration     | A configuration value that is **present but malformed or out of range** fails startup: a reader falls back to a default only when the key is absent, and propagates every other read or validation error.                                                                                                                                                                                                                                                                                                                              | [§ 10](#10-configuration)                                        |
 | `STY-RUST-079` | Repository        | A repository persists and queries exactly one aggregate; a port that spans two aggregates is split per aggregate.                                                                                                                                                                                                                                                                                                                                                                                                                      | [§ 8](#8-repository)                                             |
 | `STY-RUST-080` | Repository        | A filter field is named after the aggregate field it constrains, e.g. `UserFilter.user_id` for `User::user_id()`.                                                                                                                                                                                                                                                                                                                                                                                                                      |                                                                  |
-| `STY-RUST-081` | Repository        | A query whose result carries data the aggregate does not declare returns a dedicated read-model type; the use case never stitches it from per-aggregate lookups.                                                                                                                                                                                                                                                                                                                                                                       |                                                                  |
+| `STY-RUST-081` | Repository        | The classic `search` returns the aggregate, never a summary or a detail the port declares; the application assembles the representation.                                                                                                                                                                                                                                                                                                                                                                                               |                                                                  |
 | `STY-RUST-082` | REST handlers     | Shared representations, links and helpers live in the bounded context module file (`<context>.rs`); a context folder holds only endpoint files, and an endpoint file imports no `<context>::<operation>` submodule — it takes shared items from the `<context>.rs` module file and `hal`.                                                                                                                                                                                                                                              |                                                                  |
 | `STY-RUST-083` | REST handlers     | `rest/` holds only the known REST infrastructure (`api_error.rs`, `app_state.rs`, `hal.rs`, `handler.rs`, `handler`, `middleware.rs`, `middleware`); `handler/` holds only `get_health.rs` plus each bounded context's `<context>.rs` module file and `<context>/` endpoint folder.                                                                                                                                                                                                                                                    |                                                                  |
+| `STY-RUST-084` | Domain models     | A domain model names its fields for the concept it models, not for the SQL column that stores it: the aggregate's own key is `id`, and a reference to another model is named after that model. The SQL schema is not the source of truth for domain naming.                                                                                                                                                                                                                                                                            |                                                                  |
 
 ---
 
@@ -468,7 +469,10 @@ let user_id = match token_provider.validate(token).await {
 
 ##### 3.1 Getter and setter
 
-Accessors are named after the field they expose.
+Accessors are named after the field they expose, and the field is named for the concept the model holds: the SQL column
+behind it is not part of the name (`STY-RUST-084`). An aggregate's own key is `id`; a reference to another model is
+named after that model (`recording_id`, `medium_id`). Accessors that predate the rule (`Gallery::gallery_id`,
+`Upload::upload_id`, …) are renamed as their aggregate is next touched.
 
 ```rust
 impl User {
@@ -869,6 +873,11 @@ explicit mutators when a whole-row upsert would be wrong — for example `Upload
 a child row (`record_chunk`) and transitions the upload to finished under a guard (`finish`), so no method rewrites a
 stale copy of the whole aggregate.
 
+The classic `search` is the aggregate query: it returns the aggregate (`STY-RUST-081`). The port declares no read model
+for it — a summary or a detail the representation needs is assembled by the application from the aggregate, never
+returned by the port and never stitched from per-aggregate lookups. A query that reads an aggregate's child collection
+is named for the child (`GalleryRepository::search_items`), which is what distinguishes it from the classic query.
+
 ---
 
 ##### 8.2 Repository adapter
@@ -887,8 +896,8 @@ A repository port file declares, in order:
 1. The filter struct(s) — one or more `*Filter` structs.
 2. The `<Aggregate>Repository` trait.
 
-Anything else the file needs — a read model returned by `search`, or the `#[cfg(test)]` `&mut T` impl — follows the
-trait.
+Anything else the file needs — the `#[cfg(test)]` `&mut T` impl — follows the trait. A port declares no read model for a
+query (`STY-RUST-081`).
 
 The `STY-RUST-051` and `STY-RUST-052` checks in `script/rule_enforcer.sh` enforce this order.
 
@@ -2414,11 +2423,16 @@ sanctioned exception to [TEST-001](#unit-test) (a test module lives with the cod
 (shared test fixtures are exempt from the extract-function rule).
 
 It holds the fixtures the in-crate tests share: the secrets `SECRET_PASSWORD` and `TEST_JWT_SECRET`; the unit-of-work
-doubles `TestUnitOfWork`/`TestUow`, `TestUnitOfWorkFactory`/`TestFactory`, and their builders `unit_of_work_factory`,
-`asset_factory`, `asset_unit_of_work`, `gallery_factory`, `gallery_unit_of_work`, and `configuration_with_jwt_secret`;
-the harnesses `AssetFactoryHarness` and `GalleryFactoryHarness`; the app-state builders `app_state`,
-`app_state_with_identity`, `app_state_with_user`, `app_state_with_asset`, `app_state_with_library`; and the response
-assertion helper `error_message_of`.
+double `TestUnitOfWork`/`TestUow` and its factory double `TestUnitOfWorkFactory`/`TestFactory`, wrapped by
+`AssetFactoryHarness::new` and `GalleryFactoryHarness::new`; `configuration_with_jwt_secret`; the app-state builders
+`app_state`, `app_state_with_identity`, `app_state_with_user`, `app_state_with_asset`, `app_state_with_library`; the
+album release date `album_release_date`; and the response helpers `error_message_of`, `into_parts` and
+`into_status_and_body`.
+
+`TestUnitOfWork` implements `Default`, and a test names only the repositories it stubs —
+`TestUnitOfWork { galleries, ..TestUnitOfWork::default() }` — so adding a repository to a unit of work changes this
+module, the context's `UnitOfWork` implementation, and the tests of the use cases that reach it, never the test modules
+of the other use cases.
 
 Helpers are never scattered into per-module files — for example a `test_helper.rs` beside the code under test, or a
 second helper module. A new shared helper is added to this single module, and only with the developer's explicit
@@ -2802,14 +2816,15 @@ This section governs the examples, diagrams, citations, routes, excerpts and bus
 publishes. It keeps every published example traceable to the code it restates, so a reader can verify it and a reviewer
 can catch it going stale.
 
-| ID        | Section               | Rule                                                                                                                                                                                                                                                               | More info                          |
-| --------- | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------- |
-| `DOC-001` | Code examples         | An example that restates production code names the source path it is drawn from, is updated in the same change as that code, and may elide omitted regions with a `// [...]` marker.                                                                               | [§ 1](#1-code-examples)            |
-| `DOC-002` | Domain model diagrams | A domain model diagram that the documentation publishes represents the domain's real-world concepts — conceptual classes, typed attributes, and named associations with multiplicity — and never software methods, database tables or other implementation detail. | [§ 2](#2-domain-model-diagrams)    |
-| `DOC-003` | Citations             | Documentation (`docs/`, the root Markdown) and production source (`src/`) cite only paths the repository tracks; they never name the local, untracked `.artifacts/` scratch directory, which a reader cannot resolve.                                              | [§ 3](#3-citations)                |
-| `DOC-004` | Published route       | A route the documentation publishes names a path the generated specification declares in `docs/openapi.json`.                                                                                                                                                      | [§ 4](#4-published-routes)         |
-| `DOC-005` | Business use cases    | Every business use case entry in [UseCases.md](UseCases.md) carries the § 5 field headings in the documented order, carries no `### Application use case(s)` heading, and is numbered sequentially `UC-001`, `UC-002`, ….                                          | [§ 5](#5-business-use-case-format) |
-| `DOC-006` | Code examples         | An example that illustrates the § 3 (API) endpoint-handler contract rather than restating a cited source file has no source to cite, but is kept in step with § 3: when a rule it illustrates changes, the example changes with it.                                | [§ 1](#1-code-examples)            |
+| ID        | Section               | Rule                                                                                                                                                                                                                                                                                                    | More info                          |
+| --------- | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------- |
+| `DOC-001` | Code examples         | An example that restates production code names the source path it is drawn from, is updated in the same change as that code, and may elide omitted regions with a `// [...]` marker.                                                                                                                    | [§ 1](#1-code-examples)            |
+| `DOC-002` | Domain model diagrams | A domain model diagram that the documentation publishes represents the domain's real-world concepts — conceptual classes, typed attributes, and named associations with multiplicity — and never software methods, database tables or other implementation detail.                                      | [§ 2](#2-domain-model-diagrams)    |
+| `DOC-003` | Citations             | Documentation (`docs/`, the root Markdown) and production source (`src/`) cite only paths the repository tracks; they never name the local, untracked `.artifacts/` scratch directory, which a reader cannot resolve.                                                                                   | [§ 3](#3-citations)                |
+| `DOC-004` | Published route       | A route the documentation publishes names a path the generated specification declares in `docs/openapi.json`.                                                                                                                                                                                           | [§ 4](#4-published-routes)         |
+| `DOC-005` | Business use cases    | Every business use case entry in [UseCases.md](UseCases.md) carries the § 5 field headings in the documented order, carries no `### Application use case(s)` heading, and is numbered sequentially `UC-001`, `UC-002`, ….                                                                               | [§ 5](#5-business-use-case-format) |
+| `DOC-006` | Code examples         | An example that illustrates the § 3 (API) endpoint-handler contract rather than restating a cited source file has no source to cite, but is kept in step with § 3: when a rule it illustrates changes, the example changes with it.                                                                     | [§ 1](#1-code-examples)            |
+| `DOC-007` | Business use cases    | A business use case entry states intent and outcome in business terms: it never names a representation format or its mechanics (`HAL`, `application/hal+json`, JSON, `_links`, `_embedded`) nor an HTTP status code; the REST shape belongs to the [API section](#api) and the generated specification. | [§ 5](#5-business-use-case-format) |
 
 ---
 
@@ -2961,6 +2976,10 @@ Each entry carries the field headings below, in this order. Only `### Secondary 
 An entry never carries an `### Application use case(s)` heading: the catalog describes capabilities, not the code that
 implements them. A business use case is implemented by one or more application use cases, governed by
 [§ 9 (Use cases)](#9-use-cases).
+
+A use case stays in business vocabulary. A representation format or its mechanics (`HAL`, `application/hal+json`, JSON,
+`_links`, `_embedded`) and an HTTP status code belong to the [API section](#api) and the generated specification, so an
+entry names neither (`DOC-007`).
 
 ---
 

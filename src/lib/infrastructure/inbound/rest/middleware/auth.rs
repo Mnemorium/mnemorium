@@ -125,7 +125,7 @@ mod tests {
 
     use axum::Json;
     use axum::body::Body;
-    use axum::body::to_bytes;
+
     use axum::extract::Request;
     use axum::http::HeaderValue;
     use axum::http::StatusCode;
@@ -146,6 +146,7 @@ mod tests {
     use crate::infrastructure::inbound::rest::app_state::AppState;
     use crate::test_helpers::app_state;
     use crate::test_helpers::error_message_of;
+    use crate::test_helpers::into_status_and_body;
 
     /// Echo the caller identifier the extractor recovered from the request.
     async fn stub(caller: AuthenticatedUser) -> Json<Value> {
@@ -183,14 +184,6 @@ mod tests {
         Ok(router.oneshot(request).await?)
     }
 
-    /// Split `response` into its status and decoded JSON body.
-    async fn into_parts(response: Response) -> Result<(StatusCode, Value), Box<dyn Error>> {
-        let status = response.status();
-        let bytes = to_bytes(response.into_body(), usize::MAX).await?;
-        let body = serde_json::from_slice(&bytes)?;
-        Ok((status, body))
-    }
-
     /// Make the mocked provider accept `token` for `user_id`.
     fn expect_valid_token(
         provider: &mut MockTokenProvider,
@@ -212,7 +205,7 @@ mod tests {
         expect_valid_token(&mut provider, "valid-token", 42);
 
         // Act
-        let (status, payload) = into_parts(
+        let (status, payload) = into_status_and_body(
             send(
                 router_with(provider)?,
                 Some(HeaderValue::from_static("Bearer valid-token")),
@@ -315,7 +308,7 @@ mod tests {
         expect_valid_token(&mut provider, "valid-token", 7);
 
         // Act
-        let (status, payload) = into_parts(
+        let (status, payload) = into_status_and_body(
             send(
                 router_with(provider)?,
                 Some(HeaderValue::from_static("bearer valid-token")),
