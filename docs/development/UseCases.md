@@ -632,8 +632,7 @@ each medium sequences.
 - A medium belongs to exactly one album and is addressed by its album-scoped medium index.
 - A track is the placement of a recording in a medium; it is addressed by its medium index and track index, and a track
   of another album or medium is reported as not found.
-- A track's representation exposes the track index as its identifier and the shared recording's identifier as
-  `recording_id`.
+- A track shows its position within the medium that sequences it and the recording it places.
 - A track's name is the name of its music recording.
 
 ### Happy path
@@ -642,27 +641,25 @@ each medium sequences.
 2. The system verifies the caller's account still exists.
 3. The system returns the matching albums with their identifier, name, release date, production type, genres, track
    count and mediums, each medium carrying its index, type and track count.
-4. The caller asks to browse one medium of one specific album by its `album_id` and `medium_index`.
+4. The caller asks to browse one medium of one specific album.
 5. The system verifies the album and medium exist and returns the medium.
-6. The caller asks to browse the tracks of that medium by its `album_id` and `medium_index`.
-7. The system verifies the album and medium exist and returns the medium's tracks in play order, each carrying its track
-   index as `id`, its `recording_id` and its `medium_index`.
-8. The caller requests one track of the medium by its `album_id`, `medium_index` and `track_index`.
+6. The caller asks to browse the tracks of that medium.
+7. The system verifies the album and medium exist and returns the medium's tracks in play order, each showing its
+   position in the medium and the recording it places.
+8. The caller requests one track of the medium by its position.
 9. The system verifies the album, medium and track exist and returns the track.
 
 ### Alternative flow
 
 - 1a. A request filter is invalid (an unknown, malformed or out-of-range query parameter); the system rejects the
   request.
-- 4a. The `album_id` is not a valid identifier, or the `medium_index` is not a valid 8-bit unsigned integer; the system
-  rejects the request.
+- 4a. The album identifier is not valid, or the medium index is not a valid index; the system rejects the request.
 - 4b. No album matches the requested identifier, or the album has no medium at the requested index; the system rejects
   the request.
-- 6a. The `album_id` is not a valid identifier, or the `medium_index` is not a valid 8-bit unsigned integer; the system
-  rejects the request.
+- 6a. The album identifier is not valid, or the medium index is not a valid index; the system rejects the request.
 - 6b. No album matches the requested identifier, or the album has no medium at the requested index; the system rejects
   the request.
-- 8a. The `medium_index` or `track_index` is not a valid 8-bit unsigned integer; the system rejects the request.
+- 8a. The medium index or track index is not a valid index; the system rejects the request.
 - 8b. No track of the medium matches the requested index; the system rejects the request.
 
 ### Post condition(s)

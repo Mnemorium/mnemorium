@@ -240,8 +240,12 @@ identity.
   `RepositoryError::DataIntegrityViolation` and surface as the existing `500` path.
 - Missing album, medium, or track is a valid read outcome, not an error: `404`.
 - Malformed path values are rejected by the handler before the use case: `400`.
-- No new logging sites. The adapter's existing error mapping owns the data-integrity log; the use cases keep mapping
-  repository failures to `Unknown` and do not log. The deleted
+- No silent failures (`OBS-002`, `OBS-006`): the adapter emits `output_validation_failed` (field `reason`) once via
+  `stored_data_invalid` when a stored value fails to decode or validate; the handler emits `input_validation_failed`
+  (fields `field` and `reason`, reason `invalid_index`) once via `parse_index` when a music index is malformed, reusing
+  the handler's existing rejection log; and `ListAlbumTracks` emits `application_error` (field `operation`) when it
+  originates an internal `Unknown`. The use cases otherwise keep mapping repository failures to `Unknown` and do not
+  log, so each failure is logged once at the layer that owns it. The deleted
   `anyhow!("the track's recording is missing from its medium")` branch removes a second classification of the same
   integrity problem.
 
