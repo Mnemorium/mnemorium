@@ -2,20 +2,15 @@
   "components": {
     "schemas": {
       "AlbumLinks": {
-        "description": "HAL links exposed by a music album representation.\n\nThe `self` link addresses the album; the `tracks` link exposes the track\ncollection of the album (`API-037`).",
+        "description": "HAL links exposed by a music album representation.\n\nThe `self` link addresses the album; the album's mediums are embedded in the\nrepresentation and each medium carries its own links (`API-037`).",
         "properties": {
           "self": {
             "$ref": "#/components/schemas/Link",
             "description": "Link to the album resource itself."
-          },
-          "tracks": {
-            "$ref": "#/components/schemas/Link",
-            "description": "Link to the track collection of the album."
           }
         },
         "required": [
-          "self",
-          "tracks"
+          "self"
         ],
         "type": "object"
       },
@@ -85,7 +80,7 @@
         "properties": {
           "_links": {
             "$ref": "#/components/schemas/AlbumLinks",
-            "description": "Links to the album and its track collection."
+            "description": "Links to the album."
           },
           "genres": {
             "description": "Genres of the album, ordered by genre identifier.",
@@ -97,6 +92,13 @@
           "id": {
             "$ref": "#/components/schemas/i64",
             "description": "Unique identifier of the album."
+          },
+          "mediums": {
+            "description": "Mediums of the album, ordered by medium index.",
+            "items": {
+              "$ref": "#/components/schemas/MediumResponse"
+            },
+            "type": "array"
           },
           "name": {
             "description": "Name of the album.",
@@ -123,6 +125,7 @@
           "genres",
           "id",
           "_links",
+          "mediums",
           "name",
           "release_date",
           "track_count"
@@ -557,6 +560,60 @@
         ],
         "type": "object"
       },
+      "MediumLinks": {
+        "description": "HAL links exposed by a music medium representation.\n\nThe `self` link addresses the medium, the `album` link the album that holds\nit, and the `tracks` link the medium's track collection (`API-034`,\n`API-037`).",
+        "properties": {
+          "album": {
+            "$ref": "#/components/schemas/Link",
+            "description": "Link to the album that holds the medium."
+          },
+          "self": {
+            "$ref": "#/components/schemas/Link",
+            "description": "Link to the medium resource itself."
+          },
+          "tracks": {
+            "$ref": "#/components/schemas/Link",
+            "description": "Link to the track collection of the medium."
+          }
+        },
+        "required": [
+          "album",
+          "self",
+          "tracks"
+        ],
+        "type": "object"
+      },
+      "MediumResponse": {
+        "description": "One medium of a music album.",
+        "properties": {
+          "_links": {
+            "$ref": "#/components/schemas/MediumLinks",
+            "description": "Links to the medium, its album and its track collection."
+          },
+          "index": {
+            "description": "Album-scoped index of the medium.",
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "track_count": {
+            "description": "Number of recordings the medium sequences.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": {
+            "description": "Stored type of the medium (`CD`).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "index",
+          "_links",
+          "type",
+          "track_count"
+        ],
+        "type": "object"
+      },
       "PatchCredentialRequest": {
         "description": "Payload to change the password behind a credential.",
         "properties": {
@@ -870,11 +927,15 @@
         "type": "object"
       },
       "TrackLinks": {
-        "description": "HAL links exposed by a music track representation.\n\nThe `self` link addresses the track; the `album` link exposes the album the\ntrack belongs to (`API-034`, `API-037`).",
+        "description": "HAL links exposed by a music track representation.\n\nThe `self` link addresses the track, the `album` link the album that holds\nit, and the `medium` link the medium that sequences it (`API-034`,\n`API-037`).",
         "properties": {
           "album": {
             "$ref": "#/components/schemas/Link",
             "description": "Link to the album the track belongs to."
+          },
+          "medium": {
+            "$ref": "#/components/schemas/Link",
+            "description": "Link to the medium the track is placed in."
           },
           "self": {
             "$ref": "#/components/schemas/Link",
@@ -883,6 +944,7 @@
         },
         "required": [
           "album",
+          "medium",
           "self"
         ],
         "type": "object"
@@ -909,11 +971,11 @@
         "type": "object"
       },
       "TrackResponse": {
-        "description": "One music track of an album.",
+        "description": "One music track of an album medium.",
         "properties": {
           "_links": {
             "$ref": "#/components/schemas/TrackLinks",
-            "description": "Links to the track and its album."
+            "description": "Links to the track, its album and its medium."
           },
           "album_id": {
             "$ref": "#/components/schemas/i64",
@@ -928,8 +990,10 @@
             "type": "string"
           },
           "id": {
-            "$ref": "#/components/schemas/i64",
-            "description": "Unique identifier of the track."
+            "description": "Track index: the position of the track within its medium.",
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
           },
           "isrc_code": {
             "description": "ISRC code of the recording, when set.",
@@ -939,7 +1003,7 @@
             ]
           },
           "medium_index": {
-            "description": "Index of the medium the track is positioned on.",
+            "description": "Album-scoped index of the medium the track is placed in.",
             "format": "int32",
             "minimum": 0,
             "type": "integer"
@@ -951,10 +1015,9 @@
               "null"
             ]
           },
-          "track_index": {
-            "description": "Position of the track within its medium.",
-            "format": "int64",
-            "type": "integer"
+          "recording_id": {
+            "$ref": "#/components/schemas/i64",
+            "description": "Identifier of the shared recording the track places."
           }
         },
         "required": [
@@ -964,7 +1027,7 @@
           "id",
           "_links",
           "medium_index",
-          "track_index"
+          "recording_id"
         ],
         "type": "object"
       },
@@ -2909,18 +2972,29 @@
         ]
       }
     },
-    "/library/music/album/{album_id}/track": {
+    "/library/music/album/{album_id}/medium/{medium_index}": {
       "get": {
-        "description": "Any authenticated caller may read an album's tracks; the album is not owned\nand carries no visibility flag. The collection is returned in play order,\nordered by ascending medium index then track index.",
-        "operationId": "get_album_track_list",
+        "description": "Any authenticated caller may read a medium; the album is not owned and\ncarries no visibility flag. The medium is scoped to the album named in the\npath, so a medium of another album is reported as missing.",
+        "operationId": "get_album_medium",
         "parameters": [
           {
-            "description": "Identifier of the album whose tracks are listed",
+            "description": "Identifier of the album the medium belongs to",
             "in": "path",
             "name": "album_id",
             "required": true,
             "schema": {
               "$ref": "#/components/schemas/i64"
+            }
+          },
+          {
+            "description": "Album-scoped index of the medium to fetch",
+            "in": "path",
+            "name": "medium_index",
+            "required": true,
+            "schema": {
+              "format": "int32",
+              "minimum": 0,
+              "type": "integer"
             }
           }
         ],
@@ -2929,11 +3003,11 @@
             "content": {
               "application/hal+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/TrackListResponse"
+                  "$ref": "#/components/schemas/MediumResponse"
                 }
               }
             },
-            "description": "Tracks of the album"
+            "description": "Medium found"
           },
           "400": {
             "content": {
@@ -2943,7 +3017,7 @@
                 }
               }
             },
-            "description": "Invalid music album identifier"
+            "description": "Invalid music album identifier or medium index"
           },
           "401": {
             "content": {
@@ -2963,7 +3037,7 @@
                 }
               }
             },
-            "description": "Unknown music album"
+            "description": "Unknown music album, or medium of the album"
           },
           "500": {
             "content": {
@@ -2981,15 +3055,104 @@
             "bearer_auth": []
           }
         ],
-        "summary": "List the tracks of a music album",
+        "summary": "Fetch a music medium",
         "tags": [
           "library"
         ]
       }
     },
-    "/library/music/album/{album_id}/track/{track_id}": {
+    "/library/music/album/{album_id}/medium/{medium_index}/track": {
       "get": {
-        "description": "Any authenticated caller may read a track; the album is not owned and carries\nno visibility flag. The track is scoped to the album named in the path, so a\ntrack of another album is reported as missing.",
+        "description": "Any authenticated caller may read a medium's tracks; the album is not owned\nand carries no visibility flag. The collection is returned in play order,\nordered by ascending track index.",
+        "operationId": "get_album_track_list",
+        "parameters": [
+          {
+            "description": "Identifier of the album whose medium's tracks are listed",
+            "in": "path",
+            "name": "album_id",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/i64"
+            }
+          },
+          {
+            "description": "Album-scoped index of the medium whose tracks are listed",
+            "in": "path",
+            "name": "medium_index",
+            "required": true,
+            "schema": {
+              "format": "int32",
+              "minimum": 0,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrackListResponse"
+                }
+              }
+            },
+            "description": "Tracks of the album medium"
+          },
+          "400": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Invalid music album identifier or medium index"
+          },
+          "401": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid credentials"
+          },
+          "404": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unknown music album, or medium of the album"
+          },
+          "500": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unexpected error"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ],
+        "summary": "List the tracks of a music album medium",
+        "tags": [
+          "library"
+        ]
+      }
+    },
+    "/library/music/album/{album_id}/medium/{medium_index}/track/{track_index}": {
+      "get": {
+        "description": "Any authenticated caller may read a track; the album is not owned and carries\nno visibility flag. The track is scoped to the album and medium named in the\npath, so a track of another album or medium is reported as missing.",
         "operationId": "get_album_track",
         "parameters": [
           {
@@ -3002,12 +3165,25 @@
             }
           },
           {
-            "description": "Identifier of the track to fetch",
+            "description": "Album-scoped index of the medium the track is placed in",
             "in": "path",
-            "name": "track_id",
+            "name": "medium_index",
             "required": true,
             "schema": {
-              "$ref": "#/components/schemas/i64"
+              "format": "int32",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Position of the track within its medium",
+            "in": "path",
+            "name": "track_index",
+            "required": true,
+            "schema": {
+              "format": "int32",
+              "minimum": 0,
+              "type": "integer"
             }
           }
         ],
@@ -3030,7 +3206,7 @@
                 }
               }
             },
-            "description": "Invalid music album or track identifier"
+            "description": "Invalid music album, medium or track index"
           },
           "401": {
             "content": {
@@ -3050,7 +3226,7 @@
                 }
               }
             },
-            "description": "Unknown music album, or unknown track of the album"
+            "description": "Unknown music album, medium, or track of the medium"
           },
           "500": {
             "content": {

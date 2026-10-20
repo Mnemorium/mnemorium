@@ -113,6 +113,22 @@ impl From<Error> for UnitOfWorkError {
     }
 }
 
+/// Emit the catalogued `output_validation_failed` event for stored data that
+/// fails to decode or validate, and return the mapped repository error.
+///
+/// The adapter owns the detail of a stored value that no longer matches the
+/// domain (`OBS-002`). Only the stable `reason` classification reaches the
+/// sink; the stored value and the decoder detail never do (`OBS-003`).
+pub(crate) fn stored_data_invalid(reason: &'static str) -> RepositoryError {
+    warn!(
+        target: "security",
+        event = "output_validation_failed",
+        reason = reason,
+        "rejected stored data that failed validation"
+    );
+    RepositoryError::DataIntegrityViolation
+}
+
 /// Emit the catalogued event for a classified `sqlx` failure (`OBS-006`).
 ///
 /// An expected constraint is a constraint outcome a use case handles as a

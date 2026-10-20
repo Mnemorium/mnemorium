@@ -1905,17 +1905,17 @@ entity music_album {
 entity music_medium {
    * music_medium_id: INTEGER <<PK>>
    --
-   * music_album_id: INTEGER <<FK, UN, NN>>
-   * type: TEXT <<NN>>
-   * medium_index: INTEGER <<NN, DF(1)>>
+   * music_album_id: INTEGER <<FK, NN, UQ(uq_music_medium_album_medium_index)>>
+   * type: TEXT <<NN, CC(type IN ('CD'))>>
+   * medium_index: INTEGER <<NN, DF(1), CC(medium_index BETWEEN 0 AND 255), UQ(uq_music_medium_album_medium_index)>>
 }
 
 entity music_track {
    * music_track_id: INTEGER <<PK>>
    --
-   * track_index: INTEGER <<NN, CC(track_index >= 0)>>
-   * music_playlist_id: INTEGER <<FK>>
-   * music_medium_id: INTEGER <<FK>>
+   * track_index: INTEGER <<NN, CC(track_index >= 0), CC(music_medium_id IS NULL OR track_index BETWEEN 0 AND 255)>>
+   * music_playlist_id: INTEGER <<FK, CC((music_medium_id IS NOT NULL) <> (music_playlist_id IS NOT NULL)), IX(uq_music_track_playlist_track_index)>>
+   * music_medium_id: INTEGER <<FK, CC((music_medium_id IS NOT NULL) <> (music_playlist_id IS NOT NULL)), IX(uq_music_track_medium_track_index)>>
    * music_recording_id: INTEGER <<FK, NN>>
 }
 

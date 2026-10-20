@@ -1,7 +1,6 @@
 use axum::extract::Path;
 use axum::extract::State;
 use axum::response::Response;
-use tracing::warn;
 
 use crate::application::port::get_album_track::GetAlbumTrackCommand;
 use crate::domain::alias::NumericID;
@@ -11,21 +10,23 @@ use crate::infrastructure::inbound::rest::app_state::AppState;
 use crate::infrastructure::inbound::rest::hal::hal_json;
 use crate::infrastructure::inbound::rest::handler::library::TrackResponse;
 use crate::infrastructure::inbound::rest::handler::library::parse_album_id;
+use crate::infrastructure::inbound::rest::handler::library::parse_index;
 use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 
-/// Fetch one track of a music album by its identifiers.
+/// Fetch one track of one medium of a music album by its indexes.
 ///
 /// Any authenticated caller may read a track; the album is not owned and carries
-/// no visibility flag. The track is scoped to the album named in the path, so a
-/// track of another album is reported as missing.
+/// no visibility flag. The track is scoped to the album and medium named in the
+/// path, so a track of another album or medium is reported as missing.
 #[utoipa::path(
     get,
     operation_id = "get_album_track",
-    path = "/library/music/album/{album_id}/track/{track_id}",
+    path = "/library/music/album/{album_id}/medium/{medium_index}/track/{track_index}",
     tag = "library",
     params(
         ("album_id" = NumericID, Path, description = "Identifier of the album the track belongs to"),
-        ("track_id" = NumericID, Path, description = "Identifier of the track to fetch"),
+        ("medium_index" = u8, Path, description = "Album-scoped index of the medium the track is placed in"),
+        ("track_index" = u8, Path, description = "Position of the track within its medium"),
     ),
     responses(
         (
@@ -38,7 +39,7 @@ use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
             status = BAD_REQUEST,
             body = ErrorBody,
             content_type = "application/hal+json",
-            description = "Invalid music album or track identifier"
+            description = "Invalid music album, medium or track index"
         ),
         (
             status = UNAUTHORIZED,
@@ -50,7 +51,7 @@ use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
             status = NOT_FOUND,
             body = ErrorBody,
             content_type = "application/hal+json",
-            description = "Unknown music album, or unknown track of the album"
+            description = "Unknown music album, medium, or track of the medium"
         ),
         (
             status = INTERNAL_SERVER_ERROR,
@@ -65,31 +66,29 @@ use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
     summary = "Fetch a music track"
 )]
 pub async fn get_album_track(
-    Path((album_id_value, track_id_value)): Path<(String, String)>,
+    Path((album_id_value, medium_index_value, track_index_value)): Path<(String, String, String)>,
     State(state): State<AppState>,
     caller: AuthenticatedUser,
 ) -> Result<Response, ApiError> {
     let album_id = parse_album_id(&album_id_value)?;
-    let track_id = track_id_value.parse::<NumericID>().map_err(|_| {
-        // The malformed value and the parser detail never reach the log
-        // (`OBS-003`); only the classification and its declared fields do
-        // (`OBS-006`).
-        warn!(
-            target: "security",
-            event = "input_validation_failed",
-            field = "track_id",
-            reason = "invalid_identifier",
-            "rejected a malformed music track identifier"
-        );
-        ApiError::BadRequest("invalid music track identifier".to_owned())
-    })?;
+    let medium_index = parse_index(
+        &medium_index_value,
+        "medium_index",
+        "invalid music medium index",
+    )?;
+    let track_index = parse_index(
+        &track_index_value,
+        "track_index",
+        "invalid music track index",
+    )?;
     let response = state
         .library_use_case_factory()
         .get_album_track()
         .execute(GetAlbumTrackCommand::new(
             caller.user_id(),
             album_id,
-            track_id,
+            medium_index,
+            track_index,
         ))
         .await?;
     Ok(hal_json(TrackResponse::from(response)))
@@ -123,14 +122,16 @@ mod tests {
     use crate::test_helpers::error_message_of;
     use crate::test_helpers::into_parts;
 
-    /// Send a GET to `/api/v1/library/music/album/{album}/track/{track}` on
+    /// Send a GET to
+    /// `/api/v1/library/music/album/{album}/medium/{medium}/track/{track}` on
     /// behalf of `caller_id`, injecting the caller identifier the way the auth
     /// middleware does.
     async fn send(
         use_case: MockGetAlbumTrackUseCase,
         caller_id: NumericID,
         album_id: &str,
-        track_id: &str,
+        medium_index: &str,
+        track_index: &str,
     ) -> Result<Response, Box<dyn Error>> {
         let mut factory = MockLibraryUseCaseFactory::new();
         factory
@@ -141,7 +142,7 @@ mod tests {
         let mut request = Request::builder()
             .method("GET")
             .uri(format!(
-                "/api/v1/library/music/album/{album_id}/track/{track_id}"
+                "/api/v1/library/music/album/{album_id}/medium/{medium_index}/track/{track_index}"
             ))
             .body(Body::empty())?;
         request
@@ -150,7 +151,7 @@ mod tests {
 
         let router = axum::Router::new()
             .route(
-                "/api/v1/library/music/album/{album_id}/track/{track_id}",
+                "/api/v1/library/music/album/{album_id}/medium/{medium_index}/track/{track_index}",
                 get(get_album_track),
             )
             .with_state(app_state_with_library(Arc::new(factory))?);
@@ -165,15 +166,18 @@ mod tests {
             .expect_execute()
             .times(1)
             .withf(|command| {
-                command.caller_id() == 1 && command.album_id() == 7 && command.track_id() == 101
+                command.caller_id() == 1
+                    && command.album_id() == 7
+                    && command.medium_index() == 2
+                    && command.track_index() == 1
             })
             .return_once(|_| {
                 Box::pin(async {
                     Ok(GetAlbumTrackResponse::new(
-                        101,
                         7,
+                        2,
                         1,
-                        1,
+                        30,
                         201,
                         Some("So What".to_owned()),
                         Some("USRC17607839".to_owned()),
@@ -184,7 +188,7 @@ mod tests {
 
         // Act
         let (status, content_type, payload) =
-            into_parts(send(use_case, 1, "7", "101").await?).await?;
+            into_parts(send(use_case, 1, "7", "2", "1").await?).await?;
 
         // Assert
         assert_eq!(status, StatusCode::OK);
@@ -193,13 +197,16 @@ mod tests {
             payload,
             json!({
                 "_links": {
-                    "self": { "href": "/api/v1/library/music/album/7/track/101" },
-                    "album": { "href": "/api/v1/library/music/album/7" }
+                    "self": {
+                        "href": "/api/v1/library/music/album/7/medium/2/track/1"
+                    },
+                    "album": { "href": "/api/v1/library/music/album/7" },
+                    "medium": { "href": "/api/v1/library/music/album/7/medium/2" }
                 },
-                "id": 101i64,
+                "id": 1u8,
                 "album_id": 7i64,
-                "medium_index": 1u32,
-                "track_index": 1i64,
+                "medium_index": 2u8,
+                "recording_id": 30i64,
                 "file_id": 201i64,
                 "name": "So What",
                 "isrc_code": "USRC17607839",
@@ -210,19 +217,22 @@ mod tests {
     }
 
     #[rstest]
-    #[case::album("abc", "101", "invalid music album identifier")]
-    #[case::track("7", "abc", "invalid music track identifier")]
+    #[case::album("abc", "2", "1", "invalid music album identifier")]
+    #[case::medium("7", "abc", "1", "invalid music medium index")]
+    #[case::track("7", "2", "abc", "invalid music track index")]
+    #[case::track_out_of_range("7", "2", "256", "invalid music track index")]
     #[tokio::test]
     async fn get_album_track_malformed_identifier_returns_bad_request(
         #[case] album_id: &str,
-        #[case] track_id: &str,
+        #[case] medium_index: &str,
+        #[case] track_index: &str,
         #[case] message: &str,
     ) -> Result<(), Box<dyn Error>> {
         // Arrange
         let use_case = MockGetAlbumTrackUseCase::new();
 
         // Act
-        let response = send(use_case, 1, album_id, track_id).await?;
+        let response = send(use_case, 1, album_id, medium_index, track_index).await?;
 
         // Assert
         assert_eq!(response.status(), StatusCode::BAD_REQUEST);
@@ -231,12 +241,12 @@ mod tests {
     }
 
     #[rstest]
-    #[case::unknown_album(GetAlbumTrackError::NoSuchAlbum, "999")]
-    #[case::unknown_track(GetAlbumTrackError::NoSuchTrack, "555")]
+    #[case::unknown_album(GetAlbumTrackError::NoSuchAlbum)]
+    #[case::unknown_medium(GetAlbumTrackError::NoSuchMedium)]
+    #[case::unknown_track(GetAlbumTrackError::NoSuchTrack)]
     #[tokio::test]
     async fn get_album_track_not_found_returns_not_found(
         #[case] error: GetAlbumTrackError,
-        #[case] track_id: &str,
     ) -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut use_case = MockGetAlbumTrackUseCase::new();
@@ -246,7 +256,7 @@ mod tests {
             .return_once(move |_| Box::pin(async move { Err(error) }));
 
         // Act
-        let response = send(use_case, 1, "7", track_id).await?;
+        let response = send(use_case, 1, "7", "2", "1").await?;
 
         // Assert
         assert_eq!(response.status(), StatusCode::NOT_FOUND);
@@ -263,7 +273,7 @@ mod tests {
             .return_once(|_| Box::pin(async { Err(GetAlbumTrackError::NoSuchCaller) }));
 
         // Act
-        let response = send(use_case, 999, "7", "101").await?;
+        let response = send(use_case, 999, "7", "2", "1").await?;
 
         // Assert
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
@@ -282,7 +292,7 @@ mod tests {
         let state = app_state_with_library(Arc::new(MockLibraryUseCaseFactory::new()))?;
         let request = Request::builder()
             .method("GET")
-            .uri("/music/album/7/track/101")
+            .uri("/music/album/7/medium/2/track/1")
             .body(Body::empty())?;
 
         // Act

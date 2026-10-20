@@ -149,6 +149,7 @@ mod tests {
     use crate::application::port::list_albums::ListAlbumsCommand;
     use crate::application::port::list_albums::ListAlbumsError;
     use crate::application::port::list_albums::ListAlbumsItem;
+    use crate::application::port::list_albums::ListAlbumsMediumItem;
     use crate::application::port::list_albums::ListAlbumsResponse;
     use crate::application::port::list_albums::ListAlbumsUseCase;
     use crate::application::port::list_albums::MockListAlbumsUseCase;
@@ -198,6 +199,7 @@ mod tests {
             Some(ProductionType::Studio),
             vec!["JAZZ".to_owned()],
             5,
+            vec![ListAlbumsMediumItem::new(1, "CD".to_owned(), 5)],
         )
     }
 
@@ -232,15 +234,24 @@ mod tests {
                 },
                 "items": [{
                     "_links": {
-                        "self": { "href": "/api/v1/library/music/album/7" },
-                        "tracks": { "href": "/api/v1/library/music/album/7/track" }
+                        "self": { "href": "/api/v1/library/music/album/7" }
                     },
                     "id": 7i64,
                     "name": "Kind of Blue",
                     "release_date": "1959-08-17",
                     "production_type": "STUDIO",
                     "genres": ["JAZZ"],
-                    "track_count": 5i64
+                    "track_count": 5i64,
+                    "mediums": [{
+                        "_links": {
+                            "self": { "href": "/api/v1/library/music/album/7/medium/1" },
+                            "album": { "href": "/api/v1/library/music/album/7" },
+                            "tracks": { "href": "/api/v1/library/music/album/7/medium/1/track" }
+                        },
+                        "index": 1u8,
+                        "type": "CD",
+                        "track_count": 5i64
+                    }]
                 }]
             })
         );

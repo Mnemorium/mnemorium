@@ -20,6 +20,40 @@ pub enum MusicRecordingError {
     Unknown(#[source] anyhow::Error),
 }
 
+/// Placement of a recording within the container that sequences it.
+///
+/// A recording is one entity; a track is the placement of that recording in a
+/// medium or a playlist. The index is the placement's address within its
+/// container, so two occurrences of one recording are distinct values.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum TrackIndex {
+    /// The recording is placed in an album medium, at this index.
+    MediumIndex(u8),
+    /// The recording is placed in a playlist, at this index.
+    PlaylistIndex(u32),
+}
+
+impl TrackIndex {
+    /// Return the medium index, when the placement is a medium placement.
+    #[must_use]
+    pub fn medium_index(self) -> Option<u8> {
+        match self {
+            Self::MediumIndex(index) => Some(index),
+            Self::PlaylistIndex(_) => None,
+        }
+    }
+
+    /// Return the playlist index, when the placement is a playlist placement.
+    #[must_use]
+    pub fn playlist_index(self) -> Option<u32> {
+        match self {
+            Self::PlaylistIndex(index) => Some(index),
+            Self::MediumIndex(_) => None,
+        }
+    }
+}
+
 /// A music recording.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MusicRecording {
@@ -31,6 +65,8 @@ pub struct MusicRecording {
     first_release_date: NaiveDate,
     /// Unique identifier of the recording.
     id: NumericID,
+    /// Placement of the recording within its container.
+    index: TrackIndex,
     /// ISRC code of the recording, when set.
     isrc_code: Option<String>,
     /// Identifiers of the music groups associated with the recording, when set.
@@ -62,6 +98,12 @@ impl MusicRecording {
     #[must_use]
     pub fn id(&self) -> NumericID {
         self.id
+    }
+
+    /// Return the placement of the recording within its container.
+    #[must_use]
+    pub fn index(&self) -> TrackIndex {
+        self.index
     }
 
     /// Return the ISRC code, if any.
@@ -110,6 +152,10 @@ impl MusicRecording {
     /// Returns [`MusicRecordingError::InvalidName`] when `name` is empty, and
     /// [`MusicRecordingError::InvalidIsrcCode`] when `isrc_code` is not exactly
     /// [`ISRC_CODE_LENGTH`] characters long.
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "try_new mirrors all recording columns plus the occurrence index"
+    )]
     pub fn try_new(
         id: NumericID,
         name: Option<String>,
@@ -118,6 +164,7 @@ impl MusicRecording {
         audio_id: NumericID,
         file_id: NumericID,
         music_group_ids: Option<Vec<NumericID>>,
+        index: TrackIndex,
     ) -> Result<Self, MusicRecordingError> {
         let validated_name = Self::validate_name(name)?;
         let validated_isrc_code = Self::validate_isrc_code(isrc_code)?;
@@ -130,6 +177,7 @@ impl MusicRecording {
             file_id,
             first_release_date,
             id,
+            index,
             isrc_code: validated_isrc_code,
             music_group_ids: normalized_music_group_ids,
             name: validated_name,

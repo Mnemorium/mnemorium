@@ -5,6 +5,7 @@ pub mod create_gallery;
 pub mod delete_gallery;
 pub mod delete_gallery_item;
 pub mod ensure_storage_directories;
+pub mod get_album_medium;
 pub mod get_album_track;
 pub mod get_current_user;
 pub mod get_gallery;

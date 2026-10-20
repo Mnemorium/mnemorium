@@ -499,12 +499,26 @@ def list_albums(server_url: str) -> Callable[[str, str], requests.Response]:
 
 
 @pytest.fixture
-def list_album_tracks(server_url: str) -> Callable[[str, int], requests.Response]:
-    """Return a callable that GETs the tracks of a music album by identifier."""
+def get_album_medium(server_url: str) -> Callable[[str, int, int], requests.Response]:
+    """Return a callable that GETs one medium of a music album by its indexes."""
 
-    def _list_album_tracks(token: str, album_id: int) -> requests.Response:
+    def _get_album_medium(token: str, album_id: int, medium_index: int) -> requests.Response:
         return requests.get(
-            f"{server_url}{LIBRARY_ALBUM_PATH}/{album_id}/track",
+            f"{server_url}{LIBRARY_ALBUM_PATH}/{album_id}/medium/{medium_index}",
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=10,
+        )
+
+    return _get_album_medium
+
+
+@pytest.fixture
+def list_album_tracks(server_url: str) -> Callable[[str, int, int], requests.Response]:
+    """Return a callable that GETs the tracks of one medium of a music album."""
+
+    def _list_album_tracks(token: str, album_id: int, medium_index: int) -> requests.Response:
+        return requests.get(
+            f"{server_url}{LIBRARY_ALBUM_PATH}/{album_id}/medium/{medium_index}/track",
             headers={"Authorization": f"Bearer {token}"},
             timeout=10,
         )
@@ -513,12 +527,12 @@ def list_album_tracks(server_url: str) -> Callable[[str, int], requests.Response
 
 
 @pytest.fixture
-def get_album_track(server_url: str) -> Callable[[str, int, int], requests.Response]:
-    """Return a callable that GETs one track of a music album."""
+def get_album_track(server_url: str) -> Callable[[str, int, int, int], requests.Response]:
+    """Return a callable that GETs one track of a music album medium."""
 
-    def _get_album_track(token: str, album_id: int, track_id: int) -> requests.Response:
+    def _get_album_track(token: str, album_id: int, medium_index: int, track_index: int) -> requests.Response:
         return requests.get(
-            f"{server_url}{LIBRARY_ALBUM_PATH}/{album_id}/track/{track_id}",
+            f"{server_url}{LIBRARY_ALBUM_PATH}/{album_id}/medium/{medium_index}/track/{track_index}",
             headers={"Authorization": f"Bearer {token}"},
             timeout=10,
         )

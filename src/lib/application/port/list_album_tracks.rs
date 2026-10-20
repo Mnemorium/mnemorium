@@ -5,18 +5,20 @@ use chrono::NaiveDate;
 
 use crate::domain::alias::NumericID;
 
-/// Command to list the tracks of one music album.
+/// Command to list the tracks of one medium of one music album.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct ListAlbumTracksCommand {
-    /// Identifier of the album whose tracks are listed.
+    /// Identifier of the album whose medium's tracks are listed.
     album_id: NumericID,
     /// Identifier of the authenticated caller.
     caller_id: NumericID,
+    /// Album-scoped index of the medium whose tracks are listed.
+    medium_index: u8,
 }
 
 impl ListAlbumTracksCommand {
-    /// Return the identifier of the album whose tracks are listed.
+    /// Return the identifier of the album whose medium's tracks are listed.
     #[must_use]
     pub fn album_id(&self) -> NumericID {
         self.album_id
@@ -28,17 +30,24 @@ impl ListAlbumTracksCommand {
         self.caller_id
     }
 
+    /// Return the album-scoped index of the medium whose tracks are listed.
+    #[must_use]
+    pub fn medium_index(&self) -> u8 {
+        self.medium_index
+    }
+
     /// Create a new list-album-tracks command.
     #[must_use]
-    pub fn new(caller_id: NumericID, album_id: NumericID) -> Self {
+    pub fn new(caller_id: NumericID, album_id: NumericID, medium_index: u8) -> Self {
         Self {
             album_id,
             caller_id,
+            medium_index,
         }
     }
 }
 
-/// One track of an album, with the metadata of its backing file.
+/// One track of an album medium, with the metadata of its backing file.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct ListAlbumTracksItem {
@@ -50,14 +59,14 @@ pub struct ListAlbumTracksItem {
     first_release_date: NaiveDate,
     /// ISRC code of the recording, when set.
     isrc_code: Option<String>,
-    /// Index of the medium the track is positioned on.
-    medium_index: u32,
+    /// Album-scoped index of the medium the track is placed in.
+    medium_index: u8,
     /// Name of the recording, when it has one.
     name: Option<String>,
-    /// Unique identifier of the track.
-    track_id: NumericID,
+    /// Identifier of the shared recording the track places.
+    recording_id: NumericID,
     /// Position of the track within its medium.
-    track_index: i64,
+    track_index: u8,
 }
 
 impl ListAlbumTracksItem {
@@ -85,9 +94,9 @@ impl ListAlbumTracksItem {
         self.isrc_code.as_deref()
     }
 
-    /// Return the index of the medium the track is positioned on.
+    /// Return the album-scoped index of the medium the track is placed in.
     #[must_use]
-    pub fn medium_index(&self) -> u32 {
+    pub fn medium_index(&self) -> u8 {
         self.medium_index
     }
 
@@ -104,10 +113,10 @@ impl ListAlbumTracksItem {
     )]
     #[must_use]
     pub fn new(
-        track_id: NumericID,
         album_id: NumericID,
-        medium_index: u32,
-        track_index: i64,
+        medium_index: u8,
+        track_index: u8,
+        recording_id: NumericID,
         file_id: NumericID,
         name: Option<String>,
         isrc_code: Option<String>,
@@ -120,29 +129,29 @@ impl ListAlbumTracksItem {
             isrc_code,
             medium_index,
             name,
-            track_id,
+            recording_id,
             track_index,
         }
     }
 
-    /// Return the unique identifier of the track.
+    /// Return the identifier of the shared recording the track places.
     #[must_use]
-    pub fn track_id(&self) -> NumericID {
-        self.track_id
+    pub fn recording_id(&self) -> NumericID {
+        self.recording_id
     }
 
     /// Return the position of the track within its medium.
     #[must_use]
-    pub fn track_index(&self) -> i64 {
+    pub fn track_index(&self) -> u8 {
         self.track_index
     }
 }
 
-/// Response of a successful album-track listing: the album's tracks in order.
+/// Response of a successful album-track listing: one medium's tracks in order.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct ListAlbumTracksResponse {
-    /// The tracks of the album, ordered by medium index then track index.
+    /// The tracks of the medium, ordered by track index.
     tracks: Vec<ListAlbumTracksItem>,
 }
 
@@ -153,14 +162,14 @@ impl ListAlbumTracksResponse {
         Self { tracks }
     }
 
-    /// Return the tracks of the album.
+    /// Return the tracks of the medium.
     #[must_use]
     pub fn tracks(&self) -> &[ListAlbumTracksItem] {
         &self.tracks
     }
 }
 
-/// Error returned when listing the tracks of an album.
+/// Error returned when listing the tracks of an album medium.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum ListAlbumTracksError {
@@ -170,15 +179,18 @@ pub enum ListAlbumTracksError {
     /// The authenticated caller does not exist anymore.
     #[error("the authenticated user does not exist")]
     NoSuchCaller,
+    /// No medium of the album matches the requested index.
+    #[error("a music medium with this index does not exist in this album")]
+    NoSuchMedium,
     /// An unexpected or unmapped error occurred.
     #[error("an unknown error occurred: {0}")]
     Unknown(#[source] anyhow::Error),
 }
 
-/// Use case for listing the tracks of one music album.
+/// Use case for listing the tracks of one medium of one music album.
 #[cfg_attr(test, mockall::automock)]
 pub trait ListAlbumTracksUseCase: Send + Sync {
-    /// List the tracks of the requested album.
+    /// List the tracks of the requested medium.
     ///
     /// The future is returned erased (`dyn`, not `impl Future`), boxed and
     /// pinned. `dyn` erases the concrete future type, which is what makes this
