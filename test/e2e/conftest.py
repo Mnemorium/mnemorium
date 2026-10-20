@@ -499,6 +499,20 @@ def list_albums(server_url: str) -> Callable[[str, str], requests.Response]:
 
 
 @pytest.fixture
+def get_album(server_url: str) -> Callable[[str, int], requests.Response]:
+    """Return a callable that GETs one music album by its identifier."""
+
+    def _get_album(token: str, album_id: int) -> requests.Response:
+        return requests.get(
+            f"{server_url}{LIBRARY_ALBUM_PATH}/{album_id}",
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=10,
+        )
+
+    return _get_album
+
+
+@pytest.fixture
 def get_album_medium(server_url: str) -> Callable[[str, int, int], requests.Response]:
     """Return a callable that GETs one medium of a music album by its indexes."""
 

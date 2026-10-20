@@ -1,5 +1,6 @@
 pub mod delete_gallery;
 pub mod delete_gallery_item;
+pub mod get_album;
 pub mod get_album_list;
 pub mod get_album_medium;
 pub mod get_album_track;
@@ -23,6 +24,8 @@ use utoipa::ToSchema;
 
 use crate::application::port::add_gallery_item::AddGalleryItemResponse;
 use crate::application::port::create_gallery::CreateGalleryResponse;
+use crate::application::port::get_album::GetAlbumError;
+use crate::application::port::get_album::GetAlbumResponse as GetAlbumResponseData;
 use crate::application::port::get_album_medium::GetAlbumMediumError;
 use crate::application::port::get_album_medium::GetAlbumMediumResponse;
 use crate::application::port::get_album_track::GetAlbumTrackError;
@@ -44,6 +47,7 @@ use crate::infrastructure::inbound::rest::hal::Link;
 use crate::infrastructure::inbound::rest::hal::SelfLinks;
 use crate::infrastructure::inbound::rest::handler::library::delete_gallery::delete_gallery;
 use crate::infrastructure::inbound::rest::handler::library::delete_gallery_item::delete_gallery_item;
+use crate::infrastructure::inbound::rest::handler::library::get_album::get_album;
 use crate::infrastructure::inbound::rest::handler::library::get_album_list::ListAlbumsQuery;
 use crate::infrastructure::inbound::rest::handler::library::get_album_list::get_album_list;
 use crate::infrastructure::inbound::rest::handler::library::get_album_medium::get_album_medium;
@@ -487,7 +491,7 @@ pub struct AlbumListResponse {
     pub links: AlbumListLinks,
 }
 
-/// A music album returned by a listing.
+/// A music album representation.
 #[derive(Debug, Serialize, ToSchema)]
 #[non_exhaustive]
 pub struct AlbumResponse {
@@ -536,6 +540,35 @@ impl From<&ListAlbumsItem> for AlbumResponse {
                 .map(str::to_owned),
             release_date: format_date(item.release_date()),
             track_count: item.track_count(),
+        }
+    }
+}
+
+impl From<&GetAlbumResponseData> for AlbumResponse {
+    fn from(response: &GetAlbumResponseData) -> Self {
+        Self {
+            genres: response.genres().to_vec(),
+            id: response.album_id(),
+            links: AlbumLinks::for_album(response.album_id()),
+            mediums: response
+                .mediums()
+                .iter()
+                .map(|medium| {
+                    MediumResponse::new(
+                        response.album_id(),
+                        medium.medium_index(),
+                        medium.medium_type().to_owned(),
+                        medium.track_count(),
+                    )
+                })
+                .collect(),
+            name: response.name().to_owned(),
+            production_type: response
+                .production_type()
+                .map(ProductionType::as_wire)
+                .map(str::to_owned),
+            release_date: format_date(response.release_date()),
+            track_count: response.track_count(),
         }
     }
 }
@@ -651,6 +684,17 @@ impl From<ListAlbumsError> for ApiError {
         match err {
             ListAlbumsError::NoSuchCaller => Self::Unauthorized(err.to_string()),
             ListAlbumsError::Unknown(_) => Self::InternalServerError,
+        }
+    }
+}
+
+/// Map a fetch-album error to its API error.
+impl From<GetAlbumError> for ApiError {
+    fn from(err: GetAlbumError) -> Self {
+        match err {
+            GetAlbumError::NoSuchAlbum => Self::NotFound(err.to_string()),
+            GetAlbumError::NoSuchCaller => Self::Unauthorized(err.to_string()),
+            GetAlbumError::Unknown(_) => Self::InternalServerError,
         }
     }
 }
@@ -825,6 +869,7 @@ fn format_timestamp(value: NaiveDateTime) -> String {
 pub fn library_routes(state: &AppState) -> Router {
     let album: Router<AppState> = Router::new()
         .route("/music/album", get(get_album_list))
+        .route("/music/album/{album_id}", get(get_album))
         .route(
             "/music/album/{album_id}/medium/{medium_index}",
             get(get_album_medium),

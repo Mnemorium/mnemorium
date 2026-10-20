@@ -4,6 +4,7 @@ use crate::application::port::add_gallery_item::AddGalleryItemUseCase;
 use crate::application::port::create_gallery::CreateGalleryUseCase;
 use crate::application::port::delete_gallery::DeleteGalleryUseCase;
 use crate::application::port::delete_gallery_item::DeleteGalleryItemUseCase;
+use crate::application::port::get_album::GetAlbumUseCase;
 use crate::application::port::get_album_medium::GetAlbumMediumUseCase;
 use crate::application::port::get_album_track::GetAlbumTrackUseCase;
 use crate::application::port::get_gallery::GetGalleryUseCase;
@@ -29,6 +30,9 @@ pub trait LibraryUseCaseFactory: Send + Sync {
 
     /// Build the use case deleting one item of a gallery.
     fn delete_gallery_item(&self) -> Arc<dyn DeleteGalleryItemUseCase>;
+
+    /// Build the use case fetching one music album and its mediums.
+    fn get_album(&self) -> Arc<dyn GetAlbumUseCase>;
 
     /// Build the use case fetching one medium of a music album.
     fn get_album_medium(&self) -> Arc<dyn GetAlbumMediumUseCase>;

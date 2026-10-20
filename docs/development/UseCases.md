@@ -614,6 +614,7 @@ each medium sequences.
 ### Trigger(s)
 
 - `GET /api/v1/library/music/album`
+- `GET /api/v1/library/music/album/{album_id}`
 - `GET /api/v1/library/music/album/{album_id}/medium/{medium_index}`
 - `GET /api/v1/library/music/album/{album_id}/medium/{medium_index}/track`
 - `GET /api/v1/library/music/album/{album_id}/medium/{medium_index}/track/{track_index}`
@@ -641,21 +642,22 @@ each medium sequences.
 2. The system verifies the caller's account still exists.
 3. The system returns the matching albums with their identifier, name, release date, production type, genres, track
    count and mediums, each medium carrying its index, type and track count.
-4. The caller asks to browse one medium of one specific album.
-5. The system verifies the album and medium exist and returns the medium.
-6. The caller asks to browse the tracks of that medium.
-7. The system verifies the album and medium exist and returns the medium's tracks in play order, each showing its
+4. The caller asks to read one specific album.
+5. The system verifies the album exists and returns it with the same representation as in the listing.
+6. The caller asks to browse one medium of one specific album.
+7. The system verifies the album and medium exist and returns the medium.
+8. The caller asks to browse the tracks of that medium.
+9. The system verifies the album and medium exist and returns the medium's tracks in play order, each showing its
    position in the medium and the recording it places.
-8. The caller requests one track of the medium by its position.
-9. The system verifies the album, medium and track exist and returns the track.
+10. The caller requests one track of the medium by its position.
+11. The system verifies the album, medium and track exist and returns the track.
 
 ### Alternative flow
 
 - 1a. A request filter is invalid (an unknown, malformed or out-of-range query parameter); the system rejects the
   request.
-- 4a. The album identifier is not valid, or the medium index is not a valid index; the system rejects the request.
-- 4b. No album matches the requested identifier, or the album has no medium at the requested index; the system rejects
-  the request.
+- 4a. The album identifier is not valid; the system rejects the request.
+- 4b. No album matches the requested identifier; the system rejects the request.
 - 6a. The album identifier is not valid, or the medium index is not a valid index; the system rejects the request.
 - 6b. No album matches the requested identifier, or the album has no medium at the requested index; the system rejects
   the request.
@@ -664,4 +666,4 @@ each medium sequences.
 
 ### Post condition(s)
 
-- The caller is shown the requested albums, medium, medium tracks or track.
+- The caller is shown the requested albums, album, medium, medium tracks or track.

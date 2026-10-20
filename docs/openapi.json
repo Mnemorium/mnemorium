@@ -76,7 +76,7 @@
         "type": "object"
       },
       "AlbumResponse": {
-        "description": "A music album returned by a listing.",
+        "description": "A music album representation.",
         "properties": {
           "_links": {
             "$ref": "#/components/schemas/AlbumLinks",
@@ -2967,6 +2967,84 @@
           }
         ],
         "summary": "List music albums",
+        "tags": [
+          "library"
+        ]
+      }
+    },
+    "/library/music/album/{album_id}": {
+      "get": {
+        "description": "Any authenticated caller may read an album; the album is not owned and\ncarries no visibility flag. The representation carries the album's mediums\nso a client can navigate to each medium and its track collection.",
+        "operationId": "get_album",
+        "parameters": [
+          {
+            "description": "Identifier of the album to fetch",
+            "in": "path",
+            "name": "album_id",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/i64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AlbumResponse"
+                }
+              }
+            },
+            "description": "Album found"
+          },
+          "400": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Invalid music album identifier"
+          },
+          "401": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid credentials"
+          },
+          "404": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unknown music album"
+          },
+          "500": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unexpected error"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ],
+        "summary": "Fetch a music album",
         "tags": [
           "library"
         ]

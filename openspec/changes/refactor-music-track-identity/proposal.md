@@ -23,8 +23,9 @@ playlist. The domain should say that directly.
   `(album_id, medium_index)`; track uniqueness is `(medium_id, track_index)` and `(playlist_id, track_index)`.
 - **BREAKING API.** Album track paths gain the medium: `GET /album/{album_id}/medium/{medium_index}/track` and
   `.../track/{track_index}`. The old `/album/{album_id}/track[/{track_id}]` paths are removed. A track representation's
-  `id` is the track index, and `recording_id` is added. The album representation exposes its mediums.
-  `docs/openapi.json` and the `library/music-albums` spec change.
+  `id` is the track index, and `recording_id` is added. The album representation exposes its mediums, and one album is
+  addressable at `GET /album/{album_id}` so the album and medium links resolve. `docs/openapi.json` and the
+  `library/music-albums` spec change.
 - **Repository.** `MusicAlbumRepository::search_tracks`, `MusicTrackFilter`, and `MusicTrackRow` are removed. `search`
   hydrates mediums and recording occurrences in one query, so no caller stitches a track from per-medium lookups.
 - **Schema.** Replace the one-medium unique constraint with `UNIQUE (music_album_id, medium_index)`, add partial unique

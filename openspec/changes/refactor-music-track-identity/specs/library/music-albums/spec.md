@@ -104,6 +104,40 @@ track index, so repeated reads return a stable order.
 
 ## ADDED Requirements
 
+### Requirement: Read one music album
+
+The system SHALL return one music album through `GET /api/v1/library/music/album/{album_id}`.
+
+#### Scenario: Album of an existing identifier
+
+- **WHEN** an authenticated caller requests an album identifier that exists
+- **THEN** the system returns `200 OK` with the album representation
+
+#### Scenario: Album representation content
+
+- **WHEN** the system returns one album
+- **THEN** the representation carries the album's identifier, name, release date, production type, genres, total track
+  count, and its mediums
+- **AND** each medium carries its album-scoped index, its type, its track count, and links to the medium and its track
+  collection
+- **AND** the album's total track count is the sum of its mediums' track counts
+
+#### Scenario: Album representation is HAL
+
+- **WHEN** the system returns an album representation
+- **THEN** the response is served as `application/hal+json` with business data at the root
+- **AND** the representation carries `_links.self` naming the album's canonical URI
+
+#### Scenario: Unknown album
+
+- **WHEN** the requested album identifier is unknown
+- **THEN** the system returns `404 Not Found`
+
+#### Scenario: Malformed album identifier
+
+- **WHEN** the caller supplies an `album_id` that is not a valid identifier
+- **THEN** the system returns `400 Bad Request` with a stable message
+
 ### Requirement: Read a music medium
 
 The system SHALL return one medium of an album through

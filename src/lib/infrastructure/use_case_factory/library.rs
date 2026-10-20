@@ -7,6 +7,7 @@ use crate::application::port::add_gallery_item::AddGalleryItemUseCase;
 use crate::application::port::create_gallery::CreateGalleryUseCase;
 use crate::application::port::delete_gallery::DeleteGalleryUseCase;
 use crate::application::port::delete_gallery_item::DeleteGalleryItemUseCase;
+use crate::application::port::get_album::GetAlbumUseCase;
 use crate::application::port::get_album_medium::GetAlbumMediumUseCase;
 use crate::application::port::get_album_track::GetAlbumTrackUseCase;
 use crate::application::port::get_gallery::GetGalleryUseCase;
@@ -19,6 +20,7 @@ use crate::application::use_case::add_gallery_item::AddGalleryItem;
 use crate::application::use_case::create_gallery::CreateGallery;
 use crate::application::use_case::delete_gallery::DeleteGallery;
 use crate::application::use_case::delete_gallery_item::DeleteGalleryItem;
+use crate::application::use_case::get_album::GetAlbum;
 use crate::application::use_case::get_album_medium::GetAlbumMedium;
 use crate::application::use_case::get_album_track::GetAlbumTrack;
 use crate::application::use_case::get_gallery::GetGallery;
@@ -85,6 +87,10 @@ impl LibraryUseCaseFactory for RuntimeLibraryUseCaseFactory {
             Arc::new(FileSystemStorage::new()),
             PathBuf::from(live.asset().storage().root()),
         ))
+    }
+
+    fn get_album(&self) -> Arc<dyn GetAlbumUseCase> {
+        Arc::new(GetAlbum::new(Arc::clone(&self.unit_of_work_factory)))
     }
 
     fn get_album_medium(&self) -> Arc<dyn GetAlbumMediumUseCase> {

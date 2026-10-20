@@ -5,7 +5,7 @@ populated listing, a medium, an album medium's ordered tracks and one track's
 representation are covered by the integration tests of the SQLx music-album
 repository and the application use cases. What this file exercises against the
 running container is everything observable without seeded music: authentication
-on all four endpoints, the empty album collection shape, the query and path
+on all five endpoints, the empty album collection shape, the query and path
 rejections, and the unknown-album, unknown-medium and unknown-track rejections.
 """
 
@@ -17,6 +17,12 @@ from conftest import LIBRARY_ALBUM_PATH, UNKNOWN_ID
 
 def test_listing_albums_requires_credentials(server_url: str) -> None:
     response = requests.get(f"{server_url}{LIBRARY_ALBUM_PATH}", timeout=10)
+
+    assert response.status_code == 401, f"expected 401, got {response.status_code}: {response.text}"
+
+
+def test_reading_an_album_requires_credentials(server_url: str) -> None:
+    response = requests.get(f"{server_url}{LIBRARY_ALBUM_PATH}/1", timeout=10)
 
     assert response.status_code == 401, f"expected 401, got {response.status_code}: {response.text}"
 
@@ -71,6 +77,26 @@ def test_listing_albums_rejects_a_malformed_query(
     assert_error_body: Callable[[requests.Response, int], None],
 ) -> None:
     response = list_albums(standard_user_token, "?limit=abc")
+
+    assert_error_body(response, 400)
+
+
+def test_reading_an_unknown_album_is_not_found(
+    get_album: Callable[[str, int], requests.Response],
+    standard_user_token: str,
+    assert_error_body: Callable[[requests.Response, int], None],
+) -> None:
+    response = get_album(standard_user_token, UNKNOWN_ID)
+
+    assert_error_body(response, 404)
+
+
+def test_reading_an_album_rejects_a_malformed_identifier(
+    get_album: Callable[[str, int], requests.Response],
+    standard_user_token: str,
+    assert_error_body: Callable[[requests.Response, int], None],
+) -> None:
+    response = get_album(standard_user_token, "not-an-identifier")
 
     assert_error_body(response, 400)
 

@@ -60,6 +60,9 @@
       and `401`; verify `cargo test --lib infrastructure::inbound::rest`.
 - [x] 3.4 Regenerate and commit `docs/openapi.json` with `cargo run --bin openapi_gen`; verify the new paths, the `u8`
       medium/track parameters, the medium schema, and `recording_id` appear in the generated spec.
+- [x] 3.5 Add the `get_album` read for `GET /library/music/album/{album_id}` (port, use case, handler, route, HAL links,
+      and error mapping) so the album and medium `album`/`self` links resolve; verify `cargo test --lib get_album`
+      passes and the path appears in `docs/openapi.json`.
 
 ## 4. E2E and documentation
 
