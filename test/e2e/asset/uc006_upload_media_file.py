@@ -104,7 +104,7 @@ def test_uc006_upload_unsupported_media(
 
 @pytest.mark.xfail(
     strict=False,
-    reason="the runtime image does not install ffprobe; see #242",
+    reason="Waiting all music/movie/gallery endpoints to be implemented",
 )
 def test_uc006_upload_video_completion(
     server_url: str,
