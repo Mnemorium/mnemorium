@@ -17,7 +17,7 @@ Target: $ARGUMENTS
 ## Steps
 
 1. Confirm `$ARGUMENTS` names a rule with a row in the rulebook. When it is
-   empty, run `devenv shell -- script/rule_enforcer.sh uncovered` and ask which
+   empty, run `script/rule_enforcer.sh uncovered` and ask which
    rule to target. When it names no row, stop and say so.
 2. Dispatch the `rule-guard` subagent with the rule ID and the instruction to
    plan the check and return it, applying nothing. Wait for its plan.

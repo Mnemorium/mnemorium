@@ -18,7 +18,9 @@ under `docs/development/`. When a doc moves, update the link here.
 
 ## Build/Test Commands
 
-Enter the environment first: `devenv shell`.
+Shell tool calls run inside the dev environment automatically
+(`.opencode/plugins/devenv-shell.ts`); a terminal session needs `devenv shell`
+first.
 
 | Task      | Command                                                                                                                              |
 | --------- | ------------------------------------------------------------------------------------------------------------------------------------ |
@@ -31,13 +33,11 @@ Enter the environment first: `devenv shell`.
 | OpenAPI   | `cargo run --bin openapi_gen` (writes `docs/openapi.json`)                                                           |
 | Full gate | `devenv test` (all pre-commit hooks)                                                                                                 |
 
-Run `git commit` through the environment as well, prefixed with `devenv shell --`
-(e.g. `devenv shell -- git commit`), because the repository's commit hook needs
-tooling that is only available inside the development environment.
+`git commit` runs the repository's commit hooks, which need the dev
+environment's tooling.
 
 For Markdown, use the `lint:md` and `fmt:md` devenv tasks, or run
-`markdownlint-cli2 '**/*.md'` / `prettier` through `devenv shell --`; `devenv test` runs
-both gates.
+`markdownlint-cli2 '**/*.md'` / `prettier`; `devenv test` runs both gates.
 
 Testing strategy and conventions live in `docs/development/TechnicalDesign.md`
 § 5; shared Rust test fixtures live in the single `#[cfg(test)] mod
