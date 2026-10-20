@@ -1905,17 +1905,17 @@ entity music_album {
 entity music_medium {
    * music_medium_id: INTEGER <<PK>>
    --
-   * music_album_id: INTEGER <<FK, UN, NN>>
-   * type: TEXT <<NN>>
-   * medium_index: INTEGER <<NN, DF(1)>>
+   * music_album_id: INTEGER <<FK, NN>>
+   * type: TEXT <<NN, CC(type IN ('CD'))>>
+   * medium_index: INTEGER <<NN, DF(1), CC(medium_index BETWEEN 0 AND 255)>>
 }
 
 entity music_track {
    * music_track_id: INTEGER <<PK>>
    --
-   * track_index: INTEGER <<NN, CC(track_index >= 0)>>
-   * music_playlist_id: INTEGER <<FK>>
-   * music_medium_id: INTEGER <<FK>>
+   * track_index: INTEGER <<NN, CC(track_index >= 0), CC(music_medium_id IS NULL OR track_index BETWEEN 0 AND 255)>>
+   * music_playlist_id: INTEGER <<FK, CC((music_medium_id IS NOT NULL) <> (music_playlist_id IS NOT NULL))>>
+   * music_medium_id: INTEGER <<FK, CC((music_medium_id IS NOT NULL) <> (music_playlist_id IS NOT NULL))>>
    * music_recording_id: INTEGER <<FK, NN>>
 }
 
@@ -2171,7 +2171,7 @@ music_medium ||--o{ music_track
 
 music_playlist ||--o{ music_track
 
-music_track ||--|| music_recording
+music_recording ||--o{ music_track
 
 audio_channel ||--o{ audio
 
@@ -2215,6 +2215,14 @@ video ||--o| gallery_item
 
 @enduml
 ```
+
+The `music_medium` entity enforces a composite unique key on `(music_album_id, medium_index)`
+(`uq_music_medium_album_medium_index`): an album holds at most one medium at a given index.
+
+The `music_track` entity enforces two partial unique indexes, `uq_music_track_medium_track_index` on
+`(music_medium_id, track_index)` and `uq_music_track_playlist_track_index` on `(music_playlist_id, track_index)`, each
+restricted to the rows where its container column is set: a medium and a playlist each sequence at most one track at a
+given index. A track is placed in exactly one of them (`chk_music_track_one_container`).
 
 The `file` entity enforces a composite unique key on `(user_id, integrity_hash)`: a caller stores one file record per
 integrity hash, while different callers may each store their own copy.
@@ -2875,22 +2883,23 @@ important events, descriptions and catalogs, and external systems.
 
 **Attributes.** An attribute carries information a use case must remember and always has a type (`username : String`,
 `release_date : Date`); visibility markers (`+`, `-`) add nothing to a domain model. A concept with identity of its own
-is a class, not an attribute: `MusicTrack` references a `MusicRecording` class rather than holding a
-`recording : String` field.
+is a class, not an attribute: `MusicRecording` references a `MusicGroup` class rather than holding a `group : String`
+field.
 
 **Associations.** An association is a relationship the domain must remember. Name it with a domain verb read from the
 owning side, and state its multiplicity:
 
 ```text
-User        1 ---- 1      Credential : Authenticates with
-User        1 ---- 0..*   File       : Uploads
-MusicAlbum  1 ---- 1..*   MusicMedium: Packages
-MusicMedium 1 ---- 0..*   MusicTrack : Positions
-MusicTrack  0..* ---- 1   MusicRecording : References
+User           1 ---- 1      Credential     : Authenticates with
+User           1 ---- 0..*   File           : Uploads
+MusicAlbum     1 ---- 1..*   MusicMedium    : Packages
+MusicMedium    1 ---- 0..*   MusicRecording : Sequences
+MusicRecording 0..* ---- 0..* MusicGroup    : Made by
 ```
 
-One album packages one or more mediums; each medium belongs to one album. Avoid verbs that carry no domain meaning —
-`Has`, `Uses`, `Contains`, `Owns`.
+One album packages one or more mediums; each medium belongs to one album. A medium sequences zero or more recordings,
+and a recording is made by zero or more music groups. Avoid verbs that carry no domain meaning — `Has`, `Uses`,
+`Contains`, `Owns`.
 
 **Attributes versus associations.** A relationship between two concepts is an association, not a field: model `User` —
 `Uploads` — `File`, never a `files : File` attribute on `User`. Associations document domain knowledge and read better
@@ -2907,7 +2916,7 @@ than a field would.
 | Transaction ↔ Actor   | `Customer` ↔ `Payment`           |
 | Description ↔ Object  | `ProductDescription` ↔ `Product` |
 | Part ↔ Whole          | `GalleryItem` ↔ `Gallery`        |
-| Container ↔ Content   | `MusicMedium` ↔ `MusicTrack`     |
+| Container ↔ Content   | `MusicMedium` ↔ `MusicRecording` |
 | Organization ↔ Member | `MusicGroup` ↔ `Person`          |
 | Neighboring objects   | `City` ↔ `City`                  |
 

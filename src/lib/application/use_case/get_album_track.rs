@@ -10,12 +10,11 @@ use crate::application::use_case::library_access;
 use crate::domain::port::library_unit_of_work::LibraryUnitOfWork;
 use crate::domain::port::music_album_repository::MusicAlbumFilter;
 use crate::domain::port::music_album_repository::MusicAlbumRepository as _;
-use crate::domain::port::music_album_repository::MusicTrackFilter;
 use crate::domain::port::unit_of_work::UnitOfWork as _;
 use crate::domain::port::unit_of_work::UnitOfWorkFactory;
 use crate::domain::port::user_unit_of_work::UserUnitOfWork;
 
-/// Use case implementation for fetching one track of a music album.
+/// Use case implementation for fetching one track of a music album medium.
 pub struct GetAlbumTrack<F> {
     /// Factory opening the unit of work wrapping the read.
     unit_of_work_factory: Arc<F>,
@@ -70,41 +69,27 @@ where
                     .next()
                     .ok_or(GetAlbumTrackError::NoSuchAlbum)?;
 
-                // A track of another album is not found: the track is read
-                // within the album's own mediums, which is also what makes an
-                // album holding no medium hold no track.
-                let mut found = None;
-                for medium in album.mediums() {
-                    let tracks = unit_of_work
-                        .music_albums()
-                        .search_tracks(&MusicTrackFilter {
-                            id: Some(command.track_id()),
-                            medium_id: Some(medium.id()),
-                            ..MusicTrackFilter::default()
-                        })
-                        .await
-                        .map_err(|error| GetAlbumTrackError::Unknown(error.into()))?;
-                    if let Some(track) = tracks.into_iter().next() {
-                        found = Some((medium, track));
-                        break;
-                    }
-                }
-                let (medium, track) = found.ok_or(GetAlbumTrackError::NoSuchTrack)?;
+                // A track of another album or medium is not found: the track is
+                // read within the named medium of the album, which is also what
+                // makes an album holding no medium hold no track.
+                let medium = album
+                    .mediums()
+                    .iter()
+                    .find(|medium| medium.index().index() == command.medium_index())
+                    .ok_or(GetAlbumTrackError::NoSuchMedium)?;
                 let recording = medium
                     .tracks()
                     .iter()
-                    .find(|recording| recording.id() == track.recording_id())
-                    .ok_or_else(|| {
-                        GetAlbumTrackError::Unknown(anyhow::anyhow!(
-                            "the track's recording is missing from its medium"
-                        ))
-                    })?;
+                    .find(|recording| {
+                        recording.index().medium_index() == Some(command.track_index())
+                    })
+                    .ok_or(GetAlbumTrackError::NoSuchTrack)?;
 
                 Ok(GetAlbumTrackResponse::new(
-                    track.id(),
                     album.id(),
-                    medium.medium_index(),
-                    track.track_index(),
+                    medium.index().index(),
+                    command.track_index(),
+                    recording.id(),
                     recording.file_id(),
                     recording.name().map(str::to_owned),
                     recording.isrc_code().map(str::to_owned),
@@ -142,10 +127,10 @@ mod tests {
     use crate::application::port::get_album_track::GetAlbumTrackError;
     use crate::application::port::get_album_track::GetAlbumTrackUseCase as _;
     use crate::domain::model::music_album::MusicAlbum;
+    use crate::domain::model::music_medium::MediumIndex;
     use crate::domain::model::music_medium::MusicMedium;
     use crate::domain::model::music_recording::MusicRecording;
-    use crate::domain::model::music_track::MusicTrack;
-    use crate::domain::model::music_track::MusicTrackPosition;
+    use crate::domain::model::music_recording::TrackIndex;
     use crate::domain::model::user::Role;
     use crate::domain::model::user::User;
     use crate::domain::port::error::RepositoryError;
@@ -158,25 +143,27 @@ mod tests {
 
     use super::GetAlbumTrack;
 
-    /// Identifier of the medium the album fixtures hold.
-    const MEDIUM_ID: i64 = 40;
-
     /// The use case under test, bound to the mocked unit-of-work factory.
     type UseCase = GetAlbumTrack<TestFactory>;
 
-    /// Build an album holding one medium with the recordings of `track_ids`.
-    fn album(album_id: i64, track_ids: &[i64]) -> Result<MusicAlbum, Box<dyn Error>> {
-        let tracks = track_ids
+    /// Build an album holding one `CD` medium sequencing `track_indexes`.
+    fn album(
+        album_id: i64,
+        medium_index: u8,
+        track_indexes: &[u8],
+    ) -> Result<MusicAlbum, Box<dyn Error>> {
+        let tracks = track_indexes
             .iter()
-            .map(|track_id| {
+            .map(|track_index| {
                 Ok(MusicRecording::try_new(
-                    900i64.saturating_add(*track_id),
-                    Some(format!("Track {track_id}")),
+                    900i64.saturating_add(i64::from(*track_index)),
+                    Some(format!("Track {track_index}")),
                     album_release_date(),
                     Some("USRC17607839".to_owned()),
-                    *track_id,
-                    100i64.saturating_add(*track_id),
+                    i64::from(*track_index),
+                    100i64.saturating_add(i64::from(*track_index)),
                     None,
+                    TrackIndex::MediumIndex(*track_index),
                 )?)
             })
             .collect::<Result<Vec<_>, Box<dyn Error>>>()?;
@@ -187,12 +174,24 @@ mod tests {
             None,
             Vec::new(),
             None,
-            vec![MusicMedium::new(
-                MEDIUM_ID,
-                Some(1),
-                "CD".to_owned(),
-                tracks,
-            )],
+            vec![MusicMedium::new(MediumIndex::Cd(medium_index), tracks)],
+        )?)
+    }
+
+    /// Build an album holding no medium.
+    #[expect(
+        clippy::single_call_fn,
+        reason = "the empty-album fixture names the case it builds"
+    )]
+    fn empty_album(album_id: i64) -> Result<MusicAlbum, Box<dyn Error>> {
+        Ok(MusicAlbum::try_new(
+            album_id,
+            "Empty".to_owned(),
+            album_release_date(),
+            None,
+            Vec::new(),
+            None,
+            Vec::new(),
         )?)
     }
 
@@ -243,30 +242,22 @@ mod tests {
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 1, Role::Standard)?;
         let mut albums = MockMusicAlbumRepository::new();
-        expect_album(&mut albums, album(7, &[101])?);
-        // The album fixture above pairs track 101 with recording 1001.
-        let track = MusicTrack::try_new(101, MusicTrackPosition::Medium(MEDIUM_ID), 1001, 1)?;
-        albums
-            .expect_search_tracks()
-            .times(1)
-            .withf(|filter| filter.medium_id == Some(MEDIUM_ID) && filter.id == Some(101))
-            .return_once(move |_| {
-                let found = vec![track.clone()];
-                Box::pin(async move { Ok(found) })
-            });
+        expect_album(&mut albums, album(7, 1, &[1])?);
         let harness = harness_with(users, albums);
         let use_case: UseCase = GetAlbumTrack::new(Arc::clone(&harness.factory));
 
         // Act
         let response = use_case
-            .execute(GetAlbumTrackCommand::new(1, 7, 101))
+            .execute(GetAlbumTrackCommand::new(1, 7, 1, 1))
             .await?;
 
         // Assert
-        assert_eq!(response.track_id(), 101);
         assert_eq!(response.album_id(), 7);
-        assert_eq!(response.file_id(), 201);
-        assert_eq!(response.name(), Some("Track 101"));
+        assert_eq!(response.medium_index(), 1);
+        assert_eq!(response.track_index(), 1);
+        assert_eq!(response.recording_id(), 901);
+        assert_eq!(response.file_id(), 101);
+        assert_eq!(response.name(), Some("Track 1"));
         assert!(harness.committed.load(Ordering::SeqCst));
         Ok(())
     }
@@ -281,13 +272,12 @@ mod tests {
             .expect_search()
             .times(1)
             .returning(|_| Box::pin(async { Ok(Vec::new()) }));
-        albums.expect_search_tracks().times(0);
         let harness = harness_with(users, albums);
         let use_case: UseCase = GetAlbumTrack::new(Arc::clone(&harness.factory));
 
         // Act
         let result = use_case
-            .execute(GetAlbumTrackCommand::new(1, 999, 101))
+            .execute(GetAlbumTrackCommand::new(1, 999, 1, 1))
             .await;
 
         // Assert
@@ -297,22 +287,41 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn get_album_track_track_outside_the_album_returns_no_such_track()
+    async fn get_album_track_unknown_medium_returns_no_such_medium() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let mut users = MockUserRepository::new();
+        expect_caller(&mut users, 1, Role::Standard)?;
+        let mut albums = MockMusicAlbumRepository::new();
+        expect_album(&mut albums, album(7, 1, &[1])?);
+        let harness = harness_with(users, albums);
+        let use_case: UseCase = GetAlbumTrack::new(Arc::clone(&harness.factory));
+
+        // Act
+        let result = use_case
+            .execute(GetAlbumTrackCommand::new(1, 7, 9, 1))
+            .await;
+
+        // Assert
+        assert!(matches!(result, Err(GetAlbumTrackError::NoSuchMedium)));
+        assert!(harness.rolled_back.load(Ordering::SeqCst));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn get_album_track_track_outside_the_medium_returns_no_such_track()
     -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 1, Role::Standard)?;
         let mut albums = MockMusicAlbumRepository::new();
-        expect_album(&mut albums, album(7, &[101])?);
-        albums
-            .expect_search_tracks()
-            .times(1)
-            .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+        expect_album(&mut albums, album(7, 1, &[1])?);
         let harness = harness_with(users, albums);
         let use_case: UseCase = GetAlbumTrack::new(Arc::clone(&harness.factory));
 
         // Act
-        let result = use_case.execute(GetAlbumTrackCommand::new(1, 7, 555)).await;
+        let result = use_case
+            .execute(GetAlbumTrackCommand::new(1, 7, 1, 5))
+            .await;
 
         // Assert
         assert!(matches!(result, Err(GetAlbumTrackError::NoSuchTrack)));
@@ -321,33 +330,23 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn get_album_track_album_without_medium_returns_no_such_track()
+    async fn get_album_track_album_without_medium_returns_no_such_medium()
     -> Result<(), Box<dyn Error>> {
         // Arrange: an album with no medium holds no track to find.
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 1, Role::Standard)?;
         let mut albums = MockMusicAlbumRepository::new();
-        expect_album(
-            &mut albums,
-            MusicAlbum::try_new(
-                7,
-                "Empty".to_owned(),
-                album_release_date(),
-                None,
-                Vec::new(),
-                None,
-                Vec::new(),
-            )?,
-        );
-        albums.expect_search_tracks().times(0);
+        expect_album(&mut albums, empty_album(7)?);
         let harness = harness_with(users, albums);
         let use_case: UseCase = GetAlbumTrack::new(Arc::clone(&harness.factory));
 
         // Act
-        let result = use_case.execute(GetAlbumTrackCommand::new(1, 7, 101)).await;
+        let result = use_case
+            .execute(GetAlbumTrackCommand::new(1, 7, 1, 1))
+            .await;
 
         // Assert
-        assert!(matches!(result, Err(GetAlbumTrackError::NoSuchTrack)));
+        assert!(matches!(result, Err(GetAlbumTrackError::NoSuchMedium)));
         assert!(harness.rolled_back.load(Ordering::SeqCst));
         Ok(())
     }
@@ -365,7 +364,7 @@ mod tests {
 
         // Act
         let result = use_case
-            .execute(GetAlbumTrackCommand::new(999, 7, 101))
+            .execute(GetAlbumTrackCommand::new(999, 7, 1, 1))
             .await;
 
         // Assert
@@ -380,20 +379,43 @@ mod tests {
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 1, Role::Standard)?;
         let mut albums = MockMusicAlbumRepository::new();
-        expect_album(&mut albums, album(7, &[101])?);
         albums
-            .expect_search_tracks()
+            .expect_search()
             .times(1)
             .returning(|_| Box::pin(async { Err(RepositoryError::OperationFailed) }));
         let harness = harness_with(users, albums);
         let use_case: UseCase = GetAlbumTrack::new(Arc::clone(&harness.factory));
 
         // Act
-        let result = use_case.execute(GetAlbumTrackCommand::new(1, 7, 101)).await;
+        let result = use_case
+            .execute(GetAlbumTrackCommand::new(1, 7, 1, 1))
+            .await;
 
         // Assert
         assert!(matches!(result, Err(GetAlbumTrackError::Unknown(_))));
         assert!(harness.rolled_back.load(Ordering::SeqCst));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn get_album_track_commit_failure_returns_unknown() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let mut users = MockUserRepository::new();
+        expect_caller(&mut users, 1, Role::Standard)?;
+        let mut albums = MockMusicAlbumRepository::new();
+        expect_album(&mut albums, album(7, 1, &[1])?);
+        let harness = harness_with(users, albums);
+        harness.commit_fails.store(true, Ordering::SeqCst);
+        let use_case: UseCase = GetAlbumTrack::new(Arc::clone(&harness.factory));
+
+        // Act
+        let result = use_case
+            .execute(GetAlbumTrackCommand::new(1, 7, 1, 1))
+            .await;
+
+        // Assert
+        assert!(matches!(result, Err(GetAlbumTrackError::Unknown(_))));
+        assert!(harness.committed.load(Ordering::SeqCst));
         Ok(())
     }
 }

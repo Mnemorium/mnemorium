@@ -1,6 +1,8 @@
 pub mod delete_gallery;
 pub mod delete_gallery_item;
+pub mod get_album;
 pub mod get_album_list;
+pub mod get_album_medium;
 pub mod get_album_track;
 pub mod get_album_track_list;
 pub mod get_gallery;
@@ -22,6 +24,10 @@ use utoipa::ToSchema;
 
 use crate::application::port::add_gallery_item::AddGalleryItemResponse;
 use crate::application::port::create_gallery::CreateGalleryResponse;
+use crate::application::port::get_album::GetAlbumError;
+use crate::application::port::get_album::GetAlbumResponse as GetAlbumResponseData;
+use crate::application::port::get_album_medium::GetAlbumMediumError;
+use crate::application::port::get_album_medium::GetAlbumMediumResponse;
 use crate::application::port::get_album_track::GetAlbumTrackError;
 use crate::application::port::get_album_track::GetAlbumTrackResponse;
 use crate::application::port::get_gallery::GalleryItemSummary;
@@ -41,8 +47,10 @@ use crate::infrastructure::inbound::rest::hal::Link;
 use crate::infrastructure::inbound::rest::hal::SelfLinks;
 use crate::infrastructure::inbound::rest::handler::library::delete_gallery::delete_gallery;
 use crate::infrastructure::inbound::rest::handler::library::delete_gallery_item::delete_gallery_item;
+use crate::infrastructure::inbound::rest::handler::library::get_album::get_album;
 use crate::infrastructure::inbound::rest::handler::library::get_album_list::ListAlbumsQuery;
 use crate::infrastructure::inbound::rest::handler::library::get_album_list::get_album_list;
+use crate::infrastructure::inbound::rest::handler::library::get_album_medium::get_album_medium;
 use crate::infrastructure::inbound::rest::handler::library::get_album_track::get_album_track;
 use crate::infrastructure::inbound::rest::handler::library::get_album_track_list::get_album_track_list;
 use crate::infrastructure::inbound::rest::handler::library::get_gallery::get_gallery;
@@ -322,16 +330,14 @@ impl From<GetGalleryResponseData> for GalleryResponse {
 
 /// HAL links exposed by a music album representation.
 ///
-/// The `self` link addresses the album; the `tracks` link exposes the track
-/// collection of the album (`API-037`).
+/// The `self` link addresses the album; the album's mediums are embedded in the
+/// representation and each medium carries its own links (`API-037`).
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 #[non_exhaustive]
 pub struct AlbumLinks {
     /// Link to the album resource itself.
     #[serde(rename = "self")]
     pub self_link: Link,
-    /// Link to the track collection of the album.
-    pub tracks: Link,
 }
 
 impl AlbumLinks {
@@ -340,8 +346,85 @@ impl AlbumLinks {
     pub fn for_album(album_id: NumericID) -> Self {
         Self {
             self_link: Link::new(&format!("/api/v1/library/music/album/{album_id}")),
-            tracks: Link::new(&format!("/api/v1/library/music/album/{album_id}/track")),
         }
+    }
+}
+
+/// HAL links exposed by a music medium representation.
+///
+/// The `self` link addresses the medium, the `album` link the album that holds
+/// it, and the `tracks` link the medium's track collection (`API-034`,
+/// `API-037`).
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[non_exhaustive]
+pub struct MediumLinks {
+    /// Link to the album that holds the medium.
+    pub album: Link,
+    /// Link to the medium resource itself.
+    #[serde(rename = "self")]
+    pub self_link: Link,
+    /// Link to the track collection of the medium.
+    pub tracks: Link,
+}
+
+impl MediumLinks {
+    /// Build the links of the medium identified by its album and index.
+    #[must_use]
+    pub fn for_medium(album_id: NumericID, medium_index: u8) -> Self {
+        Self {
+            album: Link::new(&format!("/api/v1/library/music/album/{album_id}")),
+            self_link: Link::new(&format!(
+                "/api/v1/library/music/album/{album_id}/medium/{medium_index}"
+            )),
+            tracks: Link::new(&format!(
+                "/api/v1/library/music/album/{album_id}/medium/{medium_index}/track"
+            )),
+        }
+    }
+}
+
+/// One medium of a music album.
+#[derive(Debug, Serialize, ToSchema)]
+#[non_exhaustive]
+pub struct MediumResponse {
+    /// Album-scoped index of the medium.
+    pub index: u8,
+    /// Links to the medium, its album and its track collection.
+    #[serde(rename = "_links")]
+    pub links: MediumLinks,
+    /// Stored type of the medium (`CD`).
+    #[serde(rename = "type")]
+    pub medium_type: String,
+    /// Number of recordings the medium sequences.
+    pub track_count: usize,
+}
+
+impl MediumResponse {
+    /// Assemble a medium representation from its parts.
+    #[must_use]
+    pub fn new(
+        album_id: NumericID,
+        medium_index: u8,
+        medium_type: String,
+        track_count: usize,
+    ) -> Self {
+        Self {
+            index: medium_index,
+            links: MediumLinks::for_medium(album_id, medium_index),
+            track_count,
+            medium_type,
+        }
+    }
+}
+
+impl From<GetAlbumMediumResponse> for MediumResponse {
+    fn from(response: GetAlbumMediumResponse) -> Self {
+        Self::new(
+            response.album_id(),
+            response.medium_index(),
+            response.medium_type().to_owned(),
+            response.track_count(),
+        )
     }
 }
 
@@ -408,7 +491,7 @@ pub struct AlbumListResponse {
     pub links: AlbumListLinks,
 }
 
-/// A music album returned by a listing.
+/// A music album representation.
 #[derive(Debug, Serialize, ToSchema)]
 #[non_exhaustive]
 pub struct AlbumResponse {
@@ -416,9 +499,11 @@ pub struct AlbumResponse {
     pub genres: Vec<String>,
     /// Unique identifier of the album.
     pub id: NumericID,
-    /// Links to the album and its track collection.
+    /// Links to the album.
     #[serde(rename = "_links")]
     pub links: AlbumLinks,
+    /// Mediums of the album, ordered by medium index.
+    pub mediums: Vec<MediumResponse>,
     /// Name of the album.
     pub name: String,
     /// Production type of the album, when set.
@@ -436,6 +521,18 @@ impl From<&ListAlbumsItem> for AlbumResponse {
             genres: item.genres().to_vec(),
             id: item.album_id(),
             links: AlbumLinks::for_album(item.album_id()),
+            mediums: item
+                .mediums()
+                .iter()
+                .map(|medium| {
+                    MediumResponse::new(
+                        item.album_id(),
+                        medium.medium_index(),
+                        medium.medium_type().to_owned(),
+                        medium.track_count(),
+                    )
+                })
+                .collect(),
             name: item.name().to_owned(),
             production_type: item
                 .production_type()
@@ -447,28 +544,63 @@ impl From<&ListAlbumsItem> for AlbumResponse {
     }
 }
 
+impl From<&GetAlbumResponseData> for AlbumResponse {
+    fn from(response: &GetAlbumResponseData) -> Self {
+        Self {
+            genres: response.genres().to_vec(),
+            id: response.album_id(),
+            links: AlbumLinks::for_album(response.album_id()),
+            mediums: response
+                .mediums()
+                .iter()
+                .map(|medium| {
+                    MediumResponse::new(
+                        response.album_id(),
+                        medium.medium_index(),
+                        medium.medium_type().to_owned(),
+                        medium.track_count(),
+                    )
+                })
+                .collect(),
+            name: response.name().to_owned(),
+            production_type: response
+                .production_type()
+                .map(ProductionType::as_wire)
+                .map(str::to_owned),
+            release_date: format_date(response.release_date()),
+            track_count: response.track_count(),
+        }
+    }
+}
+
 /// HAL links exposed by a music track representation.
 ///
-/// The `self` link addresses the track; the `album` link exposes the album the
-/// track belongs to (`API-034`, `API-037`).
+/// The `self` link addresses the track, the `album` link the album that holds
+/// it, and the `medium` link the medium that sequences it (`API-034`,
+/// `API-037`).
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 #[non_exhaustive]
 pub struct TrackLinks {
     /// Link to the album the track belongs to.
     pub album: Link,
+    /// Link to the medium the track is placed in.
+    pub medium: Link,
     /// Link to the track resource itself.
     #[serde(rename = "self")]
     pub self_link: Link,
 }
 
 impl TrackLinks {
-    /// Build the links of a track identified by its album and track identifiers.
+    /// Build the links of a track identified by its album, medium and index.
     #[must_use]
-    pub fn for_track(album_id: NumericID, track_id: NumericID) -> Self {
+    pub fn for_track(album_id: NumericID, medium_index: u8, track_index: u8) -> Self {
         Self {
             album: Link::new(&format!("/api/v1/library/music/album/{album_id}")),
+            medium: Link::new(&format!(
+                "/api/v1/library/music/album/{album_id}/medium/{medium_index}"
+            )),
             self_link: Link::new(&format!(
-                "/api/v1/library/music/album/{album_id}/track/{track_id}"
+                "/api/v1/library/music/album/{album_id}/medium/{medium_index}/track/{track_index}"
             )),
         }
     }
@@ -485,7 +617,7 @@ pub struct TrackListResponse {
     pub links: SelfLinks,
 }
 
-/// One music track of an album.
+/// One music track of an album medium.
 #[derive(Debug, Serialize, ToSchema)]
 #[non_exhaustive]
 pub struct TrackResponse {
@@ -495,19 +627,19 @@ pub struct TrackResponse {
     pub file_id: NumericID,
     /// Date of the first release of the recording, in `YYYY-MM-DD` form.
     pub first_release_date: String,
-    /// Unique identifier of the track.
-    pub id: NumericID,
+    /// Track index: the position of the track within its medium.
+    pub id: u8,
     /// ISRC code of the recording, when set.
     pub isrc_code: Option<String>,
-    /// Links to the track and its album.
+    /// Links to the track, its album and its medium.
     #[serde(rename = "_links")]
     pub links: TrackLinks,
-    /// Index of the medium the track is positioned on.
-    pub medium_index: u32,
+    /// Album-scoped index of the medium the track is placed in.
+    pub medium_index: u8,
     /// Name of the recording, when it has one.
     pub name: Option<String>,
-    /// Position of the track within its medium.
-    pub track_index: i64,
+    /// Identifier of the shared recording the track places.
+    pub recording_id: NumericID,
 }
 
 impl From<&ListAlbumTracksItem> for TrackResponse {
@@ -516,12 +648,12 @@ impl From<&ListAlbumTracksItem> for TrackResponse {
             album_id: item.album_id(),
             file_id: item.file_id(),
             first_release_date: format_date(item.first_release_date()),
-            id: item.track_id(),
+            id: item.track_index(),
             isrc_code: item.isrc_code().map(str::to_owned),
-            links: TrackLinks::for_track(item.album_id(), item.track_id()),
+            links: TrackLinks::for_track(item.album_id(), item.medium_index(), item.track_index()),
             medium_index: item.medium_index(),
             name: item.name().map(str::to_owned),
-            track_index: item.track_index(),
+            recording_id: item.recording_id(),
         }
     }
 }
@@ -532,12 +664,16 @@ impl From<GetAlbumTrackResponse> for TrackResponse {
             album_id: response.album_id(),
             file_id: response.file_id(),
             first_release_date: format_date(response.first_release_date()),
-            id: response.track_id(),
+            id: response.track_index(),
             isrc_code: response.isrc_code().map(str::to_owned),
-            links: TrackLinks::for_track(response.album_id(), response.track_id()),
+            links: TrackLinks::for_track(
+                response.album_id(),
+                response.medium_index(),
+                response.track_index(),
+            ),
             medium_index: response.medium_index(),
             name: response.name().map(str::to_owned),
-            track_index: response.track_index(),
+            recording_id: response.recording_id(),
         }
     }
 }
@@ -552,11 +688,37 @@ impl From<ListAlbumsError> for ApiError {
     }
 }
 
+/// Map a fetch-album error to its API error.
+impl From<GetAlbumError> for ApiError {
+    fn from(err: GetAlbumError) -> Self {
+        match err {
+            GetAlbumError::NoSuchAlbum => Self::NotFound(err.to_string()),
+            GetAlbumError::NoSuchCaller => Self::Unauthorized(err.to_string()),
+            GetAlbumError::Unknown(_) => Self::InternalServerError,
+        }
+    }
+}
+
+/// Map a fetch-album-medium error to its API error.
+impl From<GetAlbumMediumError> for ApiError {
+    fn from(err: GetAlbumMediumError) -> Self {
+        match err {
+            GetAlbumMediumError::NoSuchAlbum | GetAlbumMediumError::NoSuchMedium => {
+                Self::NotFound(err.to_string())
+            }
+            GetAlbumMediumError::NoSuchCaller => Self::Unauthorized(err.to_string()),
+            GetAlbumMediumError::Unknown(_) => Self::InternalServerError,
+        }
+    }
+}
+
 /// Map a list-album-tracks error to its API error.
 impl From<ListAlbumTracksError> for ApiError {
     fn from(err: ListAlbumTracksError) -> Self {
         match err {
-            ListAlbumTracksError::NoSuchAlbum => Self::NotFound(err.to_string()),
+            ListAlbumTracksError::NoSuchAlbum | ListAlbumTracksError::NoSuchMedium => {
+                Self::NotFound(err.to_string())
+            }
             ListAlbumTracksError::NoSuchCaller => Self::Unauthorized(err.to_string()),
             ListAlbumTracksError::Unknown(_) => Self::InternalServerError,
         }
@@ -567,9 +729,9 @@ impl From<ListAlbumTracksError> for ApiError {
 impl From<GetAlbumTrackError> for ApiError {
     fn from(err: GetAlbumTrackError) -> Self {
         match err {
-            GetAlbumTrackError::NoSuchAlbum | GetAlbumTrackError::NoSuchTrack => {
-                Self::NotFound(err.to_string())
-            }
+            GetAlbumTrackError::NoSuchAlbum
+            | GetAlbumTrackError::NoSuchMedium
+            | GetAlbumTrackError::NoSuchTrack => Self::NotFound(err.to_string()),
             GetAlbumTrackError::NoSuchCaller => Self::Unauthorized(err.to_string()),
             GetAlbumTrackError::Unknown(_) => Self::InternalServerError,
         }
@@ -669,6 +831,28 @@ pub(crate) fn parse_album_id(value: &str) -> Result<NumericID, ApiError> {
     })
 }
 
+/// Parse a `u8` music index from a path segment.
+///
+/// `field` is the declared security-event field and `message` the stable,
+/// handler-owned rejection message; the malformed value and the parser detail
+/// never reach the log (`OBS-003`, `OBS-006`).
+pub(crate) fn parse_index(
+    value: &str,
+    field: &'static str,
+    message: &'static str,
+) -> Result<u8, ApiError> {
+    value.parse::<u8>().map_err(|_| {
+        warn!(
+            target: "security",
+            event = "input_validation_failed",
+            field = field,
+            reason = "invalid_index",
+            "rejected a malformed music index"
+        );
+        ApiError::BadRequest(message.to_owned())
+    })
+}
+
 /// Render `value` with the representation's date format.
 fn format_date(value: NaiveDate) -> String {
     value.format(DATE_FORMAT).to_string()
@@ -685,9 +869,17 @@ fn format_timestamp(value: NaiveDateTime) -> String {
 pub fn library_routes(state: &AppState) -> Router {
     let album: Router<AppState> = Router::new()
         .route("/music/album", get(get_album_list))
-        .route("/music/album/{album_id}/track", get(get_album_track_list))
+        .route("/music/album/{album_id}", get(get_album))
         .route(
-            "/music/album/{album_id}/track/{track_id}",
+            "/music/album/{album_id}/medium/{medium_index}",
+            get(get_album_medium),
+        )
+        .route(
+            "/music/album/{album_id}/medium/{medium_index}/track",
+            get(get_album_track_list),
+        )
+        .route(
+            "/music/album/{album_id}/medium/{medium_index}/track/{track_index}",
             get(get_album_track),
         );
 

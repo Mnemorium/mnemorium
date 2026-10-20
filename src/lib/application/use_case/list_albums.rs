@@ -5,6 +5,7 @@ use std::sync::Arc;
 use crate::application::port::list_albums::ListAlbumsCommand;
 use crate::application::port::list_albums::ListAlbumsError;
 use crate::application::port::list_albums::ListAlbumsItem;
+use crate::application::port::list_albums::ListAlbumsMediumItem;
 use crate::application::port::list_albums::ListAlbumsResponse;
 use crate::application::port::list_albums::ListAlbumsUseCase;
 use crate::application::use_case::library_access;
@@ -71,17 +72,27 @@ where
                     .skip(offset)
                     .take(command.limit().unwrap_or(usize::MAX))
                     .map(|album| {
+                        let mediums: Vec<_> = album
+                            .mediums()
+                            .iter()
+                            .map(|medium| {
+                                ListAlbumsMediumItem::new(
+                                    medium.index().index(),
+                                    medium.index().as_wire().to_owned(),
+                                    medium.tracks().len(),
+                                )
+                            })
+                            .collect();
+                        let track_count =
+                            mediums.iter().map(ListAlbumsMediumItem::track_count).sum();
                         ListAlbumsItem::new(
                             album.id(),
                             album.name().to_owned(),
                             album.release_date(),
                             album.production_type(),
                             album.genre_ids().to_vec(),
-                            album
-                                .mediums()
-                                .iter()
-                                .map(|medium| medium.tracks().len())
-                                .sum(),
+                            track_count,
+                            mediums,
                         )
                     })
                     .collect();
@@ -120,11 +131,14 @@ mod tests {
     use crate::application::port::list_albums::ListAlbumsCommand;
     use crate::application::port::list_albums::ListAlbumsError;
     use crate::application::port::list_albums::ListAlbumsItem;
+    use crate::application::port::list_albums::ListAlbumsMediumItem;
     use crate::application::port::list_albums::ListAlbumsUseCase as _;
     use crate::domain::model::music_album::MusicAlbum;
     use crate::domain::model::music_album::ProductionType;
+    use crate::domain::model::music_medium::MediumIndex;
     use crate::domain::model::music_medium::MusicMedium;
     use crate::domain::model::music_recording::MusicRecording;
+    use crate::domain::model::music_recording::TrackIndex;
     use crate::domain::model::user::Role;
     use crate::domain::model::user::User;
     use crate::domain::port::error::RepositoryError;
@@ -140,21 +154,32 @@ mod tests {
     /// The use case under test, bound to the mocked unit-of-work factory.
     type UseCase = ListAlbums<TestFactory>;
 
-    /// Build one album holding `album_id` tracks, named `Album {album_id}`.
-    fn album(album_id: i64) -> Result<MusicAlbum, Box<dyn Error>> {
-        let tracks = (0..album_id)
+    /// Build one `CD` medium sequencing one recording per index.
+    #[expect(
+        clippy::single_call_fn,
+        reason = "the medium fixture names the case it builds"
+    )]
+    fn medium(medium_index: u8, track_count: u8) -> Result<MusicMedium, Box<dyn Error>> {
+        let tracks = (0..track_count)
             .map(|index| {
                 Ok(MusicRecording::try_new(
-                    index,
+                    i64::from(index),
                     Some(format!("Track {index}")),
                     album_release_date(),
                     None,
-                    index,
-                    index,
+                    i64::from(index),
+                    i64::from(index),
                     None,
+                    TrackIndex::MediumIndex(index),
                 )?)
             })
             .collect::<Result<Vec<_>, Box<dyn Error>>>()?;
+        Ok(MusicMedium::new(MediumIndex::Cd(medium_index), tracks))
+    }
+
+    /// Build one album holding `track_count` tracks on one medium, named
+    /// `Album {album_id}`.
+    fn album(album_id: i64, track_count: u8) -> Result<MusicAlbum, Box<dyn Error>> {
         Ok(MusicAlbum::try_new(
             album_id,
             format!("Album {album_id}"),
@@ -162,7 +187,7 @@ mod tests {
             Some(ProductionType::Studio),
             vec!["JAZZ".to_owned()],
             None,
-            vec![MusicMedium::new(album_id, Some(1), "CD".to_owned(), tracks)],
+            vec![medium(1, track_count)?],
         )?)
     }
 
@@ -208,13 +233,14 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn list_albums_returns_every_album_of_the_page() -> Result<(), Box<dyn Error>> {
+    async fn list_albums_returns_every_album_of_the_page_with_its_mediums()
+    -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 1, Role::Standard)?;
         let mut albums = MockMusicAlbumRepository::new();
-        let first = album(1)?;
-        let second = album(2)?;
+        let first = album(1, 1)?;
+        let second = album(2, 2)?;
         albums
             .expect_search()
             .times(1)
@@ -242,7 +268,21 @@ mod tests {
                 Some(ProductionType::Studio),
                 vec!["JAZZ".to_owned()],
                 1,
+                vec![ListAlbumsMediumItem::new(1, "CD".to_owned(), 1)],
             ))
+        );
+        assert_eq!(
+            response.albums().get(1).map(ListAlbumsItem::track_count),
+            Some(2)
+        );
+        assert_eq!(
+            response
+                .albums()
+                .get(1)
+                .and_then(|album| album.mediums().first())
+                .map(ListAlbumsMediumItem::track_count),
+            Some(2),
+            "the album's total track count is the sum of its mediums"
         );
         assert!(harness.committed.load(Ordering::SeqCst));
         Ok(())

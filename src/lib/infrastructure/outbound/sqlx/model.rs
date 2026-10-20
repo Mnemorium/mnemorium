@@ -5,7 +5,6 @@ pub mod gallery;
 pub mod gallery_item;
 pub mod image;
 pub mod music_album;
-pub mod music_track;
 pub mod upload;
 pub mod user;
 pub mod video;

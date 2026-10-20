@@ -146,6 +146,7 @@ class MusicRecording {
   name: string
   first_release_date: date
   isrc_code: string
+  index: TrackIndex
 }
 
 class MusicGroup {
@@ -159,12 +160,8 @@ class MusicAlbum {
 }
 
 class MusicMedium {
-  format: string
-  index: int
-}
-
-class MusicTrack {
-  index: int
+  type: string
+  index: MediumIndex
 }
 
 
@@ -286,11 +283,9 @@ Person "*" -- "*" MusicGroup: Is part of >
 MusicAlbum "1" -- "*" MusicMedium : Packages >
 MusicAlbum "*" -- "*" Genre: Categorize by >
 
-MusicMedium "1" -- "*" MusicTrack : Positions >
+MusicMedium "1" -- "*" MusicRecording : Sequences >
 
-MusicPlaylist "1" -- "*" MusicTrack : Sequences >
-
-MusicTrack "*" -- "1" MusicRecording : Reference >
+MusicPlaylist "1" -- "*" MusicRecording : Sequences >
 
 MusicRecording "*" -- "*" MusicGroup: Made by >
 
@@ -334,8 +329,9 @@ end note
 | **MusicGroup**     | An entity representing a musical performer or ensemble, such as a band, orchestra, choir, or solo artist.                                                                                                                                                                                                |
 | **MusicPlaylist**  | A user-created, ordered collection of **MusicRecording**.                                                                                                                                                                                                                                                |
 | **MusicAlbum**     | A curated, top-level commercial or conceptual collection of **MusicRecording** by an **MusicGroup**.                                                                                                                                                                                                     |
-| **MusicMedium**    | The specific physical or digital container holding a sequence of **MusicTracks** (e.g., a specific CD, cassette tape, vinyl disc side, or digital volume).                                                                                                                                               |
-| **MusicTrack**     | An ordered slot or position entry on a specific **MusicMedium** that points to an underlying **MusicRecording**.                                                                                                                                                                                         |
+| **MusicMedium**    | The specific physical or digital container that sequences **MusicRecording** occurrences (e.g., a specific CD, cassette tape, vinyl disc side, or digital volume).                                                                                                                                       |
+| **MediumIndex**    | The album-scoped identity and type of a **MusicMedium**; a medium is addressed by its index within its album.                                                                                                                                                                                            |
+| **TrackIndex**     | The placement of a **MusicRecording** within the container that sequences it: a medium index or a playlist index.                                                                                                                                                                                        |
 | **MusicRecording** | A unique master audio capture or sound recording session, independent of the physical formats on which it is distributed.                                                                                                                                                                                |
 | **Movie**          | A self-contained, long-form narrative or documentary film produced for artistic, cinematic, or entertainment purposes.                                                                                                                                                                                   |
 | **Video**          | An abstract domain representation of a video file                                                                                                                                                                                                                                                        |

@@ -62,6 +62,48 @@ impl ListAlbumsCommand {
     }
 }
 
+/// One medium of a listed album.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct ListAlbumsMediumItem {
+    /// Album-scoped index of the medium.
+    medium_index: u8,
+    /// Stored type of the medium (`CD`).
+    medium_type: String,
+    /// Number of recordings the medium sequences.
+    track_count: usize,
+}
+
+impl ListAlbumsMediumItem {
+    /// Return the album-scoped index of the medium.
+    #[must_use]
+    pub fn medium_index(&self) -> u8 {
+        self.medium_index
+    }
+
+    /// Return the stored type of the medium.
+    #[must_use]
+    pub fn medium_type(&self) -> &str {
+        &self.medium_type
+    }
+
+    /// Create a new listed album medium.
+    #[must_use]
+    pub fn new(medium_index: u8, medium_type: String, track_count: usize) -> Self {
+        Self {
+            medium_index,
+            medium_type,
+            track_count,
+        }
+    }
+
+    /// Return the number of recordings the medium sequences.
+    #[must_use]
+    pub fn track_count(&self) -> usize {
+        self.track_count
+    }
+}
+
 /// One album of a successful listing.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
@@ -70,6 +112,8 @@ pub struct ListAlbumsItem {
     album_id: NumericID,
     /// Genres of the album, ordered by genre identifier.
     genres: Vec<String>,
+    /// Mediums of the album, ordered by medium index.
+    mediums: Vec<ListAlbumsMediumItem>,
     /// Name of the album.
     name: String,
     /// Production type of the album, when set.
@@ -93,6 +137,12 @@ impl ListAlbumsItem {
         &self.genres
     }
 
+    /// Return the mediums of the album, ordered by medium index.
+    #[must_use]
+    pub fn mediums(&self) -> &[ListAlbumsMediumItem] {
+        &self.mediums
+    }
+
     /// Return the name of the album.
     #[must_use]
     pub fn name(&self) -> &str {
@@ -108,10 +158,12 @@ impl ListAlbumsItem {
         production_type: Option<ProductionType>,
         genres: Vec<String>,
         track_count: usize,
+        mediums: Vec<ListAlbumsMediumItem>,
     ) -> Self {
         Self {
             album_id,
             genres,
+            mediums,
             name,
             production_type,
             release_date,
