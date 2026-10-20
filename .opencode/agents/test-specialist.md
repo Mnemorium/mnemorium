@@ -278,9 +278,8 @@ Lint and format are run and passed by the `execution-governor` before this task;
 never run them and never fetch a linter's documentation. Run only the tests and
 coverage you own.
 
-Run inside the development environment. If a tool is missing from the
-environment, tell the user to enter the dev shell (`devenv shell`) rather than
-working around it.
+Shell calls already run inside the development environment. If a tool is
+missing, report it rather than working around it.
 
 1. `cargo test`
 2. `cargo llvm-cov --lib --fail-under-functions 80 --fail-under-regions 80 --fail-under-lines 80`

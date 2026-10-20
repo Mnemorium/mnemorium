@@ -208,8 +208,8 @@ lead-reviewer expects.
 | Rust, Python, container, SQL, or CI changed     | container E2E: `script/e2e.sh` — builds the image, runs `mnemorium-e2e`, waits for `/health`, runs `pytest -p no:cacheprovider -ra --tb=short --junitxml=.artifacts/e2e/junit.xml test/e2e`, and cleans up (`NO_BUILD=1` reuses an existing image)                                                                                        |
 
 Collect the static-analysis artifact (`.artifacts/semgrep.sarif`) when the
-security gate ran. If a required tool is missing, stop and tell the caller to
-enter the dev shell (`devenv shell`) rather than working around it.
+security gate ran. If a required tool is missing, stop and report the missing
+tool rather than working around it.
 
 # Review hand-off
 

@@ -80,13 +80,13 @@ checks use.
 - The target surface — the code the rule constrains.
 - `rule/*.yml` — the worked ast-grep examples.
 
-The tools live in the dev shell: run them as `devenv shell -- <tool>`.
+The dev environment is already active in shell calls: invoke the tools directly.
 
 # Method
 
 1. Read the rule row: ID, section, rule text.
 2. Read the harness: the registry, one Bash check, one ast-grep rule.
-3. Find the check state: `devenv shell -- script/rule_enforcer.sh list` /
+3. Find the check state: `script/rule_enforcer.sh list` /
    `uncovered`, then the existing function when the task is a fix.
 4. Inspect the target with `ast-grep scan` — patterns, kinds, anchors.
 5. Choose the mechanism.
@@ -95,9 +95,9 @@ The tools live in the dev shell: run them as `devenv shell -- <tool>`.
    - **Red:** write a minimal fixture that violates the rule and run the
      candidate check against it; it must flag the violation. For an ast-grep
      check, scan the fixture with
-     `devenv shell -- ast-grep scan --rule <candidate> <fixture>`; for a pure
+     `ast-grep scan --rule <candidate> <fixture>`; for a pure
      Bash check, put the candidate function in a scratch script and run it with
-     `devenv shell -- bash <scratch> <fixture>`.
+     `bash <scratch> <fixture>`.
    - **Green:** write a compliant fixture and run the same check; it must flag
      nothing.
    - A check that is not red on a violation, or not green on compliant input, is
