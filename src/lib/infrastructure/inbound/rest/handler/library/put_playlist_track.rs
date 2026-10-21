@@ -58,6 +58,18 @@ pub struct ReorderPlaylistTracksRequest {
             description = "Missing or invalid credentials"
         ),
         (
+            status = PAYLOAD_TOO_LARGE,
+            body = ErrorBody,
+            content_type = "application/hal+json",
+            description = "The request body exceeds the maximum allowed size"
+        ),
+        (
+            status = UNSUPPORTED_MEDIA_TYPE,
+            body = ErrorBody,
+            content_type = "application/hal+json",
+            description = "The request body is not application/json"
+        ),
+        (
             status = NOT_FOUND,
             body = ErrorBody,
             content_type = "application/hal+json",

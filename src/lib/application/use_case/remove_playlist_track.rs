@@ -220,10 +220,9 @@ mod tests {
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 9, Role::Standard)?;
         let mut playlists = MockMusicPlaylistRepository::new();
-        expect_playlist(
-            &mut playlists,
-            playlist(3, 4, true, vec![track(30, 0)?, track(31, 1)?])?,
-        );
+        let stored = playlist(3, 4, true, vec![track(30, 0)?, track(31, 1)?])?;
+        let loaded_at = stored.last_modified_at();
+        expect_playlist(&mut playlists, stored);
         playlists
             .expect_remove_track()
             .times(1)
@@ -232,6 +231,7 @@ mod tests {
         playlists
             .expect_save()
             .times(1)
+            .withf(move |saved| saved.last_modified_at() > loaded_at)
             .returning(|saved| Box::pin(async move { Ok(saved) }));
         let harness = harness_with(users, playlists);
         let use_case: UseCase = RemovePlaylistTrack::new(Arc::clone(&harness.factory));

@@ -860,6 +860,33 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn seeding_rejects_a_playlist_track_index_above_the_u32_range()
+    -> Result<(), Box<dyn Error>> {
+        // Arrange: the schema itself must reject the row, without relaxing the
+        // check the repository read-side guard is probed against elsewhere.
+        let mut transaction = begin_transaction().await?;
+        seed_user(&mut transaction, 1).await?;
+        seed_one_recording(&mut transaction, 30, "So What").await?;
+        seed_playlist(&mut transaction, 7, "Mix", 1, false).await?;
+
+        // Act
+        let result = sqlx::query(
+            "INSERT INTO music_track (track_index, music_playlist_id, music_medium_id, music_recording_id)
+             VALUES (4294967296, 7, NULL, 30)",
+        )
+        .execute(&mut *transaction)
+        .await
+        .map_err(RepositoryError::from);
+
+        // Assert: chk_music_track_playlist_track_index.
+        assert!(matches!(
+            result,
+            Err(RepositoryError::DataIntegrityViolation)
+        ));
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn search_rejects_a_recording_whose_stored_isrc_code_is_malformed()
     -> Result<(), Box<dyn Error>> {
         // Arrange

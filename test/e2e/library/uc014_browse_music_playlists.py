@@ -176,3 +176,55 @@ def test_a_malformed_track_index_is_rejected(
     )
 
     assert_error_body(response, 400)
+
+
+@pytest.mark.parametrize("limit", [0, 101])
+def test_list_playlists_rejects_an_out_of_range_limit(
+    list_playlists: Callable[[str, str], requests.Response],
+    assert_error_body: Callable[[requests.Response, int], None],
+    standard_user_token: str,
+    limit: int,
+) -> None:
+    response = list_playlists(standard_user_token, f"?limit={limit}")
+
+    assert_error_body(response, 422)
+
+
+def test_list_playlists_rejects_a_malformed_limit(
+    list_playlists: Callable[[str, str], requests.Response],
+    assert_error_body: Callable[[requests.Response, int], None],
+    standard_user_token: str,
+) -> None:
+    response = list_playlists(standard_user_token, "?limit=abc")
+
+    assert_error_body(response, 400)
+
+
+def test_list_playlists_navigates_between_pages(
+    create_playlist: Callable[[str, str, bool], requests.Response],
+    list_playlists: Callable[[str, str], requests.Response],
+    standard_user_token: str,
+    second_standard_user_token: str,
+) -> None:
+    # Two owners may share a name, so the name filter bounds this page to the
+    # two public playlists created here.
+    name = f"Paged {time.time_ns()}"
+    first = create_playlist(standard_user_token, name, is_public=True)
+    assert first.status_code == 201, f"create failed: {first.status_code} {first.text}"
+    second = create_playlist(second_standard_user_token, name, is_public=True)
+    assert second.status_code == 201, f"create failed: {second.status_code} {second.text}"
+
+    query = f"?name={quote(name, safe='')}&limit=1"
+    first_page = list_playlists(standard_user_token, query)
+    assert first_page.status_code == 200, f"list failed: {first_page.status_code} {first_page.text}"
+    first_body = first_page.json()
+    assert len(first_body["items"]) == 1
+    assert first_body["_links"]["next"]["href"] == f"{_PLAYLIST_PATH}{query}&offset=1"
+    assert "prev" not in first_body["_links"]
+
+    second_page = list_playlists(standard_user_token, f"{query}&offset=1")
+    assert second_page.status_code == 200, f"list failed: {second_page.status_code} {second_page.text}"
+    second_body = second_page.json()
+    assert len(second_body["items"]) == 1
+    assert second_body["_links"]["prev"]["href"] == f"{_PLAYLIST_PATH}{query}&offset=0"
+    assert "next" not in second_body["_links"]

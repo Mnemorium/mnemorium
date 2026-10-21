@@ -301,11 +301,17 @@ mod tests {
             .return_once(move |_| Box::pin(async move { Ok(vec![playlist]) }));
     }
 
-    fn save_echo(playlists: &mut MockMusicPlaylistRepository, expected_name: &'static str) {
+    fn save_echo(
+        playlists: &mut MockMusicPlaylistRepository,
+        expected_name: &'static str,
+        loaded_at: NaiveDateTime,
+    ) {
         playlists
             .expect_save()
             .times(1)
-            .withf(move |saved| saved.name() == expected_name)
+            .withf(move |saved| {
+                saved.name() == expected_name && saved.last_modified_at() > loaded_at
+            })
             .returning(|saved| Box::pin(async move { Ok(saved) }));
     }
 
@@ -315,7 +321,9 @@ mod tests {
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 4, Role::Standard)?;
         let mut playlists = MockMusicPlaylistRepository::new();
-        expect_playlist(&mut playlists, playlist(3, 4, "Mine", false, Vec::new())?);
+        let stored = playlist(3, 4, "Mine", false, Vec::new())?;
+        let loaded_at = stored.last_modified_at();
+        expect_playlist(&mut playlists, stored);
         playlists
             .expect_search()
             .times(1)
@@ -324,7 +332,9 @@ mod tests {
         playlists
             .expect_save()
             .times(1)
-            .withf(|saved| saved.name() == "New" && saved.is_public())
+            .withf(move |saved| {
+                saved.name() == "New" && saved.is_public() && saved.last_modified_at() > loaded_at
+            })
             .returning(|saved| Box::pin(async move { Ok(saved) }));
         let harness = harness_with(users, playlists);
         let use_case: UseCase = UpdatePlaylist::new(Arc::clone(&harness.factory));
@@ -354,8 +364,10 @@ mod tests {
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 4, Role::Standard)?;
         let mut playlists = MockMusicPlaylistRepository::new();
-        expect_playlist(&mut playlists, playlist(3, 4, "Mine", false, Vec::new())?);
-        save_echo(&mut playlists, "Mine");
+        let stored = playlist(3, 4, "Mine", false, Vec::new())?;
+        let loaded_at = stored.last_modified_at();
+        expect_playlist(&mut playlists, stored);
+        save_echo(&mut playlists, "Mine", loaded_at);
         let harness = harness_with(users, playlists);
         let use_case: UseCase = UpdatePlaylist::new(Arc::clone(&harness.factory));
 
@@ -468,18 +480,29 @@ mod tests {
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 9, Role::Standard)?;
         let mut playlists = MockMusicPlaylistRepository::new();
-        expect_playlist(&mut playlists, playlist(3, 4, "Public", true, Vec::new())?);
+        let stored = playlist(3, 4, "Public", true, Vec::new())?;
+        let loaded_at = stored.last_modified_at();
+        expect_playlist(&mut playlists, stored);
         let added = track(30, 0)?;
+        let saved_track = added.clone();
         playlists
             .expect_add_track()
             .times(1)
             .withf(|playlist_id, recording_id| *playlist_id == 3 && *recording_id == 30)
             .return_once(move |_, _| Box::pin(async move { Ok(Some(added)) }));
+        // The adapter re-reads the aggregate after the placement insert, so the
+        // saved playlist answers with the recording the use case appended.
+        let saved = playlist(3, 4, "Public", true, vec![saved_track])?;
         playlists
             .expect_save()
             .times(1)
-            .withf(|saved| saved.tracks().is_empty())
-            .returning(|saved| Box::pin(async move { Ok(saved) }));
+            .withf(move |candidate| {
+                candidate.tracks().is_empty() && candidate.last_modified_at() > loaded_at
+            })
+            .return_once(move |_| {
+                let found = saved.clone();
+                Box::pin(async move { Ok(found) })
+            });
         let harness = harness_with(users, playlists);
         let use_case: UseCase = UpdatePlaylist::new(Arc::clone(&harness.factory));
 
@@ -490,6 +513,11 @@ mod tests {
 
         // Assert
         assert_eq!(result.playlist().id(), 3);
+        let tracks = result.playlist().tracks();
+        assert_eq!(tracks.len(), 1);
+        let track = tracks.first().ok_or("the added track is missing")?;
+        assert_eq!(track.id(), 30);
+        assert_eq!(track.index().playlist_index(), Some(0));
         assert!(harness.committed.load(Ordering::SeqCst));
         Ok(())
     }
