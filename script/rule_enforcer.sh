@@ -128,6 +128,7 @@ RULES=(
 	"STY-RUST-083:check_sty_rust_083"
 	"DOC-003:check_doc_003"
 	"DOC-005:check_doc_005"
+	"DOC-007:check_doc_007"
 	"STY-SQL-001:check_sty_sql_001"
 	"STY-SQL-003:check_sty_sql_003"
 	"STY-SQL-004:check_sty_sql_004"
@@ -3172,6 +3173,149 @@ check_doc_005() {
 			fi
 		done
 	done
+
+	return "$result"
+}
+
+# check_doc_007 — a business use case entry states intent and outcome in
+# business terms (DOC-007). The catalog (docs/development/UseCases.md) is the
+# rule's data: every `## UC-<seq> - <Name>` entry is read at run time, as
+# check_doc_005 reads them, so a new use case is covered by cataloguing it,
+# never by editing this function. Every `###` field of an entry except the
+# exempt ones — the method and path in `### Trigger(s)`, the context name in
+# `### Bounded context(s)` — is narrative, and so is any prose directly under
+# the entry heading; the catalog preamble belongs to no entry and is not read.
+# An inline code span is implementation syntax in business prose, and the
+# denylisted vocabulary (technical words matched as whole words, plus the
+# patterns for method and route, status code, media type and representation
+# mechanics) comes from rule_enforcer.yaml, so the list grows without editing
+# this function.
+check_doc_007() {
+	local id="DOC-007"
+	local catalog="docs/development/UseCases.md"
+	local exempt_joined line seq text lower section word pattern result=0
+	# DOC-007 fixes this vocabulary in TechnicalDesign.md § 5, so the data lives
+	# next to its check rather than in the edit-locked rule_enforcer.yaml. A
+	# change to the rule changes this list in the same commit. Whole words are
+	# matched against `[_[:alnum:]]` boundaries, so `track_index` is never a hit
+	# for `index`; a phrase matches across its spaces.
+	local -a exempt_sections=("Trigger(s)" "Bounded context(s)")
+	local -a deny_words=(
+		# storage and transaction mechanism
+		"schema"
+		"cascade"
+		"datastore"
+		"database"
+		"table"
+		"row"
+		"column"
+		"transaction"
+		"migration"
+		# concurrency
+		"thread"
+		"race"
+		# implementation layer
+		"server"
+		"client"
+		"endpoint"
+		"handler"
+		"adapter"
+		"repository"
+		"cache"
+		# wire contract
+		"payload"
+		"json"
+		"hal"
+		"request body"
+		"query parameter"
+	)
+	local -a deny_patterns=(
+		# HTTP method and route: a method before a path, or a bare route path.
+		'(^|[^[:alnum:]_])(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS|TRACE|CONNECT)[[:space:]]+/'
+		'(^|[^[:alnum:]_])/api/'
+		# Response status: the codes docs/openapi.json declares. `100` is
+		# omitted: in this catalog it is a length, never a status.
+		'(^|[^[:alnum:]_])(200|201|204|400|401|403|404|405|409|410|413|415|422|429|500)([^[:alnum:]_]|$)'
+		'(^|[^[:alnum:]_])[45][xX]{2}([^[:alnum:]_]|$)'
+		'(^|[^[:alnum:]_])status[[:space:]]+code([^[:alnum:]_]|$)'
+		# HTTP reason phrases that are never business prose. "not found" and
+		# "unauthorized"/"forbidden" are business English this catalog uses, so
+		# they stay out.
+		'(^|[^[:alnum:]_])(Bad Request|Method Not Allowed|Unsupported Media Type|Payload Too Large|Too Many Requests|Unprocessable Content|Internal Server Error)([^[:alnum:]_]|$)'
+		# A field name in the codebase's snake_case form: `track_index`,
+		# `last_modified_at`, `recording_id`.
+		'(^|[^[:alnum:]_])[a-z][a-z0-9]*(_[a-z0-9]+)+([^[:alnum:]_]|$)'
+		# Representation media type and HAL mechanics.
+		'application/(hal\+)?json'
+		'(^|[^[:alnum:]_])_links([^[:alnum:]_]|$)'
+		'(^|[^[:alnum:]_])_embedded([^[:alnum:]_]|$)'
+	)
+
+	if [ ! -f "$catalog" ]; then
+		printf 'error: %s: missing %s\n' "$id" "$catalog" >&2
+		return 1
+	fi
+
+	exempt_joined=""
+	for section in "${exempt_sections[@]}"; do
+		exempt_joined+="${exempt_joined:+|}${section}"
+	done
+
+	# Each narrative line of each entry, one `line<TAB>seq<TAB>text` record. The
+	# parser sees the section a line sits under, which a line-oriented grep
+	# cannot do, so the exempt fields are skipped here and nowhere else.
+	while IFS=$'\t' read -r line seq text; do
+		[ -n "$line" ] || continue
+
+		if [[ $text == *'`'* ]]; then
+			printf 'error: %s: %s:%s: UC-%s states a narrative field with an inline code span; the entry stays in business prose (DOC-007)\n' \
+				"$id" "$catalog" "$line" "$seq" >&2
+			result=1
+		fi
+
+		lower="${text,,}"
+		for word in "${deny_words[@]}"; do
+			if [[ $lower =~ (^|[^[:alnum:]_])${word}([^[:alnum:]_]|$) ]]; then
+				printf 'error: %s: %s:%s: UC-%s names the technical term "%s" in a narrative field; state the business intent instead (DOC-007)\n' \
+					"$id" "$catalog" "$line" "$seq" "$word" >&2
+				result=1
+			fi
+		done
+
+		for pattern in "${deny_patterns[@]}"; do
+			if [[ $text =~ $pattern ]]; then
+				printf 'error: %s: %s:%s: UC-%s names a wire or implementation detail ("%s") in a narrative field; that detail belongs to the API section and docs/openapi.json (DOC-007)\n' \
+					"$id" "$catalog" "$line" "$seq" "${BASH_REMATCH[0]}" >&2
+				result=1
+			fi
+		done
+	done < <(awk -v exempt="$exempt_joined" '
+		function trim(s) { gsub(/^[[:space:]]+|[[:space:]]+$/, "", s); return s }
+
+		BEGIN {
+			n = split(exempt, list, "|")
+			for (i = 1; i <= n; i++) exempt_heading[list[i]] = 1
+		}
+
+		/^## UC-[0-9]+ - / {
+			seq = $0
+			sub(/^## UC-/, "", seq); sub(/ - .*$/, "", seq)
+			in_entry = 1
+			skip = 0
+			next
+		}
+
+		/^## / { in_entry = 0; skip = 0; next }
+
+		in_entry && /^### / {
+			skip = (trim(substr($0, 5)) in exempt_heading)
+			next
+		}
+
+		in_entry && !skip && length($0) {
+			printf "%d\t%s\t%s\n", NR, seq, $0
+		}
+	' "$catalog")
 
 	return "$result"
 }
