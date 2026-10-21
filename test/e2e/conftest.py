@@ -552,3 +552,146 @@ def get_album_track(server_url: str) -> Callable[[str, int, int, int], requests.
         )
 
     return _get_album_track
+
+
+LIBRARY_PLAYLIST_PATH = f"{API_PREFIX}/library/music/playlist"
+
+
+@pytest.fixture
+def create_playlist(server_url: str) -> Callable[[str, str, bool], requests.Response]:
+    """Return a callable that POSTs a playlist creation request."""
+
+    def _create_playlist(token: str, name: str, is_public: bool = False) -> requests.Response:
+        return requests.post(
+            f"{server_url}{LIBRARY_PLAYLIST_PATH}",
+            headers={"Authorization": f"Bearer {token}"},
+            json={"name": name, "is_public": is_public},
+            timeout=10,
+        )
+
+    return _create_playlist
+
+
+@pytest.fixture
+def list_playlists(server_url: str) -> Callable[[str, str], requests.Response]:
+    """Return a callable that GETs the playlist collection with a query string."""
+
+    def _list_playlists(token: str, query: str = "") -> requests.Response:
+        return requests.get(
+            f"{server_url}{LIBRARY_PLAYLIST_PATH}{query}",
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=10,
+        )
+
+    return _list_playlists
+
+
+@pytest.fixture
+def get_playlist(server_url: str) -> Callable[[str, int], requests.Response]:
+    """Return a callable that GETs one playlist by identifier."""
+
+    def _get_playlist(token: str, playlist_id: int) -> requests.Response:
+        return requests.get(
+            f"{server_url}{LIBRARY_PLAYLIST_PATH}/{playlist_id}",
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=10,
+        )
+
+    return _get_playlist
+
+
+@pytest.fixture
+def patch_playlist(server_url: str) -> Callable[[str, int, dict], requests.Response]:
+    """Return a callable that PATCHes one playlist with a JSON payload."""
+
+    def _patch_playlist(token: str, playlist_id: int, payload: dict) -> requests.Response:
+        return requests.patch(
+            f"{server_url}{LIBRARY_PLAYLIST_PATH}/{playlist_id}",
+            headers={"Authorization": f"Bearer {token}"},
+            json=payload,
+            timeout=10,
+        )
+
+    return _patch_playlist
+
+
+@pytest.fixture
+def delete_playlist(server_url: str) -> Callable[[str, int], requests.Response]:
+    """Return a callable that DELETEs one playlist by identifier."""
+
+    def _delete_playlist(token: str, playlist_id: int) -> requests.Response:
+        return requests.delete(
+            f"{server_url}{LIBRARY_PLAYLIST_PATH}/{playlist_id}",
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=10,
+        )
+
+    return _delete_playlist
+
+
+@pytest.fixture
+def get_playlist_track_list(server_url: str) -> Callable[[str, int], requests.Response]:
+    """Return a callable that GETs the playlist track alias."""
+
+    def _get_playlist_track_list(token: str, playlist_id: int) -> requests.Response:
+        return requests.get(
+            f"{server_url}{LIBRARY_PLAYLIST_PATH}/{playlist_id}/track",
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=10,
+        )
+
+    return _get_playlist_track_list
+
+
+@pytest.fixture
+def get_playlist_track(server_url: str) -> Callable[[str, int, int], requests.Response]:
+    """Return a callable that GETs one track of a playlist."""
+
+    def _get_playlist_track(token: str, playlist_id: int, track_index: int) -> requests.Response:
+        return requests.get(
+            f"{server_url}{LIBRARY_PLAYLIST_PATH}/{playlist_id}/track/{track_index}",
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=10,
+        )
+
+    return _get_playlist_track
+
+
+@pytest.fixture
+def delete_playlist_track(server_url: str) -> Callable[[str, int, int], requests.Response]:
+    """Return a callable that DELETEs one track of a playlist."""
+
+    def _delete_playlist_track(token: str, playlist_id: int, track_index: int) -> requests.Response:
+        return requests.delete(
+            f"{server_url}{LIBRARY_PLAYLIST_PATH}/{playlist_id}/track/{track_index}",
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=10,
+        )
+
+    return _delete_playlist_track
+
+
+@pytest.fixture
+def reorder_playlist_tracks(server_url: str) -> Callable[[str, int, list[int]], requests.Response]:
+    """Return a callable that PUTs a playlist track order."""
+
+    def _reorder_playlist_tracks(token: str, playlist_id: int, order: list[int]) -> requests.Response:
+        return requests.put(
+            f"{server_url}{LIBRARY_PLAYLIST_PATH}/{playlist_id}/track",
+            headers={"Authorization": f"Bearer {token}"},
+            json={"order": order},
+            timeout=10,
+        )
+
+    return _reorder_playlist_tracks
+
+
+def create_owned_playlist(
+    create_playlist: Callable[[str, str, bool], requests.Response],
+    token: str,
+    is_public: bool = False,
+) -> int:
+    """Create a playlist owned by `token`'s caller and return its identifier."""
+    created = create_playlist(token, f"Playlist {time.time_ns()}", is_public)
+    assert created.status_code == 201, f"create failed: {created.status_code} {created.text}"
+    return created.json()["id"]

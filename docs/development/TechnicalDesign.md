@@ -1913,7 +1913,7 @@ entity music_medium {
 entity music_track {
    * music_track_id: INTEGER <<PK>>
    --
-   * track_index: INTEGER <<NN, CC(track_index >= 0), CC(music_medium_id IS NULL OR track_index BETWEEN 0 AND 255)>>
+   * track_index: INTEGER <<NN, CC(track_index >= 0), CC(music_medium_id IS NULL OR track_index BETWEEN 0 AND 255), CC(music_playlist_id IS NULL OR track_index <= 4294967295)>>
    * music_playlist_id: INTEGER <<FK, CC((music_medium_id IS NOT NULL) <> (music_playlist_id IS NOT NULL))>>
    * music_medium_id: INTEGER <<FK, CC((music_medium_id IS NOT NULL) <> (music_playlist_id IS NOT NULL))>>
    * music_recording_id: INTEGER <<FK, NN>>
@@ -1931,10 +1931,11 @@ entity music_recording {
 entity music_playlist {
    * music_playlist_id: INTEGER <<PK>>
    --
-   * name: TEXT <<NN>>
+   * name: TEXT <<NN, UN(user_id, name)>>
    * created_at: TEXT <<NN, DF(CURRENT_TIMESTAMP)>>
+   * last_modified_at: TEXT <<NN, DF(CURRENT_TIMESTAMP)>>
    * user_id: INTEGER <<FK, NN>>
-   * is_public: BOOLEAN <<NN, DF(1)>>
+   * is_public: BOOLEAN <<NN, DF(0)>>
 }
 
 entity audio_channel {
@@ -2219,10 +2220,17 @@ video ||--o| gallery_item
 The `music_medium` entity enforces a composite unique key on `(music_album_id, medium_index)`
 (`uq_music_medium_album_medium_index`): an album holds at most one medium at a given index.
 
-The `music_track` entity enforces two partial unique indexes, `uq_music_track_medium_track_index` on
-`(music_medium_id, track_index)` and `uq_music_track_playlist_track_index` on `(music_playlist_id, track_index)`, each
-restricted to the rows where its container column is set: a medium and a playlist each sequence at most one track at a
-given index. A track is placed in exactly one of them (`chk_music_track_one_container`).
+The `music_track` entity enforces three partial unique indexes, `uq_music_track_medium_track_index` on
+`(music_medium_id, track_index)`, `uq_music_track_playlist_track_index` on `(music_playlist_id, track_index)` and
+`uq_music_track_playlist_recording` on `(music_playlist_id, music_recording_id)`, each restricted to the rows where its
+container column is set: a medium and a playlist each sequence at most one track at a given index, and a playlist holds
+at most one occurrence of a given recording. A track is placed in exactly one container
+(`chk_music_track_one_container`), and a playlist track index cannot exceed the domain's `u32` range
+(`chk_music_track_playlist_track_index`). The playlist foreign key cascades: deleting a playlist removes its track
+placements while the shared recordings, audio and files survive (`PERS-020`).
+
+The `music_playlist` entity enforces a composite unique key on `(user_id, name)` (`uq_music_playlist_user_id_name`): a
+caller owns at most one playlist per name, while different callers may each own a playlist with the same name.
 
 The `file` entity enforces a composite unique key on `(user_id, integrity_hash)`: a caller stores one file record per
 integrity hash, while different callers may each store their own copy.
@@ -2824,15 +2832,15 @@ This section governs the examples, diagrams, citations, routes, excerpts and bus
 publishes. It keeps every published example traceable to the code it restates, so a reader can verify it and a reviewer
 can catch it going stale.
 
-| ID        | Section               | Rule                                                                                                                                                                                                                                                                                                    | More info                          |
-| --------- | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------- |
-| `DOC-001` | Code examples         | An example that restates production code names the source path it is drawn from, is updated in the same change as that code, and may elide omitted regions with a `// [...]` marker.                                                                                                                    | [§ 1](#1-code-examples)            |
-| `DOC-002` | Domain model diagrams | A domain model diagram that the documentation publishes represents the domain's real-world concepts — conceptual classes, typed attributes, and named associations with multiplicity — and never software methods, database tables or other implementation detail.                                      | [§ 2](#2-domain-model-diagrams)    |
-| `DOC-003` | Citations             | Documentation (`docs/`, the root Markdown) and production source (`src/`) cite only paths the repository tracks; they never name the local, untracked `.artifacts/` scratch directory, which a reader cannot resolve.                                                                                   | [§ 3](#3-citations)                |
-| `DOC-004` | Published route       | A route the documentation publishes names a path the generated specification declares in `docs/openapi.json`.                                                                                                                                                                                           | [§ 4](#4-published-routes)         |
-| `DOC-005` | Business use cases    | Every business use case entry in [UseCases.md](UseCases.md) carries the § 5 field headings in the documented order, carries no `### Application use case(s)` heading, and is numbered sequentially `UC-001`, `UC-002`, ….                                                                               | [§ 5](#5-business-use-case-format) |
-| `DOC-006` | Code examples         | An example that illustrates the § 3 (API) endpoint-handler contract rather than restating a cited source file has no source to cite, but is kept in step with § 3: when a rule it illustrates changes, the example changes with it.                                                                     | [§ 1](#1-code-examples)            |
-| `DOC-007` | Business use cases    | A business use case entry states intent and outcome in business terms: it never names a representation format or its mechanics (`HAL`, `application/hal+json`, JSON, `_links`, `_embedded`) nor an HTTP status code; the REST shape belongs to the [API section](#api) and the generated specification. | [§ 5](#5-business-use-case-format) |
+| ID        | Section               | Rule                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | More info                          |
+| --------- | --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------- |
+| `DOC-001` | Code examples         | An example that restates production code names the source path it is drawn from, is updated in the same change as that code, and may elide omitted regions with a `// [...]` marker.                                                                                                                                                                                                                                                                                                           | [§ 1](#1-code-examples)            |
+| `DOC-002` | Domain model diagrams | A domain model diagram that the documentation publishes represents the domain's real-world concepts — conceptual classes, typed attributes, and named associations with multiplicity — and never software methods, database tables or other implementation detail.                                                                                                                                                                                                                             | [§ 2](#2-domain-model-diagrams)    |
+| `DOC-003` | Citations             | Documentation (`docs/`, the root Markdown) and production source (`src/`) cite only paths the repository tracks; they never name the local, untracked `.artifacts/` scratch directory, which a reader cannot resolve.                                                                                                                                                                                                                                                                          | [§ 3](#3-citations)                |
+| `DOC-004` | Published route       | A route the documentation publishes names a path the generated specification declares in `docs/openapi.json`.                                                                                                                                                                                                                                                                                                                                                                                  | [§ 4](#4-published-routes)         |
+| `DOC-005` | Business use cases    | Every business use case entry in [UseCases.md](UseCases.md) carries the § 5 field headings in the documented order, carries no `### Application use case(s)` heading, and is numbered sequentially `UC-001`, `UC-002`, ….                                                                                                                                                                                                                                                                      | [§ 5](#5-business-use-case-format) |
+| `DOC-006` | Code examples         | An example that illustrates the § 3 (API) endpoint-handler contract rather than restating a cited source file has no source to cite, but is kept in step with § 3: when a rule it illustrates changes, the example changes with it.                                                                                                                                                                                                                                                            | [§ 1](#1-code-examples)            |
+| `DOC-007` | Business use cases    | A business use case entry states intent and outcome in business terms: outside the method and path in `### Trigger(s)`, and the context name in `### Bounded context(s)`, it names no HTTP method, route, status code, representation media type, representation mechanic, request or response field, query parameter, storage or transaction mechanism, concurrency race, or implementation-layer term; the wire contract belongs to the [API section](#api) and the generated specification. | [§ 5](#5-business-use-case-format) |
 
 ---
 
@@ -2986,9 +2994,40 @@ An entry never carries an `### Application use case(s)` heading: the catalog des
 implements them. A business use case is implemented by one or more application use cases, governed by
 [§ 9 (Use cases)](#9-use-cases).
 
-A use case stays in business vocabulary. A representation format or its mechanics (`HAL`, `application/hal+json`, JSON,
-`_links`, `_embedded`) and an HTTP status code belong to the [API section](#api) and the generated specification, so an
-entry names neither (`DOC-007`).
+A use case stays in business vocabulary. The narrative fields — `### Description`, `### Pre condition(s)`,
+`### Business rules`, `### Happy path`, `### Alternative flow` and `### Post condition(s)` — state intent and outcome in
+the language of the domain, never in the language of the wire or the implementation. Only `### Trigger(s)` names a
+method and path, and only `### Bounded context(s)` names a bounded context; a trigger describes the caller's request in
+business terms, not its payload fields.
+
+The vocabulary a narrative field excludes (`DOC-007`):
+
+| Excluded                                                                     | Lives in                                                           |
+| ---------------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| HTTP method, route, status code, header                                      | [§ 3 (API)](#api), `docs/openapi.json` (`DOC-004`)                 |
+| Representation media type (`application/hal+json`), mechanics, links         | [§ 3 (API)](#api), `docs/openapi.json`                             |
+| Request or response field, query parameter, payload, request body, JSON      | [§ 3 (API)](#api), `docs/openapi.json`                             |
+| Datastore, table, row, column, schema, cascade, transaction, migration, byte | [§ 4 (Persistence)](#persistence)                                  |
+| Server, client, endpoint, handler, adapter, repository, cache, thread, race  | [§ 2 (Architecture)](#architecture), [§ 1](#code-style-guidelines) |
+
+Domain vocabulary from the [Overview](Overview.md) and the [Glossary](Glossary.md) is allowed: write “the system”, “the
+caller”, “playlist”, “recording”, “track”, “position”, “visibility”, “owner” and “last-modified time”; do not write
+`last_modified_at`, `track_index`, `recording_id`, `is_public`, `add_track`, `limit`, `offset`, `total`, `0..n-1` or
+`MAX(track_index) + 1`. The business outcome replaces the status code:
+
+| Technical form                       | Business form                                       |
+| ------------------------------------ | --------------------------------------------------- |
+| `404 Not Found`                      | reported as not found, without revealing which case |
+| `422 Unprocessable Content`          | rejected, and nothing is applied                    |
+| `last_modified_at` advances          | the last-modified time advances                     |
+| `MAX(track_index) + 1`               | appended after the last track                       |
+| `schema cascade`                     | removed together with its track placements          |
+| `add_track: { recording_id }`        | a request to add a recording                        |
+| `GET /api/v1/library/music/playlist` | only in `### Trigger(s)`                            |
+
+A route the trigger names is still checked by `DOC-004`; the wire contract itself belongs to § 3 and the generated
+specification. `script/rule_enforcer.sh` enforces the narrative vocabulary over every entry (`check_doc_007`): it skips
+the two exempt fields and reports an inline code span or a denylisted technical term.
 
 ---
 

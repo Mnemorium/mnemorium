@@ -1,5 +1,7 @@
 pub mod delete_gallery;
 pub mod delete_gallery_item;
+pub mod delete_playlist;
+pub mod delete_playlist_track;
 pub mod get_album;
 pub mod get_album_list;
 pub mod get_album_medium;
@@ -9,8 +11,15 @@ pub mod get_gallery;
 pub mod get_gallery_item;
 pub mod get_gallery_item_list;
 pub mod get_gallery_list;
+pub mod get_playlist;
+pub mod get_playlist_list;
+pub mod get_playlist_track;
+pub mod get_playlist_track_list;
+pub mod patch_playlist;
 pub mod post_gallery;
 pub mod post_gallery_item;
+pub mod post_playlist;
+pub mod put_playlist_track;
 
 use axum::Router;
 use axum::middleware;
@@ -24,6 +33,8 @@ use utoipa::ToSchema;
 
 use crate::application::port::add_gallery_item::AddGalleryItemResponse;
 use crate::application::port::create_gallery::CreateGalleryResponse;
+use crate::application::port::create_playlist::CreatePlaylistError;
+use crate::application::port::delete_playlist::DeletePlaylistError;
 use crate::application::port::get_album::GetAlbumError;
 use crate::application::port::get_album::GetAlbumResponse as GetAlbumResponseData;
 use crate::application::port::get_album_medium::GetAlbumMediumError;
@@ -33,20 +44,31 @@ use crate::application::port::get_album_track::GetAlbumTrackResponse;
 use crate::application::port::get_gallery::GalleryItemSummary;
 use crate::application::port::get_gallery::GetGalleryResponse as GetGalleryResponseData;
 use crate::application::port::get_gallery_item::GetGalleryItemResponse;
+use crate::application::port::get_playlist::GetPlaylistError;
+use crate::application::port::get_playlist_track::GetPlaylistTrackError;
 use crate::application::port::list_album_tracks::ListAlbumTracksError;
 use crate::application::port::list_album_tracks::ListAlbumTracksItem;
 use crate::application::port::list_albums::ListAlbumsError;
 use crate::application::port::list_albums::ListAlbumsItem;
 use crate::application::port::list_galleries::ListGalleriesItem;
+use crate::application::port::list_playlists::ListPlaylistsError;
+use crate::application::port::list_playlists::ListPlaylistsItem;
+use crate::application::port::remove_playlist_track::RemovePlaylistTrackError;
+use crate::application::port::reorder_playlist_tracks::ReorderPlaylistTracksError;
+use crate::application::port::update_playlist::UpdatePlaylistError;
 use crate::domain::alias::NumericID;
 use crate::domain::model::gallery_item::GalleryItemMedia;
 use crate::domain::model::music_album::ProductionType;
+use crate::domain::model::music_playlist::MusicPlaylist;
+use crate::domain::model::music_recording::MusicRecording;
 use crate::infrastructure::inbound::rest::api_error::ApiError;
 use crate::infrastructure::inbound::rest::app_state::AppState;
 use crate::infrastructure::inbound::rest::hal::Link;
 use crate::infrastructure::inbound::rest::hal::SelfLinks;
 use crate::infrastructure::inbound::rest::handler::library::delete_gallery::delete_gallery;
 use crate::infrastructure::inbound::rest::handler::library::delete_gallery_item::delete_gallery_item;
+use crate::infrastructure::inbound::rest::handler::library::delete_playlist::delete_playlist;
+use crate::infrastructure::inbound::rest::handler::library::delete_playlist_track::delete_playlist_track;
 use crate::infrastructure::inbound::rest::handler::library::get_album::get_album;
 use crate::infrastructure::inbound::rest::handler::library::get_album_list::ListAlbumsQuery;
 use crate::infrastructure::inbound::rest::handler::library::get_album_list::get_album_list;
@@ -57,8 +79,16 @@ use crate::infrastructure::inbound::rest::handler::library::get_gallery::get_gal
 use crate::infrastructure::inbound::rest::handler::library::get_gallery_item::get_gallery_item;
 use crate::infrastructure::inbound::rest::handler::library::get_gallery_item_list::get_gallery_item_list;
 use crate::infrastructure::inbound::rest::handler::library::get_gallery_list::get_gallery_list;
+use crate::infrastructure::inbound::rest::handler::library::get_playlist::get_playlist;
+use crate::infrastructure::inbound::rest::handler::library::get_playlist_list::ListPlaylistsQuery;
+use crate::infrastructure::inbound::rest::handler::library::get_playlist_list::get_playlist_list;
+use crate::infrastructure::inbound::rest::handler::library::get_playlist_track::get_playlist_track;
+use crate::infrastructure::inbound::rest::handler::library::get_playlist_track_list::get_playlist_track_list;
+use crate::infrastructure::inbound::rest::handler::library::patch_playlist::patch_playlist;
 use crate::infrastructure::inbound::rest::handler::library::post_gallery::post_gallery;
 use crate::infrastructure::inbound::rest::handler::library::post_gallery_item::post_gallery_item;
+use crate::infrastructure::inbound::rest::handler::library::post_playlist::post_playlist;
+use crate::infrastructure::inbound::rest::handler::library::put_playlist_track::put_playlist_track;
 use crate::infrastructure::inbound::rest::middleware::auth::authenticate;
 use crate::infrastructure::outbound::jwt::token_provider::JwtTokenProvider;
 
@@ -678,6 +708,334 @@ impl From<GetAlbumTrackResponse> for TrackResponse {
     }
 }
 
+/// HAL links exposed by a music playlist representation.
+///
+/// The `self` link addresses the canonical playlist; the `tracks` link exposes
+/// the alias route that serves the playlist with its embedded tracks
+/// (`API-037`, `API-042`).
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[non_exhaustive]
+pub struct PlaylistLinks {
+    /// Link to the playlist resource itself.
+    #[serde(rename = "self")]
+    pub self_link: Link,
+    /// Link to the playlist's track alias.
+    pub tracks: Link,
+}
+
+impl PlaylistLinks {
+    /// Build the links of the playlist identified by `playlist_id`.
+    #[must_use]
+    pub fn for_playlist(playlist_id: NumericID) -> Self {
+        Self {
+            self_link: Link::new(&format!("/api/v1/library/music/playlist/{playlist_id}")),
+            tracks: Link::new(&format!(
+                "/api/v1/library/music/playlist/{playlist_id}/track"
+            )),
+        }
+    }
+}
+
+/// HAL links exposed by a playlist track representation.
+///
+/// The `self` link addresses the track, and the `playlist` link the playlist
+/// that sequences it (`API-034`, `API-037`).
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[non_exhaustive]
+pub struct PlaylistTrackLinks {
+    /// Link to the playlist the track belongs to.
+    pub playlist: Link,
+    /// Link to the track resource itself.
+    #[serde(rename = "self")]
+    pub self_link: Link,
+}
+
+impl PlaylistTrackLinks {
+    /// Build the links of a track identified by its playlist and index.
+    #[must_use]
+    pub fn for_track(playlist_id: NumericID, track_index: u32) -> Self {
+        Self {
+            playlist: Link::new(&format!("/api/v1/library/music/playlist/{playlist_id}")),
+            self_link: Link::new(&format!(
+                "/api/v1/library/music/playlist/{playlist_id}/track/{track_index}"
+            )),
+        }
+    }
+}
+
+/// One track of a music playlist.
+#[derive(Debug, Serialize, ToSchema)]
+#[non_exhaustive]
+pub struct PlaylistTrackResponse {
+    /// Identifier of the backing file.
+    pub file_id: NumericID,
+    /// Date of the first release of the recording, in `YYYY-MM-DD` form.
+    pub first_release_date: String,
+    /// Zero-based index of the track within the playlist.
+    pub id: u32,
+    /// ISRC code of the recording, when set.
+    pub isrc_code: Option<String>,
+    /// Links to the track and its playlist.
+    #[serde(rename = "_links")]
+    pub links: PlaylistTrackLinks,
+    /// Name of the recording, when set.
+    pub name: Option<String>,
+    /// Identifier of the shared recording the track places.
+    pub recording_id: NumericID,
+}
+
+impl PlaylistTrackResponse {
+    /// Assemble a track representation from its parts.
+    #[must_use]
+    pub fn new(playlist_id: NumericID, track: &MusicRecording) -> Self {
+        let index = track.index().playlist_index().unwrap_or_default();
+        Self {
+            file_id: track.file_id(),
+            first_release_date: format_date(track.first_release_date()),
+            id: index,
+            isrc_code: track.isrc_code().map(str::to_owned),
+            links: PlaylistTrackLinks::for_track(playlist_id, index),
+            name: track.name().map(str::to_owned),
+            recording_id: track.id(),
+        }
+    }
+}
+
+/// A music playlist representation.
+#[derive(Debug, Serialize, ToSchema)]
+#[non_exhaustive]
+pub struct PlaylistResponse {
+    /// Date and time of the creation of the playlist.
+    pub created_at: String,
+    /// Unique identifier of the playlist.
+    pub id: NumericID,
+    /// Whether the playlist is visible to every user.
+    pub is_public: bool,
+    /// Date and time of the last modification of the playlist.
+    pub last_modified_at: String,
+    /// Links to the playlist and its track alias.
+    #[serde(rename = "_links")]
+    pub links: PlaylistLinks,
+    /// Name of the playlist.
+    pub name: String,
+    /// Identifier of the owning user.
+    pub owner_id: NumericID,
+    /// Number of tracks the playlist holds.
+    pub track_count: usize,
+    /// Tracks of the playlist, ordered by index.
+    pub tracks: Vec<PlaylistTrackResponse>,
+}
+
+impl PlaylistResponse {
+    /// Assemble a playlist representation from a listed playlist item.
+    #[must_use]
+    pub fn from_listed(item: &ListPlaylistsItem) -> Self {
+        Self {
+            created_at: format_timestamp(item.created_at()),
+            id: item.id(),
+            is_public: item.is_public(),
+            last_modified_at: format_timestamp(item.last_modified_at()),
+            links: PlaylistLinks::for_playlist(item.id()),
+            name: item.name().to_owned(),
+            owner_id: item.user_id(),
+            track_count: item.track_count(),
+            tracks: Vec::new(),
+        }
+    }
+
+    /// Assemble a playlist representation from a hydrated playlist.
+    #[must_use]
+    pub fn new(playlist: &MusicPlaylist) -> Self {
+        Self {
+            created_at: format_timestamp(playlist.created_at()),
+            id: playlist.id(),
+            is_public: playlist.is_public(),
+            last_modified_at: format_timestamp(playlist.last_modified_at()),
+            links: PlaylistLinks::for_playlist(playlist.id()),
+            name: playlist.name().to_owned(),
+            owner_id: playlist.user_id(),
+            track_count: playlist.tracks().len(),
+            tracks: playlist
+                .tracks()
+                .iter()
+                .map(|track| PlaylistTrackResponse::new(playlist.id(), track))
+                .collect(),
+        }
+    }
+}
+
+/// HAL links exposed by a music playlist collection representation.
+///
+/// The `self` link addresses the collection view the representation is about,
+/// `next` and `prev` navigate that same view when another page exists, and the
+/// templated `search` link exposes the collection filters (`API-037`,
+/// `API-042`). The active filters and the page size are carried into every link
+/// so a filtered or paginated listing stays navigable.
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[non_exhaustive]
+pub struct PlaylistListLinks {
+    /// Link to the next page, when one exists.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub next: Option<Link>,
+    /// Link to the previous page, when one exists.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prev: Option<Link>,
+    /// Templated link exposing the collection's search filters.
+    pub search: Link,
+    /// Link to the collection itself.
+    #[serde(rename = "self")]
+    pub self_link: Link,
+}
+
+impl PlaylistListLinks {
+    /// Build the links of a playlist collection page.
+    #[must_use]
+    pub fn for_page(
+        query: &ListPlaylistsQuery,
+        limit: usize,
+        offset: usize,
+        returned: usize,
+        total: usize,
+    ) -> Self {
+        let next = (offset.saturating_add(returned) < total).then(|| {
+            Link::new(&playlist_page_href(
+                query,
+                limit,
+                offset.saturating_add(limit),
+            ))
+        });
+        let prev = (offset > 0).then(|| {
+            Link::new(&playlist_page_href(
+                query,
+                limit,
+                offset.saturating_sub(limit),
+            ))
+        });
+        Self {
+            next,
+            prev,
+            search: Link::templated(
+                "/api/v1/library/music/playlist{?name,is_public,owner_id,limit,offset}",
+            ),
+            self_link: Link::new(&playlist_page_href(query, limit, offset)),
+        }
+    }
+}
+
+/// Playlists matching the requested filters.
+#[derive(Debug, Serialize, ToSchema)]
+#[non_exhaustive]
+pub struct PlaylistListResponse {
+    /// The playlists of the returned page.
+    pub items: Vec<PlaylistResponse>,
+    /// Navigation links of the collection.
+    #[serde(rename = "_links")]
+    pub links: PlaylistListLinks,
+}
+
+/// Map a create-playlist error to its API error.
+impl From<CreatePlaylistError> for ApiError {
+    fn from(err: CreatePlaylistError) -> Self {
+        match err {
+            CreatePlaylistError::InvalidName | CreatePlaylistError::NameTooLong => {
+                Self::UnprocessableEntity(err.to_string())
+            }
+            CreatePlaylistError::NameAlreadyExists => Self::Conflict(err.to_string()),
+            CreatePlaylistError::NoSuchCaller => Self::Unauthorized(err.to_string()),
+            CreatePlaylistError::Unknown(_) => Self::InternalServerError,
+        }
+    }
+}
+
+/// Map a list-playlists error to its API error.
+impl From<ListPlaylistsError> for ApiError {
+    fn from(err: ListPlaylistsError) -> Self {
+        match err {
+            ListPlaylistsError::NoSuchCaller => Self::Unauthorized(err.to_string()),
+            ListPlaylistsError::Unknown(_) => Self::InternalServerError,
+        }
+    }
+}
+
+/// Map a fetch-playlist error to its API error.
+impl From<GetPlaylistError> for ApiError {
+    fn from(err: GetPlaylistError) -> Self {
+        match err {
+            GetPlaylistError::NoSuchPlaylist => Self::NotFound(err.to_string()),
+            GetPlaylistError::NoSuchCaller => Self::Unauthorized(err.to_string()),
+            GetPlaylistError::Unknown(_) => Self::InternalServerError,
+        }
+    }
+}
+
+/// Map a fetch-playlist-track error to its API error.
+impl From<GetPlaylistTrackError> for ApiError {
+    fn from(err: GetPlaylistTrackError) -> Self {
+        match err {
+            GetPlaylistTrackError::NoSuchPlaylist | GetPlaylistTrackError::NoSuchTrack => {
+                Self::NotFound(err.to_string())
+            }
+            GetPlaylistTrackError::NoSuchCaller => Self::Unauthorized(err.to_string()),
+            GetPlaylistTrackError::Unknown(_) => Self::InternalServerError,
+        }
+    }
+}
+
+/// Map an update-playlist error to its API error.
+impl From<UpdatePlaylistError> for ApiError {
+    fn from(err: UpdatePlaylistError) -> Self {
+        match err {
+            UpdatePlaylistError::Conflict
+            | UpdatePlaylistError::NameAlreadyExists
+            | UpdatePlaylistError::RecordingAlreadyPresent => Self::Conflict(err.to_string()),
+            UpdatePlaylistError::Forbidden => Self::Forbidden(err.to_string()),
+            UpdatePlaylistError::InvalidName
+            | UpdatePlaylistError::NameTooLong
+            | UpdatePlaylistError::NoSuchRecording => Self::UnprocessableEntity(err.to_string()),
+            UpdatePlaylistError::NoSuchCaller => Self::Unauthorized(err.to_string()),
+            UpdatePlaylistError::NoSuchPlaylist => Self::NotFound(err.to_string()),
+            UpdatePlaylistError::Unknown(_) => Self::InternalServerError,
+        }
+    }
+}
+
+/// Map a delete-playlist error to its API error.
+impl From<DeletePlaylistError> for ApiError {
+    fn from(err: DeletePlaylistError) -> Self {
+        match err {
+            DeletePlaylistError::Forbidden => Self::Forbidden(err.to_string()),
+            DeletePlaylistError::NoSuchCaller => Self::Unauthorized(err.to_string()),
+            DeletePlaylistError::NoSuchPlaylist => Self::NotFound(err.to_string()),
+            DeletePlaylistError::Unknown(_) => Self::InternalServerError,
+        }
+    }
+}
+
+/// Map a remove-playlist-track error to its API error.
+impl From<RemovePlaylistTrackError> for ApiError {
+    fn from(err: RemovePlaylistTrackError) -> Self {
+        match err {
+            RemovePlaylistTrackError::NoSuchPlaylist | RemovePlaylistTrackError::NoSuchTrack => {
+                Self::NotFound(err.to_string())
+            }
+            RemovePlaylistTrackError::NoSuchCaller => Self::Unauthorized(err.to_string()),
+            RemovePlaylistTrackError::Unknown(_) => Self::InternalServerError,
+        }
+    }
+}
+
+/// Map a reorder-playlist-tracks error to its API error.
+impl From<ReorderPlaylistTracksError> for ApiError {
+    fn from(err: ReorderPlaylistTracksError) -> Self {
+        match err {
+            ReorderPlaylistTracksError::InvalidOrder => Self::UnprocessableEntity(err.to_string()),
+            ReorderPlaylistTracksError::NoSuchCaller => Self::Unauthorized(err.to_string()),
+            ReorderPlaylistTracksError::NoSuchPlaylist => Self::NotFound(err.to_string()),
+            ReorderPlaylistTracksError::Unknown(_) => Self::InternalServerError,
+        }
+    }
+}
+
 /// Map a list-albums error to its API error.
 impl From<ListAlbumsError> for ApiError {
     fn from(err: ListAlbumsError) -> Self {
@@ -778,6 +1136,50 @@ pub(crate) fn parse_item_id(value: &str) -> Result<NumericID, ApiError> {
     })
 }
 
+/// Build the href of the playlist collection view at `limit`/`offset`,
+/// preserving the active filters so a filtered page keeps its navigation
+/// (`API-037`).
+fn playlist_page_href(query: &ListPlaylistsQuery, limit: usize, offset: usize) -> String {
+    let mut href = String::from("/api/v1/library/music/playlist?");
+    if let Some(name) = query.name.as_deref() {
+        href.push_str("name=");
+        for byte in name.bytes() {
+            match byte {
+                b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' => {
+                    href.push(char::from(byte));
+                }
+                _ => {
+                    let high = char::from_digit(u32::from(byte >> 4u8), 16)
+                        .unwrap_or('0')
+                        .to_ascii_uppercase();
+                    let low = char::from_digit(u32::from(byte & 0x0fu8), 16)
+                        .unwrap_or('0')
+                        .to_ascii_uppercase();
+                    href.push('%');
+                    href.push(high);
+                    href.push(low);
+                }
+            }
+        }
+        href.push('&');
+    }
+    if let Some(is_public) = query.is_public {
+        href.push_str("is_public=");
+        href.push_str(if is_public { "true" } else { "false" });
+        href.push('&');
+    }
+    if let Some(owner_id) = query.owner_id {
+        href.push_str("owner_id=");
+        href.push_str(&owner_id.to_string());
+        href.push('&');
+    }
+    href.push_str("limit=");
+    href.push_str(&limit.to_string());
+    href.push_str("&offset=");
+    href.push_str(&offset.to_string());
+    href
+}
+
 /// Build the href of the music album collection view at `limit`/`offset`,
 /// preserving the active filter so a filtered page keeps its navigation
 /// (`API-037`).
@@ -853,6 +1255,37 @@ pub(crate) fn parse_index(
     })
 }
 
+/// Parse a playlist identifier from a path segment.
+pub(crate) fn parse_playlist_id(value: &str) -> Result<NumericID, ApiError> {
+    value.parse::<NumericID>().map_err(|_| {
+        // The malformed value and the parser detail never reach the log
+        // (`OBS-003`); only the classification and its declared fields do
+        // (`OBS-006`).
+        warn!(
+            target: "security",
+            event = "input_validation_failed",
+            field = "playlist_id",
+            reason = "invalid_identifier",
+            "rejected a malformed music playlist identifier"
+        );
+        ApiError::BadRequest("invalid music playlist identifier".to_owned())
+    })
+}
+
+/// Parse a zero-based playlist track index from a path segment.
+pub(crate) fn parse_playlist_track_index(value: &str) -> Result<u32, ApiError> {
+    value.parse::<u32>().map_err(|_| {
+        warn!(
+            target: "security",
+            event = "input_validation_failed",
+            field = "track_index",
+            reason = "invalid_index",
+            "rejected a malformed playlist track index"
+        );
+        ApiError::BadRequest("invalid playlist track index".to_owned())
+    })
+}
+
 /// Render `value` with the representation's date format.
 fn format_date(value: NaiveDate) -> String {
     value.format(DATE_FORMAT).to_string()
@@ -895,8 +1328,29 @@ pub fn library_routes(state: &AppState) -> Router {
             get(get_gallery_item).delete(delete_gallery_item),
         );
 
+    let playlist: Router<AppState> = Router::new()
+        .route(
+            "/music/playlist",
+            get(get_playlist_list).post(post_playlist),
+        )
+        .route(
+            "/music/playlist/{playlist_id}",
+            get(get_playlist)
+                .patch(patch_playlist)
+                .delete(delete_playlist),
+        )
+        .route(
+            "/music/playlist/{playlist_id}/track",
+            get(get_playlist_track_list).put(put_playlist_track),
+        )
+        .route(
+            "/music/playlist/{playlist_id}/track/{track_index}",
+            get(get_playlist_track).delete(delete_playlist_track),
+        );
+
     gallery
         .merge(album)
+        .merge(playlist)
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
             authenticate::<JwtTokenProvider>,

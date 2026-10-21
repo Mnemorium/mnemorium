@@ -1,6 +1,19 @@
 {
   "components": {
     "schemas": {
+      "AddPlaylistTrackRequest": {
+        "description": "A recording to append to a playlist.",
+        "properties": {
+          "recording_id": {
+            "$ref": "#/components/schemas/i64",
+            "description": "Identifier of the shared recording to append."
+          }
+        },
+        "required": [
+          "recording_id"
+        ],
+        "type": "object"
+      },
       "AlbumLinks": {
         "description": "HAL links exposed by a music album representation.\n\nThe `self` link addresses the album; the album's mediums are embedded in the\nrepresentation and each medium carries its own links (`API-037`).",
         "properties": {
@@ -630,6 +643,39 @@
         ],
         "type": "object"
       },
+      "PatchPlaylistRequest": {
+        "description": "Payload to update a playlist's metadata and/or append a recording.\n\nEvery field is optional. `name` and `is_public` are owner-only; `add_track`\nis allowed to any caller who can read the playlist. A request mixing an\nowner-only field with `add_track` from a non-owner is rejected as a whole.",
+        "properties": {
+          "add_track": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/AddPlaylistTrackRequest",
+                "description": "Recording to append to the playlist, when requested."
+              }
+            ]
+          },
+          "is_public": {
+            "description": "New visibility, when requested.",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "name": {
+            "description": "New name, when requested.",
+            "maxLength": 100,
+            "minLength": 1,
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
+      },
       "PatchUserRequest": {
         "description": "Payload to update the profile of a user.\n\nEvery attribute is optional; an omitted attribute leaves the stored value\nunchanged.",
         "properties": {
@@ -699,6 +745,209 @@
         ],
         "type": "object"
       },
+      "PlaylistLinks": {
+        "description": "HAL links exposed by a music playlist representation.\n\nThe `self` link addresses the canonical playlist; the `tracks` link exposes\nthe alias route that serves the playlist with its embedded tracks\n(`API-037`, `API-042`).",
+        "properties": {
+          "self": {
+            "$ref": "#/components/schemas/Link",
+            "description": "Link to the playlist resource itself."
+          },
+          "tracks": {
+            "$ref": "#/components/schemas/Link",
+            "description": "Link to the playlist's track alias."
+          }
+        },
+        "required": [
+          "self",
+          "tracks"
+        ],
+        "type": "object"
+      },
+      "PlaylistListLinks": {
+        "description": "HAL links exposed by a music playlist collection representation.\n\nThe `self` link addresses the collection view the representation is about,\n`next` and `prev` navigate that same view when another page exists, and the\ntemplated `search` link exposes the collection filters (`API-037`,\n`API-042`). The active filters and the page size are carried into every link\nso a filtered or paginated listing stays navigable.",
+        "properties": {
+          "next": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/Link",
+                "description": "Link to the next page, when one exists."
+              }
+            ]
+          },
+          "prev": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/Link",
+                "description": "Link to the previous page, when one exists."
+              }
+            ]
+          },
+          "search": {
+            "$ref": "#/components/schemas/Link",
+            "description": "Templated link exposing the collection's search filters."
+          },
+          "self": {
+            "$ref": "#/components/schemas/Link",
+            "description": "Link to the collection itself."
+          }
+        },
+        "required": [
+          "search",
+          "self"
+        ],
+        "type": "object"
+      },
+      "PlaylistListResponse": {
+        "description": "Playlists matching the requested filters.",
+        "properties": {
+          "_links": {
+            "$ref": "#/components/schemas/PlaylistListLinks",
+            "description": "Navigation links of the collection."
+          },
+          "items": {
+            "description": "The playlists of the returned page.",
+            "items": {
+              "$ref": "#/components/schemas/PlaylistResponse"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "items",
+          "_links"
+        ],
+        "type": "object"
+      },
+      "PlaylistResponse": {
+        "description": "A music playlist representation.",
+        "properties": {
+          "_links": {
+            "$ref": "#/components/schemas/PlaylistLinks",
+            "description": "Links to the playlist and its track alias."
+          },
+          "created_at": {
+            "description": "Date and time of the creation of the playlist.",
+            "type": "string"
+          },
+          "id": {
+            "$ref": "#/components/schemas/i64",
+            "description": "Unique identifier of the playlist."
+          },
+          "is_public": {
+            "description": "Whether the playlist is visible to every user.",
+            "type": "boolean"
+          },
+          "last_modified_at": {
+            "description": "Date and time of the last modification of the playlist.",
+            "type": "string"
+          },
+          "name": {
+            "description": "Name of the playlist.",
+            "type": "string"
+          },
+          "owner_id": {
+            "$ref": "#/components/schemas/i64",
+            "description": "Identifier of the owning user."
+          },
+          "track_count": {
+            "description": "Number of tracks the playlist holds.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "tracks": {
+            "description": "Tracks of the playlist, ordered by index.",
+            "items": {
+              "$ref": "#/components/schemas/PlaylistTrackResponse"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "created_at",
+          "id",
+          "is_public",
+          "last_modified_at",
+          "_links",
+          "name",
+          "owner_id",
+          "track_count",
+          "tracks"
+        ],
+        "type": "object"
+      },
+      "PlaylistTrackLinks": {
+        "description": "HAL links exposed by a playlist track representation.\n\nThe `self` link addresses the track, and the `playlist` link the playlist\nthat sequences it (`API-034`, `API-037`).",
+        "properties": {
+          "playlist": {
+            "$ref": "#/components/schemas/Link",
+            "description": "Link to the playlist the track belongs to."
+          },
+          "self": {
+            "$ref": "#/components/schemas/Link",
+            "description": "Link to the track resource itself."
+          }
+        },
+        "required": [
+          "playlist",
+          "self"
+        ],
+        "type": "object"
+      },
+      "PlaylistTrackResponse": {
+        "description": "One track of a music playlist.",
+        "properties": {
+          "_links": {
+            "$ref": "#/components/schemas/PlaylistTrackLinks",
+            "description": "Links to the track and its playlist."
+          },
+          "file_id": {
+            "$ref": "#/components/schemas/i64",
+            "description": "Identifier of the backing file."
+          },
+          "first_release_date": {
+            "description": "Date of the first release of the recording, in `YYYY-MM-DD` form.",
+            "type": "string"
+          },
+          "id": {
+            "description": "Zero-based index of the track within the playlist.",
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "isrc_code": {
+            "description": "ISRC code of the recording, when set.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "description": "Name of the recording, when set.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "recording_id": {
+            "$ref": "#/components/schemas/i64",
+            "description": "Identifier of the shared recording the track places."
+          }
+        },
+        "required": [
+          "file_id",
+          "first_release_date",
+          "id",
+          "_links",
+          "recording_id"
+        ],
+        "type": "object"
+      },
       "PostGalleryItemRequest": {
         "description": "Payload to add one of the caller's media to a gallery.",
         "properties": {
@@ -726,6 +975,25 @@
           },
           "name": {
             "description": "Name of the gallery.",
+            "maxLength": 100,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
+      "PostPlaylistRequest": {
+        "description": "Payload to create a playlist owned by the caller.",
+        "properties": {
+          "is_public": {
+            "description": "Whether any authenticated user may read and moderate the playlist.",
+            "type": "boolean"
+          },
+          "name": {
+            "description": "Name of the playlist.",
             "maxLength": 100,
             "minLength": 1,
             "type": "string"
@@ -902,6 +1170,24 @@
           "_links",
           "role",
           "username"
+        ],
+        "type": "object"
+      },
+      "ReorderPlaylistTracksRequest": {
+        "description": "Payload to reorder the tracks of a playlist.",
+        "properties": {
+          "order": {
+            "description": "Complete permutation of the playlist's current zero-based track indices.",
+            "items": {
+              "format": "int32",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "order"
         ],
         "type": "object"
       },
@@ -3323,6 +3609,894 @@
           }
         ],
         "summary": "Fetch a music track",
+        "tags": [
+          "library"
+        ]
+      }
+    },
+    "/library/music/playlist": {
+      "get": {
+        "description": "Any authenticated caller may list playlists: public playlists are visible to\nall, private playlists only to their owner and the Root Admin. The collection\nis paginated and filterable, and returned as a HAL collection with\nnavigation and search links.",
+        "operationId": "list_playlists",
+        "parameters": [
+          {
+            "description": "Only return playlists whose public flag matches this value.",
+            "in": "query",
+            "name": "is_public",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "description": "Maximum number of playlists to return, between 1 and 100.",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Only return playlists whose name matches this value.",
+            "in": "query",
+            "name": "name",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Number of matching playlists to skip before returning the page.",
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Only return playlists owned by this user.",
+            "in": "query",
+            "name": "owner_id",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/i64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlaylistListResponse"
+                }
+              }
+            },
+            "description": "Playlists matching the filters"
+          },
+          "400": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Invalid filter values"
+          },
+          "401": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid credentials"
+          },
+          "422": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The limit is out of range"
+          },
+          "500": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unexpected error"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ],
+        "summary": "List music playlists",
+        "tags": [
+          "library"
+        ]
+      },
+      "post": {
+        "description": "Any authenticated caller may create a playlist. The name is required,\ntrimmed and at most 100 characters long; `is_public` defaults to `false`.",
+        "operationId": "post_playlist",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PostPlaylistRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlaylistResponse"
+                }
+              }
+            },
+            "description": "Playlist created",
+            "headers": {
+              "Location": {
+                "description": "URI of the newly created playlist",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Malformed request body"
+          },
+          "401": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid credentials"
+          },
+          "409": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The caller already owns a playlist with this name"
+          },
+          "413": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request body exceeds the maximum allowed size"
+          },
+          "415": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request body is not application/json"
+          },
+          "422": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The playlist name is empty or too long"
+          },
+          "500": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unexpected error"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ],
+        "summary": "Create a music playlist",
+        "tags": [
+          "library"
+        ]
+      }
+    },
+    "/library/music/playlist/{playlist_id}": {
+      "delete": {
+        "description": "Only the owner may delete a playlist. A caller who can read a public\nplaylist but is not its owner answers `403 Forbidden`; a playlist the caller\ncannot read answers `404 Not Found`. The shared recordings, audio and files\nsurvive.",
+        "operationId": "delete_playlist",
+        "parameters": [
+          {
+            "description": "Identifier of the playlist",
+            "in": "path",
+            "name": "playlist_id",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/i64"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Playlist deleted"
+          },
+          "400": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Invalid playlist identifier"
+          },
+          "401": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid credentials"
+          },
+          "403": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The caller does not own the playlist"
+          },
+          "404": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unknown or invisible playlist"
+          },
+          "500": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unexpected error"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ],
+        "summary": "Delete a music playlist",
+        "tags": [
+          "library"
+        ]
+      },
+      "get": {
+        "description": "Any authenticated caller who can read the playlist may fetch it: a public\nplaylist is readable by all, a private one only by its owner and the Root\nAdmin. A playlist the caller cannot read answers `404`, exactly like a\nmissing one.",
+        "operationId": "get_playlist",
+        "parameters": [
+          {
+            "description": "Identifier of the playlist",
+            "in": "path",
+            "name": "playlist_id",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/i64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlaylistResponse"
+                }
+              }
+            },
+            "description": "Playlist found"
+          },
+          "400": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Invalid playlist identifier"
+          },
+          "401": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid credentials"
+          },
+          "404": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unknown or invisible playlist"
+          },
+          "500": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unexpected error"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ],
+        "summary": "Fetch a music playlist",
+        "tags": [
+          "library"
+        ]
+      },
+      "patch": {
+        "description": "Omitted fields stay unchanged. `name` and `is_public` require ownership;\nadding a track requires read access to the playlist. The request is atomic:\na rejected field applies nothing.",
+        "operationId": "patch_playlist",
+        "parameters": [
+          {
+            "description": "Identifier of the playlist",
+            "in": "path",
+            "name": "playlist_id",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/i64"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PatchPlaylistRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlaylistResponse"
+                }
+              }
+            },
+            "description": "Playlist updated"
+          },
+          "400": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Invalid playlist identifier or malformed body"
+          },
+          "401": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid credentials"
+          },
+          "403": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The caller does not own the playlist"
+          },
+          "404": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unknown or invisible playlist"
+          },
+          "409": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Duplicate playlist name or duplicate recording"
+          },
+          "413": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request body exceeds the maximum allowed size"
+          },
+          "415": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request body is not application/json"
+          },
+          "422": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Invalid name or unknown recording"
+          },
+          "500": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unexpected error"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ],
+        "summary": "Update a music playlist",
+        "tags": [
+          "library"
+        ]
+      }
+    },
+    "/library/music/playlist/{playlist_id}/track": {
+      "get": {
+        "description": "This is a literal alias of `GET /library/music/playlist/{playlist_id}`: it\nreturns the same playlist representation with its tracks embedded, and\n`_links.self` keeps naming the canonical playlist URI (`API-042`). The\nplaylist's `tracks` link points here.",
+        "operationId": "get_playlist_track_list",
+        "parameters": [
+          {
+            "description": "Identifier of the playlist",
+            "in": "path",
+            "name": "playlist_id",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/i64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlaylistResponse"
+                }
+              }
+            },
+            "description": "Playlist found with its tracks embedded"
+          },
+          "400": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Invalid playlist identifier"
+          },
+          "401": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid credentials"
+          },
+          "404": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unknown or invisible playlist"
+          },
+          "500": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unexpected error"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ],
+        "summary": "Fetch a music playlist's tracks",
+        "tags": [
+          "library"
+        ]
+      },
+      "put": {
+        "description": "Any caller who can read the playlist may reorder it. The body must be a\ncomplete permutation of the current track indices; the tracks are reindexed\nto `0..n-1` in the requested order.",
+        "operationId": "put_playlist_track",
+        "parameters": [
+          {
+            "description": "Identifier of the playlist",
+            "in": "path",
+            "name": "playlist_id",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/i64"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReorderPlaylistTracksRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlaylistResponse"
+                }
+              }
+            },
+            "description": "Playlist reordered"
+          },
+          "400": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Invalid playlist identifier or malformed body"
+          },
+          "401": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid credentials"
+          },
+          "404": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unknown or invisible playlist"
+          },
+          "413": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request body exceeds the maximum allowed size"
+          },
+          "415": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request body is not application/json"
+          },
+          "422": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The order is not a complete permutation of the current indices"
+          },
+          "500": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unexpected error"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ],
+        "summary": "Reorder the tracks of a music playlist",
+        "tags": [
+          "library"
+        ]
+      }
+    },
+    "/library/music/playlist/{playlist_id}/track/{track_index}": {
+      "delete": {
+        "description": "Any caller who can read the playlist may remove a track. The remaining\ntracks keep their indices, leaving a gap. The shared recording and its media\nsurvive.",
+        "operationId": "delete_playlist_track",
+        "parameters": [
+          {
+            "description": "Identifier of the playlist the track belongs to",
+            "in": "path",
+            "name": "playlist_id",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/i64"
+            }
+          },
+          {
+            "description": "Zero-based index of the track within the playlist",
+            "in": "path",
+            "name": "track_index",
+            "required": true,
+            "schema": {
+              "format": "int32",
+              "minimum": 0,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Track removed"
+          },
+          "400": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Invalid playlist identifier or track index"
+          },
+          "401": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid credentials"
+          },
+          "404": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unknown or invisible playlist, or unknown track"
+          },
+          "500": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unexpected error"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ],
+        "summary": "Remove one track of a music playlist",
+        "tags": [
+          "library"
+        ]
+      },
+      "get": {
+        "description": "Any authenticated caller who can read the playlist may read a track. The\ntrack is scoped to the playlist named in the path, so a track of another\nplaylist is reported as missing.",
+        "operationId": "get_playlist_track",
+        "parameters": [
+          {
+            "description": "Identifier of the playlist the track belongs to",
+            "in": "path",
+            "name": "playlist_id",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/i64"
+            }
+          },
+          {
+            "description": "Zero-based index of the track within the playlist",
+            "in": "path",
+            "name": "track_index",
+            "required": true,
+            "schema": {
+              "format": "int32",
+              "minimum": 0,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlaylistTrackResponse"
+                }
+              }
+            },
+            "description": "Track found"
+          },
+          "400": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Invalid playlist identifier or track index"
+          },
+          "401": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid credentials"
+          },
+          "404": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unknown or invisible playlist, or unknown track"
+          },
+          "500": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unexpected error"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ],
+        "summary": "Fetch one track of a music playlist",
         "tags": [
           "library"
         ]

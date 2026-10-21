@@ -8,12 +8,13 @@ use crate::application::port::list_album_tracks::ListAlbumTracksItem;
 use crate::application::port::list_album_tracks::ListAlbumTracksResponse;
 use crate::application::port::list_album_tracks::ListAlbumTracksUseCase;
 use crate::application::security_event;
-use crate::application::use_case::library_access;
 use crate::domain::port::library_unit_of_work::LibraryUnitOfWork;
 use crate::domain::port::music_album_repository::MusicAlbumFilter;
 use crate::domain::port::music_album_repository::MusicAlbumRepository as _;
 use crate::domain::port::unit_of_work::UnitOfWork as _;
 use crate::domain::port::unit_of_work::UnitOfWorkFactory;
+use crate::domain::port::user_repository::UserFilter;
+use crate::domain::port::user_repository::UserRepository as _;
 use crate::domain::port::user_unit_of_work::UserUnitOfWork;
 
 /// Use case implementation for listing the tracks of one medium of one music
@@ -57,9 +58,16 @@ where
                 .map_err(|error| ListAlbumTracksError::Unknown(error.into()))?;
 
             let result = async {
-                library_access::load_caller(&mut unit_of_work, command.caller_id())
+                unit_of_work
+                    .users()
+                    .search(&UserFilter {
+                        id: Some(command.caller_id()),
+                        ..UserFilter::default()
+                    })
                     .await
                     .map_err(|error| ListAlbumTracksError::Unknown(error.into()))?
+                    .into_iter()
+                    .next()
                     .ok_or(ListAlbumTracksError::NoSuchCaller)?;
 
                 let album = unit_of_work
@@ -115,9 +123,8 @@ where
                     Ok(value)
                 }
                 Err(error) => {
-                    if unit_of_work.rollback().await.is_err() {
-                        // The unit-of-work adapter owns the rollback-failure log (OBS-002).
-                    }
+                    // The unit-of-work adapter owns the rollback-failure log (OBS-002).
+                    let _rollback = unit_of_work.rollback().await;
                     Err(error)
                 }
             }

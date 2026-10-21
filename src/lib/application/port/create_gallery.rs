@@ -4,7 +4,7 @@ use std::pin::Pin;
 use chrono::NaiveDateTime;
 
 use crate::domain::alias::NumericID;
-use crate::domain::model::gallery::MAX_GALLERY_NAME_LENGTH;
+use crate::domain::service::name_policy::MAX_NAME_LENGTH;
 
 /// Command to create a gallery owned by the caller.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -134,8 +134,8 @@ pub enum CreateGalleryError {
     /// The caller already owns a gallery with the same name.
     #[error("the caller already owns a gallery with this name")]
     NameAlreadyExists,
-    /// The name is longer than [`MAX_GALLERY_NAME_LENGTH`] characters.
-    #[error("gallery name must be at most {MAX_GALLERY_NAME_LENGTH} characters long")]
+    /// The name is longer than [`MAX_NAME_LENGTH`] characters.
+    #[error("gallery name must be at most {MAX_NAME_LENGTH} characters long")]
     NameTooLong,
     /// The authenticated caller does not exist anymore.
     #[error("the authenticated user does not exist")]

@@ -608,9 +608,8 @@ async fn discard<U>(unit_of_work: U)
 where
     U: UnitOfWork,
 {
-    if unit_of_work.rollback().await.is_err() {
-        // The unit-of-work adapter owns the rollback-failure log (OBS-002).
-    }
+    // The unit-of-work adapter owns the rollback-failure log (OBS-002).
+    let _rollback = unit_of_work.rollback().await;
 }
 
 /// Best-effort move a promoted file back to its staging path after a failed

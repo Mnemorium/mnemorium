@@ -9,7 +9,6 @@ use crate::application::port::create_gallery::CreateGalleryError;
 use crate::application::port::create_gallery::CreateGalleryResponse;
 use crate::application::port::create_gallery::CreateGalleryUseCase;
 use crate::application::security_event;
-use crate::application::use_case::library_access;
 use crate::domain::model::gallery::Gallery;
 use crate::domain::model::gallery::GalleryError;
 use crate::domain::port::error::RepositoryError;
@@ -18,6 +17,8 @@ use crate::domain::port::gallery_repository::GalleryRepository as _;
 use crate::domain::port::library_unit_of_work::LibraryUnitOfWork;
 use crate::domain::port::unit_of_work::UnitOfWork as _;
 use crate::domain::port::unit_of_work::UnitOfWorkFactory;
+use crate::domain::port::user_repository::UserFilter;
+use crate::domain::port::user_repository::UserRepository as _;
 use crate::domain::port::user_unit_of_work::UserUnitOfWork;
 
 /// Use case implementation for creating a gallery.
@@ -62,9 +63,16 @@ where
                 .map_err(|error| CreateGalleryError::Unknown(error.into()))?;
 
             let result = async {
-                let _caller = library_access::load_caller(&mut unit_of_work, command.caller_id())
+                let _caller = unit_of_work
+                    .users()
+                    .search(&UserFilter {
+                        id: Some(command.caller_id()),
+                        ..UserFilter::default()
+                    })
                     .await
                     .map_err(|error| CreateGalleryError::Unknown(error.into()))?
+                    .into_iter()
+                    .next()
                     .ok_or(CreateGalleryError::NoSuchCaller)?;
 
                 let now = Utc::now().naive_utc();
@@ -91,7 +99,7 @@ where
                 let existing = unit_of_work
                     .galleries()
                     .search(&GalleryFilter {
-                        name: Some(command.name().to_owned()),
+                        name: Some(gallery.name().to_owned()),
                         user_id: Some(command.caller_id()),
                         ..GalleryFilter::default()
                     })
@@ -133,9 +141,8 @@ where
                     Ok(value)
                 }
                 Err(error) => {
-                    if unit_of_work.rollback().await.is_err() {
-                        // The unit-of-work adapter owns the rollback-failure log (OBS-002).
-                    }
+                    // The unit-of-work adapter owns the rollback-failure log (OBS-002).
+                    let _rollback = unit_of_work.rollback().await;
                     Err(error)
                 }
             }
@@ -163,7 +170,6 @@ mod tests {
     use crate::application::port::create_gallery::CreateGalleryResponse;
     use crate::application::port::create_gallery::CreateGalleryUseCase as _;
     use crate::domain::model::gallery::Gallery;
-    use crate::domain::model::gallery::MAX_GALLERY_NAME_LENGTH;
     use crate::domain::model::user::Role;
     use crate::domain::model::user::User;
     use crate::domain::port::error::RepositoryError;
@@ -361,6 +367,44 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn create_gallery_trims_surrounding_whitespace() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let mut users = MockUserRepository::new();
+        expect_caller(&mut users, 1)?;
+        let mut galleries = MockGalleryRepository::new();
+        let stored = gallery(6, Some(1), "Holidays", false)?;
+        galleries
+            .expect_search()
+            .times(1)
+            .withf(|filter| filter.name.as_deref() == Some("Holidays") && filter.user_id == Some(1))
+            .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+        galleries
+            .expect_create()
+            .times(1)
+            .withf(|pending| pending.name() == "Holidays")
+            .return_once(move |_| {
+                let found = stored.clone();
+                Box::pin(async move { Ok(found) })
+            });
+        let harness = harness_with(users, galleries);
+        let use_case: UseCase = CreateGallery::new(Arc::clone(&harness.factory));
+
+        // Act
+        let response = use_case
+            .execute(CreateGalleryCommand::new(
+                1,
+                "  Holidays  ".to_owned(),
+                false,
+            ))
+            .await?;
+
+        // Assert
+        assert_eq!(response.name(), "Holidays");
+        assert!(harness.committed.load(Ordering::SeqCst));
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn create_gallery_empty_name_returns_invalid_name() -> Result<(), Box<dyn Error>> {
         // Arrange
         let (buffer, _capture) = capture_logs();
@@ -419,7 +463,7 @@ mod tests {
         galleries.expect_create().times(0);
         let harness = harness_with(users, galleries);
         let use_case: UseCase = CreateGallery::new(Arc::clone(&harness.factory));
-        let name = "x".repeat(MAX_GALLERY_NAME_LENGTH.saturating_add(1));
+        let name = "x".repeat(1_000);
 
         // Act
         let result = use_case

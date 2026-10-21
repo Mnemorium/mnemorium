@@ -7,7 +7,7 @@ CREATE TABLE music_track (
     CONSTRAINT pk_music_track_music_track_id PRIMARY KEY (music_track_id),
     CONSTRAINT fk_music_track_playlist FOREIGN KEY (
         music_playlist_id
-    ) REFERENCES music_playlist (music_playlist_id),
+    ) REFERENCES music_playlist (music_playlist_id) ON DELETE CASCADE,
     CONSTRAINT fk_music_track_medium FOREIGN KEY (
         music_medium_id
     ) REFERENCES music_medium (music_medium_id),
@@ -20,6 +20,9 @@ CREATE TABLE music_track (
     ),
     CONSTRAINT chk_music_track_medium_track_index CHECK (
         music_medium_id IS NULL OR track_index BETWEEN 0 AND 255
+    ),
+    CONSTRAINT chk_music_track_playlist_track_index CHECK (
+        music_playlist_id IS NULL OR track_index <= 4294967295
     )
 );
 
@@ -29,4 +32,8 @@ WHERE music_medium_id IS NOT NULL;
 
 CREATE UNIQUE INDEX uq_music_track_playlist_track_index
 ON music_track (music_playlist_id, track_index)
+WHERE music_playlist_id IS NOT NULL;
+
+CREATE UNIQUE INDEX uq_music_track_playlist_recording
+ON music_track (music_playlist_id, music_recording_id)
 WHERE music_playlist_id IS NOT NULL;

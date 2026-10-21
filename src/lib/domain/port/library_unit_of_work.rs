@@ -1,6 +1,7 @@
 use crate::domain::port::gallery_repository::GalleryRepository;
 use crate::domain::port::image_repository::ImageRepository;
 use crate::domain::port::music_album_repository::MusicAlbumRepository;
+use crate::domain::port::music_playlist_repository::MusicPlaylistRepository;
 use crate::domain::port::unit_of_work::UnitOfWork;
 use crate::domain::port::video_repository::VideoRepository;
 
@@ -14,6 +15,9 @@ pub trait LibraryUnitOfWork: UnitOfWork {
 
     /// Repository querying music albums and their tracks.
     fn music_albums(&mut self) -> impl MusicAlbumRepository + '_;
+
+    /// Repository persisting music playlists and their tracks.
+    fn music_playlists(&mut self) -> impl MusicPlaylistRepository + '_;
 
     /// Repository persisting videos.
     fn videos(&mut self) -> impl VideoRepository + '_;
