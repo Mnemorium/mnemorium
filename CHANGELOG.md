@@ -1,3 +1,9 @@
+## [0.21.0](https://github.com/Mnemorium/mnemorium/compare/v0.20.0...v0.21.0) (2026-10-21)
+
+### Features
+
+* **api:** manage music playlists ([#307](https://github.com/Mnemorium/mnemorium/issues/307)) ([4dde2bc](https://github.com/Mnemorium/mnemorium/commit/4dde2bc1a5d7eb204805856521b435bf3e2b9766))
+
 ## [0.20.0](https://github.com/Mnemorium/mnemorium/compare/v0.19.4...v0.20.0) (2026-10-18)
 
 ### Features
