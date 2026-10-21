@@ -2,16 +2,24 @@ use std::sync::Arc;
 
 use crate::application::port::add_gallery_item::AddGalleryItemUseCase;
 use crate::application::port::create_gallery::CreateGalleryUseCase;
+use crate::application::port::create_playlist::CreatePlaylistUseCase;
 use crate::application::port::delete_gallery::DeleteGalleryUseCase;
 use crate::application::port::delete_gallery_item::DeleteGalleryItemUseCase;
+use crate::application::port::delete_playlist::DeletePlaylistUseCase;
 use crate::application::port::get_album::GetAlbumUseCase;
 use crate::application::port::get_album_medium::GetAlbumMediumUseCase;
 use crate::application::port::get_album_track::GetAlbumTrackUseCase;
 use crate::application::port::get_gallery::GetGalleryUseCase;
 use crate::application::port::get_gallery_item::GetGalleryItemUseCase;
+use crate::application::port::get_playlist::GetPlaylistUseCase;
+use crate::application::port::get_playlist_track::GetPlaylistTrackUseCase;
 use crate::application::port::list_album_tracks::ListAlbumTracksUseCase;
 use crate::application::port::list_albums::ListAlbumsUseCase;
 use crate::application::port::list_galleries::ListGalleriesUseCase;
+use crate::application::port::list_playlists::ListPlaylistsUseCase;
+use crate::application::port::remove_playlist_track::RemovePlaylistTrackUseCase;
+use crate::application::port::reorder_playlist_tracks::ReorderPlaylistTracksUseCase;
+use crate::application::port::update_playlist::UpdatePlaylistUseCase;
 
 /// Builds the use cases of the Library bounded context on demand.
 ///
@@ -25,11 +33,17 @@ pub trait LibraryUseCaseFactory: Send + Sync {
     /// Build the use case creating a gallery.
     fn create_gallery(&self) -> Arc<dyn CreateGalleryUseCase>;
 
+    /// Build the use case creating a playlist.
+    fn create_playlist(&self) -> Arc<dyn CreatePlaylistUseCase>;
+
     /// Build the use case deleting a gallery and its items.
     fn delete_gallery(&self) -> Arc<dyn DeleteGalleryUseCase>;
 
     /// Build the use case deleting one item of a gallery.
     fn delete_gallery_item(&self) -> Arc<dyn DeleteGalleryItemUseCase>;
+
+    /// Build the use case deleting a playlist and its tracks.
+    fn delete_playlist(&self) -> Arc<dyn DeletePlaylistUseCase>;
 
     /// Build the use case fetching one music album and its mediums.
     fn get_album(&self) -> Arc<dyn GetAlbumUseCase>;
@@ -46,6 +60,12 @@ pub trait LibraryUseCaseFactory: Send + Sync {
     /// Build the use case fetching one item of a gallery.
     fn get_gallery_item(&self) -> Arc<dyn GetGalleryItemUseCase>;
 
+    /// Build the use case fetching one playlist and its tracks.
+    fn get_playlist(&self) -> Arc<dyn GetPlaylistUseCase>;
+
+    /// Build the use case fetching one track of a playlist.
+    fn get_playlist_track(&self) -> Arc<dyn GetPlaylistTrackUseCase>;
+
     /// Build the use case listing the tracks of a music album.
     fn list_album_tracks(&self) -> Arc<dyn ListAlbumTracksUseCase>;
 
@@ -54,4 +74,16 @@ pub trait LibraryUseCaseFactory: Send + Sync {
 
     /// Build the use case listing the galleries the caller may see.
     fn list_galleries(&self) -> Arc<dyn ListGalleriesUseCase>;
+
+    /// Build the use case listing the playlists the caller may see.
+    fn list_playlists(&self) -> Arc<dyn ListPlaylistsUseCase>;
+
+    /// Build the use case removing one track of a playlist.
+    fn remove_playlist_track(&self) -> Arc<dyn RemovePlaylistTrackUseCase>;
+
+    /// Build the use case reordering the tracks of a playlist.
+    fn reorder_playlist_tracks(&self) -> Arc<dyn ReorderPlaylistTracksUseCase>;
+
+    /// Build the use case updating a playlist.
+    fn update_playlist(&self) -> Arc<dyn UpdatePlaylistUseCase>;
 }

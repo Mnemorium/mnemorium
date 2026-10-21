@@ -7,7 +7,6 @@ use crate::application::port::delete_gallery::DeleteGalleryCommand;
 use crate::application::port::delete_gallery::DeleteGalleryError;
 use crate::application::port::delete_gallery::DeleteGalleryUseCase;
 use crate::application::security_event;
-use crate::application::use_case::library_access;
 use crate::domain::model::gallery_item::GalleryItemMedia;
 use crate::domain::port::asset_unit_of_work::AssetUnitOfWork;
 use crate::domain::port::error::RepositoryError;
@@ -22,6 +21,8 @@ use crate::domain::port::image_repository::ImageRepository as _;
 use crate::domain::port::library_unit_of_work::LibraryUnitOfWork;
 use crate::domain::port::unit_of_work::UnitOfWork as _;
 use crate::domain::port::unit_of_work::UnitOfWorkFactory;
+use crate::domain::port::user_repository::UserFilter;
+use crate::domain::port::user_repository::UserRepository as _;
 use crate::domain::port::user_unit_of_work::UserUnitOfWork;
 use crate::domain::port::video_repository::VideoFilter;
 use crate::domain::port::video_repository::VideoRepository as _;
@@ -69,9 +70,16 @@ where
                 .map_err(|error| DeleteGalleryError::Unknown(error.into()))?;
 
             let result = async {
-                let caller = library_access::load_caller(&mut unit_of_work, command.caller_id())
+                let caller = unit_of_work
+                    .users()
+                    .search(&UserFilter {
+                        id: Some(command.caller_id()),
+                        ..UserFilter::default()
+                    })
                     .await
                     .map_err(|error| DeleteGalleryError::Unknown(error.into()))?
+                    .into_iter()
+                    .next()
                     .ok_or(DeleteGalleryError::NoSuchCaller)?;
 
                 let gallery = unit_of_work
@@ -223,9 +231,8 @@ where
                     Ok(())
                 }
                 Err(error) => {
-                    if unit_of_work.rollback().await.is_err() {
-                        // The unit-of-work adapter owns the rollback-failure log (OBS-002).
-                    }
+                    // The unit-of-work adapter owns the rollback-failure log (OBS-002).
+                    let _rollback = unit_of_work.rollback().await;
                     Err(error)
                 }
             }

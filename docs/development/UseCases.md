@@ -353,7 +353,8 @@ Allow an authenticated user to create a gallery they own to collect images and v
 
 ### Business rules
 
-- The gallery name is required, must not be empty or only whitespace, and must be at most 100 characters long.
+- The gallery name is required, is trimmed of surrounding whitespace, must not be empty or only whitespace, and must be
+  at most 100 characters long.
 - A caller's gallery names are unique: the same owner cannot create two galleries with the same name.
 - A gallery is private by default; the caller may request it be public.
 - The caller becomes the gallery owner.
@@ -362,7 +363,7 @@ Allow an authenticated user to create a gallery they own to collect images and v
 ### Happy path
 
 1. The caller submits a gallery creation request carrying a name and an optional visibility.
-2. The system validates the name against the business rules.
+2. The system trims and validates the name against the business rules.
 3. The system verifies the caller does not already own a gallery with the same name.
 4. The system creates the gallery owned by the caller.
 5. The system returns the created gallery.
@@ -667,3 +668,400 @@ each medium sequences.
 ### Post condition(s)
 
 - The caller is shown the requested albums, album, medium, medium tracks or track.
+
+## UC-013 - Create a Music Playlist
+
+### Description
+
+Allow an authenticated user to create a playlist they own to collect and order music recordings.
+
+### Primary actor
+
+- Standard User
+- Admin
+
+### Pre condition(s)
+
+- The caller is authenticated.
+
+### Trigger(s)
+
+- Playlist creation request (`POST /api/v1/library/music/playlist`).
+
+### Bounded context(s)
+
+- Library
+
+### Business rules
+
+- The playlist name is required, is trimmed of surrounding whitespace, must not be empty or only whitespace, and must be
+  at most 100 characters long.
+- A caller's playlist names are unique: the same owner cannot create two playlists with the same normalized name.
+  Different users may use the same name.
+- A playlist is private by default; the caller may request it be public.
+- The caller becomes the playlist owner.
+- A newly created playlist is empty and its `last_modified_at` equals its creation time.
+- The response is a HAL playlist representation carrying the canonical `self` link and the `tracks` alias link.
+
+### Happy path
+
+1. The caller submits a playlist creation request carrying a name and an optional visibility.
+2. The system verifies the caller's account still exists.
+3. The system trims and validates the name.
+4. The system verifies the caller does not already own a playlist with the same normalized name.
+5. The system creates the playlist owned by the caller, private unless requested otherwise.
+6. The system returns `201 Created` with a `Location` header and the playlist representation.
+
+### Alternative flow
+
+- 1a. The request is unauthenticated; the system returns `401 Unauthorized`.
+- 3a. The name is empty or only whitespace, or longer than 100 characters; the system returns
+  `422 Unprocessable Content` and creates nothing.
+- 4a. The caller already owns a playlist with the same name; the system returns `409 Conflict` and creates nothing.
+
+### Post condition(s)
+
+- A playlist owned by the caller exists and holds no track.
+
+## UC-014 - Browse Music Playlists
+
+### Description
+
+Allow an authenticated user to list the playlists they may see, read one playlist, and read the tracks it sequences.
+
+### Primary actor
+
+- Standard User
+- Admin
+- Root Admin
+
+### Pre condition(s)
+
+- The caller is authenticated.
+
+### Trigger(s)
+
+- `GET /api/v1/library/music/playlist`
+- `GET /api/v1/library/music/playlist/{playlist_id}`
+- `GET /api/v1/library/music/playlist/{playlist_id}/track`
+- `GET /api/v1/library/music/playlist/{playlist_id}/track/{track_index}`
+
+### Bounded context(s)
+
+- Library
+
+### Business rules
+
+- A public playlist is readable by every authenticated caller; a private playlist is readable only by its owner and the
+  Root Admin. A playlist the caller cannot read answers `404 Not Found`, exactly like a missing one.
+- The collection can be narrowed by optional `name`, `is_public` and `owner_id` filters and accepts optional `limit`
+  (1-100, default 20) and `offset` pagination. `total` is the count after visibility filtering.
+- A playlist's tracks are ordered by ascending zero-based `track_index`, so repeated reads return a stable order.
+- A playlist track carries its index as `id`, the shared `recording_id`, the backing `file_id`, the recording metadata,
+  and links to itself and its playlist.
+- `GET /playlist/{playlist_id}/track` is a literal alias of the detail read: it returns the playlist representation with
+  its embedded tracks, and `_links.self` keeps naming the canonical playlist URI.
+- Playlist and track responses are served as `application/hal+json`; the collection exposes `self`, `next`, `prev` and a
+  templated `search` link.
+
+### Happy path
+
+1. The caller asks to list the music playlists it may see.
+2. The system verifies the caller's account still exists, applies the requested filters, retains the playlists the
+   caller can read and returns the requested page with its total.
+3. The caller asks to read one specific playlist, optionally through its track alias.
+4. The system verifies the playlist exists and the caller can read it, and returns its metadata and tracks in ascending
+   index order.
+5. The caller requests one track of the playlist by its zero-based index.
+6. The system verifies the playlist and the index, and returns the track representation.
+
+### Alternative flow
+
+- 1a. The request is unauthenticated; the system returns `401 Unauthorized`.
+- 1b. A request filter is invalid (an unknown, malformed or out-of-range query parameter); the system rejects the
+  request with `400 Bad Request` or `422 Unprocessable Content`.
+- 3a. The playlist identifier is not valid; the system returns `400 Bad Request`.
+- 3b. No playlist matches the identifier, or the caller cannot read it; the system answers `404 Not Found` and does not
+  distinguish the two cases.
+- 5a. The track index is not an unsigned integer; the system returns `400 Bad Request`.
+- 5b. The playlist has no track at the requested index; the system answers `404 Not Found`.
+
+### Post condition(s)
+
+- The caller is shown the requested playlists, playlist, or track.
+
+## UC-015 - Update a Music Playlist
+
+### Description
+
+Allow the owner of a playlist to rename it or change its visibility.
+
+### Primary actor
+
+- Standard User
+- Admin
+
+### Pre condition(s)
+
+- The caller is authenticated and owns the playlist.
+
+### Trigger(s)
+
+- `PATCH /api/v1/library/music/playlist/{playlist_id}` carrying `name` and/or `is_public`.
+
+### Bounded context(s)
+
+- Library
+
+### Business rules
+
+- Renaming a playlist and changing its visibility are owner-only. A caller who can read a public playlist but is not its
+  owner, including the Root Admin, receives `403 Forbidden` and nothing is applied.
+- A playlist the caller cannot read answers `404 Not Found`, exactly like a missing one.
+- Every field is optional; an omitted field stays unchanged. A request without `name` or `is_public` returns the current
+  representation unchanged.
+- A new name is trimmed, non-empty and at most 100 characters long, and must be unique among the playlists its owner
+  has. A duplicate name answers `409 Conflict`; an invalid name answers `422 Unprocessable Content`.
+- A successful update advances `last_modified_at`.
+- A request that also carries `add_track` is governed by UC-016 and remains atomic: if this use case's owner-only rule
+  rejects the request, the track is not added either.
+
+### Happy path
+
+1. The caller sends one or both metadata fields for one of its playlists.
+2. The system verifies the caller's account still exists and the playlist exists.
+3. The system verifies the caller can read the playlist and owns it.
+4. The system validates the new name and its per-owner uniqueness, when present.
+5. The system stores the changes, advances `last_modified_at` and returns `200 OK` with the updated playlist.
+
+### Alternative flow
+
+- 1a. The request is unauthenticated; the system returns `401 Unauthorized`.
+- 2a. The playlist identifier is not valid; the system returns `400 Bad Request`.
+- 2b. No playlist matches the identifier, or the caller cannot read it; the system answers `404 Not Found`.
+- 3a. The caller can read the playlist but does not own it; the system returns `403 Forbidden` and applies nothing.
+- 4a. The name is empty, whitespace only or too long; the system returns `422 Unprocessable Content` and applies
+  nothing.
+- 4b. The name is already used by another playlist the caller owns; the system returns `409 Conflict` and applies
+  nothing.
+
+### Post condition(s)
+
+- The playlist carries the requested name and/or visibility, and its `last_modified_at` has advanced.
+
+## UC-016 - Add a Track to a Music Playlist
+
+### Description
+
+Allow a caller who can read a playlist to append one occurrence of a shared music recording to it.
+
+### Primary actor
+
+- Standard User
+- Admin
+- Root Admin
+
+### Pre condition(s)
+
+- The caller is authenticated and can read the playlist.
+
+### Trigger(s)
+
+- `PATCH /api/v1/library/music/playlist/{playlist_id}` carrying `add_track: { recording_id }`.
+
+### Bounded context(s)
+
+- Library
+
+### Business rules
+
+- Adding a track is allowed to any caller who can read the playlist. On a private playlist this means the owner and the
+  Root Admin. A caller who cannot read the playlist receives `404 Not Found` and applies nothing.
+- The `recording_id` must name an existing shared recording; an unknown recording answers `422 Unprocessable Content`.
+- A recording appears at most once in one playlist: a second add answers `409 Conflict`. Album mediums may still
+  sequence the same recording twice.
+- A track is addressed by a zero-based index: the first track receives index `0`, and an add appends at
+  `MAX(track_index) + 1`.
+- The request is atomic. If it also carries `name` or `is_public` from a non-owner, the whole request is rejected with
+  `403 Forbidden` and neither change is applied (see UC-015).
+- A concurrent append that loses the position race, or a concurrent duplicate add, answers `409 Conflict`.
+- A successful add advances `last_modified_at` and returns `200 OK` with the updated playlist, including the new track.
+
+### Happy path
+
+1. The caller sends `add_track` with an existing recording that is not already in the playlist.
+2. The system verifies the caller's account still exists and the playlist exists.
+3. The system verifies the caller can read the playlist.
+4. The system verifies the recording exists and is not already present.
+5. The system appends the placement at the next zero-based index, advances `last_modified_at` and returns the updated
+   playlist.
+
+### Alternative flow
+
+- 1a. The request is unauthenticated; the system returns `401 Unauthorized`.
+- 2a. The playlist identifier is not valid; the system returns `400 Bad Request`.
+- 2b. No playlist matches the identifier, or the caller cannot read it; the system answers `404 Not Found`.
+- 3a. The request also carries `name` or `is_public` and the caller is not the owner; the system returns `403 Forbidden`
+  and applies neither change.
+- 4a. The recording identifier does not exist; the system returns `422 Unprocessable Content` and applies nothing.
+- 4b. The recording already appears in the playlist; the system returns `409 Conflict` and applies nothing.
+- 5a. A concurrent change wins the append race; the system returns `409 Conflict` and the client may retry.
+
+### Post condition(s)
+
+- The playlist sequences one more recording occurrence, and its `last_modified_at` has advanced.
+
+## UC-017 - Remove a Track from a Music Playlist
+
+### Description
+
+Allow a caller who can read a playlist to remove one of its track occurrences.
+
+### Primary actor
+
+- Standard User
+- Admin
+- Root Admin
+
+### Pre condition(s)
+
+- The caller is authenticated and can read the playlist.
+
+### Trigger(s)
+
+- `DELETE /api/v1/library/music/playlist/{playlist_id}/track/{track_index}`
+
+### Bounded context(s)
+
+- Library
+
+### Business rules
+
+- Removing a track is allowed to any caller who can read the playlist. A caller who cannot read the playlist receives
+  `404 Not Found` and applies nothing.
+- The addressed occurrence must exist; an unknown index answers `404 Not Found`.
+- The remaining tracks keep their indices, leaving a gap. A later add appends after the highest remaining index.
+- The shared recording, its audio and its file survive the removal.
+- A successful removal advances `last_modified_at` and returns `204 No Content`.
+
+### Happy path
+
+1. The caller sends the zero-based index of a track it wants to remove.
+2. The system verifies the caller's account still exists and the playlist exists.
+3. The system verifies the caller can read the playlist and the track index exists.
+4. The system removes the placement, advances `last_modified_at` and returns `204 No Content`.
+
+### Alternative flow
+
+- 1a. The request is unauthenticated; the system returns `401 Unauthorized`.
+- 1b. The playlist identifier or track index is malformed; the system returns `400 Bad Request`.
+- 2a. No playlist matches the identifier, or the caller cannot read it; the system answers `404 Not Found`.
+- 3a. The playlist has no track at the requested index; the system answers `404 Not Found`.
+
+### Post condition(s)
+
+- The addressed occurrence no longer exists, the remaining indices are unchanged, and the shared recording survives.
+
+## UC-018 - Reorder the Tracks of a Music Playlist
+
+### Description
+
+Allow a caller who can read a playlist to replace its track order with a requested permutation.
+
+### Primary actor
+
+- Standard User
+- Admin
+- Root Admin
+
+### Pre condition(s)
+
+- The caller is authenticated and can read the playlist.
+
+### Trigger(s)
+
+- `PUT /api/v1/library/music/playlist/{playlist_id}/track` carrying `order`.
+
+### Bounded context(s)
+
+- Library
+
+### Business rules
+
+- Reordering is allowed to any caller who can read the playlist. A caller who cannot read the playlist receives
+  `404 Not Found` and applies nothing.
+- `order` must be a complete permutation of the playlist's current track indices. A missing, repeated or unknown index
+  answers `422 Unprocessable Content` and leaves the order unchanged.
+- The tracks are reindexed to `0..n-1` in the requested order.
+- An empty playlist with an empty order is a successful no-op returning the unchanged empty playlist.
+- A successful reorder advances `last_modified_at` and returns `200 OK` with the updated playlist.
+
+### Happy path
+
+1. The caller sends every current track index exactly once in a new order.
+2. The system verifies the caller's account still exists and the playlist exists.
+3. The system verifies the caller can read the playlist and the order is a complete permutation.
+4. The system replaces the placements, reindexes them to `0..n-1`, advances `last_modified_at` and returns the reordered
+   playlist.
+
+### Alternative flow
+
+- 1a. The request is unauthenticated; the system returns `401 Unauthorized`.
+- 1b. The playlist identifier is malformed or the body is not valid JSON; the system returns `400 Bad Request`.
+- 2a. No playlist matches the identifier, or the caller cannot read it; the system answers `404 Not Found`.
+- 3a. The order omits a current index, repeats an index or names an unknown index; the system returns
+  `422 Unprocessable Content` and leaves the order unchanged.
+
+### Post condition(s)
+
+- The playlist tracks appear in the requested order with contiguous zero-based indices.
+
+## UC-019 - Delete a Music Playlist
+
+### Description
+
+Allow the owner of a playlist to delete it and its track placements.
+
+### Primary actor
+
+- Standard User
+- Admin
+
+### Pre condition(s)
+
+- The caller is authenticated and owns the playlist.
+
+### Trigger(s)
+
+- `DELETE /api/v1/library/music/playlist/{playlist_id}`
+
+### Bounded context(s)
+
+- Library
+
+### Business rules
+
+- Deleting a playlist is owner-only. A caller who can read a public playlist but is not its owner, including the Root
+  Admin, receives `403 Forbidden` and deletes nothing.
+- A playlist the caller cannot read answers `404 Not Found`, exactly like a missing one.
+- Deleting a playlist removes its track placements through the schema cascade.
+- The shared recordings, their audio and their files survive.
+- A successful deletion returns `204 No Content`.
+
+### Happy path
+
+1. The caller deletes one of its playlists.
+2. The system verifies the caller's account still exists and the playlist exists.
+3. The system verifies the caller can read the playlist and owns it.
+4. The system deletes the playlist and its track placements and returns `204 No Content`.
+
+### Alternative flow
+
+- 1a. The request is unauthenticated; the system returns `401 Unauthorized`.
+- 1b. The playlist identifier is malformed; the system returns `400 Bad Request`.
+- 2a. No playlist matches the identifier, or the caller cannot read it; the system answers `404 Not Found`.
+- 3a. The caller can read the playlist but does not own it; the system returns `403 Forbidden` and deletes nothing.
+
+### Post condition(s)
+
+- The playlist and its track placements no longer exist; the recordings, audio and files it referenced still exist.

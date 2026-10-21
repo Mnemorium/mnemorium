@@ -1,12 +1,12 @@
 use chrono::NaiveDateTime;
 
 use crate::domain::alias::NumericID;
+use crate::domain::service::name_policy::MAX_NAME_LENGTH;
+use crate::domain::service::name_policy::NamePolicy;
+use crate::domain::service::name_policy::NamePolicyError;
 
 /// Identifier of the seeded, undeletable default gallery.
 pub const DEFAULT_GALLERY_ID: NumericID = 0;
-
-/// Maximum number of characters allowed in a gallery name.
-pub const MAX_GALLERY_NAME_LENGTH: usize = 100;
 
 /// Error returned when initialising or updating a `Gallery`.
 #[derive(Debug, thiserror::Error)]
@@ -15,8 +15,8 @@ pub enum GalleryError {
     /// The name is empty or made only of whitespace.
     #[error("gallery name must not be empty")]
     NameEmpty,
-    /// The name is longer than [`MAX_GALLERY_NAME_LENGTH`] characters.
-    #[error("gallery name must be at most {MAX_GALLERY_NAME_LENGTH} characters long")]
+    /// The name is longer than [`MAX_NAME_LENGTH`] characters.
+    #[error("gallery name must be at most {MAX_NAME_LENGTH} characters long")]
     NameTooLong,
     /// An unexpected or unmapped error occurred.
     #[error("an unknown error occurred: {0}")]
@@ -94,7 +94,7 @@ impl Gallery {
     ///
     /// Returns [`GalleryError::NameEmpty`] when `name` is empty or made only of
     /// whitespace, and [`GalleryError::NameTooLong`] when it is longer than
-    /// [`MAX_GALLERY_NAME_LENGTH`] characters.
+    /// [`MAX_NAME_LENGTH`] characters.
     pub fn set_name(&mut self, name: String) -> Result<(), GalleryError> {
         self.name = Self::validate_name(name)?;
         Ok(())
@@ -111,7 +111,7 @@ impl Gallery {
     ///
     /// Returns [`GalleryError::NameEmpty`] when `name` is empty or made only of
     /// whitespace, and [`GalleryError::NameTooLong`] when it is longer than
-    /// [`MAX_GALLERY_NAME_LENGTH`] characters.
+    /// [`MAX_NAME_LENGTH`] characters.
     pub fn try_new(
         gallery_id: NumericID,
         user_id: Option<NumericID>,
@@ -137,20 +137,17 @@ impl Gallery {
         self.user_id
     }
 
-    /// Validate `name`.
+    /// Validate and normalize `name`.
     ///
     /// # Errors
     ///
     /// Returns [`GalleryError::NameEmpty`] when `name` is empty or made only of
     /// whitespace, and [`GalleryError::NameTooLong`] when it is longer than
-    /// [`MAX_GALLERY_NAME_LENGTH`] characters.
+    /// [`MAX_NAME_LENGTH`] characters.
     fn validate_name(name: String) -> Result<String, GalleryError> {
-        if name.trim().is_empty() {
-            return Err(GalleryError::NameEmpty);
-        }
-        if name.chars().count() > MAX_GALLERY_NAME_LENGTH {
-            return Err(GalleryError::NameTooLong);
-        }
-        Ok(name)
+        NamePolicy::validate(name).map_err(|error| match error {
+            NamePolicyError::Empty => GalleryError::NameEmpty,
+            NamePolicyError::TooLong => GalleryError::NameTooLong,
+        })
     }
 }

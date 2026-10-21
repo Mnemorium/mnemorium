@@ -225,9 +225,8 @@ where
                     }
                 },
                 Err(error) => {
-                    if unit_of_work.rollback().await.is_err() {
-                        // The unit-of-work adapter owns the rollback-failure log (OBS-002).
-                    }
+                    // The unit-of-work adapter owns the rollback-failure log (OBS-002).
+                    let _rollback = unit_of_work.rollback().await;
                     discard_staging(file_storage.as_ref(), root.as_path(), staged_upload_id).await;
                     Err(error)
                 }

@@ -1913,7 +1913,7 @@ entity music_medium {
 entity music_track {
    * music_track_id: INTEGER <<PK>>
    --
-   * track_index: INTEGER <<NN, CC(track_index >= 0), CC(music_medium_id IS NULL OR track_index BETWEEN 0 AND 255)>>
+   * track_index: INTEGER <<NN, CC(track_index >= 0), CC(music_medium_id IS NULL OR track_index BETWEEN 0 AND 255), CC(music_playlist_id IS NULL OR track_index <= 4294967295)>>
    * music_playlist_id: INTEGER <<FK, CC((music_medium_id IS NOT NULL) <> (music_playlist_id IS NOT NULL))>>
    * music_medium_id: INTEGER <<FK, CC((music_medium_id IS NOT NULL) <> (music_playlist_id IS NOT NULL))>>
    * music_recording_id: INTEGER <<FK, NN>>
@@ -1931,10 +1931,11 @@ entity music_recording {
 entity music_playlist {
    * music_playlist_id: INTEGER <<PK>>
    --
-   * name: TEXT <<NN>>
+   * name: TEXT <<NN, UN(user_id, name)>>
    * created_at: TEXT <<NN, DF(CURRENT_TIMESTAMP)>>
+   * last_modified_at: TEXT <<NN, DF(CURRENT_TIMESTAMP)>>
    * user_id: INTEGER <<FK, NN>>
-   * is_public: BOOLEAN <<NN, DF(1)>>
+   * is_public: BOOLEAN <<NN, DF(0)>>
 }
 
 entity audio_channel {
@@ -2219,10 +2220,17 @@ video ||--o| gallery_item
 The `music_medium` entity enforces a composite unique key on `(music_album_id, medium_index)`
 (`uq_music_medium_album_medium_index`): an album holds at most one medium at a given index.
 
-The `music_track` entity enforces two partial unique indexes, `uq_music_track_medium_track_index` on
-`(music_medium_id, track_index)` and `uq_music_track_playlist_track_index` on `(music_playlist_id, track_index)`, each
-restricted to the rows where its container column is set: a medium and a playlist each sequence at most one track at a
-given index. A track is placed in exactly one of them (`chk_music_track_one_container`).
+The `music_track` entity enforces three partial unique indexes, `uq_music_track_medium_track_index` on
+`(music_medium_id, track_index)`, `uq_music_track_playlist_track_index` on `(music_playlist_id, track_index)` and
+`uq_music_track_playlist_recording` on `(music_playlist_id, music_recording_id)`, each restricted to the rows where its
+container column is set: a medium and a playlist each sequence at most one track at a given index, and a playlist holds
+at most one occurrence of a given recording. A track is placed in exactly one container
+(`chk_music_track_one_container`), and a playlist track index cannot exceed the domain's `u32` range
+(`chk_music_track_playlist_track_index`). The playlist foreign key cascades: deleting a playlist removes its track
+placements while the shared recordings, audio and files survive (`PERS-020`).
+
+The `music_playlist` entity enforces a composite unique key on `(user_id, name)` (`uq_music_playlist_user_id_name`): a
+caller owns at most one playlist per name, while different callers may each own a playlist with the same name.
 
 The `file` entity enforces a composite unique key on `(user_id, integrity_hash)`: a caller stores one file record per
 integrity hash, while different callers may each store their own copy.

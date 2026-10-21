@@ -167,8 +167,9 @@ class MusicMedium {
 
 class MusicPlaylist {
   name: string
+  is_public: boolean
   created_at: date
-  last_modified: date
+  last_modified_at: date
 }
 
 class Movie {
@@ -331,7 +332,7 @@ end note
 | **MusicAlbum**     | A curated, top-level commercial or conceptual collection of **MusicRecording** by an **MusicGroup**.                                                                                                                                                                                                     |
 | **MusicMedium**    | The specific physical or digital container that sequences **MusicRecording** occurrences (e.g., a specific CD, cassette tape, vinyl disc side, or digital volume).                                                                                                                                       |
 | **MediumIndex**    | The album-scoped identity and type of a **MusicMedium**; a medium is addressed by its index within its album.                                                                                                                                                                                            |
-| **TrackIndex**     | The placement of a **MusicRecording** within the container that sequences it: a medium index or a playlist index.                                                                                                                                                                                        |
+| **TrackIndex**     | The placement of a **MusicRecording** within the container that sequences it: an album-scoped medium index or a zero-based playlist index.                                                                                                                                                               |
 | **MusicRecording** | A unique master audio capture or sound recording session, independent of the physical formats on which it is distributed.                                                                                                                                                                                |
 | **Movie**          | A self-contained, long-form narrative or documentary film produced for artistic, cinematic, or entertainment purposes.                                                                                                                                                                                   |
 | **Video**          | An abstract domain representation of a video file                                                                                                                                                                                                                                                        |

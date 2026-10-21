@@ -67,6 +67,8 @@ mod test_helpers {
     use crate::domain::port::mime_type_repository::MockMimeTypeRepository;
     use crate::domain::port::music_album_repository::MockMusicAlbumRepository;
     use crate::domain::port::music_album_repository::MusicAlbumRepository;
+    use crate::domain::port::music_playlist_repository::MockMusicPlaylistRepository;
+    use crate::domain::port::music_playlist_repository::MusicPlaylistRepository;
     use crate::domain::port::unit_of_work::UnitOfWork;
     use crate::domain::port::unit_of_work::UnitOfWorkFactory;
     use crate::domain::port::upload_repository::MockUploadRepository;
@@ -124,6 +126,8 @@ mod test_helpers {
         pub mime_types: MockMimeTypeRepository,
         /// Music album repository.
         pub music_albums: MockMusicAlbumRepository,
+        /// Music playlist repository.
+        pub music_playlists: MockMusicPlaylistRepository,
         /// Set when `rollback` is called.
         pub rolled_back: Arc<AtomicBool>,
         /// Upload repository.
@@ -147,6 +151,7 @@ mod test_helpers {
                 images: MockImageRepository::new(),
                 mime_types: MockMimeTypeRepository::new(),
                 music_albums: MockMusicAlbumRepository::new(),
+                music_playlists: MockMusicPlaylistRepository::new(),
                 rolled_back: Arc::new(AtomicBool::new(false)),
                 uploads: MockUploadRepository::new(),
                 users: MockUserRepository::new(),
@@ -184,6 +189,10 @@ mod test_helpers {
 
         fn music_albums(&mut self) -> impl MusicAlbumRepository + '_ {
             &mut self.music_albums
+        }
+
+        fn music_playlists(&mut self) -> impl MusicPlaylistRepository + '_ {
+            &mut self.music_playlists
         }
 
         fn videos(&mut self) -> impl VideoRepository + '_ {
