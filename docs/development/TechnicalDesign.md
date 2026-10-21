@@ -3026,7 +3026,8 @@ caller”, “playlist”, “recording”, “track”, “position”, “visi
 | `GET /api/v1/library/music/playlist` | only in `### Trigger(s)`                            |
 
 A route the trigger names is still checked by `DOC-004`; the wire contract itself belongs to § 3 and the generated
-specification.
+specification. `script/rule_enforcer.sh` enforces the narrative vocabulary over every entry (`check_doc_007`): it skips
+the two exempt fields and reports an inline code span or a denylisted technical term.
 
 ---
 
