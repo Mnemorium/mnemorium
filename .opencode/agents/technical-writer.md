@@ -61,9 +61,10 @@ The surface you own:
 - `docs/development/Overview.md` — the source layout, the server lifecycle, the
   domain-model and release diagrams, and the branch, PR and versioning
   conventions.
-- `docs/development/UseCases.md` — the business use-case catalog; the entry
-  format is defined by [TechnicalDesign.md](TechnicalDesign.md) § 8
-  (Documentation), `DOC-005`, and its business vocabulary by `DOC-007`.
+- `docs/development/UseCases.md` — the business use-case catalog, grouped by
+  bounded context with one package diagram per section; the entry format and the
+  diagram conventions are defined by [TechnicalDesign.md](TechnicalDesign.md) § 5
+  and § 6 (`DOC-005`, `DOC-007`, `DOC-008`).
 - `docs/development/Glossary.md` — the domain language.
 - `docs/index.md` and `docs/assets/` — the MkDocs home page and theme assets.
 - `mkdocs.yml` — the site name, theme, `nav` and plugins; every documentation
@@ -107,9 +108,11 @@ Read the governing material at run time; never work from memory. Cite one of:
 - `docs/development/UseCases.md` — a business use-case entry describes a
   capability, not the code that implements it; it is not a one-to-one mapping to
   the application use cases under `src/lib/application/use_case/`. Its entry
-  format is `DOC-005`, and its narrative stays in business vocabulary
-  (`DOC-007`): no route, status code, representation mechanic, field name,
-  storage or concurrency mechanism, or implementation-layer term.
+  format is `DOC-005`, its section diagram is `DOC-008`, and its narrative stays
+  in business vocabulary (`DOC-007`): no route, status code, representation
+  mechanic, field name, storage or concurrency mechanism, or
+  implementation-layer term. The validation criteria of a capability live in its
+  specification, never in the entry.
 - `AGENTS.md` — the router: it points to the canonical documentation under
   `docs/development/`, and when a doc moves, the link here is updated.
 - `mkdocs.yml` `nav` — every page under `docs/` is listed; `mkdocs build

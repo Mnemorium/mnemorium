@@ -2320,7 +2320,7 @@ the flows the E2E suite covers come from the critical exception paths in [UseCas
 | `TEST-050` | Shell script       | Shell scripts in the `script/` folder are tooling and CI glue and are exempt from the unit, integration and E2E test requirements; they are validated by their own gates — `shellcheck` and `shfmt` plus their pre-commit and CI execution — not by a test module.                                                                                                                                                                                                                                                                                                                                                                                                                                            | [§ Shell script](#shell-script)                 |
 | `TEST-051` | CI / prompt assets | GitHub workflow files (`.github/workflows/*`) and the opencode agent, command and skill prompts (`.opencode/agents/*`, `.opencode/commands/*`, `.opencode/skills/*/SKILL.md`, `.agents/skills/**`) are tooling and agent configuration, not application code; they are exempt from the unit, integration and E2E test requirements. A workflow's YAML is validated by `yamllint`. The triage workflow's `gh`-driven inline prompt, its `OPENCODE_CONFIG_CONTENT` shell permission allowlist, and its effect on issues are exercised only when the workflow runs; they have no automated behavioural gate and no dry-run rehearsal — an explicit residual, validated by review rather than asserted by a test. | [§ CI and prompt assets](#ci-and-prompt-assets) |
 | `TEST-052` | E2E                | A golden file or a test media file the E2E suite consumes is stored under `test/e2e/fixture/`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | [§ E2E test](#e2e-test)                         |
-| `TEST-053` | E2E                | A use case whose catalog entry names more than one bounded context keeps a single E2E file, placed in the folder of the context that owns the use case's primary endpoint (`TEST-042`).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | [§ E2E test](#e2e-test)                         |
+| `TEST-053` | E2E                | A catalogued use case's E2E file sits in the folder named by the bounded-context section that holds its entry (`TEST-042`).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | [§ E2E test](#e2e-test)                         |
 | `TEST-054` | Integration test   | An outbound adapter that drives a native binary is covered by an integration test in the same file; the child process is replaced by a stub executable through the adapter's test-only program seam, every child outcome is asserted, and the real binary is exercised by the container E2E suite.                                                                                                                                                                                                                                                                                                                                                                                                            | [§ Native binary](#native-binary)               |
 
 ---
@@ -2425,10 +2425,9 @@ A golden file or a test media file the suite consumes is stored under `test/e2e/
 test that needs it ([TEST-052](#e2e-test)); such files are kept out of the per-context test folders
 ([TEST-042](#e2e-test)).
 
-A use case whose catalog entry names more than one bounded context ([UseCases.md](UseCases.md)) keeps one file, in the
-folder of the context that owns the use case's primary endpoint ([TEST-053](#e2e-test)): UC-006 (Upload Media File;
-Asset and Library) is served under `/api/v1/asset/`, so its file stays in `test/e2e/asset/`. `TEST-042` names the folder
-for a single-context use case.
+A use case's catalog entry lives in the bounded-context section that owns it ([UseCases.md](UseCases.md)), and its E2E
+file sits in that context's folder ([TEST-053](#e2e-test)): UC-006 (Upload Media File) is filed under `## Asset`, so its
+file stays in `test/e2e/asset/`. `TEST-042` lists the folders a bounded context may name.
 
 ---
 
@@ -2828,19 +2827,20 @@ pre-commit and in the CI `scopes` job; a failure cites `GOV-001`.
 
 ## Documentation
 
-This section governs the examples, diagrams, citations, routes, excerpts and business-use-case entries the documentation
-publishes. It keeps every published example traceable to the code it restates, so a reader can verify it and a reviewer
-can catch it going stale.
+This section governs the examples, diagrams, citations, routes, excerpts, business-use-case entries and use-case
+diagrams the documentation publishes. It keeps every published example traceable to the code it restates, so a reader
+can verify it and a reviewer can catch it going stale.
 
-| ID        | Section               | Rule                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | More info                          |
-| --------- | --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------- |
-| `DOC-001` | Code examples         | An example that restates production code names the source path it is drawn from, is updated in the same change as that code, and may elide omitted regions with a `// [...]` marker.                                                                                                                                                                                                                                                                                                           | [§ 1](#1-code-examples)            |
-| `DOC-002` | Domain model diagrams | A domain model diagram that the documentation publishes represents the domain's real-world concepts — conceptual classes, typed attributes, and named associations with multiplicity — and never software methods, database tables or other implementation detail.                                                                                                                                                                                                                             | [§ 2](#2-domain-model-diagrams)    |
-| `DOC-003` | Citations             | Documentation (`docs/`, the root Markdown) and production source (`src/`) cite only paths the repository tracks; they never name the local, untracked `.artifacts/` scratch directory, which a reader cannot resolve.                                                                                                                                                                                                                                                                          | [§ 3](#3-citations)                |
-| `DOC-004` | Published route       | A route the documentation publishes names a path the generated specification declares in `docs/openapi.json`.                                                                                                                                                                                                                                                                                                                                                                                  | [§ 4](#4-published-routes)         |
-| `DOC-005` | Business use cases    | Every business use case entry in [UseCases.md](UseCases.md) carries the § 5 field headings in the documented order, carries no `### Application use case(s)` heading, and is numbered sequentially `UC-001`, `UC-002`, ….                                                                                                                                                                                                                                                                      | [§ 5](#5-business-use-case-format) |
-| `DOC-006` | Code examples         | An example that illustrates the § 3 (API) endpoint-handler contract rather than restating a cited source file has no source to cite, but is kept in step with § 3: when a rule it illustrates changes, the example changes with it.                                                                                                                                                                                                                                                            | [§ 1](#1-code-examples)            |
-| `DOC-007` | Business use cases    | A business use case entry states intent and outcome in business terms: outside the method and path in `### Trigger(s)`, and the context name in `### Bounded context(s)`, it names no HTTP method, route, status code, representation media type, representation mechanic, request or response field, query parameter, storage or transaction mechanism, concurrency race, or implementation-layer term; the wire contract belongs to the [API section](#api) and the generated specification. | [§ 5](#5-business-use-case-format) |
+| ID        | Section               | Rule                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | More info                          |
+| --------- | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------- |
+| `DOC-001` | Code examples         | An example that restates production code names the source path it is drawn from, is updated in the same change as that code, and may elide omitted regions with a `// [...]` marker.                                                                                                                                                                                                                                                                                                                                                                                            | [§ 1](#1-code-examples)            |
+| `DOC-002` | Domain model diagrams | A domain model diagram that the documentation publishes represents the domain's real-world concepts — conceptual classes, typed attributes, and named associations with multiplicity — and never software methods, database tables or other implementation detail.                                                                                                                                                                                                                                                                                                              | [§ 2](#2-domain-model-diagrams)    |
+| `DOC-003` | Citations             | Documentation (`docs/`, the root Markdown) and production source (`src/`) cite only paths the repository tracks; they never name the local, untracked `.artifacts/` scratch directory, which a reader cannot resolve.                                                                                                                                                                                                                                                                                                                                                           | [§ 3](#3-citations)                |
+| `DOC-004` | Published route       | A route the documentation publishes names a path the generated specification declares in `docs/openapi.json`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | [§ 4](#4-published-routes)         |
+| `DOC-005` | Business use cases    | Every business use case entry in [UseCases.md](UseCases.md) is a `UC-<seq> - <Name>` heading — `###`, or `####` inside a sub-package — filed under the package section that owns it, carries the § 5 field headings in the documented order one heading level below the entry, carries none of the removed headings (`Application use case(s)`, `Business rules`, `Secondary actor (optional)`, `Bounded context(s)`), names one capability without joining alternatives with `and` or `or`, and the catalog holds each of `UC-001` … `UC-0NN` exactly once.                    | [§ 5](#5-business-use-case-format) |
+| `DOC-006` | Code examples         | An example that illustrates the § 3 (API) endpoint-handler contract rather than restating a cited source file has no source to cite, but is kept in step with § 3: when a rule it illustrates changes, the example changes with it.                                                                                                                                                                                                                                                                                                                                             | [§ 1](#1-code-examples)            |
+| `DOC-007` | Business use cases    | A business use case entry states intent and outcome in business terms: in every field — `Trigger` included — it names no HTTP method, route, status code, representation media type, representation mechanic, request or response field, query parameter, event payload field, storage or transaction mechanism, concurrency race, or implementation-layer term; the wire contract belongs to the [API section](#api) and the generated specification.                                                                                                                          | [§ 5](#5-business-use-case-format) |
+| `DOC-008` | Use case diagrams     | A use-case diagram the documentation publishes stays inside [UseCases.md](UseCases.md): the preamble carries one master diagram that declares the package registry — the bounded contexts, with their sub-packages nested — and no use case; every package that holds use cases carries exactly one diagram of its own package, and a package that only groups sub-packages carries none; each catalogued use case appears exactly once, labelled `UC-<seq> - <name>`, in the diagram of the section that holds it; and the only actors are the [Glossary](Glossary.md) actors. | [§ 6](#6-use-case-diagrams)        |
 
 ---
 
@@ -2970,35 +2970,123 @@ example is updated in the same change that moves the endpoint.
 
 ### 5. Business use case format
 
-A business use case is one `## UC-<seq> - <Name>` entry in [UseCases.md](UseCases.md). IDs are sequential, zero-padded
-and gap-free across the whole catalog: `UC-001`, `UC-002`, …. The name states the business capability, not an
-application use-case file name.
+A business use case is one entry in [UseCases.md](UseCases.md), filed under the package section that owns the capability
+it describes. The entry states what an actor achieves and what the business guarantees afterwards; the wire, the
+datastore and the code stay out of it (`DOC-007`).
 
-Each entry carries the field headings below, in this order. Only `### Secondary actor (optional)` and
-`### Alternative flow` may be omitted; every other field is required.
+The entry is abstract with respect to the interface that carries it. A use case never assumes an entry point: one use
+case may be served by several entry points, and one entry point may serve several use cases. The implementation
+reconciles the two and carries the detail the entry leaves out.
 
-| Field                            | Required | Content                                                                                                                                                                                                                             |
-| -------------------------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `### Description`                | yes      | One or two sentences stating the business intent of the use case.                                                                                                                                                                   |
-| `### Primary actor`              | yes      | The actor who initiates the use case, named with the [Glossary](Glossary.md) actor terms (`Standard User`, `Admin`, `Root Admin`).                                                                                                  |
-| `### Secondary actor (optional)` | no       | Other actors or systems that participate without initiating; remove the heading when there is none.                                                                                                                                 |
-| `### Pre condition(s)`           | yes      | One condition per bullet; every condition holds before the use case can run.                                                                                                                                                        |
-| `### Trigger(s)`                 | yes      | One bullet per trigger (a REST endpoint, a scheduler, …).                                                                                                                                                                           |
-| `### Bounded context(s)`         | yes      | One bullet per bounded context the use case touches; the available contexts are listed in the [Overview](Overview.md#bounded-context).                                                                                              |
-| `### Business rules`             | yes      | One bullet per business rule the input must satisfy.                                                                                                                                                                                |
-| `### Happy path`                 | yes      | Numbered steps of the main success scenario.                                                                                                                                                                                        |
-| `### Alternative flow`           | no       | Numbered steps, each branch starting from a happy-path step (e.g. `3a.`); every flow is a `Critical exception path` (see [Glossary](Glossary.md)), covered following [§ 5 (Testing)](#testing); list a flow only when it is needed. |
-| `### Post condition(s)`          | yes      | One condition per bullet, guaranteed after the use case succeeds.                                                                                                                                                                   |
+#### 5.1 The entry
 
-An entry never carries an `### Application use case(s)` heading: the catalog describes capabilities, not the code that
-implements them. A business use case is implemented by one or more application use cases, governed by
-[§ 9 (Use cases)](#9-use-cases).
+An entry is one `UC-<seq> - <Name>` heading carrying the field headings below, in this order, each written one heading
+level below the entry: a `###` entry — the use cases a bounded context owns directly — carries `####` fields, and a
+`####` entry, inside a sub-package, carries `#####` fields. Only `Alternative flow` may be omitted; every other field is
+required.
 
-A use case stays in business vocabulary. The narrative fields — `### Description`, `### Pre condition(s)`,
-`### Business rules`, `### Happy path`, `### Alternative flow` and `### Post condition(s)` — state intent and outcome in
-the language of the domain, never in the language of the wire or the implementation. Only `### Trigger(s)` names a
-method and path, and only `### Bounded context(s)` names a bounded context; a trigger describes the caller's request in
-business terms, not its payload fields.
+| Field               | Content                                                                                                                                                                                                                         |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Description`       | One or two sentences stating the business intent of the use case.                                                                                                                                                               |
+| `Primary actor`     | The actor who initiates the use case, named with a [Glossary](Glossary.md) actor term (`Standard User`, `Admin`, `Root Admin`).                                                                                                 |
+| `Parameters`        | One bullet per input the triggering event carries, in business vocabulary (§ 5.4), or `None — the event carries no data.` when it carries none.                                                                                 |
+| `Pre condition(s)`  | One condition per bullet; every condition holds before the use case can run.                                                                                                                                                    |
+| `Trigger`           | One bullet per triggering event, each a single external event (§ 5.3).                                                                                                                                                          |
+| `Happy path`        | Numbered steps of the main success scenario.                                                                                                                                                                                    |
+| `Alternative flow`  | Numbered branches, each starting from a happy-path step (e.g. `3a.`); every flow is a `Critical exception path` (see [Glossary](Glossary.md)), covered following [§ 5 (Testing)](#testing); list a flow only when it is needed. |
+| `Post condition(s)` | One condition per bullet, guaranteed after the use case succeeds.                                                                                                                                                               |
+
+The name states the business capability, not an application use-case file name. The name states one capability and joins
+no alternatives with “and” or “or”: a title that needs the conjunction is either two use cases — `Add an Image…` and
+`Add a Video…` — or one name for the shared capability, such as `Add a Gallery Item`. `check_doc_005` rejects a title
+that carries either word. Identifiers are zero-padded and gap-free: the catalog holds each of `UC-001` … `UC-0NN`
+exactly once, in any order across its sections, so grouping the catalog by package never renumbers an entry. A new use
+case takes the next free identifier and is appended inside the section that owns it; a withdrawn capability is removed
+by a change that also renumbers the entries after it.
+
+An entry never carries the `Application use case(s)`, `Business rules`, `Secondary actor (optional)` or
+`Bounded context(s)` fields. The catalog describes capabilities, not the code that implements them, so a business use
+case is implemented by one or more application use cases, governed by [§ 9 (Use cases)](#9-use-cases); the specification
+owns the validation criteria (§ 5.6); and the section an entry sits in is its package.
+
+#### 5.2 Actors
+
+The actor who initiates the use case is the only actor the entry declares. A participant that does not initiate — an
+external system, a service the use case calls — is named in the flow where it matters; the entry has no field for it.
+
+The entry lists the roles the use case is for, and does not split one role in two when the split changes nothing.
+`Admin` covers every administrator, the Root Admin included; `Root Admin` is listed only when the use case is the Root
+Admin's alone — booting the service, initializing the root account. An override the Root Admin holds over a resource it
+does not own is stated in the flow that grants it, never in the actor list.
+
+`System` is never an actor. The system's work is the use case's body (§ 5.5), and a trigger only the system can produce
+would break the external-origin rule (§ 5.3). A use case started by the service coming up names the person who starts
+the service: “the Root Admin starts the service”, not “the system starts”.
+
+#### 5.3 Triggering events
+
+The trigger is the event that starts the use case. It is the field authors get wrong most often, because an endpoint
+list, a goal and a precondition all read like a trigger and none of them is one. Four properties decide it:
+
+- **External to the boundary.** It originates with an actor, an external system or a timer, never with the system under
+  design.
+- **A state change, not a state.** It is a discrete event that alters the conditions enough to start the normal course;
+  “the user has not signed in” is a state and belongs in `Pre condition(s)`.
+- **Separated from the preconditions.** What must already be true goes in `Pre condition(s)`; what starts the work goes
+  here, and never both.
+- **Atomic.** It says only what starts the process — never what happens next, never its outcome, never a step of the
+  flow.
+
+| Rejected                                                            | Why                            | Accepted                                                       |
+| ------------------------------------------------------------------- | ------------------------------ | -------------------------------------------------------------- |
+| “The customer wants to buy a book.”                                 | a desire, not an event         | “The customer submits the checkout request.”                   |
+| “When it is time to create the invoices.”                           | an unmeasurable threshold      | “An order is shipped.” or “The billing run reaches 00:00 UTC.” |
+| “The customer enters the card, clicks buy and waits for the email.” | the flow folded into the event | “The customer submits the payment details.”                    |
+| “The user is logged in.”                                            | a precondition                 | — it belongs in `Pre condition(s)`                             |
+
+A trigger may be temporal or system-generated, and then it states the exact threshold or time mechanism: “the Root Admin
+starts the service”, “the export job receives the daily archive”. An entry carries one trigger; it carries more only
+when every bullet starts the same goal through a different entry point, and each bullet is still one event. A bullet
+that starts a different goal is a different use case.
+
+The trigger names the event, never the entry point that carries it: “the caller asks to browse the galleries it may
+see”, with no method and no path. Which entry point delivers an event is the implementation's concern (§ 5), because one
+use case may be served by several entry points and one entry point may serve several use cases. No field of an entry
+names a route, `Trigger` included; a trigger may describe its event in business terms — “the system receives a shipment
+notice” — but it never names the payload's fields, and `DOC-007` rejects a method-and-path pair or a bare route path
+wherever it appears.
+
+#### 5.4 Parameters
+
+`Parameters` lists what the triggering event carries: one bullet per input, in business vocabulary, with its optionality
+stated.
+
+- `username — the account name of the new user; required.`
+- `email — an optional contact address.`
+
+Never a field name, a type, a media type or a schema fragment. The happy path does not repeat the parameters: its first
+step is “the Admin submits a user-creation request”, not “carrying a username, an optional email, a password and the
+role to grant”. A use case whose event carries no data says `None — the event carries no data.`
+
+#### 5.5 Happy path, alternative flow and post conditions
+
+The happy path is the main success scenario and only that: numbered business steps, one action per step, no branch and
+no technical mechanism. The alternative flow branches from a happy-path step — `3a.`, `3b.` — and every branch ends in
+an outcome; a rejected request is written “the system rejects the request and applies nothing”, never as a status code.
+The post conditions state what the business guarantees once the use case succeeds, never what the wire returns.
+
+#### 5.6 Where the validation criteria live
+
+The entry states intent and outcome; its acceptance criteria are not part of it. A rule about what the input must
+satisfy, what may never be deleted or when a name is unique belongs to the specification of the capability — the
+OpenSpec requirement that owns it — and to the E2E test that covers it (`TEST-041`). Do not add a `Business rules`
+field, and do not restate a specification rule in a flow: when a rule changes the outcome, change the flow and the
+specification together.
+
+#### 5.7 Business vocabulary (`DOC-007`)
+
+A use case stays in business vocabulary. Every field, `Trigger` included, states intent and outcome in the language of
+the domain, never in the language of the wire or the implementation.
 
 The vocabulary a narrative field excludes (`DOC-007`):
 
@@ -3010,24 +3098,117 @@ The vocabulary a narrative field excludes (`DOC-007`):
 | Datastore, table, row, column, schema, cascade, transaction, migration, byte | [§ 4 (Persistence)](#persistence)                                  |
 | Server, client, endpoint, handler, adapter, repository, cache, thread, race  | [§ 2 (Architecture)](#architecture), [§ 1](#code-style-guidelines) |
 
-Domain vocabulary from the [Overview](Overview.md) and the [Glossary](Glossary.md) is allowed: write “the system”, “the
-caller”, “playlist”, “recording”, “track”, “position”, “visibility”, “owner” and “last-modified time”; do not write
-`last_modified_at`, `track_index`, `recording_id`, `is_public`, `add_track`, `limit`, `offset`, `total`, `0..n-1` or
-`MAX(track_index) + 1`. The business outcome replaces the status code:
+The [Glossary](Glossary.md) defines the vocabulary a narrative field may use: `Triggering event`, `Parameters`,
+`Caller`, `Owner`, `Visibility`, `Position`, `Last-modified time`, `System` and the actors, alongside the domain
+concepts of the [Overview](Overview.md) — “playlist”, “recording”, “track”, “medium”, “gallery”, “item”. Write those; do
+not write `last_modified_at`, `track_index`, `recording_id`, `is_public`, `add_track`, `limit`, `offset`, `total`,
+`0..n-1` or `MAX(track_index) + 1`. The business outcome replaces the status code:
 
-| Technical form                       | Business form                                       |
-| ------------------------------------ | --------------------------------------------------- |
-| `404 Not Found`                      | reported as not found, without revealing which case |
-| `422 Unprocessable Content`          | rejected, and nothing is applied                    |
-| `last_modified_at` advances          | the last-modified time advances                     |
-| `MAX(track_index) + 1`               | appended after the last track                       |
-| `schema cascade`                     | removed together with its track placements          |
-| `add_track: { recording_id }`        | a request to add a recording                        |
-| `GET /api/v1/library/music/playlist` | only in `### Trigger(s)`                            |
+| Technical form                | Business form                                       |
+| ----------------------------- | --------------------------------------------------- |
+| `404 Not Found`               | reported as not found, without revealing which case |
+| `422 Unprocessable Content`   | rejected, and nothing is applied                    |
+| `last_modified_at` advances   | the last-modified time advances                     |
+| `MAX(track_index) + 1`        | appended after the last track                       |
+| `schema cascade`              | removed together with its track placements          |
+| `add_track: { recording_id }` | a request to add a recording                        |
 
-A route the trigger names is still checked by `DOC-004`; the wire contract itself belongs to § 3 and the generated
-specification. `script/rule_enforcer.sh` enforces the narrative vocabulary over every entry (`check_doc_007`): it skips
-the two exempt fields and reports an inline code span or a denylisted technical term.
+An entry names no route in any field, `Trigger` included; routes live in [§ 3 (API)](#api) and `docs/openapi.json`
+(`DOC-004`). `script/rule_enforcer.sh` enforces the narrative vocabulary over every field of every entry
+(`check_doc_007`): it reports an inline code span, a denylisted technical term, a method-and-path pair or a bare route
+path.
+
+#### 5.8 Definition of done
+
+A use case is done when all of the following hold:
+
+- the entry sits in the section of the bounded context that owns the capability;
+- the identifier is the next free one and appears exactly once in the catalog;
+- the trigger is one external, state-changing, atomic event;
+- the parameters list the event's data in business terms;
+- no removed field appears, and no field — `Trigger` included — names the wire, the storage or the implementation;
+- the use case appears in its section's diagram (§ 6);
+- the E2E file `test/e2e/<context>/uc<seq>_<name>.py` exists, or its absence is recorded as an exemption in
+  `rule_enforcer.yaml` (`TEST-041`);
+- `script/rule_enforcer.sh check` passes.
+
+#### 5.9 Worked example
+
+The example below restates the entry for UC-013; when that entry changes, change the example with it.
+
+```markdown
+### UC-013 - Create a Music Playlist
+
+#### Description
+
+Allow an authenticated user to create a playlist they own to collect and order music recordings.
+
+#### Primary actor
+
+- Standard User
+- Admin
+
+#### Parameters
+
+- name — the playlist name; required.
+- visibility — whether other users may read the playlist; optional, private by default.
+
+#### Pre condition(s)
+
+- The caller is authenticated.
+
+#### Trigger
+
+- The caller submits a playlist-creation request.
+
+#### Happy path
+
+1. The caller submits a playlist-creation request.
+2. The system verifies the caller's account still exists.
+3. The system trims and validates the name.
+4. The system verifies the caller does not already own a playlist with the same name.
+5. The system creates the playlist owned by the caller, private unless requested otherwise.
+6. The system returns the created playlist.
+
+#### Alternative flow
+
+- 3a. The name cannot be used: it is empty, only whitespace, or too long; the system rejects the request and creates
+  nothing.
+- 4a. The caller already owns a playlist with the same name; the system rejects the request and creates nothing.
+
+#### Post condition(s)
+
+- A playlist owned by the caller exists and holds no track.
+```
+
+---
+
+### 6. Use case diagrams
+
+[UseCases.md](UseCases.md) publishes the package view of the catalog: one PlantUML use-case diagram per package that
+holds use cases, plus a master diagram in its preamble. A reader sees which capabilities each context exposes before
+reading any entry.
+
+- **Packages.** A package is a bounded context listed in the [Overview](Overview.md#bounded-context), or a sub-package
+  inside one. The master diagram declares the registry — each context, with its sub-packages nested — and no use case. A
+  package that holds use cases carries the diagram of its own package; a package that only groups sub-packages carries
+  none, because the master already shows the grouping.
+- **Placement.** The master diagram sits in the preamble. A `##` section carries a context's diagram and the entries it
+  owns directly; a context that divides into areas nests `###` sub-package sections (Library's `Gallery` and `Music`),
+  each with its own diagram and its own entries. An entry sits one heading level below its package: `###` in a context
+  section, `####` in a sub-package, with its fields one level below it.
+- **Membership.** A use case appears in exactly one diagram: the one of the section that holds its entry. A capability
+  spanning several contexts is filed where it is owned, and [§ 7.3](#73-cross-context-use-cases) remains the record of
+  the cross-context units of work.
+- **Actors.** Only the [Glossary](Glossary.md) actors — `Standard User`, `Admin`, `Root Admin` — declared outside the
+  package. `Admin` covers every administrator, the Root Admin included; `Root Admin` is drawn only where a use case is
+  the Root Admin's alone (§ 5.2).
+- **Nodes.** `usecase "UC-013 - Create a music playlist" as UC013`: the identifier and the business name, joined so
+  `check_doc_008` can verify the correspondence.
+- **No invented structure.** No `<<include>>`, no `<<extend>>`, no package the code does not have. The diagram mirrors
+  the catalog and the bounded contexts, and nothing else.
+- **Rendering.** The MkDocs PlantUML plugin renders the `puml` fences in the published site; `check_doc_008` validates
+  structure, never layout.
 
 ---
 
