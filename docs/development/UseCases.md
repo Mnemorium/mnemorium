@@ -57,6 +57,8 @@ Allow an Administrator to create a new user in the system and assign the appropr
 - A new user account and its credential exist in the system.
 - Username and email remain unique across users.
 
+---
+
 ## UC-002 - User Authentication
 
 ### Description
@@ -103,6 +105,8 @@ features and resources.
 ### Post condition(s)
 
 - The user holds a valid token granting access to authorized features and resources.
+
+---
 
 ## UC-003 - Initialize Root Admin
 
@@ -163,6 +167,8 @@ changed.
 - The default password is no longer valid and is no longer shown to the operator while the configuration has First-Time
   Admin Authentication enabled.
 
+---
+
 ## UC-004 - Load Configuration
 
 ### Description
@@ -214,6 +220,8 @@ configuration file and the environment, generating the secrets on the first runt
 
 - The stored settings exist.
 - The runtime holds a complete configuration to wire its dependencies.
+
+---
 
 ## UC-005 - Delete User Account
 
@@ -268,6 +276,8 @@ accessing the system.
 - The user account and its credential no longer exist.
 - Every file, playlist, and dependent media record owned by the user no longer exists.
 - The deleted user cannot authenticate and any token it held is rejected.
+
+---
 
 ## UC-006 - Upload Media File
 
@@ -324,6 +334,8 @@ upload is resumable and chunked, so it spans several requests.
 - The file is stored under a unique path.
 - A file record bound to the caller exists with its media kind, content fingerprint and private visibility.
 
+---
+
 ## UC-007 - Create a Gallery
 
 ### Description
@@ -373,6 +385,8 @@ Allow an authenticated user to create a gallery they own to collect images and v
 
 - A gallery owned by the caller exists.
 - The new gallery holds no item.
+
+---
 
 ## UC-008 - Browse Galleries
 
@@ -427,6 +441,8 @@ Allow an authenticated user to browse the galleries and items they may see.
 ### Post condition(s)
 
 - The caller holds the requested galleries and items.
+
+---
 
 ## UC-009 - Add an Image or Video to a Gallery
 
@@ -486,6 +502,8 @@ Allow an authenticated user to append one of their images or videos to a gallery
 - The gallery holds the new item at the next order position.
 - The image or video belongs to this gallery.
 
+---
+
 ## UC-010 - Remove an Image or Video from a Gallery
 
 ### Description
@@ -542,6 +560,8 @@ when the caller owns the file — the backing file.
 - The item and its image or video record no longer exist.
 - The backing file's record and stored content no longer exist when the caller owned the file.
 
+---
+
 ## UC-011 - Remove a Gallery
 
 ### Description
@@ -591,6 +611,8 @@ Allow the owner to delete a gallery together with its items, their media, and th
 ### Post condition(s)
 
 - The gallery, its items, their media, and their backing files no longer exist.
+
+---
 
 ## UC-012 - Browse Music Albums
 
@@ -665,6 +687,8 @@ each medium sequences.
 
 - The caller is shown the requested albums, album, medium, medium tracks or track.
 
+---
+
 ## UC-013 - Create a Music Playlist
 
 ### Description
@@ -717,6 +741,8 @@ Allow an authenticated user to create a playlist they own to collect and order m
 ### Post condition(s)
 
 - A playlist owned by the caller exists and holds no track.
+
+---
 
 ## UC-014 - Browse Music Playlists
 
@@ -779,6 +805,8 @@ Allow an authenticated user to list the playlists they may see, read one playlis
 
 - The caller is shown the requested playlists, playlist, or track.
 
+---
+
 ## UC-015 - Update a Music Playlist
 
 ### Description
@@ -835,6 +863,8 @@ Allow the owner of a playlist to rename it or change its visibility.
 ### Post condition(s)
 
 - The playlist carries the requested changes, and its last-modified time has advanced.
+
+---
 
 ## UC-016 - Add a Track to a Music Playlist
 
@@ -897,6 +927,8 @@ Allow a caller who can read a playlist to append one occurrence of a shared musi
 
 - The playlist sequences one more recording occurrence, and its last-modified time has advanced.
 
+---
+
 ## UC-017 - Remove a Track from a Music Playlist
 
 ### Description
@@ -947,6 +979,8 @@ Allow a caller who can read a playlist to remove one of its track occurrences.
 ### Post condition(s)
 
 - The addressed track no longer exists, the remaining positions are unchanged, and the shared recording survives.
+
+---
 
 ## UC-018 - Reorder the Tracks of a Music Playlist
 
@@ -1000,6 +1034,8 @@ Allow a caller who can read a playlist to replace its track order with a request
 ### Post condition(s)
 
 - The playlist tracks appear in the requested order with no gaps.
+
+---
 
 ## UC-019 - Delete a Music Playlist
 
