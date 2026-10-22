@@ -10,7 +10,6 @@ use crate::application::port::create_gallery::CreateGalleryResponse;
 use crate::application::port::create_gallery::CreateGalleryUseCase;
 use crate::application::security_event;
 use crate::domain::model::gallery::Gallery;
-use crate::domain::model::gallery::GalleryError;
 use crate::domain::port::error::RepositoryError;
 use crate::domain::port::gallery_repository::GalleryFilter;
 use crate::domain::port::gallery_repository::GalleryRepository as _;
@@ -20,6 +19,8 @@ use crate::domain::port::unit_of_work::UnitOfWorkFactory;
 use crate::domain::port::user_repository::UserFilter;
 use crate::domain::port::user_repository::UserRepository as _;
 use crate::domain::port::user_unit_of_work::UserUnitOfWork;
+use crate::domain::service::name_policy::NamePolicy;
+use crate::domain::service::name_policy::NamePolicyError;
 
 /// Use case implementation for creating a gallery.
 pub struct CreateGallery<F> {
@@ -44,7 +45,7 @@ where
 {
     #[expect(
         clippy::wildcard_enum_match_arm,
-        reason = "GalleryError is non_exhaustive, so a catch-all arm is required"
+        reason = "RepositoryError is non_exhaustive, so a catch-all arm is required"
     )]
     fn execute<'future>(
         &'future self,
@@ -62,55 +63,56 @@ where
                 .await
                 .map_err(|error| CreateGalleryError::Unknown(error.into()))?;
 
-            let result = async {
-                let _caller = unit_of_work
-                    .users()
-                    .search(&UserFilter {
-                        id: Some(command.caller_id()),
-                        ..UserFilter::default()
-                    })
-                    .await
-                    .map_err(|error| CreateGalleryError::Unknown(error.into()))?
-                    .into_iter()
-                    .next()
-                    .ok_or(CreateGalleryError::NoSuchCaller)?;
+            let result =
+                async {
+                    let _caller = unit_of_work
+                        .users()
+                        .search(&UserFilter {
+                            id: Some(command.caller_id()),
+                            ..UserFilter::default()
+                        })
+                        .await
+                        .map_err(|error| CreateGalleryError::Unknown(error.into()))?
+                        .into_iter()
+                        .next()
+                        .ok_or(CreateGalleryError::NoSuchCaller)?;
 
-                let now = Utc::now().naive_utc();
-                let gallery = Gallery::try_new(
-                    0,
-                    Some(command.caller_id()),
-                    command.name().to_owned(),
-                    command.is_public(),
-                    now,
-                    now,
-                )
-                .map_err(|error| match error {
-                    GalleryError::NameEmpty => {
-                        security_event::input_validation_failed("name", "empty");
-                        CreateGalleryError::InvalidName
+                    let name = NamePolicy::validate(command.name().to_owned()).map_err(
+                        |error| match error {
+                            NamePolicyError::Empty => {
+                                security_event::input_validation_failed("name", "empty");
+                                CreateGalleryError::InvalidName
+                            }
+                            NamePolicyError::TooLong => {
+                                security_event::input_validation_failed("name", "too_long");
+                                CreateGalleryError::NameTooLong
+                            }
+                        },
+                    )?;
+                    let now = Utc::now().naive_utc();
+                    let gallery = Gallery::new(
+                        0,
+                        Some(command.caller_id()),
+                        name,
+                        command.is_public(),
+                        now,
+                        now,
+                    );
+
+                    let existing = unit_of_work
+                        .galleries()
+                        .search(&GalleryFilter {
+                            name: Some(gallery.name().to_owned()),
+                            user_id: Some(command.caller_id()),
+                            ..GalleryFilter::default()
+                        })
+                        .await
+                        .map_err(|error| CreateGalleryError::Unknown(error.into()))?;
+                    if !existing.is_empty() {
+                        return Err(CreateGalleryError::NameAlreadyExists);
                     }
-                    GalleryError::NameTooLong => {
-                        security_event::input_validation_failed("name", "too_long");
-                        CreateGalleryError::NameTooLong
-                    }
-                    _ => CreateGalleryError::Unknown(anyhow::Error::new(error)),
-                })?;
 
-                let existing = unit_of_work
-                    .galleries()
-                    .search(&GalleryFilter {
-                        name: Some(gallery.name().to_owned()),
-                        user_id: Some(command.caller_id()),
-                        ..GalleryFilter::default()
-                    })
-                    .await
-                    .map_err(|error| CreateGalleryError::Unknown(error.into()))?;
-                if !existing.is_empty() {
-                    return Err(CreateGalleryError::NameAlreadyExists);
-                }
-
-                let created =
-                    unit_of_work.galleries().create(gallery).await.map_err(
+                    let created = unit_of_work.galleries().create(gallery).await.map_err(
                         |error| match error {
                             // A concurrent insert won the race for the per-owner
                             // unique name; the use case translates the port's
@@ -121,16 +123,16 @@ where
                         },
                     )?;
 
-                Ok(CreateGalleryResponse::new(
-                    created.gallery_id(),
-                    command.caller_id(),
-                    created.name().to_owned(),
-                    created.is_public(),
-                    created.created_at(),
-                    created.last_modified_at(),
-                ))
-            }
-            .await;
+                    Ok(CreateGalleryResponse::new(
+                        created.gallery_id(),
+                        command.caller_id(),
+                        created.name().to_owned(),
+                        created.is_public(),
+                        created.created_at(),
+                        created.last_modified_at(),
+                    ))
+                }
+                .await;
 
             match result {
                 Ok(value) => {
@@ -219,21 +221,9 @@ mod tests {
         }
     }
 
-    fn gallery(
-        gallery_id: i64,
-        user_id: Option<i64>,
-        name: &str,
-        is_public: bool,
-    ) -> Result<Gallery, Box<dyn Error>> {
+    fn gallery(gallery_id: i64, user_id: Option<i64>, name: &str, is_public: bool) -> Gallery {
         let now = NaiveDateTime::default();
-        Ok(Gallery::try_new(
-            gallery_id,
-            user_id,
-            name.to_owned(),
-            is_public,
-            now,
-            now,
-        )?)
+        Gallery::new(gallery_id, user_id, name.to_owned(), is_public, now, now)
     }
 
     fn harness_with(
@@ -301,7 +291,7 @@ mod tests {
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 1)?;
         let mut galleries = MockGalleryRepository::new();
-        let stored = gallery(9, Some(1), "Holidays", false)?;
+        let stored = gallery(9, Some(1), "Holidays", false);
         expect_no_collision(&mut galleries);
         galleries
             .expect_create()
@@ -342,7 +332,7 @@ mod tests {
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 1)?;
         let mut galleries = MockGalleryRepository::new();
-        let stored = gallery(4, Some(1), "Shared", true)?;
+        let stored = gallery(4, Some(1), "Shared", true);
         expect_no_collision(&mut galleries);
         galleries
             .expect_create()
@@ -372,7 +362,7 @@ mod tests {
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 1)?;
         let mut galleries = MockGalleryRepository::new();
-        let stored = gallery(6, Some(1), "Holidays", false)?;
+        let stored = gallery(6, Some(1), "Holidays", false);
         galleries
             .expect_search()
             .times(1)
@@ -510,7 +500,7 @@ mod tests {
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 1)?;
         let mut galleries = MockGalleryRepository::new();
-        let existing = gallery(3, Some(1), "Holidays", false)?;
+        let existing = gallery(3, Some(1), "Holidays", false);
         galleries
             .expect_search()
             .times(1)
@@ -635,7 +625,7 @@ mod tests {
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 1)?;
         let mut galleries = MockGalleryRepository::new();
-        let stored = gallery(9, Some(1), "Holidays", false)?;
+        let stored = gallery(9, Some(1), "Holidays", false);
         expect_no_collision(&mut galleries);
         galleries.expect_create().times(1).return_once(move |_| {
             let found = stored.clone();

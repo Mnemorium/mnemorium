@@ -46,8 +46,8 @@ mod tests {
 
     use super::LibraryAccess;
 
-    fn playlist(user_id: i64, is_public: bool) -> Result<MusicPlaylist, Box<dyn Error>> {
-        Ok(MusicPlaylist::try_new(
+    fn playlist(user_id: i64, is_public: bool) -> MusicPlaylist {
+        MusicPlaylist::new(
             1,
             "Mix".to_owned(),
             NaiveDateTime::default(),
@@ -55,13 +55,13 @@ mod tests {
             user_id,
             is_public,
             Vec::new(),
-        )?)
+        )
     }
 
     #[test]
     fn any_caller_reads_a_public_playlist() -> Result<(), Box<dyn Error>> {
         // Arrange
-        let playlist = playlist(3, true)?;
+        let playlist = playlist(3, true);
         let caller = User::try_new(9, "caller".to_owned(), None, 9, Role::Standard)?;
 
         // Act
@@ -75,7 +75,7 @@ mod tests {
     #[test]
     fn owner_reads_a_private_playlist() -> Result<(), Box<dyn Error>> {
         // Arrange
-        let playlist = playlist(4, false)?;
+        let playlist = playlist(4, false);
         let caller = User::try_new(4, "caller".to_owned(), None, 4, Role::Standard)?;
 
         // Act
@@ -89,7 +89,7 @@ mod tests {
     #[test]
     fn root_admin_reads_a_private_playlist() -> Result<(), Box<dyn Error>> {
         // Arrange
-        let playlist = playlist(4, false)?;
+        let playlist = playlist(4, false);
         let caller = User::try_new(0, "root".to_owned(), None, 0, Role::Admin)?;
 
         // Act
@@ -103,7 +103,7 @@ mod tests {
     #[test]
     fn another_caller_cannot_read_a_private_playlist() -> Result<(), Box<dyn Error>> {
         // Arrange
-        let playlist = playlist(4, false)?;
+        let playlist = playlist(4, false);
         let caller = User::try_new(9, "caller".to_owned(), None, 9, Role::Standard)?;
 
         // Act

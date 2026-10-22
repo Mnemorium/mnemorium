@@ -699,7 +699,8 @@
             ]
           },
           "username": {
-            "description": "New username; must be at least 4 characters long.",
+            "description": "New username; must be 4 to 100 characters long, contain no uppercase letter, and not begin or end with\nwhitespace.",
+            "maxLength": 100,
             "minLength": 4,
             "type": [
               "string",
@@ -1124,7 +1125,7 @@
             "description": "Role to grant to the new user."
           },
           "username": {
-            "description": "Username of the new user.",
+            "description": "Username of the new user.\n\nMust be 4 to 100 characters long, contain no uppercase letter, and not begin or end with whitespace.",
             "maxLength": 100,
             "minLength": 4,
             "type": "string"
@@ -4819,6 +4820,16 @@
               }
             },
             "description": "Unknown user"
+          },
+          "409": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Username or email is already taken"
           },
           "413": {
             "content": {

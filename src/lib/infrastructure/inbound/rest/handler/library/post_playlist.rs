@@ -167,8 +167,8 @@ mod tests {
             .unwrap_or_default()
     }
 
-    fn created() -> Result<CreatePlaylistResponse, Box<dyn Error>> {
-        Ok(CreatePlaylistResponse::new(MusicPlaylist::try_new(
+    fn created() -> CreatePlaylistResponse {
+        CreatePlaylistResponse::new(MusicPlaylist::new(
             5,
             "Mix".to_owned(),
             ts(),
@@ -176,7 +176,7 @@ mod tests {
             1,
             false,
             Vec::new(),
-        )?))
+        ))
     }
 
     async fn send(
@@ -227,7 +227,7 @@ mod tests {
     #[tokio::test]
     async fn post_playlist_defaults_is_public_to_false() -> Result<(), Box<dyn Error>> {
         // Arrange
-        let created = created()?;
+        let created = created();
         let mut use_case = MockCreatePlaylistUseCase::new();
         use_case
             .expect_execute()

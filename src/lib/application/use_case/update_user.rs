@@ -9,11 +9,14 @@ use crate::application::port::update_user::UpdateUserUseCase;
 use crate::application::security_event;
 use crate::domain::model::user::Role;
 use crate::domain::model::user::UserError;
+use crate::domain::port::error::RepositoryError;
 use crate::domain::port::unit_of_work::UnitOfWork as _;
 use crate::domain::port::unit_of_work::UnitOfWorkFactory;
 use crate::domain::port::user_repository::UserFilter;
 use crate::domain::port::user_repository::UserRepository as _;
 use crate::domain::port::user_unit_of_work::UserUnitOfWork;
+use crate::domain::service::username_policy::UsernamePolicy;
+use crate::domain::service::username_policy::UsernamePolicyError;
 
 /// Use case implementation for updating the profile of a user.
 pub struct UpdateUser<F> {
@@ -36,6 +39,10 @@ where
     F: UnitOfWorkFactory,
     F::Uow: UserUnitOfWork,
 {
+    #[expect(
+        clippy::wildcard_enum_match_arm,
+        reason = "RepositoryError is non_exhaustive, so a catch-all arm is required"
+    )]
     fn execute<'future>(
         &'future self,
         command: UpdateUserCommand,
@@ -90,17 +97,20 @@ where
                 }
 
                 if let Some(username) = command.username().map(str::to_owned) {
-                    user.set_username(username).map_err(|error| match error {
-                        UserError::UsernameTooShort => UpdateUserError::InvalidUsername,
-                        UserError::InvalidEmail(_) | UserError::Unknown(_) => {
-                            UpdateUserError::Unknown(anyhow::Error::new(error))
+                    UsernamePolicy::validate(&username).map_err(|error| match error {
+                        UsernamePolicyError::TooShort
+                        | UsernamePolicyError::TooLong
+                        | UsernamePolicyError::ContainsUppercase
+                        | UsernamePolicyError::SurroundingWhitespace => {
+                            UpdateUserError::InvalidUsername
                         }
                     })?;
+                    user.set_username(username);
                 }
                 if let Some(email) = command.email().map(str::to_owned) {
                     user.set_email(Some(email)).map_err(|error| match error {
                         UserError::InvalidEmail(_) => UpdateUserError::InvalidEmail,
-                        UserError::UsernameTooShort | UserError::Unknown(_) => {
+                        UserError::Unknown(_) => {
                             UpdateUserError::Unknown(anyhow::Error::new(error))
                         }
                     })?;
@@ -109,11 +119,50 @@ where
                     user.set_role(role);
                 }
 
-                let updated_user = unit_of_work
-                    .users()
-                    .save(user)
-                    .await
-                    .map_err(|error| UpdateUserError::Unknown(error.into()))?;
+                if command.username().is_some() {
+                    let collisions = unit_of_work
+                        .users()
+                        .search(&UserFilter {
+                            username: Some(user.username().to_owned()),
+                            ..UserFilter::default()
+                        })
+                        .await
+                        .map_err(|error| UpdateUserError::Unknown(error.into()))?;
+                    if collisions
+                        .iter()
+                        .any(|collision| collision.id() != user.id())
+                    {
+                        return Err(UpdateUserError::UsernameAlreadyExists);
+                    }
+                }
+                if command.email().is_some()
+                    && let Some(email_address) = user.email()
+                {
+                    let collisions = unit_of_work
+                        .users()
+                        .search(&UserFilter {
+                            email: Some(email_address.to_owned()),
+                            ..UserFilter::default()
+                        })
+                        .await
+                        .map_err(|error| UpdateUserError::Unknown(error.into()))?;
+                    if collisions
+                        .iter()
+                        .any(|collision| collision.id() != user.id())
+                    {
+                        return Err(UpdateUserError::EmailAlreadyExists);
+                    }
+                }
+
+                let updated_user =
+                    unit_of_work
+                        .users()
+                        .save(user)
+                        .await
+                        .map_err(|error| match error {
+                            RepositoryError::AlreadyExist => UpdateUserError::UserAlreadyExists,
+                            other => UpdateUserError::Unknown(other.into()),
+                        })?;
 
                 Ok(UpdateUserResponse::new(
                     updated_user.id(),
@@ -241,6 +290,14 @@ mod tests {
         Ok(())
     }
 
+    /// Expect a uniqueness search that finds no other user.
+    fn expect_unique_search(user_repository: &mut MockUserRepository) {
+        user_repository
+            .expect_search()
+            .times(1)
+            .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+    }
+
     /// Build a use case whose `save` succeeds and whose searches resolve
     /// `caller` first and `target` second.
     fn use_case_with_save(
@@ -276,7 +333,10 @@ mod tests {
                 user_repository,
                 user(7, "admin", None, Role::Admin)?,
                 user(7, "admin", Some("old@example.com"), Role::Admin),
-            )
+            )?;
+            expect_unique_search(user_repository);
+            expect_unique_search(user_repository);
+            Ok(())
         })?;
         let command = command(7, 7, Some("renamed-admin"), Some("new@example.com"), None);
 
@@ -525,6 +585,7 @@ mod tests {
             user(0, "root", None, Role::Admin)?,
             user(2, "brad", None, Role::Standard),
         )?;
+        expect_unique_search(&mut user_repository);
         user_repository
             .expect_save()
             .times(1)
@@ -545,6 +606,227 @@ mod tests {
 
         // Assert
         assert!(matches!(result, Err(UpdateUserError::Unknown(_))));
+        assert!(rolled_back.load(Ordering::SeqCst));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn update_user_uppercase_username_returns_invalid_username() -> Result<(), Box<dyn Error>>
+    {
+        // Arrange
+        let harness = use_case_with(|user_repository| {
+            expect_caller_and_user(
+                user_repository,
+                user(0, "root", None, Role::Admin)?,
+                user(2, "brad", None, Role::Standard),
+            )
+        })?;
+        let command = command(0, 2, Some("Renamed"), None, None);
+
+        // Act
+        let result = harness.use_case.execute(command).await;
+
+        // Assert
+        assert!(matches!(result, Err(UpdateUserError::InvalidUsername)));
+        assert!(harness.rolled_back.load(Ordering::SeqCst));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn update_user_surrounding_whitespace_username_returns_invalid_username()
+    -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let harness = use_case_with(|user_repository| {
+            expect_caller_and_user(
+                user_repository,
+                user(0, "root", None, Role::Admin)?,
+                user(2, "brad", None, Role::Standard),
+            )
+        })?;
+        let command = command(0, 2, Some(" renamed"), None, None);
+
+        // Act
+        let result = harness.use_case.execute(command).await;
+
+        // Assert
+        assert!(matches!(result, Err(UpdateUserError::InvalidUsername)));
+        assert!(harness.rolled_back.load(Ordering::SeqCst));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn update_user_too_long_username_returns_invalid_username() -> Result<(), Box<dyn Error>>
+    {
+        // Arrange
+        let harness = use_case_with(|user_repository| {
+            expect_caller_and_user(
+                user_repository,
+                user(0, "root", None, Role::Admin)?,
+                user(2, "brad", None, Role::Standard),
+            )
+        })?;
+        let username = "a".repeat(101);
+        let command = command(0, 2, Some(&username), None, None);
+
+        // Act
+        let result = harness.use_case.execute(command).await;
+
+        // Assert
+        assert!(matches!(result, Err(UpdateUserError::InvalidUsername)));
+        assert!(harness.rolled_back.load(Ordering::SeqCst));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn update_user_duplicate_username_returns_username_already_exists()
+    -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let collision = user(1, "mallory", None, Role::Standard)?;
+        let harness = use_case_with(move |user_repository| {
+            expect_caller_and_user(
+                user_repository,
+                user(0, "root", None, Role::Admin)?,
+                user(2, "brad", None, Role::Standard),
+            )?;
+            user_repository
+                .expect_search()
+                .times(1)
+                .returning(move |_| {
+                    let found = collision.clone();
+                    Box::pin(async move { Ok(vec![found]) })
+                });
+            Ok(())
+        })?;
+        let command = command(0, 2, Some("mallory"), None, None);
+
+        // Act
+        let result = harness.use_case.execute(command).await;
+
+        // Assert
+        assert!(matches!(
+            result,
+            Err(UpdateUserError::UsernameAlreadyExists)
+        ));
+        assert!(harness.rolled_back.load(Ordering::SeqCst));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn update_user_duplicate_email_returns_email_already_exists() -> Result<(), Box<dyn Error>>
+    {
+        // Arrange
+        let collision = user(1, "nancy", Some("nancy@example.com"), Role::Standard)?;
+        let harness = use_case_with(move |user_repository| {
+            expect_caller_and_user(
+                user_repository,
+                user(0, "root", None, Role::Admin)?,
+                user(2, "brad", None, Role::Standard),
+            )?;
+            user_repository
+                .expect_search()
+                .times(1)
+                .returning(move |_| {
+                    let found = collision.clone();
+                    Box::pin(async move { Ok(vec![found]) })
+                });
+            Ok(())
+        })?;
+        let command = command(0, 2, None, Some("nancy@example.com"), None);
+
+        // Act
+        let result = harness.use_case.execute(command).await;
+
+        // Assert
+        assert!(matches!(result, Err(UpdateUserError::EmailAlreadyExists)));
+        assert!(harness.rolled_back.load(Ordering::SeqCst));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn update_user_keeping_own_username_succeeds() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let target = user(2, "brad", None, Role::Standard)?;
+        let own = target.clone();
+        let harness = use_case_with_save(move |user_repository| {
+            expect_caller_and_user(
+                user_repository,
+                user(0, "root", None, Role::Admin)?,
+                Ok(target),
+            )?;
+            user_repository
+                .expect_search()
+                .times(1)
+                .returning(move |_| {
+                    let found = own.clone();
+                    Box::pin(async move { Ok(vec![found]) })
+                });
+            Ok(())
+        })?;
+        let command = command(0, 2, Some("brad"), None, None);
+
+        // Act
+        let response = harness.use_case.execute(command).await?;
+
+        // Assert
+        assert_eq!(response.username(), "brad");
+        assert!(harness.committed.load(Ordering::SeqCst));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn update_user_case_different_email_succeeds() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let harness = use_case_with_save(|user_repository| {
+            expect_caller_and_user(
+                user_repository,
+                user(0, "root", None, Role::Admin)?,
+                user(2, "brad", None, Role::Standard),
+            )?;
+            expect_unique_search(user_repository);
+            Ok(())
+        })?;
+        let command = command(0, 2, None, Some("Alice@example.com"), None);
+
+        // Act
+        let response = harness.use_case.execute(command).await?;
+
+        // Assert
+        assert_eq!(response.email(), Some("Alice@example.com"));
+        assert!(harness.committed.load(Ordering::SeqCst));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn update_user_raced_duplicate_returns_user_already_exists() -> Result<(), Box<dyn Error>>
+    {
+        // Arrange
+        let mut user_repository = MockUserRepository::new();
+        expect_caller_and_user(
+            &mut user_repository,
+            user(0, "root", None, Role::Admin)?,
+            user(2, "brad", None, Role::Standard),
+        )?;
+        expect_unique_search(&mut user_repository);
+        user_repository
+            .expect_save()
+            .times(1)
+            .returning(|_| Box::pin(async { Err(RepositoryError::AlreadyExist) }));
+
+        let unit_of_work = TestUnitOfWork {
+            users: user_repository,
+            ..TestUnitOfWork::default()
+        };
+        let _committed = Arc::clone(&unit_of_work.committed);
+        let rolled_back = Arc::clone(&unit_of_work.rolled_back);
+        let factory = TestFactory::new(unit_of_work);
+        let use_case: UseCase = UpdateUser::new(Arc::new(factory));
+        let command = command(0, 2, Some("renamed"), None, None);
+
+        // Act
+        let result = use_case.execute(command).await;
+
+        // Assert
+        assert!(matches!(result, Err(UpdateUserError::UserAlreadyExists)));
         assert!(rolled_back.load(Ordering::SeqCst));
         Ok(())
     }

@@ -1044,15 +1044,17 @@ contexts own their models and ports, how work that spans contexts is orchestrate
 reach. The detail — the source layout, the layer map, the bounded contexts, the composition root and the server
 lifecycle — lives in [Overview.md](Overview.md), which these rules constrain.
 
-| ID         | Section         | Rule                                                                                                                                                                                                             | More info                            |
-| ---------- | --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------ |
-| `ARCH-001` | Layer direction | Dependencies point inward only: `domain` ← `application` ← `infrastructure`; no module imports outward (see `AGENTS.md`, "Special Rules").                                                                       | [Overview.md](Overview.md)           |
-| `ARCH-002` | Bounded context | Each domain model and port belongs to exactly one bounded context; a context view exposes only its own context's repositories (`STY-RUST-037`).                                                                  | [§ 7.2](#72-context-views)           |
-| `ARCH-003` | Cross-context   | Work that spans bounded contexts is orchestrated in the application layer, never by a domain model or an outbound adapter.                                                                                       | [§ 7.3](#73-cross-context-use-cases) |
-| `ARCH-004` | Cascade scope   | `ON DELETE CASCADE` is used only between tables of one bounded context; a foreign key that crosses a bounded-context boundary declares no cascade, and the owning use case orchestrates the delete (`PERS-020`). | [§ 1](#1-cascade-scope)              |
+| ID         | Section         | Rule                                                                                                                                                                                                                                                    | More info                            |
+| ---------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------ |
+| `ARCH-001` | Layer direction | Dependencies point inward only: `domain` ← `application` ← `infrastructure`; no module imports outward (see `AGENTS.md`, "Special Rules").                                                                                                              | [Overview.md](Overview.md)           |
+| `ARCH-002` | Bounded context | Each domain model and port belongs to exactly one bounded context; a context view exposes only its own context's repositories (`STY-RUST-037`).                                                                                                         | [§ 7.2](#72-context-views)           |
+| `ARCH-003` | Cross-context   | Work that spans bounded contexts is orchestrated in the application layer, never by a domain model or an outbound adapter.                                                                                                                              | [§ 7.3](#73-cross-context-use-cases) |
+| `ARCH-004` | Cascade scope   | `ON DELETE CASCADE` is used only between tables of one bounded context; a foreign key that crosses a bounded-context boundary declares no cascade, and the owning use case orchestrates the delete (`PERS-020`).                                        | [§ 1](#1-cascade-scope)              |
+| `ARCH-005` | Layer direction | A domain service is stateless and invoked by the application layer: it receives the domain models or values it operates on as parameters, holds no I/O, and is a concrete type rather than an interface. A domain model never invokes a domain service. | [§ 2](#2-domain-services)            |
 
-The layer direction (`ARCH-001`) has a mechanical check in `script/rule_enforcer.sh`; the remaining rules are judged by
-review, so `ARCH-002`–`ARCH-004` stay listed by `script/rule_enforcer.sh uncovered`.
+The layer direction (`ARCH-001`) and the model-to-service direction of `ARCH-005` have mechanical checks in
+`script/rule_enforcer.sh`; the rest of `ARCH-005` and `ARCH-002`–`ARCH-004` are judged by review, so
+`ARCH-002`–`ARCH-004` stay listed by `script/rule_enforcer.sh uncovered`.
 
 ---
 
@@ -1062,6 +1064,19 @@ review, so `ARCH-002`–`ARCH-004` stay listed by `script/rule_enforcer.sh uncov
 owned by the Library context. A foreign key that crosses a context boundary does not cascade — `image.file_id` and
 `video.file_id` into `file` (Asset-owned) — because deleting a `file` row would reach into Library-owned rows. The
 application orchestrates that deletion instead; [`PERS-020`](#persistence) is the persistence restatement of this rule.
+
+---
+
+### 2. Domain services
+
+A domain service is a concrete type under `src/lib/domain/service/` holding a business rule shared by two or more use
+cases: `LibraryAccess` holds the Library visibility and ownership predicates, `NamePolicy` the name rule shared by the
+named Library resources, and `PasswordPolicy` the password rule shared by registration and credential change. It is
+declared as a concrete type rather than an interface, so the application layer calls it directly with no trait between;
+it is stateless, keeping nothing between calls, and performs no I/O; and it receives the models or values it operates on
+as parameters. A domain model never invokes a domain service: the name rule runs in the use case that constructs or
+renames the model, because the use case must see the typed `NamePolicyError` to answer `422` (`API-045`, `API-041`).
+`ARCH-005` states the rule, and `check_arch_005` in `script/rule_enforcer.sh` enforces the model-to-service direction.
 
 ---
 

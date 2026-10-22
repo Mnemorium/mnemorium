@@ -1,27 +1,9 @@
 use chrono::NaiveDateTime;
 
 use crate::domain::alias::NumericID;
-use crate::domain::service::name_policy::MAX_NAME_LENGTH;
-use crate::domain::service::name_policy::NamePolicy;
-use crate::domain::service::name_policy::NamePolicyError;
 
 /// Identifier of the seeded, undeletable default gallery.
 pub const DEFAULT_GALLERY_ID: NumericID = 0;
-
-/// Error returned when initialising or updating a `Gallery`.
-#[derive(Debug, thiserror::Error)]
-#[non_exhaustive]
-pub enum GalleryError {
-    /// The name is empty or made only of whitespace.
-    #[error("gallery name must not be empty")]
-    NameEmpty,
-    /// The name is longer than [`MAX_NAME_LENGTH`] characters.
-    #[error("gallery name must be at most {MAX_NAME_LENGTH} characters long")]
-    NameTooLong,
-    /// An unexpected or unmapped error occurred.
-    #[error("an unknown error occurred: {0}")]
-    Unknown(#[source] anyhow::Error),
-}
 
 /// A gallery: an ordered collection of media items.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -88,16 +70,35 @@ impl Gallery {
         &self.name
     }
 
+    /// Initialise a new `Gallery`.
+    ///
+    /// The caller validates the name with the domain name policy before
+    /// invoking this constructor (`ARCH-005`).
+    #[must_use]
+    pub fn new(
+        gallery_id: NumericID,
+        user_id: Option<NumericID>,
+        name: String,
+        is_public: bool,
+        created_at: NaiveDateTime,
+        last_modified_at: NaiveDateTime,
+    ) -> Self {
+        Self {
+            created_at,
+            gallery_id,
+            is_public,
+            last_modified_at,
+            name,
+            user_id,
+        }
+    }
+
     /// Update the name of the gallery.
     ///
-    /// # Errors
-    ///
-    /// Returns [`GalleryError::NameEmpty`] when `name` is empty or made only of
-    /// whitespace, and [`GalleryError::NameTooLong`] when it is longer than
-    /// [`MAX_NAME_LENGTH`] characters.
-    pub fn set_name(&mut self, name: String) -> Result<(), GalleryError> {
-        self.name = Self::validate_name(name)?;
-        Ok(())
+    /// The caller validates the name with the domain name policy before
+    /// invoking this method (`ARCH-005`).
+    pub fn set_name(&mut self, name: String) {
+        self.name = name;
     }
 
     /// Record a modification of the gallery at `last_modified_at`.
@@ -105,49 +106,9 @@ impl Gallery {
         self.last_modified_at = last_modified_at;
     }
 
-    /// Initialise a new `Gallery`, validating `name`.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`GalleryError::NameEmpty`] when `name` is empty or made only of
-    /// whitespace, and [`GalleryError::NameTooLong`] when it is longer than
-    /// [`MAX_NAME_LENGTH`] characters.
-    pub fn try_new(
-        gallery_id: NumericID,
-        user_id: Option<NumericID>,
-        name: String,
-        is_public: bool,
-        created_at: NaiveDateTime,
-        last_modified_at: NaiveDateTime,
-    ) -> Result<Self, GalleryError> {
-        let validated_name = Self::validate_name(name)?;
-        Ok(Self {
-            created_at,
-            gallery_id,
-            is_public,
-            last_modified_at,
-            name: validated_name,
-            user_id,
-        })
-    }
-
     /// Return the identifier of the owning user, if any.
     #[must_use]
     pub fn user_id(&self) -> Option<NumericID> {
         self.user_id
-    }
-
-    /// Validate and normalize `name`.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`GalleryError::NameEmpty`] when `name` is empty or made only of
-    /// whitespace, and [`GalleryError::NameTooLong`] when it is longer than
-    /// [`MAX_NAME_LENGTH`] characters.
-    fn validate_name(name: String) -> Result<String, GalleryError> {
-        NamePolicy::validate(name).map_err(|error| match error {
-            NamePolicyError::Empty => GalleryError::NameEmpty,
-            NamePolicyError::TooLong => GalleryError::NameTooLong,
-        })
     }
 }

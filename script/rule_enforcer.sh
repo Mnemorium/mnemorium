@@ -48,6 +48,7 @@ VERBOSE=0
 # )
 RULES=(
 	"ARCH-001:check_arch_001"
+	"ARCH-005:check_arch_005"
 	"STY-RUST-001:check_sty_rust_001"
 	"STY-RUST-002:check_sty_rust_002"
 	"STY-RUST-003:check_sty_rust_003"
@@ -8138,6 +8139,33 @@ check_arch_001() {
 			(.text | gsub("\\s+"; " "))] | @tsv')
 
 	return "$result"
+}
+
+# check_arch_005 — a domain model never invokes a domain service (ARCH-005).
+# The application layer calls the domain services under src/lib/domain/service/;
+# a file under src/lib/domain/model/ must not import one. The rule's own `files`
+# glob scopes the scan to the model directory, so the service imports in the
+# application layer are not findings and no path filtering happens here. The rule
+# is severity `error`, so ast-grep's exit code is the verdict: a finding fails.
+# Only `use` declarations match, as with arch-001, so a fully qualified call
+# written inline without an import is not caught.
+check_arch_005() {
+	local id="ARCH-005"
+	local rule_id="arch-005"
+	local model_dir="src/lib/domain/model"
+	local output
+
+	if [ ! -d "$model_dir" ]; then
+		printf 'error: %s: missing %s\n' "$id" "$model_dir" >&2
+		return 1
+	fi
+
+	if output="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
+		--report-style=short --color=never "$model_dir" 2>&1)"; then
+		return 0
+	fi
+	printf '%s\n' "$output"
+	return 1
 }
 
 # --- Runner -----------------------------------------------------------------

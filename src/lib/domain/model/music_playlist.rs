@@ -4,9 +4,6 @@ use chrono::NaiveDateTime;
 
 use crate::domain::alias::NumericID;
 use crate::domain::model::music_recording::MusicRecording;
-use crate::domain::service::name_policy::MAX_NAME_LENGTH;
-use crate::domain::service::name_policy::NamePolicy;
-use crate::domain::service::name_policy::NamePolicyError;
 
 /// Error returned when initialising or updating a `MusicPlaylist`.
 #[derive(Debug, thiserror::Error)]
@@ -16,12 +13,6 @@ pub enum MusicPlaylistError {
     /// current track indices.
     #[error("the requested order is not a valid permutation of the playlist tracks")]
     InvalidOrder,
-    /// The name is empty or made only of whitespace.
-    #[error("playlist name must not be empty")]
-    NameEmpty,
-    /// The name is longer than [`MAX_NAME_LENGTH`] characters.
-    #[error("playlist name must be at most {MAX_NAME_LENGTH} characters long")]
-    NameTooLong,
     /// The recording is already present in the playlist.
     #[error("the recording is already present in the playlist")]
     RecordingAlreadyPresent,
@@ -102,6 +93,31 @@ impl MusicPlaylist {
         &self.name
     }
 
+    /// Initialise a new `MusicPlaylist`.
+    ///
+    /// The caller validates the name with the domain name policy before
+    /// invoking this constructor (`ARCH-005`).
+    #[must_use]
+    pub fn new(
+        id: NumericID,
+        name: String,
+        created_at: NaiveDateTime,
+        last_modified_at: NaiveDateTime,
+        user_id: NumericID,
+        is_public: bool,
+        tracks: Vec<MusicRecording>,
+    ) -> Self {
+        Self {
+            created_at,
+            id,
+            is_public,
+            last_modified_at,
+            name,
+            tracks,
+            user_id,
+        }
+    }
+
     /// Update whether the playlist is visible to every user.
     pub fn set_is_public(&mut self, is_public: bool) {
         self.is_public = is_public;
@@ -109,14 +125,10 @@ impl MusicPlaylist {
 
     /// Update the name of the playlist.
     ///
-    /// # Errors
-    ///
-    /// Returns [`MusicPlaylistError::NameEmpty`] when `name` is empty or made
-    /// only of whitespace, and [`MusicPlaylistError::NameTooLong`] when it is
-    /// longer than [`MAX_NAME_LENGTH`] characters.
-    pub fn set_name(&mut self, name: String) -> Result<(), MusicPlaylistError> {
-        self.name = Self::validate_name(name)?;
-        Ok(())
+    /// The caller validates the name with the domain name policy before
+    /// invoking this method (`ARCH-005`).
+    pub fn set_name(&mut self, name: String) {
+        self.name = name;
     }
 
     /// Record a modification of the playlist at `last_modified_at`.
@@ -130,52 +142,10 @@ impl MusicPlaylist {
         &self.tracks
     }
 
-    /// Initialise a new `MusicPlaylist`, validating `name`.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`MusicPlaylistError::NameEmpty`] when `name` is empty or made
-    /// only of whitespace, and [`MusicPlaylistError::NameTooLong`] when it is
-    /// longer than [`MAX_NAME_LENGTH`] characters.
-    pub fn try_new(
-        id: NumericID,
-        name: String,
-        created_at: NaiveDateTime,
-        last_modified_at: NaiveDateTime,
-        user_id: NumericID,
-        is_public: bool,
-        tracks: Vec<MusicRecording>,
-    ) -> Result<Self, MusicPlaylistError> {
-        let validated_name = Self::validate_name(name)?;
-        Ok(Self {
-            created_at,
-            id,
-            is_public,
-            last_modified_at,
-            name: validated_name,
-            tracks,
-            user_id,
-        })
-    }
-
     /// Return the identifier of the user owning the playlist.
     #[must_use]
     pub fn user_id(&self) -> NumericID {
         self.user_id
-    }
-
-    /// Validate and normalize `name`.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`MusicPlaylistError::NameEmpty`] when `name` is empty or made
-    /// only of whitespace, and [`MusicPlaylistError::NameTooLong`] when it is
-    /// longer than [`MAX_NAME_LENGTH`] characters.
-    fn validate_name(name: String) -> Result<String, MusicPlaylistError> {
-        NamePolicy::validate(name).map_err(|error| match error {
-            NamePolicyError::Empty => MusicPlaylistError::NameEmpty,
-            NamePolicyError::TooLong => MusicPlaylistError::NameTooLong,
-        })
     }
 
     /// Validate that `order` is a complete permutation of the playlist's

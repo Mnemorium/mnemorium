@@ -126,7 +126,7 @@ mod tests {
     }
 
     fn fetched() -> Result<GetPlaylistResponse, Box<dyn Error>> {
-        Ok(GetPlaylistResponse::new(MusicPlaylist::try_new(
+        Ok(GetPlaylistResponse::new(MusicPlaylist::new(
             3,
             "Mix".to_owned(),
             ts(),
@@ -143,7 +143,7 @@ mod tests {
                 None,
                 TrackIndex::PlaylistIndex(0),
             )?],
-        )?))
+        )))
     }
 
     async fn send(

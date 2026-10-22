@@ -14,6 +14,7 @@ use crate::domain::model::user::Role;
 use crate::domain::model::user::User;
 use crate::domain::model::user::UserError;
 use crate::domain::port::credential_repository::CredentialRepository as _;
+use crate::domain::port::error::RepositoryError;
 use crate::domain::port::identity_unit_of_work::IdentityUnitOfWork;
 use crate::domain::port::password_hasher::PasswordHasher;
 use crate::domain::port::unit_of_work::UnitOfWork as _;
@@ -23,6 +24,8 @@ use crate::domain::port::user_repository::UserRepository as _;
 use crate::domain::port::user_unit_of_work::UserUnitOfWork;
 use crate::domain::service::password_policy::PasswordPolicy;
 use crate::domain::service::password_policy::PasswordPolicyError;
+use crate::domain::service::username_policy::UsernamePolicy;
+use crate::domain::service::username_policy::UsernamePolicyError;
 
 /// Use case implementation for registering a new user.
 pub struct RegisterUser<F, P> {
@@ -49,6 +52,10 @@ where
     F::Uow: IdentityUnitOfWork + UserUnitOfWork,
     P: PasswordHasher,
 {
+    #[expect(
+        clippy::wildcard_enum_match_arm,
+        reason = "RepositoryError is non_exhaustive, so a catch-all arm is required"
+    )]
     fn execute<'future>(
         &'future self,
         command: RegisterUserCommand,
@@ -63,10 +70,16 @@ where
             let username = command.username().to_owned();
             let email = command.email().map(str::to_owned);
 
+            UsernamePolicy::validate(command.username()).map_err(|error| match error {
+                UsernamePolicyError::TooShort
+                | UsernamePolicyError::TooLong
+                | UsernamePolicyError::ContainsUppercase
+                | UsernamePolicyError::SurroundingWhitespace => RegisterUserError::InvalidUsername,
+            })?;
+
             User::try_new(0, username.clone(), email.clone(), 0, command.role()).map_err(
                 |error| match error {
                     UserError::InvalidEmail(_) => RegisterUserError::InvalidEmail,
-                    UserError::UsernameTooShort => RegisterUserError::InvalidUsername,
                     UserError::Unknown(source) => RegisterUserError::Unknown(source),
                 },
             )?;
@@ -118,7 +131,7 @@ where
                     .map_err(|error| RegisterUserError::Unknown(error.into()))?
                     .is_empty();
                 if username_taken {
-                    return Err(RegisterUserError::UserAlreadyExists);
+                    return Err(RegisterUserError::UsernameAlreadyExists);
                 }
                 if let Some(email_address) = email.as_deref() {
                     let email_taken = !unit_of_work
@@ -131,7 +144,7 @@ where
                         .map_err(|error| RegisterUserError::Unknown(error.into()))?
                         .is_empty();
                     if email_taken {
-                        return Err(RegisterUserError::UserAlreadyExists);
+                        return Err(RegisterUserError::EmailAlreadyExists);
                     }
                 }
 
@@ -164,11 +177,13 @@ where
                             RegisterUserError::Unknown(error.into())
                         },
                     )?;
-                let user = unit_of_work
-                    .users()
-                    .create(pending_user)
-                    .await
-                    .map_err(|error| RegisterUserError::Unknown(error.into()))?;
+                let user =
+                    unit_of_work.users().create(pending_user).await.map_err(
+                        |error| match error {
+                            RepositoryError::AlreadyExist => RegisterUserError::UserAlreadyExists,
+                            other => RegisterUserError::Unknown(other.into()),
+                        },
+                    )?;
 
                 Ok(RegisterUserResponse::new(
                     user.id(),
@@ -482,6 +497,76 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn register_user_uppercase_username_returns_invalid_username()
+    -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let harness = use_case_with(|_, _, _| Ok(()))?;
+        let command = command(0, "Alice", Role::Standard);
+
+        // Act
+        let result = harness.use_case.execute(command).await;
+
+        // Assert
+        assert!(matches!(result, Err(RegisterUserError::InvalidUsername)));
+        assert!(!harness.committed.load(Ordering::SeqCst));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn register_user_surrounding_whitespace_username_returns_invalid_username()
+    -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let harness = use_case_with(|_, _, _| Ok(()))?;
+        let command = command(0, " alice", Role::Standard);
+
+        // Act
+        let result = harness.use_case.execute(command).await;
+
+        // Assert
+        assert!(matches!(result, Err(RegisterUserError::InvalidUsername)));
+        assert!(!harness.committed.load(Ordering::SeqCst));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn register_user_too_long_username_returns_invalid_username() -> Result<(), Box<dyn Error>>
+    {
+        // Arrange
+        let harness = use_case_with(|_, _, _| Ok(()))?;
+        let username = "a".repeat(101);
+        let command = command(0, &username, Role::Standard);
+
+        // Act
+        let result = harness.use_case.execute(command).await;
+
+        // Assert
+        assert!(matches!(result, Err(RegisterUserError::InvalidUsername)));
+        assert!(!harness.committed.load(Ordering::SeqCst));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn register_user_internal_space_username_succeeds() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let harness = use_case_with(|user_repository, credential_repository, password_hasher| {
+            expect_caller(user_repository, user(0, "root", Role::Admin)?);
+            expect_unique_search(user_repository);
+            expect_successful_persistence(credential_repository, password_hasher, user_repository);
+            Ok(())
+        })?;
+        let command = command(0, "al ice", Role::Standard);
+
+        // Act
+        let result = harness.use_case.execute(command).await;
+
+        // Assert
+        let response = result?;
+        assert_eq!(response.username(), "al ice");
+        assert!(harness.committed.load(Ordering::SeqCst));
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn register_user_invalid_email_returns_invalid_email() -> Result<(), Box<dyn Error>> {
         // Arrange
         let harness = use_case_with(|_, _, _| Ok(()))?;
@@ -489,6 +574,47 @@ mod tests {
             0,
             "heidi".to_owned(),
             Some("not-an-email".to_owned()),
+            SECRET_PASSWORD.to_owned(),
+            Role::Standard,
+        );
+
+        // Act
+        let result = harness.use_case.execute(command).await;
+
+        // Assert
+        assert!(matches!(result, Err(RegisterUserError::InvalidEmail)));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn register_user_display_name_email_returns_invalid_email() -> Result<(), Box<dyn Error>>
+    {
+        // Arrange
+        let harness = use_case_with(|_, _, _| Ok(()))?;
+        let command = RegisterUserCommand::new(
+            0,
+            "heidi".to_owned(),
+            Some("Alice <alice@example.com>".to_owned()),
+            SECRET_PASSWORD.to_owned(),
+            Role::Standard,
+        );
+
+        // Act
+        let result = harness.use_case.execute(command).await;
+
+        // Assert
+        assert!(matches!(result, Err(RegisterUserError::InvalidEmail)));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn register_user_padded_email_returns_invalid_email() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let harness = use_case_with(|_, _, _| Ok(()))?;
+        let command = RegisterUserCommand::new(
+            0,
+            "heidi".to_owned(),
+            Some(" alice@example.com ".to_owned()),
             SECRET_PASSWORD.to_owned(),
             Role::Standard,
         );
@@ -543,7 +669,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn register_user_existing_username_returns_user_already_exists()
+    async fn register_user_existing_username_returns_username_already_exists()
     -> Result<(), Box<dyn Error>> {
         // Arrange
         let harness = use_case_with(|user_repository, _, _| {
@@ -560,14 +686,17 @@ mod tests {
         let result = harness.use_case.execute(command).await;
 
         // Assert
-        assert!(matches!(result, Err(RegisterUserError::UserAlreadyExists)));
+        assert!(matches!(
+            result,
+            Err(RegisterUserError::UsernameAlreadyExists)
+        ));
         assert!(harness.rolled_back.load(Ordering::SeqCst));
         Ok(())
     }
 
     #[tokio::test]
-    async fn register_user_existing_email_returns_user_already_exists() -> Result<(), Box<dyn Error>>
-    {
+    async fn register_user_existing_email_returns_email_already_exists()
+    -> Result<(), Box<dyn Error>> {
         // Arrange
         let harness = use_case_with(|user_repository, _, _| {
             expect_caller(user_repository, user(0, "root", Role::Admin)?);
@@ -590,7 +719,7 @@ mod tests {
         let result = harness.use_case.execute(command).await;
 
         // Assert
-        assert!(matches!(result, Err(RegisterUserError::UserAlreadyExists)));
+        assert!(matches!(result, Err(RegisterUserError::EmailAlreadyExists)));
         assert!(harness.rolled_back.load(Ordering::SeqCst));
         Ok(())
     }
@@ -687,6 +816,35 @@ mod tests {
 
         // Assert
         assert!(matches!(result, Err(RegisterUserError::Unknown(_))));
+        assert!(harness.rolled_back.load(Ordering::SeqCst));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn register_user_raced_duplicate_returns_user_already_exists()
+    -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let harness = use_case_with(|user_repository, credential_repository, password_hasher| {
+            expect_caller(user_repository, user(0, "root", Role::Admin)?);
+            expect_unique_search(user_repository);
+            expect_hashed_password(password_hasher);
+            credential_repository
+                .expect_create()
+                .times(1)
+                .returning(|credential| Box::pin(async { Ok(credential) }));
+            user_repository
+                .expect_create()
+                .times(1)
+                .returning(|_| Box::pin(async { Err(RepositoryError::AlreadyExist) }));
+            Ok(())
+        })?;
+        let command = command(0, "mallory", Role::Standard);
+
+        // Act
+        let result = harness.use_case.execute(command).await;
+
+        // Assert
+        assert!(matches!(result, Err(RegisterUserError::UserAlreadyExists)));
         assert!(harness.rolled_back.load(Ordering::SeqCst));
         Ok(())
     }

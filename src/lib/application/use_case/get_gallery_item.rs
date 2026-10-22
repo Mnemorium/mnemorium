@@ -160,21 +160,9 @@ mod tests {
 
     type UseCase = GetGalleryItem<TestFactory>;
 
-    fn gallery(
-        gallery_id: i64,
-        user_id: Option<i64>,
-        name: &str,
-        is_public: bool,
-    ) -> Result<Gallery, Box<dyn Error>> {
+    fn gallery(gallery_id: i64, user_id: Option<i64>, name: &str, is_public: bool) -> Gallery {
         let now = NaiveDateTime::default();
-        Ok(Gallery::try_new(
-            gallery_id,
-            user_id,
-            name.to_owned(),
-            is_public,
-            now,
-            now,
-        )?)
+        Gallery::new(gallery_id, user_id, name.to_owned(), is_public, now, now)
     }
 
     fn detail(gallery_item_id: i64, gallery_id: i64) -> Result<GalleryItemDetail, Box<dyn Error>> {
@@ -233,7 +221,7 @@ mod tests {
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 4, Role::Standard)?;
         let mut galleries = MockGalleryRepository::new();
-        expect_gallery(&mut galleries, gallery(3, Some(4), "Mine", false)?);
+        expect_gallery(&mut galleries, gallery(3, Some(4), "Mine", false));
         let found = detail(42, 3)?;
         galleries
             .expect_search_items()
@@ -274,7 +262,7 @@ mod tests {
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 9, Role::Standard)?;
         let mut galleries = MockGalleryRepository::new();
-        expect_gallery(&mut galleries, gallery(2, Some(3), "Public", true)?);
+        expect_gallery(&mut galleries, gallery(2, Some(3), "Public", true));
         let found = detail(42, 2)?;
         galleries
             .expect_search_items()
@@ -303,7 +291,7 @@ mod tests {
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 0, Role::Admin)?;
         let mut galleries = MockGalleryRepository::new();
-        expect_gallery(&mut galleries, gallery(3, Some(4), "Mine", false)?);
+        expect_gallery(&mut galleries, gallery(3, Some(4), "Mine", false));
         let found = detail(42, 3)?;
         galleries
             .expect_search_items()
@@ -333,7 +321,7 @@ mod tests {
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 1, Role::Admin)?;
         let mut galleries = MockGalleryRepository::new();
-        expect_gallery(&mut galleries, gallery(3, Some(4), "Mine", false)?);
+        expect_gallery(&mut galleries, gallery(3, Some(4), "Mine", false));
         galleries.expect_search_items().times(0);
         let harness = harness_with(users, galleries);
         let use_case: UseCase = GetGalleryItem::new(Arc::clone(&harness.factory));
@@ -354,7 +342,7 @@ mod tests {
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 9, Role::Standard)?;
         let mut galleries = MockGalleryRepository::new();
-        expect_gallery(&mut galleries, gallery(3, Some(4), "Mine", false)?);
+        expect_gallery(&mut galleries, gallery(3, Some(4), "Mine", false));
         galleries.expect_search_items().times(0);
         let harness = harness_with(users, galleries);
         let use_case: UseCase = GetGalleryItem::new(Arc::clone(&harness.factory));
@@ -374,7 +362,7 @@ mod tests {
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 4, Role::Standard)?;
         let mut galleries = MockGalleryRepository::new();
-        expect_gallery(&mut galleries, gallery(3, Some(4), "Mine", false)?);
+        expect_gallery(&mut galleries, gallery(3, Some(4), "Mine", false));
         galleries
             .expect_search_items()
             .times(1)
@@ -445,7 +433,7 @@ mod tests {
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 4, Role::Standard)?;
         let mut galleries = MockGalleryRepository::new();
-        expect_gallery(&mut galleries, gallery(3, Some(4), "Mine", false)?);
+        expect_gallery(&mut galleries, gallery(3, Some(4), "Mine", false));
         galleries
             .expect_search_items()
             .times(1)
@@ -468,7 +456,7 @@ mod tests {
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 4, Role::Standard)?;
         let mut galleries = MockGalleryRepository::new();
-        expect_gallery(&mut galleries, gallery(3, Some(4), "Mine", false)?);
+        expect_gallery(&mut galleries, gallery(3, Some(4), "Mine", false));
         let found = detail(42, 3)?;
         galleries
             .expect_search_items()

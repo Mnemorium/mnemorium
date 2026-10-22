@@ -112,7 +112,7 @@ mod tests {
     async fn get_playlist_track_list_returns_the_playlist_with_a_canonical_self()
     -> Result<(), Box<dyn Error>> {
         // Arrange
-        let fetched = GetPlaylistResponse::new(MusicPlaylist::try_new(
+        let fetched = GetPlaylistResponse::new(MusicPlaylist::new(
             3,
             "Mix".to_owned(),
             ts(),
@@ -120,7 +120,7 @@ mod tests {
             4,
             true,
             Vec::new(),
-        )?);
+        ));
         let mut use_case = MockGetPlaylistUseCase::new();
         use_case
             .expect_execute()

@@ -276,21 +276,9 @@ mod tests {
 
     type UseCase = AddGalleryItem<TestFactory>;
 
-    fn gallery(
-        gallery_id: i64,
-        user_id: Option<i64>,
-        name: &str,
-        is_public: bool,
-    ) -> Result<Gallery, Box<dyn Error>> {
+    fn gallery(gallery_id: i64, user_id: Option<i64>, name: &str, is_public: bool) -> Gallery {
         let now = NaiveDateTime::default();
-        Ok(Gallery::try_new(
-            gallery_id,
-            user_id,
-            name.to_owned(),
-            is_public,
-            now,
-            now,
-        )?)
+        Gallery::new(gallery_id, user_id, name.to_owned(), is_public, now, now)
     }
 
     fn image(image_id: i64, file_id: i64, name: &str) -> Result<Image, Box<dyn Error>> {
@@ -428,7 +416,7 @@ mod tests {
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 4, Role::Standard)?;
         let mut galleries = MockGalleryRepository::new();
-        expect_gallery(&mut galleries, gallery(3, Some(4), "Mine", false)?);
+        expect_gallery(&mut galleries, gallery(3, Some(4), "Mine", false));
         expect_unassigned(&mut galleries);
         galleries
             .expect_next_item_index()
@@ -484,7 +472,7 @@ mod tests {
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 4, Role::Standard)?;
         let mut galleries = MockGalleryRepository::new();
-        expect_gallery(&mut galleries, gallery(2, Some(3), "Public", true)?);
+        expect_gallery(&mut galleries, gallery(2, Some(3), "Public", true));
         expect_unassigned(&mut galleries);
         galleries
             .expect_next_item_index()
@@ -534,7 +522,7 @@ mod tests {
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 4, Role::Standard)?;
         let mut galleries = MockGalleryRepository::new();
-        expect_gallery(&mut galleries, gallery(3, Some(4), "Mine", false)?);
+        expect_gallery(&mut galleries, gallery(3, Some(4), "Mine", false));
         galleries.expect_add_item().times(0);
         let mut videos = MockVideoRepository::new();
         videos
@@ -573,7 +561,7 @@ mod tests {
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 1, Role::Admin)?;
         let mut galleries = MockGalleryRepository::new();
-        expect_gallery(&mut galleries, gallery(3, Some(4), "Public", true)?);
+        expect_gallery(&mut galleries, gallery(3, Some(4), "Public", true));
         galleries.expect_add_item().times(0);
         let mut images = MockImageRepository::new();
         expect_image(&mut images, 100, image(7, 100, "sunset.png")?);
@@ -603,7 +591,7 @@ mod tests {
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 0, Role::Admin)?;
         let mut galleries = MockGalleryRepository::new();
-        expect_gallery(&mut galleries, gallery(3, Some(4), "Mine", false)?);
+        expect_gallery(&mut galleries, gallery(3, Some(4), "Mine", false));
         expect_unassigned(&mut galleries);
         galleries
             .expect_next_item_index()
@@ -642,7 +630,7 @@ mod tests {
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 4, Role::Standard)?;
         let mut galleries = MockGalleryRepository::new();
-        expect_gallery(&mut galleries, gallery(2, Some(3), "Public", true)?);
+        expect_gallery(&mut galleries, gallery(2, Some(3), "Public", true));
         galleries.expect_add_item().times(0);
         let mut images = MockImageRepository::new();
         expect_image(&mut images, 100, image(7, 100, "sunset.png")?);
@@ -673,7 +661,7 @@ mod tests {
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 9, Role::Standard)?;
         let mut galleries = MockGalleryRepository::new();
-        expect_gallery(&mut galleries, gallery(3, Some(4), "Mine", false)?);
+        expect_gallery(&mut galleries, gallery(3, Some(4), "Mine", false));
         galleries.expect_add_item().times(0);
         let harness = harness_with(
             users,
@@ -702,7 +690,7 @@ mod tests {
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 1, Role::Admin)?;
         let mut galleries = MockGalleryRepository::new();
-        expect_gallery(&mut galleries, gallery(3, Some(4), "Mine", false)?);
+        expect_gallery(&mut galleries, gallery(3, Some(4), "Mine", false));
         galleries.expect_add_item().times(0);
         let harness = harness_with(
             users,
@@ -736,7 +724,7 @@ mod tests {
             "sunset.png".to_owned(),
         );
         let mut galleries = MockGalleryRepository::new();
-        expect_gallery(&mut galleries, gallery(3, Some(4), "Mine", false)?);
+        expect_gallery(&mut galleries, gallery(3, Some(4), "Mine", false));
         galleries
             .expect_search_items()
             .times(1)
@@ -809,7 +797,7 @@ mod tests {
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 4, Role::Standard)?;
         let mut galleries = MockGalleryRepository::new();
-        expect_gallery(&mut galleries, gallery(3, Some(4), "Mine", false)?);
+        expect_gallery(&mut galleries, gallery(3, Some(4), "Mine", false));
         galleries.expect_add_item().times(0);
         let mut images = MockImageRepository::new();
         images
@@ -880,7 +868,7 @@ mod tests {
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 4, Role::Standard)?;
         let mut galleries = MockGalleryRepository::new();
-        expect_gallery(&mut galleries, gallery(3, Some(4), "Mine", false)?);
+        expect_gallery(&mut galleries, gallery(3, Some(4), "Mine", false));
         galleries.expect_add_item().times(0);
         let mut images = MockImageRepository::new();
         images
@@ -917,7 +905,7 @@ mod tests {
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 4, Role::Standard)?;
         let mut galleries = MockGalleryRepository::new();
-        expect_gallery(&mut galleries, gallery(3, Some(4), "Mine", false)?);
+        expect_gallery(&mut galleries, gallery(3, Some(4), "Mine", false));
         galleries.expect_add_item().times(0);
         let mut images = MockImageRepository::new();
         expect_image(&mut images, 100, image(7, 100, "sunset.png")?);
@@ -950,7 +938,7 @@ mod tests {
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 4, Role::Standard)?;
         let mut galleries = MockGalleryRepository::new();
-        expect_gallery(&mut galleries, gallery(3, Some(4), "Mine", false)?);
+        expect_gallery(&mut galleries, gallery(3, Some(4), "Mine", false));
         expect_unassigned(&mut galleries);
         galleries
             .expect_next_item_index()

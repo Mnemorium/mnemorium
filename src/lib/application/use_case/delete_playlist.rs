@@ -137,13 +137,8 @@ mod tests {
 
     type UseCase = DeletePlaylist<TestFactory>;
 
-    fn playlist(
-        id: i64,
-        user_id: i64,
-        name: &str,
-        is_public: bool,
-    ) -> Result<MusicPlaylist, Box<dyn Error>> {
-        Ok(MusicPlaylist::try_new(
+    fn playlist(id: i64, user_id: i64, name: &str, is_public: bool) -> MusicPlaylist {
+        MusicPlaylist::new(
             id,
             name.to_owned(),
             NaiveDateTime::default(),
@@ -151,7 +146,7 @@ mod tests {
             user_id,
             is_public,
             Vec::new(),
-        )?)
+        )
     }
 
     fn harness_with(
@@ -195,7 +190,7 @@ mod tests {
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 4, Role::Standard)?;
         let mut playlists = MockMusicPlaylistRepository::new();
-        expect_playlist(&mut playlists, playlist(3, 4, "Mine", false)?);
+        expect_playlist(&mut playlists, playlist(3, 4, "Mine", false));
         playlists
             .expect_delete()
             .times(1)
@@ -219,7 +214,7 @@ mod tests {
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 0, Role::Admin)?;
         let mut playlists = MockMusicPlaylistRepository::new();
-        expect_playlist(&mut playlists, playlist(3, 4, "Public", true)?);
+        expect_playlist(&mut playlists, playlist(3, 4, "Public", true));
         playlists.expect_delete().times(0);
         let harness = harness_with(users, playlists);
         let use_case: UseCase = DeletePlaylist::new(Arc::clone(&harness.factory));
@@ -239,7 +234,7 @@ mod tests {
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 9, Role::Standard)?;
         let mut playlists = MockMusicPlaylistRepository::new();
-        expect_playlist(&mut playlists, playlist(3, 4, "Mine", false)?);
+        expect_playlist(&mut playlists, playlist(3, 4, "Mine", false));
         playlists.expect_delete().times(0);
         let harness = harness_with(users, playlists);
         let use_case: UseCase = DeletePlaylist::new(Arc::clone(&harness.factory));
@@ -277,7 +272,7 @@ mod tests {
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 4, Role::Standard)?;
         let mut playlists = MockMusicPlaylistRepository::new();
-        expect_playlist(&mut playlists, playlist(3, 4, "Mine", false)?);
+        expect_playlist(&mut playlists, playlist(3, 4, "Mine", false));
         playlists
             .expect_delete()
             .times(1)

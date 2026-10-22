@@ -1,0 +1,12 @@
+---
+id: arch-005
+language: Rust
+severity: error
+message: >-
+  a domain model imports a domain service: the application layer calls domain
+  services, and the model stays free of that dependency
+files:
+  - src/lib/domain/model/*.rs
+rule:
+  kind: use_declaration
+  regex: 'crate\s*::\s*domain\s*::[^;]*\bservice([^A-Za-z0-9_]|$)'

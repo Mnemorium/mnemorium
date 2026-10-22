@@ -45,6 +45,8 @@ pub struct RegisterRequest {
     #[schema(value_type = Role)]
     pub role: String,
     /// Username of the new user.
+    ///
+    /// Must be 4 to 100 characters long, contain no uppercase letter, and not begin or end with whitespace.
     #[schema(min_length = 4, max_length = 100)]
     pub username: String,
 }
@@ -89,7 +91,9 @@ impl From<RegisterUserError> for ApiError {
             | RegisterUserError::InvalidPassword
             | RegisterUserError::InvalidUsername => Self::UnprocessableEntity(err.to_string()),
             RegisterUserError::Unknown(_) => Self::InternalServerError,
-            RegisterUserError::UserAlreadyExists => Self::Conflict(err.to_string()),
+            RegisterUserError::UsernameAlreadyExists
+            | RegisterUserError::EmailAlreadyExists
+            | RegisterUserError::UserAlreadyExists => Self::Conflict(err.to_string()),
         }
     }
 }
@@ -790,7 +794,9 @@ mod tests {
         assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
         assert_eq!(
             error_message_of(&response).as_deref(),
-            Some("username must be at least 4 characters long")
+            Some(
+                "username must be between 4 and 100 characters long, contain no uppercase letter, and not begin or end with whitespace"
+            )
         );
         Ok(())
     }
@@ -862,6 +868,54 @@ mod tests {
         assert_eq!(
             error_message_of(&response).as_deref(),
             Some("a user with this username or email already exists")
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn post_register_duplicate_username_returns_conflict_naming_the_username()
+    -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let mut use_case = MockRegisterUserUseCase::new();
+        expect_error(&mut use_case, RegisterUserError::UsernameAlreadyExists);
+
+        // Act
+        let response = send(
+            use_case,
+            0,
+            Body::from(request_body("nina", None).to_string()),
+        )
+        .await?;
+
+        // Assert
+        assert_eq!(response.status(), StatusCode::CONFLICT);
+        assert_eq!(
+            error_message_of(&response).as_deref(),
+            Some("username is already taken")
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn post_register_duplicate_email_returns_conflict_naming_the_email()
+    -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let mut use_case = MockRegisterUserUseCase::new();
+        expect_error(&mut use_case, RegisterUserError::EmailAlreadyExists);
+
+        // Act
+        let response = send(
+            use_case,
+            0,
+            Body::from(request_body("nina", None).to_string()),
+        )
+        .await?;
+
+        // Assert
+        assert_eq!(response.status(), StatusCode::CONFLICT);
+        assert_eq!(
+            error_message_of(&response).as_deref(),
+            Some("email is already taken")
         );
         Ok(())
     }
