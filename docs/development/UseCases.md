@@ -206,8 +206,8 @@ configuration file and the environment, generating the secrets on the first runt
 
 ### Happy path
 
-1. The system starts and checks whether stored settings exist; none do, so the system creates the default settings and
-   freshly generated secrets.
+1. The system checks whether stored settings exist; none do, so the system creates the default settings and freshly
+   generated secrets.
 2. The system loads the configuration: the stored settings are layered with the configuration file and the environment
    overrides.
 3. The system returns the merged configuration to the runtime.
