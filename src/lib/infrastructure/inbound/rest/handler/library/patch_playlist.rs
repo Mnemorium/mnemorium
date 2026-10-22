@@ -181,8 +181,8 @@ mod tests {
             .unwrap_or_default()
     }
 
-    fn updated() -> Result<UpdatePlaylistResponse, Box<dyn Error>> {
-        Ok(UpdatePlaylistResponse::new(MusicPlaylist::try_new(
+    fn updated() -> UpdatePlaylistResponse {
+        UpdatePlaylistResponse::new(MusicPlaylist::new(
             3,
             "New".to_owned(),
             ts(),
@@ -190,7 +190,7 @@ mod tests {
             4,
             true,
             Vec::new(),
-        )?))
+        ))
     }
 
     async fn send(
@@ -226,7 +226,7 @@ mod tests {
     #[tokio::test]
     async fn patch_playlist_forwards_every_field() -> Result<(), Box<dyn Error>> {
         // Arrange
-        let updated = updated()?;
+        let updated = updated();
         let mut use_case = MockUpdatePlaylistUseCase::new();
         use_case
             .expect_execute()
@@ -271,7 +271,7 @@ mod tests {
     #[tokio::test]
     async fn patch_playlist_empty_body_forwards_no_field() -> Result<(), Box<dyn Error>> {
         // Arrange
-        let updated = updated()?;
+        let updated = updated();
         let mut use_case = MockUpdatePlaylistUseCase::new();
         use_case
             .expect_execute()

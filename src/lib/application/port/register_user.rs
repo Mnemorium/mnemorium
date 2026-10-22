@@ -2,8 +2,9 @@ use std::future::Future;
 use std::pin::Pin;
 
 use crate::domain::alias::NumericID;
-use crate::domain::model::user::MIN_USERNAME_LENGTH;
 use crate::domain::model::user::Role;
+use crate::domain::service::username_policy::MAX_USERNAME_LENGTH;
+use crate::domain::service::username_policy::MIN_USERNAME_LENGTH;
 
 /// Command to register a new user on behalf of an authenticated caller.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -126,6 +127,9 @@ impl RegisterUserResponse {
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum RegisterUserError {
+    /// A user with this email already exists.
+    #[error("email is already taken")]
+    EmailAlreadyExists,
     /// The caller is not allowed to register a user with the requested role.
     #[error("the caller is not allowed to register the requested role")]
     Forbidden,
@@ -135,15 +139,20 @@ pub enum RegisterUserError {
     /// The password does not satisfy the password policy.
     #[error("password does not satisfy the password policy")]
     InvalidPassword,
-    /// The username is shorter than [`MIN_USERNAME_LENGTH`].
-    #[error("username must be at least {MIN_USERNAME_LENGTH} characters long")]
+    /// The username does not satisfy the username policy.
+    #[error(
+        "username must be between {MIN_USERNAME_LENGTH} and {MAX_USERNAME_LENGTH} characters long, contain no uppercase letter, and not begin or end with whitespace"
+    )]
     InvalidUsername,
     /// An unexpected or unmapped error occurred.
     #[error("an unknown error occurred: {0}")]
     Unknown(#[source] anyhow::Error),
-    /// A user with this username or email already exists.
+    /// A concurrent creation won the race for the username or the email.
     #[error("a user with this username or email already exists")]
     UserAlreadyExists,
+    /// A user with this username already exists.
+    #[error("username is already taken")]
+    UsernameAlreadyExists,
 }
 
 /// Use case for registering a new user.

@@ -87,7 +87,7 @@ impl GalleryRepository for SqlxGalleryRepository<'_> {
         .fetch_one(&mut **self.transaction)
         .await?;
 
-        domain_gallery(row)
+        Ok(domain_gallery(row))
     }
 
     async fn delete(&mut self, id: NumericID) -> Result<bool, RepositoryError> {
@@ -146,7 +146,7 @@ impl GalleryRepository for SqlxGalleryRepository<'_> {
         .fetch_one(&mut **self.transaction)
         .await?;
 
-        domain_gallery(row)
+        Ok(domain_gallery(row))
     }
 
     async fn search(&mut self, filter: &GalleryFilter) -> Result<Vec<Gallery>, RepositoryError> {
@@ -184,7 +184,7 @@ impl GalleryRepository for SqlxGalleryRepository<'_> {
             .fetch_all(&mut **self.transaction)
             .await?;
 
-        rows.into_iter().map(domain_gallery).collect()
+        Ok(rows.into_iter().map(domain_gallery).collect())
     }
 
     async fn search_items(
@@ -278,8 +278,8 @@ fn push_filter<'value, T>(
 }
 
 /// Map a persisted gallery row back to the domain model.
-fn domain_gallery(row: SqlxGallery) -> Result<Gallery, RepositoryError> {
-    Gallery::try_new(
+fn domain_gallery(row: SqlxGallery) -> Gallery {
+    Gallery::new(
         row.gallery_id,
         row.user_id,
         row.name,
@@ -287,7 +287,6 @@ fn domain_gallery(row: SqlxGallery) -> Result<Gallery, RepositoryError> {
         row.created_at,
         row.last_modified_at,
     )
-    .map_err(|_| RepositoryError::DataIntegrityViolation)
 }
 
 /// Map persisted gallery-item columns back to the domain model.
@@ -440,21 +439,9 @@ mod tests {
     }
 
     /// Build a domain gallery.
-    fn gallery(
-        gallery_id: i64,
-        user_id: Option<i64>,
-        name: &str,
-        is_public: bool,
-    ) -> Result<Gallery, Box<dyn Error>> {
+    fn gallery(gallery_id: i64, user_id: Option<i64>, name: &str, is_public: bool) -> Gallery {
         let now = NaiveDateTime::default();
-        Ok(Gallery::try_new(
-            gallery_id,
-            user_id,
-            name.to_owned(),
-            is_public,
-            now,
-            now,
-        )?)
+        Gallery::new(gallery_id, user_id, name.to_owned(), is_public, now, now)
     }
 
     /// Build a domain gallery item referencing `media`.
@@ -483,7 +470,7 @@ mod tests {
         // Arrange
         let mut transaction = begin_transaction().await?;
         seed_user(&mut transaction, 1).await?;
-        let pending = gallery(0, Some(1), "Holidays", false)?;
+        let pending = gallery(0, Some(1), "Holidays", false);
 
         // Act
         let mut repository = SqlxGalleryRepository::new(&mut transaction);
@@ -515,12 +502,12 @@ mod tests {
         seed_user(&mut transaction, 1).await?;
         let mut repository = SqlxGalleryRepository::new(&mut transaction);
         repository
-            .create(gallery(0, Some(1), "Holidays", false)?)
+            .create(gallery(0, Some(1), "Holidays", false))
             .await?;
 
         // Act
         let duplicate = repository
-            .create(gallery(0, Some(1), "Holidays", true)?)
+            .create(gallery(0, Some(1), "Holidays", true))
             .await;
 
         // Assert: uq_gallery_user_id_name rejects a second name for the owner.
@@ -536,12 +523,12 @@ mod tests {
         seed_user(&mut transaction, 2).await?;
         let mut repository = SqlxGalleryRepository::new(&mut transaction);
         let first = repository
-            .create(gallery(0, Some(1), "Holidays", false)?)
+            .create(gallery(0, Some(1), "Holidays", false))
             .await?;
 
         // Act
         let second = repository
-            .create(gallery(0, Some(2), "Holidays", false)?)
+            .create(gallery(0, Some(2), "Holidays", false))
             .await?;
 
         // Assert
@@ -557,7 +544,7 @@ mod tests {
         seed_user(&mut transaction, 1).await?;
         let mut repository = SqlxGalleryRepository::new(&mut transaction);
         let mut gallery = repository
-            .create(gallery(0, Some(1), "Holidays", false)?)
+            .create(gallery(0, Some(1), "Holidays", false))
             .await?;
         let touched = NaiveDateTime::parse_from_str("2030-01-02 03:04:05", "%Y-%m-%d %H:%M:%S")?;
 
@@ -619,7 +606,7 @@ mod tests {
             .ok_or("the default gallery must be seeded")?;
 
         // Act
-        default.set_name("Renamed".to_owned())?;
+        default.set_name("Renamed".to_owned());
         let result = repository.save(default).await;
 
         // Assert
@@ -634,7 +621,7 @@ mod tests {
         seed_user(&mut transaction, 1).await?;
         let mut repository = SqlxGalleryRepository::new(&mut transaction);
         let created = repository
-            .create(gallery(0, Some(1), "Holidays", false)?)
+            .create(gallery(0, Some(1), "Holidays", false))
             .await?;
 
         // Act
@@ -673,7 +660,7 @@ mod tests {
         seed_image(&mut transaction, 1, 1, "a.png").await?;
         let mut repository = SqlxGalleryRepository::new(&mut transaction);
         let created = repository
-            .create(gallery(0, Some(1), "Holidays", false)?)
+            .create(gallery(0, Some(1), "Holidays", false))
             .await?;
         repository
             .add_item(item(
@@ -709,15 +696,13 @@ mod tests {
         seed_user(&mut transaction, 1).await?;
         seed_user(&mut transaction, 2).await?;
         let mut repository = SqlxGalleryRepository::new(&mut transaction);
-        repository
-            .create(gallery(0, Some(1), "Trip", true)?)
-            .await?;
+        repository.create(gallery(0, Some(1), "Trip", true)).await?;
         // A second owner may reuse the name: uniqueness is per owner.
         repository
-            .create(gallery(0, Some(2), "Trip", false)?)
+            .create(gallery(0, Some(2), "Trip", false))
             .await?;
         repository
-            .create(gallery(0, Some(1), "Other", true)?)
+            .create(gallery(0, Some(1), "Other", true))
             .await?;
 
         // Act
@@ -761,10 +746,10 @@ mod tests {
         seed_user(&mut transaction, 1).await?;
         let mut repository = SqlxGalleryRepository::new(&mut transaction);
         let second = repository
-            .create(gallery(0, Some(1), "Second", false)?)
+            .create(gallery(0, Some(1), "Second", false))
             .await?;
         let third = repository
-            .create(gallery(0, Some(1), "Third", false)?)
+            .create(gallery(0, Some(1), "Third", false))
             .await?;
 
         // Act
@@ -808,13 +793,13 @@ mod tests {
         seed_user(&mut transaction, 2).await?;
         let mut repository = SqlxGalleryRepository::new(&mut transaction);
         repository
-            .create(gallery(0, Some(1), "Holidays", false)?)
+            .create(gallery(0, Some(1), "Holidays", false))
             .await?;
         repository
-            .create(gallery(0, Some(2), "Holidays", false)?)
+            .create(gallery(0, Some(2), "Holidays", false))
             .await?;
         repository
-            .create(gallery(0, Some(1), "Other", false)?)
+            .create(gallery(0, Some(1), "Other", false))
             .await?;
 
         // Act
@@ -871,7 +856,7 @@ mod tests {
         seed_image(&mut transaction, 5, 10, "a.png").await?;
         let mut repository = SqlxGalleryRepository::new(&mut transaction);
         let created = repository
-            .create(gallery(0, Some(1), "Holidays", false)?)
+            .create(gallery(0, Some(1), "Holidays", false))
             .await?;
 
         // Act
@@ -915,7 +900,7 @@ mod tests {
         seed_image(&mut transaction, 6, 11, "b.png").await?;
         let mut repository = SqlxGalleryRepository::new(&mut transaction);
         let created = repository
-            .create(gallery(0, Some(1), "Holidays", false)?)
+            .create(gallery(0, Some(1), "Holidays", false))
             .await?;
         repository
             .add_item(item(
@@ -950,10 +935,10 @@ mod tests {
         seed_image(&mut transaction, 5, 10, "a.png").await?;
         let mut repository = SqlxGalleryRepository::new(&mut transaction);
         let first = repository
-            .create(gallery(0, Some(1), "First", false)?)
+            .create(gallery(0, Some(1), "First", false))
             .await?;
         let second = repository
-            .create(gallery(0, Some(1), "Second", false)?)
+            .create(gallery(0, Some(1), "Second", false))
             .await?;
         repository
             .add_item(item(0, first.gallery_id(), GalleryItemMedia::Image(5), 0)?)
@@ -1001,7 +986,7 @@ mod tests {
         seed_user(&mut transaction, 1).await?;
         let mut repository = SqlxGalleryRepository::new(&mut transaction);
         let created = repository
-            .create(gallery(0, Some(1), "Holidays", false)?)
+            .create(gallery(0, Some(1), "Holidays", false))
             .await?;
 
         // Act
@@ -1033,7 +1018,7 @@ mod tests {
         seed_video(&mut transaction, 6, 11).await?;
         let mut repository = SqlxGalleryRepository::new(&mut transaction);
         let created = repository
-            .create(gallery(0, Some(1), "Holidays", false)?)
+            .create(gallery(0, Some(1), "Holidays", false))
             .await?;
         repository
             .add_item(item(
@@ -1082,10 +1067,10 @@ mod tests {
         seed_image(&mut transaction, 5, 10, "photo.png").await?;
         let mut repository = SqlxGalleryRepository::new(&mut transaction);
         let first = repository
-            .create(gallery(0, Some(1), "First", false)?)
+            .create(gallery(0, Some(1), "First", false))
             .await?;
         let second = repository
-            .create(gallery(0, Some(1), "Second", false)?)
+            .create(gallery(0, Some(1), "Second", false))
             .await?;
         let stored = repository
             .add_item(item(0, first.gallery_id(), GalleryItemMedia::Image(5), 0)?)
@@ -1162,7 +1147,7 @@ mod tests {
         seed_image(&mut transaction, 5, 10, "a.png").await?;
         let mut repository = SqlxGalleryRepository::new(&mut transaction);
         let created = repository
-            .create(gallery(0, Some(1), "Holidays", false)?)
+            .create(gallery(0, Some(1), "Holidays", false))
             .await?;
         let stored = repository
             .add_item(item(
@@ -1192,7 +1177,7 @@ mod tests {
         seed_image(&mut transaction, 5, 10, "a.png").await?;
         let mut repository = SqlxGalleryRepository::new(&mut transaction);
         let created = repository
-            .create(gallery(0, Some(1), "Holidays", false)?)
+            .create(gallery(0, Some(1), "Holidays", false))
             .await?;
         let empty = repository.next_item_index(created.gallery_id()).await?;
         repository

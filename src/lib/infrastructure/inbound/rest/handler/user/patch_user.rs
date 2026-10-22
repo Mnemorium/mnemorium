@@ -36,8 +36,9 @@ pub struct PatchUserRequest {
     // rather than a generic deserialization failure.
     #[schema(value_type = Option<Role>)]
     pub role: Option<String>,
-    /// New username; must be at least 4 characters long.
-    #[schema(min_length = 4)]
+    /// New username; must be 4 to 100 characters long, contain no uppercase letter, and not begin or end with
+    /// whitespace.
+    #[schema(min_length = 4, max_length = 100)]
     pub username: Option<String>,
 }
 
@@ -84,6 +85,9 @@ impl From<UpdateUserError> for ApiError {
             | UpdateUserError::RoleChangeForbidden => Self::Forbidden(err.to_string()),
             UpdateUserError::NoSuchCaller => Self::Unauthorized(err.to_string()),
             UpdateUserError::NoSuchUser => Self::NotFound(err.to_string()),
+            UpdateUserError::UsernameAlreadyExists
+            | UpdateUserError::EmailAlreadyExists
+            | UpdateUserError::UserAlreadyExists => Self::Conflict(err.to_string()),
             UpdateUserError::Unknown(_) => Self::InternalServerError,
         }
     }
@@ -147,6 +151,12 @@ impl From<UpdateUserError> for ApiError {
             body = ErrorBody,
             content_type = "application/hal+json",
             description = "Unknown user"
+        ),
+        (
+            status = CONFLICT,
+            body = ErrorBody,
+            content_type = "application/hal+json",
+            description = "Username or email is already taken"
         ),
         (
             status = INTERNAL_SERVER_ERROR,
@@ -538,7 +548,9 @@ mod tests {
         assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
         assert_eq!(
             error_message_of(&response).as_deref(),
-            Some("username must be at least 4 characters long")
+            Some(
+                "username must be between 4 and 100 characters long, contain no uppercase letter, and not begin or end with whitespace"
+            )
         );
         Ok(())
     }
@@ -563,6 +575,80 @@ mod tests {
         assert_eq!(
             error_message_of(&response).as_deref(),
             Some("email has an invalid format")
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn patch_user_duplicate_username_returns_conflict_naming_the_username()
+    -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let mut use_case = MockUpdateUserUseCase::new();
+        expect_error(&mut use_case, UpdateUserError::UsernameAlreadyExists);
+
+        // Act
+        let response = send(
+            use_case,
+            0,
+            "2",
+            Body::from(json!({ "username": "mallory" }).to_string()),
+        )
+        .await?;
+
+        // Assert
+        assert_eq!(response.status(), StatusCode::CONFLICT);
+        assert_eq!(
+            error_message_of(&response).as_deref(),
+            Some("username is already taken")
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn patch_user_duplicate_email_returns_conflict_naming_the_email()
+    -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let mut use_case = MockUpdateUserUseCase::new();
+        expect_error(&mut use_case, UpdateUserError::EmailAlreadyExists);
+
+        // Act
+        let response = send(
+            use_case,
+            0,
+            "2",
+            Body::from(json!({ "email": "nancy@example.com" }).to_string()),
+        )
+        .await?;
+
+        // Assert
+        assert_eq!(response.status(), StatusCode::CONFLICT);
+        assert_eq!(
+            error_message_of(&response).as_deref(),
+            Some("email is already taken")
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn patch_user_raced_duplicate_returns_generic_conflict() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let mut use_case = MockUpdateUserUseCase::new();
+        expect_error(&mut use_case, UpdateUserError::UserAlreadyExists);
+
+        // Act
+        let response = send(
+            use_case,
+            0,
+            "2",
+            Body::from(json!({ "username": "mallory" }).to_string()),
+        )
+        .await?;
+
+        // Assert
+        assert_eq!(response.status(), StatusCode::CONFLICT);
+        assert_eq!(
+            error_message_of(&response).as_deref(),
+            Some("a user with this username or email already exists")
         );
         Ok(())
     }

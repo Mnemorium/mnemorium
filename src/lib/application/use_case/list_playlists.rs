@@ -171,7 +171,7 @@ mod tests {
                 )?)
             })
             .collect::<Result<Vec<_>, Box<dyn Error>>>()?;
-        Ok(MusicPlaylist::try_new(
+        Ok(MusicPlaylist::new(
             id,
             name.to_owned(),
             NaiveDateTime::default(),
@@ -179,7 +179,7 @@ mod tests {
             user_id,
             is_public,
             tracks,
-        )?)
+        ))
     }
 
     fn harness_with(

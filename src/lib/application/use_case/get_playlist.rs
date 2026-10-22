@@ -157,8 +157,8 @@ mod tests {
         name: &str,
         is_public: bool,
         tracks: Vec<MusicRecording>,
-    ) -> Result<MusicPlaylist, Box<dyn Error>> {
-        Ok(MusicPlaylist::try_new(
+    ) -> MusicPlaylist {
+        MusicPlaylist::new(
             id,
             name.to_owned(),
             NaiveDateTime::default(),
@@ -166,7 +166,7 @@ mod tests {
             user_id,
             is_public,
             tracks,
-        )?)
+        )
     }
 
     fn harness_with(
@@ -212,7 +212,7 @@ mod tests {
         let mut playlists = MockMusicPlaylistRepository::new();
         expect_playlist(
             &mut playlists,
-            playlist(3, 4, "Mine", false, vec![track(30, 0)?])?,
+            playlist(3, 4, "Mine", false, vec![track(30, 0)?]),
         );
         let harness = harness_with(users, playlists);
         let use_case: UseCase = GetPlaylist::new(Arc::clone(&harness.factory));
@@ -241,7 +241,7 @@ mod tests {
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 9, Role::Standard)?;
         let mut playlists = MockMusicPlaylistRepository::new();
-        expect_playlist(&mut playlists, playlist(2, 3, "Public", true, Vec::new())?);
+        expect_playlist(&mut playlists, playlist(2, 3, "Public", true, Vec::new()));
         let harness = harness_with(users, playlists);
         let use_case: UseCase = GetPlaylist::new(Arc::clone(&harness.factory));
 
@@ -259,7 +259,7 @@ mod tests {
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 0, Role::Admin)?;
         let mut playlists = MockMusicPlaylistRepository::new();
-        expect_playlist(&mut playlists, playlist(3, 4, "Mine", false, Vec::new())?);
+        expect_playlist(&mut playlists, playlist(3, 4, "Mine", false, Vec::new()));
         let harness = harness_with(users, playlists);
         let use_case: UseCase = GetPlaylist::new(Arc::clone(&harness.factory));
 
@@ -278,7 +278,7 @@ mod tests {
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 9, Role::Standard)?;
         let mut playlists = MockMusicPlaylistRepository::new();
-        expect_playlist(&mut playlists, playlist(3, 4, "Mine", false, Vec::new())?);
+        expect_playlist(&mut playlists, playlist(3, 4, "Mine", false, Vec::new()));
         let harness = harness_with(users, playlists);
         let use_case: UseCase = GetPlaylist::new(Arc::clone(&harness.factory));
 

@@ -20,6 +20,8 @@ use crate::domain::port::user_repository::UserFilter;
 use crate::domain::port::user_repository::UserRepository as _;
 use crate::domain::port::user_unit_of_work::UserUnitOfWork;
 use crate::domain::service::library_access::LibraryAccess;
+use crate::domain::service::name_policy::NamePolicy;
+use crate::domain::service::name_policy::NamePolicyError;
 
 /// Use case implementation for updating a playlist's metadata or tracks.
 pub struct UpdatePlaylist<F> {
@@ -44,7 +46,7 @@ where
 {
     #[expect(
         clippy::wildcard_enum_match_arm,
-        reason = "MusicPlaylistError is non_exhaustive, so a catch-all arm is required"
+        reason = "RepositoryError is non_exhaustive, so a catch-all arm is required"
     )]
     fn execute<'future>(
         &'future self,
@@ -105,20 +107,20 @@ where
                     return Err(UpdatePlaylistError::Forbidden);
                 }
 
-                if let Some(name) = command.name() {
-                    playlist
-                        .set_name(name.to_owned())
-                        .map_err(|error| match error {
-                            MusicPlaylistError::NameEmpty => {
+                if let Some(requested_name) = command.name() {
+                    let name = NamePolicy::validate(requested_name.to_owned()).map_err(
+                        |error| match error {
+                            NamePolicyError::Empty => {
                                 security_event::input_validation_failed("name", "empty");
                                 UpdatePlaylistError::InvalidName
                             }
-                            MusicPlaylistError::NameTooLong => {
+                            NamePolicyError::TooLong => {
                                 security_event::input_validation_failed("name", "too_long");
                                 UpdatePlaylistError::NameTooLong
                             }
-                            _ => UpdatePlaylistError::Unknown(anyhow::Error::new(error)),
-                        })?;
+                        },
+                    )?;
+                    playlist.set_name(name);
 
                     let collisions = unit_of_work
                         .music_playlists()
@@ -254,8 +256,8 @@ mod tests {
         name: &str,
         is_public: bool,
         tracks: Vec<MusicRecording>,
-    ) -> Result<MusicPlaylist, Box<dyn Error>> {
-        Ok(MusicPlaylist::try_new(
+    ) -> MusicPlaylist {
+        MusicPlaylist::new(
             id,
             name.to_owned(),
             NaiveDateTime::default(),
@@ -263,7 +265,7 @@ mod tests {
             user_id,
             is_public,
             tracks,
-        )?)
+        )
     }
 
     fn harness_with(
@@ -321,7 +323,7 @@ mod tests {
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 4, Role::Standard)?;
         let mut playlists = MockMusicPlaylistRepository::new();
-        let stored = playlist(3, 4, "Mine", false, Vec::new())?;
+        let stored = playlist(3, 4, "Mine", false, Vec::new());
         let loaded_at = stored.last_modified_at();
         expect_playlist(&mut playlists, stored);
         playlists
@@ -364,7 +366,7 @@ mod tests {
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 4, Role::Standard)?;
         let mut playlists = MockMusicPlaylistRepository::new();
-        let stored = playlist(3, 4, "Mine", false, Vec::new())?;
+        let stored = playlist(3, 4, "Mine", false, Vec::new());
         let loaded_at = stored.last_modified_at();
         expect_playlist(&mut playlists, stored);
         save_echo(&mut playlists, "Mine", loaded_at);
@@ -389,8 +391,8 @@ mod tests {
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 4, Role::Standard)?;
         let mut playlists = MockMusicPlaylistRepository::new();
-        expect_playlist(&mut playlists, playlist(3, 4, "Mine", false, Vec::new())?);
-        let collision = playlist(5, 4, "Taken", false, Vec::new())?;
+        expect_playlist(&mut playlists, playlist(3, 4, "Mine", false, Vec::new()));
+        let collision = playlist(5, 4, "Taken", false, Vec::new());
         playlists.expect_search().times(1).return_once(move |_| {
             let found = collision.clone();
             Box::pin(async move { Ok(vec![found]) })
@@ -425,7 +427,7 @@ mod tests {
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 4, Role::Standard)?;
         let mut playlists = MockMusicPlaylistRepository::new();
-        expect_playlist(&mut playlists, playlist(3, 4, "Mine", false, Vec::new())?);
+        expect_playlist(&mut playlists, playlist(3, 4, "Mine", false, Vec::new()));
         playlists.expect_save().times(0);
         let harness = harness_with(users, playlists);
         let use_case: UseCase = UpdatePlaylist::new(Arc::clone(&harness.factory));
@@ -452,7 +454,7 @@ mod tests {
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 9, Role::Standard)?;
         let mut playlists = MockMusicPlaylistRepository::new();
-        expect_playlist(&mut playlists, playlist(3, 4, "Public", true, Vec::new())?);
+        expect_playlist(&mut playlists, playlist(3, 4, "Public", true, Vec::new()));
         playlists.expect_save().times(0);
         let harness = harness_with(users, playlists);
         let use_case: UseCase = UpdatePlaylist::new(Arc::clone(&harness.factory));
@@ -480,7 +482,7 @@ mod tests {
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 9, Role::Standard)?;
         let mut playlists = MockMusicPlaylistRepository::new();
-        let stored = playlist(3, 4, "Public", true, Vec::new())?;
+        let stored = playlist(3, 4, "Public", true, Vec::new());
         let loaded_at = stored.last_modified_at();
         expect_playlist(&mut playlists, stored);
         let added = track(30, 0)?;
@@ -492,7 +494,7 @@ mod tests {
             .return_once(move |_, _| Box::pin(async move { Ok(Some(added)) }));
         // The adapter re-reads the aggregate after the placement insert, so the
         // saved playlist answers with the recording the use case appended.
-        let saved = playlist(3, 4, "Public", true, vec![saved_track])?;
+        let saved = playlist(3, 4, "Public", true, vec![saved_track]);
         playlists
             .expect_save()
             .times(1)
@@ -529,7 +531,7 @@ mod tests {
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 4, Role::Standard)?;
         let mut playlists = MockMusicPlaylistRepository::new();
-        expect_playlist(&mut playlists, playlist(3, 4, "Mine", false, Vec::new())?);
+        expect_playlist(&mut playlists, playlist(3, 4, "Mine", false, Vec::new()));
         playlists
             .expect_add_track()
             .times(1)
@@ -558,7 +560,7 @@ mod tests {
         let mut playlists = MockMusicPlaylistRepository::new();
         expect_playlist(
             &mut playlists,
-            playlist(3, 4, "Mine", false, vec![track(30, 0)?])?,
+            playlist(3, 4, "Mine", false, vec![track(30, 0)?]),
         );
         playlists.expect_add_track().times(0);
         let harness = harness_with(users, playlists);
@@ -583,7 +585,7 @@ mod tests {
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 4, Role::Standard)?;
         let mut playlists = MockMusicPlaylistRepository::new();
-        expect_playlist(&mut playlists, playlist(3, 4, "Mine", false, Vec::new())?);
+        expect_playlist(&mut playlists, playlist(3, 4, "Mine", false, Vec::new()));
         playlists
             .expect_add_track()
             .times(1)
@@ -608,7 +610,7 @@ mod tests {
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 9, Role::Standard)?;
         let mut playlists = MockMusicPlaylistRepository::new();
-        expect_playlist(&mut playlists, playlist(3, 4, "Public", true, Vec::new())?);
+        expect_playlist(&mut playlists, playlist(3, 4, "Public", true, Vec::new()));
         playlists.expect_add_track().times(0);
         playlists.expect_save().times(0);
         let harness = harness_with(users, playlists);
@@ -638,7 +640,7 @@ mod tests {
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 9, Role::Standard)?;
         let mut playlists = MockMusicPlaylistRepository::new();
-        expect_playlist(&mut playlists, playlist(3, 4, "Mine", false, Vec::new())?);
+        expect_playlist(&mut playlists, playlist(3, 4, "Mine", false, Vec::new()));
         let harness = harness_with(users, playlists);
         let use_case: UseCase = UpdatePlaylist::new(Arc::clone(&harness.factory));
 
@@ -679,7 +681,7 @@ mod tests {
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 4, Role::Standard)?;
         let mut playlists = MockMusicPlaylistRepository::new();
-        expect_playlist(&mut playlists, playlist(3, 4, "Mine", false, Vec::new())?);
+        expect_playlist(&mut playlists, playlist(3, 4, "Mine", false, Vec::new()));
         playlists
             .expect_save()
             .times(1)

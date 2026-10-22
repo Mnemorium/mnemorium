@@ -2,10 +2,10 @@ use std::fmt::Debug;
 use std::fmt::Formatter;
 use std::fmt::Result as FmtResult;
 
-use crate::domain::alias::NumericID;
+use email_address::EmailAddress;
+use email_address::Options;
 
-/// Minimum number of characters allowed in `User::username`.
-pub const MIN_USERNAME_LENGTH: usize = 4;
+use crate::domain::alias::NumericID;
 
 /// Error returned when initialising or updating a `User`.
 #[derive(Debug, thiserror::Error)]
@@ -17,9 +17,6 @@ pub enum UserError {
     /// An unexpected or unmapped error occurred.
     #[error("an unknown error occurred: {0}")]
     Unknown(#[source] anyhow::Error),
-    /// The username is shorter than [`MIN_USERNAME_LENGTH`].
-    #[error("username must be at least {MIN_USERNAME_LENGTH} characters long")]
-    UsernameTooShort,
 }
 
 /// Role of a `User`.
@@ -113,24 +110,25 @@ impl User {
         self.role = role;
     }
 
-    /// Update the username.
+    /// Update the username with an already-validated value.
     ///
-    /// # Errors
-    ///
-    /// Returns [`UserError::UsernameTooShort`] when `username` is shorter than
-    /// [`MIN_USERNAME_LENGTH`].
-    pub fn set_username(&mut self, username: String) -> Result<(), UserError> {
-        self.username = Self::validate_username(username)?;
-        Ok(())
+    /// The caller is responsible for validating the value through
+    /// [`UsernamePolicy`](crate::domain::service::username_policy::UsernamePolicy);
+    /// the model stores it unchanged.
+    pub fn set_username(&mut self, username: String) {
+        self.username = username;
     }
 
-    /// Initialise a new `User`, validating `username` and `email`.
+    /// Initialise a new `User`, validating `email`.
+    ///
+    /// The username is supplied already validated and is stored unchanged; the
+    /// caller applies
+    /// [`UsernamePolicy`](crate::domain::service::username_policy::UsernamePolicy).
     ///
     /// # Errors
     ///
-    /// Returns [`UserError::UsernameTooShort`] when `username` is shorter than
-    /// [`MIN_USERNAME_LENGTH`], and [`UserError::InvalidEmail`] when `email` is
-    /// not a valid email address.
+    /// Returns [`UserError::InvalidEmail`] when `email` is not a valid email
+    /// address.
     pub fn try_new(
         id: NumericID,
         username: String,
@@ -138,14 +136,13 @@ impl User {
         credential_id: NumericID,
         role: Role,
     ) -> Result<Self, UserError> {
-        let validated_username = Self::validate_username(username)?;
         let validated_email = Self::validate_email(email)?;
         Ok(Self {
             credential_id,
             email: validated_email,
             id,
             role,
-            username: validated_username,
+            username,
         })
     }
 
@@ -155,7 +152,10 @@ impl User {
         &self.username
     }
 
-    /// Validate and normalise `email`.
+    /// Validate `email`.
+    ///
+    /// The parser is configured to reject display-name mailboxes: the field
+    /// holds an address, not a mailbox such as `Alice <alice@example.com>`.
     ///
     /// # Errors
     ///
@@ -165,23 +165,9 @@ impl User {
         match email {
             None => Ok(None),
             Some(raw) => {
-                raw.parse::<email_address::EmailAddress>()?;
+                EmailAddress::parse_with_options(&raw, Options::default().without_display_text())?;
                 Ok(Some(raw))
             }
-        }
-    }
-
-    /// Validate `username`.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`UserError::UsernameTooShort`] when `username` is shorter than
-    /// [`MIN_USERNAME_LENGTH`].
-    fn validate_username(username: String) -> Result<String, UserError> {
-        if username.chars().count() >= MIN_USERNAME_LENGTH {
-            Ok(username)
-        } else {
-            Err(UserError::UsernameTooShort)
         }
     }
 }

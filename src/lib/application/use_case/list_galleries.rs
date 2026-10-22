@@ -161,21 +161,9 @@ mod tests {
 
     type UseCase = ListGalleries<TestFactory>;
 
-    fn gallery(
-        gallery_id: i64,
-        user_id: Option<i64>,
-        name: &str,
-        is_public: bool,
-    ) -> Result<Gallery, Box<dyn Error>> {
+    fn gallery(gallery_id: i64, user_id: Option<i64>, name: &str, is_public: bool) -> Gallery {
         let now = NaiveDateTime::default();
-        Ok(Gallery::try_new(
-            gallery_id,
-            user_id,
-            name.to_owned(),
-            is_public,
-            now,
-            now,
-        )?)
+        Gallery::new(gallery_id, user_id, name.to_owned(), is_public, now, now)
     }
 
     fn item_detail(
@@ -230,8 +218,8 @@ mod tests {
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 0, Role::Admin)?;
         let mut galleries = MockGalleryRepository::new();
-        let public = gallery(2, Some(3), "Public", true)?;
-        let private = gallery(3, Some(4), "Private", false)?;
+        let public = gallery(2, Some(3), "Public", true);
+        let private = gallery(3, Some(4), "Private", false);
         galleries
             .expect_search()
             .times(1)
@@ -296,9 +284,9 @@ mod tests {
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 4, Role::Standard)?;
         let mut galleries = MockGalleryRepository::new();
-        let public = gallery(2, Some(3), "Public", true)?;
-        let own = gallery(3, Some(4), "Mine", false)?;
-        let other_private = gallery(5, Some(9), "Other", false)?;
+        let public = gallery(2, Some(3), "Public", true);
+        let own = gallery(3, Some(4), "Mine", false);
+        let other_private = gallery(5, Some(9), "Other", false);
         galleries.expect_search().times(1).return_once(move |_| {
             let found = vec![public.clone(), own.clone(), other_private.clone()];
             Box::pin(async move { Ok(found) })
@@ -341,9 +329,9 @@ mod tests {
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 1, Role::Admin)?;
         let mut galleries = MockGalleryRepository::new();
-        let public = gallery(2, Some(3), "Public", true)?;
-        let own = gallery(3, Some(1), "Mine", false)?;
-        let other_private = gallery(5, Some(9), "Other", false)?;
+        let public = gallery(2, Some(3), "Public", true);
+        let own = gallery(3, Some(1), "Mine", false);
+        let other_private = gallery(5, Some(9), "Other", false);
         galleries.expect_search().times(1).return_once(move |_| {
             let found = vec![public.clone(), own.clone(), other_private.clone()];
             Box::pin(async move { Ok(found) })
@@ -385,9 +373,9 @@ mod tests {
         // Arrange
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 4, Role::Standard)?;
-        let first = gallery(1, Some(4), "Trip A", true)?;
-        let second = gallery(2, Some(4), "Trip B", true)?;
-        let third = gallery(3, Some(4), "Trip C", true)?;
+        let first = gallery(1, Some(4), "Trip A", true);
+        let second = gallery(2, Some(4), "Trip B", true);
+        let third = gallery(3, Some(4), "Trip C", true);
         let mut galleries = MockGalleryRepository::new();
         galleries
             .expect_search()

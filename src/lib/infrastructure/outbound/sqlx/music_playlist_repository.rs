@@ -121,7 +121,7 @@ impl MusicPlaylistRepository for SqlxMusicPlaylistRepository<'_> {
         .fetch_one(&mut **self.transaction)
         .await?;
 
-        domain_playlist(row, Vec::new())
+        Ok(domain_playlist(row, Vec::new()))
     }
 
     async fn delete(&mut self, id: NumericID) -> Result<bool, RepositoryError> {
@@ -313,7 +313,7 @@ impl MusicPlaylistRepository for SqlxMusicPlaylistRepository<'_> {
             playlists.push(domain_playlist(
                 row.clone(),
                 tracks.get_mut(index).map_or_else(Vec::new, take),
-            )?);
+            ));
         }
         Ok(playlists)
     }
@@ -338,11 +338,8 @@ struct RecordingRow {
 
 /// Map a persisted playlist row and its hydrated tracks back to the domain
 /// model.
-fn domain_playlist(
-    row: MusicPlaylistRow,
-    tracks: Vec<MusicRecording>,
-) -> Result<MusicPlaylist, RepositoryError> {
-    MusicPlaylist::try_new(
+fn domain_playlist(row: MusicPlaylistRow, tracks: Vec<MusicRecording>) -> MusicPlaylist {
+    MusicPlaylist::new(
         row.music_playlist_id,
         row.name,
         row.created_at,
@@ -351,7 +348,6 @@ fn domain_playlist(
         row.is_public,
         tracks,
     )
-    .map_err(|_| stored_data_invalid("invalid_playlist"))
 }
 
 #[cfg(test)]
@@ -625,12 +621,8 @@ mod tests {
     }
 
     /// Build a domain playlist with no tracks.
-    fn playlist(
-        name: &str,
-        user_id: i64,
-        is_public: bool,
-    ) -> Result<MusicPlaylist, Box<dyn Error>> {
-        Ok(MusicPlaylist::try_new(
+    fn playlist(name: &str, user_id: i64, is_public: bool) -> MusicPlaylist {
+        MusicPlaylist::new(
             0,
             name.to_owned(),
             NaiveDateTime::default(),
@@ -638,7 +630,7 @@ mod tests {
             user_id,
             is_public,
             Vec::new(),
-        )?)
+        )
     }
 
     /// Seed one recording backed by its own file and audio.
@@ -660,7 +652,7 @@ mod tests {
         let mut repository = SqlxMusicPlaylistRepository::new(&mut transaction);
 
         // Act
-        let created = repository.create(playlist("Mix", 1, false)?).await?;
+        let created = repository.create(playlist("Mix", 1, false)).await?;
         let found = repository
             .search(&MusicPlaylistFilter {
                 id: Some(created.id()),
@@ -684,10 +676,10 @@ mod tests {
         let mut transaction = begin_transaction().await?;
         seed_user(&mut transaction, 1).await?;
         let mut repository = SqlxMusicPlaylistRepository::new(&mut transaction);
-        repository.create(playlist("Mix", 1, false)?).await?;
+        repository.create(playlist("Mix", 1, false)).await?;
 
         // Act
-        let duplicate = repository.create(playlist("Mix", 1, true)?).await;
+        let duplicate = repository.create(playlist("Mix", 1, true)).await;
 
         // Assert
         assert!(matches!(duplicate, Err(RepositoryError::AlreadyExist)));
@@ -703,8 +695,8 @@ mod tests {
         let mut repository = SqlxMusicPlaylistRepository::new(&mut transaction);
 
         // Act
-        let first = repository.create(playlist("Mix", 1, false)?).await?;
-        let second = repository.create(playlist("Mix", 2, false)?).await?;
+        let first = repository.create(playlist("Mix", 1, false)).await?;
+        let second = repository.create(playlist("Mix", 2, false)).await?;
 
         // Assert
         assert_ne!(first.id(), second.id());
@@ -914,29 +906,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn search_rejects_a_playlist_whose_stored_name_is_invalid() -> Result<(), Box<dyn Error>>
-    {
-        // Arrange: the schema has no non-empty check, so the domain guard is
-        // probed by seeding an empty name.
-        let mut transaction = begin_transaction().await?;
-        seed_user(&mut transaction, 1).await?;
-        seed_playlist(&mut transaction, 7, "", 1, false).await?;
-        let mut repository = SqlxMusicPlaylistRepository::new(&mut transaction);
-        let (buffer, _capture) = capture_logs();
-
-        // Act
-        let result = repository.search(&MusicPlaylistFilter::default()).await;
-
-        // Assert
-        assert!(matches!(
-            result,
-            Err(RepositoryError::DataIntegrityViolation)
-        ));
-        assert_output_validation_failed(&captured_logs(&buffer), "invalid_playlist");
-        Ok(())
-    }
-
-    #[tokio::test]
     async fn add_track_appends_at_the_next_index() -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut transaction = begin_transaction().await?;
@@ -944,7 +913,7 @@ mod tests {
         seed_one_recording(&mut transaction, 30, "First").await?;
         seed_one_recording(&mut transaction, 31, "Second").await?;
         let mut repository = SqlxMusicPlaylistRepository::new(&mut transaction);
-        let created = repository.create(playlist("Mix", 1, false)?).await?;
+        let created = repository.create(playlist("Mix", 1, false)).await?;
 
         // Act
         let first = repository.add_track(created.id(), 30).await?;
@@ -978,7 +947,7 @@ mod tests {
         let mut transaction = begin_transaction().await?;
         seed_user(&mut transaction, 1).await?;
         let mut repository = SqlxMusicPlaylistRepository::new(&mut transaction);
-        let created = repository.create(playlist("Mix", 1, false)?).await?;
+        let created = repository.create(playlist("Mix", 1, false)).await?;
 
         // Act
         let result = repository.add_track(created.id(), 999).await?;
@@ -995,7 +964,7 @@ mod tests {
         seed_user(&mut transaction, 1).await?;
         seed_one_recording(&mut transaction, 30, "First").await?;
         let mut repository = SqlxMusicPlaylistRepository::new(&mut transaction);
-        let created = repository.create(playlist("Mix", 1, false)?).await?;
+        let created = repository.create(playlist("Mix", 1, false)).await?;
         repository.add_track(created.id(), 30).await?;
 
         // Act
@@ -1013,8 +982,8 @@ mod tests {
         seed_user(&mut transaction, 1).await?;
         seed_one_recording(&mut transaction, 30, "First").await?;
         let mut repository = SqlxMusicPlaylistRepository::new(&mut transaction);
-        let first = repository.create(playlist("First", 1, false)?).await?;
-        let second = repository.create(playlist("Second", 1, false)?).await?;
+        let first = repository.create(playlist("First", 1, false)).await?;
+        let second = repository.create(playlist("Second", 1, false)).await?;
         repository.add_track(first.id(), 30).await?;
 
         // Act
@@ -1033,7 +1002,7 @@ mod tests {
         seed_one_recording(&mut transaction, 30, "First").await?;
         seed_one_recording(&mut transaction, 31, "Second").await?;
         let mut repository = SqlxMusicPlaylistRepository::new(&mut transaction);
-        let created = repository.create(playlist("Mix", 1, false)?).await?;
+        let created = repository.create(playlist("Mix", 1, false)).await?;
         repository.add_track(created.id(), 30).await?;
         repository.add_track(created.id(), 31).await?;
 
@@ -1069,7 +1038,7 @@ mod tests {
         seed_one_recording(&mut transaction, 30, "First").await?;
         seed_one_recording(&mut transaction, 31, "Second").await?;
         let mut repository = SqlxMusicPlaylistRepository::new(&mut transaction);
-        let created = repository.create(playlist("Mix", 1, false)?).await?;
+        let created = repository.create(playlist("Mix", 1, false)).await?;
         repository.add_track(created.id(), 30).await?;
         repository.add_track(created.id(), 31).await?;
 
@@ -1102,11 +1071,11 @@ mod tests {
         let mut transaction = begin_transaction().await?;
         seed_user(&mut transaction, 1).await?;
         let mut repository = SqlxMusicPlaylistRepository::new(&mut transaction);
-        let mut created = repository.create(playlist("Mix", 1, false)?).await?;
+        let mut created = repository.create(playlist("Mix", 1, false)).await?;
         let touched = NaiveDateTime::parse_from_str("2030-01-02 03:04:05", "%Y-%m-%d %H:%M:%S")?;
 
         // Act
-        created.set_name("Renamed".to_owned())?;
+        created.set_name("Renamed".to_owned());
         created.set_is_public(true);
         created.touch(touched);
         let saved = repository.save(created).await?;
@@ -1135,7 +1104,7 @@ mod tests {
         seed_user(&mut transaction, 1).await?;
         seed_one_recording(&mut transaction, 30, "First").await?;
         let mut repository = SqlxMusicPlaylistRepository::new(&mut transaction);
-        let created = repository.create(playlist("Mix", 1, false)?).await?;
+        let created = repository.create(playlist("Mix", 1, false)).await?;
         repository.add_track(created.id(), 30).await?;
 
         // Act

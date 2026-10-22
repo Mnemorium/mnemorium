@@ -7,423 +7,379 @@ A business use case is implemented by one or more **application use cases** — 
 `use_case/<name>.rs` pair governed by [TechnicalDesign.md](TechnicalDesign.md) § 9 (Use cases). The catalog does not
 list them: an entry describes the capability, not the code that implements it.
 
-## Catalog
+The entry format is the contract in [TechnicalDesign.md](TechnicalDesign.md) § 5 (Business use case format), `DOC-005`,
+`DOC-007` and `DOC-008`: the fields, the trigger doctrine, the parameters and the diagram conventions all live there. An
+entry states intent and outcome in business terms; the validation criteria of a capability belong to its specification,
+never to its entry.
 
-## UC-001 - Create a User Account
+The catalog is organised by package, following the [Overview](Overview.md#bounded-context). A bounded context is a
+package, and a context that divides into areas lists them as sub-packages. Each package carries its diagram and the
+entries it owns, so the section an entry sits in is its package. A capability that spans several packages is filed where
+it is owned; `STY-RUST-040` records the cross-context units of work.
 
-### Description
+The master diagram below is the package view of the whole catalog:
 
-Allow an Administrator to create a new user in the system and assign the appropriate profile information.
+```puml
+@startuml
+skinparam style strictuml
 
-### Primary actor
+package "Identity" as Identity {
+}
+package "User" as User {
+}
+package "Library" as Library {
+  package "Gallery" as Gallery {
+  }
+  package "Music" as Music {
+  }
+}
+package "Configuration" as Configuration {
+}
+package "Asset" as Asset {
+}
+@enduml
+```
 
-- Admin
+## Identity
 
-### Pre condition(s)
+```puml
+@startuml
+left to right direction
+skinparam style strictuml
 
-- The caller is authenticated as an Admin.
+actor "Standard User" as StandardUser
+actor "Root Admin" as RootAdmin
 
-### Trigger(s)
+package "Identity" {
+  usecase "UC-002 - Authenticate" as UC002
+  usecase "UC-003 - Initialize the root admin" as UC003
+}
 
-- User creation request
+StandardUser --> UC002
+RootAdmin --> UC003
+@enduml
+```
 
-### Bounded context(s)
+### UC-002 - User Authentication
 
-- Identity
-- User
-
-### Business rules
-
-- Username must be at least 4 characters long.
-- Email must be a valid email address or be null.
-- Password must be at least 8 characters long and contain at least one symbol.
-
-### Happy path
-
-1. The Admin submits a user creation request carrying a username, an optional email, a password, and the role to grant.
-2. The system validates the request against the business rules.
-3. The system verifies the caller may grant the requested role.
-4. The system verifies that no user already exists with the username or email.
-5. The system secures the password and saves the new user with its credential.
-6. The system returns the created account.
-
-### Alternative flow
-
-- 2a. The request is invalid — empty username, empty password, or any other business-rule violation.
-- 3a. The Admin is not the Root Admin and requests the Admin role for the new user; the system rejects the request.
-
-### Post condition(s)
-
-- A new user account and its credential exist in the system.
-- Username and email remain unique across users.
-
----
-
-## UC-002 - User Authentication
-
-### Description
+#### Description
 
 Allow a registered user to securely authenticate with the system using valid credentials and gain access to authorized
 features and resources.
 
-### Primary actor
+#### Primary actor
 
 - Standard User
 
-### Pre condition(s)
+#### Parameters
+
+- username — the account name the user presents; required.
+- password — the secret the user presents; required.
+
+#### Pre condition(s)
 
 - The user is registered: an account with its credential exists in the system.
 
-### Trigger(s)
+#### Trigger
 
-- Authentication request
+- The user submits an authentication request.
 
-### Bounded context(s)
+#### Happy path
 
-- Identity
-- User
-
-### Business rules
-
-- The username must name an existing account and the password must match the one the account holds.
-- A failed authentication does not reveal whether the username exists or the password was wrong.
-- A successful authentication issues a token identifying the user; a failed one issues no token.
-
-### Happy path
-
-1. The user submits an authentication request carrying a username and a password.
+1. The user submits an authentication request.
 2. The system finds the user by username.
 3. The system verifies the password against the password the account holds.
 4. The system issues a token identifying the user.
 5. The user gains access to the authorized features and resources.
 
-### Alternative flow
+#### Alternative flow
 
 - 2a. Bad credentials: no account matches the username, or the password does not match the password the account holds;
   the system rejects the request.
 
-### Post condition(s)
+#### Post condition(s)
 
 - The user holds a valid token granting access to authorized features and resources.
 
 ---
 
-## UC-003 - Initialize Root Admin
+### UC-003 - Initialize Root Admin
 
-### Description
+#### Description
 
 On the first runtime the system creates the Root Admin account, issues and reveals a default password to the operator,
 and lets the Root Admin replace it with a personal password. The default password stops being revealed once it has been
 changed.
 
-### Primary actor
+#### Primary actor
 
 - Root Admin
 
-### Pre condition(s)
+#### Parameters
+
+- default password — the generated password the operator was shown; required.
+- new password — the personal password the Root Admin chooses; required.
+
+#### Pre condition(s)
 
 - First-Time Admin Authentication is enabled in configuration.
 - The default password corresponding to the Root Admin account has not been replaced yet.
 
-### Trigger(s)
+#### Trigger
 
-- Start of system runtime while the configuration still enables First-Time Admin Authentication.
+- The Root Admin starts the service with First-Time Admin Authentication enabled.
 
-### Bounded context(s)
+#### Happy path
 
-- Identity
-- User
-- Configuration
-
-### Business rules
-
-- The Root Admin account is created with a random default password when no Root Admin exists.
-- The default password is shown to the operator only while the Root Admin still uses it.
-- The new password must be at least 8 characters long and contain at least one symbol.
-
-### Happy path
-
-1. The system starts with First-Time Admin Authentication enabled.
+1. The Root Admin starts the service.
 2. The system checks whether a Root Admin account exists; none does, so the system creates the account with a generated
    default password.
 3. The system shows the default password to the operator.
-4. The Root Admin submits an authentication request carrying the default password and a new password.
+4. The Root Admin submits an authentication request.
 5. The system verifies the default password against the password the account holds.
-6. The system validates the new password against the business rules.
+6. The system validates the new password.
 7. The system secures the new password, replaces the credential, and the default password stops being shown.
 8. The system returns the updated account.
 
-### Alternative flow
+#### Alternative flow
 
 - 2a. A Root Admin already exists: the system stops at step 1 and the functionality stays inactive — no new account and
   no revealed password.
 - 5a. Bad password: the default password does not match the password the account holds; the system rejects the request.
-- 6a. The new password violates the business rules; the system rejects the request.
+- 6a. The new password cannot be used; the system rejects the request.
 
-### Post condition(s)
+#### Post condition(s)
 
 - A Root Admin account exists in the system.
 - The Root Admin holds a personal credential.
 - The default password is no longer valid and is no longer shown to the operator while the configuration has First-Time
   Admin Authentication enabled.
 
+## User
+
+```puml
+@startuml
+left to right direction
+skinparam style strictuml
+
+actor "Admin" as Admin
+
+package "User" {
+  usecase "UC-001 - Create a user account" as UC001
+  usecase "UC-005 - Delete a user account" as UC005
+}
+
+Admin --> UC001
+Admin --> UC005
+@enduml
+```
+
+### UC-001 - Create a User Account
+
+#### Description
+
+Allow an Administrator to create a new user in the system and assign the appropriate profile information.
+
+#### Primary actor
+
+- Admin
+
+#### Parameters
+
+- username — the account name of the new user; required.
+- email — an optional contact address.
+- password — the secret the new user authenticates with; required.
+- role — the profile to grant the new user; required.
+
+#### Pre condition(s)
+
+- The caller is authenticated as an Admin.
+
+#### Trigger
+
+- The Admin submits a user-creation request.
+
+#### Happy path
+
+1. The Admin submits a user-creation request.
+2. The system validates the request.
+3. The system verifies the caller may grant the requested role.
+4. The system verifies that no user already exists with the username or email.
+5. The system secures the password and saves the new user with its credential.
+6. The system returns the created account.
+
+#### Alternative flow
+
+- 2a. The request is invalid: a required value is missing or cannot be used; the system rejects the request and creates
+  nothing.
+- 3a. The Admin is not the Root Admin and requests the Admin role for the new user; the system rejects the request and
+  creates nothing.
+
+#### Post condition(s)
+
+- A new user account and its credential exist in the system.
+- Username and email remain unique across users.
+
 ---
 
-## UC-004 - Load Configuration
+### UC-005 - Delete User Account
 
-### Description
-
-On every runtime the system loads the application configuration by layering the stored settings with the optional
-configuration file and the environment, generating the secrets on the first runtime.
-
-### Primary actor
-
-- System
-
-### Pre condition(s)
-
-- The system's stored settings are available.
-
-### Trigger(s)
-
-- Start of system runtime.
-
-### Bounded context(s)
-
-- Configuration
-
-### Business rules
-
-- The configuration is layered: the stored settings are the base, the configuration file overrides them, and the
-  environment overrides both.
-- On the first runtime no stored settings exist; the system creates the default settings and freshly generated secrets
-  before loading.
-- The default settings enable diagnostic logging with daily rotation, keep seven rotated files and disable colour
-  output.
-- The default settings allow the Root Admin default password to be shown to the operator.
-- Secrets left empty after the first runtime are never regenerated: the stored settings keep them stable across
-  restarts.
-
-### Happy path
-
-1. The system starts and checks whether stored settings exist; none do, so the system creates the default settings and
-   freshly generated secrets.
-2. The system loads the configuration: the stored settings are layered with the configuration file and the environment
-   overrides.
-3. The system returns the merged configuration to the runtime.
-
-### Alternative flow
-
-- 1a. Stored settings already exist: the system skips their creation and loads the configuration directly.
-
-### Post condition(s)
-
-- The stored settings exist.
-- The runtime holds a complete configuration to wire its dependencies.
-
----
-
-## UC-005 - Delete User Account
-
-### Description
+#### Description
 
 Allow an Administrator to remove a user account together with all the data it owns, and prevent the affected user from
 accessing the system.
 
-### Primary actor
+#### Primary actor
 
 - Admin
 
-### Pre condition(s)
+#### Parameters
+
+- user — the account to remove; required.
+
+#### Pre condition(s)
 
 - The caller is authenticated as an Admin.
 
-### Trigger(s)
+#### Trigger
 
-- User deletion request
+- The Admin submits a user-deletion request.
 
-### Bounded context(s)
+#### Happy path
 
-- Identity
-- User
-- Library
-- Asset
-
-### Business rules
-
-- The Root Admin account cannot be deleted.
-- Deletion removes the user, its credential, and everything the user owns: its files, its playlists, and the media
-  records that depend on those files.
-- Tokens issued to the deleted user stop being accepted immediately.
-
-### Happy path
-
-1. The Admin submits a user deletion request identifying the target user.
+1. The Admin submits a user-deletion request.
 2. The system verifies the target user exists.
 3. The system verifies the target user is not the Root Admin.
 4. The system deletes the data owned by the user and then the account with its credential.
 5. The system stops accepting the tokens issued to the deleted user.
 6. The system confirms the deletion.
 
-### Alternative flow
+#### Alternative flow
 
 - 1a. The caller is not an Admin; the system rejects the request.
-- 2a. No user exists for the requested identifier; the system rejects the request.
+- 2a. No user exists for the requested account; the system rejects the request.
 - 3a. The target user is the Root Admin; the system rejects the request.
 
-### Post condition(s)
+#### Post condition(s)
 
 - The user account and its credential no longer exist.
 - Every file, playlist, and dependent media record owned by the user no longer exists.
 - The deleted user cannot authenticate and any token it held is rejected.
 
----
+## Library
 
-## UC-006 - Upload Media File
+### Gallery
 
-### Description
+```puml
+@startuml
+left to right direction
+skinparam style strictuml
 
-Allow a user to upload a supported media file to the service for storage, processing, cataloging, and distribution. The
-upload is resumable and chunked, so it spans several requests.
+actor "Standard User" as StandardUser
+actor "Admin" as Admin
 
-### Primary actor
+package "Gallery" {
+  usecase "UC-007 - Create a gallery" as UC007
+  usecase "UC-008 - Browse galleries" as UC008
+  usecase "UC-009 - Add an image to a gallery" as UC009
+  usecase "UC-010 - Remove an image from a gallery" as UC010
+  usecase "UC-011 - Remove a gallery" as UC011
+  usecase "UC-020 - Add a video to a gallery" as UC020
+  usecase "UC-021 - Remove a video from a gallery" as UC021
+}
 
-- Standard User
+StandardUser --> UC007
+Admin --> UC007
+StandardUser --> UC008
+Admin --> UC008
+StandardUser --> UC009
+Admin --> UC009
+StandardUser --> UC010
+Admin --> UC010
+StandardUser --> UC011
+Admin --> UC011
+StandardUser --> UC020
+Admin --> UC020
+StandardUser --> UC021
+Admin --> UC021
+@enduml
+```
 
-### Pre condition(s)
+#### UC-007 - Create a Gallery
 
-- The caller is authenticated.
-
-### Trigger(s)
-
-- Upload request
-
-### Bounded context(s)
-
-- Asset
-- Library
-
-### Business rules
-
-- The uploaded content must match one of the supported media kinds (audio, video or image) the system recognises.
-- The media kind is determined from the file content, not from the file name or declared type alone.
-- The stored file path is unique across files.
-- A content fingerprint is computed and stored with the file; a caller's file records are unique by fingerprint.
-- Duplicate content is deduplicated per caller: when the caller already owns a file with the same fingerprint, the
-  uploaded content is verified against the declared fingerprint and the existing file record is returned instead of
-  storing a second copy. The upload is left unfinished.
-- The uploaded file is private by default.
-
-### Happy path
-
-1. The user submits an upload request carrying the media file.
-2. The system determines the media kind from the file content.
-3. The system verifies the media kind is supported.
-4. The system computes the content fingerprint.
-5. The system stores the file and saves its record bound to the caller.
-6. The system returns the created file record.
-
-### Alternative flow
-
-- 3a. The media kind is unsupported; the system rejects the upload and stores nothing.
-- 4a. The caller already owns a file with the same fingerprint; the system verifies the uploaded content and returns the
-  existing file record, storing nothing new and leaving the upload unfinished.
-
-### Post condition(s)
-
-- The file is stored under a unique path.
-- A file record bound to the caller exists with its media kind, content fingerprint and private visibility.
-
----
-
-## UC-007 - Create a Gallery
-
-### Description
+##### Description
 
 Allow an authenticated user to create a gallery they own to collect images and videos.
 
-### Primary actor
+##### Primary actor
 
 - Standard User
 - Admin
 
-### Pre condition(s)
+##### Parameters
+
+- name — the gallery name; required.
+- visibility — whether other users may read the gallery; optional, private by default.
+
+##### Pre condition(s)
 
 - The caller is authenticated.
 
-### Trigger(s)
+##### Trigger
 
-- Gallery creation request (`POST /api/v1/library/gallery`).
+- The caller submits a gallery-creation request.
 
-### Bounded context(s)
+##### Happy path
 
-- Library
-
-### Business rules
-
-- The gallery name is required, is trimmed of surrounding whitespace, must not be empty or only whitespace, and must be
-  at most 100 characters long.
-- A caller's gallery names are unique: the same owner cannot create two galleries with the same name.
-- A gallery is private by default; the caller may request it be public.
-- The caller becomes the gallery owner.
-- A newly created gallery is empty.
-
-### Happy path
-
-1. The caller submits a gallery creation request carrying a name and an optional visibility.
-2. The system trims and validates the name against the business rules.
+1. The caller submits a gallery-creation request.
+2. The system trims and validates the name.
 3. The system verifies the caller does not already own a gallery with the same name.
 4. The system creates the gallery owned by the caller.
 5. The system returns the created gallery.
 
-### Alternative flow
+##### Alternative flow
 
-- 2a. The name is empty or only whitespace, or longer than 100 characters; the system rejects the request.
-- 3a. The caller already owns a gallery with the same name; the system rejects the request.
+- 2a. The name cannot be used: it is empty, only whitespace, or too long; the system rejects the request and creates
+  nothing.
+- 3a. The caller already owns a gallery with the same name; the system rejects the request and creates nothing.
 
-### Post condition(s)
+##### Post condition(s)
 
 - A gallery owned by the caller exists.
 - The new gallery holds no item.
 
 ---
 
-## UC-008 - Browse Galleries
+#### UC-008 - Browse Galleries
 
-### Description
+##### Description
 
 Allow an authenticated user to browse the galleries and items they may see.
 
-### Primary actor
+##### Primary actor
 
 - Standard User
 - Admin
-- Root Admin
 
-### Pre condition(s)
+##### Parameters
+
+- filter — an optional narrowing of the listing by name, visibility and owner.
+- page — an optional position in the listing.
+- gallery — the gallery to read, when reading one; optional.
+- item — the item to read, when reading one; optional.
+
+##### Pre condition(s)
 
 - The caller is authenticated.
 
-### Trigger(s)
+##### Trigger
 
-- `GET /api/v1/library/gallery`
-- `GET /api/v1/library/gallery/{id}`
-- `GET /api/v1/library/gallery/{id}/item`
-- `GET /api/v1/library/gallery/{id}/item/{item_id}`
+- The caller asks to list the galleries it may see.
+- The caller asks to read one gallery.
+- The caller asks to list the items of one gallery.
+- The caller asks to read one item of one gallery.
 
-### Bounded context(s)
-
-- Library
-
-### Business rules
-
-- The listing shows every public gallery plus the caller's own galleries.
-- A private gallery and its items may be read by their owner or by the Root Admin only.
-- The listing may be filtered by name, visibility and owner, and paged.
-- The built-in default gallery is public and visible to every authenticated user.
-- Every gallery item references exactly one image or one video.
-
-### Happy path
+##### Happy path
 
 1. The caller lists galleries, optionally filtering and paging.
 2. The system returns every gallery the caller may see, each with its item count.
@@ -432,231 +388,324 @@ Allow an authenticated user to browse the galleries and items they may see.
 5. The caller requests one item of the gallery.
 6. The system returns the item with its media metadata.
 
-### Alternative flow
+##### Alternative flow
 
 - 2a. The caller requests a private gallery it neither owns nor reads as the Root Admin; the system rejects the request.
 - 3a. No gallery matches the requested identifier; the system rejects the request.
 - 5a. No item matching the requested identifier belongs to the gallery; the system rejects the request.
 
-### Post condition(s)
+##### Post condition(s)
 
 - The caller holds the requested galleries and items.
 
 ---
 
-## UC-009 - Add an Image or Video to a Gallery
+#### UC-009 - Add an Image to a Gallery
 
-### Description
+##### Description
 
-Allow an authenticated user to append one of their images or videos to a gallery they may contribute to.
+Allow an authenticated user to append one of their images to a gallery they may contribute to.
 
-### Primary actor
+##### Primary actor
 
 - Standard User
 - Admin
-- Root Admin
 
-### Pre condition(s)
+##### Parameters
+
+- gallery — the gallery to append the image to; required.
+- image — the image to append; required.
+
+##### Pre condition(s)
 
 - The caller is authenticated.
 
-### Trigger(s)
+##### Trigger
 
-- `POST /api/v1/library/gallery/{id}/item`
+- The caller submits a request to add an image to a gallery.
 
-### Bounded context(s)
+##### Happy path
 
-- Library
-
-### Business rules
-
-- The caller may contribute to a public gallery; a private gallery accepts contributions from its owner or the Root
-  Admin only.
-- The image or video must belong to the caller, unless the caller is the Root Admin.
-- The image or video must exist.
-- An image or a video may belong to at most one gallery, and at most once.
-- The item order is assigned by the system and appended after the last existing item.
-- Adding an item updates the gallery's last-modified time.
-
-### Happy path
-
-1. The caller submits an add request carrying the media kind (image or video) and the backing file.
+1. The caller submits a request to add an image to a gallery.
 2. The system verifies the caller may contribute to the gallery.
-3. The system resolves the image or video and its backing file.
+3. The system resolves the image and its backing file.
 4. The system verifies the caller owns the backing file, or is the Root Admin.
-5. The system verifies the image or video is not already in a gallery.
+5. The system verifies the image is not already in a gallery.
 6. The system appends the item at the next order position.
 7. The system returns the created item.
 
-### Alternative flow
+##### Alternative flow
 
-- 1a. The media kind is neither image nor video; the system rejects the request.
+- 1a. The named medium is not an image; the system rejects the request.
 - 2a. The gallery is private and the caller is neither its owner nor the Root Admin; the system rejects the request.
 - 2b. No gallery matches the requested identifier; the system rejects the request.
-- 3a. No image or video matches the requested media identifier; the system rejects the request.
-- 4a. The image or video belongs to another user and the caller is not the Root Admin; the system rejects the request.
-- 5a. The image or video already belongs to a gallery; the system rejects the request.
+- 3a. No image matches the requested identifier; the system rejects the request.
+- 4a. The image belongs to another user and the caller is not the Root Admin; the system rejects the request.
+- 5a. The image already belongs to a gallery; the system rejects the request.
 
-### Post condition(s)
+##### Post condition(s)
 
 - The gallery holds the new item at the next order position.
-- The image or video belongs to this gallery.
+- The image belongs to this gallery.
 
 ---
 
-## UC-010 - Remove an Image or Video from a Gallery
+#### UC-010 - Remove an Image from a Gallery
 
-### Description
+##### Description
 
-Allow an authenticated user to remove an image or video from a gallery, permanently deleting the item, its medium, and —
-when the caller owns the file — the backing file.
+Allow an authenticated user to remove an image from a gallery, permanently deleting the item, its medium, and — when the
+caller owns the file — the backing file.
 
-### Primary actor
+##### Primary actor
 
 - Standard User
 - Admin
-- Root Admin
 
-### Pre condition(s)
+##### Parameters
+
+- gallery — the gallery to remove the image from; required.
+- image — the image to remove; required.
+
+##### Pre condition(s)
 
 - The caller is authenticated.
 
-### Trigger(s)
+##### Trigger
 
-- `DELETE /api/v1/library/gallery/{id}/item/{item_id}`
+- The caller submits a request to remove an image from a gallery.
 
-### Bounded context(s)
+##### Happy path
 
-- Library
-- Asset
-
-### Business rules
-
-- The caller may remove an item of a public gallery.
-- An item of a private gallery may be removed by the gallery owner or by the Root Admin only.
-- The item must belong to the gallery named in the request.
-- The item and its image or video record are deleted permanently.
-- The backing file and its stored content are deleted when the caller owns the file or is the Root Admin, and kept
-  otherwise. The file's record is removed as part of the item's removal; the stored content is removed on a best-effort
-  basis.
-- Removing an item updates the gallery's last-modified time.
-
-### Happy path
-
-1. The caller submits a removal request identifying the gallery and the item.
+1. The caller submits a removal request.
 2. The system verifies the caller may remove items of the gallery.
-3. The system locates the item within the gallery.
-4. The system deletes the item and its image or video record, and the backing file when the caller owns it.
+3. The system locates the image's item within the gallery.
+4. The system deletes the item and its image record, and the backing file when the caller owns it.
 5. The system confirms the removal.
 
-### Alternative flow
+##### Alternative flow
 
 - 2a. The gallery is private and the caller is neither its owner nor the Root Admin; the system rejects the request.
 - 2b. No gallery matches the requested identifier; the system rejects the request.
-- 3a. No item matching the requested identifier belongs to the gallery; the system rejects the request.
+- 3a. The image is not in the gallery named in the request; the system reports it as not found.
 
-### Post condition(s)
+##### Post condition(s)
 
-- The item and its image or video record no longer exist.
+- The item and its image record no longer exist.
 - The backing file's record and stored content no longer exist when the caller owned the file.
 
 ---
 
-## UC-011 - Remove a Gallery
+#### UC-011 - Remove a Gallery
 
-### Description
+##### Description
 
 Allow the owner to delete a gallery together with its items, their media, and the backing files.
 
-### Primary actor
+##### Primary actor
 
 - Standard User
 - Admin
 
-### Pre condition(s)
+##### Parameters
+
+- gallery — the gallery to delete; required.
+
+##### Pre condition(s)
 
 - The caller is authenticated.
 
-### Trigger(s)
+##### Trigger
 
-- `DELETE /api/v1/library/gallery/{id}`
+- The caller submits a gallery-deletion request.
 
-### Bounded context(s)
+##### Happy path
 
-- Library
-- Asset
-
-### Business rules
-
-- Only the gallery owner may delete it; the Root Admin has no override.
-- The built-in default gallery is never deletable.
-- Deletion is permanent and removes every item, its image or video record, and its backing file before deleting the
-  gallery.
-
-### Happy path
-
-1. The caller submits a gallery deletion request identifying the gallery.
+1. The caller submits a request to delete one of its galleries.
 2. The system verifies the gallery is not the default gallery.
 3. The system verifies the caller owns the gallery.
 4. The system deletes every item, its image or video record, and its backing file.
 5. The system deletes the gallery.
 6. The system confirms the deletion.
 
-### Alternative flow
+##### Alternative flow
 
 - 1a. No gallery matches the requested identifier; the system rejects the request.
 - 2a. The gallery is the default gallery; the system rejects the request.
 - 3a. The caller is not the owner; the system rejects the request.
 
-### Post condition(s)
+##### Post condition(s)
 
 - The gallery, its items, their media, and their backing files no longer exist.
 
 ---
 
-## UC-012 - Browse Music Albums
+#### UC-020 - Add a Video to a Gallery
 
-### Description
+##### Description
+
+Allow an authenticated user to append one of their videos to a gallery they may contribute to.
+
+##### Primary actor
+
+- Standard User
+- Admin
+
+##### Parameters
+
+- gallery — the gallery to append the video to; required.
+- video — the video to append; required.
+
+##### Pre condition(s)
+
+- The caller is authenticated.
+
+##### Trigger
+
+- The caller submits a request to add a video to a gallery.
+
+##### Happy path
+
+1. The caller submits a request to add a video to a gallery.
+2. The system verifies the caller may contribute to the gallery.
+3. The system resolves the video and its backing file.
+4. The system verifies the caller owns the backing file, or is the Root Admin.
+5. The system verifies the video is not already in a gallery.
+6. The system appends the item at the next order position.
+7. The system returns the created item.
+
+##### Alternative flow
+
+- 1a. The named medium is not a video; the system rejects the request.
+- 2a. The gallery is private and the caller is neither its owner nor the Root Admin; the system rejects the request.
+- 2b. No gallery matches the requested identifier; the system rejects the request.
+- 3a. No video matches the requested identifier; the system rejects the request.
+- 4a. The video belongs to another user and the caller is not the Root Admin; the system rejects the request.
+- 5a. The video already belongs to a gallery; the system rejects the request.
+
+##### Post condition(s)
+
+- The gallery holds the new item at the next order position.
+- The video belongs to this gallery.
+
+---
+
+#### UC-021 - Remove a Video from a Gallery
+
+##### Description
+
+Allow an authenticated user to remove a video from a gallery, permanently deleting the item, its medium, and — when the
+caller owns the file — the backing file.
+
+##### Primary actor
+
+- Standard User
+- Admin
+
+##### Parameters
+
+- gallery — the gallery to remove the video from; required.
+- video — the video to remove; required.
+
+##### Pre condition(s)
+
+- The caller is authenticated.
+
+##### Trigger
+
+- The caller submits a request to remove a video from a gallery.
+
+##### Happy path
+
+1. The caller submits a removal request.
+2. The system verifies the caller may remove items of the gallery.
+3. The system locates the video's item within the gallery.
+4. The system deletes the item and its video record, and the backing file when the caller owns it.
+5. The system confirms the removal.
+
+##### Alternative flow
+
+- 2a. The gallery is private and the caller is neither its owner nor the Root Admin; the system rejects the request.
+- 2b. No gallery matches the requested identifier; the system rejects the request.
+- 3a. The video is not in the gallery named in the request; the system reports it as not found.
+
+##### Post condition(s)
+
+- The item and its video record no longer exist.
+- The backing file's record and stored content no longer exist when the caller owned the file.
+
+### Music
+
+```puml
+@startuml
+left to right direction
+skinparam style strictuml
+
+actor "Standard User" as StandardUser
+actor "Admin" as Admin
+
+package "Music" {
+  usecase "UC-012 - Browse music albums" as UC012
+  usecase "UC-013 - Create a music playlist" as UC013
+  usecase "UC-014 - Browse music playlists" as UC014
+  usecase "UC-015 - Update a music playlist" as UC015
+  usecase "UC-016 - Add a track to a music playlist" as UC016
+  usecase "UC-017 - Remove a track from a music playlist" as UC017
+  usecase "UC-018 - Reorder the tracks of a music playlist" as UC018
+  usecase "UC-019 - Delete a music playlist" as UC019
+}
+
+StandardUser --> UC012
+Admin --> UC012
+StandardUser --> UC013
+Admin --> UC013
+StandardUser --> UC014
+Admin --> UC014
+StandardUser --> UC015
+Admin --> UC015
+StandardUser --> UC016
+Admin --> UC016
+StandardUser --> UC017
+Admin --> UC017
+StandardUser --> UC018
+Admin --> UC018
+StandardUser --> UC019
+Admin --> UC019
+@enduml
+```
+
+#### UC-012 - Browse Music Albums
+
+##### Description
 
 Allow an authenticated user to browse the music albums the system holds, read each album's mediums, and read the tracks
 each medium sequences.
 
-### Primary actor
+##### Primary actor
 
 - Standard User
 - Admin
-- Root Admin
 
-### Pre condition(s)
+##### Parameters
+
+- filter — an optional narrowing of the album collection.
+- album — the album to read, when reading one; optional.
+- medium — the medium to read, when reading one; optional.
+- track — the track to read, when reading one; optional.
+
+##### Pre condition(s)
 
 - The caller is authenticated.
 
-### Trigger(s)
+##### Trigger
 
-- `GET /api/v1/library/music/album`
-- `GET /api/v1/library/music/album/{album_id}`
-- `GET /api/v1/library/music/album/{album_id}/medium/{medium_index}`
-- `GET /api/v1/library/music/album/{album_id}/medium/{medium_index}/track`
-- `GET /api/v1/library/music/album/{album_id}/medium/{medium_index}/track/{track_index}`
+- The caller asks to browse the music albums the system holds.
+- The caller asks to read one album.
+- The caller asks to read one medium of one album.
+- The caller asks to list the tracks of one medium.
+- The caller asks to read one track of one medium.
 
-### Bounded context(s)
-
-- Library
-
-### Business rules
-
-- Albums are not owned and carry no visibility flag: every authenticated caller sees the same albums, and read access is
-  never denied.
-- The album collection can be narrowed by an optional filter.
-- An album's mediums are ordered by ascending medium index, and each medium's tracks by ascending track index, so
-  repeated reads return a stable order.
-- A medium belongs to exactly one album and is addressed by its album-scoped medium index.
-- A track is the placement of a recording in a medium; it is addressed by its medium index and track index, and a track
-  of another album or medium is reported as not found.
-- A track shows its position within the medium that sequences it and the recording it places.
-- A track's name is the name of its music recording.
-
-### Happy path
+##### Happy path
 
 1. The caller asks to browse the music albums the system holds.
 2. The system verifies the caller's account still exists.
@@ -672,9 +721,9 @@ each medium sequences.
 10. The caller requests one track of the medium by its position.
 11. The system verifies the album, medium and track exist and returns the track.
 
-### Alternative flow
+##### Alternative flow
 
-- 1a. A request filter is invalid (an unknown, malformed or out-of-range filter); the system rejects the request.
+- 1a. A request filter is invalid (unknown, malformed or out of range); the system rejects the request.
 - 4a. The album identifier is not valid; the system rejects the request.
 - 4b. No album matches the requested identifier; the system rejects the request.
 - 6a. The album identifier is not valid, or the medium index is not a valid index; the system rejects the request.
@@ -683,105 +732,87 @@ each medium sequences.
 - 8a. The medium index or track index is not a valid index; the system rejects the request.
 - 8b. No track of the medium matches the requested index; the system rejects the request.
 
-### Post condition(s)
+##### Post condition(s)
 
 - The caller is shown the requested albums, album, medium, medium tracks or track.
 
 ---
 
-## UC-013 - Create a Music Playlist
+#### UC-013 - Create a Music Playlist
 
-### Description
+##### Description
 
 Allow an authenticated user to create a playlist they own to collect and order music recordings.
 
-### Primary actor
+##### Primary actor
 
 - Standard User
 - Admin
 
-### Pre condition(s)
+##### Parameters
+
+- name — the playlist name; required.
+- visibility — whether other users may read the playlist; optional, private by default.
+
+##### Pre condition(s)
 
 - The caller is authenticated.
 
-### Trigger(s)
+##### Trigger
 
-- Playlist creation request (`POST /api/v1/library/music/playlist`).
+- The caller submits a playlist-creation request.
 
-### Bounded context(s)
+##### Happy path
 
-- Library
-
-### Business rules
-
-- The playlist name is required, is trimmed of surrounding whitespace, must not be empty or only whitespace, and must be
-  at most 100 characters long.
-- A caller's playlist names are unique: the same owner cannot create two playlists with the same normalized name.
-  Different users may use the same name.
-- A playlist is private by default; the caller may request it be public.
-- The caller becomes the playlist owner.
-- A newly created playlist is empty, and its last-modified time equals its creation time.
-
-### Happy path
-
-1. The caller submits a playlist creation request carrying a name and an optional visibility.
+1. The caller submits a playlist-creation request.
 2. The system verifies the caller's account still exists.
 3. The system trims and validates the name.
-4. The system verifies the caller does not already own a playlist with the same normalized name.
+4. The system verifies the caller does not already own a playlist with the same name.
 5. The system creates the playlist owned by the caller, private unless requested otherwise.
 6. The system returns the created playlist.
 
-### Alternative flow
+##### Alternative flow
 
-- 1a. The request is unauthenticated; the system rejects the request.
-- 3a. The name is empty or only whitespace, or longer than 100 characters; the system rejects the request and creates
+- 3a. The name cannot be used: it is empty, only whitespace, or too long; the system rejects the request and creates
   nothing.
 - 4a. The caller already owns a playlist with the same name; the system rejects the request and creates nothing.
 
-### Post condition(s)
+##### Post condition(s)
 
 - A playlist owned by the caller exists and holds no track.
 
 ---
 
-## UC-014 - Browse Music Playlists
+#### UC-014 - Browse Music Playlists
 
-### Description
+##### Description
 
 Allow an authenticated user to list the playlists they may see, read one playlist, and read the tracks it sequences.
 
-### Primary actor
+##### Primary actor
 
 - Standard User
 - Admin
-- Root Admin
 
-### Pre condition(s)
+##### Parameters
+
+- filter — an optional narrowing of the listing by name, visibility and owner.
+- page — an optional position in the listing.
+- playlist — the playlist to read, when reading one; optional.
+- position — the position of a track to read; optional.
+
+##### Pre condition(s)
 
 - The caller is authenticated.
 
-### Trigger(s)
+##### Trigger
 
-- `GET /api/v1/library/music/playlist`
-- `GET /api/v1/library/music/playlist/{playlist_id}`
-- `GET /api/v1/library/music/playlist/{playlist_id}/track`
-- `GET /api/v1/library/music/playlist/{playlist_id}/track/{track_index}`
+- The caller asks to list the music playlists it may see.
+- The caller asks to read one playlist.
+- The caller asks to list the tracks of one playlist.
+- The caller asks to read one track of one playlist.
 
-### Bounded context(s)
-
-- Library
-
-### Business rules
-
-- A public playlist is readable by every authenticated caller; a private playlist is readable only by its owner and the
-  Root Admin. A playlist the caller cannot read is reported as not found, exactly like a missing one, without revealing
-  which case applies.
-- The listing can be narrowed by name, visibility and owner, and paged. An invalid filter or page request is rejected.
-- A playlist's tracks are kept in a stable order.
-- A playlist track shows its position in the order, the recording it places, its backing file and the recording's
-  details.
-
-### Happy path
+##### Happy path
 
 1. The caller asks to list the music playlists it may see.
 2. The system verifies the caller's account still exists, applies the requested filters, retains the playlists the
@@ -791,7 +822,7 @@ Allow an authenticated user to list the playlists they may see, read one playlis
 5. The caller requests one track of the playlist by its position.
 6. The system verifies the playlist and the position, and returns the track.
 
-### Alternative flow
+##### Alternative flow
 
 - 1a. The request is unauthenticated; the system rejects the request.
 - 1b. A request filter or page is invalid; the system rejects the request.
@@ -801,49 +832,39 @@ Allow an authenticated user to list the playlists they may see, read one playlis
 - 5a. The track position is not valid; the system rejects the request.
 - 5b. The playlist has no track at the requested position; the system reports it as not found.
 
-### Post condition(s)
+##### Post condition(s)
 
 - The caller is shown the requested playlists, playlist, or track.
 
 ---
 
-## UC-015 - Update a Music Playlist
+#### UC-015 - Update a Music Playlist
 
-### Description
+##### Description
 
 Allow the owner of a playlist to rename it or change its visibility.
 
-### Primary actor
+##### Primary actor
 
 - Standard User
 - Admin
 
-### Pre condition(s)
+##### Parameters
+
+- playlist — the playlist to update; required.
+- name — the new playlist name; optional.
+- visibility — the new visibility; optional.
+- track — a recording to append in the same request; optional.
+
+##### Pre condition(s)
 
 - The caller is authenticated and owns the playlist.
 
-### Trigger(s)
+##### Trigger
 
-- `PATCH /api/v1/library/music/playlist/{playlist_id}`
+- The caller submits an update to one of its playlists.
 
-### Bounded context(s)
-
-- Library
-
-### Business rules
-
-- Renaming a playlist and changing its visibility are owner-only. A caller who can read a public playlist but is not its
-  owner, including the Root Admin, is rejected and nothing is applied.
-- A playlist the caller cannot read is reported as not found, exactly like a missing one.
-- The caller may send either change, both, or neither. An omitted change leaves that setting unchanged; a request with
-  neither change is accepted and changes only the last-modified time.
-- A new name is trimmed, non-empty and at most 100 characters long, and must be unique among the playlists its owner
-  has. A duplicate name is rejected; an invalid name is rejected.
-- A successful update advances the last-modified time.
-- A request that also adds a track is governed by UC-016 and is all-or-nothing: if this use case's owner-only rule
-  rejects the request, the track is not added either.
-
-### Happy path
+##### Happy path
 
 1. The caller sends one or both changes for one of its playlists.
 2. The system verifies the caller's account still exists and the playlist exists.
@@ -851,59 +872,47 @@ Allow the owner of a playlist to rename it or change its visibility.
 4. The system validates the new name and its per-owner uniqueness, when present.
 5. The system stores the changes, advances the last-modified time and returns the updated playlist.
 
-### Alternative flow
+##### Alternative flow
 
 - 1a. The request is unauthenticated; the system rejects the request.
 - 2a. The playlist reference is not valid; the system rejects the request.
 - 2b. No playlist matches the reference, or the caller cannot read it; the system reports it as not found.
 - 3a. The caller can read the playlist but does not own it; the system rejects the request and applies nothing.
-- 4a. The name is empty, whitespace only or too long; the system rejects the request and applies nothing.
+- 4a. The name cannot be used: it is empty, whitespace only or too long; the system rejects the request and applies
+  nothing.
 - 4b. The name is already used by another playlist the caller owns; the system rejects the request and applies nothing.
 
-### Post condition(s)
+##### Post condition(s)
 
 - The playlist carries the requested changes, and its last-modified time has advanced.
 
 ---
 
-## UC-016 - Add a Track to a Music Playlist
+#### UC-016 - Add a Track to a Music Playlist
 
-### Description
+##### Description
 
 Allow a caller who can read a playlist to append one occurrence of a shared music recording to it.
 
-### Primary actor
+##### Primary actor
 
 - Standard User
 - Admin
-- Root Admin
 
-### Pre condition(s)
+##### Parameters
+
+- playlist — the playlist to append to; required.
+- recording — the music recording to append; required.
+
+##### Pre condition(s)
 
 - The caller is authenticated and can read the playlist.
 
-### Trigger(s)
+##### Trigger
 
-- `PATCH /api/v1/library/music/playlist/{playlist_id}`
+- The caller submits an addition of a recording to a playlist.
 
-### Bounded context(s)
-
-- Library
-
-### Business rules
-
-- Adding a track is allowed to any caller who can read the playlist. On a private playlist this means the owner and the
-  Root Admin. A caller who cannot read the playlist is rejected and nothing is applied.
-- The requested recording must exist; an unknown recording is rejected.
-- A recording appears at most once in one playlist: a second add is rejected. Album mediums may still sequence the same
-  recording twice.
-- A new track is appended after the last track in the order.
-- The request is all-or-nothing. If it also asks for an owner-only change from a non-owner, the whole request is
-  rejected and neither change is applied (see UC-015).
-- If another change to the playlist lands first, the addition is rejected and nothing is applied.
-- A successful add advances the last-modified time and returns the updated playlist, including the new track.
-
-### Happy path
+##### Happy path
 
 1. The caller asks to add an existing recording that is not already in the playlist.
 2. The system verifies the caller's account still exists and the playlist exists.
@@ -911,7 +920,7 @@ Allow a caller who can read a playlist to append one occurrence of a shared musi
 4. The system verifies the recording exists and is not already present.
 5. The system appends the track after the last one, advances the last-modified time and returns the updated playlist.
 
-### Alternative flow
+##### Alternative flow
 
 - 1a. The request is unauthenticated; the system rejects the request.
 - 2a. The playlist reference is not valid; the system rejects the request.
@@ -923,107 +932,88 @@ Allow a caller who can read a playlist to append one occurrence of a shared musi
 - 5a. Another change to the playlist lands first; the system rejects the request and nothing is applied. The caller may
   try again.
 
-### Post condition(s)
+##### Post condition(s)
 
 - The playlist sequences one more recording occurrence, and its last-modified time has advanced.
 
 ---
 
-## UC-017 - Remove a Track from a Music Playlist
+#### UC-017 - Remove a Track from a Music Playlist
 
-### Description
+##### Description
 
 Allow a caller who can read a playlist to remove one of its track occurrences.
 
-### Primary actor
+##### Primary actor
 
 - Standard User
 - Admin
-- Root Admin
 
-### Pre condition(s)
+##### Parameters
+
+- playlist — the playlist to remove the track from; required.
+- position — the position of the track to remove; required.
+
+##### Pre condition(s)
 
 - The caller is authenticated and can read the playlist.
 
-### Trigger(s)
+##### Trigger
 
-- `DELETE /api/v1/library/music/playlist/{playlist_id}/track/{track_index}`
+- The caller submits a removal of one track of a playlist.
 
-### Bounded context(s)
-
-- Library
-
-### Business rules
-
-- Removing a track is allowed to any caller who can read the playlist. A caller who cannot read the playlist is rejected
-  and nothing is applied.
-- The addressed track must exist; an unknown position is reported as not found.
-- The remaining tracks keep their positions, leaving a gap. A later add appends after the last remaining track.
-- The shared recording, its audio and its file survive the removal.
-- A successful removal advances the last-modified time and confirms the deletion.
-
-### Happy path
+##### Happy path
 
 1. The caller asks to remove a track by its position in the order.
 2. The system verifies the caller's account still exists and the playlist exists.
 3. The system verifies the caller can read the playlist and the track position exists.
 4. The system removes the track, advances the last-modified time and confirms the deletion.
 
-### Alternative flow
+##### Alternative flow
 
 - 1a. The request is unauthenticated; the system rejects the request.
 - 1b. The playlist reference or track position is malformed; the system rejects the request.
 - 2a. No playlist matches the reference, or the caller cannot read it; the system reports it as not found.
 - 3a. The playlist has no track at the requested position; the system reports it as not found.
 
-### Post condition(s)
+##### Post condition(s)
 
 - The addressed track no longer exists, the remaining positions are unchanged, and the shared recording survives.
 
 ---
 
-## UC-018 - Reorder the Tracks of a Music Playlist
+#### UC-018 - Reorder the Tracks of a Music Playlist
 
-### Description
+##### Description
 
 Allow a caller who can read a playlist to replace its track order with a requested permutation.
 
-### Primary actor
+##### Primary actor
 
 - Standard User
 - Admin
-- Root Admin
 
-### Pre condition(s)
+##### Parameters
+
+- playlist — the playlist to reorder; required.
+- order — the requested order of its tracks; required.
+
+##### Pre condition(s)
 
 - The caller is authenticated and can read the playlist.
 
-### Trigger(s)
+##### Trigger
 
-- `PUT /api/v1/library/music/playlist/{playlist_id}/track`
+- The caller submits a new track order for a playlist.
 
-### Bounded context(s)
-
-- Library
-
-### Business rules
-
-- Reordering is allowed to any caller who can read the playlist. A caller who cannot read the playlist is rejected and
-  nothing is applied.
-- The requested order must name every current track exactly once. A missing, repeated or unknown track is rejected and
-  leaves the order unchanged.
-- The tracks take the requested order, with no gaps.
-- Reordering an empty playlist is accepted and changes only the last-modified time.
-- A successful reorder advances the last-modified time and returns the reordered playlist.
-
-### Happy path
+##### Happy path
 
 1. The caller sends every current track exactly once in a new order.
 2. The system verifies the caller's account still exists and the playlist exists.
 3. The system verifies the caller can read the playlist and the order is complete.
 4. The system applies the order, advances the last-modified time and returns the reordered playlist.
 
-### Alternative flow
+##### Alternative flow
 
 - 1a. The request is unauthenticated; the system rejects the request.
 - 1b. The playlist reference is malformed or the request cannot be understood; the system rejects the request.
@@ -1031,58 +1021,167 @@ Allow a caller who can read a playlist to replace its track order with a request
 - 3a. The order omits a current track, repeats a track or names an unknown track; the system rejects the request and
   leaves the order unchanged.
 
-### Post condition(s)
+##### Post condition(s)
 
 - The playlist tracks appear in the requested order with no gaps.
 
 ---
 
-## UC-019 - Delete a Music Playlist
+#### UC-019 - Delete a Music Playlist
 
-### Description
+##### Description
 
 Allow the owner of a playlist to delete it and its track placements.
 
-### Primary actor
+##### Primary actor
 
 - Standard User
 - Admin
 
-### Pre condition(s)
+##### Parameters
+
+- playlist — the playlist to delete; required.
+
+##### Pre condition(s)
 
 - The caller is authenticated and owns the playlist.
 
-### Trigger(s)
+##### Trigger
 
-- `DELETE /api/v1/library/music/playlist/{playlist_id}`
+- The caller submits a deletion of one of its playlists.
 
-### Bounded context(s)
-
-- Library
-
-### Business rules
-
-- Deleting a playlist is owner-only. A caller who can read a public playlist but is not its owner, including the Root
-  Admin, is rejected and deletes nothing.
-- A playlist the caller cannot read is reported as not found, exactly like a missing one.
-- Deleting a playlist removes its track placements with it.
-- The shared recordings, their audio and their files survive.
-- A successful deletion confirms the removal.
-
-### Happy path
+##### Happy path
 
 1. The caller deletes one of its playlists.
 2. The system verifies the caller's account still exists and the playlist exists.
 3. The system verifies the caller can read the playlist and owns it.
 4. The system deletes the playlist and its track placements and confirms the removal.
 
-### Alternative flow
+##### Alternative flow
 
 - 1a. The request is unauthenticated; the system rejects the request.
 - 1b. The playlist reference is malformed; the system rejects the request.
 - 2a. No playlist matches the reference, or the caller cannot read it; the system reports it as not found.
 - 3a. The caller can read the playlist but does not own it; the system rejects the request and deletes nothing.
 
-### Post condition(s)
+##### Post condition(s)
 
 - The playlist and its track placements no longer exist; the recordings, audio and files it referenced still exist.
+
+## Configuration
+
+```puml
+@startuml
+left to right direction
+skinparam style strictuml
+
+actor "Root Admin" as RootAdmin
+
+package "Configuration" {
+  usecase "UC-004 - Load the configuration" as UC004
+}
+
+RootAdmin --> UC004
+@enduml
+```
+
+### UC-004 - Load Configuration
+
+#### Description
+
+On every runtime the system loads the application configuration by layering the stored settings with the optional
+configuration file and the environment, generating the secrets on the first runtime.
+
+#### Primary actor
+
+- Root Admin
+
+#### Parameters
+
+None — the event carries no data.
+
+#### Pre condition(s)
+
+- The system's stored settings are available.
+
+#### Trigger
+
+- The Root Admin starts the service.
+
+#### Happy path
+
+1. The system checks whether stored settings exist; none do, so the system creates the default settings and freshly
+   generated secrets.
+2. The system loads the configuration: the stored settings are layered with the configuration file and the environment
+   overrides.
+3. The system returns the merged configuration to the runtime.
+
+#### Alternative flow
+
+- 1a. Stored settings already exist: the system skips their creation and loads the configuration directly.
+
+#### Post condition(s)
+
+- The stored settings exist.
+- The runtime holds a complete configuration to wire its dependencies.
+
+## Asset
+
+```puml
+@startuml
+left to right direction
+skinparam style strictuml
+
+actor "Standard User" as StandardUser
+
+package "Asset" {
+  usecase "UC-006 - Upload a media file" as UC006
+}
+
+StandardUser --> UC006
+@enduml
+```
+
+### UC-006 - Upload Media File
+
+#### Description
+
+Allow a user to upload a supported media file to the service for storage, processing, cataloging, and distribution. The
+upload is resumable and chunked, so it spans several requests.
+
+#### Primary actor
+
+- Standard User
+
+#### Parameters
+
+- media file — the content to upload; required.
+- fingerprint — the caller's declaration of the content fingerprint; optional.
+
+#### Pre condition(s)
+
+- The caller is authenticated.
+
+#### Trigger
+
+- The user starts an upload.
+
+#### Happy path
+
+1. The user starts an upload.
+2. The system determines the media kind from the file content.
+3. The system verifies the media kind is supported.
+4. The system computes the content fingerprint.
+5. The system stores the file and saves its record bound to the caller.
+6. The system returns the created file record.
+
+#### Alternative flow
+
+- 3a. The media kind is unsupported; the system rejects the upload and stores nothing.
+- 4a. The caller already owns a file with the same fingerprint; the system verifies the uploaded content and returns the
+  existing file record, storing nothing new and leaving the upload unfinished.
+
+#### Post condition(s)
+
+- The file is stored under a unique path.
+- A file record bound to the caller exists with its media kind, content fingerprint and private visibility.

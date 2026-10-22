@@ -48,6 +48,7 @@ VERBOSE=0
 # )
 RULES=(
 	"ARCH-001:check_arch_001"
+	"ARCH-005:check_arch_005"
 	"STY-RUST-001:check_sty_rust_001"
 	"STY-RUST-002:check_sty_rust_002"
 	"STY-RUST-003:check_sty_rust_003"
@@ -129,6 +130,7 @@ RULES=(
 	"DOC-003:check_doc_003"
 	"DOC-005:check_doc_005"
 	"DOC-007:check_doc_007"
+	"DOC-008:check_doc_008"
 	"STY-SQL-001:check_sty_sql_001"
 	"STY-SQL-003:check_sty_sql_003"
 	"STY-SQL-004:check_sty_sql_004"
@@ -3045,25 +3047,29 @@ check_doc_003() {
 
 # check_doc_005 — every business use case entry in the catalog follows the entry
 # format of § 5 (DOC-005). The catalog (docs/development/UseCases.md) is the
-# rule's data: each `## UC-<seq> - <Name>` entry's `###` field headings are read
-# at run time, as check_test_041 reads the entries, so a new use case is covered
-# by cataloguing it, never by editing this function. `Secondary actor (optional)`
-# and `Alternative flow` are optional and may sit anywhere; every other required
-# heading must appear once, in the documented order, and no entry carries the
-# removed `### Application use case(s)` heading. The entry IDs are sequential and
-# zero-padded across the catalog.
+# rule's data: each `UC-<seq> - <Name>` entry's field headings are read at run
+# time, as check_test_041 reads the entries, so a new use case is covered by
+# cataloguing it, never by editing this function. An entry is a `###` heading,
+# or a `####` one inside a bounded context that divides into sub-packages, and
+# its fields sit exactly one level below it. `Alternative flow` is optional and
+# may sit anywhere; every other required heading must appear once, in the
+# documented order, and no entry carries a removed heading
+# (`Application use case(s)`, `Business rules`, `Secondary actor (optional)`,
+# `Bounded context(s)`). The entry IDs are sequential and zero-padded, and the
+# catalog holds each of them exactly once; the package grouping frees the file
+# position, so the entries need not appear in numeric order.
 check_doc_005() {
 	local id="DOC-005"
 	local catalog="docs/development/UseCases.md"
 	local kind seq num line hline heading rank idx=0 i last=0
+	local lower_title
 	local result=0
 	local -a required=(
 		"Description"
 		"Primary actor"
+		"Parameters"
 		"Pre condition(s)"
-		"Trigger(s)"
-		"Bounded context(s)"
-		"Business rules"
+		"Trigger"
 		"Happy path"
 		"Post condition(s)"
 	)
@@ -3072,6 +3078,7 @@ check_doc_005() {
 	local -A entry_seq=()
 	local -A entry_line=()
 	local -A entry_headings=()
+	local -A entry_count=()
 
 	if [ ! -f "$catalog" ]; then
 		printf 'error: %s: missing %s\n' "$id" "$catalog" >&2
@@ -3082,15 +3089,22 @@ check_doc_005() {
 		order["${required[$rank]}"]=$((rank + 1))
 	done
 
-	# Each `## UC-<seq> - <Name>` entry and each `###` heading under it, one
-	# `E`/`H` record per line. A `###` heading that sits before the first `## UC-`
-	# entry has no index and is dropped.
+	# Each `UC-<seq> - <Name>` entry and each field heading under it, one
+	# `E`/`H` record per line. An entry is a `###` or `####` heading; its fields
+	# are one level deeper. A heading at or above the entry level ends the entry,
+	# so a sub-package heading closes the entry before it.
 	while IFS=$'\t' read -r kind seq line hline; do
 		case "$kind" in
 		E)
 			idx=$((idx + 1))
 			entry_seq["$idx"]="$seq"
 			entry_line["$idx"]="$line"
+			lower_title="${hline,,}"
+			if [[ $lower_title =~ (^|[^[:alnum:]_])(and|or)([^[:alnum:]_]|$) ]]; then
+				printf 'error: %s: %s:%s: UC-%s is named "%s"; a name joined by "and" or "or" describes more than one capability — split it, or name the shared capability\n' \
+					"$id" "$catalog" "$line" "$seq" "$hline" >&2
+				result=1
+			fi
 			;;
 		H)
 			[ "$idx" -gt 0 ] || continue
@@ -3099,17 +3113,25 @@ check_doc_005() {
 		esac
 	done < <(awk '
 		function trim(s) { gsub(/^[[:space:]]+|[[:space:]]+$/, "", s); return s }
+		function hashes(s, n) { n = 0; while (substr(s, n + 1, 1) == "#") n++; return n }
 
-		/^## UC-[0-9]+ - / {
+		{ lvl = hashes($0) }
+
+		/^(###|####) UC-[0-9]+ - / {
 			seq = $0
-			sub(/^## UC-/, "", seq); sub(/ - .*$/, "", seq)
-			printf "E\t%s\t%d\n", seq, NR
+			sub(/^#+ UC-/, "", seq); sub(/ - .*$/, "", seq)
+			name = $0
+			sub(/^#+ UC-[0-9]+ - /, "", name)
+			printf "E\t%s\t%d\t%s\n", seq, NR, trim(name)
+			entry_level = lvl
 			in_entry = 1
 			next
 		}
-		/^## / { in_entry = 0; next }
-		in_entry && /^### / {
-			printf "H\t%s\t%d\t%s\n", seq, NR, trim(substr($0, 5))
+
+		in_entry && /^#/ && lvl <= entry_level { in_entry = 0 }
+
+		in_entry && /^#/ && lvl == entry_level + 1 {
+			printf "H\t%s\t%d\t%s\n", seq, NR, trim(substr($0, lvl + 2))
 			next
 		}
 	' "$catalog")
@@ -3119,7 +3141,9 @@ check_doc_005() {
 		return 1
 	fi
 
-	# The catalog numbers its entries UC-001, UC-002, … in order.
+	# The catalog holds each identifier UC-001…UC-0NN exactly once. The entries
+	# are grouped by bounded context, so their file position carries no meaning:
+	# a new use case takes the next free identifier wherever its section sits.
 	for ((i = 1; i <= idx; i++)); do
 		seq="${entry_seq[$i]}"
 		line="${entry_line[$i]}"
@@ -3129,15 +3153,29 @@ check_doc_005() {
 				"$id" "$catalog" "$line" "$seq" "$(printf '%03d' "$num")" >&2
 			result=1
 		fi
-		if [ "$num" -ne "$i" ]; then
-			printf 'error: %s: %s:%s: use case UC-%s is not sequential; expected UC-%03d\n' \
-				"$id" "$catalog" "$line" "$seq" "$i" >&2
+		if [ "$num" -lt 1 ] || [ "$num" -gt "$idx" ]; then
+			printf 'error: %s: %s:%s: use case UC-%s is outside UC-001…UC-%03d; the catalog holds each identifier exactly once\n' \
+				"$id" "$catalog" "$line" "$seq" "$idx" >&2
+			result=1
+			continue
+		fi
+		entry_count["$num"]=$((${entry_count[$num]:-0} + 1))
+	done
+
+	for ((i = 1; i <= idx; i++)); do
+		if [ "${entry_count[$i]:-0}" -eq 0 ]; then
+			printf 'error: %s: %s: use case UC-%03d is missing; the catalog holds each identifier exactly once\n' \
+				"$id" "$catalog" "$i" >&2
+			result=1
+		elif [ "${entry_count[$i]:-0}" -gt 1 ]; then
+			printf 'error: %s: %s: use case UC-%03d appears %s times; the catalog holds each identifier exactly once\n' \
+				"$id" "$catalog" "$i" "${entry_count[$i]}" >&2
 			result=1
 		fi
 	done
 
 	# Each entry carries the required field headings in the documented order and
-	# none carries the removed `### Application use case(s)`.
+	# none carries a removed heading.
 	for ((i = 1; i <= idx; i++)); do
 		seq="${entry_seq[$i]}"
 		line="${entry_line[$i]}"
@@ -3146,12 +3184,14 @@ check_doc_005() {
 
 		while IFS=$'\t' read -r hline heading; do
 			[ -n "$heading" ] || continue
-			if [ "$heading" = "Application use case(s)" ]; then
-				printf 'error: %s: %s:%s: UC-%s carries the removed "### Application use case(s)" heading; the entry format (TechnicalDesign.md § 5) has no such field\n' \
-					"$id" "$catalog" "$hline" "$seq" >&2
+			case "$heading" in
+			"Application use case(s)" | "Business rules" | "Secondary actor (optional)" | "Secondary actor" | "Bounded context(s)")
+				printf 'error: %s: %s:%s: UC-%s carries the removed "#### %s" heading; the entry format (TechnicalDesign.md § 5) has no such field\n' \
+					"$id" "$catalog" "$hline" "$seq" "$heading" >&2
 				result=1
 				continue
-			fi
+				;;
+			esac
 			if [ -n "${order[$heading]+set}" ]; then
 				seen["$heading"]=1
 				rank="${order[$heading]}"
@@ -3167,7 +3207,7 @@ check_doc_005() {
 
 		for heading in "${required[@]}"; do
 			if [ -z "${seen[$heading]+set}" ]; then
-				printf 'error: %s: %s:%s: UC-%s is missing the required field heading "### %s" (TechnicalDesign.md § 5)\n' \
+				printf 'error: %s: %s:%s: UC-%s is missing the required field heading "#### %s" (TechnicalDesign.md § 5)\n' \
 					"$id" "$catalog" "$line" "$seq" "$heading" >&2
 				result=1
 			fi
@@ -3179,27 +3219,25 @@ check_doc_005() {
 
 # check_doc_007 — a business use case entry states intent and outcome in
 # business terms (DOC-007). The catalog (docs/development/UseCases.md) is the
-# rule's data: every `## UC-<seq> - <Name>` entry is read at run time, as
+# rule's data: every `UC-<seq> - <Name>` entry is read at run time, as
 # check_doc_005 reads them, so a new use case is covered by cataloguing it,
-# never by editing this function. Every `###` field of an entry except the
-# exempt ones — the method and path in `### Trigger(s)`, the context name in
-# `### Bounded context(s)` — is narrative, and so is any prose directly under
-# the entry heading; the catalog preamble belongs to no entry and is not read.
+# never by editing this function. Every field of an entry is narrative, and so
+# is any prose directly under the entry heading — `Trigger` included, because a
+# trigger names the event and never the entry point that carries it; the
+# catalog preamble and the diagrams belong to no entry and are not read.
 # An inline code span is implementation syntax in business prose, and the
 # denylisted vocabulary (technical words matched as whole words, plus the
 # patterns for method and route, status code, media type and representation
-# mechanics) comes from rule_enforcer.yaml, so the list grows without editing
-# this function.
+# mechanics) lives below, so the list grows without editing the scan.
 check_doc_007() {
 	local id="DOC-007"
 	local catalog="docs/development/UseCases.md"
-	local exempt_joined line seq text lower section word pattern result=0
+	local line seq text lower word pattern result=0
 	# DOC-007 fixes this vocabulary in TechnicalDesign.md § 5, so the data lives
 	# next to its check rather than in the edit-locked rule_enforcer.yaml. A
 	# change to the rule changes this list in the same commit. Whole words are
 	# matched against `[_[:alnum:]]` boundaries, so `track_index` is never a hit
 	# for `index`; a phrase matches across its spaces.
-	local -a exempt_sections=("Trigger(s)" "Bounded context(s)")
 	local -a deny_words=(
 		# storage and transaction mechanism
 		"schema"
@@ -3256,14 +3294,9 @@ check_doc_007() {
 		return 1
 	fi
 
-	exempt_joined=""
-	for section in "${exempt_sections[@]}"; do
-		exempt_joined+="${exempt_joined:+|}${section}"
-	done
-
 	# Each narrative line of each entry, one `line<TAB>seq<TAB>text` record. The
 	# parser sees the section a line sits under, which a line-oriented grep
-	# cannot do, so the exempt fields are skipped here and nowhere else.
+	# cannot do, so the field headings are skipped here and nowhere else.
 	while IFS=$'\t' read -r line seq text; do
 		[ -n "$line" ] || continue
 
@@ -3289,31 +3322,258 @@ check_doc_007() {
 				result=1
 			fi
 		done
-	done < <(awk -v exempt="$exempt_joined" '
-		function trim(s) { gsub(/^[[:space:]]+|[[:space:]]+$/, "", s); return s }
+	done < <(awk '
+		function hashes(s, n) { n = 0; while (substr(s, n + 1, 1) == "#") n++; return n }
 
-		BEGIN {
-			n = split(exempt, list, "|")
-			for (i = 1; i <= n; i++) exempt_heading[list[i]] = 1
-		}
-
-		/^## UC-[0-9]+ - / {
+		/^(###|####) UC-[0-9]+ - / {
 			seq = $0
-			sub(/^## UC-/, "", seq); sub(/ - .*$/, "", seq)
+			sub(/^#+ UC-/, "", seq); sub(/ - .*$/, "", seq)
+			entry_level = hashes($0)
 			in_entry = 1
-			skip = 0
 			next
 		}
 
-		/^## / { in_entry = 0; skip = 0; next }
+		in_entry && /^#/ && hashes($0) <= entry_level { in_entry = 0; next }
 
-		in_entry && /^### / {
-			skip = (trim(substr($0, 5)) in exempt_heading)
-			next
-		}
+		in_entry && /^#/ && hashes($0) == entry_level + 1 { next }
 
-		in_entry && !skip && length($0) {
+		in_entry && length($0) {
 			printf "%d\t%s\t%s\n", NR, seq, $0
+		}
+	' "$catalog")
+
+	return "$result"
+}
+
+# check_doc_008 — the use-case diagrams (DOC-008). The catalog
+# (docs/development/UseCases.md) publishes one PlantUML package diagram per
+# package that holds use cases — a bounded context, or a sub-package inside one
+# — plus a master diagram in the preamble. The master is the package registry:
+# every package it declares, nested ones included, needs a `##`/`###` section,
+# and a section heading is a package. A package that only groups sub-packages
+# carries no diagram of its own; every other package carries one. The check also
+# joins the diagrams to the catalogued entries: each use case appears once,
+# labelled `UC-<seq> - <name>`, and only the Glossary actors are declared. It
+# validates structure, never layout.
+check_doc_008() {
+	local id="DOC-008"
+	local catalog="docs/development/UseCases.md"
+	local kind section lineno text
+	local ctx uc actor pkg label result=0
+	local actor_list
+	local -a contexts=("Identity" "User" "Library" "Configuration" "Asset")
+	local -a actors=("Standard User" "Admin" "Root Admin")
+	local -a labels=()
+	local -A packages=()
+	local -A has_children=()
+	local -A block=()
+	local -A block_line=()
+	local -A catalog_ucs=()
+	local -A uc_seen=()
+
+	if [ ! -f "$catalog" ]; then
+		printf 'error: %s: missing %s\n' "$id" "$catalog" >&2
+		return 1
+	fi
+
+	actor_list="$(printf '%s, ' "${actors[@]}")"
+	actor_list="${actor_list%, }"
+
+	# Every `##`/`###` section heading and every line of the `puml` fences under
+	# it, one record per line; the master diagram is keyed `PREAMBLE`. A heading
+	# is read only outside a fence, so a `##` inside a diagram cannot split a
+	# section. A use case entry heading is not a section.
+	while IFS=$'\t' read -r kind section lineno text; do
+		case "$kind" in
+		S)
+			block_line["$section"]="$lineno"
+			;;
+		B)
+			block["$section"]+="$text"$'\n'
+			;;
+		L)
+			labels+=("$lineno"$'\t'"$text")
+			;;
+		esac
+	done < <(awk '
+		/^```puml[[:space:]]*$/ { in_puml = 1; next }
+		/^```[[:space:]]*$/ { if (in_puml) { in_puml = 0; next } }
+		!in_puml && /^(##|###) / {
+			if ($0 ~ /^#+ UC-[0-9]+ - /) next
+			line = $0
+			sub(/^#+ /, "", line)
+			section = line
+			printf "S\t%s\t%d\n", section, NR
+			next
+		}
+		in_puml && /^[[:space:]]*usecase[[:space:]]+"/ {
+			label = $0
+			sub(/^[[:space:]]*usecase[[:space:]]+"/, "", label)
+			sub(/".*$/, "", label)
+			printf "L\t%s\t%d\t%s\n", (section == "" ? "PREAMBLE" : section), NR, label
+		}
+		in_puml {
+			printf "B\t%s\t%d\t%s\n", (section == "" ? "PREAMBLE" : section), NR, $0
+		}
+	' "$catalog")
+
+	# The preamble carries the master diagram: it is the package registry, and it
+	# carries no use case.
+	if [ -z "${block[PREAMBLE]+set}" ]; then
+		printf 'error: %s: %s: the preamble carries no master puml diagram\n' "$id" "$catalog" >&2
+		result=1
+	else
+		while IFS= read -r pkg; do
+			[ -n "$pkg" ] || continue
+			packages["$pkg"]=1
+		done < <(printf '%s' "${block[PREAMBLE]}" |
+			sed -nE 's/^[[:space:]]*package[[:space:]]+"([^"]+)".*/\1/p')
+
+		# The nesting the master declares: a package declared inside another is
+		# its sub-package, and the parent groups it in place of a diagram of its
+		# own.
+		while IFS=$'\t' read -r pkg parent; do
+			[ -n "$pkg" ] || continue
+			[ -n "$parent" ] && has_children["$parent"]=1
+		done < <(printf '%s' "${block[PREAMBLE]}" | awk '
+			function trim(s) { gsub(/^[[:space:]]+|[[:space:]]+$/, "", s); return s }
+
+			{
+				line = $0
+				tok = ""
+				if (match(line, /package[[:space:]]+"[^"]+"/)) {
+					tok = substr(line, RSTART, RLENGTH)
+					sub(/^package[[:space:]]+"/, "", tok)
+					sub(/"$/, "", tok)
+					printf "%s\t%s\n", tok, (depth >= 1 ? stack[depth] : "")
+				}
+				opens = gsub(/\{/, "{", line)
+				closes = gsub(/\}/, "}", line)
+				if (opens > 0) {
+					depth += opens
+					stack[depth] = tok
+				}
+				if (closes > 0) {
+					depth -= closes
+					if (depth < 0) depth = 0
+				}
+			}
+		')
+
+		if [ "${#packages[@]}" -eq 0 ]; then
+			printf 'error: %s: %s: the master diagram declares no package\n' "$id" "$catalog" >&2
+			result=1
+		fi
+		for ctx in "${contexts[@]}"; do
+			if [ -z "${packages[$ctx]+set}" ]; then
+				printf 'error: %s: %s: the master diagram does not declare package "%s"\n' "$id" "$catalog" "$ctx" >&2
+				result=1
+			fi
+		done
+		if printf '%s' "${block[PREAMBLE]}" | grep -Eq 'UC-[0-9]{3}'; then
+			printf 'error: %s: %s: the master diagram declares a use case; it declares the packages only\n' "$id" "$catalog" >&2
+			result=1
+		fi
+	fi
+
+	# Every section is a package the master declares. A package that holds use
+	# cases carries one diagram of its own package; a package that only groups
+	# sub-packages carries none, and the sub-package sections carry theirs.
+	for section in "${!block_line[@]}"; do
+		if [ -z "${packages[$section]+set}" ]; then
+			printf 'error: %s: %s:%s: section "%s" is not a package the master declares; declare it in the master diagram first\n' \
+				"$id" "$catalog" "${block_line[$section]}" "$section" >&2
+			result=1
+			continue
+		fi
+		if [ -z "${block[$section]+set}" ]; then
+			if [ -n "${has_children[$section]+set}" ]; then
+				continue
+			fi
+			printf 'error: %s: %s:%s: "%s" carries no puml diagram; a package that groups sub-packages carries none, every other package carries one\n' \
+				"$id" "$catalog" "${block_line[$section]}" "$section" >&2
+			result=1
+			continue
+		fi
+		if ! printf '%s' "${block[$section]}" |
+			grep -Eq "^[[:space:]]*package[[:space:]]+\"${section}\"([[:space:]]|$)"; then
+			printf 'error: %s: %s:%s: the diagram under "%s" does not declare package "%s"\n' \
+				"$id" "$catalog" "${block_line[$section]}" "$section" "$section" >&2
+			result=1
+		fi
+	done
+
+	# Every package the master declares has a section with its diagram.
+	for pkg in "${!packages[@]}"; do
+		if [ -z "${block_line[$pkg]+set}" ]; then
+			printf 'error: %s: %s: the master declares package "%s" but no section carries its diagram\n' \
+				"$id" "$catalog" "$pkg" >&2
+			result=1
+		fi
+	done
+
+	# Every use case node is labelled `<ID> - <name>`.
+	for label in "${labels[@]}"; do
+		lineno="${label%%$'\t'*}"
+		text="${label#*$'\t'}"
+		case "$text" in
+		UC-[0-9][0-9][0-9]\ -\ *) ;;
+		*)
+			printf 'error: %s: %s:%s: the use case node "%s" is not labelled "UC-<seq> - <name>"\n' \
+				"$id" "$catalog" "$lineno" "$text" >&2
+			result=1
+			;;
+		esac
+	done
+
+	# The catalog's use cases, and the use cases each diagram declares.
+	while IFS= read -r uc; do
+		[ -n "$uc" ] || continue
+		catalog_ucs["$uc"]=1
+	done < <(sed -nE 's/^(###|####) (UC-[0-9]{3}) - .*$/\2/p' "$catalog")
+
+	for section in "${!block[@]}"; do
+		[ "$section" = "PREAMBLE" ] && continue
+		while IFS= read -r uc; do
+			[ -n "$uc" ] || continue
+			if [ -z "${catalog_ucs[$uc]+set}" ]; then
+				printf 'error: %s: %s:%s: the diagram under "%s" names %s, which is not a catalogued use case\n' \
+					"$id" "$catalog" "${block_line[$section]}" "$section" "$uc" >&2
+				result=1
+				continue
+			fi
+			uc_seen["$uc"]=$((uc_seen["$uc"] + 1))
+		done < <(printf '%s' "${block[$section]}" | grep -oE 'UC-[0-9]{3}' | sort -u)
+	done
+
+	for uc in "${!catalog_ucs[@]}"; do
+		if [ "${uc_seen[$uc]:-0}" -eq 0 ]; then
+			printf 'error: %s: %s: use case %s appears in no diagram; add it to the diagram of the section that holds it\n' \
+				"$id" "$catalog" "$uc" >&2
+			result=1
+		elif [ "${uc_seen[$uc]:-0}" -gt 1 ]; then
+			printf 'error: %s: %s: use case %s appears in %s diagrams; a use case appears in exactly one\n' \
+				"$id" "$catalog" "$uc" "${uc_seen[$uc]}" >&2
+			result=1
+		fi
+	done
+
+	# Only the Glossary actors are declared.
+	while IFS=$'\t' read -r lineno actor; do
+		[ -n "$actor" ] || continue
+		if ! printf '%s\n' "${actors[@]}" | grep -Fxq -- "$actor"; then
+			printf 'error: %s: %s:%s: the diagram declares the actor "%s"; the diagrams use the Glossary actors only (%s)\n' \
+				"$id" "$catalog" "$lineno" "$actor" "$actor_list" >&2
+			result=1
+		fi
+	done < <(awk '
+		/^```puml[[:space:]]*$/ { in_puml = 1; next }
+		/^```[[:space:]]*$/ { if (in_puml) { in_puml = 0; next } }
+		in_puml && /^[[:space:]]*actor[[:space:]]+"/ {
+			line = $0
+			sub(/^[[:space:]]*actor[[:space:]]+"/, "", line)
+			sub(/".*$/, "", line)
+			printf "%d\t%s\n", NR, line
 		}
 	' "$catalog")
 
@@ -4174,25 +4434,19 @@ check_test_019() {
 	return 1
 }
 
-# check_test_053 — a use case whose catalog entry names more than one bounded
-# context keeps a single E2E file, placed in a folder named by that entry
-# (TEST-053). The catalog (docs/development/UseCases.md) is the rule's source:
-# each `## UC-<seq> - <Name>` entry's `### Bounded context(s)` bullet list is
-# read at run time, as check_test_041 reads the entry headings. TEST-041 owns
-# "one file per use case"; this check owns the multi-context case — the file
-# must sit in one of the contexts the entry names, so a use case that spans
-# contexts is neither duplicated across them nor filed under a context it does
-# not touch.
+# check_test_053 — a catalogued use case's E2E file sits in the folder named by
+# the bounded-context section that holds its entry (TEST-053). The catalog
+# (docs/development/UseCases.md) groups its entries under `## <Context>`
+# sections, and an entry names no context of its own, so the section is the
+# single source of the file's folder. TEST-041 owns "one file per use case";
+# this check owns where that file lives.
 check_test_053() {
 	local id="TEST-053"
 	local e2e_dir="test/e2e"
 	local catalog="docs/development/UseCases.md"
-	local seq num ctx file base folder list
+	local section seq num file base folder expected
 	local result=0
-	local -A contexts=()
-	local -A multi=()
-	local -A named=()
-	local -A files=()
+	local -A uc_section=()
 
 	if [ ! -d "$e2e_dir" ]; then
 		printf 'error: %s: missing %s\n' "$id" "$e2e_dir" >&2
@@ -4203,86 +4457,45 @@ check_test_053() {
 		return 1
 	fi
 
-	# The bounded contexts each catalogued use case names: one `seq<TAB>context`
-	# row per bullet under the entry's `### Bounded context(s)` heading. A bullet
-	# that sits before the first `## UC-` entry has no entry to attach to and is
-	# dropped.
-	while IFS=$'\t' read -r seq ctx; do
+	# The section each catalogued use case is filed under: one `seq<TAB>section`
+	# row per `### UC-` entry, read while the current `##` heading is in scope.
+	while IFS=$'\t' read -r seq section; do
 		[ -n "$seq" ] || continue
 		num=$((10#$seq))
-		ctx="$(printf '%s' "$ctx" | tr '[:upper:]' '[:lower:]')"
-		contexts["$num"]+="$ctx"$'\n'
+		uc_section["$num"]="$section"
 	done < <(awk '
 		function trim(s) { gsub(/^[[:space:]]+|[[:space:]]+$/, "", s); return s }
 
-		/^## UC-[0-9]+ - / { seq = $0; sub(/^## UC-/, "", seq); sub(/ - .*$/, "", seq); in_bc = 0; next }
-		/^## / { in_bc = 0; next }
-		/^### Bounded context\(s\)/ { in_bc = 1; next }
-		/^### / { in_bc = 0; next }
-		in_bc && /^- / {
-			ctx = trim(substr($0, 3))
-			if (seq != "" && ctx != "") printf "%s\t%s\n", seq, ctx
+		/^## / { section = trim(substr($0, 4)); next }
+		/^### UC-[0-9]+ - / {
+			seq = $0
+			sub(/^### UC-/, "", seq); sub(/ - .*$/, "", seq)
+			if (section != "") printf "%s\t%s\n", seq, section
 		}
 	' "$catalog")
 
-	if [ "${#contexts[@]}" -eq 0 ]; then
-		printf 'error: %s: parsed no bounded context from %s\n' "$id" "$catalog" >&2
+	if [ "${#uc_section[@]}" -eq 0 ]; then
+		printf 'error: %s: parsed no use case section from %s\n' "$id" "$catalog" >&2
 		return 1
 	fi
 
-	# Keep the use cases that name more than one context; those are the ones
-	# TEST-053 governs.
-	for num in "${!contexts[@]}"; do
-		mapfile -t list < <(printf '%s' "${contexts[$num]}" | sed '/^$/d' | sort -u)
-		if [ "${#list[@]}" -le 1 ]; then
-			continue
-		fi
-		multi["$num"]=1
-		for ctx in "${list[@]}"; do
-			named["$num:$ctx"]=1
-		done
-	done
-
-	if [ "${#multi[@]}" -eq 0 ]; then
-		printf 'error: %s: %s names no use case with more than one bounded context\n' \
-			"$id" "$catalog" >&2
-		return 1
-	fi
-
-	# Every E2E test module, grouped by the catalogued use case it names.
+	# Every E2E test module of a catalogued use case must sit in its section's
+	# folder; `fixture/` and `__pycache__/` hold no use-case module.
 	while IFS= read -r file; do
 		[ -n "$file" ] || continue
 		base="${file##*/}"
 		[[ $base =~ ^uc([0-9]+)_ ]] || continue
 		num=$((10#${BASH_REMATCH[1]}))
-		[ -n "${multi[$num]+set}" ] || continue
-		files["$num"]+="$file"$'\n'
+		[ -n "${uc_section[$num]+set}" ] || continue
+		expected="$(printf '%s' "${uc_section[$num]}" | tr '[:upper:]' '[:lower:]')"
+		folder="$(basename "$(dirname "$file")")"
+		if [ "$folder" != "$expected" ]; then
+			printf 'error: %s: %s sits in test/e2e/%s/, but UC-%03d is filed under "## %s"; place the file in test/e2e/%s/\n' \
+				"$id" "$file" "$folder" "$num" "${uc_section[$num]}" "$expected" >&2
+			result=1
+		fi
 	done < <(find "$e2e_dir" -type f -name 'uc*.py' \
 		! -path '*/__pycache__/*' | sort)
-
-	# A multi-context use case keeps one file, in a context its entry names.
-	for num in "${!multi[@]}"; do
-		mapfile -t list < <(printf '%s' "${files[$num]:-}" | sed '/^$/d')
-		if [ "${#list[@]}" -eq 0 ]; then
-			# "every use case has its file" is TEST-041's clause.
-			continue
-		fi
-
-		if [ "${#list[@]}" -gt 1 ]; then
-			printf 'error: %s: UC-%03d names more than one bounded context but keeps %s E2E files (%s); keep a single file and record the other context in the catalog\n' \
-				"$id" "$num" "${#list[@]}" "$(printf '%s' "${list[*]}" | tr ' ' ',')" >&2
-			result=1
-			continue
-		fi
-
-		file="${list[0]}"
-		folder="$(basename "$(dirname "$file")")"
-		if [ -z "${named["$num:$folder"]+set}" ]; then
-			printf 'error: %s: %s sits in test/e2e/%s/, a context UC-%03d does not name; place it in the context of the primary endpoint\n' \
-				"$id" "$file" "$folder" "$num" >&2
-			result=1
-		fi
-	done
 
 	return "$result"
 }
@@ -5507,14 +5720,14 @@ check_test_041() {
 		return 1
 	fi
 
-	# The catalogued business use cases: `## UC-<seq> - <Name>` headings. The
-	# leading-zero form is kept for diagnostics; the numeric key joins the
-	# heading to the file name.
+	# The catalogued business use cases: `UC-<seq> - <Name>` headings, at `###`
+	# or, inside a sub-package, at `####`. The leading-zero form is kept for
+	# diagnostics; the numeric key joins the heading to the file name.
 	while IFS= read -r seq; do
 		[ -n "$seq" ] || continue
 		num=$((10#$seq))
 		use_cases["$num"]="UC-$seq"
-	done < <(sed -nE 's/^## UC-([0-9]+) - .*$/\1/p' "$catalog")
+	done < <(sed -nE 's/^(###|####) UC-([0-9]+) - .*$/\2/p' "$catalog")
 
 	if [ "${#use_cases[@]}" -eq 0 ]; then
 		printf 'error: %s: parsed no use case from %s\n' "$id" "$catalog" >&2
@@ -7926,6 +8139,33 @@ check_arch_001() {
 			(.text | gsub("\\s+"; " "))] | @tsv')
 
 	return "$result"
+}
+
+# check_arch_005 — a domain model never invokes a domain service (ARCH-005).
+# The application layer calls the domain services under src/lib/domain/service/;
+# a file under src/lib/domain/model/ must not import one. The rule's own `files`
+# glob scopes the scan to the model directory, so the service imports in the
+# application layer are not findings and no path filtering happens here. The rule
+# is severity `error`, so ast-grep's exit code is the verdict: a finding fails.
+# Only `use` declarations match, as with arch-001, so a fully qualified call
+# written inline without an import is not caught.
+check_arch_005() {
+	local id="ARCH-005"
+	local rule_id="arch-005"
+	local model_dir="src/lib/domain/model"
+	local output
+
+	if [ ! -d "$model_dir" ]; then
+		printf 'error: %s: missing %s\n' "$id" "$model_dir" >&2
+		return 1
+	fi
+
+	if output="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
+		--report-style=short --color=never "$model_dir" 2>&1)"; then
+		return 0
+	fi
+	printf '%s\n' "$output"
+	return 1
 }
 
 # --- Runner -----------------------------------------------------------------

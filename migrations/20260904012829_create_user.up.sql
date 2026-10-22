@@ -12,6 +12,10 @@ CREATE TABLE user (
         credential_id
     ) REFERENCES credential (credential_id),
     CONSTRAINT chk_user_role CHECK (role IN ('ADMIN', 'STANDARD')),
-    CONSTRAINT chk_user_username CHECK (length(username) >= 4),
+    CONSTRAINT chk_user_username CHECK (
+        length(username) BETWEEN 4 AND 100
+        AND username = lower(username)
+        AND username = trim(username)
+    ),
     CONSTRAINT chk_user_email CHECK (email LIKE '%_@_%._%')
 );

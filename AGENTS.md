@@ -51,8 +51,9 @@ Rust and SQL conventions and guidelines live in `docs/development/TechnicalDesig
 ## Architecture
 
 - **Layout** — module and layer map: `docs/development/Overview.md`.
-- **Use Cases** — business use-case catalog and conventions: `docs/development/UseCases.md`;
-  its entry format is `TechnicalDesign.md` § 8 (Documentation), `DOC-005`.
+- **Use Cases** — business use-case catalog, grouped by bounded context with its package diagrams:
+  `docs/development/UseCases.md`; its entry format is `TechnicalDesign.md` § 5 (Business use case format),
+  `DOC-005`, `DOC-007` and `DOC-008`.
 - **API** — REST and OpenAPI guidelines: `docs/development/TechnicalDesign.md` § 3. The
   spec is generated from source (see Build/Test Commands above).
 - **Implementation & review agents** — the implementation loop and the specialist

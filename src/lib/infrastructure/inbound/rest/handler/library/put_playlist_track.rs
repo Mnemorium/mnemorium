@@ -161,7 +161,7 @@ mod tests {
     }
 
     fn reordered() -> Result<ReorderPlaylistTracksResponse, Box<dyn Error>> {
-        Ok(ReorderPlaylistTracksResponse::new(MusicPlaylist::try_new(
+        Ok(ReorderPlaylistTracksResponse::new(MusicPlaylist::new(
             3,
             "Mix".to_owned(),
             ts(),
@@ -178,7 +178,7 @@ mod tests {
                 None,
                 TrackIndex::PlaylistIndex(0),
             )?],
-        )?))
+        )))
     }
 
     async fn send(

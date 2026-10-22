@@ -1,24 +1,22 @@
-"""E2E tests for UC-010 - Remove an Image or Video from a Gallery.
+"""E2E tests for UC-010 - Remove an Image from a Gallery.
 
 The happy path and every alternative flow run against the running container:
-the gallery owner removing its own item, any authenticated user removing an
-item of a public gallery, the denial of a non-owner Standard User and of a
-non-owner Admin on a private gallery, the Root Admin override, and the
-unknown-gallery and item-not-in-gallery rejections.
+the gallery owner removing its own image, the denial of a non-owner Standard
+User and of a non-owner Admin on a private gallery, the Root Admin override, and
+the unknown-gallery and image-not-in-gallery rejections.
 
-Removal is destructive: the item and its image or video row are deleted, and
-the backing file with its bytes is deleted when the caller owns the file. No
-endpoint exposes files, so the backing file's deletion is asserted by the
-repository and storage integration tests; these tests assert the observable:
-the item and its medium are gone, which the rejection of re-adding the same
-media proves.
+Removal is destructive: the item and its image row are deleted, and the backing
+file with its bytes is deleted when the caller owns the file. No endpoint
+exposes files, so the backing file's deletion is asserted by the repository and
+storage integration tests; these tests assert the observable: the item and its
+medium are gone, which the rejection of re-adding the same media proves.
 """
 
 import time
 from collections.abc import Callable
 
 import requests
-from conftest import UNKNOWN_ID, add_item, create_owned_gallery, png, register_image, video
+from conftest import UNKNOWN_ID, add_item, create_owned_gallery, png, register_image
 
 _API_PREFIX = "/api/v1"
 _GALLERY_PATH = f"{_API_PREFIX}/library/gallery"
@@ -82,41 +80,6 @@ def test_the_owner_removes_its_own_item(
         gallery_id,
         item_id,
         "image",
-        media_id,
-    )
-
-
-def test_any_user_removes_an_item_from_a_public_gallery(
-    create_gallery: Callable[[str, str, bool], requests.Response],
-    upload_media: Callable[[str, str, bytes, str], int],
-    register_media: Callable[[str, int], int],
-    add_gallery_item: Callable[[str, int, str, int], requests.Response],
-    get_gallery: Callable[[str, int], requests.Response],
-    get_gallery_item: Callable[[str, int, int], requests.Response],
-    delete_gallery_item: Callable[[str, int, int], requests.Response],
-    standard_user_token: str,
-    second_standard_user_token: str,
-) -> None:
-    gallery_id = create_owned_gallery(create_gallery, second_standard_user_token, is_public=True)
-    media_id = register_media(
-        second_standard_user_token,
-        upload_media(second_standard_user_token, f"clip-{time.time_ns()}.mp4", video(), "video/mp4"),
-    )
-    item_id = add_item(add_gallery_item, second_standard_user_token, gallery_id, "video", media_id)
-
-    # Any authenticated user may remove an item of a public gallery, not only the
-    # gallery's owner.
-    removed = delete_gallery_item(standard_user_token, gallery_id, item_id)
-
-    assert removed.status_code == 204, f"delete failed: {removed.status_code} {removed.text}"
-    _assert_item_and_medium_are_gone(
-        get_gallery,
-        get_gallery_item,
-        add_gallery_item,
-        standard_user_token,
-        gallery_id,
-        item_id,
-        "video",
         media_id,
     )
 

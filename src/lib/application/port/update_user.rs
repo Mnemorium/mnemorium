@@ -3,6 +3,8 @@ use std::pin::Pin;
 
 use crate::domain::alias::NumericID;
 use crate::domain::model::user::Role;
+use crate::domain::service::username_policy::MAX_USERNAME_LENGTH;
+use crate::domain::service::username_policy::MIN_USERNAME_LENGTH;
 
 /// Command to update the profile of an existing user.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -125,11 +127,16 @@ impl UpdateUserResponse {
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum UpdateUserError {
+    /// A user with this email already exists.
+    #[error("email is already taken")]
+    EmailAlreadyExists,
     /// The email does not respect a valid email format.
     #[error("email has an invalid format")]
     InvalidEmail,
-    /// The username is too short.
-    #[error("username must be at least 4 characters long")]
+    /// The username does not satisfy the username policy.
+    #[error(
+        "username must be between {MIN_USERNAME_LENGTH} and {MAX_USERNAME_LENGTH} characters long, contain no uppercase letter, and not begin or end with whitespace"
+    )]
     InvalidUsername,
     /// The authenticated caller does not exist anymore.
     #[error("the authenticated user does not exist")]
@@ -149,6 +156,12 @@ pub enum UpdateUserError {
     /// An unexpected or unmapped error occurred.
     #[error("an unknown error occurred: {0}")]
     Unknown(#[source] anyhow::Error),
+    /// A concurrent update won the race for the username or the email.
+    #[error("a user with this username or email already exists")]
+    UserAlreadyExists,
+    /// A user with this username already exists.
+    #[error("username is already taken")]
+    UsernameAlreadyExists,
 }
 
 /// Use case for updating the profile of a user.
