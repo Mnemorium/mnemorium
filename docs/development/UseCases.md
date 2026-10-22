@@ -1110,16 +1110,15 @@ None — the event carries no data.
 
 #### Happy path
 
-1. The Root Admin starts the service.
-2. The system checks whether stored settings exist; none do, so the system creates the default settings and freshly
+1. The system checks whether stored settings exist; none do, so the system creates the default settings and freshly
    generated secrets.
-3. The system loads the configuration: the stored settings are layered with the configuration file and the environment
+2. The system loads the configuration: the stored settings are layered with the configuration file and the environment
    overrides.
-4. The system returns the merged configuration to the runtime.
+3. The system returns the merged configuration to the runtime.
 
 #### Alternative flow
 
-- 2a. Stored settings already exist: the system skips their creation and loads the configuration directly.
+- 1a. Stored settings already exist: the system skips their creation and loads the configuration directly.
 
 #### Post condition(s)
 
