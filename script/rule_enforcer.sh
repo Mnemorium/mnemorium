@@ -336,11 +336,71 @@ warn_unknown_config_rules() {
 	done < <(yq -r '.rules // {} | keys[]' "$CONFIG" 2>/dev/null)
 }
 
+# --- Helpers -----------------------------------------------------------------
+
+# need_dir / need_file — report a missing path as the check's failure.
+need_dir() {
+	local id="$1" path="$2"
+	[ -d "$path" ] && return 0
+	printf 'error: %s: missing %s\n' "$id" "$path" >&2
+	return 1
+}
+
+need_file() {
+	local id="$1" path="$2"
+	[ -f "$path" ] && return 0
+	printf 'error: %s: missing %s\n' "$id" "$path" >&2
+	return 1
+}
+
+# scan_short — run one rule in short report mode; print ast-grep's output on failure.
+scan_short() {
+	local id="$1"
+	shift
+	local output
+	if output="$(ast-grep scan --config "$SGCONFIG" --filter "${id,,}" \
+		--report-style=short --color=never "$@" 2>&1)"; then
+		return 0
+	fi
+	printf '%s\n' "$output"
+	return 1
+}
+
+# scan_json — print the rule's JSON match stream; print the tool error and fail on a scan error.
+scan_json() {
+	local id="$1"
+	shift
+	local output
+	if ! output="$(ast-grep scan --config "$SGCONFIG" --filter "${id,,}" \
+		--json=stream "$@" 2>&1)"; then
+		printf '%s\n' "$output" >&2
+		return 1
+	fi
+	printf '%s' "$output"
+}
+
+# config_list — load a YAML string list into the named array; an absent or empty list is an error.
+config_list() {
+	local id="$1" key="$2" config
+	local -n out="$3"
+	config="$(rule_config "$id")" || return 2
+	mapfile -t out < <(jq -r --arg key "$key" '.[$key][]?' <<<"$config")
+	[ "${#out[@]}" -gt 0 ] && return 0
+	printf 'error: %s: rule_enforcer.yaml declares no %s\n' "$id" "$key" >&2
+	return 2
+}
+
+# require_matches <id> <label> <matches> — fail when a positive rule extracted nothing.
+require_matches() {
+	[ -n "$3" ] && return 0
+	printf 'error: %s: extracted no %s\n' "$1" "$2" >&2
+	return 1
+}
+
 # --- Checks -----------------------------------------------------------------
 
 check_sty_rust_001() {
 	local id="STY-RUST-001"
-	local rule_id="sty-rust-001"
 	local config matches file line func reason location result=0
 	local -A allowed=()
 
@@ -353,11 +413,7 @@ check_sty_rust_001() {
 	done < <(jq -r '.allowed_locations[]?' <<<"$config")
 
 	# sty-rust-001 extracts every production `#[expect(clippy::single_call_fn, reason = "...")]` together with the function it annotates; test modules and `#[cfg(test)]` items are excluded by the rule.
-	if ! matches="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--json=stream src 2>&1)"; then
-		printf '%s\n' "$matches"
-		return 1
-	fi
+	matches="$(scan_json "$id" src)" || return 1
 	[ -n "$matches" ] || return 0
 
 	while IFS=$'\t' read -r file line func reason; do
@@ -386,24 +442,14 @@ check_sty_rust_001() {
 check_sty_rust_002() {
 	local id="STY-RUST-002"
 	local handler_dir="src/lib/infrastructure/inbound/rest/handler"
-	local config context name dir
+	local context name dir
 	local -a contexts=()
 	local -A is_context=()
 	local result=0
 
-	config="$(rule_config "$id")" || return 2
-	mapfile -t contexts < <(
-		jq -r '.bounded_contexts[]?' <<<"$config"
-	)
-	if [ "${#contexts[@]}" -eq 0 ]; then
-		printf 'error: %s: rule_enforcer.yaml declares no bounded_contexts\n' "$id" >&2
-		return 2
-	fi
+	config_list "$id" bounded_contexts contexts || return 2
 
-	if [ ! -d "$handler_dir" ]; then
-		printf 'error: %s: missing %s\n' "$id" "$handler_dir" >&2
-		return 1
-	fi
+	need_dir "$id" "$handler_dir" || return 1
 
 	for context in "${contexts[@]}"; do
 		is_context["$context"]=1
@@ -428,67 +474,22 @@ check_sty_rust_002() {
 	return "$result"
 }
 
-check_sty_rust_003() {
-	local id="STY-RUST-003"
-	local rule_id="sty-rust-003"
-	local output
+check_sty_rust_003() { scan_short STY-RUST-003 --globs 'src/lib/infrastructure/inbound/rest/handler/*/*.rs' src; }
 
-	if output="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--globs 'src/lib/infrastructure/inbound/rest/handler/*/*.rs' \
-		--report-style=short --color=never src 2>&1)"; then
-		return 0
-	fi
-	printf '%s\n' "$output"
-	return 1
-}
+check_sty_rust_004() { scan_short STY-RUST-004 src; }
 
-check_sty_rust_004() {
-	local id="STY-RUST-004"
-	local rule_id="sty-rust-004"
-	local output
-
-	if output="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--report-style=short --color=never src 2>&1)"; then
-		return 0
-	fi
-	printf '%s\n' "$output"
-	return 1
-}
-
-check_sty_rust_005() {
-	local id="STY-RUST-005"
-	local rule_id="sty-rust-005"
-	local output
-
-	if output="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--report-style=short --color=never src 2>&1)"; then
-		return 0
-	fi
-	printf '%s\n' "$output"
-	return 1
-}
+check_sty_rust_005() { scan_short STY-RUST-005 src; }
 
 check_sty_rust_006() {
 	local id="STY-RUST-006"
-	local rule_id="sty-rust-006"
 	local handler_dir="src/lib/infrastructure/inbound/rest/handler"
 	local matches declared file fn base result=0
 
-	if [ ! -d "$handler_dir" ]; then
-		printf 'error: %s: missing %s\n' "$id" "$handler_dir" >&2
-		return 1
-	fi
+	need_dir "$id" "$handler_dir" || return 1
 
 	# sty-rust-006 extracts the handler — the function carrying the endpoint's `#[utoipa::path]` attribute.
-	if ! matches="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--json=stream "$handler_dir" 2>&1)"; then
-		printf '%s\n' "$matches"
-		return 1
-	fi
-	if [ -z "$matches" ]; then
-		printf 'error: %s: extracted no handler from %s\n' "$id" "$handler_dir" >&2
-		return 1
-	fi
+	matches="$(scan_json "$id" "$handler_dir")" || return 1
+	require_matches "$id" "handler from $handler_dir" "$matches" || return 1
 
 	# Every file that declares an endpoint must yield a handler.
 	declared="$(grep -rl '#\[utoipa::path' "$handler_dir" | sort -u)"
@@ -512,44 +513,17 @@ check_sty_rust_006() {
 	return "$result"
 }
 
-check_sty_rust_007() {
-	local id="STY-RUST-007"
-	local rule_id="sty-rust-007"
-	local output
+check_sty_rust_007() { scan_short STY-RUST-007 src; }
 
-	if output="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--report-style=short --color=never src 2>&1)"; then
-		return 0
-	fi
-	printf '%s\n' "$output"
-	return 1
-}
-
-check_sty_rust_014() {
-	local id="STY-RUST-014"
-	local rule_id="sty-rust-014"
-	local output
-
-	if output="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--report-style=short --color=never src 2>&1)"; then
-		return 0
-	fi
-	printf '%s\n' "$output"
-	return 1
-}
+check_sty_rust_014() { scan_short STY-RUST-014 src; }
 
 check_sty_rust_015() {
 	local id="STY-RUST-015"
-	local rule_id="sty-rust-015"
 	local target="src/lib/domain/port/error.rs"
 	local matches file result=0
 
 	# sty-rust-015 extracts every outbound-port error enum declared under src/lib/domain/port/; the file comparison below holds them all to error.rs, so a one-per-port family (e.g. UserRepositoryError beside RepositoryError) is rejected.
-	if ! matches="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--json=stream src/lib/domain/port 2>&1)"; then
-		printf '%s\n' "$matches"
-		return 1
-	fi
+	matches="$(scan_json "$id" src/lib/domain/port)" || return 1
 
 	while IFS= read -r file; do
 		[ -n "$file" ] || continue
@@ -563,73 +537,23 @@ check_sty_rust_015() {
 	return "$result"
 }
 
-check_sty_rust_016() {
-	local id="STY-RUST-016"
-	local rule_id="sty-rust-016"
-	local output
+check_sty_rust_016() { scan_short STY-RUST-016 src; }
 
-	if output="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--report-style=short --color=never src 2>&1)"; then
-		return 0
-	fi
-	printf '%s\n' "$output"
-	return 1
-}
+check_sty_rust_018() { need_dir "STY-RUST-018" "src/lib/domain/model" && scan_short STY-RUST-018 "src/lib/domain/model"; }
 
-check_sty_rust_018() {
-	local id="STY-RUST-018"
-	local rule_id="sty-rust-018"
-	local model_dir="src/lib/domain/model"
-	local output
-
-	if [ ! -d "$model_dir" ]; then
-		printf 'error: %s: missing %s\n' "$id" "$model_dir" >&2
-		return 1
-	fi
-
-	if output="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--report-style=short --color=never "$model_dir" 2>&1)"; then
-		return 0
-	fi
-	printf '%s\n' "$output"
-	return 1
-}
-
-check_sty_rust_020() {
-	local id="STY-RUST-020"
-	local rule_id="sty-rust-020"
-	local output
-
-	if output="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--report-style=short --color=never src 2>&1)"; then
-		return 0
-	fi
-	printf '%s\n' "$output"
-	return 1
-}
+check_sty_rust_020() { scan_short STY-RUST-020 src; }
 
 check_sty_rust_023() {
 	local id="STY-RUST-023"
-	local rule_id="sty-rust-023"
 	local model_dir="src/lib/infrastructure/outbound/sqlx/model"
 	local matches file enum field type base expected key result=0
 	local -A enums=()
 
-	if [ ! -d "$model_dir" ]; then
-		printf 'error: %s: missing %s\n' "$id" "$model_dir" >&2
-		return 1
-	fi
+	need_dir "$id" "$model_dir" || return 1
 
 	# sty-rust-023 extracts each sqlx CHECK-constraint enum and each model field; the field-name-to-enum-name pairing happens here because an ast-grep rule cannot relate two identifiers.
-	if ! matches="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--json=stream "$model_dir" 2>&1)"; then
-		printf '%s\n' "$matches"
-		return 1
-	fi
-	if [ -z "$matches" ]; then
-		printf 'error: %s: extracted no enum or field from %s\n' "$id" "$model_dir" >&2
-		return 1
-	fi
+	matches="$(scan_json "$id" "$model_dir")" || return 1
+	require_matches "$id" "enum or field from $model_dir" "$matches" || return 1
 
 	# Enums declared in this file, keyed by file so an imported enum is not mistaken for the attribute's own type.
 	while IFS=$'\t' read -r file enum; do
@@ -660,47 +584,19 @@ check_sty_rust_023() {
 	return "$result"
 }
 
-check_sty_rust_022() {
-	local id="STY-RUST-022"
-	local rule_id="sty-rust-022"
-	local middleware_dir="src/lib/infrastructure/inbound/rest/middleware"
-	local output
-
-	if [ ! -d "$middleware_dir" ]; then
-		printf 'error: %s: missing %s\n' "$id" "$middleware_dir" >&2
-		return 1
-	fi
-
-	if output="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--report-style=short --color=never "$middleware_dir" 2>&1)"; then
-		return 0
-	fi
-	printf '%s\n' "$output"
-	return 1
-}
+check_sty_rust_022() { need_dir "STY-RUST-022" "src/lib/infrastructure/inbound/rest/middleware" && scan_short STY-RUST-022 "src/lib/infrastructure/inbound/rest/middleware"; }
 
 check_sty_rust_013() {
 	local id="STY-RUST-013"
-	local rule_id="sty-rust-013"
 	local model_dir="src/lib/domain/model"
 	local matches file line name base key result=0
 	local -A struct_line=()
 
-	if [ ! -d "$model_dir" ]; then
-		printf 'error: %s: missing %s\n' "$id" "$model_dir" >&2
-		return 1
-	fi
+	need_dir "$id" "$model_dir" || return 1
 
 	# sty-rust-013 extracts each domain error enum and each model struct; the `<Model>Error`-before-`<Model>` pairing happens here because an ast-grep rule cannot relate two identifiers.
-	if ! matches="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--json=stream "$model_dir" 2>&1)"; then
-		printf '%s\n' "$matches"
-		return 1
-	fi
-	if [ -z "$matches" ]; then
-		printf 'error: %s: extracted no domain error or model struct from %s\n' "$id" "$model_dir" >&2
-		return 1
-	fi
+	matches="$(scan_json "$id" "$model_dir")" || return 1
+	require_matches "$id" "domain error or model struct from $model_dir" "$matches" || return 1
 
 	while IFS=$'\t' read -r file line name; do
 		[ -n "$name" ] || continue
@@ -732,28 +628,17 @@ check_sty_rust_013() {
 
 check_sty_rust_019() {
 	local id="STY-RUST-019"
-	local rule_id="sty-rust-019"
 	local model_dir="src/lib/domain/model"
 	local matches file struct impl name ret key result=0
 	local -A fields=()
 	# Return types that are never `Copy`: a `&self` getter returning one can only hand back an owned clone, which the rule forbids.
 	local owned='^(Option<)?(String|Vec<.*>|Box<.*>|PathBuf|OsString|CString|VecDeque<.*>|LinkedList<.*>|HashMap<.*>|HashSet<.*>|BTreeMap<.*>|BTreeSet<.*>)(>)?$'
 
-	if [ ! -d "$model_dir" ]; then
-		printf 'error: %s: missing %s\n' "$id" "$model_dir" >&2
-		return 1
-	fi
+	need_dir "$id" "$model_dir" || return 1
 
 	# sty-rust-019 extracts each struct field and each `&self` method; the field-name-to-getter pairing happens here because an ast-grep rule cannot relate two identifiers.
-	if ! matches="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--json=stream "$model_dir" 2>&1)"; then
-		printf '%s\n' "$matches"
-		return 1
-	fi
-	if [ -z "$matches" ]; then
-		printf 'error: %s: extracted no field or getter from %s\n' "$id" "$model_dir" >&2
-		return 1
-	fi
+	matches="$(scan_json "$id" "$model_dir")" || return 1
+	require_matches "$id" "field or getter from $model_dir" "$matches" || return 1
 
 	# Fields, keyed by the struct that declares them.
 	while IFS=$'\t' read -r file struct name; do
@@ -780,70 +665,21 @@ check_sty_rust_019() {
 	return "$result"
 }
 
-check_sty_rust_008() {
-	local id="STY-RUST-008"
-	local rule_id="sty-rust-008"
-	local output
+check_sty_rust_008() { scan_short STY-RUST-008 src; }
 
-	if output="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--report-style=short --color=never src 2>&1)"; then
-		return 0
-	fi
-	printf '%s\n' "$output"
-	return 1
-}
+check_sty_rust_009() { scan_short STY-RUST-009 src; }
 
-check_sty_rust_009() {
-	local id="STY-RUST-009"
-	local rule_id="sty-rust-009"
-	local output
+check_sty_rust_010() { scan_short STY-RUST-010 src; }
 
-	if output="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--report-style=short --color=never src 2>&1)"; then
-		return 0
-	fi
-	printf '%s\n' "$output"
-	return 1
-}
-
-check_sty_rust_010() {
-	local id="STY-RUST-010"
-	local rule_id="sty-rust-010"
-	local output
-
-	if output="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--report-style=short --color=never src 2>&1)"; then
-		return 0
-	fi
-	printf '%s\n' "$output"
-	return 1
-}
-
-check_sty_rust_011() {
-	local id="STY-RUST-011"
-	local rule_id="sty-rust-011"
-	local output
-
-	if output="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--report-style=short --color=never src 2>&1)"; then
-		return 0
-	fi
-	printf '%s\n' "$output"
-	return 1
-}
+check_sty_rust_011() { scan_short STY-RUST-011 src; }
 
 check_sty_rust_012() {
 	local id="STY-RUST-012"
-	local rule_id="sty-rust-012"
 	local target="src/lib/infrastructure/inbound/rest/api_error.rs"
 	local matches file result=0
 
 	# sty-rust-012 is a positive rule: it matches a compliant `enum ApiError` — one not derived with `thiserror`.
-	if ! matches="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--json=stream src 2>&1)"; then
-		printf '%s\n' "$matches"
-		return 1
-	fi
+	matches="$(scan_json "$id" src)" || return 1
 
 	if [ -z "$matches" ]; then
 		printf 'error: %s: ApiError is not declared in %s without a thiserror derive\n' \
@@ -863,57 +699,23 @@ check_sty_rust_012() {
 	return "$result"
 }
 
-check_sty_rust_067() {
-	local id="STY-RUST-067"
-	local rule_id="sty-rust-067"
-	local output
+check_sty_rust_067() { scan_short STY-RUST-067 --globs '!src/bin/server.rs' src; }
 
-	if output="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--globs '!src/bin/server.rs' \
-		--report-style=short --color=never src 2>&1)"; then
-		return 0
-	fi
-	printf '%s\n' "$output"
-	return 1
-}
-
-check_sty_rust_024() {
-	local id="STY-RUST-024"
-	local rule_id="sty-rust-024"
-	local output
-
-	if output="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--report-style=short --color=never src 2>&1)"; then
-		return 0
-	fi
-	printf '%s\n' "$output"
-	return 1
-}
+check_sty_rust_024() { scan_short STY-RUST-024 src; }
 
 check_sty_rust_025() {
 	local id="STY-RUST-025"
-	local rule_id="sty-rust-025"
 	local model_dir="src/lib/infrastructure/outbound/sqlx/model"
 	local migrations_dir="migrations"
 	local matches raw values enum variants variant value result=0
 	local -A allowed=()
 	local -a sets=()
 
-	if [ ! -d "$model_dir" ]; then
-		printf 'error: %s: missing %s\n' "$id" "$model_dir" >&2
-		return 1
-	fi
+	need_dir "$id" "$model_dir" || return 1
 
 	# sty-rust-025 extracts each `sqlx::Type` enum that maps its variants to uppercase SQL strings; the comparison against the allowed values of the SQL CHECK constraints happens here because an ast-grep rule cannot read migrations/.
-	if ! matches="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--json=stream "$model_dir" 2>&1)"; then
-		printf '%s\n' "$matches"
-		return 1
-	fi
-	if [ -z "$matches" ]; then
-		printf 'error: %s: extracted no SQL CHECK-constraint enum from %s\n' "$id" "$model_dir" >&2
-		return 1
-	fi
+	matches="$(scan_json "$id" "$model_dir")" || return 1
+	require_matches "$id" "SQL CHECK-constraint enum from $model_dir" "$matches" || return 1
 
 	# Every allowed-value set of a SQL `CHECK (... IN ('A', 'B'))` constraint, keyed by its sorted, uppercased values.
 	while IFS= read -r raw; do
@@ -958,175 +760,40 @@ check_sty_rust_025() {
 	return "$result"
 }
 
-check_sty_rust_026() {
-	local id="STY-RUST-026"
-	local rule_id="sty-rust-026"
-	local output
+check_sty_rust_026() { scan_short STY-RUST-026 src; }
 
-	if output="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--report-style=short --color=never src 2>&1)"; then
-		return 0
-	fi
-	printf '%s\n' "$output"
-	return 1
-}
+check_sty_rust_027() { scan_short STY-RUST-027 src; }
 
-check_sty_rust_027() {
-	local id="STY-RUST-027"
-	local rule_id="sty-rust-027"
-	local output
+check_sty_rust_028() { scan_short STY-RUST-028 src; }
 
-	if output="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--report-style=short --color=never src 2>&1)"; then
-		return 0
-	fi
-	printf '%s\n' "$output"
-	return 1
-}
+check_sty_rust_029() { scan_short STY-RUST-029 src; }
 
-check_sty_rust_028() {
-	local id="STY-RUST-028"
-	local rule_id="sty-rust-028"
-	local output
+check_sty_rust_030() { scan_short STY-RUST-030 src; }
 
-	if output="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--report-style=short --color=never src 2>&1)"; then
-		return 0
-	fi
-	printf '%s\n' "$output"
-	return 1
-}
+check_sty_rust_032() { scan_short STY-RUST-032 src; }
 
-check_sty_rust_029() {
-	local id="STY-RUST-029"
-	local rule_id="sty-rust-029"
-	local output
+check_sty_rust_033() { scan_short STY-RUST-033 --globs 'src/lib/application/use_case/**/*.rs' src; }
 
-	if output="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--report-style=short --color=never src 2>&1)"; then
-		return 0
-	fi
-	printf '%s\n' "$output"
-	return 1
-}
+check_sty_rust_034() { scan_short STY-RUST-034 --globs 'src/lib/application/use_case/**/*.rs' src; }
 
-check_sty_rust_030() {
-	local id="STY-RUST-030"
-	local rule_id="sty-rust-030"
-	local output
+check_sty_rust_035() { scan_short STY-RUST-035 --globs 'src/**/*.rs' src; }
 
-	if output="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--report-style=short --color=never src 2>&1)"; then
-		return 0
-	fi
-	printf '%s\n' "$output"
-	return 1
-}
+check_sty_rust_036() { scan_short STY-RUST-036 src; }
 
-check_sty_rust_032() {
-	local id="STY-RUST-032"
-	local rule_id="sty-rust-032"
-	local output
-
-	if output="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--report-style=short --color=never src 2>&1)"; then
-		return 0
-	fi
-	printf '%s\n' "$output"
-	return 1
-}
-
-check_sty_rust_033() {
-	local id="STY-RUST-033"
-	local rule_id="sty-rust-033"
-	local output
-
-	if output="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--globs 'src/lib/application/use_case/**/*.rs' \
-		--report-style=short --color=never src 2>&1)"; then
-		return 0
-	fi
-	printf '%s\n' "$output"
-	return 1
-}
-
-check_sty_rust_034() {
-	local id="STY-RUST-034"
-	local rule_id="sty-rust-034"
-	local output
-
-	if output="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--globs 'src/lib/application/use_case/**/*.rs' \
-		--report-style=short --color=never src 2>&1)"; then
-		return 0
-	fi
-	printf '%s\n' "$output"
-	return 1
-}
-
-check_sty_rust_035() {
-	local id="STY-RUST-035"
-	local rule_id="sty-rust-035"
-	local output
-
-	if output="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--globs 'src/**/*.rs' \
-		--report-style=short --color=never src 2>&1)"; then
-		return 0
-	fi
-	printf '%s\n' "$output"
-	return 1
-}
-
-check_sty_rust_036() {
-	local id="STY-RUST-036"
-	local rule_id="sty-rust-036"
-	local output
-
-	if output="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--report-style=short --color=never src 2>&1)"; then
-		return 0
-	fi
-	printf '%s\n' "$output"
-	return 1
-}
-
-check_sty_rust_038() {
-	local id="STY-RUST-038"
-	local rule_id="sty-rust-038"
-	local output
-
-	if output="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--globs '!src/lib/infrastructure/**' \
-		--globs '!src/lib/infrastructure.rs' \
-		--globs '!src/bin/server.rs' \
-		--report-style=short --color=never src 2>&1)"; then
-		return 0
-	fi
-	printf '%s\n' "$output"
-	return 1
-}
+check_sty_rust_038() { scan_short STY-RUST-038 --globs '!src/lib/infrastructure/**' --globs '!src/lib/infrastructure.rs' --globs '!src/bin/server.rs' src; }
 
 check_sty_rust_039() {
 	local id="STY-RUST-039"
-	local rule_id="sty-rust-039"
 	local target="src/lib/application/use_case"
 	local matches file func enc key line a b i text result=0
 	local -a lines=()
 	local -A begins=()
 	local -A function_of=()
 
-	if [ ! -d "$target" ]; then
-		printf 'error: %s: missing %s\n' "$id" "$target" >&2
-		return 1
-	fi
+	need_dir "$id" "$target" || return 1
 
 	# sty-rust-039 extracts every unit-of-work `begin()` call with the function that encloses it; counting and ordering happen here because an ast-grep rule cannot compare two matches.
-	if ! matches="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--json=stream "$target" 2>&1)"; then
-		printf '%s\n' "$matches"
-		return 1
-	fi
+	matches="$(scan_json "$id" "$target")" || return 1
 	[ -n "$matches" ] || return 0
 
 	while IFS=$'\t' read -r file enc func line; do
@@ -1161,55 +828,19 @@ check_sty_rust_039() {
 	return "$result"
 }
 
-check_sty_rust_041() {
-	local id="STY-RUST-041"
-	local rule_id="sty-rust-041"
-	local output
+check_sty_rust_041() { scan_short STY-RUST-041 src; }
 
-	if output="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--report-style=short --color=never src 2>&1)"; then
-		return 0
-	fi
-	printf '%s\n' "$output"
-	return 1
-}
-
-check_sty_rust_042() {
-	local id="STY-RUST-042"
-	local rule_id="sty-rust-042"
-	local target="src/lib/domain/port/unit_of_work.rs"
-	local output
-
-	if [ ! -f "$target" ]; then
-		printf 'error: %s: missing %s\n' "$id" "$target" >&2
-		return 1
-	fi
-
-	if output="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--report-style=short --color=never "$target" 2>&1)"; then
-		return 0
-	fi
-	printf '%s\n' "$output"
-	return 1
-}
+check_sty_rust_042() { need_file "STY-RUST-042" "src/lib/domain/port/unit_of_work.rs" && scan_short STY-RUST-042 "src/lib/domain/port/unit_of_work.rs"; }
 
 check_sty_rust_043() {
 	local id="STY-RUST-043"
-	local rule_id="sty-rust-043"
 	local target="src/lib/domain/port/unit_of_work.rs"
 	local matches line name second="" count=0 result=0
 
-	if [ ! -f "$target" ]; then
-		printf 'error: %s: missing %s\n' "$id" "$target" >&2
-		return 1
-	fi
+	need_file "$id" "$target" || return 1
 
 	# sty-rust-043 extracts every top-level trait declaration in the unit-of-work port file; the "second" position is compared here because an ast-grep rule cannot relate two declarations.
-	if ! matches="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--json=stream "$target" 2>&1)"; then
-		printf '%s\n' "$matches"
-		return 1
-	fi
+	matches="$(scan_json "$id" "$target")" || return 1
 
 	while IFS=$'\t' read -r line name; do
 		[ -n "$name" ] || continue
@@ -1231,27 +862,13 @@ check_sty_rust_043() {
 
 check_sty_rust_044() {
 	local id="STY-RUST-044"
-	local rule_id="sty-rust-044"
-	local dir="src/lib/infrastructure/outbound/sqlx"
 	local matches file func sql table_name cols identity returning result=0
 
-	if [ ! -d "$dir" ]; then
-		printf 'error: %s: missing %s\n' "$id" "$dir" >&2
-		return 1
-	fi
+	need_dir "$id" "src/lib/infrastructure/outbound/sqlx" || return 1
 
 	# sty-rust-044 extracts every `INSERT INTO` of a repository adapter `create` together with the enclosing function; the identity-column check happens here because an ast-grep rule cannot read inside the SQL string.
-	if ! matches="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--globs 'src/lib/infrastructure/outbound/sqlx/*_repository.rs' \
-		--globs '!src/lib/infrastructure/outbound/sqlx/configuration_repository.rs' \
-		--json=stream src 2>&1)"; then
-		printf '%s\n' "$matches"
-		return 1
-	fi
-	if [ -z "$matches" ]; then
-		printf 'error: %s: extracted no repository create insert\n' "$id" >&2
-		return 1
-	fi
+	matches="$(scan_json "$id" --globs 'src/lib/infrastructure/outbound/sqlx/*_repository.rs' --globs '!src/lib/infrastructure/outbound/sqlx/configuration_repository.rs' src)" || return 1
+	require_matches "$id" "repository create insert" "$matches" || return 1
 
 	while IFS=$'\t' read -r file func sql; do
 		[ -n "$sql" ] || continue
@@ -1278,90 +895,25 @@ check_sty_rust_044() {
 	return "$result"
 }
 
-check_sty_rust_045() {
-	local id="STY-RUST-045"
-	local rule_id="sty-rust-045"
-	local output
+check_sty_rust_045() { scan_short STY-RUST-045 src; }
 
-	if output="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--report-style=short --color=never src 2>&1)"; then
-		return 0
-	fi
-	printf '%s\n' "$output"
-	return 1
-}
+check_sty_rust_046() { scan_short STY-RUST-046 src; }
 
-check_sty_rust_046() {
-	local id="STY-RUST-046"
-	local rule_id="sty-rust-046"
-	local output
+check_sty_rust_047() { scan_short STY-RUST-047 src; }
 
-	if output="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--report-style=short --color=never src 2>&1)"; then
-		return 0
-	fi
-	printf '%s\n' "$output"
-	return 1
-}
+check_sty_rust_048() { scan_short STY-RUST-048 src; }
 
-check_sty_rust_047() {
-	local id="STY-RUST-047"
-	local rule_id="sty-rust-047"
-	local output
-
-	if output="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--report-style=short --color=never src 2>&1)"; then
-		return 0
-	fi
-	printf '%s\n' "$output"
-	return 1
-}
-
-check_sty_rust_048() {
-	local id="STY-RUST-048"
-	local rule_id="sty-rust-048"
-	local output
-
-	if output="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--report-style=short --color=never src 2>&1)"; then
-		return 0
-	fi
-	printf '%s\n' "$output"
-	return 1
-}
-
-check_sty_rust_049() {
-	local id="STY-RUST-049"
-	local rule_id="sty-rust-049"
-	local output
-
-	if output="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--report-style=short --color=never src 2>&1)"; then
-		return 0
-	fi
-	printf '%s\n' "$output"
-	return 1
-}
+check_sty_rust_049() { scan_short STY-RUST-049 src; }
 
 check_sty_rust_050() {
 	local id="STY-RUST-050"
-	local rule_id="sty-rust-050"
 	local mapping="src/lib/infrastructure/outbound/sqlx/error_mapping.rs"
-	local output result=0
+	local result=0
 
-	if [ ! -f "$mapping" ]; then
-		printf 'error: %s: missing %s\n' "$id" "$mapping" >&2
-		return 1
-	fi
+	need_file "$id" "$mapping" || return 1
 
 	# Clause 1: sqlx types never cross into the domain or application layers.
-	if output="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--report-style=short --color=never src 2>&1)"; then
-		:
-	else
-		printf '%s\n' "$output"
-		result=1
-	fi
+	scan_short STY-RUST-050 src || result=1
 
 	# Clause 2: sqlx::Error is mapped to RepositoryError in error_mapping.rs.
 	if ! grep -qE '^use sqlx::Error;' "$mapping" ||
@@ -1373,80 +925,24 @@ check_sty_rust_050() {
 	return "$result"
 }
 
-check_sty_rust_051() {
-	local id="STY-RUST-051"
-	local rule_id="sty-rust-051"
-	local output
+check_sty_rust_051() { scan_short STY-RUST-051 --globs 'src/lib/domain/port/*_repository.rs' src; }
 
-	if output="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--globs 'src/lib/domain/port/*_repository.rs' \
-		--report-style=short --color=never src 2>&1)"; then
-		return 0
-	fi
-	printf '%s\n' "$output"
-	return 1
-}
+check_sty_rust_052() { scan_short STY-RUST-052 src; }
 
-check_sty_rust_052() {
-	local id="STY-RUST-052"
-	local rule_id="sty-rust-052"
-	local output
+check_sty_rust_053() { scan_short STY-RUST-053 src; }
 
-	if output="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--report-style=short --color=never src 2>&1)"; then
-		return 0
-	fi
-	printf '%s\n' "$output"
-	return 1
-}
-
-check_sty_rust_053() {
-	local id="STY-RUST-053"
-	local rule_id="sty-rust-053"
-	local output
-
-	if output="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--report-style=short --color=never src 2>&1)"; then
-		return 0
-	fi
-	printf '%s\n' "$output"
-	return 1
-}
-
-check_sty_rust_054() {
-	local id="STY-RUST-054"
-	local rule_id="sty-rust-054"
-	local output
-
-	if output="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--report-style=short --color=never src 2>&1)"; then
-		return 0
-	fi
-	printf '%s\n' "$output"
-	return 1
-}
+check_sty_rust_054() { scan_short STY-RUST-054 src; }
 
 check_sty_rust_055() {
 	local id="STY-RUST-055"
-	local rule_id="sty-rust-055"
 	local use_case_dir="src/lib/application/use_case"
 	local matches file trait impl_type base expected result=0 count=0
 
-	if [ ! -d "$use_case_dir" ]; then
-		printf 'error: %s: missing %s\n' "$id" "$use_case_dir" >&2
-		return 1
-	fi
+	need_dir "$id" "$use_case_dir" || return 1
 
 	# sty-rust-055 extracts each use-case trait implementation; the trait-to-struct comparison happens here because an ast-grep rule cannot strip the `UseCase` suffix from one identifier and compare it to another.
-	if ! matches="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--json=stream "$use_case_dir" 2>&1)"; then
-		printf '%s\n' "$matches"
-		return 1
-	fi
-	if [ -z "$matches" ]; then
-		printf 'error: %s: extracted no use-case implementation from %s\n' "$id" "$use_case_dir" >&2
-		return 1
-	fi
+	matches="$(scan_json "$id" "$use_case_dir")" || return 1
+	require_matches "$id" "use-case implementation from $use_case_dir" "$matches" || return 1
 
 	while IFS=$'\t' read -r file trait impl_type; do
 		[ -n "$trait" ] || continue
@@ -1469,100 +965,25 @@ check_sty_rust_055() {
 	return "$result"
 }
 
-check_sty_rust_056() {
-	local id="STY-RUST-056"
-	local rule_id="sty-rust-056"
-	local port_dir="src/lib/application/port"
-	local output
+check_sty_rust_056() { need_dir "STY-RUST-056" "src/lib/application/port" && scan_short STY-RUST-056 "src/lib/application/port"; }
 
-	if [ ! -d "$port_dir" ]; then
-		printf 'error: %s: missing %s\n' "$id" "$port_dir" >&2
-		return 1
-	fi
+check_sty_rust_057() { scan_short STY-RUST-057 src; }
 
-	if output="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--report-style=short --color=never "$port_dir" 2>&1)"; then
-		return 0
-	fi
-	printf '%s\n' "$output"
-	return 1
-}
+check_sty_rust_058() { need_dir "STY-RUST-058" "src/lib/application/port" && scan_short STY-RUST-058 --globs 'src/lib/application/port/*.rs' --globs '!src/lib/application/port/*_use_case_factory.rs' src; }
 
-check_sty_rust_057() {
-	local id="STY-RUST-057"
-	local rule_id="sty-rust-057"
-	local output
-
-	if output="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--report-style=short --color=never src 2>&1)"; then
-		return 0
-	fi
-	printf '%s\n' "$output"
-	return 1
-}
-
-check_sty_rust_058() {
-	local id="STY-RUST-058"
-	local rule_id="sty-rust-058"
-	local port_dir="src/lib/application/port"
-	local output
-
-	if [ ! -d "$port_dir" ]; then
-		printf 'error: %s: missing %s\n' "$id" "$port_dir" >&2
-		return 1
-	fi
-
-	if output="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--globs 'src/lib/application/port/*.rs' \
-		--globs '!src/lib/application/port/*_use_case_factory.rs' \
-		--report-style=short --color=never src 2>&1)"; then
-		return 0
-	fi
-	printf '%s\n' "$output"
-	return 1
-}
-
-check_sty_rust_059() {
-	local id="STY-RUST-059"
-	local rule_id="sty-rust-059"
-	local port_dir="src/lib/application/port"
-	local output
-
-	if [ ! -d "$port_dir" ]; then
-		printf 'error: %s: missing %s\n' "$id" "$port_dir" >&2
-		return 1
-	fi
-
-	if output="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--report-style=short --color=never "$port_dir" 2>&1)"; then
-		return 0
-	fi
-	printf '%s\n' "$output"
-	return 1
-}
+check_sty_rust_059() { need_dir "STY-RUST-059" "src/lib/application/port" && scan_short STY-RUST-059 "src/lib/application/port"; }
 
 check_sty_rust_060() {
 	local id="STY-RUST-060"
-	local rule_id="sty-rust-060"
 	local port_dir="src/lib/application/port"
 	local method_re='^fn ([a-z_][a-z0-9_]*)\(&self\) -> Arc<dyn ([A-Za-z0-9_]+)>;$'
 	local matches file expected trait bounds line text method use_case result=0
 
-	if [ ! -d "$port_dir" ]; then
-		printf 'error: %s: missing %s\n' "$id" "$port_dir" >&2
-		return 1
-	fi
+	need_dir "$id" "$port_dir" || return 1
 
 	# sty-rust-060 extracts each use-case-factory trait and each accessor declared inside one; the trait's file, name, supertraits and the accessor's signature are paired here because an ast-grep rule cannot see a file path or relate two identifiers.
-	if ! matches="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--json=stream src 2>&1)"; then
-		printf '%s\n' "$matches"
-		return 1
-	fi
-	if [ -z "$matches" ]; then
-		printf 'error: %s: extracted no use-case-factory trait under %s\n' "$id" "$port_dir" >&2
-		return 1
-	fi
+	matches="$(scan_json "$id" src)" || return 1
+	require_matches "$id" "use-case-factory trait under $port_dir" "$matches" || return 1
 
 	# Every factory port file lives directly in the port directory.
 	while IFS= read -r file; do
@@ -1646,7 +1067,6 @@ check_sty_rust_060() {
 
 check_sty_rust_061() {
 	local id="STY-RUST-061"
-	local rule_id="sty-rust-061"
 	local factory_dir="src/lib/infrastructure/use_case_factory"
 	local matches file name base expected field type result=0
 	local -A struct_name=()
@@ -1654,21 +1074,11 @@ check_sty_rust_061() {
 	local -A has_config=()
 	local -A reads_config=()
 
-	if [ ! -d "$factory_dir" ]; then
-		printf 'error: %s: missing %s\n' "$id" "$factory_dir" >&2
-		return 1
-	fi
+	need_dir "$id" "$factory_dir" || return 1
 
 	# sty-rust-061 extracts each factory adapter struct and each of its fields; the file-name-to-struct-name pairing and the field-type checks happen here because an ast-grep rule cannot see the file it is matching in.
-	if ! matches="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--json=stream "$factory_dir" 2>&1)"; then
-		printf '%s\n' "$matches"
-		return 1
-	fi
-	if [ -z "$matches" ]; then
-		printf 'error: %s: extracted no factory struct from %s\n' "$id" "$factory_dir" >&2
-		return 1
-	fi
+	matches="$(scan_json "$id" "$factory_dir")" || return 1
+	require_matches "$id" "factory struct from $factory_dir" "$matches" || return 1
 
 	# The factory struct of each file, keyed by file.
 	while IFS=$'\t' read -r file name; do
@@ -1733,10 +1143,7 @@ check_sty_rust_062() {
 	local file name struct_block result=0
 	local -a forbidden=()
 
-	if [ ! -d "$factory_dir" ]; then
-		printf 'error: %s: missing %s\n' "$id" "$factory_dir" >&2
-		return 1
-	fi
+	need_dir "$id" "$factory_dir" || return 1
 
 	while IFS= read -r file; do
 		[ -n "$file" ] || continue
@@ -1767,43 +1174,18 @@ check_sty_rust_062() {
 	return "$result"
 }
 
-check_sty_rust_063() {
-	local id="STY-RUST-063"
-	local rule_id="sty-rust-063"
-	local factory_dir="src/lib/infrastructure/use_case_factory"
-	local output
-
-	if [ ! -d "$factory_dir" ]; then
-		printf 'error: %s: missing %s\n' "$id" "$factory_dir" >&2
-		return 1
-	fi
-
-	if output="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--report-style=short --color=never "$factory_dir" 2>&1)"; then
-		return 0
-	fi
-	printf '%s\n' "$output"
-	return 1
-}
+check_sty_rust_063() { need_dir "STY-RUST-063" "src/lib/infrastructure/use_case_factory" && scan_short STY-RUST-063 "src/lib/infrastructure/use_case_factory"; }
 
 check_sty_rust_064() {
 	local id="STY-RUST-064"
-	local rule_id="sty-rust-064"
 	local app_state="src/lib/infrastructure/inbound/rest/app_state.rs"
 	local server="src/bin/server.rs"
 	local matches app_matches file bindings binding_count binding executions result=0
 
-	if [ ! -f "$app_state" ]; then
-		printf 'error: %s: missing %s\n' "$id" "$app_state" >&2
-		return 1
-	fi
+	need_file "$id" "$app_state" || return 1
 
 	# sty-rust-064 is a positive rule: it matches the compliant `AppState` field and the composition root's `LoadConfiguration` binding.
-	if ! matches="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--json=stream src 2>&1)"; then
-		printf '%s\n' "$matches"
-		return 1
-	fi
+	matches="$(scan_json "$id" src)" || return 1
 	# Clause A: AppState stores the live configuration as `Arc<ArcSwap<Configuration>>`.
 	app_matches="$(printf '%s\n' "$matches" |
 		jq -c 'select(.metaVariables.single.VAR | not)')"
@@ -1846,26 +1228,15 @@ check_sty_rust_064() {
 
 check_sty_rust_065() {
 	local id="STY-RUST-065"
-	local rule_id="sty-rust-065"
 	local long_lived="src/lib/infrastructure"
 	local matches file field type result=0
 	local -a forbidden_names=("pepper" "secret" "ttl" "jwt_secret" "jwt_ttl")
 
-	if [ ! -d "$long_lived" ]; then
-		printf 'error: %s: missing %s\n' "$id" "$long_lived" >&2
-		return 1
-	fi
+	need_dir "$id" "$long_lived" || return 1
 
 	# sty-rust-065 extracts every field of a long-lived adapter struct in the inbound layer and the use-case factories.
-	if ! matches="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--json=stream src 2>&1)"; then
-		printf '%s\n' "$matches"
-		return 1
-	fi
-	if [ -z "$matches" ]; then
-		printf 'error: %s: extracted no long-lived adapter field from %s\n' "$id" "$long_lived" >&2
-		return 1
-	fi
+	matches="$(scan_json "$id" src)" || return 1
+	require_matches "$id" "long-lived adapter field from $long_lived" "$matches" || return 1
 
 	while IFS=$'\t' read -r file field type; do
 		[ -n "$field" ] || continue
@@ -1890,29 +1261,18 @@ check_sty_rust_065() {
 
 check_sty_rust_066() {
 	local id="STY-RUST-066"
-	local rule_id="sty-rust-066"
 	local reference="src/lib/infrastructure/outbound/config/configuration_source.rs"
 	local bootstrap="src/lib/infrastructure/outbound/config/bootstrap.rs"
 	local matches row file source result=0 i n
 	local -a rows=() ref_sources=() boot_sources=() expected=()
 
 	for file in "$reference" "$bootstrap"; do
-		if [ ! -f "$file" ]; then
-			printf 'error: %s: missing %s\n' "$id" "$file" >&2
-			return 1
-		fi
+		need_file "$id" "$file" || return 1
 	done
 
 	# sty-rust-066 extracts each `.add_source(...)` argument from the two production chains; the text-and-order comparison happens here because an ast-grep rule cannot relate two files.
-	if ! matches="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--json=stream "$reference" "$bootstrap" 2>&1)"; then
-		printf '%s\n' "$matches"
-		return 1
-	fi
-	if [ -z "$matches" ]; then
-		printf 'error: %s: extracted no configuration source\n' "$id" >&2
-		return 1
-	fi
+	matches="$(scan_json "$id" "$reference" "$bootstrap")" || return 1
+	require_matches "$id" "configuration source" "$matches" || return 1
 
 	mapfile -t rows < <(printf '%s\n' "$matches" |
 		jq -r 'select(.metaVariables.single.SOURCE) |
@@ -1966,26 +1326,15 @@ check_sty_rust_066() {
 
 check_sty_rust_068() {
 	local id="STY-RUST-068"
-	local rule_id="sty-rust-068"
 	local app_state="src/lib/infrastructure/inbound/rest/app_state.rs"
 	local matches structs getters refs file name ret body result=0
 	local clone_re='^Arc::clone\(&self\.[A-Za-z_][A-Za-z0-9_]*\)$'
 
-	if [ ! -f "$app_state" ]; then
-		printf 'error: %s: missing %s\n' "$id" "$app_state" >&2
-		return 1
-	fi
+	need_file "$id" "$app_state" || return 1
 
 	# sty-rust-068 extracts the AppState struct, its `&self` getters and its FromRef impls; the single-declaration, file-location and getter-return decisions happen here because an ast-grep rule cannot see the file it matched in and cannot classify a polymorphic return type.
-	if ! matches="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--json=stream src 2>&1)"; then
-		printf '%s\n' "$matches"
-		return 1
-	fi
-	if [ -z "$matches" ]; then
-		printf 'error: %s: extracted no AppState declaration from src\n' "$id" >&2
-		return 1
-	fi
+	matches="$(scan_json "$id" src)" || return 1
+	require_matches "$id" "AppState declaration from src" "$matches" || return 1
 
 	structs="$(printf '%s\n' "$matches" | jq -c 'select(.metaVariables.multi.FIELDS)')"
 	getters="$(printf '%s\n' "$matches" | jq -c 'select(.metaVariables.single.GETTER)')"
@@ -2043,28 +1392,17 @@ check_sty_rust_068() {
 
 check_sty_rust_069() {
 	local id="STY-RUST-069"
-	local rule_id="sty-rust-069"
 	local port_dir="src/lib/domain/port"
 	local matches trait bounds file result=0 changed super
 	local -A supertraits=()
 	local -A send_sync=()
 	local -A flagged=()
 
-	if [ ! -d "$port_dir" ]; then
-		printf 'error: %s: missing %s\n' "$id" "$port_dir" >&2
-		return 1
-	fi
+	need_dir "$id" "$port_dir" || return 1
 
 	# sty-rust-069 extracts every outbound-port trait with its supertrait bounds; whether a trait is `Send + Sync` directly or through a supertrait is resolved here because an ast-grep rule cannot follow a supertrait.
-	if ! matches="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--json=stream src 2>&1)"; then
-		printf '%s\n' "$matches"
-		return 1
-	fi
-	if [ -z "$matches" ]; then
-		printf 'error: %s: extracted no outbound port trait from %s\n' "$id" "$port_dir" >&2
-		return 1
-	fi
+	matches="$(scan_json "$id" src)" || return 1
+	require_matches "$id" "outbound port trait from $port_dir" "$matches" || return 1
 
 	while IFS=$'\t' read -r file trait bounds; do
 		[ -n "$trait" ] || continue
@@ -2109,15 +1447,11 @@ check_sty_rust_069() {
 
 check_sty_rust_070() {
 	local id="STY-RUST-070"
-	local rule_id="sty-rust-070"
 	local port_dir="src/lib/domain/port"
 	local matches file text base result=0
 	local -A dyn_unsafe=()
 
-	if [ ! -d "$port_dir" ]; then
-		printf 'error: %s: missing %s\n' "$id" "$port_dir" >&2
-		return 1
-	fi
+	need_dir "$id" "$port_dir" || return 1
 
 	# An outbound-port trait whose methods return `impl Future` (RPITIT) is not dyn-safe.
 	while IFS= read -r file; do
@@ -2134,11 +1468,7 @@ check_sty_rust_070() {
 	fi
 
 	# sty-rust-070 extracts every `Arc<dyn Trait>` in the tree.
-	if ! matches="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--json=stream src 2>&1)"; then
-		printf '%s\n' "$matches"
-		return 1
-	fi
+	matches="$(scan_json "$id" src)" || return 1
 
 	while IFS=$'\t' read -r file text; do
 		[ -n "$text" ] || continue
@@ -2159,25 +1489,14 @@ check_sty_rust_070() {
 
 check_sty_rust_071() {
 	local id="STY-RUST-071"
-	local rule_id="sty-rust-071"
 	local port_dir="src/lib/domain/port"
 	local matches file line method receiver ret result=0
 
-	if [ ! -d "$port_dir" ]; then
-		printf 'error: %s: missing %s\n' "$id" "$port_dir" >&2
-		return 1
-	fi
+	need_dir "$id" "$port_dir" || return 1
 
 	# sty-rust-071 extracts every repository-trait method signature; the receiver-and-return validation runs here because an ast-grep rule cannot compare a parameter to a literal or assert a bound token.
-	if ! matches="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--json=stream "$port_dir" 2>&1)"; then
-		printf '%s\n' "$matches"
-		return 1
-	fi
-	if [ -z "$matches" ]; then
-		printf 'error: %s: extracted no repository method from %s\n' "$id" "$port_dir" >&2
-		return 1
-	fi
+	matches="$(scan_json "$id" "$port_dir")" || return 1
+	require_matches "$id" "repository method from $port_dir" "$matches" || return 1
 
 	while IFS=$'\t' read -r file line method receiver ret; do
 		[ -n "$method" ] || continue
@@ -2197,18 +1516,7 @@ check_sty_rust_071() {
 	return "$result"
 }
 
-check_sty_rust_072() {
-	local id="STY-RUST-072"
-	local rule_id="sty-rust-072"
-	local output
-
-	if output="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--report-style=short --color=never src 2>&1)"; then
-		return 0
-	fi
-	printf '%s\n' "$output"
-	return 1
-}
+check_sty_rust_072() { scan_short STY-RUST-072 src; }
 
 check_sty_rust_073() {
 	local id="STY-RUST-073"
@@ -2291,22 +1599,14 @@ check_sty_rust_073() {
 
 check_sty_rust_074() {
 	local id="STY-RUST-074"
-	local rule_id="sty-rust-074"
 	local server="src/bin/server.rs"
 	local matches installs install_count install_file var
 	local install_line execute_line result=0
 
-	if [ ! -f "$server" ]; then
-		printf 'error: %s: missing %s\n' "$id" "$server" >&2
-		return 1
-	fi
+	need_file "$id" "$server" || return 1
 
 	# sty-rust-074 extracts the `logging::setup` install call and the composition root's `LoadConfiguration` binding; the count, path and ordering logic happens here because an ast-grep rule cannot see how many call sites exist, which file they are in, or the order of two statements.
-	if ! matches="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--json=stream src 2>&1)"; then
-		printf '%s\n' "$matches"
-		return 1
-	fi
+	matches="$(scan_json "$id" src)" || return 1
 
 	# Clause A: the subscriber is installed exactly once, by `logging::setup`, from the composition root.
 	installs="$(printf '%s\n' "$matches" |
@@ -2350,45 +1650,28 @@ check_sty_rust_074() {
 
 check_sty_rust_075() {
 	local id="STY-RUST-075"
-	local rule_id="sty-rust-075"
 	local use_case_dir="src/lib/application/use_case"
-	local config matches file text root result=0
+	local matches file text root result=0
 	local -A allowed=()
 	local -A seen=()
+	local -a allowed_crates=()
 	local -a local_roots=(std core alloc crate self super)
 	local use_root='^(pub[^[:space:]]*[[:space:]]+)?use[[:space:]]+(::)?([A-Za-z_][A-Za-z0-9_]*)'
 
-	config="$(rule_config "$id")" || return 2
-
 	# The crates a use case may reach directly (TechnicalDesign.md § 6.6) are data: the list grows by adding a bullet there and an entry here.
-	while IFS= read -r root; do
-		[ -n "$root" ] || continue
+	config_list "$id" allowed_crates allowed_crates || return 2
+	for root in "${allowed_crates[@]}"; do
 		allowed["$root"]=1
-	done < <(jq -r '.allowed_crates[]?' <<<"$config")
-
-	if [ "${#allowed[@]}" -eq 0 ]; then
-		printf 'error: %s: rule_enforcer.yaml declares no allowed_crates\n' "$id" >&2
-		return 2
-	fi
+	done
 	for root in "${local_roots[@]}"; do
 		allowed["$root"]=1
 	done
 
-	if [ ! -d "$use_case_dir" ]; then
-		printf 'error: %s: missing %s\n' "$id" "$use_case_dir" >&2
-		return 1
-	fi
+	need_dir "$id" "$use_case_dir" || return 1
 
 	# sty-rust-075 extracts each non-test `use`; parsing the path root and comparing it against the allowed set happens here because an ast-grep rule cannot read rule_enforcer.yaml.
-	if ! matches="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--json=stream "$use_case_dir" 2>&1)"; then
-		printf '%s\n' "$matches"
-		return 1
-	fi
-	if [ -z "$matches" ]; then
-		printf 'error: %s: extracted no use declaration from %s\n' "$id" "$use_case_dir" >&2
-		return 1
-	fi
+	matches="$(scan_json "$id" "$use_case_dir")" || return 1
+	require_matches "$id" "use declaration from $use_case_dir" "$matches" || return 1
 
 	while IFS=$'\t' read -r file text; do
 		[ -n "$text" ] || continue
@@ -2410,15 +1693,11 @@ check_sty_rust_075() {
 
 check_sty_rust_076() {
 	local id="STY-RUST-076"
-	local rule_id="sty-rust-076"
 	local bootstrap="src/lib/infrastructure/outbound/config/bootstrap.rs"
 	local matches path feedback result=0
 	local -A registered=()
 
-	if [ ! -f "$bootstrap" ]; then
-		printf 'error: %s: missing %s\n' "$id" "$bootstrap" >&2
-		return 1
-	fi
+	need_file "$id" "$bootstrap" || return 1
 
 	# The § 10.1 table is the registry of startup-only settings; parse its rows (setting, operator restart feedback) straight from the rulebook, as read_rulebook parses the rule tables.
 	while IFS=$'\t' read -r path feedback; do
@@ -2453,15 +1732,8 @@ check_sty_rust_076() {
 	fi
 
 	# sty-rust-076 extracts the configuration paths the pre-pool bootstrap reads.
-	if ! matches="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--json=stream "$bootstrap" 2>&1)"; then
-		printf '%s\n' "$matches"
-		return 1
-	fi
-	if [ -z "$matches" ]; then
-		printf 'error: %s: extracted no configuration path read from %s\n' "$id" "$bootstrap" >&2
-		return 1
-	fi
+	matches="$(scan_json "$id" "$bootstrap")" || return 1
+	require_matches "$id" "configuration path read from $bootstrap" "$matches" || return 1
 
 	while IFS= read -r path; do
 		[ -n "$path" ] || continue
@@ -2483,10 +1755,7 @@ check_sty_rust_077() {
 	local output
 	local -a files=()
 
-	if [ ! -d "$model_dir" ]; then
-		printf 'error: %s: missing %s\n' "$id" "$model_dir" >&2
-		return 1
-	fi
+	need_dir "$id" "$model_dir" || return 1
 
 	mapfile -t files < <(find "$model_dir" -maxdepth 1 -name '*.rs' | sort)
 	if [ "${#files[@]}" -eq 0 ]; then
@@ -2583,36 +1852,17 @@ check_sty_rust_077() {
 	return 1
 }
 
-check_sty_rust_078() {
-	local id="STY-RUST-078"
-	local rule_id="sty-rust-078"
-	local output
-
-	if output="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--report-style=short --color=never src 2>&1)"; then
-		return 0
-	fi
-	printf '%s\n' "$output"
-	return 1
-}
+check_sty_rust_078() { scan_short STY-RUST-078 src; }
 
 check_sty_rust_079() {
 	local id="STY-RUST-079"
-	local rule_id="sty-rust-079"
 	local port_dir="src/lib/domain/port"
 	local matches counts file trait count methods result=0
 
-	if [ ! -d "$port_dir" ]; then
-		printf 'error: %s: missing %s\n' "$id" "$port_dir" >&2
-		return 1
-	fi
+	need_dir "$id" "$port_dir" || return 1
 
 	# sty-rust-079 extracts each repository-port trait and its `create*` method signatures; the per-trait count happens here because an ast-grep rule cannot count matches within one trait.
-	if ! matches="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--json=stream "$port_dir" 2>&1)"; then
-		printf '%s\n' "$matches"
-		return 1
-	fi
+	matches="$(scan_json "$id" "$port_dir")" || return 1
 
 	counts="$(printf '%s\n' "$matches" |
 		jq -r 'select(.metaVariables.single.METHOD) |
@@ -2649,31 +1899,15 @@ check_sty_rust_079() {
 
 check_sty_rust_080() {
 	local id="STY-RUST-080"
-	local rule_id="sty-rust-080"
-	local port_dir="src/lib/domain/port"
-	local model_dir="src/lib/domain/model"
 	local matches filter field aggregate accessor result=0
 	local -A accessors=()
 
-	if [ ! -d "$port_dir" ]; then
-		printf 'error: %s: missing %s\n' "$id" "$port_dir" >&2
-		return 1
-	fi
-	if [ ! -d "$model_dir" ]; then
-		printf 'error: %s: missing %s\n' "$id" "$model_dir" >&2
-		return 1
-	fi
+	need_dir "$id" "src/lib/domain/port" || return 1
+	need_dir "$id" "src/lib/domain/model" || return 1
 
 	# sty-rust-080 extracts each public `*Filter` field and each aggregate accessor; the field-to-aggregate pairing happens here because an ast-grep rule cannot relate two identifiers.
-	if ! matches="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--json=stream src 2>&1)"; then
-		printf '%s\n' "$matches"
-		return 1
-	fi
-	if [ -z "$matches" ]; then
-		printf 'error: %s: extracted no filter field or aggregate accessor\n' "$id" >&2
-		return 1
-	fi
+	matches="$(scan_json "$id" src)" || return 1
+	require_matches "$id" "filter field or aggregate accessor" "$matches" || return 1
 
 	while IFS=$'\t' read -r aggregate accessor; do
 		[ -n "$accessor" ] || continue
@@ -2701,26 +1935,15 @@ check_sty_rust_080() {
 
 check_sty_rust_081() {
 	local id="STY-RUST-081"
-	local rule_id="sty-rust-081"
 	local port_dir="src/lib/domain/port"
 	local matches file ret element key result=0
 	local -A models=()
 
-	if [ ! -d "$port_dir" ]; then
-		printf 'error: %s: missing %s\n' "$id" "$port_dir" >&2
-		return 1
-	fi
+	need_dir "$id" "$port_dir" || return 1
 
 	# sty-rust-081 extracts the classic `search` signature of every repository port together with the domain models each port file imports; the pairing happens here because an ast-grep rule cannot relate two identifiers.
-	if ! matches="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--json=stream "$port_dir" 2>&1)"; then
-		printf '%s\n' "$matches"
-		return 1
-	fi
-	if [ -z "$matches" ]; then
-		printf 'error: %s: extracted no classic query signature from %s\n' "$id" "$port_dir" >&2
-		return 1
-	fi
+	matches="$(scan_json "$id" "$port_dir")" || return 1
+	require_matches "$id" "classic query signature from $port_dir" "$matches" || return 1
 
 	# Domain models: every type a port file imports from the domain layer.
 	while IFS=$'\t' read -r file model; do
@@ -2757,22 +1980,13 @@ check_sty_rust_081() {
 
 check_sty_rust_082() {
 	local id="STY-RUST-082"
-	local rule_id="sty-rust-082"
 	local handler_dir="src/lib/infrastructure/inbound/rest/handler"
 	local matches file context item op result=0
 
-	if [ ! -d "$handler_dir" ]; then
-		printf 'error: %s: missing %s\n' "$id" "$handler_dir" >&2
-		return 1
-	fi
+	need_dir "$id" "$handler_dir" || return 1
 
 	# sty-rust-082 extracts every endpoint-file path that reaches into a bounded context (`handler::<context>::<next>`); the pairing below decides whether `<next>` names the context's operation submodule — a fact an ast-grep rule cannot see, because it cannot read the file system.
-	if ! matches="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--globs 'src/lib/infrastructure/inbound/rest/handler/*/*.rs' \
-		--json=stream src 2>&1)"; then
-		printf '%s\n' "$matches"
-		return 1
-	fi
+	matches="$(scan_json "$id" --globs 'src/lib/infrastructure/inbound/rest/handler/*/*.rs' src)" || return 1
 
 	# Flat and bare imports: `handler::<context>::<next>`.
 	while IFS=$'\t' read -r file context op; do
@@ -2804,26 +2018,15 @@ check_sty_rust_083() {
 	local id="STY-RUST-083"
 	local rest_dir="src/lib/infrastructure/inbound/rest"
 	local handler_dir="$rest_dir/handler"
-	local config context name entry result=0
+	local context name entry result=0
 	local -a contexts=()
 	local -A allowed_rest=()
 	local -A allowed_handler=()
 
-	if [ ! -d "$rest_dir" ]; then
-		printf 'error: %s: missing %s\n' "$id" "$rest_dir" >&2
-		return 1
-	fi
-	if [ ! -d "$handler_dir" ]; then
-		printf 'error: %s: missing %s\n' "$id" "$handler_dir" >&2
-		return 1
-	fi
+	need_dir "$id" "$rest_dir" || return 1
+	need_dir "$id" "$handler_dir" || return 1
 
-	config="$(rule_config "$id")" || return 2
-	mapfile -t contexts < <(jq -r '.bounded_contexts[]?' <<<"$config")
-	if [ "${#contexts[@]}" -eq 0 ]; then
-		printf 'error: %s: rule_enforcer.yaml declares no bounded_contexts\n' "$id" >&2
-		return 2
-	fi
+	config_list "$id" bounded_contexts contexts || return 2
 
 	for name in api_error.rs app_state.rs hal.rs handler.rs handler middleware.rs middleware; do
 		allowed_rest["$name"]=1
@@ -2900,10 +2103,7 @@ check_doc_005() {
 	local -A entry_headings=()
 	local -A entry_count=()
 
-	if [ ! -f "$catalog" ]; then
-		printf 'error: %s: missing %s\n' "$id" "$catalog" >&2
-		return 1
-	fi
+	need_file "$id" "$catalog" || return 1
 
 	for rank in "${!required[@]}"; do
 		order["${required[$rank]}"]=$((rank + 1))
@@ -3084,10 +2284,7 @@ check_doc_007() {
 		'(^|[^[:alnum:]_])_embedded([^[:alnum:]_]|$)'
 	)
 
-	if [ ! -f "$catalog" ]; then
-		printf 'error: %s: missing %s\n' "$id" "$catalog" >&2
-		return 1
-	fi
+	need_file "$id" "$catalog" || return 1
 
 	# Each narrative line of each entry, one `line<TAB>seq<TAB>text` record.
 	while IFS=$'\t' read -r line seq text; do
@@ -3155,10 +2352,7 @@ check_doc_008() {
 	local -A catalog_ucs=()
 	local -A uc_seen=()
 
-	if [ ! -f "$catalog" ]; then
-		printf 'error: %s: missing %s\n' "$id" "$catalog" >&2
-		return 1
-	fi
+	need_file "$id" "$catalog" || return 1
 
 	actor_list="$(printf '%s, ' "${actors[@]}")"
 	actor_list="${actor_list%, }"
@@ -3357,19 +2551,12 @@ check_doc_008() {
 }
 
 check_sty_sql_001() {
-	local id="STY-SQL-001"
 	local config=".sqlfluff"
 	local migrations_dir="migrations"
 	local output
 
-	if [ ! -f "$config" ]; then
-		printf 'error: %s: missing %s\n' "$id" "$config" >&2
-		return 1
-	fi
-	if [ ! -d "$migrations_dir" ]; then
-		printf 'error: %s: missing %s\n' "$id" "$migrations_dir" >&2
-		return 1
-	fi
+	need_file "STY-SQL-001" "$config" || return 1
+	need_dir "STY-SQL-001" "$migrations_dir" || return 1
 
 	# sqlfluff already performs this check: CP02 holds every unquoted identifier to the `.sqlfluff` `capitalisation_policy = lower` (snake_case), and RF06 flags a quoted identifier whose quotes are unnecessary.
 	if output="$(sqlfluff lint --config "$config" --rules CP02,RF06 \
@@ -3381,14 +2568,10 @@ check_sty_sql_001() {
 }
 
 check_sty_sql_003() {
-	local id="STY-SQL-003"
 	local migrations_dir="migrations"
 	local output
 
-	if [ ! -d "$migrations_dir" ]; then
-		printf 'error: %s: missing %s\n' "$id" "$migrations_dir" >&2
-		return 1
-	fi
+	need_dir "STY-SQL-003" "$migrations_dir" || return 1
 
 	# sqlfluff's RF04 (`references.keywords`) is the SQLite dialect's implementation of the rule: an unreserved keyword used as a name (date, key) is reported as RF04, while a reserved keyword (order, group, select) cannot be an unquoted identifier at all and surfaces as an unparsable PRS section.
 	if output="$(sqlfluff lint --dialect sqlite --rules RF04 --nocolor \
@@ -3404,10 +2587,7 @@ check_sty_sql_004() {
 	local migrations_dir="migrations"
 	local parse file ident text result=0
 
-	if [ ! -d "$migrations_dir" ]; then
-		printf 'error: %s: missing %s\n' "$id" "$migrations_dir" >&2
-		return 1
-	fi
+	need_dir "$id" "$migrations_dir" || return 1
 
 	# sqlfluff parses the migrations with the SQLite dialect and classifies every identifier as a `naked_identifier` or `quoted_identifier` segment; the character-set test happens here because no ast-grep rule sees SQL and no linter rule enforces the set (sqlfluff RF05 allows `A-Z` and non-ASCII alphanumerics).
 	parse="$(sqlfluff parse --dialect sqlite --format json "$migrations_dir" 2>/dev/null)"
@@ -3450,10 +2630,7 @@ check_sty_sql_005() {
 	local migrations_dir="migrations"
 	local file statement list value found=0 result=0
 
-	if [ ! -d "$migrations_dir" ]; then
-		printf 'error: %s: missing %s\n' "$id" "$migrations_dir" >&2
-		return 1
-	fi
+	need_dir "$id" "$migrations_dir" || return 1
 
 	# STY-SQL-005: an enum constraint is a SQL `CHECK (... IN (...))` whose allowed values are string literals; each such literal must be uppercase. ast-grep has no SQL grammar, so the extraction is textual: join each migration to one line, split it into statements, and read the quoted values of every `IN (...)` list in a `CHECK` statement.
 	while IFS= read -r file; do
@@ -3495,10 +2672,7 @@ check_sty_sql_006() {
 	local config table result=0 count=0
 	local -A allowed=()
 
-	if [ ! -d "$migrations_dir" ]; then
-		printf 'error: %s: missing %s\n' "$id" "$migrations_dir" >&2
-		return 1
-	fi
+	need_dir "$id" "$migrations_dir" || return 1
 
 	config="$(rule_config "$id")" || return 2
 
@@ -3537,10 +2711,7 @@ check_sty_sql_008() {
 	local file table cols col expected found=0 result=0
 	local -a keys=()
 
-	if [ ! -d "$migrations_dir" ]; then
-		printf 'error: %s: missing %s\n' "$id" "$migrations_dir" >&2
-		return 1
-	fi
+	need_dir "$id" "$migrations_dir" || return 1
 
 	# STY-SQL-008 constrains a table's own single-column primary key: the column must be named `<table_name>_id`.
 	while IFS=$'\t' read -r file table cols; do
@@ -3603,10 +2774,7 @@ check_sty_sql_009() {
 	local result=0 fk_count=0
 	local -A pk_of=()
 
-	if [ ! -d "$migrations_dir" ]; then
-		printf 'error: %s: missing %s\n' "$id" "$migrations_dir" >&2
-		return 1
-	fi
+	need_dir "$id" "$migrations_dir" || return 1
 
 	# Each table's primary key, read from the table-level `PRIMARY KEY (...)` of its `CREATE TABLE`.
 	while IFS= read -r file; do
@@ -3676,10 +2844,7 @@ check_sty_sql_010() {
 	local migrations_dir="migrations"
 	local matches file line name type result=0
 
-	if [ ! -d "$migrations_dir" ]; then
-		printf 'error: %s: missing %s\n' "$id" "$migrations_dir" >&2
-		return 1
-	fi
+	need_dir "$id" "$migrations_dir" || return 1
 
 	# The declared column type is the only mechanical signal for the rule's data-type categories: a BOOLEAN column must carry an is_/has_/can_ prefix and a DATE column an _at/_date suffix.
 	matches="$(grep -rEnE \
@@ -3717,14 +2882,8 @@ check_sty_sql_011() {
 	local trigger_re='(CREATE|DROP)[[:space:]]+(TEMP[[:space:]]+|TEMPORARY[[:space:]]+)?TRIGGER[[:space:]]+(IF[[:space:]]+(NOT[[:space:]]+)?EXISTS[[:space:]]+)?["`[]?[A-Za-z_][A-Za-z0-9_]*'
 	local file line text name count=0 result=0
 
-	if [ ! -d "$migrations_dir" ]; then
-		printf 'error: %s: missing %s\n' "$id" "$migrations_dir" >&2
-		return 1
-	fi
-	if [ ! -d "$sqlx_dir" ]; then
-		printf 'error: %s: missing %s\n' "$id" "$sqlx_dir" >&2
-		return 1
-	fi
+	need_dir "$id" "$migrations_dir" || return 1
+	need_dir "$id" "$sqlx_dir" || return 1
 
 	# Triggers are declared in the migration SQL and in the SQL string literals of the sqlx outbound adapter tree. ast-grep cannot parse SQL, so each declaration is read textually: line comments are dropped so prose about a trigger is not read as one, then the name after the TRIGGER keyword is compared to the required `tg_` prefix.
 	while IFS= read -r file; do
@@ -3760,10 +2919,7 @@ check_sty_sql_012() {
 	local decl file name result=0
 	local -a files=()
 
-	if [ ! -d "$migrations_dir" ]; then
-		printf 'error: %s: missing %s\n' "$id" "$migrations_dir" >&2
-		return 1
-	fi
+	need_dir "$id" "$migrations_dir" || return 1
 
 	mapfile -t files < <(find "$migrations_dir" -maxdepth 1 -name '*.sql' | sort)
 	if [ "${#files[@]}" -eq 0 ]; then
@@ -3792,35 +2948,17 @@ check_sty_sql_012() {
 	return "$result"
 }
 
-check_test_001() {
-	local id="TEST-001"
-	local rule_id="test-001"
-	local output
-
-	if output="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--report-style=short --color=never src 2>&1)"; then
-		return 0
-	fi
-	printf '%s\n' "$output"
-	return 1
-}
+check_test_001() { scan_short TEST-001 src; }
 
 check_test_002() {
 	local id="TEST-002"
-	local rule_id="test-002"
 	local port_dir="src/lib/domain/port"
 	local app_port_dir="src/lib/application/port"
 	local config matches file trait result=0
 	local -A exempt=()
 
-	if [ ! -d "$port_dir" ]; then
-		printf 'error: %s: missing %s\n' "$id" "$port_dir" >&2
-		return 1
-	fi
-	if [ ! -d "$app_port_dir" ]; then
-		printf 'error: %s: missing %s\n' "$id" "$app_port_dir" >&2
-		return 1
-	fi
+	need_dir "$id" "$port_dir" || return 1
+	need_dir "$id" "$app_port_dir" || return 1
 
 	config="$(rule_config "$id")" || return 2
 
@@ -3831,11 +2969,7 @@ check_test_002() {
 	done < <(jq -r '.exempt_traits[]?' <<<"$config")
 
 	# test-002 extracts every external-dependency trait (port) declared without `mockall`'s automock attribute; the exemption comparison happens here because an ast-grep rule cannot read rule_enforcer.yaml.
-	if ! matches="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--json=stream "$port_dir" "$app_port_dir" 2>&1)"; then
-		printf '%s\n' "$matches"
-		return 1
-	fi
+	matches="$(scan_json "$id" "$port_dir" "$app_port_dir")" || return 1
 	[ -n "$matches" ] || return 0
 
 	while IFS=$'\t' read -r file trait; do
@@ -3858,10 +2992,7 @@ check_test_004() {
 	local file dto test_line line text found=0 result=0
 	local -a dtos=()
 
-	if [ ! -d "$handler_dir" ]; then
-		printf 'error: %s: missing %s\n' "$id" "$handler_dir" >&2
-		return 1
-	fi
+	need_dir "$id" "$handler_dir" || return 1
 
 	# Every payload DTO declaration under the handler tree.
 	while IFS= read -r file; do
@@ -3900,35 +3031,14 @@ check_test_004() {
 }
 
 check_test_007() {
-	local id="TEST-007"
-	local rule_id="test-007"
-	local output
-
 	# test-007 extracts every function that both uses SECRET_PASSWORD and asserts a password outcome — a test whose subject is password behavior (policy validation, wrong-password rejection, change-password, hashing, verification).
-	if output="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--report-style=short --color=never src 2>&1)"; then
-		return 0
-	fi
-	printf '%s\n' "$output"
-	return 1
+	scan_short TEST-007 src
 }
 
-check_test_008() {
-	local id="TEST-008"
-	local rule_id="test-008"
-	local output
-
-	if output="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--report-style=short --color=never src 2>&1)"; then
-		return 0
-	fi
-	printf '%s\n' "$output"
-	return 1
-}
+check_test_008() { scan_short TEST-008 src; }
 
 check_test_009() {
 	local id="TEST-009"
-	local rule_id="test-009"
 	local surface="src/lib/infrastructure/inbound/rest/handler"
 	local module="src/lib/infrastructure/inbound/rest/handler.rs"
 	local matches file kind result=0
@@ -3943,11 +3053,7 @@ check_test_009() {
 	done
 
 	# test-009 extracts the two syntactic facts the rule names — a request built with `Request::builder()` and a dispatch through `.oneshot(...)`.
-	if ! matches="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--json=stream src 2>&1)"; then
-		printf '%s\n' "$matches"
-		return 1
-	fi
+	matches="$(scan_json "$id" src)" || return 1
 
 	while IFS=$'\t' read -r file kind; do
 		[ -n "$file" ] || continue
@@ -3978,27 +3084,14 @@ check_test_009() {
 
 check_test_013() {
 	local id="TEST-013"
-	local rule_id="test-013"
 	local handler_dir="src/lib/infrastructure/inbound/rest/handler"
 	local matches file accessor expected result=0
 
-	if [ ! -d "$handler_dir" ]; then
-		printf 'error: %s: missing %s\n' "$id" "$handler_dir" >&2
-		return 1
-	fi
+	need_dir "$id" "$handler_dir" || return 1
 
 	# test-013 extracts the application use-case accessor each endpoint handler drives (`state.<context>_use_case_factory().<accessor>().execute(...)`).
-	if ! matches="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--globs 'src/lib/infrastructure/inbound/rest/handler/*/*.rs' \
-		--json=stream src 2>&1)"; then
-		printf '%s\n' "$matches"
-		return 1
-	fi
-	if [ -z "$matches" ]; then
-		printf 'error: %s: extracted no use-case-driven endpoint handler from %s\n' \
-			"$id" "$handler_dir" >&2
-		return 1
-	fi
+	matches="$(scan_json "$id" --globs 'src/lib/infrastructure/inbound/rest/handler/*/*.rs' src)" || return 1
+	require_matches "$id" "use-case-driven endpoint handler from $handler_dir" "$matches" || return 1
 
 	while IFS=$'\t' read -r file accessor; do
 		[ -n "$accessor" ] || continue
@@ -4017,25 +3110,14 @@ check_test_013() {
 
 check_test_014() {
 	local id="TEST-014"
-	local rule_id="test-014"
 	local handler_dir="src/lib/infrastructure/inbound/rest/handler"
 	local matches file line call rel context expected result=0
 
-	if [ ! -d "$handler_dir" ]; then
-		printf 'error: %s: missing %s\n' "$id" "$handler_dir" >&2
-		return 1
-	fi
+	need_dir "$id" "$handler_dir" || return 1
 
 	# test-014 extracts every router-state construction inside a `#[cfg(test)]` module of the handler tree: the per-context helper, the all-mock helper and a hand-built `AppState`.
-	if ! matches="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--json=stream "$handler_dir" 2>&1)"; then
-		printf '%s\n' "$matches"
-		return 1
-	fi
-	if [ -z "$matches" ]; then
-		printf 'error: %s: extracted no router-state construction from %s\n' "$id" "$handler_dir" >&2
-		return 1
-	fi
+	matches="$(scan_json "$id" "$handler_dir")" || return 1
+	require_matches "$id" "router-state construction from $handler_dir" "$matches" || return 1
 
 	while IFS=$'\t' read -r file line call; do
 		[ -n "$call" ] || continue
@@ -4056,57 +3138,18 @@ check_test_014() {
 }
 
 check_test_015() {
-	local id="TEST-015"
-	local rule_id="test-015"
-	local output
-
 	# test-015 flags a per-context use-case factory expectation whose `times(...)` argument is not `0..=1`: the handler can reject the request (invalid path id, malformed body) before the factory is reached, so the expectation must tolerate zero calls.
-	if output="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--report-style=short --color=never src 2>&1)"; then
-		return 0
-	fi
-	printf '%s\n' "$output"
-	return 1
+	scan_short TEST-015 src
 }
 
 # check_test_017 — an application test is `async` (TEST-017).
-check_test_017() {
-	local id="TEST-017"
-	local rule_id="test-017"
-	local target="src/lib/application"
-	local output
-
-	if [ ! -d "$target" ]; then
-		printf 'error: %s: missing %s\n' "$id" "$target" >&2
-		return 1
-	fi
-
-	if output="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--report-style=short --color=never "$target" 2>&1)"; then
-		return 0
-	fi
-	printf '%s\n' "$output"
-	return 1
-}
+check_test_017() { need_dir "TEST-017" "src/lib/application" && scan_short TEST-017 "src/lib/application"; }
 
 check_test_019() {
-	local id="TEST-019"
-	local rule_id="test-019"
-	local model_dir="src/lib/domain/model"
-	local output
-
-	if [ ! -d "$model_dir" ]; then
-		printf 'error: %s: missing %s\n' "$id" "$model_dir" >&2
-		return 1
-	fi
+	need_dir "TEST-019" "src/lib/domain/model" || return 1
 
 	# test-019 matches a test construct — a `#[cfg(test)]`/`#[cfg_attr(test, ...)]` attribute, a `#[test]` (or `#[<path>::test]`), a `mod test`/`mod tests`, or a `mockall`/`automock` name.
-	if output="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--report-style=short --color=never "$model_dir" 2>&1)"; then
-		return 0
-	fi
-	printf '%s\n' "$output"
-	return 1
+	scan_short TEST-019 "src/lib/domain/model"
 }
 
 # check_test_053 — a catalogued use case's E2E file sits in the folder named by the bounded-context section that holds its entry (TEST-053).
@@ -4118,14 +3161,8 @@ check_test_053() {
 	local result=0
 	local -A uc_section=()
 
-	if [ ! -d "$e2e_dir" ]; then
-		printf 'error: %s: missing %s\n' "$id" "$e2e_dir" >&2
-		return 1
-	fi
-	if [ ! -f "$catalog" ]; then
-		printf 'error: %s: missing %s\n' "$id" "$catalog" >&2
-		return 1
-	fi
+	need_dir "$id" "$e2e_dir" || return 1
+	need_file "$id" "$catalog" || return 1
 
 	# The section each catalogued use case is filed under: one `seq<TAB>section` row per `### UC-` entry, read while the current `##` heading is in scope.
 	while IFS=$'\t' read -r seq section; do
@@ -4176,10 +3213,7 @@ check_test_054() {
 	local found=0 result=0
 	local -A production_variants=()
 
-	if [ ! -d "$outbound" ]; then
-		printf 'error: %s: missing %s\n' "$id" "$outbound" >&2
-		return 1
-	fi
+	need_dir "$id" "$outbound" || return 1
 
 	# A native-binary adapter spawns a child process.
 	while IFS= read -r file; do
@@ -4260,52 +3294,19 @@ check_test_054() {
 }
 
 # check_obs_001 — the domain must not log: emit log events only from the application and infrastructure layers (OBS-001).
-check_obs_001() {
-	local id="OBS-001"
-	local rule_id="obs-001"
-	local domain_dir="src/lib/domain"
-	local output
-
-	if [ ! -d "$domain_dir" ]; then
-		printf 'error: %s: missing %s\n' "$id" "$domain_dir" >&2
-		return 1
-	fi
-
-	if output="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--report-style=short --color=never "$domain_dir" 2>&1)"; then
-		return 0
-	fi
-	printf '%s\n' "$output"
-	return 1
-}
+check_obs_001() { need_dir "OBS-001" "src/lib/domain" && scan_short OBS-001 "src/lib/domain"; }
 
 check_obs_003() {
 	local id="OBS-003"
-	local rule_id="obs-003"
-	local config matches file line text masked name hit result=0
+	local matches file line text masked name hit result=0
 	local -a names=()
 
 	# The values OBS-003 forbids are named here as data: a new error variable name or raw client field is added to rule_enforcer.yaml, never by editing this function.
-	config="$(rule_config "$id")" || return 2
-	while IFS= read -r name; do
-		[ -n "$name" ] || continue
-		names+=("$name")
-	done < <(jq -r '.denied_values[]?' <<<"$config")
-	if [ "${#names[@]}" -eq 0 ]; then
-		printf 'error: %s: rule_enforcer.yaml declares no denied_values\n' "$id" >&2
-		return 2
-	fi
+	config_list "$id" denied_values names || return 2
 
 	# obs-003 extracts every non-test tracing log macro invocation.
-	if ! matches="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--json=stream src 2>&1)"; then
-		printf '%s\n' "$matches"
-		return 1
-	fi
-	if [ -z "$matches" ]; then
-		printf 'error: %s: extracted no tracing log macro invocation from src\n' "$id" >&2
-		return 1
-	fi
+	matches="$(scan_json "$id" src)" || return 1
+	require_matches "$id" "tracing log macro invocation from src" "$matches" || return 1
 
 	while IFS=$'\t' read -r file line text; do
 		[ -n "$text" ] || continue
@@ -4338,7 +3339,6 @@ check_obs_003() {
 # check_obs_004 — a type that holds a secret or personal data must not derive a `Debug` that exposes it (OBS-004). § 4 names the secret-bearing and the personal-data-bearing types; obs-004 extracts each struct declaration, each struct that derives `Debug`, and each manual `Debug` impl under src/lib/domain/model/.
 check_obs_004() {
 	local id="OBS-004"
-	local rule_id="obs-004"
 	local model_dir="src/lib/domain/model"
 	local config matches file type name body result=0
 	local -a secret_names=()
@@ -4376,20 +3376,10 @@ check_obs_004() {
 	# A derived or manual `Debug` must print neither a secret nor a personal-data field.
 	protected_names=("${secret_names[@]}" "${personal_names[@]}")
 
-	if [ ! -d "$model_dir" ]; then
-		printf 'error: %s: missing %s\n' "$id" "$model_dir" >&2
-		return 1
-	fi
+	need_dir "$id" "$model_dir" || return 1
 
-	if ! matches="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--json=stream src 2>&1)"; then
-		printf '%s\n' "$matches"
-		return 1
-	fi
-	if [ -z "$matches" ]; then
-		printf 'error: %s: extracted no struct or Debug impl from %s\n' "$id" "$model_dir" >&2
-		return 1
-	fi
+	matches="$(scan_json "$id" src)" || return 1
+	require_matches "$id" "struct or Debug impl from $model_dir" "$matches" || return 1
 
 	# Presence: every type § 4 names is declared under the model directory.
 	while IFS= read -r type; do
@@ -4449,7 +3439,6 @@ check_obs_004() {
 
 check_obs_006() {
 	local id="OBS-006"
-	local rule_id="obs-006"
 	local matches file line b64 text level event expected exp_level exp_fields
 	local entry body fields sites=0
 	local -A catalog=()
@@ -4490,11 +3479,7 @@ check_obs_006() {
 	fi
 
 	# obs-006 extracts every security-target macro invocation.
-	if ! matches="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--json=stream src 2>&1)"; then
-		printf '%s\n' "$matches"
-		return 1
-	fi
+	matches="$(scan_json "$id" src)" || return 1
 
 	while IFS=$'\t' read -r file line b64; do
 		[ -n "$b64" ] || continue
@@ -4570,7 +3555,6 @@ check_obs_006() {
 
 check_obs_007() {
 	local id="OBS-007"
-	local rule_id="obs-007"
 	local domain="src/lib/domain/model/configuration.rs"
 	local infra="src/lib/infrastructure/logging.rs"
 	local matches result=0
@@ -4581,11 +3565,7 @@ check_obs_007() {
 	fi
 
 	# obs-007 extracts the guards and the floor that keep a catalog event from being suppressed; the per-file placement and the pinned values are asserted here because an ast-grep rule cannot assert a conjunction of constructs across two files and two functions.
-	if ! matches="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--json=stream src 2>&1)"; then
-		printf '%s\n' "$matches"
-		return 1
-	fi
+	matches="$(scan_json "$id" src)" || return 1
 
 	if ! printf '%s\n' "$matches" | jq -e -s --arg f "$domain" \
 		'any(.[]; .file == $f and .metaVariables.single.DISABLING_LEVEL != null)' >/dev/null; then
@@ -4620,22 +3600,16 @@ check_obs_007() {
 check_obs_008() {
 	local id="OBS-008"
 	local infra="src/lib/infrastructure"
-	local config proto whitelist issue file found_issue count=0 result=0
+	local proto whitelist issue file found_issue count=0 result=0
 	local -a allowed_protocols=()
 	local -A is_allowed=()
 	local -a issues=()
 	local -A is_issue=()
 
-	config="$(rule_config "$id")" || return 2
-	while IFS= read -r proto; do
-		[ -n "$proto" ] || continue
-		allowed_protocols+=("$proto")
+	config_list "$id" allowed_protocols allowed_protocols || return 2
+	for proto in "${allowed_protocols[@]}"; do
 		is_allowed["$proto"]=1
-	done < <(jq -r '.allowed_protocols[]?' <<<"$config")
-	if [ "${#allowed_protocols[@]}" -eq 0 ]; then
-		printf 'error: %s: rule_enforcer.yaml declares no allowed_protocols\n' "$id" >&2
-		return 2
-	fi
+	done
 
 	# The tracked end-state issues that record the residual isolation gap are read from the rulebook § 8 detail, so the check hard-codes none.
 	while IFS= read -r issue; do
@@ -4658,10 +3632,7 @@ check_obs_008() {
 		return 1
 	fi
 
-	if [ ! -d "$infra" ]; then
-		printf 'error: %s: missing %s\n' "$id" "$infra" >&2
-		return 1
-	fi
+	need_dir "$id" "$infra" || return 1
 
 	# An adapter that hands caller-supplied content to an external native parser spawns a child process, so it imports a `process` module; every such file under the infrastructure layer is an external-parser adapter.
 	while IFS= read -r file; do
@@ -4736,22 +3707,14 @@ check_obs_008() {
 # check_test_022 — every application use-case test module covers a dependency failure (TEST-022): at least one test configures a mocked outbound port to return an error.
 check_test_022() {
 	local id="TEST-022"
-	local rule_id="test-022"
 	local target="src/lib/application/use_case"
 	local matches file result=0
 	local -A covered=()
 
-	if [ ! -d "$target" ]; then
-		printf 'error: %s: missing %s\n' "$id" "$target" >&2
-		return 1
-	fi
+	need_dir "$id" "$target" || return 1
 
 	# test-022 extracts every mock expectation configured to return an error — a `.returning(...)`/`.return_once(...)` whose arguments yield `Err(...)`.
-	if ! matches="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--json=stream "$target" 2>&1)"; then
-		printf '%s\n' "$matches"
-		return 1
-	fi
+	matches="$(scan_json "$id" "$target")" || return 1
 
 	while IFS= read -r file; do
 		[ -n "$file" ] || continue
@@ -4774,21 +3737,13 @@ check_test_022() {
 # check_test_024 — a domain service has its own inline unit test module (TEST-024).
 check_test_024() {
 	local id="TEST-024"
-	local rule_id="test-024"
 	local service_dir="src/lib/domain/service"
 	local matches file found=0 result=0
 	local -A has_test_module=()
 
-	if [ ! -d "$service_dir" ]; then
-		printf 'error: %s: missing %s\n' "$id" "$service_dir" >&2
-		return 1
-	fi
+	need_dir "$id" "$service_dir" || return 1
 
-	if ! matches="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--json=stream "$service_dir" 2>&1)"; then
-		printf '%s\n' "$matches"
-		return 1
-	fi
+	matches="$(scan_json "$id" "$service_dir")" || return 1
 
 	# Every service file that carries its own inline test module.
 	while IFS= read -r file; do
@@ -4817,26 +3772,15 @@ check_test_024() {
 
 check_test_025() {
 	local id="TEST-025"
-	local rule_id="test-025"
 	local service_dir="src/lib/domain/service"
 	local matches file name variant enum_count=0 result=0
 	local -A test_ids=()
 
-	if [ ! -d "$service_dir" ]; then
-		printf 'error: %s: missing %s\n' "$id" "$service_dir" >&2
-		return 1
-	fi
+	need_dir "$id" "$service_dir" || return 1
 
 	# test-025 extracts each domain service's error-enum variants — the business rules the service enforces — and the identifiers its own `#[cfg(test)]` module names.
-	if ! matches="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--json=stream "$service_dir" 2>&1)"; then
-		printf '%s\n' "$matches"
-		return 1
-	fi
-	if [ -z "$matches" ]; then
-		printf 'error: %s: extracted no domain service from %s\n' "$id" "$service_dir" >&2
-		return 1
-	fi
+	matches="$(scan_json "$id" "$service_dir")" || return 1
+	require_matches "$id" "domain service from $service_dir" "$matches" || return 1
 
 	# The identifiers the service's own test module names, keyed by file.
 	while IFS=$'\t' read -r file name; do
@@ -4868,41 +3812,17 @@ check_test_025() {
 }
 
 # check_test_026 — a domain service is pure, so its tests need no doubles (TEST-026).
-check_test_026() {
-	local id="TEST-026"
-	local rule_id="test-026"
-	local service_dir="src/lib/domain/service"
-	local output
-
-	if [ ! -d "$service_dir" ]; then
-		printf 'error: %s: missing %s\n' "$id" "$service_dir" >&2
-		return 1
-	fi
-
-	if output="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--report-style=short --color=never "$service_dir" 2>&1)"; then
-		return 0
-	fi
-	printf '%s\n' "$output"
-	return 1
-}
+check_test_026() { need_dir "TEST-026" "src/lib/domain/service" && scan_short TEST-026 "src/lib/domain/service"; }
 
 # check_test_027 — integration tests exercise the outbound port adapters (TEST-027): every repository (SQLite, moka cache) and configuration-source adapter carries its inline `#[cfg(test)] mod tests { ... }`, the module the integration test lives in (TEST-028).
 check_test_027() {
 	local id="TEST-027"
-	local rule_id="test-027"
-	local config pattern file matches found=0 result=0
+	local pattern file matches found=0 result=0
 	local -a surfaces=()
 	local -a files=()
 
-	config="$(rule_config "$id")" || return 2
-
 	# The rule names the families, not the paths: the repository (SQLite, moka cache) and the configuration source are transcribed as globs in rule_enforcer.yaml.
-	mapfile -t surfaces < <(jq -r '.adapter_surfaces[]?' <<<"$config")
-	if [ "${#surfaces[@]}" -eq 0 ]; then
-		printf 'error: %s: rule_enforcer.yaml declares no adapter_surfaces\n' "$id" >&2
-		return 2
-	fi
+	config_list "$id" adapter_surfaces surfaces || return 2
 
 	for pattern in "${surfaces[@]}"; do
 		mapfile -t files < <(compgen -G "$pattern" || true)
@@ -4913,11 +3833,7 @@ check_test_027() {
 				continue
 			fi
 			found=$((found + 1))
-			if ! matches="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-				--json=stream "$file" 2>&1)"; then
-				printf '%s\n' "$matches"
-				return 1
-			fi
+			matches="$(scan_json "$id" "$file")" || return 1
 			if [ -z "$matches" ]; then
 				printf 'error: %s: %s: outbound port adapter has no inline #[cfg(test)] test module; add its integration test to this file\n' \
 					"$id" "$file" >&2
@@ -4935,43 +3851,18 @@ check_test_027() {
 }
 
 # check_test_028 — an integration test module lives in the same file as the code under test (TEST-028).
-check_test_028() {
-	local id="TEST-028"
-	local rule_id="test-028"
-	local surface="src/lib/infrastructure/outbound"
-	local output
-
-	if [ ! -d "$surface" ]; then
-		printf 'error: %s: missing %s\n' "$id" "$surface" >&2
-		return 1
-	fi
-
-	if output="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--report-style=short --color=never src 2>&1)"; then
-		return 0
-	fi
-	printf '%s\n' "$output"
-	return 1
-}
+check_test_028() { need_dir "TEST-028" "src/lib/infrastructure/outbound" && scan_short TEST-028 src; }
 
 # check_test_033 — the SQLite repository is exercised against an in-memory database, one `:memory:` connection per test so each test runs against a fresh database (TEST-033).
 check_test_033() {
 	local id="TEST-033"
-	local rule_id="test-033"
 	local surface="src/lib/infrastructure/outbound/sqlx"
 	local matches file line arg helper result=0 modules=0
 	local -A in_memory=()
 
-	if [ ! -d "$surface" ]; then
-		printf 'error: %s: missing %s\n' "$id" "$surface" >&2
-		return 1
-	fi
+	need_dir "$id" "$surface" || return 1
 
-	if ! matches="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--json=stream src 2>&1)"; then
-		printf '%s\n' "$matches"
-		return 1
-	fi
+	matches="$(scan_json "$id" src)" || return 1
 
 	while IFS=$'\t' read -r file line arg helper; do
 		[ -n "$file" ] || continue
@@ -5014,29 +3905,11 @@ check_test_033() {
 }
 
 # check_test_034 — a SQLite repository integration test caps its in-memory pool at one connection (TEST-034).
-check_test_034() {
-	local id="TEST-034"
-	local rule_id="test-034"
-	local target="src/lib/infrastructure/outbound/sqlx"
-	local output
-
-	if [ ! -d "$target" ]; then
-		printf 'error: %s: missing %s\n' "$id" "$target" >&2
-		return 1
-	fi
-
-	if output="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--report-style=short --color=never "$target" 2>&1)"; then
-		return 0
-	fi
-	printf '%s\n' "$output"
-	return 1
-}
+check_test_034() { need_dir "TEST-034" "src/lib/infrastructure/outbound/sqlx" && scan_short TEST-034 "src/lib/infrastructure/outbound/sqlx"; }
 
 # check_test_035 — the moka cache adapter's test mocks the wrapped repository with mockall (TEST-035).
 check_test_035() {
 	local id="TEST-035"
-	local rule_id="test-035"
 	local surface="src/lib/infrastructure/outbound/moka.rs"
 	local module="src/lib/infrastructure/outbound/moka"
 	local file matches found=0 result=0
@@ -5064,11 +3937,7 @@ check_test_035() {
 			continue
 		fi
 		# test-035 extracts the mockall mock the test supplies as the wrapped repository; the per-file requirement is resolved here because an ast-grep rule cannot assert the absence of a match in a file.
-		if ! matches="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-			--json=stream "$file" 2>&1)"; then
-			printf '%s\n' "$matches"
-			return 1
-		fi
+		matches="$(scan_json "$id" "$file")" || return 1
 		if [ -z "$matches" ]; then
 			printf 'error: %s: %s: the moka cache adapter test does not mock the wrapped repository with mockall; supply a Mock<…>Repository double as the wrapped repository\n' \
 				"$id" "$file" >&2
@@ -5087,23 +3956,15 @@ check_test_035() {
 # check_test_036 — an external-service test stubs the service with `wiremock` and loads its canned responses from golden files (TEST-036).
 check_test_036() {
 	local id="TEST-036"
-	local rule_id="test-036"
 	local surface="src/lib/infrastructure/outbound"
 	local file matches kind line text stubbed result=0
 
-	if [ ! -d "$surface" ]; then
-		printf 'error: %s: missing %s\n' "$id" "$surface" >&2
-		return 1
-	fi
+	need_dir "$id" "$surface" || return 1
 
 	while IFS= read -r file; do
 		[ -n "$file" ] || continue
 
-		if ! matches="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-			--json=stream "$file" 2>&1)"; then
-			printf '%s\n' "$matches"
-			return 1
-		fi
+		matches="$(scan_json "$id" "$file")" || return 1
 
 		stubbed=0
 		if [ -n "$matches" ]; then
@@ -5134,24 +3995,14 @@ check_test_036() {
 
 # check_test_038 — an external-service test module lives in the same file as the client under test (TEST-038).
 check_test_038() {
-	local id="TEST-038"
-	local rule_id="test-038"
 	local surface="src/lib/infrastructure/outbound"
-	local file output result=0
+	local file result=0
 
-	if [ ! -d "$surface" ]; then
-		printf 'error: %s: missing %s\n' "$id" "$surface" >&2
-		return 1
-	fi
+	need_dir "TEST-038" "$surface" || return 1
 
 	while IFS= read -r file; do
 		[ -n "$file" ] || continue
-		if output="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-			--report-style=short --color=never "$file" 2>&1)"; then
-			continue
-		fi
-		printf '%s\n' "$output"
-		result=1
+		scan_short TEST-038 "$file" || result=1
 	done < <(grep -rl 'ExternalServiceError' --include='*.rs' "$surface" 2>/dev/null | sort)
 
 	return "$result"
@@ -5165,14 +4016,8 @@ check_test_040() {
 	local file base line pattern result=0
 	local -a patterns=()
 
-	if [ ! -d "$e2e_dir" ]; then
-		printf 'error: %s: missing %s\n' "$id" "$e2e_dir" >&2
-		return 1
-	fi
-	if [ ! -f "$pytest_ini" ]; then
-		printf 'error: %s: missing %s\n' "$id" "$pytest_ini" >&2
-		return 1
-	fi
+	need_dir "$id" "$e2e_dir" || return 1
+	need_file "$id" "$pytest_ini" || return 1
 
 	while IFS= read -r line || [ -n "$line" ]; do
 		for pattern in $line; do
@@ -5218,14 +4063,8 @@ check_test_041() {
 	local -A files_of=()
 	local -A exempt=()
 
-	if [ ! -d "$e2e_dir" ]; then
-		printf 'error: %s: missing %s\n' "$id" "$e2e_dir" >&2
-		return 1
-	fi
-	if [ ! -f "$catalog" ]; then
-		printf 'error: %s: missing %s\n' "$id" "$catalog" >&2
-		return 1
-	fi
+	need_dir "$id" "$e2e_dir" || return 1
+	need_file "$id" "$catalog" || return 1
 
 	# The catalogued business use cases: `UC-<seq> - <Name>` headings, at `###` or, inside a sub-package, at `####`.
 	while IFS= read -r seq; do
@@ -5308,14 +4147,8 @@ check_test_042() {
 	local entry name result=0
 	local -A is_context=()
 
-	if [ ! -d "$e2e_dir" ]; then
-		printf 'error: %s: missing %s\n' "$id" "$e2e_dir" >&2
-		return 1
-	fi
-	if [ ! -f "$overview" ]; then
-		printf 'error: %s: missing %s\n' "$id" "$overview" >&2
-		return 1
-	fi
+	need_dir "$id" "$e2e_dir" || return 1
+	need_file "$id" "$overview" || return 1
 
 	# The Overview's § Bounded context table is the rule's list: its first column, lowercased, is the set of folder names the E2E suite may use.
 	while IFS= read -r name; do
@@ -5368,17 +4201,13 @@ check_test_042() {
 # check_test_043 — a generic E2E test provisions or registers its users with the shared `SECRET_PASSWORD` (TEST-043). test-043 extracts every `register(...)` call and its password argument; the shared-secret comparison happens here because an ast-grep rule cannot read rule_enforcer.yaml.
 check_test_043() {
 	local id="TEST-043"
-	local rule_id="test-043"
 	local e2e_dir="test/e2e"
 	local conftest="$e2e_dir/conftest.py"
 	local config matches file line password location func result=0
 	local -A secret_aliases=()
 	local -A allowed=()
 
-	if [ ! -f "$conftest" ]; then
-		printf 'error: %s: missing %s\n' "$id" "$conftest" >&2
-		return 1
-	fi
+	need_file "$id" "$conftest" || return 1
 	if ! grep -qE '^SECRET_PASSWORD[[:space:]]*=' "$conftest"; then
 		printf 'error: %s: %s does not define SECRET_PASSWORD\n' "$id" "$conftest" >&2
 		return 1
@@ -5401,11 +4230,7 @@ check_test_043() {
 		"$e2e_dir" --include='*.py' | sed -E 's/[[:space:]]*=.*//')
 
 	# test-043 extracts every `register(…)` call and its password argument.
-	if ! matches="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--json=stream "$e2e_dir" 2>&1)"; then
-		printf '%s\n' "$matches"
-		return 1
-	fi
+	matches="$(scan_json "$id" "$e2e_dir")" || return 1
 	[ -n "$matches" ] || return 0
 
 	while IFS=$'\t' read -r file line password; do
@@ -5442,16 +4267,12 @@ check_test_043() {
 
 check_test_045() {
 	local id="TEST-045"
-	local rule_id="test-045"
 	local e2e_dir="test/e2e"
 	local conftest="$e2e_dir/conftest.py"
 	local matches file line text name secret_re found_fixture=0 result=0
 	local -a shared=("SECRET_PASSWORD" "secret_password")
 
-	if [ ! -d "$e2e_dir" ]; then
-		printf 'error: %s: missing %s\n' "$id" "$e2e_dir" >&2
-		return 1
-	fi
+	need_dir "$id" "$e2e_dir" || return 1
 
 	# The shared secret is SECRET_PASSWORD and every name bound to it — the conftest constants and the per-file aliases.
 	while IFS= read -r name; do
@@ -5461,15 +4282,8 @@ check_test_045() {
 		"$e2e_dir" --include='*.py' | sed -E 's/[[:space:]]*=.*$//' | sort -u)
 
 	# test-045 extracts every call that names the Root Admin — by the `ROOT_ADMIN_USERNAME` constant or the `"root"` literal.
-	if ! matches="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--json=stream "$e2e_dir" 2>&1)"; then
-		printf '%s\n' "$matches"
-		return 1
-	fi
-	if [ -z "$matches" ]; then
-		printf 'error: %s: extracted no Root Admin call from %s\n' "$id" "$e2e_dir" >&2
-		return 1
-	fi
+	matches="$(scan_json "$id" "$e2e_dir")" || return 1
+	require_matches "$id" "Root Admin call from $e2e_dir" "$matches" || return 1
 
 	while IFS=$'\t' read -r file line text; do
 		[ -n "$text" ] || continue
@@ -5523,14 +4337,8 @@ check_test_046() {
 	local file line inline gated result=0 count=0
 	local -a files=()
 
-	if [ ! -d "$src_dir" ]; then
-		printf 'error: %s: missing %s\n' "$id" "$src_dir" >&2
-		return 1
-	fi
-	if [ ! -f "$module" ]; then
-		printf 'error: %s: missing %s\n' "$id" "$module" >&2
-		return 1
-	fi
+	need_dir "$id" "$src_dir" || return 1
+	need_file "$id" "$module" || return 1
 
 	# Clause A: no separate helper file anywhere under src/ — the named failure mode is a `test_helper.rs` beside the code under test, which is the file form of the helper module.
 	while IFS= read -r file; do
@@ -5609,49 +4417,13 @@ check_test_046() {
 
 # check_test_048 — a production factory struct has no dedicated test of its own (TEST-048): factories only wire use cases, adapters and transactions, so the assembled parts are tested where the behavior lives. test-048 matches a test construct — a `#[cfg(test)]`/`#[cfg_attr(test, ...)]` attribute, a `#[test]` (or `#[<path>::test]`), a `mod test`/`mod tests`, or a `mockall`/`automock` name.
 check_test_048() {
-	local id="TEST-048"
-	local rule_id="test-048"
-	local factory_dir="src/lib/infrastructure/use_case_factory"
-	local unit_of_work="src/lib/infrastructure/outbound/sqlx/unit_of_work.rs"
-	local output
-
-	if [ ! -d "$factory_dir" ]; then
-		printf 'error: %s: missing %s\n' "$id" "$factory_dir" >&2
-		return 1
-	fi
-	if [ ! -f "$unit_of_work" ]; then
-		printf 'error: %s: missing %s\n' "$id" "$unit_of_work" >&2
-		return 1
-	fi
-
-	if output="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--report-style=short --color=never "$factory_dir" "$unit_of_work" 2>&1)"; then
-		return 0
-	fi
-	printf '%s\n' "$output"
-	return 1
+	need_dir "TEST-048" "src/lib/infrastructure/use_case_factory" || return 1
+	need_file "TEST-048" "src/lib/infrastructure/outbound/sqlx/unit_of_work.rs" || return 1
+	scan_short TEST-048 "src/lib/infrastructure/use_case_factory" "src/lib/infrastructure/outbound/sqlx/unit_of_work.rs"
 }
 
 # check_test_049 — an endpoint test does not assert behaviour owned by middleware (TEST-049): authentication, body-size limits, the HAL error envelope, or cross-origin handling.
-check_test_049() {
-	local id="TEST-049"
-	local rule_id="test-049"
-	local handler_dir="src/lib/infrastructure/inbound/rest/handler"
-	local output
-
-	if [ ! -d "$handler_dir" ]; then
-		printf 'error: %s: missing %s\n' "$id" "$handler_dir" >&2
-		return 1
-	fi
-
-	if output="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--globs 'src/lib/infrastructure/inbound/rest/handler/**/*.rs' \
-		--report-style=short --color=never src 2>&1)"; then
-		return 0
-	fi
-	printf '%s\n' "$output"
-	return 1
-}
+check_test_049() { need_dir "TEST-049" "src/lib/infrastructure/inbound/rest/handler" && scan_short TEST-049 --globs 'src/lib/infrastructure/inbound/rest/handler/**/*.rs' src; }
 
 # check_test_052 — a golden file or a test media file the E2E suite consumes is stored under test/e2e/fixture/ (TEST-052).
 check_test_052() {
@@ -5660,10 +4432,7 @@ check_test_052() {
 	local fixture_dir="test/e2e/fixture"
 	local file count=0 result=0
 
-	if [ ! -d "$e2e_dir" ]; then
-		printf 'error: %s: missing %s\n' "$id" "$e2e_dir" >&2
-		return 1
-	fi
+	need_dir "$id" "$e2e_dir" || return 1
 
 	while IFS= read -r file; do
 		[ -n "$file" ] || continue
@@ -5687,44 +4456,19 @@ check_test_052() {
 }
 
 # check_api_001 — every REST handler is annotated with `#[utoipa::path(...)]` (API-001).
-check_api_001() {
-	local id="API-001"
-	local rule_id="api-001"
-	local handler_dir="src/lib/infrastructure/inbound/rest/handler"
-	local output
-
-	if [ ! -d "$handler_dir" ]; then
-		printf 'error: %s: missing %s\n' "$id" "$handler_dir" >&2
-		return 1
-	fi
-
-	if output="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--report-style=short --color=never "$handler_dir" 2>&1)"; then
-		return 0
-	fi
-	printf '%s\n' "$output"
-	return 1
-}
+check_api_001() { need_dir "API-001" "src/lib/infrastructure/inbound/rest/handler" && scan_short API-001 "src/lib/infrastructure/inbound/rest/handler"; }
 
 # check_api_002 — the specification's path items, tags and reusable schemas are aggregated in one struct deriving `utoipa::OpenApi` (TechnicalDesign.md § API, API-002). api-002 extracts that struct and its `#[openapi(...)]` attribute; the clause and uniqueness decisions happen here because an ast-grep rule cannot assert three sub-blocks inside one attribute, nor count declarations.
 check_api_002() {
 	local id="API-002"
-	local rule_id="api-002"
 	local surface="src"
 	local matches aggregators aggregator_count file text result=0
 	local -A aggregator_file=()
 	local -A openapi_attr=()
 
-	if [ ! -d "$surface" ]; then
-		printf 'error: %s: missing %s\n' "$id" "$surface" >&2
-		return 1
-	fi
+	need_dir "$id" "$surface" || return 1
 
-	if ! matches="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--json=stream "$surface" 2>&1)"; then
-		printf '%s\n' "$matches"
-		return 1
-	fi
+	matches="$(scan_json "$id" "$surface")" || return 1
 
 	aggregators="$(printf '%s\n' "$matches" |
 		jq -c 'select(.metaVariables.single.AGGREGATOR != null)')"
@@ -5774,26 +4518,15 @@ check_api_002() {
 
 check_api_004() {
 	local id="API-004"
-	local rule_id="api-004"
 	local handler_dir="src/lib/infrastructure/inbound/rest/handler"
 	local matches file line value result=0
 	local -A seen=()
 
-	if [ ! -d "$handler_dir" ]; then
-		printf 'error: %s: missing %s\n' "$id" "$handler_dir" >&2
-		return 1
-	fi
+	need_dir "$id" "$handler_dir" || return 1
 
 	# api-004 extracts each `#[utoipa::path(...)]` attribute of the handler tree; presence and uniqueness of its operation_id are compared here because an ast-grep rule cannot relate two matches.
-	if ! matches="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--json=stream "$handler_dir" 2>&1)"; then
-		printf '%s\n' "$matches"
-		return 1
-	fi
-	if [ -z "$matches" ]; then
-		printf 'error: %s: extracted no #[utoipa::path] attribute from %s\n' "$id" "$handler_dir" >&2
-		return 1
-	fi
+	matches="$(scan_json "$id" "$handler_dir")" || return 1
+	require_matches "$id" "#[utoipa::path] attribute from $handler_dir" "$matches" || return 1
 
 	while IFS=$'\t' read -r file line value; do
 		[ -n "$file" ] || continue
@@ -5819,67 +4552,22 @@ check_api_004() {
 }
 
 # check_api_005 — every endpoint handler's `#[utoipa::path(...)]` declares the HTTP method (`get`/`post`/`put`/`patch`/`delete`) as the bare method token (TechnicalDesign.md API-005).
-check_api_005() {
-	local id="API-005"
-	local rule_id="api-005"
-	local handler_dir="src/lib/infrastructure/inbound/rest/handler"
-	local output
-
-	if [ ! -d "$handler_dir" ]; then
-		printf 'error: %s: missing %s\n' "$id" "$handler_dir" >&2
-		return 1
-	fi
-
-	if output="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--report-style=short --color=never "$handler_dir" 2>&1)"; then
-		return 0
-	fi
-	printf '%s\n' "$output"
-	return 1
-}
+check_api_005() { need_dir "API-005" "src/lib/infrastructure/inbound/rest/handler" && scan_short API-005 "src/lib/infrastructure/inbound/rest/handler"; }
 
 # check_api_006 — every endpoint handler annotation declares `path`, the route of the endpoint (API-006).
-check_api_006() {
-	local id="API-006"
-	local rule_id="api-006"
-	local handler_dir="src/lib/infrastructure/inbound/rest/handler"
-	local output
-
-	if [ ! -d "$handler_dir" ]; then
-		printf 'error: %s: missing %s\n' "$id" "$handler_dir" >&2
-		return 1
-	fi
-
-	if output="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--report-style=short --color=never "$handler_dir" 2>&1)"; then
-		return 0
-	fi
-	printf '%s\n' "$output"
-	return 1
-}
+check_api_006() { need_dir "API-006" "src/lib/infrastructure/inbound/rest/handler" && scan_short API-006 "src/lib/infrastructure/inbound/rest/handler"; }
 
 # check_api_007 — every endpoint's `#[utoipa::path]` attribute declares `tag`, the bounded context the endpoint belongs to (API-007).
 check_api_007() {
 	local id="API-007"
-	local rule_id="api-007"
 	local handler_dir="src/lib/infrastructure/inbound/rest/handler"
 	local matches file text tag rel expected result=0
 
-	if [ ! -d "$handler_dir" ]; then
-		printf 'error: %s: missing %s\n' "$id" "$handler_dir" >&2
-		return 1
-	fi
+	need_dir "$id" "$handler_dir" || return 1
 
 	# api-007 extracts each endpoint's `#[utoipa::path]` attribute; the attribute text carries the declared keys.
-	if ! matches="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--json=stream "$handler_dir" 2>&1)"; then
-		printf '%s\n' "$matches"
-		return 1
-	fi
-	if [ -z "$matches" ]; then
-		printf 'error: %s: extracted no endpoint from %s\n' "$id" "$handler_dir" >&2
-		return 1
-	fi
+	matches="$(scan_json "$id" "$handler_dir")" || return 1
+	require_matches "$id" "endpoint from $handler_dir" "$matches" || return 1
 
 	while IFS=$'\t' read -r file text; do
 		[ -n "$file" ] || continue
@@ -5912,66 +4600,21 @@ check_api_007() {
 }
 
 # check_api_008 — an endpoint whose handler extracts a request body declares `request_body` in its `#[utoipa::path(...)]` annotation (TechnicalDesign.md § API, API-008).
-check_api_008() {
-	local id="API-008"
-	local rule_id="api-008"
-	local handler_dir="src/lib/infrastructure/inbound/rest/handler"
-	local output
-
-	if [ ! -d "$handler_dir" ]; then
-		printf 'error: %s: missing %s\n' "$id" "$handler_dir" >&2
-		return 1
-	fi
-
-	if output="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--report-style=short --color=never "$handler_dir" 2>&1)"; then
-		return 0
-	fi
-	printf '%s\n' "$output"
-	return 1
-}
+check_api_008() { need_dir "API-008" "src/lib/infrastructure/inbound/rest/handler" && scan_short API-008 "src/lib/infrastructure/inbound/rest/handler"; }
 
 # check_api_009 — an endpoint that carries a path, query, header or cookie parameter declares it in `params(...)` inside its `#[utoipa::path(...)]` (TechnicalDesign.md § API, API-009). api-009 matches a `#[utoipa::path]` annotation that omits `params(...)` while the route template names a path parameter (`{name}`) or the handler signature extracts one through `Path`/`Query`/`HeaderMap`/`TypedHeader`/`Cookie`.
-check_api_009() {
-	local id="API-009"
-	local rule_id="api-009"
-	local handler_dir="src/lib/infrastructure/inbound/rest/handler"
-	local output
-
-	if [ ! -d "$handler_dir" ]; then
-		printf 'error: %s: missing %s\n' "$id" "$handler_dir" >&2
-		return 1
-	fi
-
-	if output="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--report-style=short --color=never "$handler_dir" 2>&1)"; then
-		return 0
-	fi
-	printf '%s\n' "$output"
-	return 1
-}
+check_api_009() { need_dir "API-009" "src/lib/infrastructure/inbound/rest/handler" && scan_short API-009 "src/lib/infrastructure/inbound/rest/handler"; }
 
 # check_api_010 — every endpoint handler annotation declares `responses(...)` with at least one status row and at most one row per status code (TechnicalDesign.md § API, API-010). api-010 extracts each `#[utoipa::path(...)]` attribute of the handler tree; the presence of `responses(...)` and the one-row-per-status-code comparison happen here because an ast-grep rule cannot relate two matches inside one attribute token tree.
 check_api_010() {
 	local id="API-010"
-	local rule_id="api-010"
 	local handler_dir="src/lib/infrastructure/inbound/rest/handler"
 	local matches file line block body statuses dups result=0
 
-	if [ ! -d "$handler_dir" ]; then
-		printf 'error: %s: missing %s\n' "$id" "$handler_dir" >&2
-		return 1
-	fi
+	need_dir "$id" "$handler_dir" || return 1
 
-	if ! matches="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--json=stream "$handler_dir" 2>&1)"; then
-		printf '%s\n' "$matches"
-		return 1
-	fi
-	if [ -z "$matches" ]; then
-		printf 'error: %s: extracted no #[utoipa::path] attribute from %s\n' "$id" "$handler_dir" >&2
-		return 1
-	fi
+	matches="$(scan_json "$id" "$handler_dir")" || return 1
+	require_matches "$id" "#[utoipa::path] attribute from $handler_dir" "$matches" || return 1
 
 	while IFS=$'\t' read -r file line block; do
 		[ -n "$file" ] || continue
@@ -6039,87 +4682,24 @@ check_api_010() {
 }
 
 # check_api_011 — every operation declares its security requirement (API-011). api-011 reports an `#[utoipa::path(...)]` attribute whose `security` is absent or is not one of the two sanctioned requirements.
-check_api_011() {
-	local id="API-011"
-	local rule_id="api-011"
-	local handler_dir="src/lib/infrastructure/inbound/rest/handler"
-	local output
-
-	if [ ! -d "$handler_dir" ]; then
-		printf 'error: %s: missing %s\n' "$id" "$handler_dir" >&2
-		return 1
-	fi
-
-	if output="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--report-style=short --color=never "$handler_dir" 2>&1)"; then
-		return 0
-	fi
-	printf '%s\n' "$output"
-	return 1
-}
+check_api_011() { need_dir "API-011" "src/lib/infrastructure/inbound/rest/handler" && scan_short API-011 "src/lib/infrastructure/inbound/rest/handler"; }
 
 # check_api_012 — every endpoint handler declares `summary`, a one-line human-readable summary, in its `#[utoipa::path(...)]` annotation (TechnicalDesign.md § API, API-012). api-012 matches a `#[utoipa::path]` attribute that carries no top-level `summary` key.
-check_api_012() {
-	local id="API-012"
-	local rule_id="api-012"
-	local handler_dir="src/lib/infrastructure/inbound/rest/handler"
-	local output
-
-	if [ ! -d "$handler_dir" ]; then
-		printf 'error: %s: missing %s\n' "$id" "$handler_dir" >&2
-		return 1
-	fi
-
-	if output="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--report-style=short --color=never "$handler_dir" 2>&1)"; then
-		return 0
-	fi
-	printf '%s\n' "$output"
-	return 1
-}
+check_api_012() { need_dir "API-012" "src/lib/infrastructure/inbound/rest/handler" && scan_short API-012 "src/lib/infrastructure/inbound/rest/handler"; }
 
 # check_api_013 — every parameter declared as an inline tuple inside `params(...)` in a `#[utoipa::path(...)]` attribute carries `name`, the parameter name as it appears in the URL, header or cookie (TechnicalDesign.md § API, API-013). api-013 matches a parameter tuple whose first element is not a string literal; `params(<IntoParams>)` names its parameters through the struct's fields and is not an inline tuple.
-check_api_013() {
-	local id="API-013"
-	local rule_id="api-013"
-	local handler_dir="src/lib/infrastructure/inbound/rest/handler"
-	local output
-
-	if [ ! -d "$handler_dir" ]; then
-		printf 'error: %s: missing %s\n' "$id" "$handler_dir" >&2
-		return 1
-	fi
-
-	if output="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--report-style=short --color=never "$handler_dir" 2>&1)"; then
-		return 0
-	fi
-	printf '%s\n' "$output"
-	return 1
-}
+check_api_013() { need_dir "API-013" "src/lib/infrastructure/inbound/rest/handler" && scan_short API-013 "src/lib/infrastructure/inbound/rest/handler"; }
 
 # check_api_014 — every inline parameter declared by a `#[utoipa::path(...)]` annotation names its location (API-014).
 check_api_014() {
 	local id="API-014"
-	local rule_id="api-014"
 	local handler_dir="src/lib/infrastructure/inbound/rest/handler"
 	local matches file line b64 text name location tuples=0 result=0
 
-	if [ ! -d "$handler_dir" ]; then
-		printf 'error: %s: missing %s\n' "$id" "$handler_dir" >&2
-		return 1
-	fi
+	need_dir "$id" "$handler_dir" || return 1
 
-	if ! matches="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--json=stream "$handler_dir" 2>&1)"; then
-		printf '%s\n' "$matches"
-		return 1
-	fi
-	if [ -z "$matches" ]; then
-		printf 'error: %s: extracted no params(...) declaration from %s\n' \
-			"$id" "$handler_dir" >&2
-		return 1
-	fi
+	matches="$(scan_json "$id" "$handler_dir")" || return 1
+	require_matches "$id" "params(...) declaration from $handler_dir" "$matches" || return 1
 
 	while IFS=$'\t' read -r file line b64; do
 		[ -n "$b64" ] || continue
@@ -6188,175 +4768,39 @@ check_api_014() {
 }
 
 # check_api_015 — an inline parameter in `params(...)` writes its Rust type as `= Type` immediately after the name: the binding is introduced by `=`, never by `:` or a bare element (TechnicalDesign.md § API, API-015). api-015 matches a parameter tuple whose quoted name is followed by anything other than `=` or the element separator, so a type written some other way is reported.
-check_api_015() {
-	local id="API-015"
-	local rule_id="api-015"
-	local handler_dir="src/lib/infrastructure/inbound/rest/handler"
-	local output
+check_api_015() { need_dir "API-015" "src/lib/infrastructure/inbound/rest/handler" && scan_short API-015 "src/lib/infrastructure/inbound/rest/handler"; }
 
-	if [ ! -d "$handler_dir" ]; then
-		printf 'error: %s: missing %s\n' "$id" "$handler_dir" >&2
-		return 1
-	fi
-
-	if output="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--report-style=short --color=never "$handler_dir" 2>&1)"; then
-		return 0
-	fi
-	printf '%s\n' "$output"
-	return 1
-}
-
-check_api_016() {
-	local id="API-016"
-	local rule_id="api-016"
-	local output
-
-	if output="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--report-style=short --color=never src 2>&1)"; then
-		return 0
-	fi
-	printf '%s\n' "$output"
-	return 1
-}
+check_api_016() { scan_short API-016 src; }
 
 # check_api_020 — a `request_body(...)` block in a `#[utoipa::path(...)]` annotation declares `content_type`, the media type of the body (TechnicalDesign.md § API, API-020). api-020 matches a request_body token tree that carries no `content_type`; the media type must be read from the request body, never from a `responses(...)` row.
-check_api_020() {
-	local id="API-020"
-	local rule_id="api-020"
-	local handler_dir="src/lib/infrastructure/inbound/rest/handler"
-	local output
-
-	if [ ! -d "$handler_dir" ]; then
-		printf 'error: %s: missing %s\n' "$id" "$handler_dir" >&2
-		return 1
-	fi
-
-	if output="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--report-style=short --color=never "$handler_dir" 2>&1)"; then
-		return 0
-	fi
-	printf '%s\n' "$output"
-	return 1
-}
+check_api_020() { need_dir "API-020" "src/lib/infrastructure/inbound/rest/handler" && scan_short API-020 "src/lib/infrastructure/inbound/rest/handler"; }
 
 # check_api_021 — a `request_body(...)` declaration names the schema of the body (TechnicalDesign.md § API, API-021).
-check_api_021() {
-	local id="API-021"
-	local rule_id="api-021"
-	local handler_dir="src/lib/infrastructure/inbound/rest/handler"
-	local output
-
-	if [ ! -d "$handler_dir" ]; then
-		printf 'error: %s: missing %s\n' "$id" "$handler_dir" >&2
-		return 1
-	fi
-
-	if output="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--report-style=short --color=never "$handler_dir" 2>&1)"; then
-		return 0
-	fi
-	printf '%s\n' "$output"
-	return 1
-}
+check_api_021() { need_dir "API-021" "src/lib/infrastructure/inbound/rest/handler" && scan_short API-021 "src/lib/infrastructure/inbound/rest/handler"; }
 
 # check_api_023 — every response declared inside a handler's `responses(...)` must name its HTTP `status` (API-023).
-check_api_023() {
-	local id="API-023"
-	local rule_id="api-023"
-	local output
-
-	if output="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--report-style=short --color=never src 2>&1)"; then
-		return 0
-	fi
-	printf '%s\n' "$output"
-	return 1
-}
+check_api_023() { scan_short API-023 src; }
 
 # check_api_024 — every response declared by a `responses(...)` entry in a `#[utoipa::path(...)]` annotation carries `description`, a human-readable description (TechnicalDesign.md § API, API-024). api-024 matches a response entry token tree that declares no top-level `description`; a `description` nested in `headers(...)`/`content(...)` or a `"description"` string inside an `example` does not satisfy it.
-check_api_024() {
-	local id="API-024"
-	local rule_id="api-024"
-	local handler_dir="src/lib/infrastructure/inbound/rest/handler"
-	local output
-
-	if [ ! -d "$handler_dir" ]; then
-		printf 'error: %s: missing %s\n' "$id" "$handler_dir" >&2
-		return 1
-	fi
-
-	if output="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--report-style=short --color=never "$handler_dir" 2>&1)"; then
-		return 0
-	fi
-	printf '%s\n' "$output"
-	return 1
-}
+check_api_024() { need_dir "API-024" "src/lib/infrastructure/inbound/rest/handler" && scan_short API-024 "src/lib/infrastructure/inbound/rest/handler"; }
 
 # check_api_025 — a response row that declares a payload media type declares the schema of that payload (TechnicalDesign.md § API, API-025). api-025 matches a row inside a `responses(...)` group that carries a `content_type` but no `body`; a row without a media type (a `NO_CONTENT` response) carries no payload and is out of scope.
-check_api_025() {
-	local id="API-025"
-	local rule_id="api-025"
-	local handler_dir="src/lib/infrastructure/inbound/rest/handler"
-	local output
-
-	if [ ! -d "$handler_dir" ]; then
-		printf 'error: %s: missing %s\n' "$id" "$handler_dir" >&2
-		return 1
-	fi
-
-	if output="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--report-style=short --color=never "$handler_dir" 2>&1)"; then
-		return 0
-	fi
-	printf '%s\n' "$output"
-	return 1
-}
+check_api_025() { need_dir "API-025" "src/lib/infrastructure/inbound/rest/handler" && scan_short API-025 "src/lib/infrastructure/inbound/rest/handler"; }
 
 # check_api_026 — a response in a `#[utoipa::path(...)]` annotation that declares a payload declares the payload media type (TechnicalDesign.md § API, API-026). api-026 matches a response row of `responses(...)` that carries a `body` identifier and no `content_type` identifier; a bodyless row, and a `content(...)` entry that names its media type as the entry key, are not matched.
-check_api_026() {
-	local id="API-026"
-	local rule_id="api-026"
-	local handler_dir="src/lib/infrastructure/inbound/rest/handler"
-	local output
-
-	if [ ! -d "$handler_dir" ]; then
-		printf 'error: %s: missing %s\n' "$id" "$handler_dir" >&2
-		return 1
-	fi
-
-	if output="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--report-style=short --color=never "$handler_dir" 2>&1)"; then
-		return 0
-	fi
-	printf '%s\n' "$output"
-	return 1
-}
+check_api_026() { need_dir "API-026" "src/lib/infrastructure/inbound/rest/handler" && scan_short API-026 "src/lib/infrastructure/inbound/rest/handler"; }
 
 # check_api_027 — every response header a handler sets at runtime is declared in the endpoint's `#[utoipa::path]` `headers(...)` (TechnicalDesign.md § API, API-027). api-027 extracts each `#[utoipa::path]` attribute and each response-header insert (`...headers_mut().insert(header::CONST, ...)` / `headers.insert(header::CONST, ...)`); pairing the constant with the name a `headers(...)` block declares happens here because an ast-grep rule cannot relate two matches, and because the names are compared case-insensitively (HTTP header names are).
 check_api_027() {
 	local id="API-027"
-	local rule_id="api-027"
 	local handler_dir="${1:-src/lib/infrastructure/inbound/rest/handler}"
 	local matches file text const name names result=0
 	local -A declared_by=()
 
-	if [ ! -d "$handler_dir" ]; then
-		printf 'error: %s: missing %s\n' "$id" "$handler_dir" >&2
-		return 1
-	fi
+	need_dir "$id" "$handler_dir" || return 1
 
-	if ! matches="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--json=stream "$handler_dir" 2>&1)"; then
-		printf '%s\n' "$matches"
-		return 1
-	fi
-	if [ -z "$matches" ]; then
-		printf 'error: %s: extracted no #[utoipa::path] or response-header insert from %s\n' \
-			"$id" "$handler_dir" >&2
-		return 1
-	fi
+	matches="$(scan_json "$id" "$handler_dir")" || return 1
+	require_matches "$id" "#[utoipa::path] or response-header insert from $handler_dir" "$matches" || return 1
 
 	# The header names each file declares inside a `headers(...)` block.
 	while IFS=$'\t' read -r file names; do
@@ -6425,7 +4869,6 @@ check_api_027() {
 # check_api_030 — every handler's `responses(...)` declares the success case and every error status the handler can return (TechnicalDesign.md § API, API-030). api-030 extracts each `#[utoipa::path]` attribute, each `impl ... for ApiError` mapping and each `ApiError::Variant` value a handler constructs; the variant-to-status table is read from `api_error.rs`'s exhaustive `status_and_message` match, and the per-file comparison happens here because an ast-grep rule cannot relate two matches or read a second file.
 check_api_030() {
 	local id="API-030"
-	local rule_id="api-030"
 	local handler_dir="src/lib/infrastructure/inbound/rest/handler"
 	local api_error="src/lib/infrastructure/inbound/rest/api_error.rs"
 	local matches file payload kind variant status declared result=0
@@ -6433,14 +4876,8 @@ check_api_030() {
 	local -A declared_by=()
 	local -A required_by=()
 
-	if [ ! -d "$handler_dir" ]; then
-		printf 'error: %s: missing %s\n' "$id" "$handler_dir" >&2
-		return 1
-	fi
-	if [ ! -f "$api_error" ]; then
-		printf 'error: %s: missing %s\n' "$id" "$api_error" >&2
-		return 1
-	fi
+	need_dir "$id" "$handler_dir" || return 1
+	need_file "$id" "$api_error" || return 1
 
 	# The ApiError variant -> status table, read from the exhaustive `status_and_message` match rather than restated here.
 	while IFS=$'\t' read -r variant status; do
@@ -6455,15 +4892,8 @@ check_api_030() {
 		return 2
 	fi
 
-	if ! matches="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--json=stream "$handler_dir" 2>&1)"; then
-		printf '%s\n' "$matches"
-		return 1
-	fi
-	if [ -z "$matches" ]; then
-		printf 'error: %s: extracted no #[utoipa::path] attribute from %s\n' "$id" "$handler_dir" >&2
-		return 1
-	fi
+	matches="$(scan_json "$id" "$handler_dir")" || return 1
+	require_matches "$id" "#[utoipa::path] attribute from $handler_dir" "$matches" || return 1
 
 	# Classify each match: the annotation's declared statuses, the variants an `impl ... for ApiError` maps, and the variants the body constructs directly.
 	while IFS=$'\t' read -r kind file payload; do
@@ -6532,29 +4962,18 @@ check_api_030() {
 
 check_api_031() {
 	local id="API-031"
-	local rule_id="api-031"
-	local config matches body file line result=0
+	local matches body file line result=0
+	local -a bodies=()
 	local -A non_hal=()
 
-	config="$(rule_config "$id")" || return 2
-
 	# The bodies that are not HAL responses — token issues and liveness probes — keep their plain `application/json` representation (§ HAL payload guidelines).
-	while IFS= read -r body; do
-		[ -n "$body" ] || continue
+	config_list "$id" non_hal_bodies bodies || return 2
+	for body in "${bodies[@]}"; do
 		non_hal["$body"]=1
-	done < <(jq -r '.non_hal_bodies[]?' <<<"$config")
-
-	if [ "${#non_hal[@]}" -eq 0 ]; then
-		printf 'error: %s: rule_enforcer.yaml declares no non_hal_bodies\n' "$id" >&2
-		return 2
-	fi
+	done
 
 	# api-031 extracts every response entry that carries a body but does not declare the HAL media type; excluding the allowlisted non-HAL bodies happens here because an ast-grep rule cannot read rule_enforcer.yaml.
-	if ! matches="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--json=stream src 2>&1)"; then
-		printf '%s\n' "$matches"
-		return 1
-	fi
+	matches="$(scan_json "$id" src)" || return 1
 	[ -n "$matches" ] || return 0
 
 	while IFS=$'\t' read -r file line body; do
@@ -6574,23 +4993,15 @@ check_api_031() {
 # check_api_032 — every resource representation carries `_links.self` (TechnicalDesign.md § HAL payload guidelines, API-032). api-032 extracts each response row of a `#[utoipa::path]` annotation and each serde-renamed `_links` or `self` struct field.
 check_api_032() {
 	local id="API-032"
-	local rule_id="api-032"
 	local target="${1:-src/lib/infrastructure/inbound/rest}"
 	local matches file text rep rename ty body result=0
 	local -A links_type=()
 	local -A has_self=()
 	local -A is_rep=()
 
-	if [ ! -d "$target" ]; then
-		printf 'error: %s: missing %s\n' "$id" "$target" >&2
-		return 1
-	fi
+	need_dir "$id" "$target" || return 1
 
-	if ! matches="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--json=stream "$target" 2>&1)"; then
-		printf '%s\n' "$matches"
-		return 1
-	fi
+	matches="$(scan_json "$id" "$target")" || return 1
 	if [ -z "$matches" ]; then
 		printf 'error: %s: extracted no HAL response row or serde-renamed field from %s\n' \
 			"$id" "$target" >&2
@@ -6645,32 +5056,16 @@ check_api_032() {
 # check_api_033 — a HAL representation keeps its business data at the root of the payload, beside `_links` (TechnicalDesign.md § API, API-033; detail § HAL payload guidelines).
 check_api_033() {
 	local id="API-033"
-	local rule_id="api-033"
 	local surface="${1:-src/lib/infrastructure/inbound/rest}"
-	local config file line b64 text key name result=0
+	local file line b64 text key name result=0
 	local -a wrapper_keys=()
 
-	if [ ! -d "$surface" ]; then
-		printf 'error: %s: missing %s\n' "$id" "$surface" >&2
-		return 1
-	fi
+	need_dir "$id" "$surface" || return 1
 
-	config="$(rule_config "$id")" || return 2
-	while IFS= read -r key; do
-		[ -n "$key" ] || continue
-		wrapper_keys+=("$key")
-	done < <(jq -r '.wrapper_keys[]?' <<<"$config")
-	if [ "${#wrapper_keys[@]}" -eq 0 ]; then
-		printf 'error: %s: rule_enforcer.yaml declares no wrapper_keys\n' "$id" >&2
-		return 2
-	fi
+	config_list "$id" wrapper_keys wrapper_keys || return 2
 
 	# api-033 extracts each HAL representation struct; the wrapper-key comparison happens here because an ast-grep rule cannot read rule_enforcer.yaml.
-	if ! matches="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--json=stream "$surface" 2>&1)"; then
-		printf '%s\n' "$matches"
-		return 1
-	fi
+	matches="$(scan_json "$id" "$surface")" || return 1
 	if [ -z "$matches" ]; then
 		printf 'error: %s: extracted no HAL representation struct from %s\n' "$id" "$surface" >&2
 		return 1
@@ -6720,23 +5115,15 @@ check_api_033() {
 # check_api_034 — `_links` is reserved for navigation and related resources (TechnicalDesign.md § API, API-034; detail § HAL payload guidelines).
 check_api_034() {
 	local id="API-034"
-	local rule_id="api-034"
 	local surface="${1:-src/lib/infrastructure/inbound/rest}"
 	local matches rep ty member result=0
 	local -A links_type=()
 	local -A members=()
 
-	if [ ! -d "$surface" ]; then
-		printf 'error: %s: missing %s\n' "$id" "$surface" >&2
-		return 1
-	fi
+	need_dir "$id" "$surface" || return 1
 
 	# api-034 extracts each `_links` field and every struct field; the type-to-members resolution happens here because an ast-grep rule cannot relate two matches.
-	if ! matches="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--json=stream "$surface" 2>&1)"; then
-		printf '%s\n' "$matches"
-		return 1
-	fi
+	matches="$(scan_json "$id" "$surface")" || return 1
 	if [ -z "$matches" ]; then
 		printf 'error: %s: extracted no HAL links field from %s\n' "$id" "$surface" >&2
 		return 1
@@ -6788,15 +5175,11 @@ check_api_034() {
 # check_api_035 — a HAL payload does not use `_embedded` (TechnicalDesign.md § API, API-035; detail § HAL payload guidelines).
 check_api_035() {
 	local id="API-035"
-	local rule_id="api-035"
 	local surface="${1:-src/lib/infrastructure/inbound/rest}"
 	local config matches file line item location result=0
 	local -A allowed=()
 
-	if [ ! -d "$surface" ]; then
-		printf 'error: %s: missing %s\n' "$id" "$surface" >&2
-		return 1
-	fi
+	need_dir "$id" "$surface" || return 1
 
 	config="$(rule_config "$id")" || return 2
 	while IFS= read -r location; do
@@ -6805,11 +5188,7 @@ check_api_035() {
 	done < <(jq -r '.allowed_locations[]?' <<<"$config")
 
 	# api-035 extracts every `_embedded` use together with its enclosing struct or function; the waiver comparison happens here because an ast-grep rule cannot read rule_enforcer.yaml.
-	if ! matches="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--json=stream "$surface" 2>&1)"; then
-		printf '%s\n' "$matches"
-		return 1
-	fi
+	matches="$(scan_json "$id" "$surface")" || return 1
 	[ -n "$matches" ] || return 0
 
 	while IFS=$'\t' read -r file line item; do
@@ -6832,43 +5211,18 @@ check_api_035() {
 }
 
 # check_api_036 — a link that exposes search and filtering is a URI template and carries `templated: true` (TechnicalDesign.md § API, API-036; detail § HAL payload guidelines, "Search and filtering"). api-036 matches two violation shapes: a URI-template href built with `Link::new` (which serializes no `templated`), and the `search` link built with `Link::new` (the field that exposes the collection filters).
-check_api_036() {
-	local id="API-036"
-	local rule_id="api-036"
-	local surface="${1:-src/lib/infrastructure/inbound/rest}"
-	local output
-
-	if [ ! -d "$surface" ]; then
-		printf 'error: %s: missing %s\n' "$id" "$surface" >&2
-		return 1
-	fi
-
-	if output="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--report-style=short --color=never "$surface" 2>&1)"; then
-		return 0
-	fi
-	printf '%s\n' "$output"
-	return 1
-}
+check_api_036() { need_dir "API-036" "${1:-src/lib/infrastructure/inbound/rest}" && scan_short API-036 "${1:-src/lib/infrastructure/inbound/rest}"; }
 
 # check_api_037 — every HAL link href is a root-relative URI reference, never a hardcoded absolute URL (TechnicalDesign.md § API, API-037; detail § HAL payload guidelines, which shows `self` = `/orders/123` and the search link as `/orders{?status,page,size}`). api-037 extracts each HAL link constructor (`Link::new`, `Link::templated`, `SelfLinks::new`) and each href helper (`fn *_href`), and this function reads the href literal each carries, flagging a URL that hardcodes an origin (`scheme://`) or that is not root-relative (so the client would have to construct the URL itself).
 check_api_037() {
 	local id="API-037"
-	local rule_id="api-037"
 	local surface="${1:-src/lib/infrastructure/inbound/rest}"
 	local matches file line b64 text href result=0 count=0
 
-	if [ ! -d "$surface" ]; then
-		printf 'error: %s: missing %s\n' "$id" "$surface" >&2
-		return 1
-	fi
+	need_dir "$id" "$surface" || return 1
 
 	# api-037 extracts each HAL link constructor and each href helper.
-	if ! matches="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--json=stream "$surface" 2>&1)"; then
-		printf '%s\n' "$matches"
-		return 1
-	fi
+	matches="$(scan_json "$id" "$surface")" || return 1
 	if [ -z "$matches" ]; then
 		printf 'error: %s: extracted no HAL link or href helper from %s\n' "$id" "$surface" >&2
 		return 1
@@ -6905,24 +5259,16 @@ check_api_037() {
 
 check_api_038() {
 	local id="API-038"
-	local rule_id="api-038"
 	local surface="${1:-src/lib/infrastructure/inbound/rest}"
 	local matches file line name result=0
 	local -A hal=()
 	local -A body=()
 	local -a findings=()
 
-	if [ ! -d "$surface" ]; then
-		printf 'error: %s: missing %s\n' "$id" "$surface" >&2
-		return 1
-	fi
+	need_dir "$id" "$surface" || return 1
 
 	# api-038 extracts every struct that carries a HAL navigation field (`_links`/`_embedded`) — the marker of a HAL representation (`API-033`).
-	if ! matches="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--json=stream "$surface" 2>&1)"; then
-		printf '%s\n' "$matches"
-		return 1
-	fi
+	matches="$(scan_json "$id" "$surface")" || return 1
 
 	while IFS=$'\t' read -r file line name; do
 		[ -n "$name" ] || continue
@@ -6970,23 +5316,15 @@ check_api_038() {
 # check_api_039 — the HAL error envelope is the one response returned for every error the server emits (TechnicalDesign.md § 2.5, API-039). api-039 extracts the `ErrorBody` envelope struct and the root router's `setup_routes` middleware layers; the envelope's serialized root keys and the outermost layer are decided here because an ast-grep rule can neither enumerate a struct's keys nor order a method chain.
 check_api_039() {
 	local id="API-039"
-	local rule_id="api-039"
 	local surface="${1:-src/lib/infrastructure/inbound/rest}"
 	local matches result=0 envelopes=0 layers=0 file line mw b64 text sorted key
 	local -a keys=()
 	local -A layer_last_line=()
 	local -A layer_last_mw=()
 
-	if [ ! -d "$surface" ]; then
-		printf 'error: %s: missing %s\n' "$id" "$surface" >&2
-		return 1
-	fi
+	need_dir "$id" "$surface" || return 1
 
-	if ! matches="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--json=stream "$surface" 2>&1)"; then
-		printf '%s\n' "$matches"
-		return 1
-	fi
+	matches="$(scan_json "$id" "$surface")" || return 1
 
 	# The outermost `setup_routes` layer is the one whose middleware call sits on the greatest source line: a later `.layer(...)` wraps the earlier ones, so it sees every response, including the routing fallback and framework rejections.
 	while IFS=$'\t' read -r file line mw; do
@@ -7068,45 +5406,20 @@ check_api_039() {
 }
 
 # check_api_040 — the HAL `error` message is a stable, server-authored, client-safe string: it carries no extractor or framework wording and no internal detail — field paths, expected types, parse positions, type names (API-040, § 2.5).
-check_api_040() {
-	local id="API-040"
-	local rule_id="api-040"
-	local target="src/lib/infrastructure/inbound/rest/api_error.rs"
-	local output
-
-	if [ ! -f "$target" ]; then
-		printf 'error: %s: missing %s\n' "$id" "$target" >&2
-		return 1
-	fi
-
-	if output="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--report-style=short --color=never "$target" 2>&1)"; then
-		return 0
-	fi
-	printf '%s\n' "$output"
-	return 1
-}
+check_api_040() { need_file "API-040" "src/lib/infrastructure/inbound/rest/api_error.rs" && scan_short API-040 "src/lib/infrastructure/inbound/rest/api_error.rs"; }
 
 # check_api_041 — the status code a failed request returns is the one its classification names (TechnicalDesign.md § API, API-041). api-041 extracts the `ApiError` variant -> `StatusCode` arms of `status_and_message` and the `JsonRejection` arms of `impl From<JsonRejection> for ApiError`; the name-to-status correspondence and the class-to-status comparison happen here because an ast-grep rule can neither transform an identifier nor relate two matches.
 check_api_041() {
 	local id="API-041"
-	local rule_id="api-041"
 	local api_error="src/lib/infrastructure/inbound/rest/api_error.rs"
 	local matches file line text variant status classifier expected entry result=0
 	local -A status_of=()
 	local -a terminal_arms=()
 	local table=0 rejections=0
 
-	if [ ! -f "$api_error" ]; then
-		printf 'error: %s: missing %s\n' "$id" "$api_error" >&2
-		return 1
-	fi
+	need_file "$id" "$api_error" || return 1
 
-	if ! matches="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--json=stream "$api_error" 2>&1)"; then
-		printf '%s\n' "$matches"
-		return 1
-	fi
+	matches="$(scan_json "$id" "$api_error")" || return 1
 	if [ -z "$matches" ]; then
 		printf 'error: %s: extracted no ApiError status mapping from %s\n' "$id" "$api_error" >&2
 		return 1
@@ -7197,21 +5510,13 @@ check_api_041() {
 # check_api_043 — an error envelope's `_links.self` carries the request path component of the request URI, never the query string (API-043, § 2.5).
 check_api_043() {
 	local id="API-043"
-	local rule_id="api-043"
 	local rest="src/lib/infrastructure/inbound/rest"
 	local matches file line arg name expr result=0
 
-	if [ ! -d "$rest" ]; then
-		printf 'error: %s: missing %s\n' "$id" "$rest" >&2
-		return 1
-	fi
+	need_dir "$id" "$rest" || return 1
 
 	# api-043 extracts every call to the one error-envelope builder, with its path argument; the binding that argument names is resolved below because an ast-grep rule cannot follow a value to its source.
-	if ! matches="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--json=stream "$rest" 2>&1)"; then
-		printf '%s\n' "$matches"
-		return 1
-	fi
+	matches="$(scan_json "$id" "$rest")" || return 1
 	if [ -z "$matches" ]; then
 		printf 'error: %s: no call to the error-envelope builder error_response found under %s\n' \
 			"$id" "$rest" >&2
@@ -7250,7 +5555,6 @@ check_api_043() {
 # check_arch_001 — the hexagonal dependency direction: dependencies point inward only, `domain` ← `application` ← `infrastructure` (ARCH-001).
 check_arch_001() {
 	local id="ARCH-001"
-	local rule_id="arch-001"
 	local domain_dir="src/lib/domain"
 	local application_dir="src/lib/application"
 	local matches file line text result=0
@@ -7261,11 +5565,7 @@ check_arch_001() {
 	fi
 
 	# arch-001 extracts every `use` declaration that reaches toward an outer layer; the scan covers the whole tree, and the file path classifies each match below.
-	if ! matches="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--json=stream src 2>&1)"; then
-		printf '%s\n' "$matches"
-		return 1
-	fi
+	matches="$(scan_json "$id" src)" || return 1
 	[ -n "$matches" ] || return 0
 
 	while IFS=$'\t' read -r file line text; do
@@ -7293,24 +5593,7 @@ check_arch_001() {
 }
 
 # check_arch_005 — a domain model never invokes a domain service (ARCH-005).
-check_arch_005() {
-	local id="ARCH-005"
-	local rule_id="arch-005"
-	local model_dir="src/lib/domain/model"
-	local output
-
-	if [ ! -d "$model_dir" ]; then
-		printf 'error: %s: missing %s\n' "$id" "$model_dir" >&2
-		return 1
-	fi
-
-	if output="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--report-style=short --color=never "$model_dir" 2>&1)"; then
-		return 0
-	fi
-	printf '%s\n' "$output"
-	return 1
-}
+check_arch_005() { need_dir "ARCH-005" "src/lib/domain/model" && scan_short ARCH-005 "src/lib/domain/model"; }
 
 # --- Runner -----------------------------------------------------------------
 
