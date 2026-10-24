@@ -1089,8 +1089,8 @@ RootAdmin --> UC004
 
 #### Description
 
-On every runtime the system loads the application configuration by layering the stored settings with the optional
-configuration file and the environment, generating the secrets on the first runtime.
+On every start the system resolves a complete application configuration from built-in defaults, the optional
+configuration file and explicit environment overrides, and writes the default configuration file when none exists.
 
 #### Primary actor
 
@@ -1102,7 +1102,7 @@ None — the event carries no data.
 
 #### Pre condition(s)
 
-- The system's stored settings are available.
+- The instance identity has been established.
 
 #### Trigger
 
@@ -1110,20 +1110,22 @@ None — the event carries no data.
 
 #### Happy path
 
-1. The system checks whether stored settings exist; none do, so the system creates the default settings and freshly
-   generated secrets.
-2. The system loads the configuration: the stored settings are layered with the configuration file and the environment
-   overrides.
-3. The system returns the merged configuration to the runtime.
+1. The system notices that no configuration file exists and writes the complete default file.
+2. The system resolves the configuration: the built-in defaults are overridden by the file and then by the explicit
+   environment overrides.
+3. The system returns the complete configuration to the runtime.
 
 #### Alternative flow
 
-- 1a. Stored settings already exist: the system skips their creation and loads the configuration directly.
+- 1a. A configuration file already exists: the system leaves it untouched, including an empty or partial file, and every
+  setting it omits takes its default.
+- 2a. A setting in the file or the environment is unknown or malformed: startup fails naming the setting instead of
+  substituting a default.
 
 #### Post condition(s)
 
-- The stored settings exist.
-- The runtime holds a complete configuration to wire its dependencies.
+- A complete configuration file exists.
+- The runtime holds an immutable configuration to wire its dependencies.
 
 ## Asset
 

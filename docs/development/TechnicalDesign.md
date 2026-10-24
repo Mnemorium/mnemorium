@@ -169,12 +169,11 @@ material. The `#[utoipa::path(...)]` declaration contract lives in the [API sect
 | `STY-RUST-058` | Use cases         | Declare the error enum third in a use-case port file.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | [§ 9.1](#91-declaration-order-in-a-use-case-port-file)           |
 | `STY-RUST-059` | Use cases         | Declare the use-case trait last in a use-case port file.                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | [§ 9.1](#91-declaration-order-in-a-use-case-port-file)           |
 | `STY-RUST-060` | Use cases         | **Port** — `src/lib/application/port/<context>_use_case_factory.rs`. The trait is named `<Context>UseCaseFactory`, is `Send + Sync`, carries `#[cfg_attr(test, mockall::automock)]`, and exposes one method per use case — named after the use case — returning `Arc<dyn <UseCaseName>UseCase>`.                                                                                                                                                                                                                                       | [§ 9.2](#92-use-case-factory)                                    |
-| `STY-RUST-061` | Use cases         | **Adapter** — `src/lib/infrastructure/use_case_factory/<context>.rs`. The struct is named `Runtime<Context>UseCaseFactory` and holds what the context's use cases need: the live configuration (`Arc<ArcSwap<Configuration>>`) when they read it, and the unit-of-work factory (`Arc<SqlxUnitOfWorkFactory>`).                                                                                                                                                                                                                         | [§ 9.2](#92-use-case-factory)                                    |
-| `STY-RUST-062` | Use cases         | **Lazy instantiation** — every accessor builds the use case on the spot. It rebuilds its configuration-derived adapters (e.g. password hasher, token provider) from the live configuration and never caches them; it builds its stateless adapters at the point of use and never stores them in a long-lived struct (see [§ 9.2](#92-use-case-factory)). The startup-only settings listed in `STY-RUST-076` are exempt.                                                                                                                | [§ 9.2](#92-use-case-factory)                                    |
+| `STY-RUST-061` | Use cases         | **Adapter** — `src/lib/infrastructure/use_case_factory/<context>.rs`. The struct is named `Runtime<Context>UseCaseFactory` and holds what the context's use cases need: the immutable configuration (`Arc<Configuration>`), the instance identity (`Arc<InstanceState>`) when they use its secrets, and the unit-of-work factory (`Arc<SqlxUnitOfWorkFactory>`).                                                                                                                                                                       | [§ 9.2](#92-use-case-factory)                                    |
+| `STY-RUST-062` | Use cases         | **Lazy instantiation** — every accessor builds the use case on the spot. It rebuilds its configuration-derived adapters (e.g. password hasher, token provider) from the immutable configuration and identity and never caches them; it builds its stateless adapters at the point of use and never stores them in a long-lived struct (see [§ 9.2](#92-use-case-factory)). The startup-only settings listed in `STY-RUST-076` are exempt.                                                                                              | [§ 9.2](#92-use-case-factory)                                    |
 | `STY-RUST-063` | Use cases         | The factory only supplies the unit-of-work factory; the use case still opens, commits and rolls back its own unit of work (see [Unit of Work](#7-unit-of-work)).                                                                                                                                                                                                                                                                                                                                                                       | [§ 9.2](#92-use-case-factory)                                    |
-| `STY-RUST-064` | Configuration     | `LoadConfiguration` runs once at startup; the resulting `Configuration` is stored as `Arc<ArcSwap<Configuration>>` in `AppState`.                                                                                                                                                                                                                                                                                                                                                                                                      | [§ 10](#10-configuration)                                        |
-| `STY-RUST-065` | Configuration     | Never cache a configuration-derived value (pepper, `JWT` secret, TTL) in a long-lived adapter built at startup; read it from the live configuration. The startup-only settings listed in `STY-RUST-076` are the only exception.                                                                                                                                                                                                                                                                                                        | [§ 10](#10-configuration)                                        |
-| `STY-RUST-066` | Configuration     | Keep the bootstrap sources and their order identical to `ConfigConfigurationSource`.                                                                                                                                                                                                                                                                                                                                                                                                                                                   | [§ 10](#10-configuration)                                        |
+| `STY-RUST-064` | Configuration     | `LoadConfiguration` runs once at startup; the resulting `Configuration` is immutable and stored as `Arc<Configuration>` in `AppState`, beside the `Arc<InstanceState>` identity.                                                                                                                                                                                                                                                                                                                                                       | [§ 10](#10-configuration)                                        |
+| `STY-RUST-065` | Configuration     | Never cache a configuration-derived value (for example the `JWT` TTL or the storage root) in a long-lived adapter built at startup; read it when the adapter is built for a use case. The pepper and the signing secret are not configuration: they are the immutable instance identity, so building the password hasher from the pepper once is correct. The startup-only settings listed in `STY-RUST-076` are the only exception.                                                                                                   | [§ 10](#10-configuration)                                        |
 | `STY-RUST-067` | Application state | `src/bin/server.rs` is the composition root: the only place that builds `AppState` and constructs a concrete adapter that lives for the process lifetime. A factory accessor (see [§ 9.2](#92-use-case-factory)) or an adapter constructs the per-use adapters it needs.                                                                                                                                                                                                                                                               | [§ 1](#1-application-state)                                      |
 | `STY-RUST-068` | Application state | `AppState` is the single router state; `FromRef` impls expose exactly what middleware extracts, and getters return `Arc` clones, never borrows.                                                                                                                                                                                                                                                                                                                                                                                        | [§ 1](#1-application-state)                                      |
 | `STY-RUST-069` | Ports             | Always declare outbound port traits as `Send + Sync`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | [§ 6.1](#61-port-traits-are-send-and-sync)                       |
@@ -182,9 +181,9 @@ material. The `#[utoipa::path(...)]` declaration contract lives in the [API sect
 | `STY-RUST-071` | Ports             | Repository methods mutate the shared transaction: take `&mut self` and return an explicitly `Send` future.                                                                                                                                                                                                                                                                                                                                                                                                                             | [§ 6.3](#63-async-methods-take-mut-self-and-return-send-futures) |
 | `STY-RUST-072` | Ports             | Outbound port traits are `'static`; implementations may borrow, but never store a repository beyond the use-case `execute` that obtained it.                                                                                                                                                                                                                                                                                                                                                                                           | [§ 6.4](#64-port-traits-are-static-implementations-may-borrow)   |
 | `STY-RUST-073` | Ports             | Prefer sharing long-lived adapters through `Arc<T>` over adding `Clone`.                                                                                                                                                                                                                                                                                                                                                                                                                                                               | [§ 6.5](#65-prefer-arc-over-clone)                               |
-| `STY-RUST-074` | Configuration     | The `logging` section drives the runtime logs; install the subscriber once, after `LoadConfiguration`, because the configuration lives behind the datastore.                                                                                                                                                                                                                                                                                                                                                                           | [§ 10](#10-configuration)                                        |
+| `STY-RUST-074` | Configuration     | The `logging` section drives the runtime logs; install the subscriber once, after `LoadConfiguration` and before the datastore is opened, so first-boot lifecycle events reach a sink.                                                                                                                                                                                                                                                                                                                                                 | [§ 10](#10-configuration)                                        |
 | `STY-RUST-075` | Ports             | A use case reaches a third-party dependency only through an outbound port, never by calling it directly; the dependencies listed in [§ 6.6](#66-third-party-dependencies-sit-behind-a-port) are the only exceptions.                                                                                                                                                                                                                                                                                                                   | [§ 6.6](#66-third-party-dependencies-sit-behind-a-port)          |
-| `STY-RUST-076` | Configuration     | A setting that cannot be read after the pool or the router is built is a **startup-only setting**: it is read once at startup, listed in the registry in [§ 10.1](#101-startup-only-settings), and never silently cached. The registry is extensible: adding a startup-only setting appends it there in the same change, together with how a change is surfaced to the operator.                                                                                                                                                       | [§ 10.1](#101-startup-only-settings)                             |
+| `STY-RUST-076` | Configuration     | A setting that cannot be applied after the component consuming it is built is a **startup-only setting**: it is read once at startup, listed in the registry in [§ 10.1](#101-startup-only-settings), and never silently cached. The registry is extensible: adding a startup-only setting appends it there in the same change, together with how a change is surfaced to the operator.                                                                                                                                                | [§ 10.1](#101-startup-only-settings)                             |
 | `STY-RUST-077` | Domain models     | **Validated deserialization**: a domain model that validates in `try_new` must not derive a `Deserialize` that bypasses it. Route serde through the validating constructor (`#[serde(try_from = "…")]` plus `TryFrom`, or a custom `Deserialize`) so every construction path enforces the same invariant.                                                                                                                                                                                                                              | [§ 3.2](#32-validated-deserialization)                           |
 | `STY-RUST-078` | Configuration     | A configuration value that is **present but malformed or out of range** fails startup: a reader falls back to a default only when the key is absent, and propagates every other read or validation error.                                                                                                                                                                                                                                                                                                                              | [§ 10](#10-configuration)                                        |
 | `STY-RUST-079` | Repository        | A repository persists and queries exactly one aggregate; a port that spans two aggregates is split per aggregate.                                                                                                                                                                                                                                                                                                                                                                                                                      | [§ 8](#8-repository)                                             |
@@ -204,15 +203,16 @@ HTTP layer shares.
 
 `AppState` lives in `src/lib/infrastructure/inbound/rest/app_state.rs` and holds:
 
-- the live configuration (`Arc<ArcSwap<Configuration>>`),
+- the immutable configuration (`Arc<Configuration>`),
+- the immutable instance identity (`Arc<InstanceState>`),
 - the per-context use-case factories (see [Use cases](#9-use-cases)).
 
 `AppState` is the single router state; `FromRef` impls expose exactly what middleware extracts from it. The auth
-middleware does not get a cached token provider: `FromRef<AppState> for Arc<JwtTokenProvider>` builds one from the live
-configuration, so it validates with the same secret and TTL the Identity use cases issue with. Getters return `Arc`
-clones, never borrows of the shared state. Nothing outside the composition root builds an adapter that lives for the
-process lifetime; the per-use adapters a factory accessor or an adapter needs are built where they are used (see
-[§ 9.2](#92-use-case-factory)).
+middleware does not get a cached token provider: `FromRef<AppState> for Arc<JwtTokenProvider>` builds one from the
+instance identity and the configured TTL, so it validates with the same secret the Identity use cases issue with.
+Getters return `Arc` clones, never borrows of the shared state. Nothing outside the composition root builds an adapter
+that lives for the process lifetime; the per-use adapters a factory accessor or an adapter needs are built where they
+are used (see [§ 9.2](#92-use-case-factory)).
 
 ---
 
@@ -929,13 +929,14 @@ its use cases on demand.
 
 A factory accessor constructs the adapters its use case needs, classified as:
 
-- **Configuration-derived adapter** — its behaviour depends on a mutable configuration value (password hasher, token
-  provider). The accessor rebuilds it from the live configuration on every call and never caches it (`STY-RUST-062`).
+- **Configuration-derived adapter** — its behaviour depends on a configuration value or on the instance identity
+  (password hasher, token provider). The accessor rebuilds it from the immutable configuration and identity on every
+  call and never caches it (`STY-RUST-062`).
 - **Stateless adapter** — it has no runtime state and its behaviour is independent of the configuration (for example
   `Sha2ContentHasher`, `RandomPasswordGenerator`). The accessor builds it at the point of use and never stores it in a
   struct reachable from `AppState` across requests. An adapter may likewise build a stateless adapter it owns at the
   point of use rather than storing it (`STY-RUST-062`). The file-storage adapter is stateless: the accessor reads its
-  root from the live configuration (`asset.storage.root`) when it builds it.
+  root from the configuration (`asset.storage.root`) when it builds it.
 - **Resource-owning adapter** — it owns a resource created once at startup (for example the media-probe permit pool).
   The composition root captures the startup value and the accessor builds the adapter afresh per use from it; the
   adapter is never a long-lived field of the factory.
@@ -953,50 +954,71 @@ A factory port file declares the trait only: no `Command`, `Response` or `Error`
 
 #### 10. Configuration
 
-`LoadConfiguration` runs once at startup; the resulting `Configuration` is stored as `Arc<ArcSwap<Configuration>>` in
-`AppState`. Never cache a configuration-derived value (pepper, `JWT` secret, TTL) in a long-lived adapter built at
-startup. `security.jwt.secret` is static: it is established at startup and never changes while the process runs. The
-auth middleware builds its `JwtTokenProvider` from the live configuration through `FromRef`, and the Identity use cases
-build theirs the same way, so the key used to issue a token is always the key used to validate it.
+`LoadConfiguration` runs once at startup; the resulting `Configuration` is immutable for the process and stored as
+`Arc<Configuration>` in `AppState`. Nothing writes it, so there is no hot-reload path: a change to `config.yaml` or the
+environment takes effect only after a restart. The configuration-derived token lifetime is read when a token provider is
+built, so the key used to issue a token is always the key used to validate it (`STY-RUST-065`).
 
-The datastore path is needed before the pool exists, but the configuration singleton row lives behind that pool.
-`bootstrap_sqlite3` (`src/lib/infrastructure/outbound/config/bootstrap.rs`) therefore reads the file and the environment
-only. That layering is intentionally duplicated with `ConfigConfigurationSource` (see `STY-RUST-001`); keep the source
-list and order identical. A persistence setting that is present but malformed or out of range fails startup; the
-bootstrap falls back to a default only when the setting is absent (`STY-RUST-078`).
+Configuration is total and datastore-free. `ConfigConfigurationSource` resolves it as built-in defaults → `config.yaml`
+→ an explicit environment table (`MNEMORIUM_LOG_LEVEL`, `MNEMORIUM_RATE_LIMIT_BURST_SIZE`, …). Every configuration type
+and its `try_from` mirror carries `#[serde(default, deny_unknown_fields)]`, so an absent, empty or partial document
+yields a complete configuration while an unknown key fails startup; a value that is present but malformed or out of
+range also fails startup (`STY-RUST-078`). When `config.yaml` is absent the source writes an embedded default template
+atomically at mode `0644`; a file that already exists — including an empty or partial one — is never rewritten. A test
+compares the template with `Configuration::default()`, so the two cannot drift.
+
+Secrets are not configuration. The site pepper and the token signing secret live in the instance identity (`state.yaml`,
+[§ 10.2](#102-instance-identity)), and the datastore path is fixed at `mnemorium.db` next to `init_db`; neither can be
+set through the file or the environment. `MNEMORIUM_PEPPER` and `MNEMORIUM_JWT_SECRET` are accepted names but act only
+as creation seeds, and any other `MNEMORIUM_*` name fails startup naming the variable.
 
 The configuration also carries the logging settings (`logging.level`, `logging.rotation`, `logging.max_files`,
-`logging.ansi`). Because those settings live behind the datastore, the `tracing` subscriber is installed from the loaded
-configuration **after** `LoadConfiguration` returns: anything logged during bootstrap, `init_db` and `LoadConfiguration`
-itself is discarded, and a startup failure reaches the operator through the error `main` returns. `logging::setup`
+`logging.ansi`). The `tracing` subscriber is installed from the resolved configuration after `LoadConfiguration` and
+before the datastore is opened, so first-boot lifecycle events reach a sink. `logging::setup`
 (`src/lib/infrastructure/logging.rs`) fails fast on invalid filter directives and returns the `WorkerGuard` the
 composition root holds for the lifetime of the process. Security events emit on the reserved `security` target at their
 catalogued level, and `logging.level` cannot suppress them (see
 [§ 9 (Logging & Observability)](#logging--observability), `OBS-007`); `Logging::try_new` rejects `off`/`none` as a
 whole-level value and any filter directive that targets `security`, and `logging::setup` appends the security floor.
 
-Runtime write-guarding of the configuration is deferred; until it lands, the startup-only settings in § 10.1 are the
-only configuration values a running process holds from startup.
-
 ##### 10.1 Startup-only settings
 
-A few settings are read once while the process starts — before the live configuration is readable, or before the
-component that consumes them is built — and a change to their stored value has no effect until the server restarts. They
-are the **startup-only settings**; this table is their registry.
+A few settings are read once while the process starts — because the component that consumes them is built once — and a
+change to their value has no effect until the server restarts. They are the **startup-only settings**; this table is
+their registry.
 
-| Setting                                | Consumed at startup by                                                                                                                                 | Restart feedback                                                       |
-| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------- |
-| `persistence.sqlite3.path`             | The bootstrap that opens the pool (`src/lib/infrastructure/outbound/config/bootstrap.rs`).                                                             | A startup warning when the stored value differs (`src/bin/server.rs`). |
-| `persistence.sqlite3.max_connections`  | The pool sizing in the same bootstrap.                                                                                                                 | None.                                                                  |
-| `asset.upload.chunk_size_bytes`        | The axum body limit fixed when the router is built (`src/lib/infrastructure/inbound/rest/handler/asset.rs`); the upload use cases read the live value. | None (`TODO(hot-reload)` in the same handler).                         |
-| `logging.level`                        | `logging::setup` (`src/lib/infrastructure/logging.rs`) when the `tracing` subscriber is installed.                                                     | None.                                                                  |
-| `security.rate_limit.trusted_proxies`  | The login limiter built in the composition root (`src/bin/server.rs`) when the router is built.                                                        | None.                                                                  |
-| `security.rate_limit.client_ip_header` | The login limiter built in the composition root (`src/bin/server.rs`) when the router is built.                                                        | None.                                                                  |
-| `security.rate_limit.burst_size`       | The login limiter built in the composition root (`src/bin/server.rs`) when the router is built.                                                        | None.                                                                  |
-| `security.rate_limit.period_seconds`   | The login limiter built in the composition root (`src/bin/server.rs`) when the router is built.                                                        | None.                                                                  |
+| Setting                                | Consumed at startup by                                                                                                                                 | Restart feedback                               |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------- |
+| `persistence.sqlite3.max_connections`  | The pool sizing in `init_db`, called from the composition root.                                                                                        | None.                                          |
+| `asset.upload.chunk_size_bytes`        | The axum body limit fixed when the router is built (`src/lib/infrastructure/inbound/rest/handler/asset.rs`); the upload use cases read the live value. | None (`TODO(hot-reload)` in the same handler). |
+| `logging.level`                        | `logging::setup` (`src/lib/infrastructure/logging.rs`) when the `tracing` subscriber is installed.                                                     | None.                                          |
+| `security.rate_limit.trusted_proxies`  | The login limiter built in the composition root (`src/bin/server.rs`) when the router is built.                                                        | None.                                          |
+| `security.rate_limit.client_ip_header` | The login limiter built in the composition root (`src/bin/server.rs`) when the router is built.                                                        | None.                                          |
+| `security.rate_limit.burst_size`       | The login limiter built in the composition root (`src/bin/server.rs`) when the router is built.                                                        | None.                                          |
+| `security.rate_limit.period_seconds`   | The login limiter built in the composition root (`src/bin/server.rs`) when the router is built.                                                        | None.                                          |
 
 The registry is **extensible**: a setting becomes startup-only by being added here. Adding one records, in the same
-change, how a change to the stored value is surfaced to the operator (a startup warning, or an explicit `None`).
+change, how a change to its value is surfaced to the operator (a startup warning, or an explicit `None`).
+
+##### 10.2 Instance identity
+
+The instance identity is the non-derivable part of the instance: the site pepper, the token signing secret and the
+instant the identity was established. It is not configuration — configuration is derivable and total, identity is
+existential. `state.yaml` is read before configuration and before the datastore is opened; a failure to read it stops
+startup before any datastore file is opened.
+
+The file is a versioned YAML document (`version`, `created_at`, `pepper`, `jwt_secret`) holding both secrets as the
+exact 64-character hexadecimal strings the password hasher and the token provider consume. It is capped at 4 KiB,
+decoded with `deny_unknown_fields`, and written atomically at mode `0600` under an exclusive lock on `state.yaml.lock`,
+so two processes starting against a fresh instance cannot each persist a different identity. An unknown version, an
+unknown field, a non-hex secret or a truncated document fails startup and is never treated as absent.
+
+Identity is created only for a genuinely new instance. The composition root samples `Path::exists("mnemorium.db")`
+before `init_db` creates the file: when the datastore exists and no identity does, startup fails and no replacement is
+written; when neither exists, the identity is created first and the datastore afterwards. The two environment seeds are
+applied only at creation, and a supplied seed that differs from the persisted value fails startup naming the variable,
+never its value (`OBS-004`). Creation emits `system_object` and one `secret_initialized` per generated secret, once the
+subscriber is installed; reuse emits neither.
 
 ---
 
@@ -1865,8 +1887,6 @@ enforce invariants.
 | `PERS-006` | Invariants                  | A `user` row with `user_id = 0` (the Root Admin) cannot be deleted or modified.                                                                                                                                                                |                                           |
 | `PERS-007` | Invariants                  | A `gallery` row with `gallery_id = 0` (the default gallery) cannot be deleted or modified.                                                                                                                                                     |                                           |
 | `PERS-008` | Invariants                  | Normalise `codec`, `genre_id` and `movie.country_of_origin` to uppercase on insert/update.                                                                                                                                                     |                                           |
-| `PERS-009` | Invariants                  | Keep `configuration` a singleton (`configuration_id = 0`): its row cannot be deleted and is created at first boot by the Initialize Configuration use case, which also generates the secrets.                                                  |                                           |
-| `PERS-010` | Invariants                  | `configuration.is_root_admin_password_logged` records whether the Root Admin default password is still revealed on standard output; the Patch Credential use case clears it when the Root Admin replaces its own password.                     |                                           |
 | `PERS-011` | Entity-relationship diagram | Keep the entity-relationship diagram in sync with `migrations/` in the same change that changes a table, column, constraint, trigger or seed.                                                                                                  | [§ Diagram](#entity-relationship-diagram) |
 | `PERS-012` | Entity-relationship diagram | Use only the markers `PK`, `FK`, `NN`, `UN`, `CC`, `DF`.                                                                                                                                                                                       | [§ Legend](#legend)                       |
 | `PERS-013` | Entity-relationship diagram | Put the FK marker on the child table and draw relationships from the "one" side to the "many" side.                                                                                                                                            | [§ Diagram](#entity-relationship-diagram) |
@@ -1881,9 +1901,10 @@ enforce invariants.
 
 Editing an already-applied migration (`PERS-014`) changes its checksum, and deleting an applied pair removes its
 version. `sqlx::migrate!` then fails at startup — `VersionMismatch` for the changed checksum, `VersionMissing` for the
-deleted pair (this change deletes the `20260904012859_create_gallery_video` pair) — instead of leaving a
-stale-but-running database. Reset by deleting the SQLite file (default `mnemorium.db`) together with its `-wal` and
-`-shm` sidecars and restarting the server; the development database is disposable and is rebuilt from `migrations/`.
+deleted pair (this change deletes the `20260904012859_create_gallery_video` pair and the three `configuration` pairs) —
+instead of leaving a stale-but-running database. Reset by deleting the SQLite file (default `mnemorium.db`) together
+with its `-wal` and `-shm` sidecars and restarting the server; the development database is disposable and is rebuilt
+from `migrations/`.
 
 ---
 
@@ -2149,28 +2170,6 @@ entity gallery_item {
    * added_at: TEXT <<NN, DF(CURRENT_TIMESTAMP)>>
 }
 
-entity configuration {
-    * configuration_id: INTEGER <<PK, CC(configuration_id = 0)>>
-    --
-    * jwt_secret: TEXT <<NN, CC(length(jwt_secret) = 64)>>
-    * jwt_ttl: INTEGER <<NN, CC(jwt_ttl > 0)>>
-    * pepper: TEXT <<NN, CC(length(pepper) = 64)>>
-    * is_root_admin_password_logged: INTEGER <<NN, DF(1), CC(is_root_admin_password_logged IN (0, 1))>>
-    * sqlite3_path: TEXT <<NN>>
-    * sqlite3_max_connections: INTEGER <<NN, CC(sqlite3_max_connections > 0)>>
-    * is_log_ansi: INTEGER <<NN, DF(0), CC(is_log_ansi IN (0, 1))>>
-    * log_level: TEXT <<NN, DF('debug,sqlx=warn')>>
-    * log_max_files: INTEGER <<NN, DF(7), CC(log_max_files >= 0)>>
-    * log_rotation: TEXT <<NN, DF('DAILY'), CC(log_rotation IN ('MINUTELY', 'HOURLY', 'DAILY', 'NEVER'))>>
-    * asset_storage_root: TEXT <<NN, DF('data'), CC(length(asset_storage_root) > 0)>>
-    * asset_upload_chunk_size_bytes: INTEGER <<NN, DF(5242880), CC(asset_upload_chunk_size_bytes > 0)>>
-    * asset_upload_expiry_seconds: INTEGER <<NN, DF(86400), CC(asset_upload_expiry_seconds > 0)>>
-    * asset_upload_max_file_size_bytes: INTEGER <<NN, DF(107374182400), CC(asset_upload_max_file_size_bytes > 0)>>
-    * rate_limit_trusted_proxies: TEXT <<NN, DF('')>>
-    * rate_limit_client_ip_header: TEXT <<NN, DF('x-forwarded-for')>>
-    * rate_limit_burst_size: INTEGER <<NN, DF(5), CC(rate_limit_burst_size > 0)>>
-    * rate_limit_period_seconds: INTEGER <<NN, DF(12), CC(rate_limit_period_seconds > 0)>>
-}
 
 user ||--|| credential
 user ||--o{ music_playlist
@@ -2454,7 +2453,7 @@ sanctioned exception to [TEST-001](#unit-test) (a test module lives with the cod
 
 It holds the fixtures the in-crate tests share: the secrets `SECRET_PASSWORD` and `TEST_JWT_SECRET`; the unit-of-work
 double `TestUnitOfWork`/`TestUow` and its factory double `TestUnitOfWorkFactory`/`TestFactory`, wrapped by
-`AssetFactoryHarness::new` and `GalleryFactoryHarness::new`; `configuration_with_jwt_secret`; the app-state builders
+`AssetFactoryHarness::new` and `GalleryFactoryHarness::new`; `TEST_PEPPER` and `instance_state`; the app-state builders
 `app_state`, `app_state_with_identity`, `app_state_with_user`, `app_state_with_asset`, `app_state_with_library`; the
 album release date `album_release_date`; and the response helpers `error_message_of`, `into_parts` and
 `into_status_and_body`.
@@ -2581,13 +2580,12 @@ Source: `Cargo.toml`.
 | Name                                                              | Description                                                                     | Version | License                            |
 | ----------------------------------------------------------------- | ------------------------------------------------------------------------------- | ------- | ---------------------------------- |
 | [anyhow](https://crates.io/crates/anyhow)                         | Flexible concrete error type built on `std::error::Error`.                      | 1.0.104 | MIT OR Apache-2.0                  |
-| [arc-swap](https://crates.io/crates/arc-swap)                     | Atomically swappable `Arc` with lock-free load and store.                       | 1.9.2   | MIT OR Apache-2.0                  |
 | [argon2](https://crates.io/crates/argon2)                         | Pure Rust implementation of the Argon2 password hashing function.               | 0.6.0   | MIT OR Apache-2.0                  |
 | [axum](https://crates.io/crates/axum)                             | HTTP routing and request handling library focused on ergonomics and modularity. | 0.8.9   | MIT                                |
 | [base64](https://crates.io/crates/base64)                         | Encodes and decodes base64 as bytes or UTF-8.                                   | 0.23.1  | MIT OR Apache-2.0                  |
 | [chrono](https://crates.io/crates/chrono)                         | Date and time library for Rust.                                                 | 0.4.45  | MIT OR Apache-2.0                  |
-| [config](https://crates.io/crates/config)                         | Layered configuration system for Rust applications.                             | 0.15.25 | MIT OR Apache-2.0                  |
 | [email_address](https://crates.io/crates/email_address)           | RFC-compliant `EmailAddress` newtype.                                           | 0.2.9   | MIT                                |
+| [envy](https://crates.io/crates/envy)                             | Deserializes a struct from prefixed environment variables.                      | 0.4.2   | MIT                                |
 | [image](https://crates.io/crates/image)                           | Image decoding and metadata: dimensions and EXIF orientation.                   | 0.25.10 | MIT OR Apache-2.0                  |
 | [infer](https://crates.io/crates/infer)                           | Infers a file type from its magic number signature.                             | 0.22.0  | MIT                                |
 | [jsonwebtoken](https://crates.io/crates/jsonwebtoken)             | Creates and decodes JWTs in a strongly typed way.                               | 11.0.0  | MIT                                |
@@ -2606,6 +2604,7 @@ Source: `Cargo.toml`.
 | [tracing-appender](https://crates.io/crates/tracing-appender)     | File appenders and non-blocking writers for `tracing`.                          | 0.2.5   | MIT                                |
 | [tracing-subscriber](https://crates.io/crates/tracing-subscriber) | Composing and implementing `tracing` subscribers.                               | 0.3.23  | MIT                                |
 | [utoipa](https://crates.io/crates/utoipa)                         | Compile-time generated OpenAPI documentation for Rust.                          | 5.5.0   | MIT OR Apache-2.0                  |
+| [yaml_serde](https://crates.io/crates/yaml_serde)                 | YAML serialization and deserialization; the maintained fork of `serde_yaml`.    | 0.10.7  | MIT OR Apache-2.0                  |
 
 ---
 
@@ -3362,12 +3361,12 @@ event must be one this catalog declares. A field is an identifier, a code or a c
 | `token_provider_fault`      | `error` | `kind`                       | the inbound token boundary receives an operational fault from the token provider            |
 | `lifecycle`                 | `info`  | `component`, `outcome`       | startup, shutdown or logging initialization                                                 |
 | `user_admin`                | `info`  | `actor`, `action`, `target`  | a user is created or updated, a role or credential changes                                  |
-| `secret_initialized`        | `info`  | `component`                  | the pepper or the JWT signing secret is generated at startup                                |
+| `secret_initialized`        | `info`  | `component`                  | the pepper or the signing secret is generated when the instance identity is created         |
 | `credential_rotated`        | `info`  | `actor`                      | a password is replaced or rehashed                                                          |
 | `upload`                    | `info`  | `actor`, `upload`, `outcome` | an upload is accepted, a chunk written, or an upload completed                              |
 | `suspicious_business_logic` | `warn`  | `actor`, `action`, `reason`  | an action is out of order, nonsensical in context, or exceeds a limit                       |
 | `sensitive_data_access`     | `debug` | `actor`, `object`            | a request reads personal data                                                               |
-| `system_object`             | `info`  | `object`, `action`           | a system-level object is created (the configuration singleton, the Root Admin)              |
+| `system_object`             | `info`  | `object`, `action`           | a system-level object is created (the instance identity, the Root Admin)                    |
 | `unexpected_http_method`    | `warn`  | `method`, `path`             | a request uses a method the route does not support                                          |
 
 An explicit, narrow exception to the field rule above: `authn_failed.claimed_identity` is the submitted username,
@@ -3433,8 +3432,8 @@ No mechanical check enforces this rule: it is validated by review, and it stays 
 ### 1. Secret-bearing structs
 
 A **secret-bearing struct** is a type that declares a field holding a password or password hash, a signing or encryption
-key, or an access token. The canonical set is the one `OBS-004` names — `Security`, `Jwt`, `Configuration` and
-`Credential`, all in `src/lib/domain/model/` — and every new type that adds such a field joins it.
+key, or an access token. The canonical set is the one `OBS-004` names — `InstanceState` and `Credential`, both in
+`src/lib/domain/model/` — and every new type that adds such a field joins it.
 
 `SEC-001` binds the HTTP boundary in three ways:
 

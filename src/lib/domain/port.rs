@@ -1,7 +1,5 @@
 pub mod asset_unit_of_work;
-pub mod configuration_repository;
 pub mod configuration_source;
-pub mod configuration_unit_of_work;
 pub mod content_hasher;
 pub mod credential_repository;
 pub mod error;
@@ -10,6 +8,7 @@ pub mod file_storage;
 pub mod gallery_repository;
 pub mod identity_unit_of_work;
 pub mod image_repository;
+pub mod instance_state_store;
 pub mod library_unit_of_work;
 pub mod media_probe;
 pub mod mime_type_repository;

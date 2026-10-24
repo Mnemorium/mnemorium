@@ -140,7 +140,7 @@ mod tests {
     /// A router whose token provider is built from the fixture configuration.
     fn plain_router() -> Result<axum::Router, Box<dyn Error>> {
         let state = app_state()?;
-        let limiter = LoginRateLimiter::new(state.configuration().load().security().rate_limit());
+        let limiter = LoginRateLimiter::new(state.configuration().security().rate_limit());
         Ok(setup_routes(&state, &limiter))
     }
 
@@ -216,7 +216,7 @@ mod tests {
             .times(0..=1)
             .return_once(move || Arc::new(login_use_case) as Arc<dyn LoginUserUseCase>);
         let state = app_state_with_identity(Arc::new(factory))?;
-        let limiter = LoginRateLimiter::new(state.configuration().load().security().rate_limit());
+        let limiter = LoginRateLimiter::new(state.configuration().security().rate_limit());
 
         // Act
         let body = json!({
@@ -248,7 +248,7 @@ mod tests {
             Arc::new(login_use_case) as Arc<dyn LoginUserUseCase>
         });
         let state = app_state_with_identity(Arc::new(factory))?;
-        let limiter = LoginRateLimiter::new(state.configuration().load().security().rate_limit());
+        let limiter = LoginRateLimiter::new(state.configuration().security().rate_limit());
         let router = setup_routes(&state, &limiter);
         let body = json!({ "username": "alice", "password": SECRET_PASSWORD }).to_string();
 

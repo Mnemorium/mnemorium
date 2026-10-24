@@ -122,15 +122,9 @@ pub fn asset_routes(state: &AppState) -> Router {
     // TODO(hot-reload): the limit is fixed when the router is built, so a runtime
     // change to `asset.upload.chunk_size_bytes` only takes effect after a
     // restart.
-    let chunk_body_limit = usize::try_from(
-        state
-            .configuration()
-            .load()
-            .asset()
-            .upload()
-            .chunk_size_bytes(),
-    )
-    .unwrap_or(usize::MAX);
+    let chunk_body_limit =
+        usize::try_from(state.configuration().asset().upload().chunk_size_bytes())
+            .unwrap_or(usize::MAX);
 
     let upload: Router<AppState> = Router::new()
         .route("/upload", post(post_upload))

@@ -5,8 +5,9 @@ import re
 import struct
 import subprocess
 import time
+import uuid
 import zlib
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from itertools import count
 from pathlib import Path
 
@@ -695,3 +696,163 @@ def create_owned_playlist(
     created = create_playlist(token, f"Playlist {time.time_ns()}", is_public)
     assert created.status_code == 201, f"create failed: {created.status_code} {created.text}"
     return created.json()["id"]
+
+
+# ---------------------------------------------------------------------------
+# Boot-lifecycle container
+#
+# The boot tests own their container and volume: they start, stop and restart
+# the image to observe what the process writes to `/app` on a first boot and
+# reads back on a later one. They never touch the suite's `mnemorium-e2e`
+# container, and the image is the one the suite already runs.
+# ---------------------------------------------------------------------------
+
+_BOOT_IMAGE_ENV = "MNEMORIUM_E2E_IMAGE"
+_BOOT_DEFAULT_IMAGE = "mnemorium"
+_BOOT_TIMEOUT_S = 60
+_BOOT_POLL_INTERVAL_S = 0.2
+
+
+class BootContainer:
+    """A disposable container and volume for the boot-lifecycle tests."""
+
+    def __init__(self, name: str) -> None:
+        self.name = name
+        self.volume = f"{name}-data"
+        self.image = os.environ.get(_BOOT_IMAGE_ENV, _BOOT_DEFAULT_IMAGE)
+
+    def start(self) -> None:
+        """Create and start the container with a fresh `/app` volume."""
+        subprocess.run(
+            [
+                "docker",
+                "run",
+                "-d",
+                "--name",
+                self.name,
+                "-p",
+                "127.0.0.1::4080",
+                "-v",
+                f"{self.volume}:/app",
+                self.image,
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+
+    def base_url(self) -> str:
+        """Return the host URL Docker mapped the server's port to."""
+        deadline = time.monotonic() + _BOOT_TIMEOUT_S
+        while time.monotonic() < deadline:
+            result = subprocess.run(
+                ["docker", "port", self.name, "4080/tcp"],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            address = result.stdout.strip().splitlines()
+            if address:
+                return f"http://{address[0]}"
+            time.sleep(_BOOT_POLL_INTERVAL_S)
+        raise RuntimeError(f"{self.name}: Docker mapped no port for 4080/tcp")
+
+    def wait_healthy(self) -> None:
+        """Block until the server answers `/health`, failing with its logs."""
+        base_url = self.base_url()
+        deadline = time.monotonic() + _BOOT_TIMEOUT_S
+        while time.monotonic() < deadline:
+            try:
+                response = requests.get(f"{base_url}{_HEALTH_PATH}", timeout=1)
+                if response.ok:
+                    return
+            except requests.ConnectionError:
+                pass
+            time.sleep(_BOOT_POLL_INTERVAL_S)
+        raise AssertionError(f"{self.name} was not healthy within {_BOOT_TIMEOUT_S}s:\n{self.logs()}")
+
+    def stop_process(self) -> None:
+        """Stop the container's process, leaving the container and volume."""
+        subprocess.run(["docker", "stop", self.name], check=True, capture_output=True, text=True)
+
+    def restart(self) -> None:
+        """Restart the container's process."""
+        subprocess.run(["docker", "restart", self.name], check=True, capture_output=True, text=True)
+
+    def recreate(self) -> None:
+        """Replace the container with a new one over the same volume.
+
+        A fresh container avoids the window in which `docker start` still
+        reports the previous stop's exit state, so a start that fails
+        immediately is observed unambiguously.
+        """
+        subprocess.run(["docker", "rm", "-f", self.name], capture_output=True, text=True, check=False)
+        self.start()
+
+    def wait_exited(self) -> int:
+        """Block until the process exits and return its exit code."""
+        deadline = time.monotonic() + _BOOT_TIMEOUT_S
+        while time.monotonic() < deadline:
+            running = subprocess.run(
+                ["docker", "inspect", "--format", "{{.State.Running}}", self.name],
+                capture_output=True,
+                text=True,
+                check=True,
+            ).stdout.strip()
+            if running == "false":
+                return int(
+                    subprocess.run(
+                        ["docker", "inspect", "--format", "{{.State.ExitCode}}", self.name],
+                        capture_output=True,
+                        text=True,
+                        check=True,
+                    ).stdout.strip()
+                )
+            time.sleep(_BOOT_POLL_INTERVAL_S)
+        raise AssertionError(f"{self.name} did not exit within {_BOOT_TIMEOUT_S}s:\n{self.logs()}")
+
+    def exec(self, *command: str) -> str:
+        """Run a command in the container and return its standard output."""
+        return subprocess.run(
+            ["docker", "exec", self.name, *command],
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout
+
+    def logs(self) -> str:
+        """Return the container's standard output and standard error.
+
+        Rust reports a failed `main` on standard error, and `docker logs`
+        keeps the two streams apart, so both are returned.
+        """
+        result = subprocess.run(
+            ["docker", "logs", self.name],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        return result.stdout + result.stderr
+
+    def remove(self) -> None:
+        """Remove the container and its volume, tolerating their absence."""
+        subprocess.run(["docker", "rm", "-f", self.name], capture_output=True, text=True, check=False)
+        subprocess.run(["docker", "volume", "rm", "-f", self.volume], capture_output=True, text=True, check=False)
+
+
+@pytest.fixture
+def boot_container() -> Iterator[Callable[[], BootContainer]]:
+    """Return a factory for disposable boot-lifecycle containers."""
+
+    created: list[BootContainer] = []
+
+    def _boot_container() -> BootContainer:
+        container = BootContainer(f"mnemorium-e2e-boot-{uuid.uuid4().hex[:12]}")
+        created.append(container)
+        container.remove()
+        return container
+
+    yield _boot_container
+
+    for container in created:
+        container.remove()

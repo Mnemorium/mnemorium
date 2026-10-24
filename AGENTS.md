@@ -100,3 +100,6 @@ boundary.
   `docs/openapi.json`.
 - Migrations are mutable until release — see
   `docs/development/TechnicalDesign.md` § 4 (Persistence), `PERS-014`.
+- Read `rule/*.yml` and `rule_enforcer.yaml` with the read, grep, or glob tools,
+  never the shell: `opencode.json` denies any shell command that names either
+  path, even a read-only one.

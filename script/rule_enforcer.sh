@@ -110,7 +110,6 @@ RULES=(
 	"STY-RUST-063:check_sty_rust_063"
 	"STY-RUST-064:check_sty_rust_064"
 	"STY-RUST-065:check_sty_rust_065"
-	"STY-RUST-066:check_sty_rust_066"
 	"STY-RUST-068:check_sty_rust_068"
 	"STY-RUST-069:check_sty_rust_069"
 	"STY-RUST-070:check_sty_rust_070"
@@ -1902,13 +1901,13 @@ check_sty_rust_064() {
 		printf '%s\n' "$matches"
 		return 1
 	fi
-	# Clause A: AppState stores the live configuration as
-	# `Arc<ArcSwap<Configuration>>`. The rule is positive, so a missing match
-	# is the violation.
+	# Clause A: AppState stores the immutable configuration as
+	# `Arc<Configuration>`. The rule is positive, so a missing match is the
+	# violation.
 	app_matches="$(printf '%s\n' "$matches" |
 		jq -c 'select(.metaVariables.single.VAR | not)')"
 	if [ -z "$app_matches" ]; then
-		printf 'error: %s: AppState does not store the configuration as Arc<ArcSwap<Configuration>>\n' \
+		printf 'error: %s: AppState does not store the configuration as Arc<Configuration>\n' \
 			"$id" >&2
 		return 1
 	fi
@@ -1992,85 +1991,6 @@ check_sty_rust_065() {
 		done
 	done < <(printf '%s\n' "$matches" |
 		jq -r '[.file, .metaVariables.single.FIELD.text, (.metaVariables.single.TYPE.text | gsub("\\s+"; ""))] | @tsv')
-
-	return "$result"
-}
-
-check_sty_rust_066() {
-	local id="STY-RUST-066"
-	local rule_id="sty-rust-066"
-	local reference="src/lib/infrastructure/outbound/config/configuration_source.rs"
-	local bootstrap="src/lib/infrastructure/outbound/config/bootstrap.rs"
-	local matches row file source result=0 i n
-	local -a rows=() ref_sources=() boot_sources=() expected=()
-
-	for file in "$reference" "$bootstrap"; do
-		if [ ! -f "$file" ]; then
-			printf 'error: %s: missing %s\n' "$id" "$file" >&2
-			return 1
-		fi
-	done
-
-	# sty-rust-066 extracts each `.add_source(...)` argument from the two
-	# production chains; the text-and-order comparison happens here because an
-	# ast-grep rule cannot relate two files.
-	if ! matches="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--json=stream "$reference" "$bootstrap" 2>&1)"; then
-		printf '%s\n' "$matches"
-		return 1
-	fi
-	if [ -z "$matches" ]; then
-		printf 'error: %s: extracted no configuration source\n' "$id" >&2
-		return 1
-	fi
-
-	mapfile -t rows < <(printf '%s\n' "$matches" |
-		jq -r 'select(.metaVariables.single.SOURCE) |
-			[.file,
-			 (.metaVariables.single.SOURCE.range.byteOffset.start | tostring),
-			 (.metaVariables.single.SOURCE.text | gsub("\\s+"; " ") | sub("^ "; "") | sub(" $"; ""))] | @tsv' |
-		sort -t$'\t' -k1,1 -k2,2n)
-
-	for row in "${rows[@]}"; do
-		IFS=$'\t' read -r file _ source <<<"$row"
-		[ -n "$source" ] || continue
-		if [ "$file" = "$reference" ]; then
-			ref_sources+=("$source")
-		elif [ "$file" = "$bootstrap" ]; then
-			boot_sources+=("$source")
-		fi
-	done
-
-	if [ "${#ref_sources[@]}" -eq 0 ] || [ "${#boot_sources[@]}" -eq 0 ]; then
-		printf 'error: %s: extracted no configuration source from %s or %s\n' \
-			"$id" "$reference" "$bootstrap" >&2
-		return 1
-	fi
-
-	# The datastore base layer is the one source the bootstrap cannot build:
-	# it runs before the pool exists. Every other source must match, in order.
-	for source in "${ref_sources[@]}"; do
-		case "$source" in
-		DbSqlite3Source*) ;;
-		*) expected+=("$source") ;;
-		esac
-	done
-
-	if [ "${#boot_sources[@]}" -ne "${#expected[@]}" ]; then
-		printf 'error: %s: bootstrap adds %s file/environment source(s); ConfigConfigurationSource duplicates %s\n' \
-			"$id" "${#boot_sources[@]}" "${#expected[@]}" >&2
-		result=1
-	fi
-
-	n="${#expected[@]}"
-	[ "${#boot_sources[@]}" -lt "$n" ] && n="${#boot_sources[@]}"
-	for ((i = 0; i < n; i++)); do
-		if [ "${boot_sources[$i]}" != "${expected[$i]}" ]; then
-			printf 'error: %s: bootstrap source %s is %s; ConfigConfigurationSource has %s\n' \
-				"$id" "$((i + 1))" "${boot_sources[$i]}" "${expected[$i]}" >&2
-			result=1
-		fi
-	done
 
 	return "$result"
 }
@@ -2547,20 +2467,14 @@ check_sty_rust_075() {
 
 check_sty_rust_076() {
 	local id="STY-RUST-076"
-	local rule_id="sty-rust-076"
-	local bootstrap="src/lib/infrastructure/outbound/config/bootstrap.rs"
 	local matches path feedback result=0
 	local -A registered=()
-
-	if [ ! -f "$bootstrap" ]; then
-		printf 'error: %s: missing %s\n' "$id" "$bootstrap" >&2
-		return 1
-	fi
 
 	# The § 10.1 table is the registry of startup-only settings; parse its rows
 	# (setting, operator restart feedback) straight from the rulebook, as
 	# read_rulebook parses the rule tables. An empty parse means the registry
-	# moved, not that the rule holds.
+	# moved, not that the rule holds, and a row that records no feedback is a
+	# setting whose restart behaviour was never decided.
 	while IFS=$'\t' read -r path feedback; do
 		[ -n "$path" ] || continue
 		registered["$path"]=1
@@ -2591,32 +2505,6 @@ check_sty_rust_076() {
 			"$id" "$RULEBOOK" >&2
 		return 1
 	fi
-
-	# sty-rust-076 extracts the configuration paths the pre-pool bootstrap
-	# reads. The bootstrap runs before the pool exists, so by construction
-	# these settings cannot be read after the pool is built: the rule requires
-	# each to be listed in the § 10.1 registry. The document comparison
-	# happens here because an ast-grep rule cannot read a Markdown table.
-	if ! matches="$(ast-grep scan --config "$SGCONFIG" --filter "$rule_id" \
-		--json=stream "$bootstrap" 2>&1)"; then
-		printf '%s\n' "$matches"
-		return 1
-	fi
-	if [ -z "$matches" ]; then
-		printf 'error: %s: extracted no configuration path read from %s\n' "$id" "$bootstrap" >&2
-		return 1
-	fi
-
-	while IFS= read -r path; do
-		[ -n "$path" ] || continue
-		if [ -z "${registered[$path]+set}" ]; then
-			printf 'error: %s: startup-only setting %s is read before the pool but not listed in %s § 10.1\n' \
-				"$id" "$path" "$RULEBOOK" >&2
-			result=1
-		fi
-	done < <(printf '%s\n' "$matches" |
-		jq -r 'select(.metaVariables.single.PATH.text | startswith("\"")) |
-			.metaVariables.single.PATH.text | gsub("^\"|\"$"; "")')
 
 	return "$result"
 }
@@ -8195,11 +8083,11 @@ validate_registry() {
 # `FAIL <ID> (<Section>) — <Rule>` with the check's output indented below, then
 # a tally. Returns non-zero when any check failed.
 run_checks() {
-	local entry id fn out rc failed=0 registered=0
+	local entry id fn out rc failed=0 total=0
 	for entry in "${RULES[@]}"; do
 		id="${entry%%:*}"
 		fn="${entry#*:}"
-		registered=$((registered + 1))
+		total=$((total + 1))
 
 		if out="$("$fn" 2>&1)"; then
 			rc=0
@@ -8221,7 +8109,7 @@ run_checks() {
 	done
 
 	printf '%s rulebook rule(s), %s registered, %s failed\n' \
-		"${#RULE_TEXT[@]}" "$registered" "$failed"
+		"${#RULE_TEXT[@]}" "$total" "$failed"
 	[ "$failed" -eq 0 ]
 }
 

@@ -140,10 +140,10 @@ pub fn sensitive_data_access(actor: i64, object: &str) {
 /// A secret was generated at startup (`secret_initialized`, `info`, field
 /// `component`).
 ///
-/// Emitted when the pepper or the JWT signing secret is generated for a
-/// first-boot configuration singleton. The `component` names which secret was
-/// generated; the secret value itself never reaches the sink (`OBS-003`,
-/// `OBS-004`).
+/// Emitted when the pepper or the token signing secret is generated while the
+/// instance identity is created, once per generated secret. The `component`
+/// names which secret was generated; the secret value itself never reaches the
+/// sink (`OBS-003`, `OBS-004`).
 pub fn secret_initialized(component: &str) {
     info!(
         target: "security",

@@ -37,7 +37,7 @@ mkdir -p "${JUNIT_DIR}"
 echo "==> Starting container ${CONTAINER}"
 docker rm -f "${CONTAINER}" >/dev/null 2>&1 || true
 docker run -d --name "${CONTAINER}" -p "${PORT}:4080" \
-	-e MNEMORIUM__SECURITY__RATE_LIMIT__BURST_SIZE=1000 \
+	-e MNEMORIUM_RATE_LIMIT_BURST_SIZE=1000 \
 	"${IMAGE}" >/dev/null
 
 echo "==> Waiting for ${BASE_URL}/health"

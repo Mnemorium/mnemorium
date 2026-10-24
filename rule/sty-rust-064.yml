@@ -12,7 +12,7 @@ rule:
         - kind: field_declaration
         - has:
             field: type
-            regex: '^Arc<ArcSwap<Configuration>>$'
+            regex: '^Arc<Configuration>$'
         - inside:
             kind: field_declaration_list
             inside:

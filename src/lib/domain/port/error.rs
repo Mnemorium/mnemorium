@@ -184,6 +184,9 @@ pub enum UnitOfWorkError {
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum ConfigurationSourceError {
+    /// The configuration file was absent and could not be written.
+    #[error("the configuration file could not be written: {0}")]
+    FileWriteFailed(#[source] anyhow::Error),
     /// The layered settings do not form a valid configuration.
     #[error("the configuration is invalid: {0}")]
     InvalidConfiguration(#[source] anyhow::Error),
@@ -193,6 +196,29 @@ pub enum ConfigurationSourceError {
     /// An unexpected or unmapped error occurred.
     #[error("an unexpected or unmapped error occurred: {0}")]
     Unknown(#[source] anyhow::Error),
+}
+
+/// Error returned when the instance identity cannot be read or persisted.
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
+pub enum InstanceStateStoreError {
+    /// A concurrent creator persisted an identity first. The caller must not
+    /// replace it: the persisted value is authoritative.
+    #[error("another process created the instance identity first")]
+    Conflict,
+    /// The persisted identity exists but cannot be decoded or fails validation.
+    #[error("the persisted instance identity is corrupt: {0}")]
+    Corrupt(#[source] anyhow::Error),
+    /// The identity file could not be read or written.
+    #[error("the instance identity store failed: {0}")]
+    OperationFailed(#[source] anyhow::Error),
+    /// An unexpected or unmapped error occurred.
+    #[error("an unexpected or unmapped error occurred: {0}")]
+    Unknown(#[source] anyhow::Error),
+    /// The persisted identity declares a format version this build does not
+    /// support.
+    #[error("the persisted instance identity declares unsupported format version {0}")]
+    UnsupportedVersion(u32),
 }
 
 /// Error returned when probing a media file fails.

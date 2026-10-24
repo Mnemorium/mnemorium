@@ -1,0 +1,31 @@
+# Mnemorium configuration file.
+#
+# Every setting has a built-in default; this file records them so an operator
+# can change one. An absent, empty or partial file is valid. Environment
+# overrides use explicit names (for example MNEMORIUM_LOG_LEVEL) and take
+# precedence over this file. Secrets are not configuration: the site pepper and
+# the token signing secret live in state.yaml and are never written here.
+asset:
+  storage:
+    root: data
+  upload:
+    chunk_size_bytes: 5242880
+    expiry_seconds: 86400
+    max_file_size_bytes: 107374182400
+logging:
+  ansi: false
+  level: "debug,sqlx=warn"
+  max_files: 7
+  rotation: DAILY
+persistence:
+  sqlite3:
+    max_connections: 8
+security:
+  jwt:
+    ttl: 3600
+  log_root_admin_password: true
+  rate_limit:
+    burst_size: 5
+    client_ip_header: x-forwarded-for
+    period_seconds: 12
+    trusted_proxies: ""

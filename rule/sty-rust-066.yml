@@ -6,8 +6,7 @@ message: >-
   extract the configuration sources added by ConfigConfigurationSource::load
   and bootstrap_sqlite3, for STY-RUST-066
 files:
-  - src/lib/infrastructure/outbound/config/configuration_source.rs
-  - src/lib/infrastructure/outbound/config/bootstrap.rs
+  - src/lib/infrastructure/outbound/file_system/configuration_source.rs
 rule:
   all:
     - pattern: $RECEIVER.add_source($SOURCE)

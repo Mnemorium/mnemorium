@@ -127,7 +127,6 @@ tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
 tracing-appender = "0.2.5"
 infer = "0.22.0"
-config = { version = "0.15.25", features = ["yaml"] }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"
 thiserror = "2.0.20"
@@ -138,7 +137,6 @@ chrono = "0.4.45"
 jsonwebtoken = { version = "11.0.0", features = ["aws_lc_rs"] }
 tower = "0.5.3"
 rand = { version = "0.10.2", features = ["chacha"] }
-arc-swap = "1.9.2"
 sha2 = "0.11.0"
 base64 = "0.23.1"
 tower_governor = { version = "0.8.0", default-features = false, features = [
@@ -153,6 +151,8 @@ image = { version = "0.25.10", default-features = false, features = [
   "ico",
   "pnm",
 ] }
+yaml_serde = "0.10.7"
+envy = "0.4.2"
 
 [dev-dependencies]
 mockall = "0.15.0"

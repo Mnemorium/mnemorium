@@ -32,6 +32,7 @@ pub mod list_galleries;
 pub mod list_playlists;
 pub mod list_users;
 pub mod load_configuration;
+pub mod load_instance_state;
 pub mod login_user;
 pub mod patch_credential;
 pub mod register_user;

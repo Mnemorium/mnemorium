@@ -1,7 +1,6 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use arc_swap::ArcSwap;
 use tokio::sync::Semaphore;
 
 use crate::application::port::asset_use_case_factory::AssetUseCaseFactory;
@@ -27,7 +26,7 @@ use crate::infrastructure::outbound::sqlx::unit_of_work::SqlxUnitOfWorkFactory;
 /// accessor from the live storage root.
 pub struct RuntimeAssetUseCaseFactory {
     /// Live application configuration.
-    configuration: Arc<ArcSwap<Configuration>>,
+    configuration: Arc<Configuration>,
     /// Permit pool bounding concurrent media probes, owned by the composition root.
     probe_permits: Arc<Semaphore>,
     /// Factory opening the unit of work wrapping the Asset use cases.
@@ -43,7 +42,7 @@ impl RuntimeAssetUseCaseFactory {
     /// Create a new factory.
     #[must_use]
     pub fn new(
-        configuration: Arc<ArcSwap<Configuration>>,
+        configuration: Arc<Configuration>,
         unit_of_work_factory: Arc<SqlxUnitOfWorkFactory>,
         probe_permits: Arc<Semaphore>,
     ) -> Self {
@@ -57,7 +56,7 @@ impl RuntimeAssetUseCaseFactory {
 
 impl AssetUseCaseFactory for RuntimeAssetUseCaseFactory {
     fn begin_upload(&self) -> Arc<dyn BeginUploadUseCase> {
-        let live = self.configuration.load();
+        let live = Arc::clone(&self.configuration);
         Arc::new(BeginUpload::new(
             Arc::clone(&self.unit_of_work_factory),
             Self::file_storage(),
@@ -69,7 +68,7 @@ impl AssetUseCaseFactory for RuntimeAssetUseCaseFactory {
     }
 
     fn complete_upload(&self) -> Arc<dyn CompleteUploadUseCase> {
-        let live = self.configuration.load();
+        let live = Arc::clone(&self.configuration);
         Arc::new(CompleteUpload::new(
             Arc::clone(&self.unit_of_work_factory),
             Self::file_storage(),
@@ -82,7 +81,7 @@ impl AssetUseCaseFactory for RuntimeAssetUseCaseFactory {
     }
 
     fn get_upload(&self) -> Arc<dyn GetUploadUseCase> {
-        let live = self.configuration.load();
+        let live = Arc::clone(&self.configuration);
         Arc::new(GetUpload::new(
             Arc::clone(&self.unit_of_work_factory),
             Self::file_storage(),
@@ -92,7 +91,7 @@ impl AssetUseCaseFactory for RuntimeAssetUseCaseFactory {
     }
 
     fn write_upload_chunk(&self) -> Arc<dyn WriteUploadChunkUseCase> {
-        let live = self.configuration.load();
+        let live = Arc::clone(&self.configuration);
         Arc::new(WriteUploadChunk::new(
             Arc::clone(&self.unit_of_work_factory),
             Self::file_storage(),
