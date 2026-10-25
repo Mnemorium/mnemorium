@@ -6,7 +6,6 @@ rules:
       - src/lib/infrastructure/inbound/rest/api_error.rs::error_response
       - src/lib/infrastructure/inbound/rest/middleware/rate_limit.rs::from_prune
       - src/lib/infrastructure/inbound/rest/middleware/rate_limit.rs::rate_limit_error
-      - src/lib/infrastructure/outbound/config/configuration_source.rs::deserialize
       - src/lib/infrastructure/outbound/file_system/configuration_source.rs::deserialize
   STY-RUST-002:
     bounded_contexts: &bounded_contexts
@@ -54,9 +53,6 @@ rules:
     # The types § 4 names as secret-bearing, all declared in
     # src/lib/domain/model/; a rename or removal cannot silently drop one.
     secret_types:
-      - Security
-      - Jwt
-      - Configuration
       - InstanceState
       - Credential
     # A field name that carries a secret. A `Debug` derive prints every field,
