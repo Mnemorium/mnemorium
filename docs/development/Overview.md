@@ -63,46 +63,46 @@ document describes the source layout those rules constrain.
             └── use_case_factory
 ```
 
-| Entity                                             | Description                                                                                                                     |
-| -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| `docs`                                             |                                                                                                                                 |
-| `src`                                              |                                                                                                                                 |
-| `src/bin`                                          |                                                                                                                                 |
-| `src/bin/openapi_gen.rs`                           | Generate the OpenAPI specification to `docs/openapi.json`                                                                       |
-| `src/bin/server.rs`                                | Server entrypoint and graceful shutdown                                                                                         |
-| `src/lib`                                          |                                                                                                                                 |
-| `src/lib/application`                              | App Layer                                                                                                                       |
-| `src/lib/application/port`                         | Application use-case interfaces (one application use case per file)                                                             |
-| `src/lib/application/security_event.rs`            | Application-owned security-event constructors (`OBS-006`)                                                                       |
-| `src/lib/application/use_case`                     | Application use-case implementations (one per file)                                                                             |
-| `src/lib/domain`                                   | Domain Layer                                                                                                                    |
-| `src/lib/domain/alias.rs`                          | Type alias for the project (ex: which integer to use for IDs)                                                                   |
-| `src/lib/domain/model`                             | Aggregate, Entity, Value object declaration                                                                                     |
-| `src/lib/domain/port`                              | Port interface declaration                                                                                                      |
-| `src/lib/domain/port/error.rs`                     | Outbound port errors: the shared Repository and External Service families, plus each port's own error family                    |
-| `src/lib/domain/service`                           | Domain Service implementation; see Terms Glossary for more info on it                                                           |
-| `src/lib/infrastructure/inbound/rest`              | HTTP adapter layer                                                                                                              |
-| `src/lib/infrastructure/inbound/rest/api_error.rs` | API Error declaration                                                                                                           |
-| `src/lib/infrastructure/inbound/rest/app_state.rs` | Application state shared by the HTTP layer: immutable configuration, instance identity and per-context use-case factories       |
-| `src/lib/infrastructure/inbound/rest/hal.rs`       | Shared HAL types and helpers: link types, the `application/hal+json` media type, and the `hal_json` wrapper                     |
-| `src/lib/infrastructure/inbound/rest.rs`           | REST module root: declares the submodules and aggregates the OpenAPI document (`ApiDoc`)                                        |
-| `src/lib/infrastructure/inbound/rest/handler.rs`   | Declares the route table (`setup_routes`) and installs the `tracing` and `hal_errors` middleware                                |
-| `src/lib/infrastructure/inbound/rest/handler`      | Endpoint-only HTTP handlers, one folder per bounded context; shared payloads, links and helpers live in the context module file |
-| `src/lib/infrastructure/inbound/rest/middleware`   | Axum middleware (authentication, rate limiting, tracing, HAL error envelope)                                                    |
-| `src/lib/infrastructure/outbound`                  | Outbound Port adapter declaration                                                                                               |
-| `src/lib/infrastructure/outbound/argon2`           | Argon2 password hasher adapter                                                                                                  |
-| `src/lib/infrastructure/outbound/envy`             | Identity-seed adapter mapping the prefixed environment variables onto the seed fields                                           |
-| `src/lib/infrastructure/outbound/file_system`      | Configuration source, file storage and instance identity adapters                                                               |
-| `src/lib/infrastructure/outbound/jwt`              | JWT token provider adapter                                                                                                      |
-| `src/lib/infrastructure/outbound/media_probe.rs`   | Media probe adapter decoding images in-process and videos through `ffprobe`                                                     |
-| `src/lib/infrastructure/outbound/moka.rs`          | In-memory cache adapter                                                                                                         |
-| `src/lib/infrastructure/outbound/random`           | Password and secret generator adapters                                                                                          |
-| `src/lib/infrastructure/outbound/sha2`             | SHA-256 content hasher adapter                                                                                                  |
-| `src/lib/infrastructure/outbound/sqlx`             | SQLx/SQLite repository adapters                                                                                                 |
-| `src/lib/infrastructure/outbound/sqlx/model`       | SQLx row models                                                                                                                 |
-| `src/lib/infrastructure/outbound/sqlx/sqlite3.rs`  | SQLite pool initialization and migrations                                                                                       |
-| `src/lib/infrastructure/use_case_factory`          | Per-context factories building use cases on demand                                                                              |
-| `src/lib/infrastructure/logging.rs`                | `tracing` subscriber setup driven by the configuration                                                                          |
+| Entity                                             | Description                                                                                                                       |
+| -------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `docs`                                             |                                                                                                                                   |
+| `src`                                              |                                                                                                                                   |
+| `src/bin`                                          |                                                                                                                                   |
+| `src/bin/openapi_gen.rs`                           | Generate the OpenAPI specification to `docs/openapi.json`                                                                         |
+| `src/bin/server.rs`                                | Server entrypoint and graceful shutdown                                                                                           |
+| `src/lib`                                          |                                                                                                                                   |
+| `src/lib/application`                              | App Layer                                                                                                                         |
+| `src/lib/application/port`                         | Application use-case interfaces (one application use case per file)                                                               |
+| `src/lib/application/security_event.rs`            | Application-owned security-event constructors (`OBS-006`)                                                                         |
+| `src/lib/application/use_case`                     | Application use-case implementations (one per file)                                                                               |
+| `src/lib/domain`                                   | Domain Layer                                                                                                                      |
+| `src/lib/domain/alias.rs`                          | Type alias for the project (ex: which integer to use for IDs)                                                                     |
+| `src/lib/domain/model`                             | Aggregate, Entity, Value object declaration                                                                                       |
+| `src/lib/domain/port`                              | Port interface declaration                                                                                                        |
+| `src/lib/domain/port/error.rs`                     | Outbound port errors: the shared Repository and External Service families, plus each port's own error family                      |
+| `src/lib/domain/service`                           | Domain Service implementation; see Terms Glossary for more info on it                                                             |
+| `src/lib/infrastructure/inbound/rest`              | HTTP adapter layer                                                                                                                |
+| `src/lib/infrastructure/inbound/rest/api_error.rs` | API Error declaration                                                                                                             |
+| `src/lib/infrastructure/inbound/rest/app_state.rs` | Application state shared by the HTTP layer: immutable configuration, instance identity and per-context use-case factories         |
+| `src/lib/infrastructure/inbound/rest/hal.rs`       | Shared HAL types and helpers: link types, the `application/hal+json` media type, and the `hal_json` wrapper                       |
+| `src/lib/infrastructure/inbound/rest.rs`           | REST module root: declares the submodules and aggregates the OpenAPI document (`ApiDoc`)                                          |
+| `src/lib/infrastructure/inbound/rest/handler.rs`   | Declares the route table (`setup_routes`) and installs the `tracing` and `hal_errors` middleware                                  |
+| `src/lib/infrastructure/inbound/rest/handler`      | Endpoint-only HTTP handlers, one folder per bounded context; shared payloads, links and helpers live in the context module file   |
+| `src/lib/infrastructure/inbound/rest/middleware`   | Axum middleware (authentication, rate limiting, tracing, HAL error envelope)                                                      |
+| `src/lib/infrastructure/outbound`                  | Outbound Port adapter declaration                                                                                                 |
+| `src/lib/infrastructure/outbound/argon2`           | Argon2 password hasher adapter                                                                                                    |
+| `src/lib/infrastructure/outbound/envy`             | Environment adapters: the configuration loader and the state creation seeds, both mapping the prefixed variables onto their model |
+| `src/lib/infrastructure/outbound/file_system`      | Configuration source, file storage and instance state adapters                                                                    |
+| `src/lib/infrastructure/outbound/jwt`              | JWT token provider adapter                                                                                                        |
+| `src/lib/infrastructure/outbound/media_probe.rs`   | Media probe adapter decoding images in-process and videos through `ffprobe`                                                       |
+| `src/lib/infrastructure/outbound/moka.rs`          | In-memory cache adapter                                                                                                           |
+| `src/lib/infrastructure/outbound/random`           | Password and secret generator adapters                                                                                            |
+| `src/lib/infrastructure/outbound/sha2`             | SHA-256 content hasher adapter                                                                                                    |
+| `src/lib/infrastructure/outbound/sqlx`             | SQLx/SQLite repository adapters                                                                                                   |
+| `src/lib/infrastructure/outbound/sqlx/model`       | SQLx row models                                                                                                                   |
+| `src/lib/infrastructure/outbound/sqlx/sqlite3.rs`  | SQLite pool initialization and migrations                                                                                         |
+| `src/lib/infrastructure/use_case_factory`          | Per-context factories building use cases on demand                                                                                |
+| `src/lib/infrastructure/logging.rs`                | `tracing` subscriber setup driven by the configuration                                                                            |
 
 An **application use case** (`port/<name>.rs` plus `use_case/<name>.rs`) is a technical unit. A **business use case** in
 [UseCases.md](UseCases.md) is business-level and may be implemented by several application use cases.
@@ -111,10 +111,11 @@ An **application use case** (`port/<name>.rs` plus `use_case/<name>.rs`) is a te
 
 `src/bin/server.rs` is the composition root and runs the startup in a fixed order:
 
-1. Establish or load the instance identity (`state.yaml`; `TechnicalDesign.md` § 10.2), sampling `mnemorium.db` first so
-   a datastore without identity fails instead of regenerating the secrets.
-2. Resolve the configuration (built-in defaults → `config.yaml` → explicit environment overrides), writing the default
-   configuration file when it is absent.
+1. Establish or load the instance state (`state.yaml`; `TechnicalDesign.md` § 10.2). `LoadState` checks the fixed
+   `mnemorium.db` path itself first, so a datastore without state fails instead of regenerating the secrets, and it
+   reads the `MNEMORIUM_PEPPER` / `MNEMORIUM_JWT_SECRET` creation seeds through its seed port.
+2. Resolve the configuration (built-in defaults → `config.yaml` → environment), writing the default configuration file
+   when it is absent and logging the settings the environment overrode.
 3. Install the logging subscriber and emit the first-boot lifecycle events.
 4. Initialize the Root Admin, open the SQLite datastore at `mnemorium.db`, create the storage directories, and build
    `AppState` with the immutable configuration, the immutable identity and the per-context factories.
@@ -361,7 +362,6 @@ end note
 | Name          | Description                                                               |
 | ------------- | ------------------------------------------------------------------------- |
 | Identity      | Authentication and identity validation                                    |
-| Instance      | The instance's non-derivable identity and its lifecycle                   |
 | User          | Managing user records, profiles, lifecycle, and administrative operations |
 | Library       | User's collection of media                                                |
 | Configuration | Manage service configuration                                              |

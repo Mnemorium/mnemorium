@@ -157,10 +157,13 @@ cargo run --bin server
 
 ### Configuration
 
-Configuration is layered: built-in defaults, then the optional `config.yaml` file, then explicit environment overrides.
-Every setting has one documented environment name, for example `MNEMORIUM_LOG_LEVEL`; the complete default file is
-written on the first start. The non-derivable part of the instance — the site pepper and the token signing secret —
-lives in `state.yaml`, which is written once and must be backed up together with the datastore (`mnemorium.db`).
+Configuration is layered: built-in defaults, then the optional `config.yaml` file, then the environment. Every setting
+has a default, so an absent, empty or partial file is valid: the settings it omits keep their built-in value, and the
+complete default file is written on the first start. A `MNEMORIUM_*` variable naming a setting overrides the file —
+`logging.level` is `MNEMORIUM_LOGGING_LEVEL`, `security.rate_limit.burst_size` is
+`MNEMORIUM_SECURITY_RATE_LIMIT_BURST_SIZE` — and an unknown name is ignored. The non-derivable part of the instance —
+the site pepper and the token signing secret — lives in `state.yaml`, which is written once and must be backed up
+together with the datastore (`mnemorium.db`).
 
 TODO: link to a document that explains the configuration.
 

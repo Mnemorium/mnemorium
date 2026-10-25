@@ -74,35 +74,14 @@ pub enum AssetError {
 
 /// Storage-related settings of the Asset bounded context.
 ///
-/// Deserialization is routed through `AssetStorageConfig` and [`TryFrom`] so
-/// that the layered configuration cannot bypass the validation performed by
-/// [`AssetStorage::try_new`].
-#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
-#[serde(try_from = "AssetStorageConfig")]
+/// Constructed through [`AssetStorage::try_new`], which validates the setting;
+/// the configuration adapters merge their layer into the resolved value and
+/// rebuild it, so no layer can bypass the validation.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 #[non_exhaustive]
 pub struct AssetStorage {
     /// Root directory holding the staged and final files.
     root: String,
-}
-
-/// Unchecked deserialization mirror of [`AssetStorage`].
-///
-/// Serde builds this snapshot and hands it to the [`TryFrom`] implementation,
-/// which validates it through [`AssetStorage::try_new`].
-#[derive(serde::Deserialize)]
-#[serde(deny_unknown_fields)]
-struct AssetStorageConfig {
-    /// Root directory holding the staged and final files.
-    #[serde(default = "default_storage_root")]
-    root: String,
-}
-
-impl TryFrom<AssetStorageConfig> for AssetStorage {
-    type Error = AssetError;
-
-    fn try_from(config: AssetStorageConfig) -> Result<Self, Self::Error> {
-        Self::try_new(config.root)
-    }
 }
 
 impl AssetStorage {
@@ -157,11 +136,10 @@ impl Default for AssetStorage {
 
 /// Upload-related settings of the Asset bounded context.
 ///
-/// Deserialization is routed through `AssetUploadConfig` and [`TryFrom`] so
-/// that the layered configuration cannot bypass the validation performed by
-/// [`AssetUpload::try_new`].
-#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
-#[serde(try_from = "AssetUploadConfig")]
+/// Constructed through [`AssetUpload::try_new`], which validates every setting;
+/// the configuration adapters merge their layer into the resolved value and
+/// rebuild it, so no layer can bypass the validation.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 #[non_exhaustive]
 pub struct AssetUpload {
     /// Size of every chunk except the last, in bytes.
@@ -170,36 +148,6 @@ pub struct AssetUpload {
     expiry_seconds: u64,
     /// Maximum size of a single uploaded file, in bytes.
     max_file_size_bytes: u64,
-}
-
-/// Unchecked deserialization mirror of [`AssetUpload`].
-///
-/// Serde builds this snapshot and hands it to the [`TryFrom`] implementation,
-/// which validates it through [`AssetUpload::try_new`].
-#[derive(serde::Deserialize)]
-#[serde(deny_unknown_fields)]
-struct AssetUploadConfig {
-    /// Size of every chunk except the last, in bytes.
-    #[serde(default = "default_chunk_size_bytes")]
-    chunk_size_bytes: u64,
-    /// Lifetime of an upload session, in seconds.
-    #[serde(default = "default_expiry_seconds")]
-    expiry_seconds: u64,
-    /// Maximum size of a single uploaded file, in bytes.
-    #[serde(default = "default_max_file_size_bytes")]
-    max_file_size_bytes: u64,
-}
-
-impl TryFrom<AssetUploadConfig> for AssetUpload {
-    type Error = AssetError;
-
-    fn try_from(config: AssetUploadConfig) -> Result<Self, Self::Error> {
-        Self::try_new(
-            config.chunk_size_bytes,
-            config.expiry_seconds,
-            config.max_file_size_bytes,
-        )
-    }
 }
 
 impl AssetUpload {
@@ -329,8 +277,7 @@ impl Default for AssetUpload {
 }
 
 /// Asset-related settings.
-#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
-#[serde(default, deny_unknown_fields)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize)]
 #[non_exhaustive]
 pub struct Asset {
     /// Storage settings.
@@ -391,11 +338,10 @@ pub enum Rotation {
 
 /// Logging settings.
 ///
-/// Deserialization is routed through `LoggingConfig` and [`TryFrom`] so that the
-/// layered configuration cannot bypass the validation performed by
-/// [`Logging::try_new`].
-#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
-#[serde(try_from = "LoggingConfig")]
+/// Constructed through [`Logging::try_new`], which validates the verbosity
+/// filter; the configuration adapters merge their layer into the resolved value
+/// and rebuild it, so no layer can bypass the validation.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 #[non_exhaustive]
 pub struct Logging {
     /// Whether to colour the standard-output sink with ANSI escape codes.
@@ -406,35 +352,6 @@ pub struct Logging {
     max_files: u32,
     /// Rotation period of the file sink.
     rotation: Rotation,
-}
-
-/// Unchecked deserialization mirror of [`Logging`].
-///
-/// Serde builds this snapshot and hands it to the [`TryFrom`] implementation,
-/// which validates it through [`Logging::try_new`].
-#[derive(serde::Deserialize)]
-#[serde(deny_unknown_fields)]
-struct LoggingConfig {
-    /// Whether to colour the standard-output sink with ANSI escape codes.
-    #[serde(default = "default_log_ansi")]
-    ansi: bool,
-    /// Verbosity filter applied to the `tracing` instrumentation.
-    #[serde(default = "default_log_level")]
-    level: String,
-    /// Maximum number of rotated log files to keep; `0` keeps every file.
-    #[serde(default = "default_log_max_files")]
-    max_files: u32,
-    /// Rotation period of the file sink.
-    #[serde(default = "default_log_rotation")]
-    rotation: Rotation,
-}
-
-impl TryFrom<LoggingConfig> for Logging {
-    type Error = LoggingError;
-
-    fn try_from(config: LoggingConfig) -> Result<Self, Self::Error> {
-        Self::try_new(config.ansi, config.level, config.max_files, config.rotation)
-    }
 }
 
 impl Default for Logging {
@@ -527,35 +444,14 @@ pub enum Sqlite3Error {
 
 /// `SQLite3` datastore settings.
 ///
-/// Deserialization is routed through `Sqlite3Config` and [`TryFrom`] so that the
-/// layered configuration cannot bypass the validation performed by
-/// [`Sqlite3::try_new`].
-#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
-#[serde(try_from = "Sqlite3Config")]
+/// Constructed through [`Sqlite3::try_new`], which validates the setting; the
+/// configuration adapters merge their layer into the resolved value and rebuild
+/// it, so no layer can bypass the validation.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 #[non_exhaustive]
 pub struct Sqlite3 {
     /// Maximum number of connections to the database.
     max_connections: u32,
-}
-
-/// Unchecked deserialization mirror of [`Sqlite3`].
-///
-/// Serde builds this snapshot and hands it to the [`TryFrom`] implementation,
-/// which validates it through [`Sqlite3::try_new`].
-#[derive(serde::Deserialize)]
-#[serde(deny_unknown_fields)]
-struct Sqlite3Config {
-    /// Maximum number of connections to the database.
-    #[serde(default = "default_sqlite3_max_connections")]
-    max_connections: u32,
-}
-
-impl TryFrom<Sqlite3Config> for Sqlite3 {
-    type Error = Sqlite3Error;
-
-    fn try_from(config: Sqlite3Config) -> Result<Self, Self::Error> {
-        Self::try_new(config.max_connections)
-    }
 }
 
 impl Sqlite3 {
@@ -612,8 +508,7 @@ impl Default for Sqlite3 {
 }
 
 /// Persistence-related settings.
-#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
-#[serde(default, deny_unknown_fields)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize)]
 #[non_exhaustive]
 pub struct Persistence {
     /// `SQLite3` datastore settings.
@@ -651,35 +546,14 @@ pub enum JwtError {
 
 /// `JWT` token settings.
 ///
-/// Deserialization is routed through `JwtConfig` and [`TryFrom`] so that the
-/// layered configuration cannot bypass the validation performed by
-/// [`Jwt::try_new`].
-#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
-#[serde(try_from = "JwtConfig")]
+/// Constructed through [`Jwt::try_new`], which validates the setting; the
+/// configuration adapters merge their layer into the resolved value and rebuild
+/// it, so no layer can bypass the validation.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 #[non_exhaustive]
 pub struct Jwt {
     /// Lifetime of a token, in seconds.
     ttl: u64,
-}
-
-/// Unchecked deserialization mirror of [`Jwt`].
-///
-/// Serde builds this snapshot and hands it to the [`TryFrom`] implementation,
-/// which validates it through [`Jwt::try_new`].
-#[derive(serde::Deserialize)]
-#[serde(deny_unknown_fields)]
-struct JwtConfig {
-    /// Lifetime of a token, in seconds.
-    #[serde(default = "default_jwt_ttl")]
-    ttl: u64,
-}
-
-impl TryFrom<JwtConfig> for Jwt {
-    type Error = JwtError;
-
-    fn try_from(config: JwtConfig) -> Result<Self, Self::Error> {
-        Self::try_new(config.ttl)
-    }
 }
 
 impl Default for Jwt {
@@ -794,14 +668,13 @@ impl ClientIpHeader {
 
 /// Login rate-limiting settings.
 ///
-/// Deserialization is routed through `RateLimitConfig` and [`TryFrom`] so that
-/// the layered configuration cannot bypass the validation performed by
-/// [`RateLimit::try_new`]. Serialization uses the same mirror so the layered
-/// configuration round-trips: `trusted_proxies` and `client_ip_header` are
-/// written as strings, not structured JSON, because the `config` crate merges
-/// the persisted snapshot back through the same string-typed fields.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
-#[serde(try_from = "RateLimitConfig", into = "RateLimitConfig")]
+/// Constructed through [`RateLimit::try_new`], which validates every setting;
+/// the configuration adapters merge their layer into the resolved value and
+/// rebuild it, so no layer can bypass the validation. Serialization routes
+/// through [`RateLimitConfig`]: `trusted_proxies` and `client_ip_header` are
+/// written as strings because the persisted document carries them as strings.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(into = "RateLimitConfig")]
 #[non_exhaustive]
 pub struct RateLimit {
     /// Number of requests a client address may spend before throttling.
@@ -816,39 +689,20 @@ pub struct RateLimit {
     trusted_proxies: Vec<IpAddr>,
 }
 
-/// Unchecked deserialization mirror of [`RateLimit`].
+/// Serialization mirror of [`RateLimit`].
 ///
-/// Serde builds this snapshot and hands it to the [`TryFrom`] implementation,
-/// which validates it through [`RateLimit::try_new`]. Serialization goes the
-/// other way — through [`From`] — so the two directions agree on the wire form.
-#[derive(serde::Deserialize, serde::Serialize)]
-#[serde(deny_unknown_fields)]
+/// Serialization goes through [`From`] so the persisted document keeps the
+/// string wire form of `client_ip_header` and `trusted_proxies`.
+#[derive(serde::Serialize)]
 struct RateLimitConfig {
     /// Number of requests a client address may spend before throttling.
-    #[serde(default = "default_burst_size")]
     burst_size: u32,
     /// Header the trusted proxy overwrites with the client address.
-    #[serde(default = "default_client_ip_header")]
     client_ip_header: String,
     /// Seconds after which one element of the quota is replenished.
-    #[serde(default = "default_period_seconds")]
     period_seconds: u64,
     /// Comma-separated addresses of the trusted reverse proxies.
-    #[serde(default)]
     trusted_proxies: String,
-}
-
-impl TryFrom<RateLimitConfig> for RateLimit {
-    type Error = RateLimitError;
-
-    fn try_from(config: RateLimitConfig) -> Result<Self, Self::Error> {
-        Self::try_new(
-            config.burst_size,
-            ClientIpHeader::parse(&config.client_ip_header)?,
-            config.period_seconds,
-            parse_trusted_proxies(&config.trusted_proxies)?,
-        )
-    }
 }
 
 impl From<&RateLimit> for RateLimitConfig {
@@ -1009,11 +863,10 @@ pub enum SecurityError {
 
 /// Security-related settings.
 ///
-/// Deserialization is routed through `SecurityConfig` and [`TryFrom`] so that
-/// the layered configuration cannot bypass the validation performed by
-/// [`Security::try_new`].
-#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
-#[serde(try_from = "SecurityConfig")]
+/// Constructed through [`Security::try_new`], which validates the `JWT`
+/// settings; the configuration adapters merge their layer into the resolved
+/// value and rebuild it, so no layer can bypass the validation.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 #[non_exhaustive]
 pub struct Security {
     /// `JWT` settings.
@@ -1023,35 +876,6 @@ pub struct Security {
     log_root_admin_password: bool,
     /// Login rate-limiting settings.
     rate_limit: RateLimit,
-}
-
-/// Unchecked deserialization mirror of [`Security`].
-///
-/// Serde builds this snapshot and hands it to the [`TryFrom`] implementation,
-/// which validates it through [`Security::try_new`].
-#[derive(serde::Deserialize)]
-#[serde(deny_unknown_fields)]
-struct SecurityConfig {
-    /// `JWT` settings.
-    #[serde(default)]
-    jwt: Jwt,
-    /// Whether the Root Admin default password is still logged to standard
-    /// output on runtime start.
-    #[serde(default = "default_log_root_admin_password")]
-    log_root_admin_password: bool,
-    /// Login rate-limiting settings.
-    #[serde(default)]
-    rate_limit: RateLimit,
-}
-
-impl TryFrom<SecurityConfig> for Security {
-    type Error = SecurityError;
-
-    fn try_from(config: SecurityConfig) -> Result<Self, Self::Error> {
-        let mut security = Self::try_new(config.jwt, config.log_root_admin_password)?;
-        security.set_rate_limit(config.rate_limit);
-        Ok(security)
-    }
 }
 
 impl Default for Security {
@@ -1117,18 +941,21 @@ impl Security {
     ///
     /// Returns [`SecurityError::InvalidJwt`] when the `JWT` settings are
     /// invalid.
-    pub fn try_new(jwt: Jwt, log_root_admin_password: bool) -> Result<Self, SecurityError> {
+    pub fn try_new(
+        jwt: Jwt,
+        log_root_admin_password: bool,
+        rate_limit: RateLimit,
+    ) -> Result<Self, SecurityError> {
         Ok(Self {
             jwt,
             log_root_admin_password,
-            rate_limit: RateLimit::default(),
+            rate_limit,
         })
     }
 }
 
 /// The application configuration.
-#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
-#[serde(default, deny_unknown_fields)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize)]
 #[non_exhaustive]
 pub struct Configuration {
     /// Asset-related settings.
@@ -1208,74 +1035,4 @@ pub fn parse_trusted_proxies(value: &str) -> Result<Vec<IpAddr>, RateLimitError>
         .filter(|entry| !entry.is_empty())
         .map(|entry| IpAddr::from_str(entry).map_err(|_| RateLimitError::InvalidTrustedProxy))
         .collect()
-}
-
-/// Default value for [`AssetStorage::root`].
-fn default_storage_root() -> String {
-    DEFAULT_STORAGE_ROOT.to_owned()
-}
-
-/// Default value for [`AssetUpload::chunk_size_bytes`].
-fn default_chunk_size_bytes() -> u64 {
-    DEFAULT_CHUNK_SIZE_BYTES
-}
-
-/// Default value for [`AssetUpload::expiry_seconds`].
-fn default_expiry_seconds() -> u64 {
-    DEFAULT_EXPIRY_SECONDS
-}
-
-/// Default value for [`AssetUpload::max_file_size_bytes`].
-fn default_max_file_size_bytes() -> u64 {
-    DEFAULT_MAX_FILE_SIZE_BYTES
-}
-
-/// Default value for [`Logging::ansi`].
-fn default_log_ansi() -> bool {
-    DEFAULT_LOG_ANSI
-}
-
-/// Default value for [`Logging::level`].
-fn default_log_level() -> String {
-    DEFAULT_LOG_LEVEL.to_owned()
-}
-
-/// Default value for [`Logging::max_files`].
-fn default_log_max_files() -> u32 {
-    DEFAULT_LOG_MAX_FILES
-}
-
-/// Default value for [`Logging::rotation`].
-fn default_log_rotation() -> Rotation {
-    DEFAULT_LOG_ROTATION
-}
-
-/// Default value for [`Jwt::ttl`].
-fn default_jwt_ttl() -> u64 {
-    DEFAULT_JWT_TTL
-}
-
-/// Default value for [`Sqlite3::max_connections`].
-fn default_sqlite3_max_connections() -> u32 {
-    DEFAULT_SQLITE3_MAX_CONNECTIONS
-}
-
-/// Default value for [`RateLimit::burst_size`].
-fn default_burst_size() -> u32 {
-    DEFAULT_BURST_SIZE
-}
-
-/// Default value for [`RateLimit::client_ip_header`].
-fn default_client_ip_header() -> String {
-    DEFAULT_CLIENT_IP_HEADER.as_str().to_owned()
-}
-
-/// Default value for [`RateLimit::period_seconds`].
-fn default_period_seconds() -> u64 {
-    DEFAULT_PERIOD_SECONDS
-}
-
-/// Default value for [`Security::log_root_admin_password`].
-fn default_log_root_admin_password() -> bool {
-    true
 }

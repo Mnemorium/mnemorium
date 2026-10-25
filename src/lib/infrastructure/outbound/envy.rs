@@ -1,1 +1,2 @@
-pub mod identity_seeds;
+pub mod configuration;
+pub mod state_seeds;

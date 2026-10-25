@@ -1,10 +1,13 @@
 # Mnemorium configuration file.
 #
 # Every setting has a built-in default; this file records them so an operator
-# can change one. An absent, empty or partial file is valid. Environment
-# overrides use explicit names (for example MNEMORIUM_LOG_LEVEL) and take
-# precedence over this file. Secrets are not configuration: the site pepper and
-# the token signing secret live in state.yaml and are never written here.
+# can change one. An absent, empty or partial file is valid. A setting can also
+# be set from the environment, which overrides this file: `MNEMORIUM_` plus the
+# setting path uppercased, joined with single underscores (for example
+# MNEMORIUM_LOGGING_LEVEL or MNEMORIUM_SECURITY_RATE_LIMIT_BURST_SIZE). An
+# unknown variable name is ignored. Secrets are not configuration: the site
+# pepper and the token signing secret live in state.yaml and are never written
+# here.
 asset:
   storage:
     root: data

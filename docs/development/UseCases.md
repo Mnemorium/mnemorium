@@ -1089,8 +1089,9 @@ RootAdmin --> UC004
 
 #### Description
 
-On every start the system resolves a complete application configuration from built-in defaults, the optional
-configuration file and explicit environment overrides, and writes the default configuration file when none exists.
+On every start the system resolves a complete application configuration from the built-in defaults, the optional
+configuration file and the environment, writes the default configuration file when none exists, and reports which
+settings the environment overrode.
 
 #### Primary actor
 
@@ -1102,7 +1103,7 @@ None — the event carries no data.
 
 #### Pre condition(s)
 
-- The instance identity has been established.
+- The instance state has been established.
 
 #### Trigger
 
@@ -1111,16 +1112,18 @@ None — the event carries no data.
 #### Happy path
 
 1. The system notices that no configuration file exists and writes the complete default file.
-2. The system resolves the configuration: the built-in defaults are overridden by the file and then by the explicit
-   environment overrides.
-3. The system returns the complete configuration to the runtime.
+2. The system resolves the configuration: the built-in defaults are overridden by the file.
+3. The system applies every environment override that names a setting over the result, and records the setting it
+   applied.
+4. The system returns the complete configuration to the runtime and reports the settings the environment overrode.
 
 #### Alternative flow
 
 - 1a. A configuration file already exists: the system leaves it untouched, including an empty or partial file, and every
   setting it omits takes its default.
-- 2a. A setting in the file or the environment is unknown or malformed: startup fails naming the setting instead of
-  substituting a default.
+- 2a. A setting in the file is unknown or malformed: startup fails naming the setting instead of substituting a default.
+- 3a. A variable names an unknown setting: the system discards it silently.
+- 3b. A variable is malformed: startup fails naming the variable and never its value.
 
 #### Post condition(s)
 

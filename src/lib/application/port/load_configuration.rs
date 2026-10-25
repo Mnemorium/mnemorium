@@ -7,6 +7,12 @@ use crate::domain::model::configuration::Configuration;
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct LoadConfigurationResponse {
+    /// The setting paths the environment layer applied, sorted.
+    ///
+    /// The composition root logs them once, after the subscriber is installed,
+    /// so an operator can see which settings the environment took over. The
+    /// list carries names only, never a value (`OBS-004`).
+    applied: Vec<&'static str>,
     /// The loaded configuration.
     configuration: Configuration,
     /// Whether this call generated the default configuration file.
@@ -17,6 +23,12 @@ pub struct LoadConfigurationResponse {
 }
 
 impl LoadConfigurationResponse {
+    /// Return the setting paths the environment layer applied.
+    #[must_use]
+    pub fn applied(&self) -> &[&'static str] {
+        &self.applied
+    }
+
     /// Return the loaded configuration.
     #[must_use]
     pub fn configuration(&self) -> &Configuration {
@@ -31,8 +43,13 @@ impl LoadConfigurationResponse {
 
     /// Create a new load response.
     #[must_use]
-    pub fn new(configuration: Configuration, file_created: bool) -> Self {
+    pub fn new(
+        configuration: Configuration,
+        file_created: bool,
+        applied: Vec<&'static str>,
+    ) -> Self {
         Self {
+            applied,
             configuration,
             file_created,
         }

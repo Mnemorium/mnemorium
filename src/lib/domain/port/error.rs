@@ -221,6 +221,17 @@ pub enum InstanceStateStoreError {
     UnsupportedVersion(u32),
 }
 
+/// Error returned when the creation seeds cannot be read from the environment.
+///
+/// The message names the environment and never a value (`OBS-004`).
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
+pub enum StateSeedSourceError {
+    /// The environment cannot be mapped onto the seed fields.
+    #[error("the instance state seeds could not be read from the environment: {0}")]
+    Unreadable(#[source] envy::Error),
+}
+
 /// Error returned when probing a media file fails.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]

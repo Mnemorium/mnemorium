@@ -955,22 +955,35 @@ A factory port file declares the trait only: no `Command`, `Response` or `Error`
 #### 10. Configuration
 
 `LoadConfiguration` runs once at startup; the resulting `Configuration` is immutable for the process and stored as
-`Arc<Configuration>` in `AppState`. Nothing writes it, so there is no hot-reload path: a change to `config.yaml` or the
-environment takes effect only after a restart. The configuration-derived token lifetime is read when a token provider is
-built, so the key used to issue a token is always the key used to validate it (`STY-RUST-065`).
+`Arc<Configuration>` in `AppState`. Nothing writes it, so there is no hot-reload path: a change to `config.yaml` takes
+effect only after a restart. The configuration-derived token lifetime is read when a token provider is built, so the key
+used to issue a token is always the key used to validate it (`STY-RUST-065`).
 
-Configuration is total and datastore-free. `ConfigConfigurationSource` resolves it as built-in defaults → `config.yaml`
-→ an explicit environment table (`MNEMORIUM_LOG_LEVEL`, `MNEMORIUM_RATE_LIMIT_BURST_SIZE`, …). Every configuration type
-and its `try_from` mirror carries `#[serde(default, deny_unknown_fields)]`, so an absent, empty or partial document
-yields a complete configuration while an unknown key fails startup; a value that is present but malformed or out of
-range also fails startup (`STY-RUST-078`). When `config.yaml` is absent the source writes an embedded default template
-atomically at mode `0644`; a file that already exists — including an empty or partial one — is never rewritten. A test
-compares the template with `Configuration::default()`, so the two cannot drift.
+Configuration is total and datastore-free. `LoadConfiguration` resolves it in three layers: the built-in defaults
+(`Configuration::default()`) are the base, `FileConfigurationSource` loads the settings `config.yaml` names, and
+`EnvConfigurationSource` loads the settings the `MNEMORIUM_*` variables name. Both loaders return the same sparse
+`PartialConfiguration` — every leaf is an `Option`, and a `None` keeps the value of the layer below — and the use case
+merges each layer itself, rebuilding the resolved value through the domain constructors, so a merged value can never
+bypass validation and no adapter owns a merge.
 
-Secrets are not configuration. The site pepper and the token signing secret live in the instance identity (`state.yaml`,
-[§ 10.2](#102-instance-identity)), and the datastore path is fixed at `mnemorium.db` next to `init_db`; neither can be
-set through the file or the environment. `MNEMORIUM_PEPPER` and `MNEMORIUM_JWT_SECRET` are accepted names but act only
-as creation seeds, and any other `MNEMORIUM_*` name fails startup naming the variable.
+The environment names a setting as `MNEMORIUM_` plus the setting path uppercased and joined with `_` — single
+underscores only, never `__` — so `logging.level` is `MNEMORIUM_LOGGING_LEVEL` and `security.rate_limit.burst_size` is
+`MNEMORIUM_SECURITY_RATE_LIMIT_BURST_SIZE`. A prefixed name that matches no setting is discarded silently: the server
+does not reject variables it does not know. A variable that is present but malformed fails startup naming the variable
+and never its value (`STY-RUST-078`, `OBS-004`). The setting paths the environment applied are logged once, after the
+subscriber is installed, so an operator can see which settings the environment took over.
+
+The file document is sparse by construction: an absent, empty or partial document is valid because a key the document
+omits is `None` in the partial model, while a key it names is applied even when it repeats the built-in default. An
+unknown key fails startup; a value that is present but of the wrong type also fails startup (`STY-RUST-078`). When
+`config.yaml` is absent the source writes an embedded default template atomically at mode `0644`; a file that already
+exists — including an empty or partial one — is never rewritten. A test compares the template with
+`Configuration::default()`, so the two cannot drift.
+
+Secrets are not configuration. The site pepper and the token signing secret live in the instance state (`state.yaml`,
+[§ 10.2](#102-instance-identity)), and the datastore path is declared once as `DATABASE_PATH` in the load-state port
+(`src/lib/application/port/load_state.rs`), beside `STATE_PATH`; neither can be set through the file or the environment.
+The two seed variables in § 10.2 are the only environment inputs that reach the state, and they apply only at creation.
 
 The configuration also carries the logging settings (`logging.level`, `logging.rotation`, `logging.max_files`,
 `logging.ansi`). The `tracing` subscriber is installed from the resolved configuration after `LoadConfiguration` and
@@ -1002,10 +1015,14 @@ change, how a change to its value is surfaced to the operator (a startup warning
 
 ##### 10.2 Instance identity
 
-The instance identity is the non-derivable part of the instance: the site pepper, the token signing secret and the
-instant the identity was established. It is not configuration — configuration is derivable and total, identity is
-existential. `state.yaml` is read before configuration and before the datastore is opened; a failure to read it stops
-startup before any datastore file is opened.
+The instance state is the non-derivable part of the instance: the site pepper, the token signing secret and the instant
+the state was established. It is not configuration — configuration is derivable and total, the state is existential.
+`LoadState` is read before configuration and before the datastore is opened; a failure to read it stops startup before
+any datastore file is opened.
+
+It is a supporting capability of the Identity bounded context, not a bounded context of its own: the two secrets are the
+authentication root the password hasher and the token provider consume, so `InstanceState` and `InstanceStateStore`
+belong to that context under `ARCH-002`. It has no catalogue entry, no REST surface and no E2E folder of its own.
 
 The file is a versioned YAML document (`version`, `created_at`, `pepper`, `jwt_secret`) holding both secrets as the
 exact 64-character hexadecimal strings the password hasher and the token provider consume. It is capped at 4 KiB,
@@ -1013,12 +1030,19 @@ decoded with `deny_unknown_fields`, and written atomically at mode `0600` under 
 so two processes starting against a fresh instance cannot each persist a different identity. An unknown version, an
 unknown field, a non-hex secret or a truncated document fails startup and is never treated as absent.
 
-Identity is created only for a genuinely new instance. The composition root samples `Path::exists("mnemorium.db")`
-before `init_db` creates the file: when the datastore exists and no identity does, startup fails and no replacement is
-written; when neither exists, the identity is created first and the datastore afterwards. The two environment seeds are
-applied only at creation, and a supplied seed that differs from the persisted value fails startup naming the variable,
-never its value (`OBS-004`). Creation emits `system_object` and one `secret_initialized` per generated secret, once the
-subscriber is installed; reuse emits neither.
+`LoadState` mirrors `LoadConfiguration`: it takes no command and no injected presence flag. It reads the persisted state
+from `InstanceStateStore` and the creation seeds from `StateSeedSource`, and it inspects the fixed `DATABASE_PATH`
+itself with `Path::try_exists` — not `exists`, so an unreadable datastore fails startup rather than reading as a new
+instance and writing a second identity beside it. The seed port carries the seeds through the `StateSeeds` capability
+trait, so the seed struct itself lives in the envy adapter and the application layer never names an adapter type
+(`ARCH-001`).
+
+State is created only for a genuinely new instance. `LoadState` checks the datastore first: when the datastore exists
+and no state does, startup fails and no replacement is written; when neither exists, the state is created first and the
+datastore afterwards. The two environment seeds are applied only at creation, and a supplied seed that differs from the
+persisted value fails startup naming the variable, never its value (`OBS-004`). A prefixed variable that is neither a
+seed nor a configuration override is discarded, never rejected. Creation emits `system_object` and one
+`secret_initialized` per generated secret, once the subscriber is installed; reuse emits neither.
 
 ---
 

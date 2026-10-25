@@ -1,6 +1,5 @@
 use std::future::pending;
 use std::net::SocketAddr;
-use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
@@ -9,27 +8,27 @@ use mnemorium::application::port::ensure_storage_directories::EnsureStorageDirec
 use mnemorium::application::port::ensure_storage_directories::EnsureStorageDirectoriesUseCase as _;
 use mnemorium::application::port::initialize_root_admin::InitializeRootAdminUseCase as _;
 use mnemorium::application::port::load_configuration::LoadConfigurationUseCase as _;
-use mnemorium::application::port::load_instance_state::LoadInstanceStateCommand;
-use mnemorium::application::port::load_instance_state::LoadInstanceStateUseCase as _;
-use mnemorium::application::port::load_instance_state::STATE_PATH;
+use mnemorium::application::port::load_state::DATABASE_PATH;
+use mnemorium::application::port::load_state::LoadStateUseCase as _;
+use mnemorium::application::port::load_state::STATE_PATH;
 use mnemorium::application::security_event;
 use mnemorium::application::use_case::ensure_storage_directories::EnsureStorageDirectories;
 use mnemorium::application::use_case::initialize_root_admin::InitializeRootAdmin;
 use mnemorium::application::use_case::load_configuration::LoadConfiguration;
-use mnemorium::application::use_case::load_instance_state::LoadInstanceState;
+use mnemorium::application::use_case::load_state::LoadState;
 use mnemorium::infrastructure::inbound::rest::app_state::AppState;
 use mnemorium::infrastructure::inbound::rest::handler;
 use mnemorium::infrastructure::inbound::rest::middleware::rate_limit::LoginRateLimiter;
 use mnemorium::infrastructure::logging;
 use mnemorium::infrastructure::outbound::argon2::password_hasher::Argon2PasswordHasher;
-use mnemorium::infrastructure::outbound::envy::identity_seeds::EnvIdentitySeeds;
-use mnemorium::infrastructure::outbound::file_system::configuration_source::ConfigConfigurationSource;
+use mnemorium::infrastructure::outbound::envy::configuration::EnvConfigurationSource;
+use mnemorium::infrastructure::outbound::envy::state_seeds::EnvStateSeedSource;
+use mnemorium::infrastructure::outbound::file_system::configuration_source::FileConfigurationSource;
 use mnemorium::infrastructure::outbound::file_system::file_storage::FileSystemStorage;
 use mnemorium::infrastructure::outbound::file_system::instance_state_store::FileInstanceStateStore;
 use mnemorium::infrastructure::outbound::media_probe::LocalMediaProbe;
 use mnemorium::infrastructure::outbound::random::password_generator::RandomPasswordGenerator;
 use mnemorium::infrastructure::outbound::random::secret_generator::ChaChaSecretGenerator;
-use mnemorium::infrastructure::outbound::sqlx::sqlite3::DATABASE_PATH;
 use mnemorium::infrastructure::outbound::sqlx::sqlite3::init_db;
 use mnemorium::infrastructure::outbound::sqlx::unit_of_work::SqlxUnitOfWorkFactory;
 use mnemorium::infrastructure::use_case_factory::asset::RuntimeAssetUseCaseFactory;
@@ -48,23 +47,23 @@ use tracing::{error, info, warn};
 async fn main() -> Result<(), anyhow::Error> {
     // Identity first: it is existential, and a datastore without identity must
     // fail rather than silently regenerate the key material.
-    let datastore_existed = Path::new(DATABASE_PATH).exists();
-    let seeds = EnvIdentitySeeds::new().read()?;
-    let pepper_generated = seeds.pepper().is_none();
-    let jwt_secret_generated = seeds.jwt_secret().is_none();
-    let loaded_identity = LoadInstanceState::new(
+    let loaded_state = LoadState::new(
         Arc::new(FileInstanceStateStore::new(PathBuf::from(STATE_PATH))),
         Arc::new(ChaChaSecretGenerator::new()),
+        Arc::new(EnvStateSeedSource::new()),
     )
-    .execute(LoadInstanceStateCommand::new(datastore_existed, seeds))
+    .execute()
     .await?;
-    let instance_state_created = loaded_identity.created();
-    let instance_state = Arc::new(loaded_identity.state().clone());
+    let instance_state_created = loaded_state.created();
+    let pepper_generated = loaded_state.pepper_generated();
+    let jwt_secret_generated = loaded_state.jwt_secret_generated();
+    let instance_state = Arc::new(loaded_state.state().clone());
 
     // Configuration is derivable and datastore-free, so it resolves next.
-    let load_configuration = Arc::new(LoadConfiguration::new(Arc::new(
-        ConfigConfigurationSource::new(),
-    )));
+    let load_configuration = Arc::new(LoadConfiguration::new(
+        Arc::new(FileConfigurationSource::new()),
+        Arc::new(EnvConfigurationSource::new()),
+    ));
     let loaded_configuration = load_configuration.execute().await?;
     let configuration_file_created = loaded_configuration.file_created();
     let configuration = Arc::new(loaded_configuration.configuration().clone());
@@ -88,6 +87,12 @@ async fn main() -> Result<(), anyhow::Error> {
             storage_root = configuration.asset().storage().root(),
             datastore = DATABASE_PATH,
             "the configuration file did not exist; wrote the built-in defaults"
+        );
+    }
+    if !loaded_configuration.applied().is_empty() {
+        info!(
+            settings = ?loaded_configuration.applied(),
+            "the environment overrode these configuration settings; its values take precedence over config.yaml"
         );
     }
 

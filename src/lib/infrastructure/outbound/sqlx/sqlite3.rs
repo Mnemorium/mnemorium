@@ -8,13 +8,6 @@ use sqlx::sqlite::SqliteJournalMode;
 use sqlx::sqlite::SqlitePoolOptions;
 use tracing::warn;
 
-/// Fixed path of the `SQLite3` datastore, relative to the working directory.
-///
-/// The datastore path is not configurable: configuration is resolved after the
-/// identity and cannot depend on where the datastore lives, and the container
-/// mounts `/app`, which already holds the datastore.
-pub const DATABASE_PATH: &str = "mnemorium.db";
-
 /// Time a connection waits for a lock held by another connection, in seconds.
 const BUSY_TIMEOUT_SECONDS: u64 = 5;
 /// Upper bound of the write-ahead log file, in bytes (64 MiB).
