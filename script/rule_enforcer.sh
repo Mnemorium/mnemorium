@@ -1771,22 +1771,22 @@ check_sty_rust_061() {
 		[ -n "$field" ] || continue
 		case "$type" in
 		'Arc<SqlxUnitOfWorkFactory>') has_uow["$file"]=1 ;;
-		'Arc<ArcSwap<Configuration>>') has_config["$file"]=1 ;;
+		'Arc<Configuration>') has_config["$file"]=1 ;;
 		esac
 	done < <(printf '%s\n' "$matches" |
 		jq -r 'select(.metaVariables.single.FIELD) | [.file, .metaVariables.single.FIELD.text, .metaVariables.single.TYPE.text] | @tsv')
 
-	# A factory whose accessors read the live configuration must hold it.
+	# A factory whose accessors read the immutable configuration must hold it.
 	while IFS= read -r file; do
 		[ -n "$file" ] || continue
-		if grep -q 'self\.configuration\.load()' "$file"; then
+		if grep -q 'self\.configuration\.' "$file"; then
 			reads_config["$file"]=1
 		fi
 	done < <(printf '%s\n' "$matches" | jq -r '.file' | sort -u)
 
 	# Every factory file declares the Runtime<Context>UseCaseFactory struct named
 	# after its context, holding the unit-of-work factory and, when its accessors
-	# read the live configuration, that configuration.
+	# read the configuration, that configuration.
 	while IFS= read -r file; do
 		[ -n "$file" ] || continue
 		base="$(basename "$file" .rs)"
@@ -1809,7 +1809,7 @@ check_sty_rust_061() {
 			result=1
 		fi
 		if [ -n "${reads_config[$file]+set}" ] && [ -z "${has_config[$file]+set}" ]; then
-			printf 'error: %s: %s: factory struct %s reads the live configuration but does not hold Arc<ArcSwap<Configuration>>\n' \
+			printf 'error: %s: %s: factory struct %s reads the configuration but does not hold Arc<Configuration>\n' \
 				"$id" "$file" "$name" >&2
 			result=1
 		fi
