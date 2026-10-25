@@ -1,3 +1,9 @@
+## [0.21.1](https://github.com/Mnemorium/mnemorium/compare/v0.21.0...v0.21.1) (2026-10-22)
+
+### Bug Fixes
+
+* **development:** rework use case that came with some change ([#309](https://github.com/Mnemorium/mnemorium/issues/309)) ([63f28bb](https://github.com/Mnemorium/mnemorium/commit/63f28bb627b9bc5ad06e193d9fb1da628bf8d533))
+
 ## [0.21.0](https://github.com/Mnemorium/mnemorium/compare/v0.20.0...v0.21.0) (2026-10-21)
 
 ### Features

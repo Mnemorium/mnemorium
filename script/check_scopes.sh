@@ -2,17 +2,6 @@
 set -u -o pipefail
 
 # Validate the commit/PR scope taxonomy defined by GOV-001.
-#
-# Canonical source: docs/development/TechnicalDesign.md, "Repository Governance"
-# -> "1. Scope". The table there names the closed scope set and the paths each
-# scope owns. This script:
-#   1. parses that table;
-#   2. asserts the set matches the `scopes:` list in .github/workflows/ci.yml;
-#   3. asserts every tracked path maps to exactly one scope (longest prefix),
-#      except the paths in EXEMPT_PATHS below and GOV-001's `ignore_paths`;
-#   4. asserts no scope owns zero paths.
-#
-# See docs/development/TechnicalDesign.md § 7 (Repository Governance), GOV-001.
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 readonly SCRIPT_DIR
@@ -76,9 +65,7 @@ ci_scopes() {
 	' "$CI_WORKFLOW"
 }
 
-# Print the tracked-path globs GOV-001 exempts from the mapping, read from the
-# rule's `ignore_paths` list in rule_enforcer.yaml. The list is optional: a
-# missing file, an absent block or an absent list prints nothing.
+# Print the tracked-path globs GOV-001 exempts from the mapping, read from the rule's `ignore_paths` list in rule_enforcer.yaml.
 gov001_ignore_globs() {
 	if [ ! -f "$RULE_CONFIG" ] || [ ! -s "$RULE_CONFIG" ]; then
 		return 0
