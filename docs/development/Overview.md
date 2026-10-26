@@ -297,7 +297,7 @@ MusicAlbum "*" -- "*" Genre: Categorize by >
 
 MusicMedium "1" -- "*" MusicRecording : Sequences >
 
-MusicPlaylist "1" -- "*" MusicRecording : Sequences >
+MusicPlaylist "*" -- "*" MusicRecording : Sequences >
 
 MusicRecording "*" -- "*" MusicGroup: Made by >
 
