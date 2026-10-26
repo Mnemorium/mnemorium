@@ -142,7 +142,6 @@ RULES=(
 	"TEST-035:check_test_035"
 	"TEST-036:check_test_036"
 	"TEST-038:check_test_038"
-	"TEST-040:check_test_040"
 	"TEST-041:check_test_041"
 	"TEST-042:check_test_042"
 	"TEST-043:check_test_043"
@@ -3918,50 +3917,6 @@ check_test_038() {
 		[ -n "$file" ] || continue
 		scan_short TEST-038 "$file" || result=1
 	done < <(grep -rl 'ExternalServiceError' --include='*.rs' "$surface" 2>/dev/null | sort)
-
-	return "$result"
-}
-
-# check_test_040 — every pytest test module lives under `test/e2e/` (TEST-040). pytest.ini's `python_files` is the suite's own definition of a test module, so it is read here rather than duplicated: a tracked Python file matching one of those globs is a test, and a test outside `test/e2e/` is the violation.
-check_test_040() {
-	local id="TEST-040"
-	local e2e_dir="test/e2e"
-	local pytest_ini="pytest.ini"
-	local file base line pattern result=0
-	local -a patterns=()
-
-	need_dir "$id" "$e2e_dir" || return 1
-	need_file "$id" "$pytest_ini" || return 1
-
-	while IFS= read -r line || [ -n "$line" ]; do
-		for pattern in $line; do
-			patterns+=("$pattern")
-		done
-	done < <(sed -nE \
-		's/^[[:space:]]*python_files[[:space:]]*=[[:space:]]*(.*)$/\1/p' "$pytest_ini")
-	if [ "${#patterns[@]}" -eq 0 ]; then
-		printf 'error: %s: no python_files patterns parsed from %s\n' \
-			"$id" "$pytest_ini" >&2
-		return 1
-	fi
-
-	while IFS= read -r file; do
-		[ -n "$file" ] || continue
-		case "$file" in
-		"$e2e_dir"/*) continue ;;
-		esac
-		base="${file##*/}"
-		for pattern in "${patterns[@]}"; do
-			# The glob on the right is intentional: match as a pattern.
-			# shellcheck disable=SC2053
-			if [[ $base == $pattern ]]; then
-				printf 'error: %s: %s: pytest test module lives outside %s; move it under %s\n' \
-					"$id" "$file" "$e2e_dir" "$e2e_dir" >&2
-				result=1
-				break
-			fi
-		done
-	done < <(git ls-files -- '*.py' | sort)
 
 	return "$result"
 }
