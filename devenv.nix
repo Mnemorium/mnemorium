@@ -263,6 +263,11 @@
     description = "Run the E2E tests against a running server";
   };
 
+  tasks."test:configuration" = {
+    exec = "script/configuration.sh";
+    description = "Run the configuration tests against the mnemorium image";
+  };
+
   # Tooling
 
   tasks."setup:openspec" = {
