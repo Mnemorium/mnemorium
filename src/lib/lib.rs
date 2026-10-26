@@ -71,6 +71,12 @@ mod test_helpers {
     use crate::infrastructure::inbound::rest::api_error::ApiErrorMessage;
     use crate::infrastructure::inbound::rest::app_state::AppState;
 
+    /// Digest of the content the asset fixtures persist.
+    pub const DIGEST: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+
+    /// Size of every upload fixture chunk, in bytes.
+    pub const CHUNK_SIZE: u64 = 4;
+
     /// A password that satisfies the password policy.
     ///
     /// Use it when a test only needs a valid password: registering a user,

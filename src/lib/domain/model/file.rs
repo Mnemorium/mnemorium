@@ -1,9 +1,8 @@
 use chrono::NaiveDate;
 
 use crate::domain::alias::NumericID;
-use crate::domain::model::integrity_hash::IntegrityHash;
+use crate::domain::model::integrity_hash::Digest;
 use crate::domain::model::integrity_hash::IntegrityHashError;
-use crate::domain::model::integrity_hash::SHA256_HEX_LENGTH;
 
 /// Error returned when initialising or updating a `File`.
 #[derive(Debug, thiserror::Error)]
@@ -26,7 +25,7 @@ pub struct File {
     /// Unique identifier of the file.
     id: NumericID,
     /// Integrity hash of the file content.
-    integrity_hash: IntegrityHash<SHA256_HEX_LENGTH>,
+    integrity_hash: Digest,
     /// Whether the file is publicly accessible.
     is_public: bool,
     /// Identifier of the mime type of the file.
@@ -48,7 +47,7 @@ impl File {
 
     /// Return the integrity hash of the file content.
     #[must_use]
-    pub fn integrity_hash(&self) -> &IntegrityHash<SHA256_HEX_LENGTH> {
+    pub fn integrity_hash(&self) -> &Digest {
         &self.integrity_hash
     }
 
@@ -71,7 +70,7 @@ impl File {
     }
 
     /// Update the `integrity_hash`.
-    pub fn set_integrity_hash(&mut self, integrity_hash: IntegrityHash<SHA256_HEX_LENGTH>) {
+    pub fn set_integrity_hash(&mut self, integrity_hash: Digest) {
         self.integrity_hash = integrity_hash;
     }
 
@@ -102,7 +101,7 @@ impl File {
         is_public: bool,
         mime_type_id: String,
         uploaded_at: NaiveDate,
-        integrity_hash: IntegrityHash<SHA256_HEX_LENGTH>,
+        integrity_hash: Digest,
     ) -> Result<Self, FileError> {
         let validated_path = Self::validate_path(path)?;
         Ok(Self {

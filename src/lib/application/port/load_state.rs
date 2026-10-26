@@ -18,9 +18,6 @@ pub const PEPPER_VARIABLE: &str = "MNEMORIUM_PEPPER";
 /// Environment variable seeding the signing secret at creation.
 pub const JWT_SECRET_VARIABLE: &str = "MNEMORIUM_JWT_SECRET";
 
-/// Length of a hexadecimal-encoded secret, in characters.
-pub const SECRET_HEX_LENGTH: usize = 64;
-
 /// Length of each generated secret, in bytes.
 pub const SECRET_LENGTH: u32 = 32;
 

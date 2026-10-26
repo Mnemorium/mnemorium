@@ -6,6 +6,8 @@ use serde::Deserialize;
 use tracing::warn;
 use utoipa::IntoParams;
 
+use super::DEFAULT_LIMIT;
+use super::MAX_LIMIT;
 use crate::application::port::list_albums::ListAlbumsCommand;
 use crate::infrastructure::inbound::rest::api_error::ApiError;
 use crate::infrastructure::inbound::rest::api_error::ErrorBody;
@@ -15,12 +17,6 @@ use crate::infrastructure::inbound::rest::handler::library::AlbumListLinks;
 use crate::infrastructure::inbound::rest::handler::library::AlbumListResponse;
 use crate::infrastructure::inbound::rest::handler::library::AlbumResponse;
 use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
-
-/// Default number of albums returned by a listing when `limit` is omitted.
-const DEFAULT_LIMIT: usize = 20;
-
-/// Largest number of albums a listing may return.
-const MAX_LIMIT: usize = 100;
 
 /// Filters and pagination restricting the returned music albums.
 ///

@@ -23,7 +23,7 @@ use crate::domain::port::configuration_source::LoadedFileConfiguration;
 use crate::domain::port::error::ConfigurationSourceError;
 
 /// Path to the user configuration file.
-pub(crate) const USER_CONFIG_PATH: &str = "config.yaml";
+const USER_CONFIG_PATH: &str = "config.yaml";
 
 /// Default configuration file written when none exists.
 const DEFAULT_CONFIG_TEMPLATE: &str = include_str!("default_config.yaml");

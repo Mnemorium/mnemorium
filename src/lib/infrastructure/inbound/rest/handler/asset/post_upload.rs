@@ -13,8 +13,7 @@ use crate::application::port::begin_upload::BeginUploadCommand;
 use crate::application::port::begin_upload::BeginUploadError;
 use crate::application::port::begin_upload::BeginUploadResponse as BeginUploadResponseData;
 use crate::domain::alias::NumericID;
-use crate::domain::model::integrity_hash::IntegrityHash;
-use crate::domain::model::integrity_hash::SHA256_HEX_LENGTH;
+use crate::domain::model::integrity_hash::Digest;
 use crate::infrastructure::inbound::rest::api_error::ApiError;
 use crate::infrastructure::inbound::rest::api_error::ErrorBody;
 use crate::infrastructure::inbound::rest::app_state::AppState;
@@ -176,7 +175,7 @@ pub async fn post_upload(
     let Json(request) = payload.map_err(ApiError::from)?;
     // The handler is where the wire form is parsed into the domain value object:
     // a malformed digest never reaches the use case.
-    let integrity_hash = IntegrityHash::<SHA256_HEX_LENGTH>::try_new(request.integrity_hash)
+    let integrity_hash = Digest::try_new(request.integrity_hash)
         .map_err(|_| ApiError::BadRequest("the integrity hash is invalid".to_owned()))?;
     let response = state
         .asset_use_case_factory()
@@ -233,11 +232,10 @@ mod tests {
     use crate::domain::alias::NumericID;
     use crate::domain::model::integrity_hash::IntegrityHash;
     use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
+    use crate::test_helpers::DIGEST;
     use crate::test_helpers::app_state_with_asset;
     use crate::test_helpers::error_message_of;
     use crate::test_helpers::into_status_and_body;
-
-    const DIGEST: &str = "d41d8cd98f00b204e9800998ecf8427ed41d8cd98f00b204e9800998ecf8427e";
 
     /// Send `body` through the endpoint router on behalf of `caller_id`,
     /// injecting the caller identifier the way the auth middleware does.

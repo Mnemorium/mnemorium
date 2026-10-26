@@ -266,13 +266,12 @@ mod tests {
     use crate::domain::port::image_repository::MockImageRepository;
     use crate::domain::port::user_repository::MockUserRepository;
     use crate::domain::port::video_repository::MockVideoRepository;
+    use crate::test_helpers::DIGEST;
     use crate::test_helpers::GalleryFactoryHarness;
     use crate::test_helpers::TestFactory;
     use crate::test_helpers::TestUnitOfWork;
 
     use super::AddGalleryItem;
-
-    const DIGEST: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 
     type UseCase = AddGalleryItem<TestFactory>;
 

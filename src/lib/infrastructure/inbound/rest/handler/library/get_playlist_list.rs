@@ -6,6 +6,8 @@ use serde::Deserialize;
 use tracing::warn;
 use utoipa::IntoParams;
 
+use super::DEFAULT_LIMIT;
+use super::MAX_LIMIT;
 use crate::application::port::list_playlists::ListPlaylistsCommand;
 use crate::domain::alias::NumericID;
 use crate::infrastructure::inbound::rest::api_error::ApiError;
@@ -16,12 +18,6 @@ use crate::infrastructure::inbound::rest::handler::library::PlaylistListLinks;
 use crate::infrastructure::inbound::rest::handler::library::PlaylistListResponse;
 use crate::infrastructure::inbound::rest::handler::library::PlaylistResponse;
 use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
-
-/// Default number of playlists returned by a listing when `limit` is omitted.
-const DEFAULT_LIMIT: usize = 20;
-
-/// Largest number of playlists a listing may return.
-const MAX_LIMIT: usize = 100;
 
 /// Filters and pagination restricting the returned playlists.
 ///

@@ -8,7 +8,7 @@ use std::path::PathBuf;
 use crate::domain::alias::NumericID;
 
 /// Name of the subfolder holding the files being uploaded.
-pub(crate) const UPLOADS_FOLDER: &str = "uploads";
+const UPLOADS_FOLDER: &str = "uploads";
 
 /// Name of the subfolder holding the finished files.
 pub(crate) const FILES_FOLDER: &str = "files";

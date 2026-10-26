@@ -1,8 +1,7 @@
 use sha2::Digest as _;
 use sha2::Sha256;
 
-use crate::domain::model::integrity_hash::IntegrityHash;
-use crate::domain::model::integrity_hash::SHA256_HEX_LENGTH;
+use crate::domain::model::integrity_hash::Digest;
 use crate::domain::port::content_hasher::ContentHasher;
 use crate::domain::port::content_hasher::ContentHasherSession;
 use crate::domain::port::error::ContentHasherError;
@@ -26,7 +25,7 @@ struct Sha2ContentHasherSession {
 }
 
 impl ContentHasherSession for Sha2ContentHasherSession {
-    fn finalize(self: Box<Self>) -> Result<IntegrityHash<SHA256_HEX_LENGTH>, ContentHasherError> {
+    fn finalize(self: Box<Self>) -> Result<Digest, ContentHasherError> {
         let bytes = self.hasher.finalize();
         let hex = {
             use std::fmt::Write as _;
@@ -37,7 +36,7 @@ impl ContentHasherSession for Sha2ContentHasherSession {
             }
             hex
         };
-        IntegrityHash::try_new(hex).map_err(|error| ContentHasherError::Unknown(error.into()))
+        Digest::try_new(hex).map_err(|error| ContentHasherError::Unknown(error.into()))
     }
 
     fn update(&mut self, bytes: &[u8]) {
@@ -49,8 +48,8 @@ impl ContentHasherSession for Sha2ContentHasherSession {
 mod tests {
     use std::error::Error;
 
-    use crate::domain::model::integrity_hash::IntegrityHash;
-    use crate::domain::model::integrity_hash::SHA256_HEX_LENGTH;
+    use crate::domain::model::integrity_hash::DIGEST_HEX_LENGTH;
+    use crate::domain::model::integrity_hash::Digest;
     use crate::domain::port::content_hasher::ContentHasher as _;
     use crate::domain::port::error::ContentHasherError;
 
@@ -63,7 +62,7 @@ mod tests {
     const DIGEST_EMPTY: &str = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
 
     /// Stream `chunks` through a fresh hasher and return the digest.
-    fn hash(chunks: &[&[u8]]) -> Result<IntegrityHash<SHA256_HEX_LENGTH>, ContentHasherError> {
+    fn hash(chunks: &[&[u8]]) -> Result<Digest, ContentHasherError> {
         let mut session = Sha2ContentHasher.hasher();
         for chunk in chunks {
             session.update(chunk);
@@ -78,6 +77,16 @@ mod tests {
 
         // Assert
         assert_eq!(digest.as_str(), hash(&[b"1234"])?.as_str());
+        Ok(())
+    }
+
+    #[test]
+    fn hasher_produces_a_digest_of_the_domain_width() -> Result<(), Box<dyn Error>> {
+        // Act
+        let digest = hash(&[b"1234"])?;
+
+        // Assert
+        assert_eq!(digest.as_str().len(), DIGEST_HEX_LENGTH);
         Ok(())
     }
 

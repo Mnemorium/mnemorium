@@ -16,6 +16,7 @@ use utoipa::ToSchema;
 use crate::application::port::write_upload_chunk::WriteUploadChunkCommand;
 use crate::application::port::write_upload_chunk::WriteUploadChunkError;
 use crate::domain::alias::NumericID;
+use crate::domain::model::integrity_hash::DIGEST_HEX_LENGTH;
 use crate::domain::model::integrity_hash::IntegrityHash;
 use crate::infrastructure::inbound::rest::api_error::ApiError;
 use crate::infrastructure::inbound::rest::api_error::ErrorBody;
@@ -24,8 +25,12 @@ use crate::infrastructure::inbound::rest::hal::HAL_CONTENT_TYPE;
 use crate::infrastructure::inbound::rest::handler::asset::UploadSessionResponse;
 use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 
-/// Number of raw bytes a SHA-256 digest carries.
-const SHA256_BYTE_LENGTH: usize = 32;
+/// Number of raw bytes a content digest carries.
+#[expect(
+    clippy::integer_division,
+    reason = "two hexadecimal characters encode one byte"
+)]
+const DIGEST_BYTES: usize = DIGEST_HEX_LENGTH / 2;
 
 /// Raw bytes of one chunk.
 ///
@@ -243,7 +248,7 @@ pub async fn put_upload_chunk(
         let bytes = STANDARD
             .decode(encoded)
             .map_err(|_| ApiError::BadRequest("malformed Content-Digest header".to_owned()))?;
-        if bytes.len() != SHA256_BYTE_LENGTH {
+        if bytes.len() != DIGEST_BYTES {
             return Err(ApiError::UnprocessableEntity(
                 "the Content-Digest value is not a 32-byte SHA-256 digest".to_owned(),
             ));

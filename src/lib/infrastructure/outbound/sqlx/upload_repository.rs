@@ -356,13 +356,10 @@ mod tests {
     use crate::domain::port::error::RepositoryError;
     use crate::domain::port::upload_repository::UploadFilter;
     use crate::domain::port::upload_repository::UploadRepository as _;
+    use crate::test_helpers::CHUNK_SIZE;
+    use crate::test_helpers::DIGEST;
 
     use super::SqlxUploadRepository;
-
-    /// A 64-character hexadecimal digest, valid for `integrity_hash`.
-    const DIGEST: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
-    /// Size of every chunk, in bytes.
-    const CHUNK_SIZE: u64 = 4;
 
     /// Append-only sink that lets a test read back the lines [`fmt`] emits.
     #[derive(Clone)]

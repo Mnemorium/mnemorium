@@ -210,6 +210,8 @@ mod tests {
     use crate::application::port::get_upload::GetUploadCommand;
     use crate::application::port::get_upload::GetUploadError;
     use crate::application::port::get_upload::GetUploadUseCase as _;
+    use crate::application::use_case::test_fixtures::ROOT;
+    use crate::application::use_case::test_fixtures::TTL_SECONDS;
     use crate::domain::model::file::File;
     use crate::domain::model::integrity_hash::IntegrityHash;
     use crate::domain::model::upload::ChunkBitmap;
@@ -219,16 +221,12 @@ mod tests {
     use crate::domain::port::file_storage::MockFileStorage;
     use crate::domain::port::upload_repository::MockUploadRepository;
     use crate::test_helpers::AssetFactoryHarness;
+    use crate::test_helpers::CHUNK_SIZE;
+    use crate::test_helpers::DIGEST;
     use crate::test_helpers::TestFactory;
     use crate::test_helpers::TestUnitOfWork;
 
     use super::GetUpload;
-
-    const DIGEST: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
-    const TTL_SECONDS: u64 = 3600;
-    const CHUNK_SIZE: u64 = 4;
-    /// Storage root the use case composes paths against.
-    const ROOT: &str = "/storage";
 
     type UseCase = GetUpload<TestFactory, MockFileStorage>;
 

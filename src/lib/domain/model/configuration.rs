@@ -31,7 +31,7 @@ pub const DEFAULT_LOG_MAX_FILES: u32 = 7;
 pub const DEFAULT_LOG_ROTATION: Rotation = Rotation::Daily;
 
 /// Default value for [`Jwt::ttl`], in seconds.
-pub const DEFAULT_JWT_TTL: u64 = 3600;
+pub const DEFAULT_JWT_TTL_SECONDS: u64 = 3600;
 
 /// Default value for [`Sqlite3::max_connections`].
 ///
@@ -40,16 +40,16 @@ pub const DEFAULT_JWT_TTL: u64 = 3600;
 pub const DEFAULT_SQLITE3_MAX_CONNECTIONS: u32 = 8;
 
 /// Default value for [`RateLimit::burst_size`].
-const DEFAULT_BURST_SIZE: u32 = 5;
+pub const DEFAULT_BURST_SIZE: u32 = 5;
 
 /// Default header carrying the client address, used when no proxy is trusted.
-const DEFAULT_CLIENT_IP_HEADER: ClientIpHeader = ClientIpHeader::XForwardedFor;
+pub const DEFAULT_CLIENT_IP_HEADER: ClientIpHeader = ClientIpHeader::XForwardedFor;
 
 /// Default value for [`RateLimit::period_seconds`].
-const DEFAULT_PERIOD_SECONDS: u64 = 12;
+pub const DEFAULT_PERIOD_SECONDS: u64 = 12;
 
 /// Separator between addresses in the [`RateLimit::trusted_proxies`] list.
-const TRUSTED_PROXIES_SEPARATOR: char = ',';
+pub const TRUSTED_PROXIES_SEPARATOR: char = ',';
 
 /// Error returned when initialising or updating an asset value object.
 #[derive(Debug, thiserror::Error)]
@@ -559,7 +559,7 @@ pub struct Jwt {
 impl Default for Jwt {
     fn default() -> Self {
         Self {
-            ttl: DEFAULT_JWT_TTL,
+            ttl: DEFAULT_JWT_TTL_SECONDS,
         }
     }
 }

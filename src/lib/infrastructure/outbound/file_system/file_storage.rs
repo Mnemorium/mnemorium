@@ -10,15 +10,14 @@ use tokio::io::AsyncSeekExt as _;
 use tokio::io::AsyncWriteExt as _;
 use tracing::error;
 
-use crate::domain::model::integrity_hash::IntegrityHash;
-use crate::domain::model::integrity_hash::SHA256_HEX_LENGTH;
+use crate::domain::model::integrity_hash::Digest;
 use crate::domain::port::content_hasher::ContentHasher as _;
 use crate::domain::port::error::StorageError;
 use crate::domain::port::file_storage::FileStorage;
 use crate::infrastructure::outbound::sha2::content_hasher::Sha2ContentHasher;
 
 /// Size of the buffer used to stream a file, in bytes.
-const HASH_BUFFER_SIZE: usize = 64 * 1024;
+const HASH_BUFFER_BYTES: usize = 64 * 1024;
 
 /// File storage storing uploaded content on the local filesystem.
 ///
@@ -167,8 +166,7 @@ impl FileStorage for FileSystemStorage {
     fn integrity_hash(
         &self,
         path: &Path,
-    ) -> impl Future<Output = Result<Option<IntegrityHash<SHA256_HEX_LENGTH>>, StorageError>> + Send
-    {
+    ) -> impl Future<Output = Result<Option<Digest>, StorageError>> + Send {
         let owned_path = path.to_path_buf();
         // The stateless hasher is built here, at the point of use, and never
         // stored by the long-lived storage adapter.
@@ -180,7 +178,7 @@ impl FileStorage for FileSystemStorage {
                 Err(err) if err.kind() == ErrorKind::NotFound => return Ok(None),
                 Err(err) => return Err(Self::map_io_error(err, "integrity_hash")),
             };
-            let mut buffer = vec![0u8; HASH_BUFFER_SIZE];
+            let mut buffer = vec![0u8; HASH_BUFFER_BYTES];
             loop {
                 let read = file
                     .read(&mut buffer)

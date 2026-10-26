@@ -8,9 +8,11 @@ use sqlx::sqlite::SqliteJournalMode;
 use sqlx::sqlite::SqlitePoolOptions;
 use tracing::warn;
 
-/// Time a connection waits for a lock held by another connection, in seconds.
-const BUSY_TIMEOUT_SECONDS: u64 = 5;
-/// Upper bound of the write-ahead log file, in bytes (64 MiB).
+/// Time a connection waits for a lock held by another connection.
+const BUSY_TIMEOUT: Duration = Duration::from_secs(5);
+/// Upper bound of the write-ahead log file, in bytes (67 108 864; 64 MiB).
+///
+/// The value is a string because the consumer is a SQL pragma.
 const WAL_SIZE_LIMIT_BYTES: &str = "67108864";
 
 /// Initializes the `SQLite` database connection pool, creating the database file
@@ -43,7 +45,7 @@ pub async fn init_db(db_file: &str, max_connections: u32) -> Result<SqlitePool, 
     let options = SqliteConnectOptions::new()
         .filename(db_file)
         .journal_mode(SqliteJournalMode::Wal)
-        .busy_timeout(Duration::from_secs(BUSY_TIMEOUT_SECONDS))
+        .busy_timeout(BUSY_TIMEOUT)
         .pragma("journal_size_limit", WAL_SIZE_LIMIT_BYTES)
         .foreign_keys(true)
         .pragma("recursive_triggers", "ON");
@@ -67,9 +69,8 @@ mod tests {
 
     use super::init_db;
     use crate::domain::port::error::RepositoryError;
+    use crate::test_helpers::DIGEST;
 
-    /// A 64-character hexadecimal digest accepted by `chk_file_integrity_hash`.
-    const DIGEST: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
     /// A second digest, distinct from [`DIGEST`], for the second seeded file.
     const DIGEST_ALT: &str = "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210";
 

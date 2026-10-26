@@ -154,11 +154,9 @@ mod tests {
     use crate::domain::port::error::RepositoryError;
     use crate::domain::port::file_repository::FileFilter;
     use crate::domain::port::file_repository::FileRepository as _;
+    use crate::test_helpers::DIGEST;
 
     use super::SqlxFileRepository;
-
-    /// A 64-character hexadecimal digest, valid for `integrity_hash`.
-    const DIGEST: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 
     async fn begin_transaction() -> Result<Transaction<'static, Sqlite>, sqlx::Error> {
         let pool = SqlitePoolOptions::new()

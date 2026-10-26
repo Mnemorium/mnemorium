@@ -1,11 +1,18 @@
 use std::fmt::{Display, Formatter, Result as FmtResult};
 
-/// Length of a SHA-256 digest in lowercase hexadecimal characters.
+/// Width of a content digest, in lowercase hexadecimal characters.
 ///
 /// The constant is algorithm-neutral in the type it parameterizes
-/// ([`IntegrityHash`]) but fixes the length of the digest persisted for file
-/// content.
-pub const SHA256_HEX_LENGTH: usize = 64;
+/// ([`IntegrityHash`]) but fixes the width of the digest persisted for file
+/// content; the algorithm that produces it belongs to the outbound adapter.
+pub const DIGEST_HEX_LENGTH: usize = 64;
+
+/// Content-integrity digest of a persisted file.
+///
+/// The value object stays generic over its length ([`IntegrityHash`]); this
+/// alias is the crate's vocabulary for the width the domain persists, so a
+/// consumer names the digest rather than restating a width.
+pub type Digest = IntegrityHash<DIGEST_HEX_LENGTH>;
 
 /// Error returned when initialising an [`IntegrityHash`].
 #[derive(Debug, thiserror::Error)]

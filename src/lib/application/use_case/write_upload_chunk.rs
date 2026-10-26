@@ -358,6 +358,8 @@ mod tests {
     use crate::application::port::write_upload_chunk::WriteUploadChunkCommand;
     use crate::application::port::write_upload_chunk::WriteUploadChunkError;
     use crate::application::port::write_upload_chunk::WriteUploadChunkUseCase as _;
+    use crate::application::use_case::test_fixtures::ROOT;
+    use crate::application::use_case::test_fixtures::TTL_SECONDS;
     use crate::domain::model::integrity_hash::IntegrityHash;
     use crate::domain::model::upload::ChunkBitmap;
     use crate::domain::model::upload::Upload;
@@ -370,12 +372,13 @@ mod tests {
     use crate::domain::port::file_storage::MockFileStorage;
     use crate::domain::port::upload_repository::MockUploadRepository;
     use crate::test_helpers::AssetFactoryHarness;
+    use crate::test_helpers::CHUNK_SIZE;
+    use crate::test_helpers::DIGEST;
     use crate::test_helpers::TestFactory;
     use crate::test_helpers::TestUnitOfWork;
 
     use super::WriteUploadChunk;
 
-    const DIGEST: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
     /// SHA-256 of `b"1234"`.
     const CHUNK_DIGEST: &str = "03ac674216f3e15c761ee1a5e255f067953623c8b388b4459e13f978d7c846f4";
     /// SHA-256 of `b"5678"`.
@@ -383,10 +386,6 @@ mod tests {
         "f8638b979b2f4f793ddb6dbd197e0ee25a7a6ea32b0ae22f5e3c5d119d839e75";
     const WRONG_CHUNK_DIGEST: &str =
         "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff";
-    const TTL_SECONDS: u64 = 3600;
-    const CHUNK_SIZE: u64 = 4;
-    /// Storage root the use case composes paths against.
-    const ROOT: &str = "/storage";
 
     /// Append-only sink that lets a test read back the lines [`fmt`] emits.
     #[derive(Clone)]

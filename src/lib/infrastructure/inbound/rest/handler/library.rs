@@ -92,6 +92,12 @@ use crate::infrastructure::inbound::rest::handler::library::put_playlist_track::
 use crate::infrastructure::inbound::rest::middleware::auth::authenticate;
 use crate::infrastructure::outbound::jwt::token_provider::JwtTokenProvider;
 
+/// Default number of items a listing returns when `limit` is omitted.
+pub(crate) const DEFAULT_LIMIT: usize = 20;
+
+/// Largest number of items a listing may return.
+pub(crate) const MAX_LIMIT: usize = 100;
+
 /// Date and time format of the gallery representations, per the asset
 /// representations.
 const TIMESTAMP_FORMAT: &str = "%Y-%m-%dT%H:%M:%S";

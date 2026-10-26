@@ -59,15 +59,13 @@ mod tests {
     use std::path::PathBuf;
     use std::sync::Arc;
 
+    use crate::application::use_case::test_fixtures::ROOT;
     use crate::domain::port::error::StorageError;
     use crate::domain::port::file_storage::MockFileStorage;
 
     use super::EnsureStorageDirectories;
     use super::EnsureStorageDirectoriesCommand;
     use super::EnsureStorageDirectoriesUseCase as _;
-
-    /// A root the fake storage reports its paths against.
-    const ROOT: &str = "/storage";
 
     #[tokio::test]
     async fn ensure_storage_directories_missing_creates_both() -> Result<(), Box<dyn Error>> {
