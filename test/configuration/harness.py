@@ -57,6 +57,7 @@ MSG_PASSWORD_HIDDEN = "the default password logging is disabled"
 MSG_STATE_MISSING = "restore state.yaml"
 
 SECRET_PASSWORD = "C0rrect!Horse"
+WRONG_PASSWORD = "Wr0ng!pass"
 ROOT_ADMIN_USERNAME = "root"
 STARTUP_TIMEOUT_S = 20.0
 POLL_INTERVAL_S = 0.1
@@ -168,6 +169,10 @@ class Sut:
         result = subprocess.run(["docker", "logs", self.name], capture_output=True, text=True, check=False)
         return result.stdout + result.stderr
 
+    def log_text(self) -> str:
+        """Every log file's contents; complete only after `stop()` has flushed the sink."""
+        return "".join(self.read(f"{LOG_DIRECTORY}/{name}") for name in self.listing(LOG_DIRECTORY))
+
     def read(self, relative: str) -> str:
         return (self.dir / relative).read_text(encoding="utf-8")
 
@@ -216,8 +221,23 @@ class Sut:
             timeout=REQUEST_TIMEOUT_S,
         )
 
+    def attempt_login(
+        self,
+        username: str,
+        password: str,
+        *,
+        headers: dict[str, str] | None = None,
+    ) -> requests.Response:
+        """Post a login attempt without asserting its outcome; the limiter counts it."""
+        return self.request(
+            "POST",
+            LOGIN_PATH,
+            json={"username": username, "password": password},
+            headers=headers,
+        )
+
     def login(self, username: str, password: str) -> str:
-        response = self.request("POST", LOGIN_PATH, json={"username": username, "password": password})
+        response = self.attempt_login(username, password)
         assert response.status_code == 200, f"login failed: {response.status_code} {response.text}"
         return response.json()["access_token"]
 

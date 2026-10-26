@@ -25,11 +25,6 @@ _ROTATION_NEVER_FILE = "mnemorium.log"
 _SEEDED_LOGS = {f"logs/mnemorium.log.2020-01-0{day}": "old\n" for day in range(1, 6)}
 
 
-def _log_text(sut: Sut) -> str:
-    """The concatenated log files; only meaningful after `stop()` has flushed them."""
-    return "".join(sut.read(f"{LOG_DIRECTORY}/{name}") for name in sut.listing(LOG_DIRECTORY))
-
-
 @contextmanager
 def _control_server(image: str, tmp_root: Path, **start) -> Iterator[Sut]:
     """A second server for the paired control run, removed with its working directory."""
@@ -48,12 +43,12 @@ def test_level_filters_operator_messages(image, sut, tmp_path):
     sut.start(env={_LEVEL_ENV: "error"})
     sut.stop()
 
-    assert MSG_CONFIG_GENERATED not in _log_text(sut)
+    assert MSG_CONFIG_GENERATED not in sut.log_text()
 
     with _control_server(image, tmp_path / "control", env={_LEVEL_ENV: "warn"}) as control:
         control.stop()
 
-        assert MSG_CONFIG_GENERATED in _log_text(control)
+        assert MSG_CONFIG_GENERATED in control.log_text()
 
 
 def test_the_security_floor_survives_a_quiet_level(sut):
@@ -61,7 +56,7 @@ def test_the_security_floor_survives_a_quiet_level(sut):
     sut.start(env={_LEVEL_ENV: "error"})
     sut.stop()
 
-    assert 'event="lifecycle" component="logging" outcome="initialized"' in _log_text(sut)
+    assert 'event="lifecycle" component="logging" outcome="initialized"' in sut.log_text()
 
 
 @pytest.mark.slow

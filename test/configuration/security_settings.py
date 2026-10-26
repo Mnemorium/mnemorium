@@ -17,26 +17,15 @@ import pytest
 import requests
 from harness import (
     HEALTH_PATH,
-    LOG_DIRECTORY,
     LOGIN_PATH,
     MSG_PASSWORD_HIDDEN,
     MSG_PASSWORD_LOGGED,
     ROOT_ADMIN_USERNAME,
+    WRONG_PASSWORD,
 )
 
-_WRONG_PASSWORD = "Wr0ng!pass"
 _HEADER = "x-real-ip"
 _LONG_PERIOD_S = 60
-
-
-def _bad_login(sut, headers: dict[str, str] | None = None) -> requests.Response:
-    """A login attempt the limiter counts, with credentials that cannot succeed."""
-    return sut.request(
-        "POST",
-        LOGIN_PATH,
-        json={"username": ROOT_ADMIN_USERNAME, "password": _WRONG_PASSWORD},
-        headers=headers,
-    )
 
 
 def _claims(token: str) -> dict:
@@ -45,9 +34,9 @@ def _claims(token: str) -> dict:
     return json.loads(base64.urlsafe_b64decode(payload + "=" * (-len(payload) % 4)))
 
 
-def _log_text(sut) -> str:
-    """The concatenated log files; only meaningful after `stop()` has flushed them."""
-    return "".join(sut.read(f"{LOG_DIRECTORY}/{name}") for name in sut.listing(LOG_DIRECTORY))
+def _bad_login(sut, headers: dict[str, str] | None = None) -> requests.Response:
+    """A login attempt the limiter counts, with credentials that cannot succeed."""
+    return sut.attempt_login(ROOT_ADMIN_USERNAME, WRONG_PASSWORD, headers=headers)
 
 
 def test_ttl_sets_the_advertised_lifetime(sut):
@@ -97,7 +86,7 @@ def test_the_default_password_is_not_printed_when_disabled(sut):
 
     stdout = sut.logs()
     sut.stop()
-    written = _log_text(sut)
+    written = sut.log_text()
 
     assert MSG_PASSWORD_HIDDEN in stdout
     assert MSG_PASSWORD_HIDDEN in written
@@ -154,10 +143,10 @@ def test_a_trusted_proxy_keys_on_the_header(sut):
         }
     )
 
-    assert _bad_login(sut, headers={_HEADER: "203.0.113.1"}).status_code == 401
-    assert _bad_login(sut, headers={_HEADER: "203.0.113.1"}).status_code == 429
-    assert _bad_login(sut, headers={_HEADER: "203.0.113.2"}).status_code == 401
-    assert _bad_login(sut, headers={_HEADER: "203.0.113.3"}).status_code == 401
+    assert _bad_login(sut, {_HEADER: "203.0.113.1"}).status_code == 401
+    assert _bad_login(sut, {_HEADER: "203.0.113.1"}).status_code == 429
+    assert _bad_login(sut, {_HEADER: "203.0.113.2"}).status_code == 401
+    assert _bad_login(sut, {_HEADER: "203.0.113.3"}).status_code == 401
 
 
 @pytest.mark.slow
@@ -175,5 +164,5 @@ def test_an_untrusted_peer_ignores_the_header(sut):
         }
     )
 
-    assert _bad_login(sut, headers={_HEADER: "203.0.113.1"}).status_code == 401
-    assert _bad_login(sut, headers={_HEADER: "203.0.113.2"}).status_code == 429
+    assert _bad_login(sut, {_HEADER: "203.0.113.1"}).status_code == 401
+    assert _bad_login(sut, {_HEADER: "203.0.113.2"}).status_code == 429
