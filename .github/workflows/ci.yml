@@ -54,6 +54,7 @@ jobs:
             persistence
             server
             test-e2e
+            test-config
             user
             development
             repo
