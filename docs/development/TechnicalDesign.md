@@ -2441,10 +2441,11 @@ Handing the staged, caller-supplied bytes to `ffprobe` is a security event gover
 ### E2E test
 
 End-to-end tests drive the containerised server through its REST API as a black box. In CI they run against the image
-built from the repository `Dockerfile` (the `e2e` job in `.github/workflows/ci.yml`). That job triggers on changes to
-Rust sources, Python tests, the container inputs, SQL migrations, or the workflows themselves, so a schema-only pull
-request is exercised by the black-box suite as well as by the repository integration tests (`rust`). Its report
-(`junit.xml`, best-effort) is an optional, untrusted review input, not a gate on its own.
+built from the repository `Dockerfile` by the `system` job in `.github/workflows/ci.yml`, which then runs the
+[configuration test](#configuration-test) suite against the same image. That job triggers on changes to Rust sources,
+Python tests, the container inputs, SQL migrations, or the workflows themselves, so a schema-only pull request is
+exercised by the black-box suite as well as by the repository integration tests (`rust`). Its report (`junit.xml`,
+best-effort) is an optional, untrusted review input, not a gate on its own.
 
 A golden file or a test media file the suite consumes is stored under `test/e2e/fixture/` and loaded from there by the
 test that needs it ([TEST-052](#e2e-test)); such files are kept out of the per-context test folders
