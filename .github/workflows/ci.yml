@@ -101,6 +101,7 @@ jobs:
               - '**/*.md'
               - '.prettierrc'
               - '.prettierignore'
+              - '.markdownlint-cli2.jsonc'
             docs:
               - 'docs/**'
               - 'mkdocs.yml'
