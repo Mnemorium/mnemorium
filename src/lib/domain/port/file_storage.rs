@@ -1,8 +1,8 @@
 use std::future::Future;
 use std::path::Path;
 
+use crate::domain::model::integrity_hash::DIGEST_HEX_LENGTH;
 use crate::domain::model::integrity_hash::IntegrityHash;
-use crate::domain::model::integrity_hash::SHA256_HEX_LENGTH;
 use crate::domain::port::error::StorageError;
 
 /// Port for storing uploaded file content on a storage backend.
@@ -77,7 +77,7 @@ pub trait FileStorage: Send + Sync {
     fn integrity_hash(
         &self,
         path: &Path,
-    ) -> impl Future<Output = Result<Option<IntegrityHash<SHA256_HEX_LENGTH>>, StorageError>> + Send;
+    ) -> impl Future<Output = Result<Option<IntegrityHash<DIGEST_HEX_LENGTH>>, StorageError>> + Send;
 
     /// Move the file at `staged` to `final_path`.
     ///

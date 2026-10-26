@@ -10,6 +10,7 @@ use crate::domain::port::error::UnitOfWorkError;
 
 /// `SQLite` extended result code for a trigger `RAISE(ABORT)`
 /// (`SQLITE_CONSTRAINT_TRIGGER`), which `sqlx` collapses into `ErrorKind::Other`.
+/// The code is `1811`, carried as a string because the consumer compares text.
 const SQLITE_CONSTRAINT_TRIGGER: &str = "1811";
 
 impl From<Error> for RepositoryError {

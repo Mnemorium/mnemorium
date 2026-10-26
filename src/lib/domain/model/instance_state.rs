@@ -1,7 +1,7 @@
 use std::fmt::{Debug, Formatter, Result as FmtResult};
 
 /// Length of a hexadecimal-encoded secret, in characters.
-const SECRET_HEX_LENGTH: usize = 64;
+pub const SECRET_HEX_LENGTH: usize = 64;
 
 /// Error returned when initialising an [`InstanceState`] value object.
 #[derive(Debug, thiserror::Error)]

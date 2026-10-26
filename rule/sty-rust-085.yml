@@ -1,0 +1,130 @@
+---
+id: sty-rust-085
+language: Rust
+severity: hint
+message: >-
+  extract the site, name and initializer of every production constant and
+  static declaration for STY-RUST-085
+files:
+  - src/**/*.rs
+rule:
+  any:
+    # A static is illegal in production whatever its site, so one alternative
+    # covers every static and the Bash layer rejects it by kind alone.
+    - all:
+        - kind: static_item
+        - has:
+            field: name
+            pattern: $STATIC
+        - has:
+            field: value
+            pattern: $VALUE
+        - not:
+            inside:
+              any:
+                - kind: mod_item
+                  follows:
+                    kind: attribute_item
+                    regex: 'cfg\(test\)'
+                    stopBy: end
+                - kind: function_item
+                  follows:
+                    kind: attribute_item
+                    regex: 'cfg\(test\)'
+                    stopBy: end
+              stopBy: end
+    # Block scope: a constant inside a function body. The enclosing function is
+    # captured so the Bash layer can name it.
+    - all:
+        - kind: const_item
+        - has:
+            field: name
+            pattern: $NAME
+        - has:
+            field: value
+            pattern: $VALUE
+        - inside:
+            kind: function_item
+            has:
+              field: name
+              pattern: $FUNCTION
+            stopBy: end
+        - not:
+            inside:
+              any:
+                - kind: mod_item
+                  follows:
+                    kind: attribute_item
+                    regex: 'cfg\(test\)'
+                    stopBy: end
+                - kind: function_item
+                  follows:
+                    kind: attribute_item
+                    regex: 'cfg\(test\)'
+                    stopBy: end
+              stopBy: end
+    # Associated scope: a constant inside an impl block or a trait body. The
+    # impl target or the trait name is captured for the message.
+    - all:
+        - kind: const_item
+        - has:
+            field: name
+            pattern: $NAME
+        - has:
+            field: value
+            pattern: $VALUE
+        - not:
+            inside:
+              kind: function_item
+              stopBy: end
+        - inside:
+            any:
+              - kind: impl_item
+                has:
+                  field: type
+                  pattern: $IMPLEMENTOR
+              - kind: trait_item
+                has:
+                  field: name
+                  pattern: $TRAIT
+            stopBy: end
+        - not:
+            inside:
+              any:
+                - kind: mod_item
+                  follows:
+                    kind: attribute_item
+                    regex: 'cfg\(test\)'
+                    stopBy: end
+                - kind: function_item
+                  follows:
+                    kind: attribute_item
+                    regex: 'cfg\(test\)'
+                    stopBy: end
+              stopBy: end
+    # Module scope: a constant inside no function, impl or trait.
+    - all:
+        - kind: const_item
+        - has:
+            field: name
+            pattern: $NAME
+        - has:
+            field: value
+            pattern: $VALUE
+        - not:
+            inside:
+              any:
+                - kind: function_item
+                - kind: impl_item
+                - kind: trait_item
+                - kind: mod_item
+                  follows:
+                    kind: attribute_item
+                    regex: 'cfg\(test\)'
+                    stopBy: end
+                - kind: function_item
+                  follows:
+                    kind: attribute_item
+                    regex: 'cfg\(test\)'
+                    stopBy: end
+              stopBy: end

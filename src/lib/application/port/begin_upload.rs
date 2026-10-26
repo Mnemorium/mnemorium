@@ -4,8 +4,8 @@ use std::pin::Pin;
 use chrono::NaiveDateTime;
 
 use crate::domain::alias::NumericID;
+use crate::domain::model::integrity_hash::DIGEST_HEX_LENGTH;
 use crate::domain::model::integrity_hash::IntegrityHash;
-use crate::domain::model::integrity_hash::SHA256_HEX_LENGTH;
 
 /// Command to begin a chunked upload session.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -18,7 +18,7 @@ pub struct BeginUploadCommand {
     /// Total size of the file being uploaded, in bytes.
     file_size: u64,
     /// Integrity hash of the complete file, supplied by the client.
-    integrity_hash: IntegrityHash<SHA256_HEX_LENGTH>,
+    integrity_hash: IntegrityHash<DIGEST_HEX_LENGTH>,
     /// Identifier of the user owning the upload.
     user_id: NumericID,
 }
@@ -44,7 +44,7 @@ impl BeginUploadCommand {
 
     /// Return the integrity hash supplied by the client.
     #[must_use]
-    pub fn integrity_hash(&self) -> &IntegrityHash<SHA256_HEX_LENGTH> {
+    pub fn integrity_hash(&self) -> &IntegrityHash<DIGEST_HEX_LENGTH> {
         &self.integrity_hash
     }
 
@@ -54,7 +54,7 @@ impl BeginUploadCommand {
         file_name: String,
         file_size: u64,
         content_type: String,
-        integrity_hash: IntegrityHash<SHA256_HEX_LENGTH>,
+        integrity_hash: IntegrityHash<DIGEST_HEX_LENGTH>,
         user_id: NumericID,
     ) -> Self {
         Self {

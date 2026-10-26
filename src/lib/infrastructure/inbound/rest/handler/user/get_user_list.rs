@@ -11,6 +11,7 @@ use crate::application::port::list_users::ListUsersCommand;
 use crate::application::port::list_users::ListUsersError;
 use crate::application::port::list_users::ListUsersResponse as ListUsersResponseData;
 use crate::domain::model::user::Role;
+use crate::domain::service::username_policy::MAX_USERNAME_LENGTH;
 use crate::domain::service::username_policy::MIN_USERNAME_LENGTH;
 use crate::infrastructure::inbound::rest::api_error::ApiError;
 use crate::infrastructure::inbound::rest::api_error::ErrorBody;
@@ -21,12 +22,6 @@ use crate::infrastructure::inbound::rest::hal::hal_json;
 use crate::infrastructure::inbound::rest::handler::user::GetUserResponse;
 use crate::infrastructure::inbound::rest::handler::user::user_self_href;
 use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
-
-/// Maximum number of characters accepted in the `username` filter.
-///
-/// Mirrors the `max_length` the `ListUsersQuery` declaration publishes, so the
-/// enforced bound and the published one cannot drift (`API-017`).
-const MAX_USERNAME_LENGTH: usize = 100;
 
 /// Filters restricting the returned users.
 ///

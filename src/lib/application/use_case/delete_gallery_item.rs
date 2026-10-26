@@ -262,6 +262,7 @@ mod tests {
     use crate::application::port::delete_gallery_item::DeleteGalleryItemCommand;
     use crate::application::port::delete_gallery_item::DeleteGalleryItemError;
     use crate::application::port::delete_gallery_item::DeleteGalleryItemUseCase as _;
+    use crate::application::use_case::test_fixtures::ROOT;
     use crate::domain::model::file::File;
     use crate::domain::model::gallery::Gallery;
     use crate::domain::model::gallery_item::GalleryItem;
@@ -282,17 +283,12 @@ mod tests {
     use crate::domain::port::image_repository::MockImageRepository;
     use crate::domain::port::user_repository::MockUserRepository;
     use crate::domain::port::video_repository::MockVideoRepository;
+    use crate::test_helpers::DIGEST;
     use crate::test_helpers::GalleryFactoryHarness;
     use crate::test_helpers::TestFactory;
     use crate::test_helpers::TestUnitOfWork;
 
     use super::DeleteGalleryItem;
-
-    /// A 64-character hexadecimal digest, valid for `integrity_hash`.
-    const DIGEST: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
-
-    /// Storage root the use case composes the bytes path against.
-    const ROOT: &str = "/storage";
 
     /// Stored path of the fixture file, relative to the storage root.
     const FILE_PATH: &str = "files/1_photo.png";

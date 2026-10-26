@@ -8,6 +8,8 @@ use tracing::warn;
 use utoipa::IntoParams;
 use utoipa::ToSchema;
 
+use super::DEFAULT_LIMIT;
+use super::MAX_LIMIT;
 use crate::application::port::list_galleries::ListGalleriesCommand;
 use crate::application::port::list_galleries::ListGalleriesError;
 use crate::domain::alias::NumericID;
@@ -18,12 +20,6 @@ use crate::infrastructure::inbound::rest::hal::Link;
 use crate::infrastructure::inbound::rest::hal::hal_json;
 use crate::infrastructure::inbound::rest::handler::library::GalleryResponse;
 use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
-
-/// Default number of galleries returned by a listing when `limit` is omitted.
-const DEFAULT_LIMIT: usize = 20;
-
-/// Largest number of galleries a listing may return.
-const MAX_LIMIT: usize = 100;
 
 /// Filters and pagination restricting the returned galleries.
 ///

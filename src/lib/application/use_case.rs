@@ -35,3 +35,17 @@ pub mod update_user;
 pub(crate) mod upload_layout;
 pub(crate) mod upload_session;
 pub mod write_upload_chunk;
+
+/// Fixtures shared by the application use-case test modules.
+///
+/// A fixture declared here is one the use-case tests would otherwise restate in
+/// every module that needs it (`STY-RUST-086`). It is an inline module because a
+/// test module never lives in its own file (`TEST-001`).
+#[cfg(test)]
+mod test_fixtures {
+    /// Storage root the use cases compose their paths against.
+    pub(crate) const ROOT: &str = "/storage";
+
+    /// Token lifetime the test configurations carry, in seconds.
+    pub(crate) const TTL_SECONDS: u64 = 3600;
+}

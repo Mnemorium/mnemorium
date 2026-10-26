@@ -277,6 +277,8 @@ mod tests {
     use crate::application::port::begin_upload::BeginUploadCommand;
     use crate::application::port::begin_upload::BeginUploadError;
     use crate::application::port::begin_upload::BeginUploadUseCase as _;
+    use crate::application::use_case::test_fixtures::ROOT;
+    use crate::application::use_case::test_fixtures::TTL_SECONDS;
     use crate::domain::model::integrity_hash::IntegrityHash;
     use crate::domain::model::upload::MAX_TOTAL_CHUNKS;
     use crate::domain::model::upload::Upload;
@@ -286,21 +288,18 @@ mod tests {
     use crate::domain::port::mime_type_repository::MockMimeTypeRepository;
     use crate::domain::port::upload_repository::MockUploadRepository;
     use crate::test_helpers::AssetFactoryHarness;
+    use crate::test_helpers::CHUNK_SIZE;
+    use crate::test_helpers::DIGEST;
     use crate::test_helpers::TestFactory;
     use crate::test_helpers::TestUnitOfWork;
 
     use super::BeginUpload;
 
-    const DIGEST: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
-    const CHUNK_SIZE: u64 = 4;
-    const TTL_SECONDS: u64 = 3600;
-    /// Storage root the use case composes paths against.
-    const ROOT: &str = "/storage";
     const DEFAULT_MAX_FILE_SIZE: u64 = 1_000_000;
 
     /// Largest declared file size that still splits into exactly
     /// [`MAX_TOTAL_CHUNKS`] chunks.
-    const MAX_TOTAL_CHUNKS_FILE_SIZE: u64 = MAX_TOTAL_CHUNKS as u64 * CHUNK_SIZE;
+    const MAX_TOTAL_CHUNKS_FILE_BYTES: u64 = MAX_TOTAL_CHUNKS as u64 * CHUNK_SIZE;
 
     type UseCase = BeginUpload<TestFactory, MockFileStorage>;
 
@@ -912,9 +911,9 @@ mod tests {
                     .returning(|_, _| Box::pin(async { Ok(()) }));
                 Ok(())
             },
-            MAX_TOTAL_CHUNKS_FILE_SIZE,
+            MAX_TOTAL_CHUNKS_FILE_BYTES,
         )?;
-        let command = command(MAX_TOTAL_CHUNKS_FILE_SIZE);
+        let command = command(MAX_TOTAL_CHUNKS_FILE_BYTES);
 
         // Act
         let response = harness.use_case.execute(command).await?;
@@ -938,7 +937,7 @@ mod tests {
         // chunks. `max_file_size_bytes` equals the declared size, so the size
         // rule is satisfied and only the chunk-count backstop can reject.
         let (buffer, _capture) = capture_logs();
-        let file_size = MAX_TOTAL_CHUNKS_FILE_SIZE + 1;
+        let file_size = MAX_TOTAL_CHUNKS_FILE_BYTES + 1;
         let harness = use_case_with_max(|_, _, _| Ok(()), file_size)?;
         let command = command(file_size);
 

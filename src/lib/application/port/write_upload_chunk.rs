@@ -4,8 +4,8 @@ use std::pin::Pin;
 use chrono::NaiveDateTime;
 
 use crate::domain::alias::NumericID;
+use crate::domain::model::integrity_hash::DIGEST_HEX_LENGTH;
 use crate::domain::model::integrity_hash::IntegrityHash;
-use crate::domain::model::integrity_hash::SHA256_HEX_LENGTH;
 
 /// Command to write one chunk of an upload session.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -16,7 +16,7 @@ pub struct WriteUploadChunkCommand {
     /// Zero-based number of the chunk.
     chunk_number: u64,
     /// Integrity hash of the chunk, supplied by the client.
-    content_digest: IntegrityHash<SHA256_HEX_LENGTH>,
+    content_digest: IntegrityHash<DIGEST_HEX_LENGTH>,
     /// Start offset of the chunk declared by the client, from `Content-Range`.
     start: u64,
     /// Identifier of the upload session.
@@ -40,7 +40,7 @@ impl WriteUploadChunkCommand {
 
     /// Return the integrity hash of the chunk supplied by the client.
     #[must_use]
-    pub fn content_digest(&self) -> &IntegrityHash<SHA256_HEX_LENGTH> {
+    pub fn content_digest(&self) -> &IntegrityHash<DIGEST_HEX_LENGTH> {
         &self.content_digest
     }
 
@@ -51,7 +51,7 @@ impl WriteUploadChunkCommand {
         chunk_number: u64,
         start: u64,
         chunk: Vec<u8>,
-        content_digest: IntegrityHash<SHA256_HEX_LENGTH>,
+        content_digest: IntegrityHash<DIGEST_HEX_LENGTH>,
         user_id: NumericID,
     ) -> Self {
         Self {

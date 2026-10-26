@@ -106,6 +106,8 @@ RULES=(
 	"STY-RUST-081:check_sty_rust_081"
 	"STY-RUST-082:check_sty_rust_082"
 	"STY-RUST-083:check_sty_rust_083"
+	"STY-RUST-085:check_sty_rust_085"
+	"STY-RUST-086:check_sty_rust_086"
 	"DOC-003:check_doc_003"
 	"DOC-005:check_doc_005"
 	"DOC-007:check_doc_007"
@@ -1971,6 +1973,286 @@ check_sty_rust_083() {
 	return "$result"
 }
 
+check_sty_rust_085() {
+	local id="STY-RUST-085"
+	local matches rows file line name site enclosing visibility layer expected reachable result=0
+	local -A declarations=()
+
+	matches="$(scan_json "$id" src)" || return 1
+	require_matches "$id" "production constant or static declaration" "$matches" || return 1
+
+	# The extractor reports every production declaration with its site and the visibility token of its first line; the path, visibility and reachability tests happen here because an ast-grep rule cannot read the file system.
+	rows="$(printf '%s\n' "$matches" | jq -r '
+		(.metaVariables.single.NAME.text // .metaVariables.single.STATIC.text) as $name
+		| (if .metaVariables.single.STATIC then "static"
+			elif .metaVariables.single.FUNCTION then "block"
+			elif (.metaVariables.single.IMPLEMENTOR or .metaVariables.single.TRAIT) then "assoc"
+			else "module" end) as $site
+		| ((.metaVariables.single.FUNCTION.text // .metaVariables.single.IMPLEMENTOR.text // .metaVariables.single.TRAIT.text) // "-") as $enclosing
+		| (.lines | split("\n")[0]) as $first
+		| (if ($first | test("^\\s*pub\\s*\\("))
+			then ($first | capture("^\\s*pub\\s*\\((?<inner>[^)]*)\\)").inner | gsub("^\\s+|\\s+$"; "") | "pub(" + . + ")")
+			elif ($first | test("^\\s*pub\\b")) then "pub"
+			else "private" end) as $visibility
+		| [.file, ((.range.start.line + 1) | tostring), $name, $site, $enclosing, $visibility] | @tsv
+	')" || return 1
+
+	# A name declared in more than one file has no single owner: 086 reports it, and testing each copy's reachability would ask the developer to widen a declaration 086 asks them to delete. Skipping the test also keeps the textual resolution sound, because no shadowing is possible for a crate-unique name.
+	while IFS=$'\t' read -r file line name site enclosing visibility; do
+		[ -n "$name" ] || continue
+		declarations["$name"]=$((${declarations["$name"]:-0} + 1))
+	done <<<"$rows"
+
+	while IFS=$'\t' read -r file line name site enclosing visibility; do
+		[ -n "$name" ] || continue
+
+		case "$site" in
+		static)
+			printf 'error: %s: %s:%s: %s is a production static; a constant is a const, and a static is legal only inside a cfg(test) function\n' \
+				"$id" "$file" "$line" "$name" >&2
+			result=1
+			continue
+			;;
+		block)
+			printf 'error: %s: %s:%s: %s is declared inside %s; a production constant is declared at file scope\n' \
+				"$id" "$file" "$line" "$name" "$enclosing" >&2
+			result=1
+			continue
+			;;
+		assoc)
+			printf 'error: %s: %s:%s: %s is an associated constant of %s; no constant belongs to an impl or a trait\n' \
+				"$id" "$file" "$line" "$name" "$enclosing" >&2
+			result=1
+			continue
+			;;
+		esac
+
+		case "$file" in
+		src/bin/*)
+			printf 'error: %s: %s:%s: %s is declared in a binary; src/bin consumes constants and declares none\n' \
+				"$id" "$file" "$line" "$name" >&2
+			result=1
+			continue
+			;;
+		src/lib/lib.rs)
+			printf 'error: %s: %s:%s: %s is declared in the crate root; only the cfg(test) test_helpers module lives there\n' \
+				"$id" "$file" "$line" "$name" >&2
+			result=1
+			continue
+			;;
+		esac
+
+		case "$file" in
+		src/lib/domain.rs | src/lib/domain/*) layer="domain" ;;
+		src/lib/application/port.rs | src/lib/application/port/*) layer="application-port" ;;
+		src/lib/application.rs | src/lib/application/*) layer="application" ;;
+		src/lib/infrastructure.rs | src/lib/infrastructure/*) layer="infrastructure" ;;
+		*)
+			printf 'error: %s: %s:%s: %s is declared outside a layer file\n' \
+				"$id" "$file" "$line" "$name" >&2
+			result=1
+			continue
+			;;
+		esac
+
+		case "$visibility" in
+		'pub(super)' | 'pub(in '*)
+			printf 'error: %s: %s:%s: %s is %s; the visibility is pub, pub(crate) or private\n' \
+				"$id" "$file" "$line" "$name" "$visibility" >&2
+			result=1
+			continue
+			;;
+		esac
+
+		case "$file" in
+		src/lib/infrastructure/inbound/rest/handler/*/*.rs)
+			if [ "$visibility" != "private" ]; then
+				printf 'error: %s: %s:%s: the endpoint constant %s is %s; an endpoint file declares a constant privately\n' \
+					"$id" "$file" "$line" "$name" "$visibility" >&2
+				result=1
+			fi
+			continue
+			;;
+		esac
+
+		if [ "$layer" = "domain" ] || [ "$layer" = "application-port" ]; then
+			expected="pub"
+		elif [ "${declarations[$name]:-0}" -gt 1 ]; then
+			continue
+		else
+			reachable="$(grep -rlwF -- "$name" src | grep -vxF -- "$file" | head -n 1)"
+			if [ -n "$reachable" ]; then
+				expected="pub(crate)"
+			else
+				expected="private"
+			fi
+		fi
+
+		if [ "$visibility" != "$expected" ]; then
+			printf 'error: %s: %s:%s: %s is %s; a constant in %s is %s\n' \
+				"$id" "$file" "$line" "$name" "$visibility" "$layer" "$expected" >&2
+			result=1
+		fi
+	done <<<"$rows"
+
+	return "$result"
+}
+
+check_sty_rust_086() {
+	local id="STY-RUST-086"
+	local matches config rows file line name value threshold target doc
+	local number noun token layer layers owner group_key first_dir
+	local result=0 count=0
+	local -a nouns=() exempt_files=() unit_suffixes=()
+	local -a group_list=() group_value_list=()
+	local -A layer_set=() group_files=() group_values=() reported_layers=()
+
+	matches="$(scan_json "$id" src)" || return 1
+	require_matches "$id" "production constant declaration" "$matches" || return 1
+
+	config="$(rule_config "$id")" || return 2
+	config_list "$id" technology_nouns nouns || return 2
+	config_list "$id" unit_suffixes unit_suffixes || return 2
+	# The qualifier vocabulary is declared data: the naming grammar allows no qualifier outside it.
+	if [ "$(jq -r '.qualifier_prefixes // [] | length' <<<"$config")" -eq 0 ]; then
+		printf 'error: %s: rule_enforcer.yaml declares no qualifier_prefixes\n' "$id" >&2
+		return 2
+	fi
+	mapfile -t exempt_files < <(jq -r '.noun_exempt_files[]?' <<<"$config")
+	threshold="$(jq -r '.duplicate_threshold // empty' <<<"$config")"
+	if [ -z "$threshold" ]; then
+		printf 'error: %s: rule_enforcer.yaml declares no duplicate_threshold\n' "$id" >&2
+		return 2
+	fi
+
+	rows="$(printf '%s\n' "$matches" | jq -r '
+		[.file, ((.range.start.line + 1) | tostring), .metaVariables.single.NAME.text, .metaVariables.single.VALUE.text] | @tsv
+	')" || return 1
+
+	# One pass collects the per-name layers and the per-name-per-layer files and values; the checks below read them.
+	while IFS=$'\t' read -r file line name value; do
+		[ -n "$name" ] || continue
+		case "$file" in
+		src/lib/domain.rs | src/lib/domain/*) layer="domain" ;;
+		src/lib/application/port.rs | src/lib/application/port/*) layer="application" ;;
+		src/lib/application.rs | src/lib/application/*) layer="application" ;;
+		src/lib/infrastructure.rs | src/lib/infrastructure/*) layer="infrastructure" ;;
+		*) layer="unknown" ;;
+		esac
+		case " ${layer_set[$name]:-} " in
+		*" $layer "*) ;;
+		*) layer_set["$name"]="${layer_set[$name]:-} $layer" ;;
+		esac
+		group_key="${name}|${layer}"
+		case $'\n'"${group_files[$group_key]:-}" in
+		*$'\n'"$file"$'\n'*) ;;
+		*) group_files["$group_key"]="${group_files[$group_key]:-}"$'\n'"$file" ;;
+		esac
+		case $'\n'"${group_values[$group_key]:-}" in
+		*$'\n'"$value"$'\n'*) ;;
+		*) group_values["$group_key"]="${group_values[$group_key]:-}"$'\n'"$value" ;;
+		esac
+	done <<<"$rows"
+
+	while IFS=$'\t' read -r file line name value; do
+		[ -n "$name" ] || continue
+
+		# a. A technology proper noun is banned as a whole `_`-separated token in the domain layer.
+		case "$file" in
+		src/lib/domain.rs | src/lib/domain/*)
+			case " ${exempt_files[*]} " in
+			*" $file "*) ;;
+			*)
+				while IFS= read -r token; do
+					[ -n "$token" ] || continue
+					for noun in "${nouns[@]}"; do
+						if [[ $token =~ ^($noun)$ ]]; then
+							printf 'error: %s: %s:%s: %s names the technology %s; a domain constant names the fact, not the tool that implements it\n' \
+								"$id" "$file" "$line" "$name" "$token" >&2
+							result=1
+						fi
+					done
+				done < <(printf '%s' "$name" | tr '_' '\n')
+				;;
+			esac
+			;;
+		esac
+
+		# b. A cross-layer duplicate is never hoisted: the innermost layer owns the fact and the others import it.
+		layers="$(printf '%s\n' "${layer_set[$name]:-}" | tr ' ' '\n' | sed '/^$/d' | sort -u | wc -l)"
+		if [ "$layers" -gt 1 ] && [ -z "${reported_layers[$name]:-}" ]; then
+			reported_layers["$name"]=1
+			if [[ " ${layer_set[$name]:-} " == *" domain "* ]]; then
+				owner="domain"
+			else
+				owner="application"
+			fi
+			printf 'error: %s: %s:%s: %s is declared in more than one layer; %s owns it, so every other layer imports it\n' \
+				"$id" "$file" "$line" "$name" "$owner" >&2
+			result=1
+		fi
+
+		# d. `_SIZE` is ambiguous and never legal, and a qualifier leads the name or is absent.
+		if [[ $name =~ _SIZE$ ]]; then
+			printf 'error: %s: %s:%s: %s ends in _SIZE; name the unit (%s)\n' \
+				"$id" "$file" "$line" "$name" "$(printf '%s' "${unit_suffixes[*]}" | tr ' ' '/')" >&2
+			result=1
+		fi
+		# e. A bare decimal of 10 000 or more groups with `_`; a multiple of 1024 is written as arithmetic; a numeric-as-string states the numeric value in its doc comment.
+		if [[ $value =~ ^[0-9]+$ ]]; then
+			number="$value"
+			count="${#number}"
+			if [ "$count" -ge 5 ]; then
+				printf 'error: %s: %s:%s: %s is written %s; group a value of 10 000 or more with _\n' \
+					"$id" "$file" "$line" "$name" "$value" >&2
+				result=1
+			fi
+			if [ "$number" -ge 1024 ] && [ $((number % 1024)) -eq 0 ]; then
+				printf 'note: %s: %s:%s: %s is a multiple of 1024; write it as arithmetic so the unit is visible\n' \
+					"$id" "$file" "$line" "$name" >&2
+			fi
+		fi
+		if [[ $value =~ ^\"[0-9]+\"$ ]]; then
+			number="$(printf '%s' "$value" | tr -cd '0-9')"
+			doc="$(sed -n "1,$((line - 1))p" -- "$file" |
+				awk '{ lines[NR] = $0 } END { last = NR; while (last > 0 && lines[last] !~ /^[[:space:]]*\/\/\//) last--; first = last; while (first > 0 && lines[first] ~ /^[[:space:]]*\/\/\//) first--; for (i = first + 1; i <= last; i++) print lines[i] }' |
+				tr -cd '0-9')"
+			case "$doc" in
+			*"$number"*) ;;
+			*)
+				printf 'error: %s: %s:%s: %s is the numeric string %s; state the numeric value in its doc comment\n' \
+					"$id" "$file" "$line" "$name" "$value" >&2
+				result=1
+				;;
+			esac
+		fi
+	done <<<"$rows"
+
+	# c. A name declared in `duplicate_threshold` files of one layer, all agreeing on one value, is hoisted to their lowest common ancestor module file.
+	for group_key in "${!group_files[@]}"; do
+		name="${group_key%%|*}"
+		layer="${group_key##*|}"
+		mapfile -t group_list < <(printf '%s\n' "${group_files[$group_key]}" | sed '/^$/d' | sort -u)
+		if [ "${#group_list[@]}" -lt "$threshold" ]; then
+			continue
+		fi
+		mapfile -t group_value_list < <(printf '%s\n' "${group_values[$group_key]}" | sed '/^$/d' | sort -u)
+		if [ "${#group_value_list[@]}" -ne 1 ]; then
+			continue
+		fi
+		first_dir="$(dirname "${group_list[0]}")"
+		target="the module file that owns the group"
+		if [ -f "${first_dir}.rs" ]; then
+			target="${first_dir}.rs"
+		fi
+		printf 'error: %s: %s is declared in %s files of %s with one value; hoist it to %s\n' \
+			"$id" "$name" "${#group_list[@]}" "$layer" "$target" >&2
+		result=1
+	done
+
+	return "$result"
+}
+
 check_doc_003() {
 	local id="DOC-003"
 	local file line result=0
@@ -3492,7 +3774,7 @@ check_obs_007() {
 		result=1
 	fi
 	if ! printf '%s\n' "$matches" | jq -e -s --arg f "$domain" \
-		'any(.[]; .file == $f and (.text | test("^const SECURITY_TARGET: &str = \"security\";$")))' >/dev/null; then
+		'any(.[]; .file == $f and (.text | test("^const SECURITY_TARGET: &str = \"security\";$") or test("^pub const SECURITY_TARGET: &str = \"security\";$")))' >/dev/null; then
 		printf 'error: %s: the reserved security target constant must be "security"\n' "$id" >&2
 		result=1
 	fi

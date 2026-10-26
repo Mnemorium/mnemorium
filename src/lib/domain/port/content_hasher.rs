@@ -1,5 +1,5 @@
+use crate::domain::model::integrity_hash::DIGEST_HEX_LENGTH;
 use crate::domain::model::integrity_hash::IntegrityHash;
-use crate::domain::model::integrity_hash::SHA256_HEX_LENGTH;
 use crate::domain::port::error::ContentHasherError;
 
 /// Port for incrementally hashing byte content.
@@ -22,7 +22,7 @@ pub trait ContentHasherSession: Send + Sync {
     /// # Errors
     ///
     /// Returns [`ContentHasherError`] when the digest cannot be finalized.
-    fn finalize(self: Box<Self>) -> Result<IntegrityHash<SHA256_HEX_LENGTH>, ContentHasherError>;
+    fn finalize(self: Box<Self>) -> Result<IntegrityHash<DIGEST_HEX_LENGTH>, ContentHasherError>;
 
     /// Feed `bytes` into the digest.
     ///

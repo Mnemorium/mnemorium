@@ -13,7 +13,7 @@ use serde::Serialize;
 use utoipa::ToSchema;
 
 /// Media type of a HAL response, per `API-031`.
-pub const HAL_CONTENT_TYPE: &str = "application/hal+json";
+pub(crate) const HAL_CONTENT_TYPE: &str = "application/hal+json";
 
 /// A single HAL link.
 #[derive(Debug, Serialize, Deserialize, ToSchema)]

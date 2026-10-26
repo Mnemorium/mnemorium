@@ -663,6 +663,8 @@ mod tests {
     use crate::application::port::complete_upload::CompleteUploadCommand;
     use crate::application::port::complete_upload::CompleteUploadError;
     use crate::application::port::complete_upload::CompleteUploadUseCase as _;
+    use crate::application::use_case::test_fixtures::ROOT;
+    use crate::application::use_case::test_fixtures::TTL_SECONDS;
     use crate::domain::model::file::File;
     use crate::domain::model::image::Orientation;
     use crate::domain::model::integrity_hash::IntegrityHash;
@@ -680,6 +682,8 @@ mod tests {
     use crate::domain::port::media_probe::ProbedVideo;
     use crate::domain::port::upload_repository::MockUploadRepository;
     use crate::domain::port::video_repository::MockVideoRepository;
+    use crate::test_helpers::CHUNK_SIZE;
+    use crate::test_helpers::DIGEST;
     use crate::test_helpers::TestFactory;
     use crate::test_helpers::TestUnitOfWork;
     use crate::test_helpers::TestUnitOfWorkFactory;
@@ -687,12 +691,7 @@ mod tests {
 
     use super::CompleteUpload;
 
-    const DIGEST: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
     const WRONG_DIGEST: &str = "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff";
-    const TTL_SECONDS: u64 = 3600;
-    const CHUNK_SIZE: u64 = 4;
-    /// Storage root the use case composes paths against.
-    const ROOT: &str = "/storage";
 
     type UseCase = CompleteUpload<TestFactory, MockFileStorage, MockMediaProbe>;
 

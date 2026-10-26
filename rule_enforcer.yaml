@@ -133,3 +133,27 @@ rules:
     # script/check_scopes.sh; an entry that matches no tracked path is reported.
     ignore_paths:
       - "openspec/**"
+
+  STY-RUST-086:
+    technology_nouns:
+      - SHA[0-9]*
+      - MD5
+      - BLAKE[0-9]*
+      - FFPROBE
+      - SQLITE[0-9]*
+      - JWT
+      - ARGON[0-9]*
+      - MOKA
+      - ENVY
+    noun_exempt_files:
+      - src/lib/domain/model/configuration.rs
+    duplicate_threshold: 3
+    unit_suffixes:
+      - LENGTH
+      - BYTES
+      - SECONDS
+      - MILLISECONDS
+    qualifier_prefixes:
+      - DEFAULT
+      - MAX
+      - MIN
