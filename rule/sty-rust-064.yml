@@ -7,12 +7,11 @@ message: >-
   startup binding for STY-RUST-064
 rule:
   any:
-    # AppState stores the live configuration behind an ArcSwap.
     - all:
         - kind: field_declaration
         - has:
             field: type
-            regex: '^Arc<ArcSwap<Configuration>>$'
+            regex: '^Arc<Configuration>$'
         - inside:
             kind: field_declaration_list
             inside:

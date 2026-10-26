@@ -1,8 +1,6 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use arc_swap::ArcSwap;
-
 use crate::application::port::add_gallery_item::AddGalleryItemUseCase;
 use crate::application::port::create_gallery::CreateGalleryUseCase;
 use crate::application::port::create_playlist::CreatePlaylistUseCase;
@@ -55,7 +53,7 @@ use crate::infrastructure::outbound::sqlx::unit_of_work::SqlxUnitOfWorkFactory;
 /// the Asset use cases write.
 pub struct RuntimeLibraryUseCaseFactory {
     /// Live application configuration.
-    configuration: Arc<ArcSwap<Configuration>>,
+    configuration: Arc<Configuration>,
     /// Factory opening the unit of work wrapping the Library use cases.
     unit_of_work_factory: Arc<SqlxUnitOfWorkFactory>,
 }
@@ -64,7 +62,7 @@ impl RuntimeLibraryUseCaseFactory {
     /// Create a new factory.
     #[must_use]
     pub fn new(
-        configuration: Arc<ArcSwap<Configuration>>,
+        configuration: Arc<Configuration>,
         unit_of_work_factory: Arc<SqlxUnitOfWorkFactory>,
     ) -> Self {
         Self {
@@ -88,7 +86,7 @@ impl LibraryUseCaseFactory for RuntimeLibraryUseCaseFactory {
     }
 
     fn delete_gallery(&self) -> Arc<dyn DeleteGalleryUseCase> {
-        let live = self.configuration.load();
+        let live = Arc::clone(&self.configuration);
         // The file storage adapter is stateless and rebuilt per accessor from
         // the live storage root, like the item deletion's.
         Arc::new(DeleteGallery::new(
@@ -99,7 +97,7 @@ impl LibraryUseCaseFactory for RuntimeLibraryUseCaseFactory {
     }
 
     fn delete_gallery_item(&self) -> Arc<dyn DeleteGalleryItemUseCase> {
-        let live = self.configuration.load();
+        let live = Arc::clone(&self.configuration);
         // The file storage adapter is stateless and rebuilt per accessor from
         // the live storage root, like the Asset factory's.
         Arc::new(DeleteGalleryItem::new(

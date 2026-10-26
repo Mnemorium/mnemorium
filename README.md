@@ -157,16 +157,20 @@ cargo run --bin server
 
 ### Configuration
 
-Configuration is layered: the persisted singleton row is the base, the optional `config.yaml` file overrides it, and the
-environment overrides both. Environment variables use the `mnemorium` prefix and the `__` separator, for example
-`MNEMORIUM__LOGGING_LEVEL`.
+Configuration is layered: built-in defaults, then the optional `config.yaml` file, then the environment. Every setting
+has a default, so an absent, empty or partial file is valid: the settings it omits keep their built-in value, and the
+complete default file is written on the first start. A `MNEMORIUM_*` variable naming a setting overrides the file —
+`logging.level` is `MNEMORIUM_LOGGING_LEVEL`, `security.rate_limit.burst_size` is
+`MNEMORIUM_SECURITY_RATE_LIMIT_BURST_SIZE` — and an unknown name is ignored. The non-derivable part of the instance —
+the site pepper and the token signing secret — lives in `state.yaml`, which is written once and must be backed up
+together with the datastore (`mnemorium.db`).
 
 TODO: link to a document that explains the configuration.
 
 ### First-Time Admin
 
 On the first run the system creates a Root Admin account and logs a generated default password to standard output. The
-default password stops being revealed once it has been changed. See
+default password is revealed only by the start that creates the account; change it after the first login. See
 [UC-003 – Initialize Root Admin](docs/development/UseCases.md#uc-003---initialize-root-admin) for the full flow.
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>

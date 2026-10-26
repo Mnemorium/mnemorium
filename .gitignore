@@ -24,6 +24,7 @@ config.yaml
 
 # Local secrets
 .env
+state.*
 
 # Python
 .ruff_cache/

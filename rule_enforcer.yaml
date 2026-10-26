@@ -6,8 +6,7 @@ rules:
       - src/lib/infrastructure/inbound/rest/api_error.rs::error_response
       - src/lib/infrastructure/inbound/rest/middleware/rate_limit.rs::from_prune
       - src/lib/infrastructure/inbound/rest/middleware/rate_limit.rs::rate_limit_error
-      - src/lib/infrastructure/outbound/config/bootstrap.rs::resolve_sqlite3
-      - src/lib/infrastructure/outbound/config/configuration_source.rs::deserialize
+      - src/lib/infrastructure/outbound/file_system/configuration_source.rs::deserialize
   STY-RUST-002:
     bounded_contexts: &bounded_contexts
       - asset
@@ -26,7 +25,6 @@ rules:
   TEST-002:
     exempt_traits:
       - AssetUnitOfWork
-      - ConfigurationUnitOfWork
       - IdentityUnitOfWork
       - LibraryUnitOfWork
       - UnitOfWork
@@ -55,9 +53,7 @@ rules:
     # The types § 4 names as secret-bearing, all declared in
     # src/lib/domain/model/; a rename or removal cannot silently drop one.
     secret_types:
-      - Security
-      - Jwt
-      - Configuration
+      - InstanceState
       - Credential
     # A field name that carries a secret. A `Debug` derive prints every field,
     # and a manual `impl Debug` must not print these; compare against both.
@@ -65,6 +61,7 @@ rules:
       - pepper
       - secret
       - password_hash
+      - jwt_secret
     # The types § 4 names as personal-data-bearing, all declared in
     # src/lib/domain/model/; a rename or removal cannot silently drop one.
     personal_data_types:
@@ -85,7 +82,9 @@ rules:
     adapter_surfaces:
       - src/lib/infrastructure/outbound/sqlx/*_repository.rs
       - src/lib/infrastructure/outbound/moka.rs
-      - src/lib/infrastructure/outbound/config/*.rs
+      - src/lib/infrastructure/outbound/file_system/configuration_source.rs
+      - src/lib/infrastructure/outbound/file_system/instance_state_store.rs
+
   TEST-041:
     # Business use cases excepted from the one-file-per-use-case rule, each a
     # catalogued use case id (`UC-<seq>`, as written in

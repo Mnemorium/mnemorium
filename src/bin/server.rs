@@ -4,23 +4,28 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
-use arc_swap::ArcSwap;
 use mnemorium::application::port::ensure_storage_directories::EnsureStorageDirectoriesCommand;
 use mnemorium::application::port::ensure_storage_directories::EnsureStorageDirectoriesUseCase as _;
 use mnemorium::application::port::initialize_root_admin::InitializeRootAdminUseCase as _;
 use mnemorium::application::port::load_configuration::LoadConfigurationUseCase as _;
+use mnemorium::application::port::load_state::DATABASE_PATH;
+use mnemorium::application::port::load_state::LoadStateUseCase as _;
+use mnemorium::application::port::load_state::STATE_PATH;
 use mnemorium::application::security_event;
 use mnemorium::application::use_case::ensure_storage_directories::EnsureStorageDirectories;
 use mnemorium::application::use_case::initialize_root_admin::InitializeRootAdmin;
 use mnemorium::application::use_case::load_configuration::LoadConfiguration;
+use mnemorium::application::use_case::load_state::LoadState;
 use mnemorium::infrastructure::inbound::rest::app_state::AppState;
 use mnemorium::infrastructure::inbound::rest::handler;
 use mnemorium::infrastructure::inbound::rest::middleware::rate_limit::LoginRateLimiter;
 use mnemorium::infrastructure::logging;
 use mnemorium::infrastructure::outbound::argon2::password_hasher::Argon2PasswordHasher;
-use mnemorium::infrastructure::outbound::config::bootstrap::bootstrap_sqlite3;
-use mnemorium::infrastructure::outbound::config::configuration_source::ConfigConfigurationSource;
+use mnemorium::infrastructure::outbound::envy::configuration::EnvConfigurationSource;
+use mnemorium::infrastructure::outbound::envy::state_seeds::EnvStateSeedSource;
+use mnemorium::infrastructure::outbound::file_system::configuration_source::FileConfigurationSource;
 use mnemorium::infrastructure::outbound::file_system::file_storage::FileSystemStorage;
+use mnemorium::infrastructure::outbound::file_system::instance_state_store::FileInstanceStateStore;
 use mnemorium::infrastructure::outbound::media_probe::LocalMediaProbe;
 use mnemorium::infrastructure::outbound::random::password_generator::RandomPasswordGenerator;
 use mnemorium::infrastructure::outbound::random::secret_generator::ChaChaSecretGenerator;
@@ -40,42 +45,67 @@ use tracing::{error, info, warn};
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    let sqlite3 = bootstrap_sqlite3()?;
-    let pool = init_db(&sqlite3).await?;
-
-    let unit_of_work_factory = Arc::new(SqlxUnitOfWorkFactory::new(pool));
-    let configuration_source = Arc::new(ConfigConfigurationSource::new());
-    let load_configuration = Arc::new(LoadConfiguration::new(
-        Arc::clone(&unit_of_work_factory),
-        configuration_source,
+    // Identity first: it is existential, and a datastore without identity must
+    // fail rather than silently regenerate the key material.
+    let loaded_state = LoadState::new(
+        Arc::new(FileInstanceStateStore::new(PathBuf::from(STATE_PATH))),
         Arc::new(ChaChaSecretGenerator::new()),
+        Arc::new(EnvStateSeedSource::new()),
+    )
+    .execute()
+    .await?;
+    let instance_state_created = loaded_state.created();
+    let pepper_generated = loaded_state.pepper_generated();
+    let jwt_secret_generated = loaded_state.jwt_secret_generated();
+    let instance_state = Arc::new(loaded_state.state().clone());
+
+    // Configuration is derivable and datastore-free, so it resolves next.
+    let load_configuration = Arc::new(LoadConfiguration::new(
+        Arc::new(FileConfigurationSource::new()),
+        Arc::new(EnvConfigurationSource::new()),
     ));
     let loaded_configuration = load_configuration.execute().await?;
-    let configuration_created = loaded_configuration.created();
-    let configuration = Arc::new(ArcSwap::from_pointee(
-        loaded_configuration.configuration().clone(),
-    ));
+    let configuration_file_created = loaded_configuration.file_created();
+    let configuration = Arc::new(loaded_configuration.configuration().clone());
 
-    let _log_guard = logging::setup(configuration.load().logging())?;
+    let _log_guard = logging::setup(configuration.logging())?;
 
-    // The first-boot lifecycle events are emitted here, after `logging::setup`,
-    // so they reach a sink (`#187`, `OBS-006`); the use case runs before the
-    // subscriber exists and only reports that it created the singleton.
-    if configuration_created {
-        security_event::system_object("configuration", "create");
-        security_event::secret_initialized("pepper");
-        security_event::secret_initialized("jwt_secret");
+    // The lifecycle events are emitted here, after `logging::setup`, so they
+    // reach a sink (`OBS-006`); identity creation happens before configuration
+    // because logging settings are themselves configuration.
+    if instance_state_created {
+        security_event::system_object("instance_state", "create");
+        if pepper_generated {
+            security_event::secret_initialized("pepper");
+        }
+        if jwt_secret_generated {
+            security_event::secret_initialized("jwt_secret");
+        }
+    }
+    if configuration_file_created {
+        warn!(
+            storage_root = configuration.asset().storage().root(),
+            datastore = DATABASE_PATH,
+            "the configuration file did not exist; wrote the built-in defaults"
+        );
+    }
+    if !loaded_configuration.applied().is_empty() {
+        info!(
+            settings = ?loaded_configuration.applied(),
+            "the environment overrode these configuration settings; its values take precedence over config.yaml"
+        );
     }
 
-    // The bootstrap sizes the pool before the configuration singleton is
-    // reachable, so `max_connections` is a startup-only setting and cannot be
-    // reconciled from the stored row; only the datastore path is compared here.
-    if configuration.load().persistence().sqlite3().path() != sqlite3.path() {
-        warn!("the sqlite3 datastore path changed in the configuration; restart to apply it");
-    }
+    let pool = init_db(
+        DATABASE_PATH,
+        configuration.persistence().sqlite3().max_connections(),
+    )
+    .await?;
+
+    let unit_of_work_factory = Arc::new(SqlxUnitOfWorkFactory::new(pool));
 
     let password_hasher = Arc::new(Argon2PasswordHasher::new(
-        configuration.load().security().pepper().as_bytes().to_vec(),
+        instance_state.pepper().as_bytes().to_vec(),
     ));
     let initialize_root_admin = Arc::new(InitializeRootAdmin::new(
         Arc::clone(&unit_of_work_factory),
@@ -89,7 +119,7 @@ async fn main() -> Result<(), anyhow::Error> {
     )]
     match initialize_root_admin.execute().await {
         Ok(Some(response)) => {
-            if configuration.load().security().log_root_admin_password() {
+            if configuration.security().log_root_admin_password() {
                 println!(
                     "Root admin initialized; use the default password to authenticate and change it: '{}'",
                     response.default_password()
@@ -104,6 +134,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     let identity_use_case_factory = Arc::new(RuntimeIdentityUseCaseFactory::new(
         Arc::clone(&configuration),
+        Arc::clone(&instance_state),
         Arc::clone(&unit_of_work_factory),
     ));
     let user_use_case_factory = Arc::new(RuntimeUserUseCaseFactory::new(Arc::clone(
@@ -115,8 +146,8 @@ async fn main() -> Result<(), anyhow::Error> {
     ));
 
     // The startup storage directories are created once from the root the Asset
-    // and Library factories read live.
-    let storage_root = PathBuf::from(configuration.load().asset().storage().root());
+    // and Library factories read.
+    let storage_root = PathBuf::from(configuration.asset().storage().root());
     let file_storage = Arc::new(FileSystemStorage::new());
     EnsureStorageDirectories::new(Arc::clone(&file_storage), storage_root)
         .execute(EnsureStorageDirectoriesCommand::new())
@@ -128,14 +159,13 @@ async fn main() -> Result<(), anyhow::Error> {
         LocalMediaProbe::new_permits(),
     ));
 
-    let login_rate_limiter = Arc::new(LoginRateLimiter::new(
-        configuration.load().security().rate_limit(),
-    ));
+    let login_rate_limiter = Arc::new(LoginRateLimiter::new(configuration.security().rate_limit()));
 
     let state = AppState::new(
         asset_use_case_factory,
         configuration,
         identity_use_case_factory,
+        instance_state,
         library_use_case_factory,
         user_use_case_factory,
     );

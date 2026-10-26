@@ -24,7 +24,6 @@ mod test_helpers {
     use std::sync::atomic::AtomicBool;
     use std::sync::atomic::Ordering;
 
-    use arc_swap::ArcSwap;
     use axum::body::to_bytes;
     use axum::http::StatusCode;
     use axum::http::header;
@@ -40,18 +39,9 @@ mod test_helpers {
     use crate::application::port::library_use_case_factory::MockLibraryUseCaseFactory;
     use crate::application::port::user_use_case_factory::MockUserUseCaseFactory;
     use crate::application::port::user_use_case_factory::UserUseCaseFactory;
-    use crate::domain::model::configuration::Asset;
     use crate::domain::model::configuration::Configuration;
-    use crate::domain::model::configuration::Jwt;
-    use crate::domain::model::configuration::Logging;
-    use crate::domain::model::configuration::Persistence;
-    use crate::domain::model::configuration::Rotation;
-    use crate::domain::model::configuration::Security;
-    use crate::domain::model::configuration::Sqlite3;
+    use crate::domain::model::instance_state::InstanceState;
     use crate::domain::port::asset_unit_of_work::AssetUnitOfWork;
-    use crate::domain::port::configuration_repository::ConfigurationRepository;
-    use crate::domain::port::configuration_repository::MockConfigurationRepository;
-    use crate::domain::port::configuration_unit_of_work::ConfigurationUnitOfWork;
     use crate::domain::port::credential_repository::CredentialRepository;
     use crate::domain::port::credential_repository::MockCredentialRepository;
     use crate::domain::port::error::UnitOfWorkError;
@@ -91,10 +81,14 @@ mod test_helpers {
 
     /// JWT secret the test `AppState` fixtures are built with.
     ///
-    /// The auth middleware builds its token provider from the live
-    /// configuration, so tests mint tokens with this value.
+    /// The auth middleware builds its token provider from the instance
+    /// identity, so tests mint tokens with this value.
     pub const TEST_JWT_SECRET: &str =
         "0000000000000000000000000000000000000000000000000000000000000000";
+
+    /// Site pepper the test `AppState` fixtures are built with.
+    pub const TEST_PEPPER: &str =
+        "1111111111111111111111111111111111111111111111111111111111111111";
 
     /// Fake unit of work wiring mocked repositories and recording its outcome.
     ///
@@ -112,8 +106,6 @@ mod test_helpers {
         pub commit_fails: Arc<AtomicBool>,
         /// Set when `commit` is called.
         pub committed: Arc<AtomicBool>,
-        /// Configuration repository.
-        pub configuration: MockConfigurationRepository,
         /// Credential repository.
         pub credentials: MockCredentialRepository,
         /// File repository.
@@ -144,7 +136,6 @@ mod test_helpers {
             Self {
                 commit_fails: Arc::new(AtomicBool::new(false)),
                 committed: Arc::new(AtomicBool::new(false)),
-                configuration: MockConfigurationRepository::new(),
                 credentials: MockCredentialRepository::new(),
                 files: MockFileRepository::new(),
                 galleries: MockGalleryRepository::new(),
@@ -157,12 +148,6 @@ mod test_helpers {
                 users: MockUserRepository::new(),
                 videos: MockVideoRepository::new(),
             }
-        }
-    }
-
-    impl ConfigurationUnitOfWork for TestUnitOfWork {
-        fn configuration(&mut self) -> impl ConfigurationRepository + '_ {
-            &mut self.configuration
         }
     }
 
@@ -333,45 +318,34 @@ mod test_helpers {
         }
     }
 
-    /// Build a configuration whose JWT settings use `jwt_secret`.
-    ///
-    /// All other settings are fixed valid values, and the pepper is `"1"`
-    /// repeated 64 times.
+    /// Build the instance identity the test `AppState` fixtures carry.
     ///
     /// # Errors
     ///
-    /// Returns an error when the fixed configuration cannot be built.
-    pub fn configuration_with_jwt_secret(
-        jwt_secret: &str,
-    ) -> Result<Configuration, Box<dyn Error>> {
-        let jwt = Jwt::try_new(jwt_secret.to_owned(), 3600)?;
-        let security = Security::try_new(jwt, "1".repeat(64), true)?;
-        let sqlite3 = Sqlite3::try_new(":memory:".to_owned(), 1)?;
-        let logging = Logging::try_new(false, "debug,sqlx=warn".to_owned(), 7, Rotation::Daily)?;
-        Ok(Configuration::new(
-            Persistence::new(sqlite3),
-            security,
-            logging,
-            Asset::default(),
-        ))
+    /// Returns an error when the fixed identity cannot be built.
+    pub fn instance_state() -> Result<InstanceState, Box<dyn Error>> {
+        Ok(InstanceState::try_new(
+            0,
+            TEST_PEPPER.to_owned(),
+            TEST_JWT_SECRET.to_owned(),
+        )?)
     }
 
     /// Build an application state whose use-case factories are mocks and whose
-    /// configuration is a fixed valid snapshot.
+    /// configuration and identity are fixed valid values.
     ///
-    /// The auth middleware builds its token provider from that configuration,
-    /// so tests mint tokens with [`TEST_JWT_SECRET`].
+    /// The auth middleware builds its token provider from that identity, so
+    /// tests mint tokens with [`TEST_JWT_SECRET`].
     ///
     /// # Errors
     ///
-    /// Returns an error when the fixed configuration cannot be built.
+    /// Returns an error when the fixed identity cannot be built.
     pub fn app_state() -> Result<AppState, Box<dyn Error>> {
         Ok(AppState::new(
             Arc::new(MockAssetUseCaseFactory::new()),
-            Arc::new(ArcSwap::from_pointee(configuration_with_jwt_secret(
-                TEST_JWT_SECRET,
-            )?)),
+            Arc::new(Configuration::default()),
             Arc::new(MockIdentityUseCaseFactory::new()),
+            Arc::new(instance_state()?),
             Arc::new(MockLibraryUseCaseFactory::new()),
             Arc::new(MockUserUseCaseFactory::new()),
         ))
@@ -383,16 +357,15 @@ mod test_helpers {
     ///
     /// # Errors
     ///
-    /// Returns an error when the fixed configuration cannot be built.
+    /// Returns an error when the fixed identity cannot be built.
     pub fn app_state_with_identity(
         identity_use_case_factory: Arc<dyn IdentityUseCaseFactory>,
     ) -> Result<AppState, Box<dyn Error>> {
         Ok(AppState::new(
             Arc::new(MockAssetUseCaseFactory::new()),
-            Arc::new(ArcSwap::from_pointee(configuration_with_jwt_secret(
-                TEST_JWT_SECRET,
-            )?)),
+            Arc::new(Configuration::default()),
             identity_use_case_factory,
+            Arc::new(instance_state()?),
             Arc::new(MockLibraryUseCaseFactory::new()),
             Arc::new(MockUserUseCaseFactory::new()),
         ))
@@ -404,16 +377,15 @@ mod test_helpers {
     ///
     /// # Errors
     ///
-    /// Returns an error when the fixed configuration cannot be built.
+    /// Returns an error when the fixed identity cannot be built.
     pub fn app_state_with_user(
         user_use_case_factory: Arc<dyn UserUseCaseFactory>,
     ) -> Result<AppState, Box<dyn Error>> {
         Ok(AppState::new(
             Arc::new(MockAssetUseCaseFactory::new()),
-            Arc::new(ArcSwap::from_pointee(configuration_with_jwt_secret(
-                TEST_JWT_SECRET,
-            )?)),
+            Arc::new(Configuration::default()),
             Arc::new(MockIdentityUseCaseFactory::new()),
+            Arc::new(instance_state()?),
             Arc::new(MockLibraryUseCaseFactory::new()),
             user_use_case_factory,
         ))
@@ -425,16 +397,15 @@ mod test_helpers {
     ///
     /// # Errors
     ///
-    /// Returns an error when the fixed configuration cannot be built.
+    /// Returns an error when the fixed identity cannot be built.
     pub fn app_state_with_library(
         library_use_case_factory: Arc<dyn LibraryUseCaseFactory>,
     ) -> Result<AppState, Box<dyn Error>> {
         Ok(AppState::new(
             Arc::new(MockAssetUseCaseFactory::new()),
-            Arc::new(ArcSwap::from_pointee(configuration_with_jwt_secret(
-                TEST_JWT_SECRET,
-            )?)),
+            Arc::new(Configuration::default()),
             Arc::new(MockIdentityUseCaseFactory::new()),
+            Arc::new(instance_state()?),
             library_use_case_factory,
             Arc::new(MockUserUseCaseFactory::new()),
         ))
@@ -447,16 +418,15 @@ mod test_helpers {
     ///
     /// # Errors
     ///
-    /// Returns an error when the fixed configuration cannot be built.
+    /// Returns an error when the fixed identity cannot be built.
     pub fn app_state_with_asset(
         asset_use_case_factory: Arc<dyn AssetUseCaseFactory>,
     ) -> Result<AppState, Box<dyn Error>> {
         Ok(AppState::new(
             asset_use_case_factory,
-            Arc::new(ArcSwap::from_pointee(configuration_with_jwt_secret(
-                TEST_JWT_SECRET,
-            )?)),
+            Arc::new(Configuration::default()),
             Arc::new(MockIdentityUseCaseFactory::new()),
+            Arc::new(instance_state()?),
             Arc::new(MockLibraryUseCaseFactory::new()),
             Arc::new(MockUserUseCaseFactory::new()),
         ))
