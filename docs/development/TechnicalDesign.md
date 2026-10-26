@@ -2692,14 +2692,15 @@ Source: `devenv.nix`.
 
 Source: `requirements.txt`.
 
-| Name                                                         | Description                                       | Version | License      |
-| ------------------------------------------------------------ | ------------------------------------------------- | ------- | ------------ |
-| [mkdocs](https://pypi.org/project/mkdocs/)                   | Static site generator for the documentation site. | 1.6.0   | BSD-2-Clause |
-| [mkdocs-material](https://pypi.org/project/mkdocs-material/) | Material Design theme for MkDocs.                 | 9.7.7   | MIT          |
-| [mkdocs_puml](https://pypi.org/project/mkdocs-puml/)         | Renders PlantUML diagrams from fenced blocks.     | 2.3.0   | MIT          |
-| [pytest](https://pypi.org/project/pytest/)                   | Python testing framework used by the E2E suite.   | 9.1.1   | MIT          |
-| [requests](https://pypi.org/project/requests/)               | HTTP library for Python.                          | 2.34.2  | Apache-2.0   |
-| [ruff](https://pypi.org/project/ruff/)                       | Fast Python linter and formatter.                 | 0.16.5  | MIT          |
+| Name                                                         | Description                                                       | Version | License      |
+| ------------------------------------------------------------ | ----------------------------------------------------------------- | ------- | ------------ |
+| [mkdocs](https://pypi.org/project/mkdocs/)                   | Static site generator for the documentation site.                 | 1.6.0   | BSD-2-Clause |
+| [mkdocs-material](https://pypi.org/project/mkdocs-material/) | Material Design theme for MkDocs.                                 | 9.7.7   | MIT          |
+| [mkdocs_puml](https://pypi.org/project/mkdocs-puml/)         | Renders PlantUML diagrams from fenced blocks.                     | 2.3.0   | MIT          |
+| [pytest](https://pypi.org/project/pytest/)                   | Python testing framework used by the black-box suites.            | 9.1.1   | MIT          |
+| [PyYAML](https://pypi.org/project/PyYAML/)                   | YAML parser the configuration harness renders `config.yaml` with. | 6.0.3   | MIT          |
+| [requests](https://pypi.org/project/requests/)               | HTTP library for Python.                                          | 2.34.2  | Apache-2.0   |
+| [ruff](https://pypi.org/project/ruff/)                       | Fast Python linter and formatter.                                 | 0.16.5  | MIT          |
 
 ---
 
