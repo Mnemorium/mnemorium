@@ -15,7 +15,7 @@ never to its entry.
 The catalog is organised by package, following the [Overview](Overview.md#bounded-context). A bounded context is a
 package, and a context that divides into areas lists them as sub-packages. Each package carries its diagram and the
 entries it owns, so the section an entry sits in is its package. A capability that spans several packages is filed where
-it is owned; `STY-RUST-040` records the cross-context units of work.
+it is owned; [TechnicalDesign.md](TechnicalDesign.md) § 7.3 governs how its writes stay atomic.
 
 The master diagram below is the package view of the whole catalog:
 
