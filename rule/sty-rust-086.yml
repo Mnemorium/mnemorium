@@ -1,0 +1,32 @@
+---
+id: sty-rust-086
+language: Rust
+severity: hint
+message: >-
+  extract the name, initializer and declaring file of every production constant
+  for STY-RUST-086
+files:
+  - src/**/*.rs
+rule:
+  all:
+    - kind: const_item
+    - has:
+        field: name
+        pattern: $NAME
+    - has:
+        field: value
+        pattern: $VALUE
+    - not:
+        inside:
+          any:
+            - kind: mod_item
+              follows:
+                kind: attribute_item
+                regex: 'cfg\(test\)'
+                stopBy: end
+            - kind: function_item
+              follows:
+                kind: attribute_item
+                regex: 'cfg\(test\)'
+                stopBy: end
+          stopBy: end
