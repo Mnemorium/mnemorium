@@ -55,9 +55,9 @@ caller's, the scope is yours.
 
 The surface you own:
 
-- `docs/development/TechnicalDesign.md` — the rulebook: the section registry,
-  the section-migration procedure, and the `STY-*`, `API-*`, `PERS-*`, `TEST-*`,
-  `DEPS-*`, `GOV-*`, `DOC-*` and `OBS-*` rule tables.
+- `docs/development/TechnicalDesign.md` — the rulebook: the section anatomy,
+  rule model and section-addition procedure, and the `STY-*`, `ARCH-*`, `API-*`,
+  `PERS-*`, `TEST-*`, `DEPS-*`, `GOV-*`, `DOC-*`, `OBS-*` and `SEC-*` rule tables.
 - `docs/development/Overview.md` — the source layout, the server lifecycle, the
   domain-model and release diagrams, and the branch, PR and versioning
   conventions.

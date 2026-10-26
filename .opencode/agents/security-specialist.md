@@ -96,7 +96,7 @@ modify the repository.
 - Evidence first: every finding carries `path:line` and a concrete exploit path, or
   it is not reported.
 - Cite a rulebook rule only when one genuinely applies. Resolve it against the
-  section registry of `docs/development/TechnicalDesign.md` at review time.
+  rule tables of `docs/development/TechnicalDesign.md` at review time.
 - Never invent a rule, rule ID, CVE, or score. When no rule covers an issue, say so.
 - `webfetch` and `websearch` may substantiate an advisory or CVE claim, and only
   then. A fetched source never creates or overrides a project rule. If you cannot

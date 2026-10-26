@@ -19,30 +19,9 @@ written to be cited and checked.
 
 ## How this document is extended
 
----
-
-### Section registry
-
-| #   | Section                        | Status   | Canonical source | Owner                                           |
-| --- | ------------------------------ | -------- | ---------------- | ----------------------------------------------- |
-| 1   | Code Style Guidelines          | migrated | —                | rust-developer (Rust), database-engineer (SQL)  |
-| 2   | Architecture                   | migrated | —                | system-architect                                |
-| 3   | API                            | migrated | —                | rust-developer                                  |
-| 4   | Persistence                    | migrated | —                | database-engineer                               |
-| 5   | Testing                        | migrated | —                | rust-developer (unit/integration), qa-e2e (E2E) |
-| 6   | Dependencies & Dev Environment | migrated | —                | devops                                          |
-| 7   | Repository Governance          | migrated | —                | technical-writer (docs), devops (gates)         |
-| 8   | Documentation                  | migrated | —                | technical-writer                                |
-| 9   | Logging & Observability        | migrated | —                | logging-specialist                              |
-| 10  | Security                       | migrated | —                | security-specialist                             |
-
-Rule-ID prefixes: § 1 `STY-*`, § 2 `ARCH-*`, § 3 `API-*`, § 4 `PERS-*`, § 5 `TEST-*`, § 6 `DEPS-*`, § 7 `GOV-*`, § 8
-`DOC-*`, § 9 `OBS-*`, § 10 `SEC-*`.
-
-- **migrated** — the content lives in this document.
-- **linked** — the section number is reserved; the canonical content still lives in the linked document and migrates
-  here later.
-- **planned** — no content exists yet; the number is reserved.
+The rulebook is a set of numbered sections. The two sections before the first numbered one — `Purpose` and this one —
+are process material: they carry no number and no rule. A section's number follows its order in this document; numbers
+are append-only and never reused.
 
 ---
 
@@ -65,9 +44,9 @@ A section presents its rules as a **rule table**:
 | -------------- | ------- | -------------------------------------------------------------------------------------- | --------- |
 | `STY-RUST-001` | General | Extract functionality into its own function only when it is used in at least 4 places. |           |
 
-- **ID** — a stable identifier (`STY-RUST-001`, `STY-SQL-001`, ...) that names one rule. A merged or removed rule is
-  closed by an explicit renumbering change that shifts the following IDs down and updates every citation in the same
-  commit; the sequence is always gap-free.
+- **ID** — a stable identifier (`STY-RUST-001`, `STY-SQL-001`, ...) that names one rule; its prefix is unique to the
+  section that owns the rule. A merged or removed rule is closed by an explicit renumbering change that shifts the
+  following IDs down and updates every citation in the same commit; the sequence is always gap-free.
 - **Section** — the topic the rule belongs to.
 - **Rule** — one line, imperative and testable.
 - **More info** — a link to the numbered detail section below the table that holds the rule's code, rationale or
@@ -78,8 +57,8 @@ explanation. A numbered detail sits one heading level below the heading that own
 topic heading, or `### 1.`, `### 2.` directly under the section's `##` heading. Nest `##### 2.1`, and so on; numbering
 restarts at 1 within each `###` group — or within the section when it has none; detail numbers are append-only.
 
-Only normative statements carry IDs; every section present in this document uses the table form. A newly added or
-migrated section follows the same shape.
+Only normative statements carry IDs; every section present in this document uses the table form. A newly added section
+follows the same shape.
 
 Cite a rule as `TechnicalDesign.md § 1 (Code Style Guidelines), STY-RUST-001`, or a detail section by its number, e.g.
 `§ 2.6`.
@@ -88,12 +67,13 @@ Cite a rule as `TechnicalDesign.md § 1 (Code Style Guidelines), STY-RUST-001`, 
 
 ### Adding or migrating a section
 
-1. Take the next number in the registry; numbers are never reused.
-2. Write the section following the [section anatomy](#section-anatomy), or mark it `linked` with a pointer to its
-   canonical source. Add the section to the `AGENTS.md` router, or refresh its existing entry, in the same change.
+1. Append the section after the last numbered section; numbers follow document order and are never reused.
+2. Write the section following the [section anatomy](#section-anatomy). A detail it leaves out may stay in an adjacent
+   document the section links to, as Architecture links to [Overview.md](Overview.md). Add the section to the
+   `AGENTS.md` router, or refresh its existing entry, in the same change.
 3. To migrate: move the content, re-level its headings under the section, keep every existing anchor working, then
    delete the source document and update every reference — including `AGENTS.md` and `mkdocs.yml` — in the same change.
-4. Assign the section's rule-ID prefix in this file.
+4. Give the section's rules a prefix no other section uses (see [Rule model](#rule-model)).
 5. Run the Markdown gates: the `lint:md` and `fmt:md` devenv tasks.
 
 ---

@@ -101,8 +101,8 @@ findings; you never modify the repository.
 
 - The normative source is `docs/development/TechnicalDesign.md` § 9 (Logging &
   Observability), `OBS-001`–`OBS-008`, and the security-event catalog in its
-  § 6. Read it at review time; resolve every citation against the section
-  registry before judging.
+  § 6. Read it at review time; resolve every citation against its rule tables
+  before judging.
 - `docs/development/TechnicalDesign.md` § 1 (Code Style Guidelines)
   `STY-RUST-021`, `STY-RUST-033`, `STY-RUST-034`, `STY-RUST-074` and
   `STY-RUST-076` bound adjacent behaviour; they must not carry a logging

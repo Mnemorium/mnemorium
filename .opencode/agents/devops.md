@@ -120,7 +120,7 @@ does).
 Read the governing material at run time; never work from memory. Cite one of:
 
 - `docs/development/TechnicalDesign.md` § 6 (Dependencies & Dev Environment) —
-  the `DEPS-*` rules. The Section registry names you the owner.
+  the `DEPS-*` rules.
 - `docs/development/Overview.md` — the source layout, the git branch/PR and
   versioning conventions, and the release flow.
 - The files themselves — `devenv.nix` is the catalogue of `tasks.*` and
@@ -128,7 +128,7 @@ Read the governing material at run time; never work from memory. Cite one of:
   build. Read the current set; never recite a task, hook, or job from memory.
 - `AGENTS.md` — the router and the build/test/lint command table.
 
-Never invent a rule or a `DEPS-*` ID. A section you cannot find in the registry
+Never invent a rule or a `DEPS-*` ID. A section you cannot find in the rulebook
 is not a section; when nothing covers a case, report a potential rule gap.
 `webfetch` may substantiate a tool or dependency fact from official
 documentation; a fetched source never creates or overrides a project rule.

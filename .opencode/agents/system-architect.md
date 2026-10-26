@@ -73,9 +73,9 @@ publish, or approve.
 Architecture-first, cross-cutting. Your core is § 2 (Architecture) of the
 technical design rulebook: the source layout and layer map, the hexagonal
 dependency direction (`domain` ← `application` ← `infrastructure`), the bounded
-contexts, the composition root, and the server lifecycle. That section is
-**linked**, so its normative content lives in `docs/development/Overview.md`
-until it migrates; treat that document as the source of truth for architecture.
+contexts, the composition root, and the server lifecycle. The section's `ARCH-*`
+rules live in `docs/development/TechnicalDesign.md`; the layout and lifecycle
+detail they constrain lives in `docs/development/Overview.md`.
 
 A change that crosses a boundary may touch sections you do not own — API,
 persistence, testing, dependencies. Follow it across those boundaries when the
@@ -107,19 +107,18 @@ state what is missing and stop.
 The rulebook is not copied into this file. Resolve it at run time so that a
 section or rule added after this file was written is still in scope:
 
-1. Read the **Section registry** of `docs/development/TechnicalDesign.md`
-   first — it maps each section to its status, canonical source, and rule-ID
-   prefix.
-2. Resolve the sections your task touches from the registry. A **linked**
-   section keeps its normative content in the named source; read it for that
-   section's rules. Architecture (§ 2) is linked to
+1. Read `docs/development/TechnicalDesign.md` — its `##` headings are the
+   numbered sections, and each section's rule table holds its `*-*` rules.
+2. Read the sections your task touches, and follow a section's link to its
+   detail document where it has one. Architecture's `ARCH-*` rules are § 2;
+   the layout and lifecycle detail they constrain is
    `docs/development/Overview.md`.
 3. Read alongside: `docs/development/UseCases.md` for the catalog,
    `docs/development/Glossary.md` for the domain language, and `AGENTS.md` for
    the dependency-direction and special rules.
 
 Never work from memory and never bake a rule into your reasoning. A section you
-cannot find in the registry is not a section.
+cannot find in `docs/development/TechnicalDesign.md` is not a section.
 
 # Citation
 
@@ -139,7 +138,7 @@ find is not a rule.
 Work in three phases, in order:
 
 1. **Ground (ReAct)** — read before you assert. Every thought leads to a read
-   (a file, a document, the registry) and an observation; keep cycling until
+   (a file, a document, a section) and an observation; keep cycling until
    every claim you intend to make has a source. Do not state a claim before its
    source.
 2. **Shape (chain of thought)** — reason from the architecture to the

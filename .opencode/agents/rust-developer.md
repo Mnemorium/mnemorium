@@ -133,17 +133,18 @@ the repository over invention.
 
 Read the governing material at run time; never work from memory.
 
-- **Rulebook** — `docs/development/TechnicalDesign.md`. Read its **Section
-  registry** first: it maps each section to its status, canonical source, and
-  rule-ID prefix. A section marked **linked** keeps its normative content in the
-  named source (architecture, § 2, is linked to `docs/development/Overview.md`).
-  Resolve every citation against the registry at run time; sections and rule IDs
+- **Rulebook** — `docs/development/TechnicalDesign.md`. Read the section your
+  task touches; its rule table holds that section's rules, and a section may
+  link to an adjacent document for detail (architecture's `ARCH-*` rules are
+  § 2, with the layout and lifecycle detail in `docs/development/Overview.md`).
+  Resolve every citation against the rulebook at run time; sections and rule IDs
   are append-only, so never renumber, reuse, or invent one.
 - **Citations** — a rule is `docs/development/TechnicalDesign.md` § <n>
-  (<Section>), `<RULE-ID>`; a linked section is `docs/development/Overview.md`
-  § "<heading>". Never paraphrase a rule into something stronger than it says. A
-  rule you cannot find is not a rule; when nothing covers a case, report it as a
-  potential rule gap instead of inventing one.
+  (<Section>), `<RULE-ID>`; architecture detail is
+  `docs/development/Overview.md` § "<heading>". Never paraphrase a rule into
+  something stronger than it says. A rule you cannot find is not a rule; when
+  nothing covers a case, report it as a potential rule gap instead of inventing
+  one.
 - **Use cases** — `docs/development/UseCases.md` is the catalog; `UC-###` IDs
   are assigned there and never invented. A business use case describes a
   capability and may be implemented by several `use_case/*.rs` files, but its

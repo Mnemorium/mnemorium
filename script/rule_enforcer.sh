@@ -229,6 +229,7 @@ EOF
 }
 
 # read_rulebook — parse every rule row of the rulebook into RULE_SECTION and RULE_TEXT.
+# A normative section is a `##` heading other than the two preamble sections.
 read_rulebook() {
 	[ -f "$RULEBOOK" ] || die "missing $RULEBOOK"
 
@@ -242,25 +243,22 @@ read_rulebook() {
 	done < <(awk '
 		function trim(s) { gsub(/^[[:space:]]+|[[:space:]]+$/, "", s); return s }
 
-		/^### Section registry$/ { in_registry = 1; next }
-		in_registry && /^##/ { in_registry = 0 }
-		in_registry && /^\|/ {
-			n = split($0, c, "|")
-			if (n >= 4) {
-				num = trim(c[2]); name = trim(c[3])
-				if (num ~ /^[0-9]+$/ && name != "") { registered[name] = 1 }
-			}
+		# The preamble carries process material, not rules; its example row would
+		# otherwise duplicate STY-RUST-001.
+		BEGIN { preamble["Purpose"] = 1; preamble["How this document is extended"] = 1 }
+
+		/^## / {
+			heading = trim(substr($0, 4))
+			normative = !(heading in preamble)
 			next
 		}
 
-		/^## / { heading = trim(substr($0, 4)); next }
-
 		/^\|/ {
+			if (!normative) next
 			n = split($0, c, "|")
 			if (n < 5) next
 			id = trim(c[2])
 			if (id !~ /^`[A-Z][A-Z-]*-[0-9]+`$/) next
-			if (!(heading in registered)) next
 			gsub(/`/, "", id)
 			section = trim(c[3])
 			rule = ""
