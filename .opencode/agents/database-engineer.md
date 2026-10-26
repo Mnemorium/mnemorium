@@ -50,7 +50,8 @@ Datastore map (navigation):
   governed by `docs/development/TechnicalDesign.md` § 4 (Persistence); see
   `PERS-*` and `STY-SQL-*`.
 - `src/lib/infrastructure/outbound/sqlx/sqlite3.rs` opens the pool and applies the
-  migrations at boot (`PERS-003`, `PERS-004`).
+  migrations at boot (`PERS-003`, `PERS-004`); `init_db` receives the database
+  file and the pool size as arguments.
 - `src/lib/infrastructure/outbound/sqlx/unit_of_work.rs` owns the transaction and
   the per-context repository accessors (`STY-RUST-032`–`047`).
 - `src/lib/infrastructure/outbound/sqlx/model/` holds the sqlx row models, and
@@ -58,7 +59,13 @@ Datastore map (navigation):
   `STY-RUST-044`–`056`).
 - `src/lib/infrastructure/outbound/sqlx/error_mapping.rs` maps `sqlx::Error` into
   the port error (`STY-RUST-050`).
-- `src/lib/infrastructure/outbound/config/bootstrap.rs` reads the datastore
+- `src/bin/server.rs` is the composition root and the only caller of `init_db`
+  (`STY-RUST-067`). That is where the datastore settings are read: it passes the
+  fixed `DATABASE_PATH` (`mnemorium.db`, from the `load_state` port — not
+  configurable) and the `persistence.sqlite3.max_connections` value from the
+  configuration resolved just before (defaults → `config.yaml` → environment), a
+  startup-only setting (`docs/development/TechnicalDesign.md` § 1 (Code Style
+  Guidelines), § 10.1 (Startup-only settings)). No adapter reads datastore
   settings before the pool exists.
 
 # Operational Boundaries & Guardrails
@@ -79,7 +86,7 @@ Datastore map (navigation):
 - Halt and escalate through the `question` tool, pausing work, when:
   1. a migration can destroy or irreversibly transform existing data;
   2. the change would require edits outside your scope (use cases and handlers,
-     tests, or devenv/CI);
+     the composition root, tests, or devenv/CI);
   3. no rule covers a decision, or two rules conflict;
   4. the schema changed in a database that already applied the migration, so
      resetting local data is the developer's call.
