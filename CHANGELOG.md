@@ -1,3 +1,9 @@
+## [0.22.0](https://github.com/Mnemorium/mnemorium/compare/v0.21.1...v0.22.0) (2026-10-26)
+
+### Features
+
+* **application:** separate the instance identity from the configuration ([#315](https://github.com/Mnemorium/mnemorium/issues/315)) ([4fc3391](https://github.com/Mnemorium/mnemorium/commit/4fc3391a5d60e091d6af2b63df7b754fb190dda4))
+
 ## [0.21.1](https://github.com/Mnemorium/mnemorium/compare/v0.21.0...v0.21.1) (2026-10-22)
 
 ### Bug Fixes
