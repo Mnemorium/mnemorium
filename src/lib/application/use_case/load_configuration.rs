@@ -286,7 +286,9 @@ mod tests {
     use crate::domain::model::configuration::Rotation;
     use crate::domain::model::partial_configuration::PartialAsset;
     use crate::domain::model::partial_configuration::PartialAssetStorage;
+    use crate::domain::model::partial_configuration::PartialAssetUpload;
     use crate::domain::model::partial_configuration::PartialConfiguration;
+    use crate::domain::model::partial_configuration::PartialJwt;
     use crate::domain::model::partial_configuration::PartialLogging;
     use crate::domain::model::partial_configuration::PartialRateLimit;
     use crate::domain::model::partial_configuration::PartialSecurity;
@@ -336,6 +338,63 @@ mod tests {
             },
             ..PartialConfiguration::default()
         }
+    }
+
+    /// A partial naming only the upload setting `apply` sets.
+    fn upload_settings(apply: impl FnOnce(&mut PartialAssetUpload)) -> PartialConfiguration {
+        let mut upload = PartialAssetUpload::default();
+        apply(&mut upload);
+        PartialConfiguration {
+            asset: PartialAsset {
+                upload,
+                ..PartialAsset::default()
+            },
+            ..PartialConfiguration::default()
+        }
+    }
+
+    /// A partial naming only the rate-limit setting `apply` sets.
+    fn rate_limit_settings(apply: impl FnOnce(&mut PartialRateLimit)) -> PartialConfiguration {
+        let mut rate_limit = PartialRateLimit::default();
+        apply(&mut rate_limit);
+        PartialConfiguration {
+            security: PartialSecurity {
+                rate_limit,
+                ..PartialSecurity::default()
+            },
+            ..PartialConfiguration::default()
+        }
+    }
+
+    /// Assert the file layer naming `partial` is rejected and the message names `setting`.
+    ///
+    /// The environment layer must not be consulted: a file value that fails validation stops the
+    /// merge before the higher layer runs.
+    async fn assert_rejected_naming(partial: PartialConfiguration, setting: &str) {
+        // Arrange
+        let mut environment = MockEnvironmentConfiguration::new();
+        environment.expect_load().times(0);
+        let use_case = use_case(file_layer(partial, false), environment);
+
+        // Act
+        let result = use_case.execute().await;
+
+        // Assert
+        assert!(
+            matches!(
+                result.as_ref(),
+                Err(LoadConfigurationError::InvalidConfiguration(_))
+            ),
+            "an invalid merged value must be reported as such, got: {result:?}"
+        );
+        let message = result
+            .map_err(|error| error.to_string())
+            .err()
+            .unwrap_or_default();
+        assert!(
+            message.contains(setting),
+            "the rejection must name {setting}, got: {message:?}"
+        );
     }
 
     #[tokio::test]
@@ -671,5 +730,125 @@ mod tests {
             Rotation::Hourly
         );
         Ok(())
+    }
+    #[tokio::test]
+    async fn load_configuration_zero_chunk_size_is_rejected() {
+        // Arrange: the upload section names a chunk size the domain refuses.
+        let partial = upload_settings(|upload| upload.chunk_size_bytes = Some(0));
+
+        // Act & Assert
+        assert_rejected_naming(partial, "asset.upload").await;
+    }
+
+    #[tokio::test]
+    async fn load_configuration_zero_expiry_is_rejected() {
+        // Arrange
+        let partial = upload_settings(|upload| upload.expiry_seconds = Some(0));
+
+        // Act & Assert
+        assert_rejected_naming(partial, "asset.upload").await;
+    }
+
+    #[tokio::test]
+    async fn load_configuration_zero_max_file_size_is_rejected() {
+        // Arrange
+        let partial = upload_settings(|upload| upload.max_file_size_bytes = Some(0));
+
+        // Act & Assert
+        assert_rejected_naming(partial, "asset.upload").await;
+    }
+
+    #[tokio::test]
+    async fn load_configuration_oversized_max_file_size_is_rejected() {
+        // Arrange: one byte above `i64::MAX`, which the domain refuses.
+        let partial = upload_settings(|upload| upload.max_file_size_bytes = Some(u64::MAX));
+
+        // Act & Assert
+        assert_rejected_naming(partial, "asset.upload").await;
+    }
+
+    #[tokio::test]
+    async fn load_configuration_zero_jwt_ttl_names_the_setting() {
+        // Arrange
+        let partial = PartialConfiguration {
+            security: PartialSecurity {
+                jwt: PartialJwt {
+                    ttl: Some(0),
+                    ..PartialJwt::default()
+                },
+                ..PartialSecurity::default()
+            },
+            ..PartialConfiguration::default()
+        };
+
+        // Act & Assert
+        assert_rejected_naming(partial, "security.jwt.ttl").await;
+    }
+
+    #[tokio::test]
+    async fn load_configuration_zero_burst_size_names_the_setting() {
+        // Arrange
+        let partial = rate_limit_settings(|rate_limit| rate_limit.burst_size = Some(0));
+
+        // Act & Assert
+        assert_rejected_naming(partial, "security.rate_limit.burst_size").await;
+    }
+
+    #[tokio::test]
+    async fn load_configuration_zero_period_seconds_names_the_setting() {
+        // Arrange
+        let partial = rate_limit_settings(|rate_limit| rate_limit.period_seconds = Some(0));
+
+        // Act & Assert
+        assert_rejected_naming(partial, "security.rate_limit.period_seconds").await;
+    }
+
+    #[tokio::test]
+    async fn load_configuration_invalid_client_ip_header_names_the_setting() {
+        // Arrange: the header is not one of the three the extractor reads.
+        let partial = rate_limit_settings(|rate_limit| {
+            rate_limit.client_ip_header = Some("x-forwarded-host".to_owned());
+        });
+
+        // Act & Assert
+        assert_rejected_naming(partial, "security.rate_limit.client_ip_header").await;
+    }
+
+    #[tokio::test]
+    async fn load_configuration_invalid_trusted_proxies_names_the_setting() {
+        // Arrange
+        let partial = rate_limit_settings(|rate_limit| {
+            rate_limit.trusted_proxies = Some("not-an-address".to_owned());
+        });
+
+        // Act & Assert
+        assert_rejected_naming(partial, "security.rate_limit.trusted_proxies").await;
+    }
+
+    #[tokio::test]
+    async fn load_configuration_level_off_names_the_setting() {
+        // Arrange: a bare `off` would silence every non-security event (`OBS-007`).
+        let partial = logging_level("off");
+
+        // Act & Assert
+        assert_rejected_naming(partial, "logging.level").await;
+    }
+
+    #[tokio::test]
+    async fn load_configuration_level_none_names_the_setting() {
+        // Arrange
+        let partial = logging_level("none");
+
+        // Act & Assert
+        assert_rejected_naming(partial, "logging.level").await;
+    }
+
+    #[tokio::test]
+    async fn load_configuration_level_targeting_security_names_the_setting() {
+        // Arrange: a directive for the reserved target would suppress a catalog event.
+        let partial = logging_level("warn,security=info");
+
+        // Act & Assert
+        assert_rejected_naming(partial, "logging.level").await;
     }
 }
