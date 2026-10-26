@@ -13,7 +13,8 @@ use crate::application::port::begin_upload::BeginUploadCommand;
 use crate::application::port::begin_upload::BeginUploadError;
 use crate::application::port::begin_upload::BeginUploadResponse as BeginUploadResponseData;
 use crate::domain::alias::NumericID;
-use crate::domain::model::integrity_hash::Digest;
+use crate::domain::model::integrity_hash::DIGEST_HEX_LENGTH;
+use crate::domain::model::integrity_hash::IntegrityHash;
 use crate::infrastructure::inbound::rest::api_error::ApiError;
 use crate::infrastructure::inbound::rest::api_error::ErrorBody;
 use crate::infrastructure::inbound::rest::app_state::AppState;
@@ -175,7 +176,7 @@ pub async fn post_upload(
     let Json(request) = payload.map_err(ApiError::from)?;
     // The handler is where the wire form is parsed into the domain value object:
     // a malformed digest never reaches the use case.
-    let integrity_hash = Digest::try_new(request.integrity_hash)
+    let integrity_hash = IntegrityHash::<DIGEST_HEX_LENGTH>::try_new(request.integrity_hash)
         .map_err(|_| ApiError::BadRequest("the integrity hash is invalid".to_owned()))?;
     let response = state
         .asset_use_case_factory()

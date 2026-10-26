@@ -1,7 +1,8 @@
 use chrono::NaiveDateTime;
 
 use crate::domain::alias::NumericID;
-use crate::domain::model::integrity_hash::Digest;
+use crate::domain::model::integrity_hash::DIGEST_HEX_LENGTH;
+use crate::domain::model::integrity_hash::IntegrityHash;
 use crate::domain::model::integrity_hash::IntegrityHashError;
 
 /// Hard upper bound on the number of chunks an upload may be split into.
@@ -193,7 +194,7 @@ pub struct Upload {
     /// Total size of the file being uploaded, in bytes.
     file_size: u64,
     /// Integrity hash of the complete file, supplied by the client.
-    integrity_hash: Digest,
+    integrity_hash: IntegrityHash<DIGEST_HEX_LENGTH>,
     /// Whether the upload has been finished.
     is_finished: bool,
     /// Identifier of the mime type of the file being uploaded.
@@ -249,7 +250,7 @@ impl Upload {
 
     /// Return the integrity hash of the complete file.
     #[must_use]
-    pub fn integrity_hash(&self) -> &Digest {
+    pub fn integrity_hash(&self) -> &IntegrityHash<DIGEST_HEX_LENGTH> {
         &self.integrity_hash
     }
 
@@ -311,7 +312,7 @@ impl Upload {
         file_size: u64,
         mime_type_id: String,
         chunk_size: u64,
-        integrity_hash: Digest,
+        integrity_hash: IntegrityHash<DIGEST_HEX_LENGTH>,
         chunk_bitmap: ChunkBitmap,
         is_finished: bool,
         created_at: NaiveDateTime,

@@ -1,10 +1,11 @@
-use crate::domain::model::integrity_hash::Digest;
+use crate::domain::model::integrity_hash::DIGEST_HEX_LENGTH;
+use crate::domain::model::integrity_hash::IntegrityHash;
 use crate::domain::port::error::ContentHasherError;
 
 /// Port for incrementally hashing byte content.
 ///
 /// A caller starts a session with [`ContentHasher::hasher`], feeds it bytes as
-/// they arrive, and finalizes it into a [`Digest`]. The primitive is
+/// they arrive, and finalizes it into an [`IntegrityHash`]. The primitive is
 /// algorithm-agnostic: the adapter chooses the algorithm the domain pins by
 /// digest length.
 #[cfg_attr(test, mockall::automock)]
@@ -21,7 +22,7 @@ pub trait ContentHasherSession: Send + Sync {
     /// # Errors
     ///
     /// Returns [`ContentHasherError`] when the digest cannot be finalized.
-    fn finalize(self: Box<Self>) -> Result<Digest, ContentHasherError>;
+    fn finalize(self: Box<Self>) -> Result<IntegrityHash<DIGEST_HEX_LENGTH>, ContentHasherError>;
 
     /// Feed `bytes` into the digest.
     ///

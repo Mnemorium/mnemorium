@@ -10,7 +10,8 @@ use tokio::io::AsyncSeekExt as _;
 use tokio::io::AsyncWriteExt as _;
 use tracing::error;
 
-use crate::domain::model::integrity_hash::Digest;
+use crate::domain::model::integrity_hash::DIGEST_HEX_LENGTH;
+use crate::domain::model::integrity_hash::IntegrityHash;
 use crate::domain::port::content_hasher::ContentHasher as _;
 use crate::domain::port::error::StorageError;
 use crate::domain::port::file_storage::FileStorage;
@@ -166,7 +167,8 @@ impl FileStorage for FileSystemStorage {
     fn integrity_hash(
         &self,
         path: &Path,
-    ) -> impl Future<Output = Result<Option<Digest>, StorageError>> + Send {
+    ) -> impl Future<Output = Result<Option<IntegrityHash<DIGEST_HEX_LENGTH>>, StorageError>> + Send
+    {
         let owned_path = path.to_path_buf();
         // The stateless hasher is built here, at the point of use, and never
         // stored by the long-lived storage adapter.
