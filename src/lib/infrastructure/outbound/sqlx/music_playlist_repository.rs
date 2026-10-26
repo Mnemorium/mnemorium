@@ -879,6 +879,63 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn seeding_rejects_a_track_placed_in_both_containers() -> Result<(), Box<dyn Error>> {
+        // Arrange: the recording, the album medium and the playlist all exist,
+        // so only the one-container check can reject the row.
+        let mut transaction = begin_transaction().await?;
+        seed_user(&mut transaction, 1).await?;
+        seed_one_recording(&mut transaction, 30, "So What").await?;
+        seed_album_placement(&mut transaction, 30).await?;
+        seed_playlist(&mut transaction, 7, "Mix", 1, false).await?;
+
+        // Act
+        let result = sqlx::query(
+            "INSERT INTO music_track (track_index, music_playlist_id, music_medium_id, music_recording_id)
+             VALUES (0, 7, 40, 30)",
+        )
+        .execute(&mut *transaction)
+        .await
+        .map_err(RepositoryError::from);
+
+        // Assert: chk_music_track_one_container, isolated from
+        // uq_music_track_medium_track_index (40, 1),
+        // uq_music_track_playlist_track_index and
+        // uq_music_track_playlist_recording, each of which is free here.
+        assert!(
+            matches!(result, Err(RepositoryError::DataIntegrityViolation)),
+            "a track placed in both containers must be rejected: {result:?}"
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn seeding_rejects_a_track_placed_in_neither_container() -> Result<(), Box<dyn Error>> {
+        // Arrange: both container columns are NULL and every other constraint
+        // is satisfied, so only the one-container check can reject the row.
+        let mut transaction = begin_transaction().await?;
+        seed_user(&mut transaction, 1).await?;
+        seed_one_recording(&mut transaction, 30, "So What").await?;
+
+        // Act
+        let result = sqlx::query(
+            "INSERT INTO music_track (track_index, music_playlist_id, music_medium_id, music_recording_id)
+             VALUES (0, NULL, NULL, 30)",
+        )
+        .execute(&mut *transaction)
+        .await
+        .map_err(RepositoryError::from);
+
+        // Assert: chk_music_track_one_container. No partial unique
+        // index applies because each is restricted to rows where its container
+        // column is set.
+        assert!(
+            matches!(result, Err(RepositoryError::DataIntegrityViolation)),
+            "a track placed in no container must be rejected: {result:?}"
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn search_rejects_a_recording_whose_stored_isrc_code_is_malformed()
     -> Result<(), Box<dyn Error>> {
         // Arrange
