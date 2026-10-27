@@ -8,7 +8,7 @@
   <h1 align="center">Mnemorium</h1>
 
   <p align="center">
-    TODO: one-line description of Mnemorium.
+    A self-hosted media server for your photos, videos and music.
   </p>
 </div>
 
