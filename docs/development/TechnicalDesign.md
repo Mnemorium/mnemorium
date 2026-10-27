@@ -2086,7 +2086,7 @@ entity mime_type {
 entity video {
    * video_id: INTEGER <<PK>>
    --
-   * duration_ms: REAL <<NN>>
+   * duration_ms: REAL <<NN, CC(duration_ms >= 0)>>
    * codec: VARCHAR(20) <<NN>>
    * frame_count: INTEGER <<NN, CC(frame_count > 0)>>
    * width: INTEGER <<NN, CC(width > 0)>>

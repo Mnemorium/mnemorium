@@ -412,6 +412,12 @@ mod tests {
     }
 
     #[rstest]
+    #[case::duration_ms_negative(
+        "INSERT INTO video (
+            video_id, duration_ms, codec, frame_count, width, height, color_id, scan_type, file_id
+         )
+         VALUES (1, -1.0, 'H264', 30, 10, 10, 'YCbCr', 'PROGRESSIVE', 11)"
+    )]
     #[case::frame_count_not_positive(
         "INSERT INTO video (
             video_id, duration_ms, codec, frame_count, width, height, color_id, scan_type, file_id
