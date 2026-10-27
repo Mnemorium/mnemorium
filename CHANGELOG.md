@@ -1,3 +1,9 @@
+## [0.22.1](https://github.com/Mnemorium/mnemorium/compare/v0.22.0...v0.22.1) (2026-10-27)
+
+### Bug Fixes
+
+* **api:** describe the malformed query string on the library listings ([#332](https://github.com/Mnemorium/mnemorium/issues/332)) ([e507a38](https://github.com/Mnemorium/mnemorium/commit/e507a384d42c73785e92f176ad4436a01777282e))
+
 ## [0.22.0](https://github.com/Mnemorium/mnemorium/compare/v0.21.1...v0.22.0) (2026-10-26)
 
 ### Features
