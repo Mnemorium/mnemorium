@@ -7,7 +7,8 @@
     allow(
         clippy::too_many_arguments,
         reason = "We are less strict about test code"
-    )
+    ),
+    allow(clippy::single_call_fn, reason = "We are less strict about test code")
 )]
 pub mod application;
 pub mod domain;
