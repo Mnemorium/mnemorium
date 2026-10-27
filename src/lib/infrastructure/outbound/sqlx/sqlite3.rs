@@ -957,26 +957,6 @@ mod tests {
         Ok(())
     }
 
-    /// Count the stored rows of every table that owns a cover.
-    #[expect(
-        clippy::single_call_fn,
-        reason = "the fixture names the case it builds"
-    )]
-    async fn stored_owners(pool: &SqlitePool) -> Result<i64, Box<dyn Error>> {
-        let mut total: i64 = 0;
-        for query in [
-            "SELECT count(*) FROM movie",
-            "SELECT count(*) FROM series",
-            "SELECT count(*) FROM season",
-            "SELECT count(*) FROM music_album",
-            "SELECT count(*) FROM music_playlist",
-        ] {
-            let count = sqlx::query_scalar::<_, i64>(query).fetch_one(pool).await?;
-            total = total.checked_add(count).unwrap_or(i64::MAX);
-        }
-        Ok(total)
-    }
-
     #[tokio::test]
     async fn cover_trigger_rejects_a_non_image_on_every_owner() -> Result<(), Box<dyn Error>> {
         // Arrange: file 2 is a video, so it cannot back a cover.
@@ -994,7 +974,25 @@ mod tests {
             "a non-image cover must be rejected as a conflict"
         );
         assert_eq!(
-            stored_owners(&pool).await?,
+            [
+                sqlx::query_scalar::<_, i64>("SELECT count(*) FROM movie")
+                    .fetch_one(&pool)
+                    .await?,
+                sqlx::query_scalar::<_, i64>("SELECT count(*) FROM series")
+                    .fetch_one(&pool)
+                    .await?,
+                sqlx::query_scalar::<_, i64>("SELECT count(*) FROM season")
+                    .fetch_one(&pool)
+                    .await?,
+                sqlx::query_scalar::<_, i64>("SELECT count(*) FROM music_album")
+                    .fetch_one(&pool)
+                    .await?,
+                sqlx::query_scalar::<_, i64>("SELECT count(*) FROM music_playlist")
+                    .fetch_one(&pool)
+                    .await?,
+            ]
+            .into_iter()
+            .sum::<i64>(),
             0,
             "a rejected cover must store nothing"
         );

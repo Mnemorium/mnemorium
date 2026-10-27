@@ -406,29 +406,6 @@ mod tests {
         Ok(())
     }
 
-    /// Seed an image file owned by `user_id`.
-    #[expect(
-        clippy::single_call_fn,
-        reason = "the fixture names the case it builds"
-    )]
-    async fn seed_image_file(
-        transaction: &mut Transaction<'static, Sqlite>,
-        file_id: i64,
-        user_id: i64,
-    ) -> Result<(), sqlx::Error> {
-        sqlx::query(
-            "INSERT INTO file (file_id, path, user_id, is_public, mime_type_id, integrity_hash)
-             VALUES (?1, ?2, ?3, 0, 'image/png', ?4)",
-        )
-        .bind(file_id)
-        .bind(format!("{file_id}.png"))
-        .bind(user_id)
-        .bind(format!("{file_id:064x}"))
-        .execute(&mut **transaction)
-        .await?;
-        Ok(())
-    }
-
     /// Seed a music album with an optional stored production type.
     async fn seed_album(
         transaction: &mut Transaction<'static, Sqlite>,
@@ -722,7 +699,13 @@ mod tests {
         // Arrange: one covered album and one without artwork.
         let mut transaction = begin_transaction().await?;
         seed_user(&mut transaction, 1).await?;
-        seed_image_file(&mut transaction, 12, 1).await?;
+        sqlx::query(
+            "INSERT INTO file (file_id, path, user_id, is_public, mime_type_id, integrity_hash)
+             VALUES (12, '12.png', 1, 0, 'image/png', ?1)",
+        )
+        .bind(format!("{:064x}", 12i64))
+        .execute(&mut *transaction)
+        .await?;
         seed_album(&mut transaction, 1, "Kind of Blue", None).await?;
         seed_album(&mut transaction, 2, "Sketches", None).await?;
         sqlx::query("UPDATE music_album SET cover_file_id = 12 WHERE music_album_id = 1")

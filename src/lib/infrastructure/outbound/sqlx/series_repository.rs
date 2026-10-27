@@ -370,27 +370,6 @@ mod tests {
         Ok(())
     }
 
-    /// Seed an image file owned by the seeded user.
-    #[expect(
-        clippy::single_call_fn,
-        reason = "the fixture names the case it builds"
-    )]
-    async fn seed_image_file(
-        transaction: &mut Transaction<'static, Sqlite>,
-        file_id: i64,
-    ) -> Result<(), sqlx::Error> {
-        sqlx::query(
-            "INSERT INTO file (file_id, path, user_id, is_public, mime_type_id, integrity_hash)
-             VALUES (?1, ?2, 1, 0, 'image/png', ?3)",
-        )
-        .bind(file_id)
-        .bind(format!("{file_id}.png"))
-        .bind(format!("{file_id:064x}"))
-        .execute(&mut **transaction)
-        .await?;
-        Ok(())
-    }
-
     /// Seed a progressive video of `width` pixels on `file_id`.
     async fn seed_video(
         transaction: &mut Transaction<'static, Sqlite>,
@@ -625,7 +604,13 @@ mod tests {
         // second season none.
         let mut transaction = begin_transaction().await?;
         seed_user(&mut transaction).await?;
-        seed_image_file(&mut transaction, 12).await?;
+        sqlx::query(
+            "INSERT INTO file (file_id, path, user_id, is_public, mime_type_id, integrity_hash)
+             VALUES (12, '12.png', 1, 0, 'image/png', ?1)",
+        )
+        .bind(format!("{:064x}", 12i64))
+        .execute(&mut *transaction)
+        .await?;
         seed_series(&mut transaction, 1, "Twin Peaks").await?;
         seed_season(&mut transaction, 40, 1, 1, None).await?;
         seed_season(&mut transaction, 41, 1, 2, None).await?;
