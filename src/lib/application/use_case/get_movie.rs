@@ -1,0 +1,264 @@
+use std::future::Future;
+use std::pin::Pin;
+use std::sync::Arc;
+
+use crate::application::port::get_movie::GetMovieCommand;
+use crate::application::port::get_movie::GetMovieError;
+use crate::application::port::get_movie::GetMovieResponse;
+use crate::application::port::get_movie::GetMovieUseCase;
+use crate::application::port::video_summary::VideoSummary;
+use crate::domain::port::library_unit_of_work::LibraryUnitOfWork;
+use crate::domain::port::movie_repository::MovieFilter;
+use crate::domain::port::movie_repository::MovieRepository as _;
+use crate::domain::port::unit_of_work::UnitOfWork as _;
+use crate::domain::port::unit_of_work::UnitOfWorkFactory;
+use crate::domain::port::user_repository::UserFilter;
+use crate::domain::port::user_repository::UserRepository as _;
+use crate::domain::port::user_unit_of_work::UserUnitOfWork;
+
+/// Use case implementation for fetching one film.
+pub struct GetMovie<F> {
+    /// Factory opening the unit of work wrapping the read.
+    unit_of_work_factory: Arc<F>,
+}
+
+impl<F: UnitOfWorkFactory> GetMovie<F> {
+    /// Create a new use case.
+    #[must_use]
+    pub fn new(unit_of_work_factory: Arc<F>) -> Self {
+        Self {
+            unit_of_work_factory,
+        }
+    }
+}
+
+impl<F> GetMovieUseCase for GetMovie<F>
+where
+    F: UnitOfWorkFactory,
+    F::Uow: LibraryUnitOfWork + UserUnitOfWork,
+{
+    fn execute<'future>(
+        &'future self,
+        command: GetMovieCommand,
+    ) -> Pin<Box<dyn Future<Output = Result<GetMovieResponse, GetMovieError>> + Send + 'future>>
+    {
+        let unit_of_work_factory = Arc::clone(&self.unit_of_work_factory);
+
+        Box::pin(async move {
+            let mut unit_of_work = unit_of_work_factory
+                .begin()
+                .await
+                .map_err(|error| GetMovieError::Unknown(error.into()))?;
+
+            let result = async {
+                unit_of_work
+                    .users()
+                    .search(&UserFilter {
+                        id: Some(command.caller_id()),
+                        ..UserFilter::default()
+                    })
+                    .await
+                    .map_err(|error| GetMovieError::Unknown(error.into()))?
+                    .into_iter()
+                    .next()
+                    .ok_or(GetMovieError::NoSuchCaller)?;
+
+                let movie = unit_of_work
+                    .movies()
+                    .search(&MovieFilter {
+                        id: Some(command.movie_id()),
+                        ..MovieFilter::default()
+                    })
+                    .await
+                    .map_err(|error| GetMovieError::Unknown(error.into()))?
+                    .into_iter()
+                    .next()
+                    .ok_or(GetMovieError::NoSuchMovie)?;
+
+                Ok(GetMovieResponse::new(
+                    movie.id(),
+                    movie.name().to_owned(),
+                    movie.plot().to_owned(),
+                    movie.country_of_origin().to_owned(),
+                    movie.release_date(),
+                    movie.genre_ids().to_vec(),
+                    VideoSummary::from(movie.video()),
+                ))
+            }
+            .await;
+
+            match result {
+                Ok(value) => {
+                    unit_of_work
+                        .commit()
+                        .await
+                        .map_err(|error| GetMovieError::Unknown(error.into()))?;
+                    Ok(value)
+                }
+                Err(error) => {
+                    // The unit-of-work adapter owns the rollback-failure log (OBS-002).
+                    let _rollback = unit_of_work.rollback().await;
+                    Err(error)
+                }
+            }
+        })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::error::Error;
+    use std::sync::Arc;
+    use std::sync::atomic::Ordering;
+
+    use crate::application::port::get_movie::GetMovieCommand;
+    use crate::application::port::get_movie::GetMovieError;
+    use crate::application::port::get_movie::GetMovieResponse;
+    use crate::application::port::get_movie::GetMovieUseCase as _;
+    use crate::application::port::video_summary::VideoSummary;
+    use crate::domain::port::error::RepositoryError;
+    use crate::domain::port::movie_repository::MockMovieRepository;
+    use crate::domain::port::user_repository::MockUserRepository;
+    use crate::test_helpers::GalleryFactoryHarness;
+    use crate::test_helpers::TestFactory;
+    use crate::test_helpers::TestUnitOfWork;
+    use crate::test_helpers::expect_caller;
+    use crate::test_helpers::sample_movie;
+    use crate::test_helpers::video_date;
+
+    use super::GetMovie;
+
+    /// The use case under test, bound to the mocked unit-of-work factory.
+    type UseCase = GetMovie<TestFactory>;
+
+    /// Build a Library test harness around the given mocks.
+    fn harness_with(
+        users: MockUserRepository,
+        movies: MockMovieRepository,
+    ) -> GalleryFactoryHarness {
+        let unit_of_work = TestUnitOfWork {
+            movies,
+            users,
+            ..TestUnitOfWork::default()
+        };
+        GalleryFactoryHarness::new(unit_of_work)
+    }
+
+    #[tokio::test]
+    async fn get_movie_returns_the_requested_film() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let mut users = MockUserRepository::new();
+        expect_caller(&mut users, 1)?;
+        let movie = sample_movie(7)?;
+        let expected_video = VideoSummary::from(movie.video());
+        let mut movies = MockMovieRepository::new();
+        movies
+            .expect_search()
+            .times(1)
+            .withf(|filter| filter.id == Some(7))
+            .return_once(move |_| Box::pin(async move { Ok(vec![movie]) }));
+        let harness = harness_with(users, movies);
+        let use_case: UseCase = GetMovie::new(Arc::clone(&harness.factory));
+
+        // Act
+        let response = use_case.execute(GetMovieCommand::new(1, 7)).await?;
+
+        // Assert
+        assert_eq!(
+            response,
+            GetMovieResponse::new(
+                7,
+                "Movie 7".to_owned(),
+                "A plot".to_owned(),
+                "US".to_owned(),
+                video_date(),
+                vec!["DRAMA".to_owned()],
+                expected_video,
+            ),
+            "the representation must carry the requested film"
+        );
+        assert!(
+            harness.committed.load(Ordering::SeqCst),
+            "a successful read must commit"
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn get_movie_unknown_film_returns_no_such_movie() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let mut users = MockUserRepository::new();
+        expect_caller(&mut users, 1)?;
+        let mut movies = MockMovieRepository::new();
+        movies
+            .expect_search()
+            .times(1)
+            .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+        let harness = harness_with(users, movies);
+        let use_case: UseCase = GetMovie::new(Arc::clone(&harness.factory));
+
+        // Act
+        let result = use_case.execute(GetMovieCommand::new(1, 404)).await;
+
+        // Assert
+        assert!(
+            matches!(result, Err(GetMovieError::NoSuchMovie)),
+            "an unknown film must be reported"
+        );
+        assert!(
+            harness.rolled_back.load(Ordering::SeqCst),
+            "an unknown film must roll back"
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn get_movie_unknown_caller_returns_no_such_caller() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let mut users = MockUserRepository::new();
+        users
+            .expect_search()
+            .times(1)
+            .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+        let harness = harness_with(users, MockMovieRepository::new());
+        let use_case: UseCase = GetMovie::new(Arc::clone(&harness.factory));
+
+        // Act
+        let result = use_case.execute(GetMovieCommand::new(999, 7)).await;
+
+        // Assert
+        assert!(
+            matches!(result, Err(GetMovieError::NoSuchCaller)),
+            "a deleted caller must be rejected"
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn get_movie_repository_failure_returns_unknown() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let mut users = MockUserRepository::new();
+        expect_caller(&mut users, 1)?;
+        let mut movies = MockMovieRepository::new();
+        movies
+            .expect_search()
+            .times(1)
+            .returning(|_| Box::pin(async { Err(RepositoryError::OperationFailed) }));
+        let harness = harness_with(users, movies);
+        let use_case: UseCase = GetMovie::new(Arc::clone(&harness.factory));
+
+        // Act
+        let result = use_case.execute(GetMovieCommand::new(1, 7)).await;
+
+        // Assert
+        assert!(
+            matches!(result, Err(GetMovieError::Unknown(_))),
+            "a repository failure must map to an unknown error"
+        );
+        assert!(
+            harness.rolled_back.load(Ordering::SeqCst),
+            "a repository failure must roll back"
+        );
+        Ok(())
+    }
+}

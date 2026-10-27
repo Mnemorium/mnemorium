@@ -21,7 +21,8 @@ rules:
   STY-RUST-083:
     bounded_contexts: *bounded_contexts
   STY-SQL-006:
-    singular_exceptions: []
+    singular_exceptions:
+      - series
   TEST-002:
     exempt_traits:
       - AssetUnitOfWork

@@ -11,8 +11,10 @@ use crate::domain::port::identity_unit_of_work::IdentityUnitOfWork;
 use crate::domain::port::image_repository::ImageRepository;
 use crate::domain::port::library_unit_of_work::LibraryUnitOfWork;
 use crate::domain::port::mime_type_repository::MimeTypeRepository;
+use crate::domain::port::movie_repository::MovieRepository;
 use crate::domain::port::music_album_repository::MusicAlbumRepository;
 use crate::domain::port::music_playlist_repository::MusicPlaylistRepository;
+use crate::domain::port::series_repository::SeriesRepository;
 use crate::domain::port::unit_of_work::UnitOfWork;
 use crate::domain::port::unit_of_work::UnitOfWorkFactory;
 use crate::domain::port::upload_repository::UploadRepository;
@@ -24,8 +26,10 @@ use crate::infrastructure::outbound::sqlx::file_repository::SqlxFileRepository;
 use crate::infrastructure::outbound::sqlx::gallery_repository::SqlxGalleryRepository;
 use crate::infrastructure::outbound::sqlx::image_repository::SqlxImageRepository;
 use crate::infrastructure::outbound::sqlx::mime_type_repository::SqlxMimeTypeRepository;
+use crate::infrastructure::outbound::sqlx::movie_repository::SqlxMovieRepository;
 use crate::infrastructure::outbound::sqlx::music_album_repository::SqlxMusicAlbumRepository;
 use crate::infrastructure::outbound::sqlx::music_playlist_repository::SqlxMusicPlaylistRepository;
+use crate::infrastructure::outbound::sqlx::series_repository::SqlxSeriesRepository;
 use crate::infrastructure::outbound::sqlx::upload_repository::SqlxUploadRepository;
 use crate::infrastructure::outbound::sqlx::user_repository::SqlxUserRepository;
 use crate::infrastructure::outbound::sqlx::video_repository::SqlxVideoRepository;
@@ -72,12 +76,20 @@ impl LibraryUnitOfWork for SqlxUnitOfWork {
         SqlxImageRepository::new(self.transaction())
     }
 
+    fn movies(&mut self) -> impl MovieRepository + '_ {
+        SqlxMovieRepository::new(self.transaction())
+    }
+
     fn music_albums(&mut self) -> impl MusicAlbumRepository + '_ {
         SqlxMusicAlbumRepository::new(self.transaction())
     }
 
     fn music_playlists(&mut self) -> impl MusicPlaylistRepository + '_ {
         SqlxMusicPlaylistRepository::new(self.transaction())
+    }
+
+    fn series(&mut self) -> impl SeriesRepository + '_ {
+        SqlxSeriesRepository::new(self.transaction())
     }
 
     fn videos(&mut self) -> impl VideoRepository + '_ {

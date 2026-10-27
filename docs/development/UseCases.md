@@ -32,6 +32,8 @@ package "Library" as Library {
   }
   package "Music" as Music {
   }
+  package "Video" as Video {
+  }
 }
 package "Configuration" as Configuration {
 }
@@ -1067,6 +1069,138 @@ Allow the owner of a playlist to delete it and its track placements.
 ##### Post condition(s)
 
 - The playlist and its track placements no longer exist; the recordings, audio and files it referenced still exist.
+
+### Video
+
+```puml
+@startuml
+left to right direction
+skinparam style strictuml
+
+actor "Standard User" as StandardUser
+actor "Admin" as Admin
+
+package "Video" {
+  usecase "UC-022 - Browse movies" as UC022
+  usecase "UC-023 - Browse series" as UC023
+}
+
+StandardUser --> UC022
+Admin --> UC022
+StandardUser --> UC023
+Admin --> UC023
+@enduml
+```
+
+#### UC-022 - Browse Movies
+
+##### Description
+
+Allow an authenticated user to browse the films the system holds and read one film's details, its genres and the video
+that backs it.
+
+##### Primary actor
+
+- Standard User
+- Admin
+
+##### Parameters
+
+- filter — an optional narrowing of the film listing by name.
+- page — an optional position in the film listing.
+- film — the film to read, when reading one; optional.
+
+##### Pre condition(s)
+
+- The caller is authenticated.
+
+##### Trigger
+
+- The caller asks to list the films the system holds.
+- The caller asks to read one film.
+
+##### Happy path
+
+1. The caller asks to list the films the system holds, optionally narrowing the listing by name and choosing the page.
+2. The system verifies the caller's account still exists and returns the matching films in a stable order, each with its
+   genres and the video that backs it.
+3. The caller asks to read one film by its reference.
+4. The system verifies the film exists and returns its details, its genres and the video that backs it.
+
+##### Alternative flow
+
+- 1a. The request is unauthenticated; the system rejects the request.
+- 1b. The requested page cannot be honoured; the system rejects the request.
+- 3a. The film reference is not valid; the system rejects the request.
+- 3b. No film matches the reference; the system reports it as not found.
+
+##### Post condition(s)
+
+- The caller is shown the requested films, or the requested film, as the system holds them.
+
+---
+
+#### UC-023 - Browse Series
+
+##### Description
+
+Allow an authenticated user to browse the shows the system holds and navigate a show's seasons and episodes, reading
+each level's details and the video behind each episode.
+
+##### Primary actor
+
+- Standard User
+- Admin
+
+##### Parameters
+
+- filter — an optional narrowing of the show listing by name.
+- page — an optional position in the show listing.
+- show — the show to read, when reading one; optional.
+- season — the season to read, when reading one; optional.
+- episode — the episode to read, when reading one; optional.
+
+##### Pre condition(s)
+
+- The caller is authenticated.
+
+##### Trigger
+
+- The caller asks to list the shows the system holds.
+- The caller asks to read one show.
+- The caller asks to read one season of a show.
+- The caller asks to list the episodes of one season.
+- The caller asks to read one episode of a season.
+
+##### Happy path
+
+1. The caller asks to list the shows the system holds, optionally narrowing the listing by name and choosing the page.
+2. The system verifies the caller's account still exists and returns the matching shows in a stable order, each with its
+   reference and name as a navigation index.
+3. The caller asks to read one show by its reference.
+4. The system verifies the show exists and returns its details, its genres and each season's summary in season order.
+5. The caller asks to read one season of the show by its position.
+6. The system verifies the show and the season, and returns the season's details and its episode count.
+7. The caller asks to list the episodes of one season.
+8. The system verifies the show and the season, and returns the season's episodes in episode order, each with the video
+   behind it.
+9. The caller asks to read one episode by its position in the season.
+10. The system verifies the show, the season and the episode, and returns the episode's details and the video behind it.
+
+##### Alternative flow
+
+- 1a. The request is unauthenticated; the system rejects the request.
+- 1b. The requested page cannot be honoured; the system rejects the request.
+- 3a. The show reference is not valid; the system rejects the request.
+- 3b. No show matches the reference; the system reports it as not found.
+- 5a. The season position is not valid; the system rejects the request.
+- 5b. The show holds no season at the requested position; the system reports it as not found.
+- 9a. The episode position is not valid; the system rejects the request.
+- 9b. The season holds no episode at the requested position; the system reports it as not found.
+
+##### Post condition(s)
+
+- The caller is shown the requested shows, show, season, episodes, or episode, as the system holds them.
 
 ## Configuration
 

@@ -119,7 +119,7 @@
     ls-lint = {
       enable = true;
       name = "ls-lint";
-      entry = "ls-lint";
+      entry = "ls_lint";
       language = "system";
       pass_filenames = false;
     };
