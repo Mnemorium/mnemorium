@@ -1,3 +1,9 @@
+## [0.23.1](https://github.com/Mnemorium/mnemorium/compare/v0.23.0...v0.23.1) (2026-10-27)
+
+### Bug Fixes
+
+* **infrastructure:** isolate the media probe stub write from concurrent forks ([#343](https://github.com/Mnemorium/mnemorium/issues/343)) ([a8159fd](https://github.com/Mnemorium/mnemorium/commit/a8159fd55d58814a4759fa9a54e0351a7b0e38d0))
+
 ## [0.23.0](https://github.com/Mnemorium/mnemorium/compare/v0.22.2...v0.23.0) (2026-10-27)
 
 ### Features

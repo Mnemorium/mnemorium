@@ -8490,7 +8490,7 @@ SOFTWARE.
 MIT License (MIT)
 
 Used by:
-  - mnemorium 0.23.0 ()
+  - mnemorium 0.23.1 ()
 MIT License
 
 Copyright (c) 2026 Mnemorium
