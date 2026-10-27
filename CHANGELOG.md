@@ -1,3 +1,9 @@
+## [0.22.2](https://github.com/Mnemorium/mnemorium/compare/v0.22.1...v0.22.2) (2026-10-27)
+
+### Bug Fixes
+
+* **persistence:** constrain the video duration ([#337](https://github.com/Mnemorium/mnemorium/issues/337)) ([42d563c](https://github.com/Mnemorium/mnemorium/commit/42d563cce632c09914e1403feae565930514bad7))
+
 ## [0.22.1](https://github.com/Mnemorium/mnemorium/compare/v0.22.0...v0.22.1) (2026-10-27)
 
 ### Bug Fixes
