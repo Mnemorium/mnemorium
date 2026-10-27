@@ -450,19 +450,34 @@ impl MediaProbe for LocalMediaProbe {
     }
 }
 
-/// Test-only permit pool shared by every stubbed probe.
+/// Test-only permit pool bounding how many stubbed probes run at once.
 ///
-/// Serialising the stubbed probes keeps a concurrently forked child from
-/// inheriting another test's stub write descriptor, which would make the
-/// `exec` fail with `ETXTBSY`.
+/// The pool bounds probe concurrency only: a probe acquires its permit inside
+/// the adapter, after the test body has written its stub, so the pool orders a
+/// spawn against a spawn and never a spawn against a stub write. Isolating the
+/// stub file is [`spawn_gate`]'s job (`TEST-054`).
 #[cfg(test)]
 #[expect(
     clippy::single_call_fn,
-    reason = "the shared test pool is named after the concurrency it serialises"
+    reason = "the shared test pool is named after the concurrency it bounds"
 )]
 fn test_permits() -> Arc<Semaphore> {
     static PERMITS: OnceLock<Arc<Semaphore>> = OnceLock::new();
     Arc::clone(PERMITS.get_or_init(|| Arc::new(Semaphore::new(MAX_CONCURRENT_PROBES))))
+}
+
+/// Test-only process-wide gate held across a stub write and the probe that runs it.
+///
+/// One permit excludes every other spawning test in this binary, so no child is
+/// forked while any stub write descriptor can exist: a child forked in that
+/// window inherits a duplicate of the descriptor, and the stub author's `exec`
+/// then fails with `ETXTBSY` (`TEST-054`). The permit is acquired as the first
+/// Arrange step and held to the end of the test body, because the `exec` is not
+/// observable from the test side.
+#[cfg(test)]
+fn spawn_gate() -> Arc<Semaphore> {
+    static GATE: OnceLock<Arc<Semaphore>> = OnceLock::new();
+    Arc::clone(GATE.get_or_init(|| Arc::new(Semaphore::new(1))))
 }
 
 /// Classify an image decode error and log the matching security event.
@@ -594,6 +609,7 @@ mod tests {
 
     use super::LocalMediaProbe;
     use super::classify_image_error;
+    use super::spawn_gate;
 
     /// A generous probe timeout so a loaded test runner cannot starve a stub.
     const STUB_TIMEOUT: Duration = Duration::from_secs(10);
@@ -687,6 +703,7 @@ mod tests {
     #[tokio::test]
     async fn probe_video_maps_ffprobe_json() -> Result<(), Box<dyn Error>> {
         // Arrange
+        let _gate = spawn_gate().acquire_owned().await?;
         let tmp = tempdir()?;
         let program = stub(
             tmp.path(),
@@ -719,6 +736,7 @@ mod tests {
     async fn probe_video_derives_frame_count_when_nb_frames_is_absent() -> Result<(), Box<dyn Error>>
     {
         // Arrange
+        let _gate = spawn_gate().acquire_owned().await?;
         let tmp = tempdir()?;
         let program = stub(
             tmp.path(),
@@ -760,6 +778,7 @@ mod tests {
     #[tokio::test]
     async fn probe_video_non_zero_exit_returns_unsupported_media() -> Result<(), Box<dyn Error>> {
         // Arrange
+        let _gate = spawn_gate().acquire_owned().await?;
         let tmp = tempdir()?;
         let program = stub(tmp.path(), "ffprobe", "exit 1")?;
         let media = tmp.path().join("clip.mp4");
@@ -770,7 +789,10 @@ mod tests {
         let result = probe.probe_video(&media).await;
 
         // Assert
-        assert!(matches!(result, Err(MediaProbeError::UnsupportedMedia)));
+        assert!(
+            matches!(result, Err(MediaProbeError::UnsupportedMedia)),
+            "unexpected probe result: {result:?}"
+        );
         Ok(())
     }
 
@@ -778,6 +800,7 @@ mod tests {
     #[tokio::test]
     async fn probe_video_malformed_output_returns_operation_failed() -> Result<(), Box<dyn Error>> {
         // Arrange
+        let _gate = spawn_gate().acquire_owned().await?;
         let tmp = tempdir()?;
         let program = stub(tmp.path(), "ffprobe", "echo not-json")?;
         let media = tmp.path().join("clip.mp4");
@@ -788,7 +811,10 @@ mod tests {
         let result = probe.probe_video(&media).await;
 
         // Assert
-        assert!(matches!(result, Err(MediaProbeError::OperationFailed)));
+        assert!(
+            matches!(result, Err(MediaProbeError::OperationFailed)),
+            "unexpected probe result: {result:?}"
+        );
         Ok(())
     }
 
@@ -796,6 +822,7 @@ mod tests {
     #[tokio::test]
     async fn probe_video_no_video_stream_returns_unsupported_media() -> Result<(), Box<dyn Error>> {
         // Arrange
+        let _gate = spawn_gate().acquire_owned().await?;
         let tmp = tempdir()?;
         let program = stub(
             tmp.path(),
@@ -810,7 +837,10 @@ mod tests {
         let result = probe.probe_video(&media).await;
 
         // Assert
-        assert!(matches!(result, Err(MediaProbeError::UnsupportedMedia)));
+        assert!(
+            matches!(result, Err(MediaProbeError::UnsupportedMedia)),
+            "unexpected probe result: {result:?}"
+        );
         Ok(())
     }
 
@@ -818,6 +848,7 @@ mod tests {
     #[tokio::test]
     async fn probe_video_timeout_returns_timeout() -> Result<(), Box<dyn Error>> {
         // Arrange
+        let _gate = spawn_gate().acquire_owned().await?;
         let tmp = tempdir()?;
         let program = stub(tmp.path(), "ffprobe", "sleep 10")?;
         let media = tmp.path().join("clip.mp4");
@@ -828,13 +859,17 @@ mod tests {
         let result = probe.probe_video(&media).await;
 
         // Assert
-        assert!(matches!(result, Err(MediaProbeError::Timeout)));
+        assert!(
+            matches!(result, Err(MediaProbeError::Timeout)),
+            "unexpected probe result: {result:?}"
+        );
         Ok(())
     }
 
     #[tokio::test]
     async fn probe_video_missing_binary_returns_operation_failed() -> Result<(), Box<dyn Error>> {
         // Arrange
+        let _gate = spawn_gate().acquire_owned().await?;
         let tmp = tempdir()?;
         let media = tmp.path().join("clip.mp4");
         fs::write(&media, b"stub")?;
@@ -845,7 +880,10 @@ mod tests {
         let result = probe.probe_video(&media).await;
 
         // Assert
-        assert!(matches!(result, Err(MediaProbeError::OperationFailed)));
+        assert!(
+            matches!(result, Err(MediaProbeError::OperationFailed)),
+            "unexpected probe result: {result:?}"
+        );
         Ok(())
     }
 
@@ -855,6 +893,7 @@ mod tests {
     -> Result<(), Box<dyn Error>> {
         // Arrange: a path carrying shell metacharacters, and a stub recording
         // each received argument on its own line.
+        let _gate = spawn_gate().acquire_owned().await?;
         let tmp = tempdir()?;
         let program = stub(
             tmp.path(),
@@ -1027,6 +1066,7 @@ mod tests {
         #[case] document: &'static str,
     ) -> Result<(), Box<dyn Error>> {
         // Arrange
+        let _gate = spawn_gate().acquire_owned().await?;
         let tmp = tempdir()?;
         let program = stub(
             tmp.path(),
@@ -1041,7 +1081,10 @@ mod tests {
         let result = probe.probe_video(&media).await;
 
         // Assert
-        assert!(matches!(result, Err(MediaProbeError::UnsupportedMedia)));
+        assert!(
+            matches!(result, Err(MediaProbeError::UnsupportedMedia)),
+            "unexpected probe result: {result:?}"
+        );
         Ok(())
     }
 
@@ -1051,6 +1094,7 @@ mod tests {
         // Arrange: `ffprobe` reports an unusable `0/0` average rate for a stream
         // whose nominal rate is valid, so the fallback must derive the frame
         // count instead of rejecting a decodable video.
+        let _gate = spawn_gate().acquire_owned().await?;
         let tmp = tempdir()?;
         let program = stub(
             tmp.path(),
@@ -1077,6 +1121,7 @@ mod tests {
     async fn probe_video_oversized_output_returns_unsupported_media() -> Result<(), Box<dyn Error>>
     {
         // Arrange: a probe that writes past the stdout cap.
+        let _gate = spawn_gate().acquire_owned().await?;
         let tmp = tempdir()?;
         let program = stub(
             tmp.path(),
@@ -1091,7 +1136,10 @@ mod tests {
         let result = probe.probe_video(&media).await;
 
         // Assert
-        assert!(matches!(result, Err(MediaProbeError::UnsupportedMedia)));
+        assert!(
+            matches!(result, Err(MediaProbeError::UnsupportedMedia)),
+            "unexpected probe result: {result:?}"
+        );
         Ok(())
     }
 
@@ -1105,6 +1153,7 @@ mod tests {
         #[case] expected: &'static str,
     ) -> Result<(), Box<dyn Error>> {
         // Arrange
+        let _gate = spawn_gate().acquire_owned().await?;
         let tmp = tempdir()?;
         let document = format!(
             "{{\"streams\":[{{\"codec_type\":\"video\",\"codec_name\":\"h264\",\"width\":10,\"height\":10,\"pix_fmt\":\"{pix_fmt}\",\"nb_frames\":\"1\"}}]}}"
