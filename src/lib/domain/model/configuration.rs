@@ -2,9 +2,6 @@ use std::net::IpAddr;
 
 use std::str::FromStr as _;
 
-/// Default root directory holding the staged and final files.
-pub const DEFAULT_STORAGE_ROOT: &str = "data";
-
 /// Default size of every chunk except the last, in bytes.
 pub const DEFAULT_CHUNK_SIZE_BYTES: u64 = 5_242_880;
 
@@ -67,71 +64,6 @@ pub enum AssetError {
     /// The maximum file size is zero.
     #[error("asset upload max_file_size_bytes must be greater than zero")]
     MaxFileSizeZero,
-    /// The storage root is empty.
-    #[error("asset storage root must not be empty")]
-    RootEmpty,
-}
-
-/// Storage-related settings of the Asset bounded context.
-///
-/// Constructed through [`AssetStorage::try_new`], which validates the setting;
-/// the configuration adapters merge their layer into the resolved value and
-/// rebuild it, so no layer can bypass the validation.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
-#[non_exhaustive]
-pub struct AssetStorage {
-    /// Root directory holding the staged and final files.
-    root: String,
-}
-
-impl AssetStorage {
-    /// Return the root directory holding the staged and final files.
-    #[must_use]
-    pub fn root(&self) -> &str {
-        &self.root
-    }
-
-    /// Update the root directory holding the staged and final files.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`AssetError::RootEmpty`] when `root` is empty.
-    pub fn set_root(&mut self, root: String) -> Result<(), AssetError> {
-        self.root = Self::validate_root(root)?;
-        Ok(())
-    }
-
-    /// Initialise a new `AssetStorage`, validating `root` is non-empty.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`AssetError::RootEmpty`] when `root` is empty.
-    pub fn try_new(root: String) -> Result<Self, AssetError> {
-        let validated_root = Self::validate_root(root)?;
-        Ok(Self {
-            root: validated_root,
-        })
-    }
-
-    /// Validate `root`.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`AssetError::RootEmpty`] when `root` is empty.
-    fn validate_root(root: String) -> Result<String, AssetError> {
-        if root.is_empty() {
-            return Err(AssetError::RootEmpty);
-        }
-        Ok(root)
-    }
-}
-
-impl Default for AssetStorage {
-    fn default() -> Self {
-        Self {
-            root: DEFAULT_STORAGE_ROOT.to_owned(),
-        }
-    }
 }
 
 /// Upload-related settings of the Asset bounded context.
@@ -280,8 +212,6 @@ impl Default for AssetUpload {
 #[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize)]
 #[non_exhaustive]
 pub struct Asset {
-    /// Storage settings.
-    storage: AssetStorage,
     /// Upload settings.
     upload: AssetUpload,
 }
@@ -289,14 +219,8 @@ pub struct Asset {
 impl Asset {
     /// Initialise a new `Asset`.
     #[must_use]
-    pub fn new(storage: AssetStorage, upload: AssetUpload) -> Self {
-        Self { storage, upload }
-    }
-
-    /// Return the storage settings.
-    #[must_use]
-    pub fn storage(&self) -> &AssetStorage {
-        &self.storage
+    pub fn new(upload: AssetUpload) -> Self {
+        Self { upload }
     }
 
     /// Return the upload settings.

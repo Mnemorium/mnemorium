@@ -9,8 +9,6 @@
 # pepper and the token signing secret live in state.yaml and are never written
 # here.
 asset:
-  storage:
-    root: data
   upload:
     chunk_size_bytes: 5242880
     expiry_seconds: 86400

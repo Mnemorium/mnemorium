@@ -34,19 +34,8 @@ pub struct PartialConfiguration {
 #[serde(default, deny_unknown_fields)]
 #[non_exhaustive]
 pub struct PartialAsset {
-    /// Storage-related settings named by the layer.
-    pub storage: PartialAssetStorage,
     /// Upload-related settings named by the layer.
     pub upload: PartialAssetUpload,
-}
-
-/// Storage-related settings named by the layer.
-#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Deserialize)]
-#[serde(default, deny_unknown_fields)]
-#[non_exhaustive]
-pub struct PartialAssetStorage {
-    /// Root directory holding the staged and final files.
-    pub root: Option<String>,
 }
 
 /// Upload-related settings named by the layer.

@@ -17,8 +17,8 @@ pub struct LoadConfigurationResponse {
     configuration: Configuration,
     /// Whether this call generated the default configuration file.
     ///
-    /// The composition root warns naming the resolved storage root when the
-    /// file was generated, because losing the file silently reverts settings.
+    /// The composition root warns when the file was generated, because losing
+    /// the file silently reverts settings.
     file_created: bool,
 }
 

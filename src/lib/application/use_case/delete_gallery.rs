@@ -7,6 +7,7 @@ use crate::application::port::delete_gallery::DeleteGalleryCommand;
 use crate::application::port::delete_gallery::DeleteGalleryError;
 use crate::application::port::delete_gallery::DeleteGalleryUseCase;
 use crate::application::security_event;
+use crate::application::use_case::upload_layout::stored_file_path;
 use crate::domain::model::gallery_item::GalleryItemMedia;
 use crate::domain::port::asset_unit_of_work::AssetUnitOfWork;
 use crate::domain::port::error::RepositoryError;
@@ -31,8 +32,6 @@ use crate::domain::port::video_repository::VideoRepository as _;
 pub struct DeleteGallery<F, S> {
     /// Storage adapter removing each backing file's bytes.
     file_storage: Arc<S>,
-    /// Root directory holding the upload and file folders.
-    root: PathBuf,
     /// Factory opening the unit of work wrapping the deletion.
     unit_of_work_factory: Arc<F>,
 }
@@ -40,10 +39,9 @@ pub struct DeleteGallery<F, S> {
 impl<F: UnitOfWorkFactory, S: FileStorage> DeleteGallery<F, S> {
     /// Create a new use case.
     #[must_use]
-    pub fn new(unit_of_work_factory: Arc<F>, file_storage: Arc<S>, root: PathBuf) -> Self {
+    pub fn new(unit_of_work_factory: Arc<F>, file_storage: Arc<S>) -> Self {
         Self {
             file_storage,
-            root,
             unit_of_work_factory,
         }
     }
@@ -60,7 +58,6 @@ where
         command: DeleteGalleryCommand,
     ) -> Pin<Box<dyn Future<Output = Result<(), DeleteGalleryError>> + Send + 'future>> {
         let file_storage = Arc::clone(&self.file_storage);
-        let root = self.root.clone();
         let unit_of_work_factory = Arc::clone(&self.unit_of_work_factory);
 
         Box::pin(async move {
@@ -219,7 +216,7 @@ where
                     // transaction, so they are removed best-effort afterwards.
                     for stored_path in removed_paths {
                         if file_storage
-                            .delete_upload_file(&root.join(stored_path))
+                            .delete_upload_file(&stored_file_path(&stored_path))
                             .await
                             .is_err()
                         {
@@ -244,7 +241,6 @@ where
 mod tests {
     use std::error::Error;
     use std::path::Path;
-    use std::path::PathBuf;
     use std::sync::Arc;
     use std::sync::atomic::Ordering;
 
@@ -254,7 +250,6 @@ mod tests {
     use crate::application::port::delete_gallery::DeleteGalleryCommand;
     use crate::application::port::delete_gallery::DeleteGalleryError;
     use crate::application::port::delete_gallery::DeleteGalleryUseCase as _;
-    use crate::application::use_case::test_fixtures::ROOT;
     use crate::domain::model::file::File;
     use crate::domain::model::gallery::Gallery;
     use crate::domain::model::gallery_item::GalleryItem;
@@ -344,11 +339,7 @@ mod tests {
 
     /// Build the use case over `harness`, with `file_storage` removing the bytes.
     fn use_case(harness: &GalleryFactoryHarness, file_storage: MockFileStorage) -> UseCase {
-        DeleteGallery::new(
-            Arc::clone(&harness.factory),
-            Arc::new(file_storage),
-            PathBuf::from(ROOT),
-        )
+        DeleteGallery::new(Arc::clone(&harness.factory), Arc::new(file_storage))
     }
 
     /// Expect no media row to reference the file the guard probes.
@@ -457,8 +448,8 @@ mod tests {
             .expect_delete_upload_file()
             .times(2)
             .withf(|path| {
-                path == Path::new("/storage/files/1_photo.png")
-                    || path == Path::new("/storage/files/2_clip.mp4")
+                path == Path::new("data/files/1_photo.png")
+                    || path == Path::new("data/files/2_clip.mp4")
             })
             .returning(|_| Box::pin(async { Ok(()) }));
         let harness = harness_with(users, galleries, images, videos, files);
