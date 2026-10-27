@@ -59,7 +59,7 @@ pub struct ListAlbumsQuery {
             status = BAD_REQUEST,
             body = ErrorBody,
             content_type = "application/hal+json",
-            description = "Invalid filter values"
+            description = "Malformed query string"
         ),
         (
             status = UNAUTHORIZED,
@@ -343,7 +343,7 @@ mod tests {
     #[case::limit("?limit=abc")]
     #[case::offset("?offset=abc")]
     #[tokio::test]
-    async fn get_album_list_invalid_filter_returns_stable_bad_request(
+    async fn get_album_list_malformed_query_returns_stable_bad_request(
         #[case] query: &str,
     ) -> Result<(), Box<dyn Error>> {
         // Arrange

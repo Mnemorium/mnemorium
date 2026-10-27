@@ -64,7 +64,7 @@ pub struct ListPlaylistsQuery {
             status = BAD_REQUEST,
             body = ErrorBody,
             content_type = "application/hal+json",
-            description = "Invalid filter values"
+            description = "Malformed query string"
         ),
         (
             status = UNAUTHORIZED,
@@ -367,7 +367,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn get_playlist_list_invalid_filter_returns_stable_bad_request()
+    async fn get_playlist_list_malformed_query_returns_stable_bad_request()
     -> Result<(), Box<dyn Error>> {
         // Arrange
         let use_case = MockListPlaylistsUseCase::new();

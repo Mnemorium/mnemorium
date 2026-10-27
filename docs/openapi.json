@@ -2407,7 +2407,7 @@
                 }
               }
             },
-            "description": "Invalid filter values"
+            "description": "Malformed query string"
           },
           "401": {
             "content": {
@@ -3215,7 +3215,7 @@
                 }
               }
             },
-            "description": "Invalid filter values"
+            "description": "Malformed query string"
           },
           "401": {
             "content": {
@@ -3690,7 +3690,7 @@
                 }
               }
             },
-            "description": "Invalid filter values"
+            "description": "Malformed query string"
           },
           "401": {
             "content": {
