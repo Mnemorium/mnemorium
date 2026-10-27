@@ -37,6 +37,7 @@ impl MovieRepository for SqlxMovieRepository<'_> {
                 movie.plot,
                 movie.country_of_origin,
                 movie.release_date,
+                movie.cover_file_id,
                 COALESCE((
                     SELECT GROUP_CONCAT(genre_id, ',')
                     FROM (
@@ -103,6 +104,7 @@ impl MovieRepository for SqlxMovieRepository<'_> {
                         .filter(|genre| !genre.is_empty())
                         .map(str::to_owned)
                         .collect(),
+                    row.cover_file_id,
                     video,
                 )
                 .map_err(|_| stored_data_invalid("invalid_movie"))
@@ -378,6 +380,40 @@ mod tests {
             "a film without a genre must report none"
         );
         assert_eq!(second.video().width(), 1280);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn search_projects_the_cover_file() -> Result<(), Box<dyn Error>> {
+        // Arrange: one covered film and one without artwork.
+        let mut transaction = begin_transaction().await?;
+        seed_user(&mut transaction).await?;
+        seed_video_file(&mut transaction, 10).await?;
+        seed_video_file(&mut transaction, 11).await?;
+        sqlx::query(
+            "INSERT INTO file (file_id, path, user_id, is_public, mime_type_id, integrity_hash)
+             VALUES (12, '12.png', 1, 0, 'image/png', ?1)",
+        )
+        .bind(format!("{:064x}", 12i64))
+        .execute(&mut *transaction)
+        .await?;
+        seed_video(&mut transaction, 20, 10, 1920).await?;
+        seed_video(&mut transaction, 21, 11, 1280).await?;
+        seed_movie(&mut transaction, 1, "Some Like It Hot", 20).await?;
+        seed_movie(&mut transaction, 2, "Sunset Boulevard", 21).await?;
+        sqlx::query("UPDATE movie SET cover_file_id = 12 WHERE movie_id = 1")
+            .execute(&mut *transaction)
+            .await?;
+        let mut repository = SqlxMovieRepository::new(&mut transaction);
+
+        // Act
+        let movies = repository.search(&MovieFilter::default()).await?;
+
+        // Assert
+        let covered = movies.first().ok_or("the covered film must be found")?;
+        assert_eq!(covered.cover_file_id(), Some(12));
+        let uncovered = movies.get(1).ok_or("the uncovered film must be found")?;
+        assert_eq!(uncovered.cover_file_id(), None);
         Ok(())
     }
 

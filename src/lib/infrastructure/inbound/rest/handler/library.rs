@@ -399,10 +399,14 @@ impl From<GetGalleryResponseData> for GalleryResponse {
 /// HAL links exposed by a music album representation.
 ///
 /// The `self` link addresses the album; the album's mediums are embedded in the
-/// representation and each medium carries its own links (`API-037`).
+/// representation and each medium carries its own links (`API-037`). A cover is
+/// exposed as the `cover` link when the album stores artwork.
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 #[non_exhaustive]
 pub struct AlbumLinks {
+    /// Link to the album's cover file, when the album stores artwork.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cover: Option<Link>,
     /// Link to the album resource itself.
     #[serde(rename = "self")]
     pub self_link: Link,
@@ -411,8 +415,9 @@ pub struct AlbumLinks {
 impl AlbumLinks {
     /// Build the links of the album identified by `album_id`.
     #[must_use]
-    pub fn for_album(album_id: NumericID) -> Self {
+    pub fn for_album(album_id: NumericID, cover_file_id: Option<NumericID>) -> Self {
         Self {
+            cover: cover_file_id.map(|file_id| Link::new(&asset_image_href(file_id))),
             self_link: Link::new(&format!("/api/v1/library/music/album/{album_id}")),
         }
     }
@@ -563,6 +568,8 @@ pub struct AlbumListResponse {
 #[derive(Debug, Serialize, ToSchema)]
 #[non_exhaustive]
 pub struct AlbumResponse {
+    /// Identifier of the file holding the album's artwork, when set.
+    pub cover_file_id: Option<NumericID>,
     /// Genres of the album, ordered by genre identifier.
     pub genres: Vec<String>,
     /// Unique identifier of the album.
@@ -586,9 +593,10 @@ pub struct AlbumResponse {
 impl From<&ListAlbumsItem> for AlbumResponse {
     fn from(item: &ListAlbumsItem) -> Self {
         Self {
+            cover_file_id: item.cover_file_id(),
             genres: item.genres().to_vec(),
             id: item.album_id(),
-            links: AlbumLinks::for_album(item.album_id()),
+            links: AlbumLinks::for_album(item.album_id(), item.cover_file_id()),
             mediums: item
                 .mediums()
                 .iter()
@@ -615,9 +623,10 @@ impl From<&ListAlbumsItem> for AlbumResponse {
 impl From<&GetAlbumResponseData> for AlbumResponse {
     fn from(response: &GetAlbumResponseData) -> Self {
         Self {
+            cover_file_id: response.cover_file_id(),
             genres: response.genres().to_vec(),
             id: response.album_id(),
-            links: AlbumLinks::for_album(response.album_id()),
+            links: AlbumLinks::for_album(response.album_id(), response.cover_file_id()),
             mediums: response
                 .mediums()
                 .iter()
@@ -749,10 +758,14 @@ impl From<GetAlbumTrackResponse> for TrackResponse {
 /// HAL links exposed by a film representation.
 ///
 /// The `self` link addresses the film; the video is embedded in the
-/// representation and carries no links of its own (`API-037`).
+/// representation and carries no links of its own (`API-037`). A cover is
+/// exposed as the `cover` link when the film stores artwork.
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 #[non_exhaustive]
 pub struct MovieLinks {
+    /// Link to the film's cover file, when the film stores artwork.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cover: Option<Link>,
     /// Link to the film resource itself.
     #[serde(rename = "self")]
     pub self_link: Link,
@@ -761,8 +774,9 @@ pub struct MovieLinks {
 impl MovieLinks {
     /// Build the links of the film identified by `movie_id`.
     #[must_use]
-    pub fn for_movie(movie_id: NumericID) -> Self {
+    pub fn for_movie(movie_id: NumericID, cover_file_id: Option<NumericID>) -> Self {
         Self {
+            cover: cover_file_id.map(|file_id| Link::new(&asset_image_href(file_id))),
             self_link: Link::new(&format!("/api/v1/library/movie/{movie_id}")),
         }
     }
@@ -808,6 +822,8 @@ impl From<&VideoSummary> for VideoResponse {
 pub struct MovieResponse {
     /// Country of origin of the film.
     pub country_of_origin: String,
+    /// Identifier of the file holding the film's artwork, when set.
+    pub cover_file_id: Option<NumericID>,
     /// Genres of the film, ordered by genre identifier.
     pub genres: Vec<String>,
     /// Unique identifier of the film.
@@ -828,10 +844,11 @@ pub struct MovieResponse {
 impl From<&ListMoviesItem> for MovieResponse {
     fn from(item: &ListMoviesItem) -> Self {
         Self {
+            cover_file_id: item.cover_file_id(),
             country_of_origin: item.country_of_origin().to_owned(),
             genres: item.genre_ids().to_vec(),
             id: item.id(),
-            links: MovieLinks::for_movie(item.id()),
+            links: MovieLinks::for_movie(item.id(), item.cover_file_id()),
             name: item.name().to_owned(),
             plot: item.plot().to_owned(),
             release_date: format_date(item.release_date()),
@@ -843,10 +860,11 @@ impl From<&ListMoviesItem> for MovieResponse {
 impl From<&GetMovieResponseData> for MovieResponse {
     fn from(response: &GetMovieResponseData) -> Self {
         Self {
+            cover_file_id: response.cover_file_id(),
             country_of_origin: response.country_of_origin().to_owned(),
             genres: response.genre_ids().to_vec(),
             id: response.id(),
-            links: MovieLinks::for_movie(response.id()),
+            links: MovieLinks::for_movie(response.id(), response.cover_file_id()),
             name: response.name().to_owned(),
             plot: response.plot().to_owned(),
             release_date: format_date(response.release_date()),
@@ -919,10 +937,14 @@ pub struct MovieListResponse {
 /// HAL links exposed by a show representation.
 ///
 /// The `self` link addresses the show; the seasons are embedded and each
-/// season carries its own links (`API-037`).
+/// season carries its own links (`API-037`). A cover is exposed as the `cover`
+/// link when the show stores artwork.
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 #[non_exhaustive]
 pub struct SeriesLinks {
+    /// Link to the show's cover file, when the show stores artwork.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cover: Option<Link>,
     /// Link to the show resource itself.
     #[serde(rename = "self")]
     pub self_link: Link,
@@ -931,8 +953,9 @@ pub struct SeriesLinks {
 impl SeriesLinks {
     /// Build the links of the show identified by `series_id`.
     #[must_use]
-    pub fn for_series(series_id: NumericID) -> Self {
+    pub fn for_series(series_id: NumericID, cover_file_id: Option<NumericID>) -> Self {
         Self {
+            cover: cover_file_id.map(|file_id| Link::new(&asset_image_href(file_id))),
             self_link: Link::new(&format!("/api/v1/library/series/{series_id}")),
         }
     }
@@ -942,10 +965,14 @@ impl SeriesLinks {
 ///
 /// The `self` link addresses the season, the `series` link the show that holds
 /// it, and the `episodes` link the season's episode collection (`API-034`,
-/// `API-037`).
+/// `API-037`). A cover is exposed as the `cover` link when the season stores
+/// artwork.
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 #[non_exhaustive]
 pub struct SeriesSeasonLinks {
+    /// Link to the season's cover file, when the season stores artwork.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cover: Option<Link>,
     /// Link to the episode collection of the season.
     pub episodes: Link,
     /// Link to the season resource itself.
@@ -958,8 +985,13 @@ pub struct SeriesSeasonLinks {
 impl SeriesSeasonLinks {
     /// Build the links of a season identified by its show and index.
     #[must_use]
-    pub fn for_season(series_id: NumericID, season_index: u32) -> Self {
+    pub fn for_season(
+        series_id: NumericID,
+        season_index: u32,
+        cover_file_id: Option<NumericID>,
+    ) -> Self {
         Self {
+            cover: cover_file_id.map(|file_id| Link::new(&asset_image_href(file_id))),
             episodes: Link::new(&format!(
                 "/api/v1/library/series/{series_id}/season/{season_index}/episode"
             )),
@@ -1008,6 +1040,8 @@ impl SeriesEpisodeLinks {
 #[derive(Debug, Serialize, ToSchema)]
 #[non_exhaustive]
 pub struct SeasonResponse {
+    /// Identifier of the file holding the season's artwork, when set.
+    pub cover_file_id: Option<NumericID>,
     /// Number of episodes the season holds.
     pub episode_count: usize,
     /// Series-scoped index of the season.
@@ -1030,11 +1064,13 @@ impl SeasonResponse {
         index: u32,
         name: Option<String>,
         episode_count: usize,
+        cover_file_id: Option<NumericID>,
     ) -> Self {
         Self {
+            cover_file_id,
             episode_count,
             index,
-            links: SeriesSeasonLinks::for_season(series_id, index),
+            links: SeriesSeasonLinks::for_season(series_id, index, cover_file_id),
             name,
             series_id,
         }
@@ -1048,6 +1084,7 @@ impl From<&GetSeriesSeasonResponse> for SeasonResponse {
             response.index(),
             response.name().map(str::to_owned),
             response.episode_count(),
+            response.cover_file_id(),
         )
     }
 }
@@ -1058,6 +1095,8 @@ impl From<&GetSeriesSeasonResponse> for SeasonResponse {
 pub struct SeriesResponse {
     /// Country of origin of the show.
     pub country_of_origin: String,
+    /// Identifier of the file holding the show's artwork, when set.
+    pub cover_file_id: Option<NumericID>,
     /// Date of the first airing of the show, in `YYYY-MM-DD` form.
     pub first_air_date: String,
     /// Genres of the show, ordered by genre identifier.
@@ -1078,11 +1117,12 @@ pub struct SeriesResponse {
 impl From<&GetSeriesResponseData> for SeriesResponse {
     fn from(response: &GetSeriesResponseData) -> Self {
         Self {
+            cover_file_id: response.cover_file_id(),
             country_of_origin: response.country_of_origin().to_owned(),
             first_air_date: format_date(response.first_air_date()),
             genres: response.genre_ids().to_vec(),
             id: response.id(),
-            links: SeriesLinks::for_series(response.id()),
+            links: SeriesLinks::for_series(response.id(), response.cover_file_id()),
             name: response.name().to_owned(),
             plot: response.plot().to_owned(),
             seasons: response
@@ -1094,6 +1134,7 @@ impl From<&GetSeriesResponseData> for SeriesResponse {
                         season.index(),
                         season.name().map(str::to_owned),
                         season.episode_count(),
+                        season.cover_file_id(),
                     )
                 })
                 .collect(),
@@ -1101,15 +1142,17 @@ impl From<&GetSeriesResponseData> for SeriesResponse {
     }
 }
 
-/// One show of a listing: its identifier and name only.
+/// One show of a listing: its identifier, name and cover.
 #[derive(Debug, Serialize, ToSchema)]
 #[non_exhaustive]
 pub struct SeriesSummaryResponse {
+    /// Identifier of the file holding the show's artwork, when set.
+    pub cover_file_id: Option<NumericID>,
     /// Unique identifier of the show.
     pub id: NumericID,
     /// Links to the show.
     #[serde(rename = "_links")]
-    pub links: SelfLinks,
+    pub links: SeriesLinks,
     /// Name of the show.
     pub name: String,
 }
@@ -1117,8 +1160,9 @@ pub struct SeriesSummaryResponse {
 impl From<&ListSeriesItem> for SeriesSummaryResponse {
     fn from(item: &ListSeriesItem) -> Self {
         Self {
+            cover_file_id: item.cover_file_id(),
             id: item.id(),
-            links: SelfLinks::new(&format!("/api/v1/library/series/{}", item.id())),
+            links: SeriesLinks::for_series(item.id(), item.cover_file_id()),
             name: item.name().to_owned(),
         }
     }
@@ -1266,10 +1310,14 @@ pub struct EpisodeListResponse {
 ///
 /// The `self` link addresses the canonical playlist; the `tracks` link exposes
 /// the alias route that serves the playlist with its embedded tracks
-/// (`API-037`, `API-042`).
+/// (`API-037`, `API-042`). A cover is exposed as the `cover` link when the
+/// playlist stores artwork.
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 #[non_exhaustive]
 pub struct PlaylistLinks {
+    /// Link to the playlist's cover file, when the playlist stores artwork.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cover: Option<Link>,
     /// Link to the playlist resource itself.
     #[serde(rename = "self")]
     pub self_link: Link,
@@ -1280,8 +1328,9 @@ pub struct PlaylistLinks {
 impl PlaylistLinks {
     /// Build the links of the playlist identified by `playlist_id`.
     #[must_use]
-    pub fn for_playlist(playlist_id: NumericID) -> Self {
+    pub fn for_playlist(playlist_id: NumericID, cover_file_id: Option<NumericID>) -> Self {
         Self {
+            cover: cover_file_id.map(|file_id| Link::new(&asset_image_href(file_id))),
             self_link: Link::new(&format!("/api/v1/library/music/playlist/{playlist_id}")),
             tracks: Link::new(&format!(
                 "/api/v1/library/music/playlist/{playlist_id}/track"
@@ -1359,6 +1408,8 @@ impl PlaylistTrackResponse {
 #[derive(Debug, Serialize, ToSchema)]
 #[non_exhaustive]
 pub struct PlaylistResponse {
+    /// Identifier of the file holding the playlist's artwork, when set.
+    pub cover_file_id: Option<NumericID>,
     /// Date and time of the creation of the playlist.
     pub created_at: String,
     /// Unique identifier of the playlist.
@@ -1385,11 +1436,12 @@ impl PlaylistResponse {
     #[must_use]
     pub fn from_listed(item: &ListPlaylistsItem) -> Self {
         Self {
+            cover_file_id: item.cover_file_id(),
             created_at: format_timestamp(item.created_at()),
             id: item.id(),
             is_public: item.is_public(),
             last_modified_at: format_timestamp(item.last_modified_at()),
-            links: PlaylistLinks::for_playlist(item.id()),
+            links: PlaylistLinks::for_playlist(item.id(), item.cover_file_id()),
             name: item.name().to_owned(),
             owner_id: item.user_id(),
             track_count: item.track_count(),
@@ -1401,11 +1453,12 @@ impl PlaylistResponse {
     #[must_use]
     pub fn new(playlist: &MusicPlaylist) -> Self {
         Self {
+            cover_file_id: playlist.cover_file_id(),
             created_at: format_timestamp(playlist.created_at()),
             id: playlist.id(),
             is_public: playlist.is_public(),
             last_modified_at: format_timestamp(playlist.last_modified_at()),
-            links: PlaylistLinks::for_playlist(playlist.id()),
+            links: PlaylistLinks::for_playlist(playlist.id(), playlist.cover_file_id()),
             name: playlist.name().to_owned(),
             owner_id: playlist.user_id(),
             track_count: playlist.tracks().len(),
@@ -1735,6 +1788,15 @@ impl From<GetSeriesEpisodeError> for ApiError {
 #[must_use]
 pub(crate) fn gallery_item_self_href(gallery_id: NumericID, item_id: NumericID) -> String {
     format!("/api/v1/library/gallery/{gallery_id}/item/{item_id}")
+}
+
+/// Build the Asset image href of the file identified by `file_id`.
+///
+/// TODO(add-cover-art): the Asset image route is not served yet; revisit this
+/// helper when `/api/v1/asset/image/{file_id}` lands.
+#[must_use]
+fn asset_image_href(file_id: NumericID) -> String {
+    format!("/api/v1/asset/image/{file_id}")
 }
 
 /// Parse a gallery identifier from a path segment.
@@ -2112,6 +2174,7 @@ mod tests {
     use serde_json::json;
     use tower::ServiceExt as _;
 
+    use super::asset_image_href;
     use super::library_routes;
     use crate::application::port::create_gallery::CreateGalleryResponse;
     use crate::application::port::create_gallery::CreateGalleryUseCase;
@@ -2159,6 +2222,18 @@ mod tests {
             .unwrap_or_default()
             .and_hms_opt(12, 0, 0)
             .unwrap_or_default()
+    }
+
+    #[tokio::test]
+    async fn asset_image_href_addresses_the_asset_image_route() {
+        // Act
+        let href = asset_image_href(42);
+
+        // Assert
+        assert_eq!(
+            href, "/api/v1/asset/image/42",
+            "the cover link must name the Asset image route"
+        );
     }
 
     /// Mint a bearer token the real `authenticate` layer accepts.
@@ -2317,6 +2392,7 @@ mod tests {
             movie.country_of_origin().to_owned(),
             movie.release_date(),
             movie.genre_ids().to_vec(),
+            None,
             VideoSummary::from(movie.video()),
         );
         let mut use_case = MockGetMovieUseCase::new();
@@ -2380,6 +2456,7 @@ mod tests {
             "US".to_owned(),
             video_date(),
             Vec::new(),
+            None,
             Vec::new(),
         );
         let mut use_case = MockGetSeriesUseCase::new();
@@ -2410,10 +2487,9 @@ mod tests {
     async fn library_routes_series_season_route_reaches_handler() -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut use_case = MockGetSeriesSeasonUseCase::new();
-        use_case
-            .expect_execute()
-            .times(1)
-            .return_once(|_| Box::pin(async { Ok(GetSeriesSeasonResponse::new(3, 1, None, 0)) }));
+        use_case.expect_execute().times(1).return_once(|_| {
+            Box::pin(async { Ok(GetSeriesSeasonResponse::new(3, 1, None, 0, None)) })
+        });
         let mut factory = MockLibraryUseCaseFactory::new();
         factory
             .expect_get_series_season()

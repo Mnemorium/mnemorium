@@ -16,6 +16,8 @@ pub struct MusicAlbumRow {
     /// Identifier of the audio backing the recording, when the medium
     /// sequences a recording.
     pub audio_id: Option<NumericID>,
+    /// Identifier of the file holding the album's artwork, when set.
+    pub cover_file_id: Option<NumericID>,
     /// Identifier of the backing file, when the medium sequences a recording.
     pub file_id: Option<NumericID>,
     /// Date of the first release of the recording, when the medium sequences a

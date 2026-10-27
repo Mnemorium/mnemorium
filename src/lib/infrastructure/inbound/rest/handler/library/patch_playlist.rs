@@ -189,6 +189,7 @@ mod tests {
             ts(),
             4,
             true,
+            None,
             Vec::new(),
         ))
     }

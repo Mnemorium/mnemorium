@@ -271,6 +271,7 @@ mod tests {
             None,
             Vec::new(),
             None,
+            None,
             vec![medium(medium_index, track_indexes)?],
         )?)
     }
@@ -287,6 +288,7 @@ mod tests {
             album_release_date(),
             None,
             Vec::new(),
+            None,
             None,
             Vec::new(),
         )?)
@@ -546,6 +548,7 @@ mod tests {
             album_release_date(),
             None,
             Vec::new(),
+            None,
             None,
             vec![MusicMedium::new(MediumIndex::Cd(1), vec![recording])],
         )?;

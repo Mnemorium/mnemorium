@@ -42,6 +42,8 @@ impl GetSeriesCommand {
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct GetSeriesSeasonItem {
+    /// Identifier of the file holding the season's artwork, when set.
+    cover_file_id: Option<NumericID>,
     /// Number of episodes the season holds.
     episode_count: usize,
     /// Series-scoped index of the season.
@@ -51,6 +53,12 @@ pub struct GetSeriesSeasonItem {
 }
 
 impl GetSeriesSeasonItem {
+    /// Return the identifier of the file holding the season's artwork, if any.
+    #[must_use]
+    pub fn cover_file_id(&self) -> Option<NumericID> {
+        self.cover_file_id
+    }
+
     /// Return the number of episodes the season holds.
     #[must_use]
     pub fn episode_count(&self) -> usize {
@@ -71,8 +79,14 @@ impl GetSeriesSeasonItem {
 
     /// Create a new fetched show season.
     #[must_use]
-    pub fn new(index: u32, name: Option<String>, episode_count: usize) -> Self {
+    pub fn new(
+        index: u32,
+        name: Option<String>,
+        episode_count: usize,
+        cover_file_id: Option<NumericID>,
+    ) -> Self {
         Self {
+            cover_file_id,
             episode_count,
             index,
             name,
@@ -86,6 +100,8 @@ impl GetSeriesSeasonItem {
 pub struct GetSeriesResponse {
     /// Country of origin of the show.
     country_of_origin: String,
+    /// Identifier of the file holding the show's artwork, when set.
+    cover_file_id: Option<NumericID>,
     /// Date of the first airing of the show.
     first_air_date: NaiveDate,
     /// Genres of the show, ordered by genre identifier.
@@ -105,6 +121,12 @@ impl GetSeriesResponse {
     #[must_use]
     pub fn country_of_origin(&self) -> &str {
         &self.country_of_origin
+    }
+
+    /// Return the identifier of the file holding the show's artwork, if any.
+    #[must_use]
+    pub fn cover_file_id(&self) -> Option<NumericID> {
+        self.cover_file_id
     }
 
     /// Return the date of the first airing.
@@ -133,6 +155,10 @@ impl GetSeriesResponse {
 
     /// Create a new fetch-show response.
     #[must_use]
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "the constructor mirrors the response's fields one-to-one"
+    )]
     pub fn new(
         id: NumericID,
         name: String,
@@ -140,10 +166,12 @@ impl GetSeriesResponse {
         country_of_origin: String,
         first_air_date: NaiveDate,
         genre_ids: Vec<String>,
+        cover_file_id: Option<NumericID>,
         seasons: Vec<GetSeriesSeasonItem>,
     ) -> Self {
         Self {
             country_of_origin,
+            cover_file_id,
             first_air_date,
             genre_ids,
             id,

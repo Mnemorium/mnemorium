@@ -49,6 +49,8 @@ impl GetSeriesSeasonCommand {
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct GetSeriesSeasonResponse {
+    /// Identifier of the file holding the season's artwork, when set.
+    cover_file_id: Option<NumericID>,
     /// Number of episodes the season holds.
     episode_count: usize,
     /// Series-scoped index of the season.
@@ -60,6 +62,12 @@ pub struct GetSeriesSeasonResponse {
 }
 
 impl GetSeriesSeasonResponse {
+    /// Return the identifier of the file holding the season's artwork, if any.
+    #[must_use]
+    pub fn cover_file_id(&self) -> Option<NumericID> {
+        self.cover_file_id
+    }
+
     /// Return the number of episodes the season holds.
     #[must_use]
     pub fn episode_count(&self) -> usize {
@@ -85,8 +93,10 @@ impl GetSeriesSeasonResponse {
         index: u32,
         name: Option<String>,
         episode_count: usize,
+        cover_file_id: Option<NumericID>,
     ) -> Self {
         Self {
+            cover_file_id,
             episode_count,
             index,
             name,

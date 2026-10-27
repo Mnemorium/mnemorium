@@ -7,7 +7,8 @@
     allow(
         clippy::too_many_arguments,
         reason = "We are less strict about test code"
-    )
+    ),
+    allow(clippy::single_call_fn, reason = "We are less strict about test code")
 )]
 pub mod application;
 pub mod domain;
@@ -524,6 +525,7 @@ mod test_helpers {
             "US".to_owned(),
             video_date(),
             vec!["DRAMA".to_owned()],
+            None,
             sample_video(id, id)?,
         )?)
     }
@@ -541,6 +543,7 @@ mod test_helpers {
             "US".to_owned(),
             video_date(),
             vec!["DRAMA".to_owned()],
+            None,
             seasons,
         )?)
     }
@@ -548,7 +551,7 @@ mod test_helpers {
     /// Build a season at `season_index` holding `episodes`.
     #[must_use]
     pub fn sample_season(season_index: u32, episodes: Vec<Episode>) -> Season {
-        Season::new(SeasonIndex::new(season_index), None, episodes)
+        Season::new(SeasonIndex::new(season_index), None, None, episodes)
     }
 
     /// Build an episode named `Episode {episode_index}` with one video.

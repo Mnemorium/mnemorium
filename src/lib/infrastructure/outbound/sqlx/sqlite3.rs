@@ -912,6 +912,160 @@ mod tests {
         Ok(())
     }
 
+    /// Insert one film, show, season, album and playlist, each naming
+    /// `cover_file_id` as its cover, in dependency order.
+    async fn seed_covered_owners(pool: &SqlitePool, cover_file_id: i64) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            "INSERT INTO movie (
+                movie_id, name, plot, country_of_origin, release_date, video_id, cover_file_id
+             )
+             VALUES (1, 'Film', 'A plot', 'US', '1990-04-08', 1, ?1)",
+        )
+        .bind(cover_file_id)
+        .execute(pool)
+        .await?;
+        sqlx::query(
+            "INSERT INTO series (
+                series_id, name, plot, country_of_origin, first_air_date, cover_file_id
+             )
+             VALUES (1, 'Show', 'A plot', 'US', '1990-04-08', ?1)",
+        )
+        .bind(cover_file_id)
+        .execute(pool)
+        .await?;
+        sqlx::query(
+            "INSERT INTO season (season_id, series_id, season_index, cover_file_id)
+             VALUES (40, 1, 1, ?1)",
+        )
+        .bind(cover_file_id)
+        .execute(pool)
+        .await?;
+        sqlx::query(
+            "INSERT INTO music_album (music_album_id, name, release_date, cover_file_id)
+             VALUES (1, 'Album', '1990-04-08', ?1)",
+        )
+        .bind(cover_file_id)
+        .execute(pool)
+        .await?;
+        sqlx::query(
+            "INSERT INTO music_playlist (music_playlist_id, name, user_id, cover_file_id)
+             VALUES (1, 'Mix', 1, ?1)",
+        )
+        .bind(cover_file_id)
+        .execute(pool)
+        .await?;
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn cover_trigger_rejects_a_non_image_on_every_owner() -> Result<(), Box<dyn Error>> {
+        // Arrange: file 2 is a video, so it cannot back a cover.
+        let pool = in_memory_pool().await?;
+        seed_media(&pool).await?;
+
+        // Act
+        let result = seed_covered_owners(&pool, 2)
+            .await
+            .map_err(RepositoryError::from);
+
+        // Assert
+        assert!(
+            matches!(result, Err(RepositoryError::Conflict)),
+            "a non-image cover must be rejected as a conflict"
+        );
+        assert_eq!(
+            [
+                sqlx::query_scalar::<_, i64>("SELECT count(*) FROM movie")
+                    .fetch_one(&pool)
+                    .await?,
+                sqlx::query_scalar::<_, i64>("SELECT count(*) FROM series")
+                    .fetch_one(&pool)
+                    .await?,
+                sqlx::query_scalar::<_, i64>("SELECT count(*) FROM season")
+                    .fetch_one(&pool)
+                    .await?,
+                sqlx::query_scalar::<_, i64>("SELECT count(*) FROM music_album")
+                    .fetch_one(&pool)
+                    .await?,
+                sqlx::query_scalar::<_, i64>("SELECT count(*) FROM music_playlist")
+                    .fetch_one(&pool)
+                    .await?,
+            ]
+            .into_iter()
+            .sum::<i64>(),
+            0,
+            "a rejected cover must store nothing"
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn cover_trigger_accepts_an_image_on_every_owner() -> Result<(), Box<dyn Error>> {
+        // Arrange: file 1 is a PNG.
+        let pool = in_memory_pool().await?;
+        seed_media(&pool).await?;
+
+        // Act
+        seed_covered_owners(&pool, 1).await?;
+
+        // Assert: every owner stores the image file as its cover.
+        let covers: Vec<Option<i64>> = vec![
+            sqlx::query_scalar("SELECT cover_file_id FROM movie")
+                .fetch_one(&pool)
+                .await?,
+            sqlx::query_scalar("SELECT cover_file_id FROM series")
+                .fetch_one(&pool)
+                .await?,
+            sqlx::query_scalar("SELECT cover_file_id FROM season")
+                .fetch_one(&pool)
+                .await?,
+            sqlx::query_scalar("SELECT cover_file_id FROM music_album")
+                .fetch_one(&pool)
+                .await?,
+            sqlx::query_scalar("SELECT cover_file_id FROM music_playlist")
+                .fetch_one(&pool)
+                .await?,
+        ];
+        assert_eq!(
+            covers,
+            vec![Some(1); 5],
+            "every owner must store the image file as its cover"
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn cover_trigger_rejects_a_non_image_on_update() -> Result<(), Box<dyn Error>> {
+        // Arrange: a film without artwork, and a video file to cover it with.
+        let pool = in_memory_pool().await?;
+        seed_media(&pool).await?;
+        sqlx::query(
+            "INSERT INTO movie (
+                movie_id, name, plot, country_of_origin, release_date, video_id
+             )
+             VALUES (1, 'Film', 'A plot', 'US', '1990-04-08', 1)",
+        )
+        .execute(&pool)
+        .await?;
+
+        // Act
+        let result = sqlx::query("UPDATE movie SET cover_file_id = 2 WHERE movie_id = 1")
+            .execute(&pool)
+            .await
+            .map_err(RepositoryError::from);
+
+        // Assert
+        assert!(
+            matches!(result, Err(RepositoryError::Conflict)),
+            "an update to a non-image cover must be rejected as a conflict"
+        );
+        let stored: Option<i64> = sqlx::query_scalar("SELECT cover_file_id FROM movie")
+            .fetch_one(&pool)
+            .await?;
+        assert_eq!(stored, None, "the rejected update must store nothing");
+        Ok(())
+    }
+
     #[tokio::test]
     async fn deleting_season_cascades_its_episodes() -> Result<(), Box<dyn Error>> {
         // Arrange

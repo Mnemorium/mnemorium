@@ -23,6 +23,8 @@ pub struct SeriesRow {
     pub color_id: Option<String>,
     /// Country of origin of the show.
     pub country_of_origin: String,
+    /// Identifier of the file holding the show's artwork, when set.
+    pub cover_file_id: Option<NumericID>,
     /// Duration of the video, in milliseconds, when the season holds an
     /// episode.
     pub duration_ms: Option<f64>,
@@ -48,6 +50,8 @@ pub struct SeriesRow {
     pub plot: String,
     /// Stored scan type of the video, when the season holds an episode.
     pub scan_type: Option<String>,
+    /// Identifier of the file holding the season's artwork, when set.
+    pub season_cover_file_id: Option<NumericID>,
     /// Identifier of the season, when the show holds one.
     pub season_id: Option<NumericID>,
     /// Index of the season within its show, when the show holds one.

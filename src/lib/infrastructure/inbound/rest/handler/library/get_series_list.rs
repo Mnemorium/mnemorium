@@ -196,7 +196,7 @@ mod tests {
             .return_once(|_| {
                 Box::pin(async {
                     Ok(ListSeriesResponse::new(
-                        vec![ListSeriesItem::new(7, "Twin Peaks".to_owned())],
+                        vec![ListSeriesItem::new(7, "Twin Peaks".to_owned(), None)],
                         1,
                     ))
                 })
@@ -226,11 +226,43 @@ mod tests {
                     "_links": {
                         "self": { "href": "/api/v1/library/series/7" }
                     },
+                    "cover_file_id": null,
                     "id": 7i64,
                     "name": "Twin Peaks"
                 }]
             }),
-            "each item must carry only the identifier, name and self link"
+            "each item must carry only the identifier, name, cover and self link"
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn get_series_list_carries_the_cover_of_a_show_with_artwork() -> Result<(), Box<dyn Error>>
+    {
+        // Arrange: the listed show's cover is file 19.
+        let mut use_case = MockListSeriesUseCase::new();
+        use_case.expect_execute().times(1).return_once(|_| {
+            Box::pin(async {
+                Ok(ListSeriesResponse::new(
+                    vec![ListSeriesItem::new(7, "Twin Peaks".to_owned(), Some(19))],
+                    1,
+                ))
+            })
+        });
+
+        // Act
+        let (status, _, payload) = into_parts(send(use_case, 1, "").await?).await?;
+
+        // Assert
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(
+            payload.pointer("/items/0/cover_file_id"),
+            Some(&json!(19i64))
+        );
+        assert_eq!(
+            payload.pointer("/items/0/_links/cover/href"),
+            Some(&json!("/api/v1/asset/image/19")),
+            "a covered show summary must link its cover file"
         );
         Ok(())
     }

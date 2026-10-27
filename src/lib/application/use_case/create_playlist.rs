@@ -99,6 +99,7 @@ where
                     now,
                     command.caller_id(),
                     command.is_public(),
+                    None,
                     Vec::new(),
                 );
 
@@ -182,6 +183,7 @@ mod tests {
             NaiveDateTime::default(),
             user_id,
             is_public,
+            None,
             Vec::new(),
         )
     }

@@ -45,6 +45,8 @@ impl GetMovieCommand {
 pub struct GetMovieResponse {
     /// Country of origin of the film.
     country_of_origin: String,
+    /// Identifier of the file holding the film's artwork, when set.
+    cover_file_id: Option<NumericID>,
     /// Genres of the film, ordered by genre identifier.
     genre_ids: Vec<String>,
     /// Unique identifier of the film.
@@ -64,6 +66,12 @@ impl GetMovieResponse {
     #[must_use]
     pub fn country_of_origin(&self) -> &str {
         &self.country_of_origin
+    }
+
+    /// Return the identifier of the file holding the film's artwork, if any.
+    #[must_use]
+    pub fn cover_file_id(&self) -> Option<NumericID> {
+        self.cover_file_id
     }
 
     /// Return the genres of the film, ordered by genre identifier.
@@ -86,6 +94,10 @@ impl GetMovieResponse {
 
     /// Create a new fetch-film response.
     #[must_use]
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "the constructor mirrors the response's fields one-to-one"
+    )]
     pub fn new(
         id: NumericID,
         name: String,
@@ -93,10 +105,12 @@ impl GetMovieResponse {
         country_of_origin: String,
         release_date: NaiveDate,
         genre_ids: Vec<String>,
+        cover_file_id: Option<NumericID>,
         video: VideoSummary,
     ) -> Self {
         Self {
             country_of_origin,
+            cover_file_id,
             genre_ids,
             id,
             name,

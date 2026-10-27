@@ -24,6 +24,8 @@ pub enum MusicPlaylistError {
 /// A music playlist.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MusicPlaylist {
+    /// Identifier of the file holding the playlist's artwork, when set.
+    cover_file_id: Option<NumericID>,
     /// Date and time of the creation of the playlist.
     created_at: NaiveDateTime,
     /// Unique identifier of the playlist.
@@ -41,6 +43,12 @@ pub struct MusicPlaylist {
 }
 
 impl MusicPlaylist {
+    /// Return the identifier of the file holding the playlist's artwork, if any.
+    #[must_use]
+    pub fn cover_file_id(&self) -> Option<NumericID> {
+        self.cover_file_id
+    }
+
     /// Return the date and time of the creation of the playlist.
     #[must_use]
     pub fn created_at(&self) -> NaiveDateTime {
@@ -98,6 +106,10 @@ impl MusicPlaylist {
     /// The caller validates the name with the domain name policy before
     /// invoking this constructor (`ARCH-005`).
     #[must_use]
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "the constructor mirrors the playlist's fields one-to-one"
+    )]
     pub fn new(
         id: NumericID,
         name: String,
@@ -105,9 +117,11 @@ impl MusicPlaylist {
         last_modified_at: NaiveDateTime,
         user_id: NumericID,
         is_public: bool,
+        cover_file_id: Option<NumericID>,
         tracks: Vec<MusicRecording>,
     ) -> Self {
         Self {
+            cover_file_id,
             created_at,
             id,
             is_public,

@@ -49,6 +49,7 @@ impl MusicAlbumRepository for SqlxMusicAlbumRepository<'_> {
                 music_album.name,
                 music_album.release_date,
                 music_album.production_type,
+                music_album.cover_file_id,
                 COALESCE((
                     SELECT GROUP_CONCAT(genre_id, ',')
                     FROM (
@@ -191,6 +192,7 @@ impl MusicAlbumRepository for SqlxMusicAlbumRepository<'_> {
                         .map(str::to_owned)
                         .collect(),
                     None,
+                    row.cover_file_id,
                     album_mediums,
                 )
                 .map_err(|_| stored_data_invalid("invalid_album"))?,
@@ -689,6 +691,36 @@ mod tests {
         assert_eq!(by_name.first().map(MusicAlbum::id), Some(2));
         assert_eq!(by_id.len(), 1);
         assert_eq!(by_id.first().map(MusicAlbum::name), Some("Kind of Blue"));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn search_projects_the_cover_file() -> Result<(), Box<dyn Error>> {
+        // Arrange: one covered album and one without artwork.
+        let mut transaction = begin_transaction().await?;
+        seed_user(&mut transaction, 1).await?;
+        sqlx::query(
+            "INSERT INTO file (file_id, path, user_id, is_public, mime_type_id, integrity_hash)
+             VALUES (12, '12.png', 1, 0, 'image/png', ?1)",
+        )
+        .bind(format!("{:064x}", 12i64))
+        .execute(&mut *transaction)
+        .await?;
+        seed_album(&mut transaction, 1, "Kind of Blue", None).await?;
+        seed_album(&mut transaction, 2, "Sketches", None).await?;
+        sqlx::query("UPDATE music_album SET cover_file_id = 12 WHERE music_album_id = 1")
+            .execute(&mut *transaction)
+            .await?;
+        let mut repository = SqlxMusicAlbumRepository::new(&mut transaction);
+
+        // Act
+        let albums = repository.search(&MusicAlbumFilter::default()).await?;
+
+        // Assert
+        let covered = albums.first().ok_or("the covered album must be found")?;
+        assert_eq!(covered.cover_file_id(), Some(12));
+        let uncovered = albums.get(1).ok_or("the uncovered album must be found")?;
+        assert_eq!(uncovered.cover_file_id(), None);
         Ok(())
     }
 

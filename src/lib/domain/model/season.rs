@@ -1,3 +1,4 @@
+use crate::domain::alias::NumericID;
 use crate::domain::model::episode::Episode;
 
 /// The series-scoped identity of a season.
@@ -24,6 +25,8 @@ impl SeasonIndex {
 /// A season within a series.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Season {
+    /// Identifier of the file holding the season's artwork, when set.
+    cover_file_id: Option<NumericID>,
     /// Episodes of the season, in order.
     episodes: Vec<Episode>,
     /// Series-scoped identity of the season.
@@ -33,6 +36,12 @@ pub struct Season {
 }
 
 impl Season {
+    /// Return the identifier of the file holding the season's artwork, if any.
+    #[must_use]
+    pub fn cover_file_id(&self) -> Option<NumericID> {
+        self.cover_file_id
+    }
+
     /// Return the episodes of the season, in order.
     #[must_use]
     pub fn episodes(&self) -> &[Episode] {
@@ -53,8 +62,14 @@ impl Season {
 
     /// Initialise a new `Season`.
     #[must_use]
-    pub fn new(index: SeasonIndex, name: Option<String>, episodes: Vec<Episode>) -> Self {
+    pub fn new(
+        index: SeasonIndex,
+        name: Option<String>,
+        cover_file_id: Option<NumericID>,
+        episodes: Vec<Episode>,
+    ) -> Self {
         Self {
+            cover_file_id,
             episodes,
             index,
             name,

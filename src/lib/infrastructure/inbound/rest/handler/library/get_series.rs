@@ -148,10 +148,12 @@ mod tests {
                         "US".to_owned(),
                         video_date(),
                         vec!["DRAMA".to_owned()],
+                        None,
                         vec![GetSeriesSeasonItem::new(
                             1,
                             Some("Season One".to_owned()),
                             2,
+                            None,
                         )],
                     ))
                 })
@@ -173,6 +175,7 @@ mod tests {
                 "_links": {
                     "self": { "href": "/api/v1/library/series/7" }
                 },
+                "cover_file_id": null,
                 "id": 7i64,
                 "name": "Twin Peaks",
                 "plot": "A plot",
@@ -187,6 +190,7 @@ mod tests {
                             "href": "/api/v1/library/series/7/season/1/episode"
                         }
                     },
+                    "cover_file_id": null,
                     "index": 1u32,
                     "name": "Season One",
                     "episode_count": 2i64,
@@ -195,6 +199,56 @@ mod tests {
             }),
             "the representation must carry the metadata and season summaries"
         );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn get_series_with_artwork_exposes_the_show_and_season_covers()
+    -> Result<(), Box<dyn Error>> {
+        // Arrange: the show's cover is file 19, the first season's file 20.
+        let mut use_case = MockGetSeriesUseCase::new();
+        use_case.expect_execute().times(1).return_once(|_| {
+            Box::pin(async {
+                Ok(GetSeriesResponse::new(
+                    7,
+                    "Twin Peaks".to_owned(),
+                    "A plot".to_owned(),
+                    "US".to_owned(),
+                    video_date(),
+                    Vec::new(),
+                    Some(19),
+                    vec![
+                        GetSeriesSeasonItem::new(1, None, 2, Some(20)),
+                        GetSeriesSeasonItem::new(2, None, 0, None),
+                    ],
+                ))
+            })
+        });
+
+        // Act
+        let (status, _, payload) = into_parts(send(use_case, 1, "7").await?).await?;
+
+        // Assert
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(payload.get("cover_file_id"), Some(&json!(19i64)));
+        assert_eq!(
+            payload.pointer("/_links/cover/href"),
+            Some(&json!("/api/v1/asset/image/19"))
+        );
+        assert_eq!(
+            payload.pointer("/seasons/0/cover_file_id"),
+            Some(&json!(20i64))
+        );
+        assert_eq!(
+            payload.pointer("/seasons/0/_links/cover/href"),
+            Some(&json!("/api/v1/asset/image/20"))
+        );
+        assert_eq!(
+            payload.pointer("/seasons/1/cover_file_id"),
+            Some(&json!(null)),
+            "a season must not inherit its show's cover"
+        );
+        assert_eq!(payload.pointer("/seasons/1/_links/cover"), None);
         Ok(())
     }
 

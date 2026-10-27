@@ -16,6 +16,8 @@ pub struct MovieRow {
     pub color_id: String,
     /// Country of origin of the film.
     pub country_of_origin: String,
+    /// Identifier of the file holding the film's artwork, when set.
+    pub cover_file_id: Option<NumericID>,
     /// Duration of the video, in milliseconds.
     pub duration_ms: f64,
     /// Identifier of the backing file.

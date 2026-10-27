@@ -35,9 +35,15 @@ impl<'transaction> SqlxSeriesRepository<'transaction> {
     }
 }
 
-/// A season being hydrated: its surrogate identifier, domain identity, name
-/// and the episodes read so far.
-type HydratedSeason = (NumericID, SeasonIndex, Option<String>, Vec<Episode>);
+/// A season being hydrated: its surrogate identifier, domain identity, name,
+/// artwork and the episodes read so far.
+type HydratedSeason = (
+    NumericID,
+    SeasonIndex,
+    Option<String>,
+    Option<NumericID>,
+    Vec<Episode>,
+);
 
 impl SeriesRepository for SqlxSeriesRepository<'_> {
     async fn search(&mut self, filter: &SeriesFilter) -> Result<Vec<Series>, RepositoryError> {
@@ -48,6 +54,7 @@ impl SeriesRepository for SqlxSeriesRepository<'_> {
                 series.plot,
                 series.country_of_origin,
                 series.first_air_date,
+                series.cover_file_id,
                 COALESCE((
                     SELECT GROUP_CONCAT(genre_id, ',')
                     FROM (
@@ -60,6 +67,7 @@ impl SeriesRepository for SqlxSeriesRepository<'_> {
                 season.season_id,
                 season.season_index,
                 season.name AS season_name,
+                season.cover_file_id AS season_cover_file_id,
                 episode.episode_index,
                 episode.name AS episode_name,
                 episode.plot AS episode_plot,
@@ -123,6 +131,7 @@ impl SeriesRepository for SqlxSeriesRepository<'_> {
                     season_id,
                     SeasonIndex::new(season_index),
                     row.season_name.clone(),
+                    row.season_cover_file_id,
                     Vec::new(),
                 ));
             }
@@ -173,7 +182,7 @@ impl SeriesRepository for SqlxSeriesRepository<'_> {
             )
             .map_err(|_| stored_data_invalid("invalid_episode"))?;
             if let Some(season) = series_seasons.last_mut() {
-                season.3.push(episode);
+                season.4.push(episode);
             }
         }
 
@@ -187,7 +196,9 @@ impl SeriesRepository for SqlxSeriesRepository<'_> {
                 .remove(&series_id)
                 .unwrap_or_default()
                 .into_iter()
-                .map(|(_, index, name, episodes)| Season::new(index, name, episodes))
+                .map(|(_, index, name, cover_file_id, episodes)| {
+                    Season::new(index, name, cover_file_id, episodes)
+                })
                 .collect();
             result.push(
                 Series::try_new(
@@ -201,6 +212,7 @@ impl SeriesRepository for SqlxSeriesRepository<'_> {
                         .filter(|genre| !genre.is_empty())
                         .map(str::to_owned)
                         .collect(),
+                    row.cover_file_id,
                     series_seasons,
                 )
                 .map_err(|_| stored_data_invalid("invalid_series"))?,
@@ -583,6 +595,53 @@ mod tests {
             "a show without a season must report none"
         );
         assert!(second.genre_ids().is_empty());
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn search_projects_the_show_and_season_covers() -> Result<(), Box<dyn Error>> {
+        // Arrange: the show carries artwork, its first season its own, and the
+        // second season none.
+        let mut transaction = begin_transaction().await?;
+        seed_user(&mut transaction).await?;
+        sqlx::query(
+            "INSERT INTO file (file_id, path, user_id, is_public, mime_type_id, integrity_hash)
+             VALUES (12, '12.png', 1, 0, 'image/png', ?1)",
+        )
+        .bind(format!("{:064x}", 12i64))
+        .execute(&mut *transaction)
+        .await?;
+        seed_series(&mut transaction, 1, "Twin Peaks").await?;
+        seed_season(&mut transaction, 40, 1, 1, None).await?;
+        seed_season(&mut transaction, 41, 1, 2, None).await?;
+        sqlx::query("UPDATE series SET cover_file_id = 12 WHERE series_id = 1")
+            .execute(&mut *transaction)
+            .await?;
+        sqlx::query("UPDATE season SET cover_file_id = 12 WHERE season_id = 40")
+            .execute(&mut *transaction)
+            .await?;
+        let mut repository = SqlxSeriesRepository::new(&mut transaction);
+
+        // Act
+        let series = repository.search(&SeriesFilter::default()).await?;
+
+        // Assert
+        let show = series.first().ok_or("the show must be found")?;
+        assert_eq!(show.cover_file_id(), Some(12));
+        let first_season = show
+            .seasons()
+            .first()
+            .ok_or("the first season must be found")?;
+        assert_eq!(first_season.cover_file_id(), Some(12));
+        let second_season = show
+            .seasons()
+            .get(1)
+            .ok_or("the second season must be found")?;
+        assert_eq!(
+            second_season.cover_file_id(),
+            None,
+            "a season must not inherit its show's cover"
+        );
         Ok(())
     }
 

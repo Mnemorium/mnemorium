@@ -90,6 +90,7 @@ where
                     season.index().value(),
                     season.name().map(str::to_owned),
                     season.episodes().len(),
+                    season.cover_file_id(),
                 ))
             }
             .await;
@@ -122,6 +123,9 @@ mod tests {
     use crate::application::port::get_series_season::GetSeriesSeasonError;
     use crate::application::port::get_series_season::GetSeriesSeasonResponse;
     use crate::application::port::get_series_season::GetSeriesSeasonUseCase as _;
+    use crate::domain::model::season::Season;
+    use crate::domain::model::season::SeasonIndex;
+    use crate::domain::model::series::Series;
     use crate::domain::port::error::RepositoryError;
     use crate::domain::port::series_repository::MockSeriesRepository;
     use crate::domain::port::user_repository::MockUserRepository;
@@ -132,6 +136,7 @@ mod tests {
     use crate::test_helpers::sample_episode;
     use crate::test_helpers::sample_season;
     use crate::test_helpers::sample_series;
+    use crate::test_helpers::video_date;
 
     use super::GetSeriesSeason;
 
@@ -175,13 +180,52 @@ mod tests {
         // Assert
         assert_eq!(
             response,
-            GetSeriesSeasonResponse::new(3, 1, None, 1),
+            GetSeriesSeasonResponse::new(3, 1, None, 1, None),
             "the representation must carry the season summary"
         );
         assert!(
             harness.committed.load(Ordering::SeqCst),
             "a successful read must commit"
         );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn get_series_season_carries_the_season_cover() -> Result<(), Box<dyn Error>> {
+        // Arrange: the season carries its own artwork.
+        let mut users = MockUserRepository::new();
+        expect_caller(&mut users, 1)?;
+        let season = Season::new(SeasonIndex::new(1), None, Some(20), Vec::new());
+        assert_eq!(
+            season.cover_file_id(),
+            Some(20),
+            "a season built with artwork must report the identifier"
+        );
+        let shown = Series::try_new(
+            3,
+            "Series 3".to_owned(),
+            "A plot".to_owned(),
+            "US".to_owned(),
+            video_date(),
+            Vec::new(),
+            None,
+            vec![season],
+        )?;
+        let mut series = MockSeriesRepository::new();
+        series
+            .expect_search()
+            .times(1)
+            .return_once(move |_| Box::pin(async move { Ok(vec![shown]) }));
+        let harness = harness_with(users, series);
+        let use_case: UseCase = GetSeriesSeason::new(Arc::clone(&harness.factory));
+
+        // Act
+        let response = use_case
+            .execute(GetSeriesSeasonCommand::new(1, 3, 1))
+            .await?;
+
+        // Assert
+        assert_eq!(response.cover_file_id(), Some(20));
         Ok(())
     }
 

@@ -87,6 +87,7 @@ where
                             movie.country_of_origin().to_owned(),
                             movie.release_date(),
                             movie.genre_ids().to_vec(),
+                            movie.cover_file_id(),
                             VideoSummary::from(movie.video()),
                         )
                     })
@@ -125,6 +126,7 @@ mod tests {
     use crate::application::port::list_movies::ListMoviesItem;
     use crate::application::port::list_movies::ListMoviesUseCase as _;
     use crate::application::port::video_summary::VideoSummary;
+    use crate::domain::model::movie::Movie;
     use crate::domain::port::error::RepositoryError;
     use crate::domain::port::movie_repository::MockMovieRepository;
     use crate::domain::port::user_repository::MockUserRepository;
@@ -133,6 +135,7 @@ mod tests {
     use crate::test_helpers::TestUnitOfWork;
     use crate::test_helpers::expect_caller;
     use crate::test_helpers::sample_movie;
+    use crate::test_helpers::sample_video;
     use crate::test_helpers::video_date;
 
     use super::ListMovies;
@@ -186,12 +189,70 @@ mod tests {
                 "US".to_owned(),
                 video_date(),
                 vec!["DRAMA".to_owned()],
+                None,
                 expected_video,
             ))
         );
         assert!(
             harness.committed.load(Ordering::SeqCst),
             "a successful listing must commit"
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn list_movies_carries_the_cover_of_a_film_with_artwork() -> Result<(), Box<dyn Error>> {
+        // Arrange: one covered film beside one without artwork.
+        let mut users = MockUserRepository::new();
+        expect_caller(&mut users, 1)?;
+        let covered = Movie::try_new(
+            1,
+            "Movie 1".to_owned(),
+            "A plot".to_owned(),
+            "US".to_owned(),
+            video_date(),
+            Vec::new(),
+            Some(19),
+            sample_video(1, 1)?,
+        )?;
+        assert_eq!(
+            covered.cover_file_id(),
+            Some(19),
+            "a film built with artwork must report the identifier"
+        );
+        let uncovered = sample_movie(2)?;
+        assert_eq!(
+            uncovered.cover_file_id(),
+            None,
+            "a film built without artwork must report none"
+        );
+        let mut movies = MockMovieRepository::new();
+        movies
+            .expect_search()
+            .times(1)
+            .return_once(move |_| Box::pin(async move { Ok(vec![covered, uncovered]) }));
+        let harness = harness_with(users, movies);
+        let use_case: UseCase = ListMovies::new(Arc::clone(&harness.factory));
+
+        // Act
+        let response = use_case
+            .execute(ListMoviesCommand::new(1, None, None, None))
+            .await?;
+
+        // Assert
+        assert_eq!(
+            response
+                .movies()
+                .first()
+                .and_then(ListMoviesItem::cover_file_id),
+            Some(19)
+        );
+        assert_eq!(
+            response
+                .movies()
+                .get(1)
+                .and_then(ListMoviesItem::cover_file_id),
+            None
         );
         Ok(())
     }

@@ -16,6 +16,8 @@ pub struct MusicPlaylistRow {
     /// Identifier of the audio backing the recording, when the playlist
     /// sequences a recording.
     pub audio_id: Option<NumericID>,
+    /// Identifier of the file holding the playlist's artwork, when set.
+    pub cover_file_id: Option<NumericID>,
     /// Date and time of the creation of the playlist.
     pub created_at: NaiveDateTime,
     /// Identifier of the backing file, when the playlist sequences a recording.

@@ -162,6 +162,7 @@ mod tests {
                         1,
                         Some("Season One".to_owned()),
                         3,
+                        None,
                     ))
                 })
             });
@@ -187,12 +188,42 @@ mod tests {
                         "href": "/api/v1/library/series/7/season/1/episode"
                     }
                 },
+                "cover_file_id": null,
                 "series_id": 7i64,
                 "index": 1u32,
                 "name": "Season One",
                 "episode_count": 3i64
             }),
             "the representation must carry the season summary"
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn get_series_season_with_artwork_exposes_the_cover_link() -> Result<(), Box<dyn Error>> {
+        // Arrange: the season's cover is file 20.
+        let mut use_case = MockGetSeriesSeasonUseCase::new();
+        use_case.expect_execute().times(1).return_once(|_| {
+            Box::pin(async {
+                Ok(GetSeriesSeasonResponse::new(
+                    7,
+                    1,
+                    Some("Season One".to_owned()),
+                    3,
+                    Some(20),
+                ))
+            })
+        });
+
+        // Act
+        let (status, _, payload) = into_parts(send(use_case, 1, "7", "1").await?).await?;
+
+        // Assert
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(payload.get("cover_file_id"), Some(&json!(20i64)));
+        assert_eq!(
+            payload.pointer("/_links/cover/href"),
+            Some(&json!("/api/v1/asset/image/20"))
         );
         Ok(())
     }

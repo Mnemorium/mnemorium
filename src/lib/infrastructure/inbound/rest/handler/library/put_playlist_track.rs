@@ -168,6 +168,7 @@ mod tests {
             ts(),
             4,
             false,
+            None,
             vec![MusicRecording::try_new(
                 31,
                 Some("Second".to_owned()),
