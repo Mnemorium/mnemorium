@@ -87,6 +87,8 @@ impl GetAlbumMediumItem {
 pub struct GetAlbumResponse {
     /// Unique identifier of the album.
     album_id: NumericID,
+    /// Identifier of the file holding the album's artwork, when set.
+    cover_file_id: Option<NumericID>,
     /// Genres of the album, ordered by genre identifier.
     genres: Vec<String>,
     /// Mediums of the album, ordered by medium index.
@@ -106,6 +108,12 @@ impl GetAlbumResponse {
     #[must_use]
     pub fn album_id(&self) -> NumericID {
         self.album_id
+    }
+
+    /// Return the identifier of the file holding the album's artwork, if any.
+    #[must_use]
+    pub fn cover_file_id(&self) -> Option<NumericID> {
+        self.cover_file_id
     }
 
     /// Return the genres of the album, ordered by genre identifier.
@@ -128,6 +136,10 @@ impl GetAlbumResponse {
 
     /// Create a new fetch-album response.
     #[must_use]
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "the constructor mirrors the response's fields one-to-one"
+    )]
     pub fn new(
         album_id: NumericID,
         name: String,
@@ -135,10 +147,12 @@ impl GetAlbumResponse {
         production_type: Option<ProductionType>,
         genres: Vec<String>,
         track_count: usize,
+        cover_file_id: Option<NumericID>,
         mediums: Vec<GetAlbumMediumItem>,
     ) -> Self {
         Self {
             album_id,
+            cover_file_id,
             genres,
             mediums,
             name,

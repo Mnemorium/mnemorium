@@ -2966,10 +2966,20 @@ check_sty_sql_009() {
 	local id="STY-SQL-009"
 	local migrations_dir="migrations"
 	local file stmt table pk locals ref_table expected locals_sorted expected_sorted
+	local config current_table location
 	local result=0 fk_count=0
 	local -A pk_of=()
+	local -A allowed=()
 
 	need_dir "$id" "$migrations_dir" || return 1
+
+	config="$(rule_config "$id")" || return 2
+
+	# A foreign key named for its meaning rather than the referenced primary key is permitted only when `<table>::<column>` is recorded here; an empty list approves none, so every such name is reported until it is reviewed. This is for the second reference to one table, which cannot reuse the primary key name its other owners already carry.
+	while IFS= read -r location; do
+		[ -n "$location" ] || continue
+		allowed["$location"]=1
+	done < <(jq -r '.allowed_foreign_keys[]?' <<<"$config")
 
 	# Each table's primary key, read from the table-level `PRIMARY KEY (...)` of its `CREATE TABLE`.
 	while IFS= read -r file; do
@@ -2996,8 +3006,13 @@ check_sty_sql_009() {
 	# A foreign key column must carry the exact primary key name of the table it references.
 	while IFS= read -r file; do
 		[ -n "$file" ] || continue
+		current_table=""
 		while IFS= read -r stmt; do
 			[ -n "$stmt" ] || continue
+			if printf '%s' "$stmt" | grep -q 'CREATE TABLE'; then
+				current_table="$(printf '%s' "$stmt" |
+					sed -nE 's/.*CREATE TABLE[[:space:]]+([A-Za-z_][A-Za-z0-9_]*).*/\1/p')"
+			fi
 			while IFS= read -r clause; do
 				[ -n "$clause" ] || continue
 				fk_count=$((fk_count + 1))
@@ -3016,8 +3031,13 @@ check_sty_sql_009() {
 				locals_sorted="$(printf '%s' "$locals" | tr ',' '\n' | sort | paste -sd, -)"
 				expected_sorted="$(printf '%s' "$expected" | tr ',' '\n' | sort | paste -sd, -)"
 				if [ "$locals_sorted" != "$expected_sorted" ]; then
-					printf 'error: %s: %s: foreign key column %s must use the primary key name %s of %s\n' \
-						"$id" "$file" "$locals" "$expected" "$ref_table" >&2
+					# The exemption names the exact reference that was reviewed -- its owner, column, referenced table and referenced primary key -- so re-pointing the same column at another table is reported again.
+					location="${current_table}::${locals_sorted}->${ref_table}(${expected_sorted})"
+					if [ -n "${allowed[$location]+set}" ]; then
+						continue
+					fi
+					printf 'error: %s: %s: foreign key column %s must use the primary key name %s of %s; record "%s" in allowed_foreign_keys to name it for its meaning\n' \
+						"$id" "$file" "$locals" "$expected" "$ref_table" "$location" >&2
 					result=1
 				fi
 			done < <(printf '%s' "$stmt" |

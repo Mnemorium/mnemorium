@@ -146,6 +146,7 @@ mod tests {
             Some(ProductionType::Studio),
             vec!["JAZZ".to_owned()],
             5,
+            None,
             vec![GetAlbumMediumItem::new(1, "CD".to_owned(), 5)],
         )
     }
@@ -172,6 +173,7 @@ mod tests {
                 "_links": {
                     "self": { "href": "/api/v1/library/music/album/7" }
                 },
+                "cover_file_id": null,
                 "id": 7i64,
                 "name": "Kind of Blue",
                 "release_date": "1959-08-17",
@@ -189,6 +191,38 @@ mod tests {
                     "track_count": 5i64
                 }]
             })
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn get_album_with_artwork_exposes_the_cover_link() -> Result<(), Box<dyn Error>> {
+        // Arrange: the album's cover is file 19.
+        let response = GetAlbumResponse::new(
+            7,
+            "Kind of Blue".to_owned(),
+            album_release_date(),
+            None,
+            Vec::new(),
+            0,
+            Some(19),
+            Vec::new(),
+        );
+        let mut use_case = MockGetAlbumUseCase::new();
+        use_case.expect_execute().times(1).return_once(move |_| {
+            let copy = response.clone();
+            Box::pin(async move { Ok(copy) })
+        });
+
+        // Act
+        let (status, _, payload) = into_parts(send(use_case, 1, "7").await?).await?;
+
+        // Assert
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(payload.get("cover_file_id"), Some(&json!(19i64)));
+        assert_eq!(
+            payload.pointer("/_links/cover/href"),
+            Some(&json!("/api/v1/asset/image/19"))
         );
         Ok(())
     }

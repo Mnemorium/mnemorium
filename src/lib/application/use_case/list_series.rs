@@ -78,7 +78,13 @@ where
                     .into_iter()
                     .skip(offset)
                     .take(command.limit().unwrap_or(usize::MAX))
-                    .map(|shown| ListSeriesItem::new(shown.id(), shown.name().to_owned()))
+                    .map(|shown| {
+                        ListSeriesItem::new(
+                            shown.id(),
+                            shown.name().to_owned(),
+                            shown.cover_file_id(),
+                        )
+                    })
                     .collect();
 
                 Ok(ListSeriesResponse::new(page, total))
@@ -113,6 +119,7 @@ mod tests {
     use crate::application::port::list_series::ListSeriesError;
     use crate::application::port::list_series::ListSeriesItem;
     use crate::application::port::list_series::ListSeriesUseCase as _;
+    use crate::domain::model::series::Series;
     use crate::domain::port::error::RepositoryError;
     use crate::domain::port::series_repository::MockSeriesRepository;
     use crate::domain::port::user_repository::MockUserRepository;
@@ -123,6 +130,7 @@ mod tests {
     use crate::test_helpers::sample_episode;
     use crate::test_helpers::sample_season;
     use crate::test_helpers::sample_series;
+    use crate::test_helpers::video_date;
 
     use super::ListSeries;
 
@@ -170,14 +178,71 @@ mod tests {
         assert_eq!(
             response.series(),
             [
-                ListSeriesItem::new(1, "Series 1".to_owned()),
-                ListSeriesItem::new(2, "Series 2".to_owned()),
+                ListSeriesItem::new(1, "Series 1".to_owned(), None),
+                ListSeriesItem::new(2, "Series 2".to_owned(), None),
             ],
             "the listing must carry only the identifier and name of each show"
         );
         assert!(
             harness.committed.load(Ordering::SeqCst),
             "a successful listing must commit"
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn list_series_carries_the_cover_of_a_show_with_artwork() -> Result<(), Box<dyn Error>> {
+        // Arrange: one covered show beside one without artwork.
+        let mut users = MockUserRepository::new();
+        expect_caller(&mut users, 1)?;
+        let covered = Series::try_new(
+            1,
+            "Series 1".to_owned(),
+            "A plot".to_owned(),
+            "US".to_owned(),
+            video_date(),
+            Vec::new(),
+            Some(19),
+            Vec::new(),
+        )?;
+        assert_eq!(
+            covered.cover_file_id(),
+            Some(19),
+            "a show built with artwork must report the identifier"
+        );
+        let uncovered = sample_series(2, Vec::new())?;
+        assert_eq!(
+            uncovered.cover_file_id(),
+            None,
+            "a show built without artwork must report none"
+        );
+        let mut series = MockSeriesRepository::new();
+        series
+            .expect_search()
+            .times(1)
+            .return_once(move |_| Box::pin(async move { Ok(vec![covered, uncovered]) }));
+        let harness = harness_with(users, series);
+        let use_case: UseCase = ListSeries::new(Arc::clone(&harness.factory));
+
+        // Act
+        let response = use_case
+            .execute(ListSeriesCommand::new(1, None, None, None))
+            .await?;
+
+        // Assert
+        assert_eq!(
+            response
+                .series()
+                .first()
+                .and_then(ListSeriesItem::cover_file_id),
+            Some(19)
+        );
+        assert_eq!(
+            response
+                .series()
+                .get(1)
+                .and_then(ListSeriesItem::cover_file_id),
+            None
         );
         Ok(())
     }

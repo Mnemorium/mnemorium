@@ -95,6 +95,7 @@ where
                     album.production_type(),
                     album.genre_ids().to_vec(),
                     track_count,
+                    album.cover_file_id(),
                     mediums,
                 ))
             }
@@ -176,6 +177,7 @@ mod tests {
             Some(ProductionType::Studio),
             vec!["JAZZ".to_owned()],
             None,
+            None,
             vec![medium(1)?, medium(2)?],
         )?)
     }
@@ -192,6 +194,7 @@ mod tests {
             album_release_date(),
             None,
             Vec::new(),
+            None,
             None,
             Vec::new(),
         )?)
@@ -309,6 +312,39 @@ mod tests {
         assert!(response.mediums().is_empty());
         assert_eq!(response.track_count(), 0);
         assert!(harness.committed.load(Ordering::SeqCst));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn get_album_carries_the_cover_of_an_album_with_artwork() -> Result<(), Box<dyn Error>> {
+        // Arrange: an album whose artwork is file 19.
+        let mut users = MockUserRepository::new();
+        expect_caller(&mut users, 1, Role::Standard)?;
+        let covered = MusicAlbum::try_new(
+            7,
+            "Album 7".to_owned(),
+            album_release_date(),
+            None,
+            Vec::new(),
+            None,
+            Some(19),
+            Vec::new(),
+        )?;
+        assert_eq!(
+            covered.cover_file_id(),
+            Some(19),
+            "an album built with artwork must report the identifier"
+        );
+        let mut albums = MockMusicAlbumRepository::new();
+        expect_album(&mut albums, covered);
+        let harness = harness_with(users, albums);
+        let use_case: UseCase = GetAlbum::new(Arc::clone(&harness.factory));
+
+        // Act
+        let response = use_case.execute(GetAlbumCommand::new(1, 7)).await?;
+
+        // Assert
+        assert_eq!(response.cover_file_id(), Some(19));
         Ok(())
     }
 

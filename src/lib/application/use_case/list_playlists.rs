@@ -94,6 +94,7 @@ where
                             playlist.created_at(),
                             playlist.last_modified_at(),
                             playlist.tracks().len(),
+                            playlist.cover_file_id(),
                         )
                     })
                     .collect();
@@ -178,6 +179,7 @@ mod tests {
             NaiveDateTime::default(),
             user_id,
             is_public,
+            None,
             tracks,
         ))
     }
@@ -243,6 +245,7 @@ mod tests {
                     NaiveDateTime::default(),
                     NaiveDateTime::default(),
                     2,
+                    None,
                 ),
                 ListPlaylistsItem::new(
                     3,
@@ -252,10 +255,69 @@ mod tests {
                     NaiveDateTime::default(),
                     NaiveDateTime::default(),
                     1,
+                    None,
                 ),
             ]
         );
         assert!(harness.committed.load(Ordering::SeqCst));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn list_playlists_carries_the_cover_of_a_playlist_with_artwork()
+    -> Result<(), Box<dyn Error>> {
+        // Arrange: one covered playlist beside one without artwork.
+        let mut users = MockUserRepository::new();
+        expect_caller(&mut users, 4, Role::Standard)?;
+        let covered = MusicPlaylist::new(
+            1,
+            "Covered".to_owned(),
+            NaiveDateTime::default(),
+            NaiveDateTime::default(),
+            4,
+            true,
+            Some(19),
+            Vec::new(),
+        );
+        assert_eq!(
+            covered.cover_file_id(),
+            Some(19),
+            "a playlist built with artwork must report the identifier"
+        );
+        let uncovered = playlist(2, 4, "Plain", true, 0)?;
+        assert_eq!(
+            uncovered.cover_file_id(),
+            None,
+            "a playlist built without artwork must report none"
+        );
+        let mut playlists = MockMusicPlaylistRepository::new();
+        playlists.expect_search().times(1).return_once(move |_| {
+            let found = vec![covered.clone(), uncovered.clone()];
+            Box::pin(async move { Ok(found) })
+        });
+        let harness = harness_with(users, playlists);
+        let use_case: UseCase = ListPlaylists::new(Arc::clone(&harness.factory));
+
+        // Act
+        let response = use_case
+            .execute(ListPlaylistsCommand::new(4, None, None, None, None, None))
+            .await?;
+
+        // Assert
+        assert_eq!(
+            response
+                .playlists()
+                .first()
+                .and_then(ListPlaylistsItem::cover_file_id),
+            Some(19)
+        );
+        assert_eq!(
+            response
+                .playlists()
+                .get(1)
+                .and_then(ListPlaylistsItem::cover_file_id),
+            None
+        );
         Ok(())
     }
 

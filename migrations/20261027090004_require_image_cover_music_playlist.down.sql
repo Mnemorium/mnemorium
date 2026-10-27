@@ -1,0 +1,2 @@
+DROP TRIGGER tg_music_playlist_cover_is_image_update;
+DROP TRIGGER tg_music_playlist_cover_is_image_insert;

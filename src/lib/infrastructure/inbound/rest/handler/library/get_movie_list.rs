@@ -193,6 +193,7 @@ mod tests {
             movie.country_of_origin().to_owned(),
             movie.release_date(),
             movie.genre_ids().to_vec(),
+            None,
             VideoSummary::from(movie.video()),
         ))
     }
@@ -235,6 +236,7 @@ mod tests {
                     "_links": {
                         "self": { "href": "/api/v1/library/movie/7" }
                     },
+                    "cover_file_id": null,
                     "id": 7i64,
                     "name": "Movie 7",
                     "plot": "A plot",
@@ -253,6 +255,44 @@ mod tests {
                 }]
             }),
             "the collection must carry the full film representation"
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn get_movie_list_carries_the_cover_of_a_film_with_artwork() -> Result<(), Box<dyn Error>>
+    {
+        // Arrange: the listed film's cover is file 19.
+        let movie = sample_movie(7)?;
+        let item = ListMoviesItem::new(
+            movie.id(),
+            movie.name().to_owned(),
+            movie.plot().to_owned(),
+            movie.country_of_origin().to_owned(),
+            movie.release_date(),
+            movie.genre_ids().to_vec(),
+            Some(19),
+            VideoSummary::from(movie.video()),
+        );
+        let mut use_case = MockListMoviesUseCase::new();
+        use_case.expect_execute().times(1).return_once(move |_| {
+            let copy = item.clone();
+            Box::pin(async move { Ok(ListMoviesResponse::new(vec![copy], 1)) })
+        });
+
+        // Act
+        let (status, _, payload) = into_parts(send(use_case, 1, "").await?).await?;
+
+        // Assert
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(
+            payload.pointer("/items/0/cover_file_id"),
+            Some(&json!(19i64))
+        );
+        assert_eq!(
+            payload.pointer("/items/0/_links/cover/href"),
+            Some(&json!("/api/v1/asset/image/19")),
+            "each covered film must link its cover file"
         );
         Ok(())
     }

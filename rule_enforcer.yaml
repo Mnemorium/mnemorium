@@ -23,6 +23,13 @@ rules:
   STY-SQL-006:
     singular_exceptions:
       - series
+  STY-SQL-009:
+    allowed_foreign_keys:
+      - movie::cover_file_id->file(file_id)
+      - series::cover_file_id->file(file_id)
+      - season::cover_file_id->file(file_id)
+      - music_album::cover_file_id->file(file_id)
+      - music_playlist::cover_file_id->file(file_id)
   TEST-002:
     exempt_traits:
       - AssetUnitOfWork

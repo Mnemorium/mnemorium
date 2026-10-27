@@ -171,6 +171,7 @@ mod tests {
             NaiveDateTime::default(),
             user_id,
             is_public,
+            None,
             tracks,
         )
     }

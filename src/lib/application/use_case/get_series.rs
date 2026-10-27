@@ -83,6 +83,7 @@ where
                             season.index().value(),
                             season.name().map(str::to_owned),
                             season.episodes().len(),
+                            season.cover_file_id(),
                         )
                     })
                     .collect();
@@ -94,6 +95,7 @@ where
                     shown.country_of_origin().to_owned(),
                     shown.first_air_date(),
                     shown.genre_ids().to_vec(),
+                    shown.cover_file_id(),
                     seasons,
                 ))
             }
@@ -128,6 +130,9 @@ mod tests {
     use crate::application::port::get_series::GetSeriesResponse;
     use crate::application::port::get_series::GetSeriesSeasonItem;
     use crate::application::port::get_series::GetSeriesUseCase as _;
+    use crate::domain::model::season::Season;
+    use crate::domain::model::season::SeasonIndex;
+    use crate::domain::model::series::Series;
     use crate::domain::port::error::RepositoryError;
     use crate::domain::port::series_repository::MockSeriesRepository;
     use crate::domain::port::user_repository::MockUserRepository;
@@ -188,9 +193,10 @@ mod tests {
                 "US".to_owned(),
                 video_date(),
                 vec!["DRAMA".to_owned()],
+                None,
                 vec![
-                    GetSeriesSeasonItem::new(1, None, 2),
-                    GetSeriesSeasonItem::new(2, None, 0),
+                    GetSeriesSeasonItem::new(1, None, 2, None),
+                    GetSeriesSeasonItem::new(2, None, 0, None),
                 ],
             ),
             "the representation must carry the metadata and season summaries"
@@ -198,6 +204,71 @@ mod tests {
         assert!(
             harness.committed.load(Ordering::SeqCst),
             "a successful read must commit"
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn get_series_carries_the_cover_of_the_show_and_each_season() -> Result<(), Box<dyn Error>>
+    {
+        // Arrange: the show carries artwork, its first season its own, and the
+        // second season none.
+        let mut users = MockUserRepository::new();
+        expect_caller(&mut users, 1)?;
+        let covered_season = Season::new(SeasonIndex::new(1), None, Some(20), Vec::new());
+        let uncovered_season = Season::new(SeasonIndex::new(2), None, None, Vec::new());
+        let shown = Series::try_new(
+            3,
+            "Series 3".to_owned(),
+            "A plot".to_owned(),
+            "US".to_owned(),
+            video_date(),
+            Vec::new(),
+            Some(19),
+            vec![covered_season, uncovered_season],
+        )?;
+        assert_eq!(
+            shown.cover_file_id(),
+            Some(19),
+            "a show built with artwork must report the identifier"
+        );
+        assert_eq!(
+            shown.seasons().first().and_then(Season::cover_file_id),
+            Some(20),
+            "a season built with artwork must report the identifier"
+        );
+        assert_eq!(
+            shown.seasons().get(1).and_then(Season::cover_file_id),
+            None,
+            "a season built without artwork must report none"
+        );
+        let mut series = MockSeriesRepository::new();
+        series
+            .expect_search()
+            .times(1)
+            .return_once(move |_| Box::pin(async move { Ok(vec![shown]) }));
+        let harness = harness_with(users, series);
+        let use_case: UseCase = GetSeries::new(Arc::clone(&harness.factory));
+
+        // Act
+        let response = use_case.execute(GetSeriesCommand::new(1, 3)).await?;
+
+        // Assert
+        assert_eq!(response.cover_file_id(), Some(19));
+        assert_eq!(
+            response
+                .seasons()
+                .first()
+                .and_then(GetSeriesSeasonItem::cover_file_id),
+            Some(20)
+        );
+        assert_eq!(
+            response
+                .seasons()
+                .get(1)
+                .and_then(GetSeriesSeasonItem::cover_file_id),
+            None,
+            "a season must not inherit its show's cover"
         );
         Ok(())
     }

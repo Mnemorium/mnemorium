@@ -82,6 +82,7 @@ where
                     movie.country_of_origin().to_owned(),
                     movie.release_date(),
                     movie.genre_ids().to_vec(),
+                    movie.cover_file_id(),
                     VideoSummary::from(movie.video()),
                 ))
             }
@@ -116,6 +117,7 @@ mod tests {
     use crate::application::port::get_movie::GetMovieResponse;
     use crate::application::port::get_movie::GetMovieUseCase as _;
     use crate::application::port::video_summary::VideoSummary;
+    use crate::domain::model::movie::Movie;
     use crate::domain::port::error::RepositoryError;
     use crate::domain::port::movie_repository::MockMovieRepository;
     use crate::domain::port::user_repository::MockUserRepository;
@@ -124,6 +126,7 @@ mod tests {
     use crate::test_helpers::TestUnitOfWork;
     use crate::test_helpers::expect_caller;
     use crate::test_helpers::sample_movie;
+    use crate::test_helpers::sample_video;
     use crate::test_helpers::video_date;
 
     use super::GetMovie;
@@ -173,6 +176,7 @@ mod tests {
                 "US".to_owned(),
                 video_date(),
                 vec!["DRAMA".to_owned()],
+                None,
                 expected_video,
             ),
             "the representation must carry the requested film"
@@ -181,6 +185,42 @@ mod tests {
             harness.committed.load(Ordering::SeqCst),
             "a successful read must commit"
         );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn get_movie_returns_a_film_with_its_cover() -> Result<(), Box<dyn Error>> {
+        // Arrange: a film whose artwork is file 19.
+        let mut users = MockUserRepository::new();
+        expect_caller(&mut users, 1)?;
+        let movie = Movie::try_new(
+            7,
+            "Movie 7".to_owned(),
+            "A plot".to_owned(),
+            "US".to_owned(),
+            video_date(),
+            vec!["DRAMA".to_owned()],
+            Some(19),
+            sample_video(7, 7)?,
+        )?;
+        assert_eq!(
+            movie.cover_file_id(),
+            Some(19),
+            "a film built with artwork must report the identifier"
+        );
+        let mut movies = MockMovieRepository::new();
+        movies
+            .expect_search()
+            .times(1)
+            .return_once(move |_| Box::pin(async move { Ok(vec![movie]) }));
+        let harness = harness_with(users, movies);
+        let use_case: UseCase = GetMovie::new(Arc::clone(&harness.factory));
+
+        // Act
+        let response = use_case.execute(GetMovieCommand::new(1, 7)).await?;
+
+        // Assert
+        assert_eq!(response.cover_file_id(), Some(19));
         Ok(())
     }
 

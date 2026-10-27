@@ -1037,22 +1037,22 @@ seed nor a configuration override is discarded, never rejected. Creation emits `
 
 Rules are grouped in the table below; the numbered detail sections that follow hold their reference material.
 
-| ID            | Section                       | Rule                                                                                                                                                                                                                                                                                       | More info                              |
-| ------------- | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------- |
-| `STY-SQL-001` | General                       | Use `snake_case` (all lowercase, words separated by underscores). Avoid mixed casing or quoted identifiers (e.g. `"UserId"`).                                                                                                                                                              |                                        |
-| `STY-SQL-002` | General                       | Use clear, descriptive English words. Avoid obscure abbreviations (e.g. prefer `customer_number` over `cust_num`).                                                                                                                                                                         |                                        |
-| `STY-SQL-003` | General                       | Never use SQL reserved words (e.g. `order`, `group`, `date`, `select`) as object or column names without an identifying prefix or suffix (e.g. `purchase_order`, `created_at`). Exception: SQLite accepts a few ANSI SQL reserved words (e.g. `user`) as identifiers, so they are allowed. |                                        |
-| `STY-SQL-004` | General                       | Use only standard ASCII alphanumeric characters (`a-z`, `0-9`) and underscores (`_`). No spaces, hyphens, or special symbols.                                                                                                                                                              |                                        |
-| `STY-SQL-005` | General                       | Enum constraint strings must be in uppercase.                                                                                                                                                                                                                                              |                                        |
-| `STY-SQL-006` | Table names                   | Singular (`user`, not `users`).                                                                                                                                                                                                                                                            |                                        |
-| `STY-SQL-007` | Table names                   | Junction / mapping tables combine both entity names in order of primary hierarchy, e.g. `user_role`.                                                                                                                                                                                       |                                        |
-| `STY-SQL-008` | Column names                  | Primary keys: use `<table_name>_id`, e.g. `user_id`, for readability across joins.                                                                                                                                                                                                         |                                        |
-| `STY-SQL-009` | Column names                  | Foreign keys: use the exact primary key name of the referenced table (e.g. `customer_id` inside the `orders` table).                                                                                                                                                                       |                                        |
-| `STY-SQL-010` | Column names                  | Name columns by data type: boolean `is_`/`has_`/`can_`, timestamps `_at`, dates `_date`, counts `_count`, totals `_total`.                                                                                                                                                                 |                                        |
-| `STY-SQL-013` | Keys, indexes and constraints | Name constraints `<constraint_type>_<table_name>_<column_name(s)>`.                                                                                                                                                                                                                        | [§ 1](#1-keys-indexes-and-constraints) |
-| `STY-SQL-014` | Keys, indexes and constraints | Declare all constraints at table level, at the end of the `CREATE TABLE` statement.                                                                                                                                                                                                        | [§ 1](#1-keys-indexes-and-constraints) |
-| `STY-SQL-011` | Triggers and functions        | Triggers: `tg_`                                                                                                                                                                                                                                                                            |                                        |
-| `STY-SQL-012` | Triggers and functions        | Functions: `fn_`                                                                                                                                                                                                                                                                           |                                        |
+| ID            | Section                       | Rule                                                                                                                                                                                                                                                                                                   | More info                              |
+| ------------- | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------- |
+| `STY-SQL-001` | General                       | Use `snake_case` (all lowercase, words separated by underscores). Avoid mixed casing or quoted identifiers (e.g. `"UserId"`).                                                                                                                                                                          |                                        |
+| `STY-SQL-002` | General                       | Use clear, descriptive English words. Avoid obscure abbreviations (e.g. prefer `customer_number` over `cust_num`).                                                                                                                                                                                     |                                        |
+| `STY-SQL-003` | General                       | Never use SQL reserved words (e.g. `order`, `group`, `date`, `select`) as object or column names without an identifying prefix or suffix (e.g. `purchase_order`, `created_at`). Exception: SQLite accepts a few ANSI SQL reserved words (e.g. `user`) as identifiers, so they are allowed.             |                                        |
+| `STY-SQL-004` | General                       | Use only standard ASCII alphanumeric characters (`a-z`, `0-9`) and underscores (`_`). No spaces, hyphens, or special symbols.                                                                                                                                                                          |                                        |
+| `STY-SQL-005` | General                       | Enum constraint strings must be in uppercase.                                                                                                                                                                                                                                                          |                                        |
+| `STY-SQL-006` | Table names                   | Singular (`user`, not `users`).                                                                                                                                                                                                                                                                        |                                        |
+| `STY-SQL-007` | Table names                   | Junction / mapping tables combine both entity names in order of primary hierarchy, e.g. `user_role`.                                                                                                                                                                                                   |                                        |
+| `STY-SQL-008` | Column names                  | Primary keys: use `<table_name>_id`, e.g. `user_id`, for readability across joins.                                                                                                                                                                                                                     |                                        |
+| `STY-SQL-009` | Column names                  | Foreign keys: use the exact primary key name of the referenced table (e.g. `customer_id` inside the `orders` table). A foreign key named for its meaning instead is permitted only when `rule_enforcer.yaml` records `<table>::<column>-><referenced table>(<primary key>)` in `allowed_foreign_keys`. |                                        |
+| `STY-SQL-010` | Column names                  | Name columns by data type: boolean `is_`/`has_`/`can_`, timestamps `_at`, dates `_date`, counts `_count`, totals `_total`.                                                                                                                                                                             |                                        |
+| `STY-SQL-013` | Keys, indexes and constraints | Name constraints `<constraint_type>_<table_name>_<column_name(s)>`.                                                                                                                                                                                                                                    | [§ 1](#1-keys-indexes-and-constraints) |
+| `STY-SQL-014` | Keys, indexes and constraints | Declare all constraints at table level, at the end of the `CREATE TABLE` statement.                                                                                                                                                                                                                    | [§ 1](#1-keys-indexes-and-constraints) |
+| `STY-SQL-011` | Triggers and functions        | Triggers: `tg_`                                                                                                                                                                                                                                                                                        |                                        |
+| `STY-SQL-012` | Triggers and functions        | Functions: `fn_`                                                                                                                                                                                                                                                                                       |                                        |
 
 ---
 
@@ -1703,8 +1703,13 @@ When a representation reports the outcome of an action on a resource, `self` is 
 the payload reports or references is exposed as a named link (`API-034`) — never promoted to `self`. The canonical URI
 is used even when the request used an alias: `GET /api/v1/user/me` returns `self` = `/api/v1/user/{id}`, and
 `POST /api/v1/asset/upload/{upload_id}/complete` reports the completion of the session it addressed, so its `self` is
-`/api/v1/asset/upload/{upload_id}` while the produced file is carried as `file_id` and linked by name once a file
-endpoint exists. Error envelopes are the exception: their `self` is the request path (`API-039`, `API-043`).
+`/api/v1/asset/upload/{upload_id}` while the produced file is carried as `file_id` and linked by name. Error envelopes
+are the exception: their `self` is the request path (`API-039`, `API-043`).
+
+A representation that carries a referenced file's `file_id` also links that file by name, to
+`/api/v1/asset/{type}/{file_id}`. The link is published whether or not the route is served: a client that builds the URI
+itself violates `API-037`, and a missing route answers the standard error envelope rather than a representation, so
+deferring the link until the route exists would force every client into a later breaking change.
 
 ---
 
@@ -1947,6 +1952,7 @@ entity music_album {
    * name: TEXT <<NN>>
    * release_date: DATE <<NN>>
    production_type: VARCHAR(20) <<CC(production_type IN ('COMPILATION', 'DJMIX', 'DEMO', 'LIVE', 'MIXTAPE', 'REMIX', 'SOUNDTRACK', 'STUDIO'))>>
+   cover_file_id: INTEGER <<FK>>
 }
 
 entity music_medium {
@@ -1983,6 +1989,7 @@ entity music_playlist {
    * last_modified_at: TEXT <<NN, DF(CURRENT_TIMESTAMP)>>
    * user_id: INTEGER <<FK, NN>>
    * is_public: BOOLEAN <<NN, DF(0)>>
+   cover_file_id: INTEGER <<FK>>
 }
 
 entity audio_channel {
@@ -2108,6 +2115,7 @@ entity movie {
    * country_of_origin: VARCHAR(30) <<NN>>
    * release_date: DATE <<NN, DF(date('now'))>>
    * video_id: INTEGER <<FK, NN, UN>>
+   cover_file_id: INTEGER <<FK>>
 }
 
 entity series {
@@ -2117,6 +2125,7 @@ entity series {
    * plot: TEXT <<NN>>
    * country_of_origin: VARCHAR(30) <<NN>>
    * first_air_date: DATE <<NN, DF(date('now'))>>
+   cover_file_id: INTEGER <<FK>>
 }
 
 entity series_genre {
@@ -2130,6 +2139,7 @@ entity season {
    * series_id: INTEGER <<FK, NN>>
    * season_index: INTEGER <<NN, DF(0), CC(season_index BETWEEN 0 AND 4294967295)>>
    name: TEXT
+   cover_file_id: INTEGER <<FK>>
 }
 
 entity episode {
@@ -2260,11 +2270,22 @@ image ||--|| file
 
 movie ||--|| video
 movie ||--o{ movie_genre
+file ||--o{ movie
 
 series ||--o{ series_genre
 series ||--o{ season
 season ||--o{ episode
 episode ||--|| video
+file ||--o{ series
+file ||--o{ season
+
+music_album ||--o{ music_medium
+music_album ||--o{ music_album_genre
+music_album ||--o{ music_album_group
+file ||--o{ music_album
+
+music_playlist ||--o{ music_track
+file ||--o{ music_playlist
 
 genre ||--o{ series_genre
 
@@ -2299,6 +2320,14 @@ caller owns at most one playlist per name, while different callers may each own 
 
 The `file` entity enforces a composite unique key on `(user_id, integrity_hash)`: a caller stores one file record per
 integrity hash, while different callers may each store their own copy.
+
+The five library resources that may carry artwork -- `movie`, `series`, `season`, `music_album` and `music_playlist` --
+each hold a nullable `cover_file_id` into `file` (`fk_<table>_cover_file`). The reference crosses into the Asset bounded
+context, so it declares no `ON DELETE CASCADE`: deleting a file a cover references is rejected by the foreign key and
+stays orchestrated by the application (`PERS-020`). Two triggers per table, `tg_<table>_cover_is_image_insert` and
+`tg_<table>_cover_is_image_update`, raise `ABORT` unless the referenced file's `mime_type.type` is `IMAGE`; `PERS-017`
+maps that rejection to a conflict. A `NULL` cover never fires the guard, and a dangling identifier falls through to the
+foreign key.
 
 The `gallery` entity enforces a composite unique key on `(user_id, name)` (`uq_gallery_user_id_name`): a caller owns at
 most one gallery per name, while different callers may each own a gallery with the same name. `user_id` is nullable, and

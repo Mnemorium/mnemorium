@@ -133,6 +133,7 @@ mod tests {
             ts(),
             4,
             false,
+            None,
             vec![MusicRecording::try_new(
                 30,
                 Some("First".to_owned()),
@@ -198,6 +199,7 @@ mod tests {
                     "self": { "href": "/api/v1/library/music/playlist/3" },
                     "tracks": { "href": "/api/v1/library/music/playlist/3/track" }
                 },
+                "cover_file_id": null,
                 "id": 3i64,
                 "name": "Mix",
                 "owner_id": 4i64,
@@ -218,6 +220,38 @@ mod tests {
                     }
                 }]
             })
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn get_playlist_with_artwork_exposes_the_cover_link() -> Result<(), Box<dyn Error>> {
+        // Arrange: the playlist's cover is file 19.
+        let fetched = GetPlaylistResponse::new(MusicPlaylist::new(
+            3,
+            "Mix".to_owned(),
+            ts(),
+            ts(),
+            4,
+            false,
+            Some(19),
+            Vec::new(),
+        ));
+        let mut use_case = MockGetPlaylistUseCase::new();
+        use_case.expect_execute().times(1).return_once(move |_| {
+            let copy = fetched.clone();
+            Box::pin(async move { Ok(copy) })
+        });
+
+        // Act
+        let (status, _, payload) = into_parts(send(use_case, 4, "3").await?).await?;
+
+        // Assert
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(payload.get("cover_file_id"), Some(&json!(19i64)));
+        assert_eq!(
+            payload.pointer("/_links/cover/href"),
+            Some(&json!("/api/v1/asset/image/19"))
         );
         Ok(())
     }

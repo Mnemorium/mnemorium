@@ -113,9 +113,11 @@ SHALL default to 20 and SHALL be between 1 and 100.
 
 #### Scenario: Playlist representation content
 
-- **WHEN** the system returns a playlist in a listing
+- **WHEN** the system returns a playlist, in a listing or on a detail read
 - **THEN** the representation carries the playlist's identifier, name, visibility, owner identifier, creation and last
-  modification timestamps, track count, and links to itself and its tracks
+  modification timestamps, track count, its cover, and links to itself and its tracks
+- **AND** the cover is the identifier of the file holding the playlist's artwork, or `null` when the playlist stores
+  none
 
 #### Scenario: Filter and page
 

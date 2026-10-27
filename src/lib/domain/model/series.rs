@@ -23,6 +23,8 @@ pub enum SeriesError {
 pub struct Series {
     /// Country of origin of the show.
     country_of_origin: String,
+    /// Identifier of the file holding the show's artwork, when set.
+    cover_file_id: Option<NumericID>,
     /// Date of the first airing of the show.
     first_air_date: NaiveDate,
     /// Identifiers of the genres the show is associated with.
@@ -42,6 +44,12 @@ impl Series {
     #[must_use]
     pub fn country_of_origin(&self) -> &str {
         &self.country_of_origin
+    }
+
+    /// Return the identifier of the file holding the show's artwork, if any.
+    #[must_use]
+    pub fn cover_file_id(&self) -> Option<NumericID> {
+        self.cover_file_id
     }
 
     /// Return the date of the first airing.
@@ -86,6 +94,10 @@ impl Series {
     ///
     /// Returns [`SeriesError::InvalidName`] when `name` is empty, and
     /// [`SeriesError::InvalidGenre`] when a genre identifier is empty.
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "the constructor mirrors the show's fields one-to-one"
+    )]
     pub fn try_new(
         id: NumericID,
         name: String,
@@ -93,6 +105,7 @@ impl Series {
         country_of_origin: String,
         first_air_date: NaiveDate,
         genre_ids: Vec<String>,
+        cover_file_id: Option<NumericID>,
         seasons: Vec<Season>,
     ) -> Result<Self, SeriesError> {
         if name.is_empty() {
@@ -103,6 +116,7 @@ impl Series {
         }
         Ok(Self {
             country_of_origin,
+            cover_file_id,
             first_air_date,
             genre_ids,
             id,

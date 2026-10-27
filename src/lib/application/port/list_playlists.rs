@@ -85,6 +85,8 @@ impl ListPlaylistsCommand {
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct ListPlaylistsItem {
+    /// Identifier of the file holding the playlist's artwork, when set.
+    cover_file_id: Option<NumericID>,
     /// Date and time of the creation of the playlist.
     created_at: NaiveDateTime,
     /// Unique identifier of the playlist.
@@ -102,6 +104,12 @@ pub struct ListPlaylistsItem {
 }
 
 impl ListPlaylistsItem {
+    /// Return the identifier of the file holding the playlist's artwork, if any.
+    #[must_use]
+    pub fn cover_file_id(&self) -> Option<NumericID> {
+        self.cover_file_id
+    }
+
     /// Return the date and time of the creation of the playlist.
     #[must_use]
     pub fn created_at(&self) -> NaiveDateTime {
@@ -134,6 +142,10 @@ impl ListPlaylistsItem {
 
     /// Create a new listed playlist.
     #[must_use]
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "the constructor mirrors the item's fields one-to-one"
+    )]
     pub fn new(
         id: NumericID,
         user_id: NumericID,
@@ -142,8 +154,10 @@ impl ListPlaylistsItem {
         created_at: NaiveDateTime,
         last_modified_at: NaiveDateTime,
         track_count: usize,
+        cover_file_id: Option<NumericID>,
     ) -> Self {
         Self {
+            cover_file_id,
             created_at,
             id,
             is_public,
@@ -153,7 +167,6 @@ impl ListPlaylistsItem {
             user_id,
         }
     }
-
     /// Return the number of tracks the playlist holds.
     #[must_use]
     pub fn track_count(&self) -> usize {

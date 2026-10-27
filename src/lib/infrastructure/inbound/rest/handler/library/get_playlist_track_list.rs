@@ -109,6 +109,58 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn get_playlist_track_list_returns_the_playlist_cover_through_the_alias()
+    -> Result<(), Box<dyn Error>> {
+        // Arrange: the aliased playlist's cover is file 19.
+        let fetched = GetPlaylistResponse::new(MusicPlaylist::new(
+            3,
+            "Mix".to_owned(),
+            ts(),
+            ts(),
+            4,
+            true,
+            Some(19),
+            Vec::new(),
+        ));
+        let mut use_case = MockGetPlaylistUseCase::new();
+        use_case
+            .expect_execute()
+            .times(1)
+            .return_once(move |_| Box::pin(async move { Ok(fetched) }));
+        let mut factory = MockLibraryUseCaseFactory::new();
+        factory
+            .expect_get_playlist()
+            .times(0..=1)
+            .return_once(move || Arc::new(use_case) as Arc<dyn GetPlaylistUseCase>);
+        let mut request = Request::builder()
+            .method("GET")
+            .uri("/api/v1/library/music/playlist/3/track")
+            .body(Body::empty())?;
+        request
+            .extensions_mut()
+            .insert(AuthenticatedUser::from(4i64));
+        let router = axum::Router::new()
+            .route(
+                "/api/v1/library/music/playlist/{playlist_id}/track",
+                get(get_playlist_track_list),
+            )
+            .with_state(app_state_with_library(Arc::new(factory))?);
+
+        // Act
+        let (status, _, payload) = into_parts(router.oneshot(request).await?).await?;
+
+        // Assert
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(payload.get("cover_file_id"), Some(&json!(19i64)));
+        assert_eq!(
+            payload.pointer("/_links/cover/href"),
+            Some(&json!("/api/v1/asset/image/19")),
+            "the alias must expose the playlist's cover link"
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn get_playlist_track_list_returns_the_playlist_with_a_canonical_self()
     -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -119,6 +171,7 @@ mod tests {
             ts(),
             4,
             true,
+            None,
             Vec::new(),
         ));
         let mut use_case = MockGetPlaylistUseCase::new();

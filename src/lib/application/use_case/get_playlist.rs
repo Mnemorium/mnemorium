@@ -165,6 +165,7 @@ mod tests {
             NaiveDateTime::default(),
             user_id,
             is_public,
+            None,
             tracks,
         )
     }
@@ -268,6 +269,40 @@ mod tests {
 
         // Assert
         assert_eq!(response.playlist().id(), 3);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn get_playlist_carries_the_cover_of_a_playlist_with_artwork()
+    -> Result<(), Box<dyn Error>> {
+        // Arrange: a playlist whose artwork is file 19.
+        let mut users = MockUserRepository::new();
+        expect_caller(&mut users, 4, Role::Standard)?;
+        let covered = MusicPlaylist::new(
+            3,
+            "Mine".to_owned(),
+            NaiveDateTime::default(),
+            NaiveDateTime::default(),
+            4,
+            false,
+            Some(19),
+            Vec::new(),
+        );
+        assert_eq!(
+            covered.cover_file_id(),
+            Some(19),
+            "a playlist built with artwork must report the identifier"
+        );
+        let mut playlists = MockMusicPlaylistRepository::new();
+        expect_playlist(&mut playlists, covered);
+        let harness = harness_with(users, playlists);
+        let use_case: UseCase = GetPlaylist::new(Arc::clone(&harness.factory));
+
+        // Act
+        let response = use_case.execute(GetPlaylistCommand::new(4, 3)).await?;
+
+        // Assert
+        assert_eq!(response.playlist().cover_file_id(), Some(19));
         Ok(())
     }
 

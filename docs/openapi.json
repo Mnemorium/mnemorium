@@ -15,8 +15,19 @@
         "type": "object"
       },
       "AlbumLinks": {
-        "description": "HAL links exposed by a music album representation.\n\nThe `self` link addresses the album; the album's mediums are embedded in the\nrepresentation and each medium carries its own links (`API-037`).",
+        "description": "HAL links exposed by a music album representation.\n\nThe `self` link addresses the album; the album's mediums are embedded in the\nrepresentation and each medium carries its own links (`API-037`). A cover is\nexposed as the `cover` link when the album stores artwork.",
         "properties": {
+          "cover": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/Link",
+                "description": "Link to the album's cover file, when the album stores artwork."
+              }
+            ]
+          },
           "self": {
             "$ref": "#/components/schemas/Link",
             "description": "Link to the album resource itself."
@@ -94,6 +105,17 @@
           "_links": {
             "$ref": "#/components/schemas/AlbumLinks",
             "description": "Links to the album."
+          },
+          "cover_file_id": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/i64",
+                "description": "Identifier of the file holding the album's artwork, when set."
+              }
+            ]
           },
           "genres": {
             "description": "Genres of the album, ordered by genre identifier.",
@@ -701,8 +723,19 @@
         "type": "object"
       },
       "MovieLinks": {
-        "description": "HAL links exposed by a film representation.\n\nThe `self` link addresses the film; the video is embedded in the\nrepresentation and carries no links of its own (`API-037`).",
+        "description": "HAL links exposed by a film representation.\n\nThe `self` link addresses the film; the video is embedded in the\nrepresentation and carries no links of its own (`API-037`). A cover is\nexposed as the `cover` link when the film stores artwork.",
         "properties": {
+          "cover": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/Link",
+                "description": "Link to the film's cover file, when the film stores artwork."
+              }
+            ]
+          },
           "self": {
             "$ref": "#/components/schemas/Link",
             "description": "Link to the film resource itself."
@@ -784,6 +817,17 @@
           "country_of_origin": {
             "description": "Country of origin of the film.",
             "type": "string"
+          },
+          "cover_file_id": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/i64",
+                "description": "Identifier of the file holding the film's artwork, when set."
+              }
+            ]
           },
           "genres": {
             "description": "Genres of the film, ordered by genre identifier.",
@@ -945,8 +989,19 @@
         "type": "object"
       },
       "PlaylistLinks": {
-        "description": "HAL links exposed by a music playlist representation.\n\nThe `self` link addresses the canonical playlist; the `tracks` link exposes\nthe alias route that serves the playlist with its embedded tracks\n(`API-037`, `API-042`).",
+        "description": "HAL links exposed by a music playlist representation.\n\nThe `self` link addresses the canonical playlist; the `tracks` link exposes\nthe alias route that serves the playlist with its embedded tracks\n(`API-037`, `API-042`). A cover is exposed as the `cover` link when the\nplaylist stores artwork.",
         "properties": {
+          "cover": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/Link",
+                "description": "Link to the playlist's cover file, when the playlist stores artwork."
+              }
+            ]
+          },
           "self": {
             "$ref": "#/components/schemas/Link",
             "description": "Link to the playlist resource itself."
@@ -1029,6 +1084,17 @@
           "_links": {
             "$ref": "#/components/schemas/PlaylistLinks",
             "description": "Links to the playlist and its track alias."
+          },
+          "cover_file_id": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/i64",
+                "description": "Identifier of the file holding the playlist's artwork, when set."
+              }
+            ]
           },
           "created_at": {
             "description": "Date and time of the creation of the playlist.",
@@ -1415,6 +1481,17 @@
             "$ref": "#/components/schemas/SeriesSeasonLinks",
             "description": "Links to the season, its show and its episode collection."
           },
+          "cover_file_id": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/i64",
+                "description": "Identifier of the file holding the season's artwork, when set."
+              }
+            ]
+          },
           "episode_count": {
             "description": "Number of episodes the season holds.",
             "minimum": 0,
@@ -1483,8 +1560,19 @@
         "type": "object"
       },
       "SeriesLinks": {
-        "description": "HAL links exposed by a show representation.\n\nThe `self` link addresses the show; the seasons are embedded and each\nseason carries its own links (`API-037`).",
+        "description": "HAL links exposed by a show representation.\n\nThe `self` link addresses the show; the seasons are embedded and each\nseason carries its own links (`API-037`). A cover is exposed as the `cover`\nlink when the show stores artwork.",
         "properties": {
+          "cover": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/Link",
+                "description": "Link to the show's cover file, when the show stores artwork."
+              }
+            ]
+          },
           "self": {
             "$ref": "#/components/schemas/Link",
             "description": "Link to the show resource itself."
@@ -1567,6 +1655,17 @@
             "description": "Country of origin of the show.",
             "type": "string"
           },
+          "cover_file_id": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/i64",
+                "description": "Identifier of the file holding the show's artwork, when set."
+              }
+            ]
+          },
           "first_air_date": {
             "description": "Date of the first airing of the show, in `YYYY-MM-DD` form.",
             "type": "string"
@@ -1611,8 +1710,19 @@
         "type": "object"
       },
       "SeriesSeasonLinks": {
-        "description": "HAL links exposed by a season representation.\n\nThe `self` link addresses the season, the `series` link the show that holds\nit, and the `episodes` link the season's episode collection (`API-034`,\n`API-037`).",
+        "description": "HAL links exposed by a season representation.\n\nThe `self` link addresses the season, the `series` link the show that holds\nit, and the `episodes` link the season's episode collection (`API-034`,\n`API-037`). A cover is exposed as the `cover` link when the season stores\nartwork.",
         "properties": {
+          "cover": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/Link",
+                "description": "Link to the season's cover file, when the season stores artwork."
+              }
+            ]
+          },
           "episodes": {
             "$ref": "#/components/schemas/Link",
             "description": "Link to the episode collection of the season."
@@ -1634,11 +1744,22 @@
         "type": "object"
       },
       "SeriesSummaryResponse": {
-        "description": "One show of a listing: its identifier and name only.",
+        "description": "One show of a listing: its identifier, name and cover.",
         "properties": {
           "_links": {
-            "$ref": "#/components/schemas/SelfLinks",
+            "$ref": "#/components/schemas/SeriesLinks",
             "description": "Links to the show."
+          },
+          "cover_file_id": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/i64",
+                "description": "Identifier of the file holding the show's artwork, when set."
+              }
+            ]
           },
           "id": {
             "$ref": "#/components/schemas/i64",

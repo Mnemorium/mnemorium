@@ -31,7 +31,7 @@ longer exists SHALL be rejected.
 ### Requirement: List series
 
 The system SHALL return the shows it holds through `GET /api/v1/library/series`. Series SHALL NOT be scoped to an owner,
-and each listed series SHALL carry only its identifier and name.
+and each listed series SHALL carry only its identifier, its name and its cover.
 
 #### Scenario: Authenticated caller lists series
 
@@ -41,7 +41,8 @@ and each listed series SHALL carry only its identifier and name.
 #### Scenario: Series summary content
 
 - **WHEN** the system returns a series in the listing
-- **THEN** the item carries only the series identifier and name, plus its `_links.self`
+- **THEN** the item carries only the series identifier, name, cover and its `_links.self`
+- **AND** the cover is the identifier of the file holding the show's artwork, or `null` when the show stores none
 - **AND** it carries no seasons, genres, dates or counts
 
 ### Requirement: Series listing is filterable and paginated
@@ -67,8 +68,8 @@ default to 20 and SHALL be between 1 and 100.
 
 ### Requirement: Read one series
 
-The system SHALL return one show through `GET /api/v1/library/series/{series_id}`, carrying its metadata, genres and
-season summaries.
+The system SHALL return one show through `GET /api/v1/library/series/{series_id}`, carrying its metadata, genres, cover
+and season summaries.
 
 #### Scenario: Series of an existing identifier
 
@@ -78,10 +79,12 @@ season summaries.
 #### Scenario: Series representation content
 
 - **WHEN** the system returns one series
-- **THEN** the representation carries the series identifier, name, plot, country of origin, first air date and genres
+- **THEN** the representation carries the series identifier, name, plot, country of origin, first air date, genres and
+  cover
+- **AND** the cover is the identifier of the file holding the show's artwork, or `null` when the show stores none
 - **AND** it carries the seasons ordered by season index
-- **AND** each season summary carries its index, its name when set, its episode count, and links to the season and its
-  episode collection
+- **AND** each season summary carries its index, its name when set, its episode count, its cover and links to the season
+  and its episode collection
 
 #### Scenario: Unknown series
 
@@ -121,8 +124,9 @@ series named in the path.
 #### Scenario: Season representation content
 
 - **WHEN** the system returns a season
-- **THEN** the representation carries its series identifier, its index, its name when set, its episode count, and links
-  to its series and its episode collection
+- **THEN** the representation carries its series identifier, its index, its name when set, its episode count, its cover
+  and links to its series and its episode collection
+- **AND** the cover is the identifier of the file holding the season's artwork, or `null` when the season stores none
 
 #### Scenario: Unknown series or season
 

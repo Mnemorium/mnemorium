@@ -201,7 +201,7 @@ mod tests {
     }
 
     fn playlist_item() -> ListPlaylistsItem {
-        ListPlaylistsItem::new(2, 1, "Mix".to_owned(), true, ts(), ts(), 3)
+        ListPlaylistsItem::new(2, 1, "Mix".to_owned(), true, ts(), ts(), 3, None)
     }
 
     #[tokio::test]
@@ -244,6 +244,7 @@ mod tests {
                         "self": { "href": "/api/v1/library/music/playlist/2" },
                         "tracks": { "href": "/api/v1/library/music/playlist/2/track" }
                     },
+                    "cover_file_id": null,
                     "id": 2i64,
                     "name": "Mix",
                     "owner_id": 1i64,

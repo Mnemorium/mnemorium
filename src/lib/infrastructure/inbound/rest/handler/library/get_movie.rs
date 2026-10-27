@@ -155,6 +155,7 @@ mod tests {
             source.country_of_origin().to_owned(),
             source.release_date(),
             source.genre_ids().to_vec(),
+            None,
             VideoSummary::from(source.video()),
         );
         use_case
@@ -182,6 +183,7 @@ mod tests {
                 "_links": {
                     "self": { "href": "/api/v1/library/movie/7" }
                 },
+                "cover_file_id": null,
                 "id": 7i64,
                 "name": "Movie 7",
                 "plot": "A plot",
@@ -199,6 +201,40 @@ mod tests {
                 }
             }),
             "the representation must carry the film and its video"
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn get_movie_with_artwork_exposes_the_cover_link() -> Result<(), Box<dyn Error>> {
+        // Arrange: the film's cover is file 19.
+        let mut use_case = MockGetMovieUseCase::new();
+        let source = sample_movie(7)?;
+        let response = GetMovieResponse::new(
+            source.id(),
+            source.name().to_owned(),
+            source.plot().to_owned(),
+            source.country_of_origin().to_owned(),
+            source.release_date(),
+            source.genre_ids().to_vec(),
+            Some(19),
+            VideoSummary::from(source.video()),
+        );
+        use_case.expect_execute().times(1).return_once(move |_| {
+            let copy = response.clone();
+            Box::pin(async move { Ok(copy) })
+        });
+
+        // Act
+        let (status, _, payload) = into_parts(send(use_case, 1, "7").await?).await?;
+
+        // Assert
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(payload.get("cover_file_id"), Some(&json!(19i64)));
+        assert_eq!(
+            payload.pointer("/_links/cover/href"),
+            Some(&json!("/api/v1/asset/image/19")),
+            "the representation must link the film's cover file"
         );
         Ok(())
     }

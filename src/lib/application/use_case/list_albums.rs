@@ -100,6 +100,7 @@ where
                             album.production_type(),
                             album.genre_ids().to_vec(),
                             track_count,
+                            album.cover_file_id(),
                             mediums,
                         )
                     })
@@ -194,6 +195,7 @@ mod tests {
             Some(ProductionType::Studio),
             vec!["JAZZ".to_owned()],
             None,
+            None,
             vec![medium(1, track_count)?],
         )?)
     }
@@ -206,6 +208,7 @@ mod tests {
             NaiveDate::default(),
             None,
             Vec::new(),
+            None,
             None,
             Vec::new(),
         )?)
@@ -275,6 +278,7 @@ mod tests {
                 Some(ProductionType::Studio),
                 vec!["JAZZ".to_owned()],
                 1,
+                None,
                 vec![ListAlbumsMediumItem::new(1, "CD".to_owned(), 1)],
             ))
         );
@@ -292,6 +296,64 @@ mod tests {
             "the album's total track count is the sum of its mediums"
         );
         assert!(harness.committed.load(Ordering::SeqCst));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn list_albums_carries_the_cover_of_an_album_with_artwork() -> Result<(), Box<dyn Error>>
+    {
+        // Arrange: one covered album beside one without artwork.
+        let mut users = MockUserRepository::new();
+        expect_caller(&mut users, 1, Role::Standard)?;
+        let covered = MusicAlbum::try_new(
+            1,
+            "Album 1".to_owned(),
+            album_release_date(),
+            None,
+            Vec::new(),
+            None,
+            Some(19),
+            Vec::new(),
+        )?;
+        assert_eq!(
+            covered.cover_file_id(),
+            Some(19),
+            "an album built with artwork must report the identifier"
+        );
+        let uncovered = empty_album(2, "Album 2")?;
+        assert_eq!(
+            uncovered.cover_file_id(),
+            None,
+            "an album built without artwork must report none"
+        );
+        let mut albums = MockMusicAlbumRepository::new();
+        albums
+            .expect_search()
+            .times(1)
+            .return_once(move |_| Box::pin(async move { Ok(vec![covered, uncovered]) }));
+        let harness = harness_with(users, albums);
+        let use_case: UseCase = ListAlbums::new(Arc::clone(&harness.factory));
+
+        // Act
+        let response = use_case
+            .execute(ListAlbumsCommand::new(1, None, None, None))
+            .await?;
+
+        // Assert
+        assert_eq!(
+            response
+                .albums()
+                .first()
+                .and_then(ListAlbumsItem::cover_file_id),
+            Some(19)
+        );
+        assert_eq!(
+            response
+                .albums()
+                .get(1)
+                .and_then(ListAlbumsItem::cover_file_id),
+            None
+        );
         Ok(())
     }
 
