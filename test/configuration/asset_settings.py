@@ -4,7 +4,7 @@
 how long a session can still be completed. Input parsing and input rejection are not subjects here (TEST-057): every
 case supplies a valid value and asserts its effect.
 
-`asset.storage.root` has no case: the root is expected to become a fixed constant rather than a setting (#328).
+`asset.storage.root` has no case: the root is a fixed constant rather than a setting (#328).
 """
 
 import hashlib

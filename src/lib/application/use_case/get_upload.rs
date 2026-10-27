@@ -1,5 +1,4 @@
 use std::future::Future;
-use std::path::PathBuf;
 use std::pin::Pin;
 use std::sync::Arc;
 
@@ -39,8 +38,6 @@ pub struct GetUpload<F, S> {
     expiry_seconds: u64,
     /// Storage adapter deleting the staged file of an expired upload.
     file_storage: Arc<S>,
-    /// Root directory holding the upload and file folders.
-    root: PathBuf,
     /// Factory opening the unit of work wrapping the read.
     unit_of_work_factory: Arc<F>,
 }
@@ -48,16 +45,10 @@ pub struct GetUpload<F, S> {
 impl<F: UnitOfWorkFactory, S: FileStorage> GetUpload<F, S> {
     /// Create a new use case.
     #[must_use]
-    pub fn new(
-        unit_of_work_factory: Arc<F>,
-        file_storage: Arc<S>,
-        root: PathBuf,
-        expiry_seconds: u64,
-    ) -> Self {
+    pub fn new(unit_of_work_factory: Arc<F>, file_storage: Arc<S>, expiry_seconds: u64) -> Self {
         Self {
             expiry_seconds,
             file_storage,
-            root,
             unit_of_work_factory,
         }
     }
@@ -76,7 +67,6 @@ where
     {
         let expiry_seconds = self.expiry_seconds;
         let file_storage = Arc::clone(&self.file_storage);
-        let root = self.root.clone();
         let unit_of_work_factory = Arc::clone(&self.unit_of_work_factory);
 
         Box::pin(async move {
@@ -121,7 +111,7 @@ where
                     // adapters own the failure logs (`OBS-002`), so a failed
                     // cleanup is swallowed here.
                     if file_storage
-                        .delete_upload_file(&staged_path(&root, command.upload_id()))
+                        .delete_upload_file(&staged_path(command.upload_id()))
                         .await
                         .is_err()
                     {
@@ -194,7 +184,6 @@ where
 mod tests {
     use std::error::Error;
     use std::io as stdio;
-    use std::path::PathBuf;
     use std::sync::Arc;
     use std::sync::Mutex;
     use std::sync::PoisonError;
@@ -210,7 +199,6 @@ mod tests {
     use crate::application::port::get_upload::GetUploadCommand;
     use crate::application::port::get_upload::GetUploadError;
     use crate::application::port::get_upload::GetUploadUseCase as _;
-    use crate::application::use_case::test_fixtures::ROOT;
     use crate::application::use_case::test_fixtures::TTL_SECONDS;
     use crate::domain::model::file::File;
     use crate::domain::model::integrity_hash::IntegrityHash;
@@ -293,7 +281,6 @@ mod tests {
             use_case: GetUpload::new(
                 Arc::clone(&harness.factory),
                 Arc::new(file_storage),
-                PathBuf::from(ROOT),
                 TTL_SECONDS,
             ),
             committed: harness.committed,

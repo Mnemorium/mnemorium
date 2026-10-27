@@ -1,5 +1,4 @@
 use std::future::Future;
-use std::path::Path;
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -106,8 +105,6 @@ pub struct CompleteUpload<F, S, P> {
     file_storage: Arc<S>,
     /// Probe extracting the media metadata.
     media_probe: Arc<P>,
-    /// Root directory holding the upload and file folders.
-    root: PathBuf,
     /// Factory opening the unit of work wrapping the completion.
     unit_of_work_factory: Arc<F>,
 }
@@ -119,14 +116,12 @@ impl<F: UnitOfWorkFactory, S: FileStorage, P: MediaProbe> CompleteUpload<F, S, P
         unit_of_work_factory: Arc<F>,
         file_storage: Arc<S>,
         media_probe: Arc<P>,
-        root: PathBuf,
         expiry_seconds: u64,
     ) -> Self {
         Self {
             expiry_seconds,
             file_storage,
             media_probe,
-            root,
             unit_of_work_factory,
         }
     }
@@ -152,7 +147,6 @@ where
         let expiry_seconds = self.expiry_seconds;
         let file_storage = Arc::clone(&self.file_storage);
         let media_probe = Arc::clone(&self.media_probe);
-        let root = self.root.clone();
         let unit_of_work_factory = Arc::clone(&self.unit_of_work_factory);
 
         Box::pin(async move {
@@ -165,15 +159,7 @@ where
                     .begin()
                     .await
                     .map_err(|error| CompleteUploadError::Unknown(error.into()))?;
-                match resolve(
-                    &mut unit_of_work,
-                    &file_storage,
-                    &root,
-                    &command,
-                    expiry_seconds,
-                )
-                .await
-                {
+                match resolve(&mut unit_of_work, &file_storage, &command, expiry_seconds).await {
                     Resolution::Ready(upload) => {
                         // Nothing was written on this path: roll back to release
                         // the connection before hashing. The media kind and the
@@ -188,7 +174,7 @@ where
                             None
                         };
                         let staged_media =
-                            media_kind.map(|kind| (kind, staged_path(&root, upload.upload_id())));
+                            media_kind.map(|kind| (kind, staged_path(upload.upload_id())));
                         discard(unit_of_work).await;
                         staged_media
                     }
@@ -237,7 +223,7 @@ where
             // pooled connection is free and a concurrent writer cannot
             // invalidate a read snapshot underneath the hash.
             let computed = match file_storage
-                .integrity_hash(&staged_path(&root, command.upload_id()))
+                .integrity_hash(&staged_path(command.upload_id()))
                 .await
             {
                 Ok(Some(digest)) => digest,
@@ -273,22 +259,16 @@ where
             let mut promoted: Option<Promoted> = None;
 
             let flow = async {
-                let upload = match resolve(
-                    &mut unit_of_work,
-                    &file_storage,
-                    &root,
-                    &command,
-                    expiry_seconds,
-                )
-                .await
-                {
-                    Resolution::Ready(upload) => *upload,
-                    Resolution::Finished(file_id) => {
-                        return Flow::Succeeded(CompleteUploadResponse::new(file_id, true));
-                    }
-                    Resolution::Expired => return Flow::Expired,
-                    Resolution::Failed(error) => return Flow::Failed(error),
-                };
+                let upload =
+                    match resolve(&mut unit_of_work, &file_storage, &command, expiry_seconds).await
+                    {
+                        Resolution::Ready(upload) => *upload,
+                        Resolution::Finished(file_id) => {
+                            return Flow::Succeeded(CompleteUploadResponse::new(file_id, true));
+                        }
+                        Resolution::Expired => return Flow::Expired,
+                        Resolution::Failed(error) => return Flow::Failed(error),
+                    };
 
                 // The computed digest is compared before any file-table lookup,
                 // so a caller cannot probe the file table for a guessed hash
@@ -322,9 +302,8 @@ where
                         "the upload file name is not a safe path segment"
                     )));
                 }
-                let staged = staged_path(&root, upload.upload_id());
-                let final_file =
-                    files_path(&root).join(format!("{}_{}", upload.upload_id(), file_name));
+                let staged = staged_path(upload.upload_id());
+                let final_file = files_path().join(format!("{}_{}", upload.upload_id(), file_name));
                 match file_storage.promote(&staged, &final_file).await {
                     // The staged file vanished after it was hashed: the upload
                     // is absent, mirroring the repository's missing-entity
@@ -518,7 +497,6 @@ where
 async fn resolve<U, S>(
     unit_of_work: &mut U,
     file_storage: &Arc<S>,
-    root: &Path,
     command: &CompleteUploadCommand,
     expiry_seconds: u64,
 ) -> Resolution
@@ -560,7 +538,7 @@ where
         // The file-storage and repository adapters own the failure logs
         // (`OBS-002`), so a failed cleanup is swallowed here.
         if file_storage
-            .delete_upload_file(&staged_path(root, command.upload_id()))
+            .delete_upload_file(&staged_path(command.upload_id()))
             .await
             .is_err()
         {
@@ -646,7 +624,6 @@ fn probe_fault(error: MediaProbeError) -> CompleteUploadError {
 mod tests {
     use std::error::Error;
     use std::io as stdio;
-    use std::path::PathBuf;
     use std::sync::Arc;
     use std::sync::Mutex;
     use std::sync::PoisonError;
@@ -664,7 +641,6 @@ mod tests {
     use crate::application::port::complete_upload::CompleteUploadCommand;
     use crate::application::port::complete_upload::CompleteUploadError;
     use crate::application::port::complete_upload::CompleteUploadUseCase as _;
-    use crate::application::use_case::test_fixtures::ROOT;
     use crate::application::use_case::test_fixtures::TTL_SECONDS;
     use crate::domain::model::file::File;
     use crate::domain::model::image::Orientation;
@@ -785,7 +761,6 @@ mod tests {
                 Arc::new(factory),
                 Arc::new(file_storage),
                 Arc::new(MockMediaProbe::new()),
-                PathBuf::from(ROOT),
                 TTL_SECONDS,
             ),
         }
@@ -852,7 +827,6 @@ mod tests {
                 Arc::new(factory),
                 Arc::new(file_storage),
                 Arc::new(media_probe),
-                PathBuf::from(ROOT),
                 TTL_SECONDS,
             ),
         }
@@ -1801,7 +1775,6 @@ mod tests {
             Arc::new(factory),
             Arc::new(file_storage),
             Arc::new(MockMediaProbe::new()),
-            PathBuf::from(ROOT),
             TTL_SECONDS,
         );
         let command = CompleteUploadCommand::new(5, 3);

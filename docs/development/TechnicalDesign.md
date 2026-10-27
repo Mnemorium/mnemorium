@@ -153,7 +153,7 @@ material. The `#[utoipa::path(...)]` declaration contract lives in the [API sect
 | `STY-RUST-062` | Use cases         | **Lazy instantiation** — every accessor builds the use case on the spot. It rebuilds its configuration-derived adapters (e.g. password hasher, token provider) from the immutable configuration and identity and never caches them; it builds its stateless adapters at the point of use and never stores them in a long-lived struct (see [§ 9.2](#92-use-case-factory)). The startup-only settings listed in `STY-RUST-076` are exempt.                                                                                                                       | [§ 9.2](#92-use-case-factory)                                    |
 | `STY-RUST-063` | Use cases         | The factory only supplies the unit-of-work factory; the use case still opens, commits and rolls back its own unit of work (see [Unit of Work](#7-unit-of-work)).                                                                                                                                                                                                                                                                                                                                                                                                | [§ 9.2](#92-use-case-factory)                                    |
 | `STY-RUST-064` | Configuration     | `LoadConfiguration` runs once at startup; the resulting `Configuration` is immutable and stored as `Arc<Configuration>` in `AppState`, beside the `Arc<InstanceState>` identity.                                                                                                                                                                                                                                                                                                                                                                                | [§ 10](#10-configuration)                                        |
-| `STY-RUST-065` | Configuration     | Never cache a configuration-derived value (for example the `JWT` TTL or the storage root) in a long-lived adapter built at startup; read it when the adapter is built for a use case. The pepper and the signing secret are not configuration: they are the immutable instance identity, so building the password hasher from the pepper once is correct. The startup-only settings listed in `STY-RUST-076` are the only exception.                                                                                                                            | [§ 10](#10-configuration)                                        |
+| `STY-RUST-065` | Configuration     | Never cache a configuration-derived value (for example the `JWT` TTL) in a long-lived adapter built at startup; read it when the adapter is built for a use case. The pepper and the signing secret are not configuration: they are the immutable instance identity, so building the password hasher from the pepper once is correct. The startup-only settings listed in `STY-RUST-076` are the only exception.                                                                                                                                                | [§ 10](#10-configuration)                                        |
 | `STY-RUST-067` | Application state | `src/bin/server.rs` is the composition root: the only place that builds `AppState` and constructs a concrete adapter that lives for the process lifetime. A factory accessor (see [§ 9.2](#92-use-case-factory)) or an adapter constructs the per-use adapters it needs.                                                                                                                                                                                                                                                                                        | [§ 1](#1-application-state)                                      |
 | `STY-RUST-068` | Application state | `AppState` is the single router state; `FromRef` impls expose exactly what middleware extracts, and getters return `Arc` clones, never borrows.                                                                                                                                                                                                                                                                                                                                                                                                                 | [§ 1](#1-application-state)                                      |
 | `STY-RUST-069` | Ports             | Always declare outbound port traits as `Send + Sync`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | [§ 6.1](#61-port-traits-are-send-and-sync)                       |
@@ -918,8 +918,9 @@ A factory accessor constructs the adapters its use case needs, classified as:
 - **Stateless adapter** — it has no runtime state and its behaviour is independent of the configuration (for example
   `Sha2ContentHasher`, `RandomPasswordGenerator`). The accessor builds it at the point of use and never stores it in a
   struct reachable from `AppState` across requests. An adapter may likewise build a stateless adapter it owns at the
-  point of use rather than storing it (`STY-RUST-062`). The file-storage adapter is stateless: the accessor reads its
-  root from the configuration (`asset.storage.root`) when it builds it.
+  point of use rather than storing it (`STY-RUST-062`). The file-storage adapter is stateless: the accessor builds it
+  with no configuration, and every path is composed from the fixed storage root owned by the upload-layout module
+  (`src/lib/application/use_case/upload_layout.rs`).
 - **Resource-owning adapter** — it owns a resource created once at startup (for example the media-probe permit pool).
   The composition root captures the startup value and the accessor builds the adapter afresh per use from it; the
   adapter is never a long-lived field of the factory.
@@ -964,9 +965,12 @@ exists — including an empty or partial one — is never rewritten. A test comp
 `Configuration::default()`, so the two cannot drift.
 
 Secrets are not configuration. The site pepper and the token signing secret live in the instance state (`state.yaml`,
-[§ 10.2](#102-instance-identity)), and the datastore path is declared once as `DATABASE_PATH` in the load-state port
-(`src/lib/application/port/load_state.rs`), beside `STATE_PATH`; neither can be set through the file or the environment.
-The two seed variables in § 10.2 are the only environment inputs that reach the state, and they apply only at creation.
+[§ 10.2](#102-instance-identity)). Three paths are fixed facts rather than settings, each a constant owned by the module
+that composes it: the datastore path is declared once as `DATABASE_PATH` in the load-state port
+(`src/lib/application/port/load_state.rs`), beside `STATE_PATH`; and the media storage root is `STORAGE_ROOT` in the
+upload-layout module (`src/lib/application/use_case/upload_layout.rs`), which owns every path composed from it. None of
+them can be set through the file or the environment. The two seed variables in § 10.2 are the only environment inputs
+that reach the state, and they apply only at creation.
 
 The configuration also carries the logging settings (`logging.level`, `logging.rotation`, `logging.max_files`,
 `logging.ansi`). The `tracing` subscriber is installed from the resolved configuration after `LoadConfiguration` and
@@ -1893,7 +1897,7 @@ enforce invariants.
 | `PERS-005` | Seeds                       | Seed the reference data (`audio_channel`, `color`, `gallery`, `language`, `mime_type`) from the migrations.                                                                                                                                    |                                           |
 | `PERS-006` | Invariants                  | A `user` row with `user_id = 0` (the Root Admin) cannot be deleted or modified.                                                                                                                                                                |                                           |
 | `PERS-007` | Invariants                  | A `gallery` row with `gallery_id = 0` (the default gallery) cannot be deleted or modified.                                                                                                                                                     |                                           |
-| `PERS-008` | Invariants                  | Normalise `codec`, `genre_id` and `movie.country_of_origin` to uppercase on insert/update.                                                                                                                                                     |                                           |
+| `PERS-008` | Invariants                  | Normalise `codec`, `genre_id`, `movie.country_of_origin` and `series.country_of_origin` to uppercase on insert/update.                                                                                                                         |                                           |
 | `PERS-011` | Entity-relationship diagram | Keep the entity-relationship diagram in sync with `migrations/` in the same change that changes a table, column, constraint, trigger or seed.                                                                                                  | [§ Diagram](#entity-relationship-diagram) |
 | `PERS-012` | Entity-relationship diagram | Use only the markers `PK`, `FK`, `NN`, `UN`, `CC`, `DF`.                                                                                                                                                                                       | [§ Legend](#legend)                       |
 | `PERS-013` | Entity-relationship diagram | Put the FK marker on the child table and draw relationships from the "one" side to the "many" side.                                                                                                                                            | [§ Diagram](#entity-relationship-diagram) |
@@ -2106,6 +2110,39 @@ entity movie {
    * video_id: INTEGER <<FK, NN, UN>>
 }
 
+entity series {
+   * series_id: INTEGER <<PK>>
+   --
+   * name: TEXT <<NN>>
+   * plot: TEXT <<NN>>
+   * country_of_origin: VARCHAR(30) <<NN>>
+   * first_air_date: DATE <<NN, DF(date('now'))>>
+}
+
+entity series_genre {
+   * series_id: INTEGER <<FK, PK>>
+   * genre_id: TEXT <<FK, PK>>
+}
+
+entity season {
+   * season_id: INTEGER <<PK>>
+   --
+   * series_id: INTEGER <<FK, NN>>
+   * season_index: INTEGER <<NN, DF(0), CC(season_index BETWEEN 0 AND 4294967295)>>
+   name: TEXT
+}
+
+entity episode {
+   * episode_id: INTEGER <<PK>>
+   --
+   * season_id: INTEGER <<FK, NN>>
+   * episode_index: INTEGER <<NN, CC(episode_index BETWEEN 0 AND 4294967295)>>
+   * name: TEXT <<NN>>
+   * plot: TEXT <<NN>>
+   * air_date: DATE <<NN>>
+   * video_id: INTEGER <<FK, NN, UN>>
+}
+
 entity language {
    * language_id: INTEGER <<PK>>
    --
@@ -2223,6 +2260,13 @@ image ||--|| file
 
 movie ||--|| video
 movie ||--o{ movie_genre
+
+series ||--o{ series_genre
+series ||--o{ season
+season ||--o{ episode
+episode ||--|| video
+
+genre ||--o{ series_genre
 
 stream ||--o| audio_stream
 stream ||--o| subtitle_stream

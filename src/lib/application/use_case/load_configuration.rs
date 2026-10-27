@@ -6,7 +6,6 @@ use crate::application::port::load_configuration::LoadConfigurationError;
 use crate::application::port::load_configuration::LoadConfigurationResponse;
 use crate::application::port::load_configuration::LoadConfigurationUseCase;
 use crate::domain::model::configuration::Asset;
-use crate::domain::model::configuration::AssetStorage;
 use crate::domain::model::configuration::AssetUpload;
 use crate::domain::model::configuration::ClientIpHeader;
 use crate::domain::model::configuration::Configuration;
@@ -114,13 +113,6 @@ fn merge(
 ) -> Result<(Configuration, Vec<&'static str>), LoadConfigurationError> {
     let mut applied = Vec::new();
 
-    let storage = AssetStorage::try_new(resolve(
-        partial.asset.storage.root,
-        || base.asset().storage().root().to_owned(),
-        "asset.storage.root",
-        &mut applied,
-    ))
-    .map_err(|error| invalid("asset.storage.root", error))?;
     let upload = AssetUpload::try_new(
         resolve(
             partial.asset.upload.chunk_size_bytes,
@@ -142,7 +134,7 @@ fn merge(
         ),
     )
     .map_err(|error| invalid("asset.upload", error))?;
-    let asset = Asset::new(storage, upload);
+    let asset = Asset::new(upload);
 
     let logging = Logging::try_new(
         resolve(
@@ -285,7 +277,6 @@ mod tests {
     use crate::domain::model::configuration::Configuration;
     use crate::domain::model::configuration::Rotation;
     use crate::domain::model::partial_configuration::PartialAsset;
-    use crate::domain::model::partial_configuration::PartialAssetStorage;
     use crate::domain::model::partial_configuration::PartialAssetUpload;
     use crate::domain::model::partial_configuration::PartialConfiguration;
     use crate::domain::model::partial_configuration::PartialJwt;
@@ -671,11 +662,9 @@ mod tests {
         // Arrange: both layers name a different setting, so the resolved value
         // proves each one is applied over the other in order.
         let file = PartialConfiguration {
-            asset: PartialAsset {
-                storage: PartialAssetStorage {
-                    root: Some("media".to_owned()),
-                },
-                ..PartialAsset::default()
+            logging: PartialLogging {
+                max_files: Some(3),
+                ..PartialLogging::default()
             },
             ..PartialConfiguration::default()
         };
@@ -688,7 +677,7 @@ mod tests {
         let response = use_case.execute().await?;
 
         // Assert
-        assert_eq!(response.configuration().asset().storage().root(), "media");
+        assert_eq!(response.configuration().logging().max_files(), 3);
         assert_eq!(response.configuration().logging().level(), "warn");
         Ok(())
     }
@@ -698,8 +687,9 @@ mod tests {
         // Arrange
         let partial = PartialConfiguration {
             asset: PartialAsset {
-                storage: PartialAssetStorage {
-                    root: Some("media".to_owned()),
+                upload: PartialAssetUpload {
+                    chunk_size_bytes: Some(1_024),
+                    ..PartialAssetUpload::default()
                 },
                 ..PartialAsset::default()
             },
@@ -719,12 +709,19 @@ mod tests {
         let response = use_case.execute().await?;
 
         // Assert
-        assert!(
-            response.applied().is_sorted(),
-            "the applied paths must be sorted, got: {:?}",
-            response.applied()
+        assert_eq!(
+            response.applied(),
+            &[
+                "asset.upload.chunk_size_bytes",
+                "logging.max_files",
+                "logging.rotation"
+            ],
+            "the applied paths must be sorted"
         );
-        assert_eq!(response.applied().len(), 3);
+        assert_eq!(
+            response.configuration().asset().upload().chunk_size_bytes(),
+            1_024
+        );
         assert_eq!(
             response.configuration().logging().rotation(),
             Rotation::Hourly

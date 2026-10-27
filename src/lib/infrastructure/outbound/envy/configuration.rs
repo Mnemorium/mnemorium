@@ -4,7 +4,6 @@ use std::future::ready;
 
 use crate::domain::model::configuration::Rotation;
 use crate::domain::model::partial_configuration::PartialAsset;
-use crate::domain::model::partial_configuration::PartialAssetStorage;
 use crate::domain::model::partial_configuration::PartialAssetUpload;
 use crate::domain::model::partial_configuration::PartialConfiguration;
 use crate::domain::model::partial_configuration::PartialJwt;
@@ -30,8 +29,6 @@ const ENVIRONMENT_PREFIX: &str = "MNEMORIUM_";
 #[derive(Debug, Clone, Default, PartialEq, Eq, serde::Deserialize)]
 #[serde(default)]
 struct EnvConfiguration {
-    /// `asset.storage.root`.
-    asset_storage_root: Option<String>,
     /// `asset.upload.chunk_size_bytes`.
     asset_upload_chunk_size_bytes: Option<u64>,
     /// `asset.upload.expiry_seconds`.
@@ -66,9 +63,6 @@ impl From<EnvConfiguration> for PartialConfiguration {
     fn from(env: EnvConfiguration) -> Self {
         Self {
             asset: PartialAsset {
-                storage: PartialAssetStorage {
-                    root: env.asset_storage_root,
-                },
                 upload: PartialAssetUpload {
                     chunk_size_bytes: env.asset_upload_chunk_size_bytes,
                     expiry_seconds: env.asset_upload_expiry_seconds,
@@ -203,7 +197,6 @@ mod tests {
     {
         // Arrange
         let variables = vec![
-            variable("MNEMORIUM_ASSET_STORAGE_ROOT", "media"),
             variable("MNEMORIUM_ASSET_UPLOAD_CHUNK_SIZE_BYTES", "1024"),
             variable("MNEMORIUM_ASSET_UPLOAD_EXPIRY_SECONDS", "60"),
             variable("MNEMORIUM_ASSET_UPLOAD_MAX_FILE_SIZE_BYTES", "2048"),
@@ -227,7 +220,6 @@ mod tests {
         let partial = adapter(variables)?;
 
         // Assert
-        assert_eq!(partial.asset.storage.root.as_deref(), Some("media"));
         assert_eq!(partial.asset.upload.chunk_size_bytes, Some(1024));
         assert_eq!(partial.asset.upload.expiry_seconds, Some(60));
         assert_eq!(partial.asset.upload.max_file_size_bytes, Some(2048));
@@ -256,6 +248,7 @@ mod tests {
         // Arrange
         let variables = [
             variable("MNEMORIUM_PEPPER", &"a".repeat(64)),
+            variable("MNEMORIUM_ASSET_STORAGE_ROOT", "media"),
             variable("MNEMORIUM_NOT_A_SETTING", "1"),
             variable("PATH", "/usr/bin"),
         ];

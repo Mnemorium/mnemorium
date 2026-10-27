@@ -145,6 +145,79 @@
         ],
         "type": "object"
       },
+      "EpisodeListResponse": {
+        "description": "Episodes of one season.",
+        "properties": {
+          "_links": {
+            "$ref": "#/components/schemas/SelfLinks",
+            "description": "Navigation links of the collection."
+          },
+          "items": {
+            "description": "The episodes of the season, ordered by index.",
+            "items": {
+              "$ref": "#/components/schemas/EpisodeResponse"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "items",
+          "_links"
+        ],
+        "type": "object"
+      },
+      "EpisodeResponse": {
+        "description": "An episode representation.",
+        "properties": {
+          "_links": {
+            "$ref": "#/components/schemas/SeriesEpisodeLinks",
+            "description": "Links to the episode, its show and its season."
+          },
+          "air_date": {
+            "description": "Date of the first airing of the episode, in `YYYY-MM-DD` form.",
+            "type": "string"
+          },
+          "id": {
+            "description": "Season-scoped index of the episode.",
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "name": {
+            "description": "Name of the episode.",
+            "type": "string"
+          },
+          "plot": {
+            "description": "Plot of the episode.",
+            "type": "string"
+          },
+          "season_index": {
+            "description": "Series-scoped index of the season holding the episode.",
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "series_id": {
+            "$ref": "#/components/schemas/i64",
+            "description": "Identifier of the show holding the episode."
+          },
+          "video": {
+            "$ref": "#/components/schemas/VideoResponse",
+            "description": "Video backing the episode."
+          }
+        },
+        "required": [
+          "air_date",
+          "id",
+          "_links",
+          "name",
+          "plot",
+          "season_index",
+          "series_id",
+          "video"
+        ],
+        "type": "object"
+      },
       "ErrorBody": {
         "description": "Standard error payload returned by every failed request.\n\nThe envelope is uniform across every error the server emits, including\nrouting fallbacks and extractor rejections (`API-039`). The `error_response`\nhelper builds it, and the root `hal_errors` middleware applies it to every\n`4xx`/`5xx` response.",
         "properties": {
@@ -624,6 +697,131 @@
           "_links",
           "type",
           "track_count"
+        ],
+        "type": "object"
+      },
+      "MovieLinks": {
+        "description": "HAL links exposed by a film representation.\n\nThe `self` link addresses the film; the video is embedded in the\nrepresentation and carries no links of its own (`API-037`).",
+        "properties": {
+          "self": {
+            "$ref": "#/components/schemas/Link",
+            "description": "Link to the film resource itself."
+          }
+        },
+        "required": [
+          "self"
+        ],
+        "type": "object"
+      },
+      "MovieListLinks": {
+        "description": "HAL links exposed by a film collection representation.\n\nThe `self` link addresses the collection view the representation is about,\n`next` and `prev` navigate that same view when another page exists, and the\ntemplated `search` link exposes the collection filters (`API-037`,\n`API-042`). The active filter and the page size are carried into every link\nso a filtered or paginated listing stays navigable.",
+        "properties": {
+          "next": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/Link",
+                "description": "Link to the next page, when one exists."
+              }
+            ]
+          },
+          "prev": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/Link",
+                "description": "Link to the previous page, when one exists."
+              }
+            ]
+          },
+          "search": {
+            "$ref": "#/components/schemas/Link",
+            "description": "Templated link exposing the collection's search filters."
+          },
+          "self": {
+            "$ref": "#/components/schemas/Link",
+            "description": "Link to the collection itself."
+          }
+        },
+        "required": [
+          "search",
+          "self"
+        ],
+        "type": "object"
+      },
+      "MovieListResponse": {
+        "description": "Films matching the requested filters.",
+        "properties": {
+          "_links": {
+            "$ref": "#/components/schemas/MovieListLinks",
+            "description": "Navigation links of the collection."
+          },
+          "items": {
+            "description": "The films of the returned page.",
+            "items": {
+              "$ref": "#/components/schemas/MovieResponse"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "items",
+          "_links"
+        ],
+        "type": "object"
+      },
+      "MovieResponse": {
+        "description": "A film representation.",
+        "properties": {
+          "_links": {
+            "$ref": "#/components/schemas/MovieLinks",
+            "description": "Links to the film."
+          },
+          "country_of_origin": {
+            "description": "Country of origin of the film.",
+            "type": "string"
+          },
+          "genres": {
+            "description": "Genres of the film, ordered by genre identifier.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "id": {
+            "$ref": "#/components/schemas/i64",
+            "description": "Unique identifier of the film."
+          },
+          "name": {
+            "description": "Name of the film.",
+            "type": "string"
+          },
+          "plot": {
+            "description": "Plot of the film.",
+            "type": "string"
+          },
+          "release_date": {
+            "description": "Date of the release of the film, in `YYYY-MM-DD` form.",
+            "type": "string"
+          },
+          "video": {
+            "$ref": "#/components/schemas/VideoResponse",
+            "description": "Video backing the film."
+          }
+        },
+        "required": [
+          "country_of_origin",
+          "genres",
+          "id",
+          "_links",
+          "name",
+          "plot",
+          "release_date",
+          "video"
         ],
         "type": "object"
       },
@@ -1200,6 +1398,54 @@
         ],
         "type": "string"
       },
+      "ScanType": {
+        "description": "Scan type of a video stream.",
+        "enum": [
+          "INTERLACED",
+          "MBAFF",
+          "PAFF",
+          "PROGRESSIVE"
+        ],
+        "type": "string"
+      },
+      "SeasonResponse": {
+        "description": "One season of a show.",
+        "properties": {
+          "_links": {
+            "$ref": "#/components/schemas/SeriesSeasonLinks",
+            "description": "Links to the season, its show and its episode collection."
+          },
+          "episode_count": {
+            "description": "Number of episodes the season holds.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "index": {
+            "description": "Series-scoped index of the season.",
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "name": {
+            "description": "Name of the season, when set.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "series_id": {
+            "$ref": "#/components/schemas/i64",
+            "description": "Identifier of the show holding the season."
+          }
+        },
+        "required": [
+          "episode_count",
+          "index",
+          "_links",
+          "series_id"
+        ],
+        "type": "object"
+      },
       "SelfLinks": {
         "description": "The `self` link of a HAL representation.\n\nEvery resource representation carries the URI it was served from, so clients\nnever construct or hardcode it themselves (`API-032`, `API-037`).",
         "properties": {
@@ -1210,6 +1456,203 @@
         },
         "required": [
           "self"
+        ],
+        "type": "object"
+      },
+      "SeriesEpisodeLinks": {
+        "description": "HAL links exposed by an episode representation.\n\nThe `self` link addresses the episode, the `series` link the show that holds\nit, and the `season` link the season that sequences it (`API-034`,\n`API-037`).",
+        "properties": {
+          "season": {
+            "$ref": "#/components/schemas/Link",
+            "description": "Link to the season that sequences the episode."
+          },
+          "self": {
+            "$ref": "#/components/schemas/Link",
+            "description": "Link to the episode resource itself."
+          },
+          "series": {
+            "$ref": "#/components/schemas/Link",
+            "description": "Link to the show that holds the episode."
+          }
+        },
+        "required": [
+          "season",
+          "self",
+          "series"
+        ],
+        "type": "object"
+      },
+      "SeriesLinks": {
+        "description": "HAL links exposed by a show representation.\n\nThe `self` link addresses the show; the seasons are embedded and each\nseason carries its own links (`API-037`).",
+        "properties": {
+          "self": {
+            "$ref": "#/components/schemas/Link",
+            "description": "Link to the show resource itself."
+          }
+        },
+        "required": [
+          "self"
+        ],
+        "type": "object"
+      },
+      "SeriesListLinks": {
+        "description": "HAL links exposed by a show collection representation.\n\nThe `self` link addresses the collection view the representation is about,\n`next` and `prev` navigate that same view when another page exists, and the\ntemplated `search` link exposes the collection filters (`API-037`,\n`API-042`).",
+        "properties": {
+          "next": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/Link",
+                "description": "Link to the next page, when one exists."
+              }
+            ]
+          },
+          "prev": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/Link",
+                "description": "Link to the previous page, when one exists."
+              }
+            ]
+          },
+          "search": {
+            "$ref": "#/components/schemas/Link",
+            "description": "Templated link exposing the collection's search filters."
+          },
+          "self": {
+            "$ref": "#/components/schemas/Link",
+            "description": "Link to the collection itself."
+          }
+        },
+        "required": [
+          "search",
+          "self"
+        ],
+        "type": "object"
+      },
+      "SeriesListResponse": {
+        "description": "Shows matching the requested filters.",
+        "properties": {
+          "_links": {
+            "$ref": "#/components/schemas/SeriesListLinks",
+            "description": "Navigation links of the collection."
+          },
+          "items": {
+            "description": "The shows of the returned page.",
+            "items": {
+              "$ref": "#/components/schemas/SeriesSummaryResponse"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "items",
+          "_links"
+        ],
+        "type": "object"
+      },
+      "SeriesResponse": {
+        "description": "A show representation: its metadata and season summaries.",
+        "properties": {
+          "_links": {
+            "$ref": "#/components/schemas/SeriesLinks",
+            "description": "Links to the show."
+          },
+          "country_of_origin": {
+            "description": "Country of origin of the show.",
+            "type": "string"
+          },
+          "first_air_date": {
+            "description": "Date of the first airing of the show, in `YYYY-MM-DD` form.",
+            "type": "string"
+          },
+          "genres": {
+            "description": "Genres of the show, ordered by genre identifier.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "id": {
+            "$ref": "#/components/schemas/i64",
+            "description": "Unique identifier of the show."
+          },
+          "name": {
+            "description": "Name of the show.",
+            "type": "string"
+          },
+          "plot": {
+            "description": "Plot of the show.",
+            "type": "string"
+          },
+          "seasons": {
+            "description": "Seasons of the show, ordered by index.",
+            "items": {
+              "$ref": "#/components/schemas/SeasonResponse"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "country_of_origin",
+          "first_air_date",
+          "genres",
+          "id",
+          "_links",
+          "name",
+          "plot",
+          "seasons"
+        ],
+        "type": "object"
+      },
+      "SeriesSeasonLinks": {
+        "description": "HAL links exposed by a season representation.\n\nThe `self` link addresses the season, the `series` link the show that holds\nit, and the `episodes` link the season's episode collection (`API-034`,\n`API-037`).",
+        "properties": {
+          "episodes": {
+            "$ref": "#/components/schemas/Link",
+            "description": "Link to the episode collection of the season."
+          },
+          "self": {
+            "$ref": "#/components/schemas/Link",
+            "description": "Link to the season resource itself."
+          },
+          "series": {
+            "$ref": "#/components/schemas/Link",
+            "description": "Link to the show that holds the season."
+          }
+        },
+        "required": [
+          "episodes",
+          "self",
+          "series"
+        ],
+        "type": "object"
+      },
+      "SeriesSummaryResponse": {
+        "description": "One show of a listing: its identifier and name only.",
+        "properties": {
+          "_links": {
+            "$ref": "#/components/schemas/SelfLinks",
+            "description": "Links to the show."
+          },
+          "id": {
+            "$ref": "#/components/schemas/i64",
+            "description": "Unique identifier of the show."
+          },
+          "name": {
+            "description": "Name of the show.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "_links",
+          "name"
         ],
         "type": "object"
       },
@@ -1406,6 +1849,52 @@
         ],
         "type": "object"
       },
+      "VideoResponse": {
+        "description": "The video backing a film or an episode.",
+        "properties": {
+          "codec": {
+            "description": "Codec of the video.",
+            "type": "string"
+          },
+          "duration_ms": {
+            "description": "Duration of the video, in milliseconds.",
+            "format": "double",
+            "type": "number"
+          },
+          "file_id": {
+            "$ref": "#/components/schemas/i64",
+            "description": "Identifier of the backing file."
+          },
+          "height": {
+            "description": "Height of the video, in pixels.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "id": {
+            "$ref": "#/components/schemas/i64",
+            "description": "Unique identifier of the video."
+          },
+          "scan_type": {
+            "$ref": "#/components/schemas/ScanType",
+            "description": "Scan type of the video."
+          },
+          "width": {
+            "description": "Width of the video, in pixels.",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "codec",
+          "duration_ms",
+          "file_id",
+          "height",
+          "id",
+          "scan_type",
+          "width"
+        ],
+        "type": "object"
+      },
       "i64": {
         "format": "int64",
         "type": "integer"
@@ -1425,7 +1914,7 @@
       "name": "MIT"
     },
     "title": "Mnemorium API",
-    "version": "0.22.1"
+    "version": "0.23.0"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -3158,6 +3647,185 @@
         ]
       }
     },
+    "/library/movie": {
+      "get": {
+        "description": "Any authenticated caller may list films: a film is not owned and carries no\nvisibility flag, so the collection is the same for every caller. It is\npaginated and filterable, and returned as a HAL collection with navigation\nand search links.",
+        "operationId": "list_movies",
+        "parameters": [
+          {
+            "description": "Maximum number of films to return, between 1 and 100.",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Only return films whose name matches this value.",
+            "in": "query",
+            "name": "name",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Number of matching films to skip before returning the page.",
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MovieListResponse"
+                }
+              }
+            },
+            "description": "Films matching the filters"
+          },
+          "400": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Malformed query string"
+          },
+          "401": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid credentials"
+          },
+          "422": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The limit is out of range"
+          },
+          "500": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unexpected error"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ],
+        "summary": "List films",
+        "tags": [
+          "library"
+        ]
+      }
+    },
+    "/library/movie/{movie_id}": {
+      "get": {
+        "description": "Any authenticated caller may read a film; the film is not owned and carries\nno visibility flag. The representation carries the film's genres and the\nvideo that backs it.",
+        "operationId": "get_movie",
+        "parameters": [
+          {
+            "description": "Identifier of the film to fetch",
+            "in": "path",
+            "name": "movie_id",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/i64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MovieResponse"
+                }
+              }
+            },
+            "description": "Film found"
+          },
+          "400": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Invalid film identifier"
+          },
+          "401": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid credentials"
+          },
+          "404": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unknown film"
+          },
+          "500": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unexpected error"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ],
+        "summary": "Fetch a film",
+        "tags": [
+          "library"
+        ]
+      }
+    },
     "/library/music/album": {
       "get": {
         "description": "Any authenticated caller may list albums: an album is not owned and carries\nno visibility flag, so the collection is the same for every caller. It is\npaginated and filterable, and returned as a HAL collection with navigation\nand search links.",
@@ -4498,6 +5166,463 @@
           }
         ],
         "summary": "Fetch one track of a music playlist",
+        "tags": [
+          "library"
+        ]
+      }
+    },
+    "/library/series": {
+      "get": {
+        "description": "Any authenticated caller may list shows: a show is not owned and carries no\nvisibility flag, so the collection is the same for every caller. It is\npaginated and filterable, and each item carries only the show's identifier\nand name as a navigation index.",
+        "operationId": "list_series",
+        "parameters": [
+          {
+            "description": "Maximum number of shows to return, between 1 and 100.",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Only return shows whose name matches this value.",
+            "in": "query",
+            "name": "name",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Number of matching shows to skip before returning the page.",
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SeriesListResponse"
+                }
+              }
+            },
+            "description": "Shows matching the filters"
+          },
+          "400": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Malformed query string"
+          },
+          "401": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid credentials"
+          },
+          "422": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The limit is out of range"
+          },
+          "500": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unexpected error"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ],
+        "summary": "List shows",
+        "tags": [
+          "library"
+        ]
+      }
+    },
+    "/library/series/{series_id}": {
+      "get": {
+        "description": "Any authenticated caller may read a show; the show is not owned and carries\nno visibility flag. The representation carries the show's genres and its\nseason summaries, so a client can navigate to each season.",
+        "operationId": "get_series",
+        "parameters": [
+          {
+            "description": "Identifier of the show to fetch",
+            "in": "path",
+            "name": "series_id",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/i64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SeriesResponse"
+                }
+              }
+            },
+            "description": "Show found"
+          },
+          "400": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Invalid show identifier"
+          },
+          "401": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid credentials"
+          },
+          "404": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unknown show"
+          },
+          "500": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unexpected error"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ],
+        "summary": "Fetch a show",
+        "tags": [
+          "library"
+        ]
+      }
+    },
+    "/library/series/{series_id}/season/{season_index}": {
+      "get": {
+        "description": "Any authenticated caller may read a season; the show is not owned and\ncarries no visibility flag. The season is scoped to the show named in the\npath, so two shows may each hold a season 1.",
+        "operationId": "get_series_season",
+        "parameters": [
+          {
+            "description": "Identifier of the show holding the season",
+            "in": "path",
+            "name": "series_id",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/i64"
+            }
+          },
+          {
+            "description": "Series-scoped index of the season",
+            "in": "path",
+            "name": "season_index",
+            "required": true,
+            "schema": {
+              "format": "int32",
+              "minimum": 0,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SeasonResponse"
+                }
+              }
+            },
+            "description": "Season found"
+          },
+          "400": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Invalid show identifier or season index"
+          },
+          "401": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid credentials"
+          },
+          "404": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unknown show, or season of the show"
+          },
+          "500": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unexpected error"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ],
+        "summary": "Fetch a show season",
+        "tags": [
+          "library"
+        ]
+      }
+    },
+    "/library/series/{series_id}/season/{season_index}/episode": {
+      "get": {
+        "description": "Any authenticated caller may read a season's episodes; the show is not owned\nand carries no visibility flag. The collection is returned in ascending\nepisode index order.",
+        "operationId": "list_series_episodes",
+        "parameters": [
+          {
+            "description": "Identifier of the show holding the season",
+            "in": "path",
+            "name": "series_id",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/i64"
+            }
+          },
+          {
+            "description": "Series-scoped index of the season whose episodes are listed",
+            "in": "path",
+            "name": "season_index",
+            "required": true,
+            "schema": {
+              "format": "int32",
+              "minimum": 0,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EpisodeListResponse"
+                }
+              }
+            },
+            "description": "Episodes of the season"
+          },
+          "400": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Invalid show identifier or season index"
+          },
+          "401": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid credentials"
+          },
+          "404": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unknown show, or season of the show"
+          },
+          "500": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unexpected error"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ],
+        "summary": "List the episodes of a show season",
+        "tags": [
+          "library"
+        ]
+      }
+    },
+    "/library/series/{series_id}/season/{season_index}/episode/{episode_index}": {
+      "get": {
+        "description": "Any authenticated caller may read an episode; the show is not owned and\ncarries no visibility flag. The episode is scoped to the show and season\nnamed in the path.",
+        "operationId": "get_series_episode",
+        "parameters": [
+          {
+            "description": "Identifier of the show holding the episode",
+            "in": "path",
+            "name": "series_id",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/i64"
+            }
+          },
+          {
+            "description": "Series-scoped index of the season holding the episode",
+            "in": "path",
+            "name": "season_index",
+            "required": true,
+            "schema": {
+              "format": "int32",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Season-scoped index of the episode",
+            "in": "path",
+            "name": "episode_index",
+            "required": true,
+            "schema": {
+              "format": "int32",
+              "minimum": 0,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EpisodeResponse"
+                }
+              }
+            },
+            "description": "Episode found"
+          },
+          "400": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Invalid show identifier or season or episode index"
+          },
+          "401": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid credentials"
+          },
+          "404": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unknown show, season, or episode of the season"
+          },
+          "500": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unexpected error"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ],
+        "summary": "Fetch a show season episode",
         "tags": [
           "library"
         ]

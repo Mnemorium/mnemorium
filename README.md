@@ -1,6 +1,3 @@
-<!-- TODO: add the header assets at .github/assets/logo.png and .github/assets/banner.png (referenced below). -->
-<!-- The first line is an HTML comment so markdownlint MD041 stays happy. -->
-
 <a id="readme-top"></a>
 
 <div align="center">
@@ -11,11 +8,10 @@
   <h1 align="center">Mnemorium</h1>
 
   <p align="center">
-    TODO: one-line description of Mnemorium.
+    A self-hosted media server for your photos, videos and music.
   </p>
 </div>
 
-<!-- TODO: add the banner asset at .github/assets/banner.png. -->
 <p align="center">
   <img src=".github/assets/banner.png" alt="Mnemorium banner" width="100%" />
 </p>
@@ -27,14 +23,16 @@
   <a href="https://github.com/Mnemorium/mnemorium/releases">
     <img src="https://img.shields.io/github/v/release/Mnemorium/mnemorium" alt="Latest release" />
   </a>
+  <a href="https://hub.docker.com/r/wpelletier/mnemorium">
+    <img src="https://img.shields.io/docker/pulls/wpelletier/mnemorium" alt="Docker Hub pulls" />
+  </a>
   <a href="https://github.com/Mnemorium/mnemorium/blob/main/LICENSE">
     <img src="https://img.shields.io/badge/license-MIT-yellow.svg" alt="License: MIT" />
   </a>
   <a href="https://www.rust-lang.org/">
     <img src="https://img.shields.io/badge/rust-1.98.0-orange?logo=rust" alt="Rust version" />
   </a>
-  <!-- TODO: add a Docker Hub pulls badge and a documentation-site badge once the image -->
-  <!-- and the documentation site are published. -->
+  <!-- TODO: add a documentation-site badge once the documentation site is published. -->
 </p>
 
 <p align="center">
@@ -66,11 +64,6 @@
 ## About the Project
 
 TODO: describe Mnemorium: what it is, who it is for, and the problem it solves.
-
-<!-- TODO: replace with a real screenshot or a short demo recording. -->
-<p align="center">
-  <em>Screenshot placeholder.</em>
-</p>
 
 Mnemorium is a self-hosted media server designed for home use. Two design goals shape the whole project:
 
@@ -161,9 +154,14 @@ Configuration is layered: built-in defaults, then the optional `config.yaml` fil
 has a default, so an absent, empty or partial file is valid: the settings it omits keep their built-in value, and the
 complete default file is written on the first start. A `MNEMORIUM_*` variable naming a setting overrides the file —
 `logging.level` is `MNEMORIUM_LOGGING_LEVEL`, `security.rate_limit.burst_size` is
-`MNEMORIUM_SECURITY_RATE_LIMIT_BURST_SIZE` — and an unknown name is ignored. The non-derivable part of the instance —
-the site pepper and the token signing secret — lives in `state.yaml`, which is written once and must be backed up
-together with the datastore (`mnemorium.db`).
+`MNEMORIUM_SECURITY_RATE_LIMIT_BURST_SIZE` — and an unknown variable name is ignored, while an unknown key in
+`config.yaml` fails startup. The non-derivable part of the instance — the site pepper and the token signing secret —
+lives in `state.yaml`, which is written once and must be backed up together with the datastore (`mnemorium.db`).
+
+The asset storage root is not configurable. `asset.storage.root` is no longer read: a `config.yaml` that still names it
+fails startup, so delete the key. Media written under a custom root must be moved into `data/` before upgrading, and
+`MNEMORIUM_ASSET_STORAGE_ROOT` is discarded silently, so a deployment that set it must move its files into `data/` as
+well.
 
 TODO: link to a document that explains the configuration.
 
@@ -179,10 +177,7 @@ default password is revealed only by the start that creates the account; change 
 
 TODO: add a realistic end-to-end usage example.
 
-The API is served under `/api/v1`. The OpenAPI specification is generated to [`docs/openapi.json`](docs/openapi.json),
-and the running server can expose an interactive Swagger UI.
-
-<!-- TODO: document the Swagger UI path once it is confirmed. -->
+The API is served under `/api/v1`. The OpenAPI specification is generated to [`docs/openapi.json`](docs/openapi.json).
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 

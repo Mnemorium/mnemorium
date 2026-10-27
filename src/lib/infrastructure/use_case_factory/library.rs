@@ -1,4 +1,3 @@
-use std::path::PathBuf;
 use std::sync::Arc;
 
 use crate::application::port::add_gallery_item::AddGalleryItemUseCase;
@@ -12,13 +11,20 @@ use crate::application::port::get_album_medium::GetAlbumMediumUseCase;
 use crate::application::port::get_album_track::GetAlbumTrackUseCase;
 use crate::application::port::get_gallery::GetGalleryUseCase;
 use crate::application::port::get_gallery_item::GetGalleryItemUseCase;
+use crate::application::port::get_movie::GetMovieUseCase;
 use crate::application::port::get_playlist::GetPlaylistUseCase;
 use crate::application::port::get_playlist_track::GetPlaylistTrackUseCase;
+use crate::application::port::get_series::GetSeriesUseCase;
+use crate::application::port::get_series_episode::GetSeriesEpisodeUseCase;
+use crate::application::port::get_series_season::GetSeriesSeasonUseCase;
 use crate::application::port::library_use_case_factory::LibraryUseCaseFactory;
 use crate::application::port::list_album_tracks::ListAlbumTracksUseCase;
 use crate::application::port::list_albums::ListAlbumsUseCase;
 use crate::application::port::list_galleries::ListGalleriesUseCase;
+use crate::application::port::list_movies::ListMoviesUseCase;
 use crate::application::port::list_playlists::ListPlaylistsUseCase;
+use crate::application::port::list_series::ListSeriesUseCase;
+use crate::application::port::list_series_episodes::ListSeriesEpisodesUseCase;
 use crate::application::port::remove_playlist_track::RemovePlaylistTrackUseCase;
 use crate::application::port::reorder_playlist_tracks::ReorderPlaylistTracksUseCase;
 use crate::application::port::update_playlist::UpdatePlaylistUseCase;
@@ -33,27 +39,31 @@ use crate::application::use_case::get_album_medium::GetAlbumMedium;
 use crate::application::use_case::get_album_track::GetAlbumTrack;
 use crate::application::use_case::get_gallery::GetGallery;
 use crate::application::use_case::get_gallery_item::GetGalleryItem;
+use crate::application::use_case::get_movie::GetMovie;
 use crate::application::use_case::get_playlist::GetPlaylist;
 use crate::application::use_case::get_playlist_track::GetPlaylistTrack;
+use crate::application::use_case::get_series::GetSeries;
+use crate::application::use_case::get_series_episode::GetSeriesEpisode;
+use crate::application::use_case::get_series_season::GetSeriesSeason;
 use crate::application::use_case::list_album_tracks::ListAlbumTracks;
 use crate::application::use_case::list_albums::ListAlbums;
 use crate::application::use_case::list_galleries::ListGalleries;
+use crate::application::use_case::list_movies::ListMovies;
 use crate::application::use_case::list_playlists::ListPlaylists;
+use crate::application::use_case::list_series::ListSeries;
+use crate::application::use_case::list_series_episodes::ListSeriesEpisodes;
 use crate::application::use_case::remove_playlist_track::RemovePlaylistTrack;
 use crate::application::use_case::reorder_playlist_tracks::ReorderPlaylistTracks;
 use crate::application::use_case::update_playlist::UpdatePlaylist;
-use crate::domain::model::configuration::Configuration;
 use crate::infrastructure::outbound::file_system::file_storage::FileSystemStorage;
 use crate::infrastructure::outbound::sqlx::unit_of_work::SqlxUnitOfWorkFactory;
 
-/// Builds the Library use cases from the live configuration.
+/// Builds the Library use cases.
 ///
-/// Every accessor reads the current storage root and rebuilds the stateless file
-/// storage adapter from it, so the media-library use cases compose the same paths
-/// the Asset use cases write.
+/// The accessors build the stateless file storage adapter at the point of use,
+/// so the media-library use cases compose their paths from the fixed storage root
+/// the Asset use cases write to.
 pub struct RuntimeLibraryUseCaseFactory {
-    /// Live application configuration.
-    configuration: Arc<Configuration>,
     /// Factory opening the unit of work wrapping the Library use cases.
     unit_of_work_factory: Arc<SqlxUnitOfWorkFactory>,
 }
@@ -61,12 +71,8 @@ pub struct RuntimeLibraryUseCaseFactory {
 impl RuntimeLibraryUseCaseFactory {
     /// Create a new factory.
     #[must_use]
-    pub fn new(
-        configuration: Arc<Configuration>,
-        unit_of_work_factory: Arc<SqlxUnitOfWorkFactory>,
-    ) -> Self {
+    pub fn new(unit_of_work_factory: Arc<SqlxUnitOfWorkFactory>) -> Self {
         Self {
-            configuration,
             unit_of_work_factory,
         }
     }
@@ -86,24 +92,18 @@ impl LibraryUseCaseFactory for RuntimeLibraryUseCaseFactory {
     }
 
     fn delete_gallery(&self) -> Arc<dyn DeleteGalleryUseCase> {
-        let live = Arc::clone(&self.configuration);
-        // The file storage adapter is stateless and rebuilt per accessor from
-        // the live storage root, like the item deletion's.
+        // The file storage adapter is stateless and rebuilt per accessor.
         Arc::new(DeleteGallery::new(
             Arc::clone(&self.unit_of_work_factory),
             Arc::new(FileSystemStorage::new()),
-            PathBuf::from(live.asset().storage().root()),
         ))
     }
 
     fn delete_gallery_item(&self) -> Arc<dyn DeleteGalleryItemUseCase> {
-        let live = Arc::clone(&self.configuration);
-        // The file storage adapter is stateless and rebuilt per accessor from
-        // the live storage root, like the Asset factory's.
+        // The file storage adapter is stateless and rebuilt per accessor.
         Arc::new(DeleteGalleryItem::new(
             Arc::clone(&self.unit_of_work_factory),
             Arc::new(FileSystemStorage::new()),
-            PathBuf::from(live.asset().storage().root()),
         ))
     }
 
@@ -131,6 +131,10 @@ impl LibraryUseCaseFactory for RuntimeLibraryUseCaseFactory {
         Arc::new(GetGalleryItem::new(Arc::clone(&self.unit_of_work_factory)))
     }
 
+    fn get_movie(&self) -> Arc<dyn GetMovieUseCase> {
+        Arc::new(GetMovie::new(Arc::clone(&self.unit_of_work_factory)))
+    }
+
     fn get_playlist(&self) -> Arc<dyn GetPlaylistUseCase> {
         Arc::new(GetPlaylist::new(Arc::clone(&self.unit_of_work_factory)))
     }
@@ -139,6 +143,20 @@ impl LibraryUseCaseFactory for RuntimeLibraryUseCaseFactory {
         Arc::new(GetPlaylistTrack::new(Arc::clone(
             &self.unit_of_work_factory,
         )))
+    }
+
+    fn get_series(&self) -> Arc<dyn GetSeriesUseCase> {
+        Arc::new(GetSeries::new(Arc::clone(&self.unit_of_work_factory)))
+    }
+
+    fn get_series_episode(&self) -> Arc<dyn GetSeriesEpisodeUseCase> {
+        Arc::new(GetSeriesEpisode::new(Arc::clone(
+            &self.unit_of_work_factory,
+        )))
+    }
+
+    fn get_series_season(&self) -> Arc<dyn GetSeriesSeasonUseCase> {
+        Arc::new(GetSeriesSeason::new(Arc::clone(&self.unit_of_work_factory)))
     }
 
     fn list_album_tracks(&self) -> Arc<dyn ListAlbumTracksUseCase> {
@@ -153,8 +171,22 @@ impl LibraryUseCaseFactory for RuntimeLibraryUseCaseFactory {
         Arc::new(ListGalleries::new(Arc::clone(&self.unit_of_work_factory)))
     }
 
+    fn list_movies(&self) -> Arc<dyn ListMoviesUseCase> {
+        Arc::new(ListMovies::new(Arc::clone(&self.unit_of_work_factory)))
+    }
+
     fn list_playlists(&self) -> Arc<dyn ListPlaylistsUseCase> {
         Arc::new(ListPlaylists::new(Arc::clone(&self.unit_of_work_factory)))
+    }
+
+    fn list_series(&self) -> Arc<dyn ListSeriesUseCase> {
+        Arc::new(ListSeries::new(Arc::clone(&self.unit_of_work_factory)))
+    }
+
+    fn list_series_episodes(&self) -> Arc<dyn ListSeriesEpisodesUseCase> {
+        Arc::new(ListSeriesEpisodes::new(Arc::clone(
+            &self.unit_of_work_factory,
+        )))
     }
 
     fn remove_playlist_track(&self) -> Arc<dyn RemovePlaylistTrackUseCase> {

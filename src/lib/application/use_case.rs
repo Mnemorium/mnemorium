@@ -13,15 +13,22 @@ pub mod get_album_track;
 pub mod get_current_user;
 pub mod get_gallery;
 pub mod get_gallery_item;
+pub mod get_movie;
 pub mod get_playlist;
 pub mod get_playlist_track;
+pub mod get_series;
+pub mod get_series_episode;
+pub mod get_series_season;
 pub mod get_upload;
 pub mod get_user;
 pub mod initialize_root_admin;
 pub mod list_album_tracks;
 pub mod list_albums;
 pub mod list_galleries;
+pub mod list_movies;
 pub mod list_playlists;
+pub mod list_series;
+pub mod list_series_episodes;
 pub mod list_users;
 pub mod load_configuration;
 pub mod load_state;
@@ -43,9 +50,6 @@ pub mod write_upload_chunk;
 /// test module never lives in its own file (`TEST-001`).
 #[cfg(test)]
 mod test_fixtures {
-    /// Storage root the use cases compose their paths against.
-    pub(crate) const ROOT: &str = "/storage";
-
     /// Token lifetime the test configurations carry, in seconds.
     pub(crate) const TTL_SECONDS: u64 = 3600;
 }

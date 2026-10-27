@@ -11,12 +11,19 @@ use crate::application::port::get_album_medium::GetAlbumMediumUseCase;
 use crate::application::port::get_album_track::GetAlbumTrackUseCase;
 use crate::application::port::get_gallery::GetGalleryUseCase;
 use crate::application::port::get_gallery_item::GetGalleryItemUseCase;
+use crate::application::port::get_movie::GetMovieUseCase;
 use crate::application::port::get_playlist::GetPlaylistUseCase;
 use crate::application::port::get_playlist_track::GetPlaylistTrackUseCase;
+use crate::application::port::get_series::GetSeriesUseCase;
+use crate::application::port::get_series_episode::GetSeriesEpisodeUseCase;
+use crate::application::port::get_series_season::GetSeriesSeasonUseCase;
 use crate::application::port::list_album_tracks::ListAlbumTracksUseCase;
 use crate::application::port::list_albums::ListAlbumsUseCase;
 use crate::application::port::list_galleries::ListGalleriesUseCase;
+use crate::application::port::list_movies::ListMoviesUseCase;
 use crate::application::port::list_playlists::ListPlaylistsUseCase;
+use crate::application::port::list_series::ListSeriesUseCase;
+use crate::application::port::list_series_episodes::ListSeriesEpisodesUseCase;
 use crate::application::port::remove_playlist_track::RemovePlaylistTrackUseCase;
 use crate::application::port::reorder_playlist_tracks::ReorderPlaylistTracksUseCase;
 use crate::application::port::update_playlist::UpdatePlaylistUseCase;
@@ -60,11 +67,23 @@ pub trait LibraryUseCaseFactory: Send + Sync {
     /// Build the use case fetching one item of a gallery.
     fn get_gallery_item(&self) -> Arc<dyn GetGalleryItemUseCase>;
 
+    /// Build the use case fetching one film.
+    fn get_movie(&self) -> Arc<dyn GetMovieUseCase>;
+
     /// Build the use case fetching one playlist and its tracks.
     fn get_playlist(&self) -> Arc<dyn GetPlaylistUseCase>;
 
     /// Build the use case fetching one track of a playlist.
     fn get_playlist_track(&self) -> Arc<dyn GetPlaylistTrackUseCase>;
+
+    /// Build the use case fetching one show and its season summaries.
+    fn get_series(&self) -> Arc<dyn GetSeriesUseCase>;
+
+    /// Build the use case fetching one episode of a season.
+    fn get_series_episode(&self) -> Arc<dyn GetSeriesEpisodeUseCase>;
+
+    /// Build the use case fetching one season of a show.
+    fn get_series_season(&self) -> Arc<dyn GetSeriesSeasonUseCase>;
 
     /// Build the use case listing the tracks of a music album.
     fn list_album_tracks(&self) -> Arc<dyn ListAlbumTracksUseCase>;
@@ -75,8 +94,17 @@ pub trait LibraryUseCaseFactory: Send + Sync {
     /// Build the use case listing the galleries the caller may see.
     fn list_galleries(&self) -> Arc<dyn ListGalleriesUseCase>;
 
+    /// Build the use case listing the films the caller may see.
+    fn list_movies(&self) -> Arc<dyn ListMoviesUseCase>;
+
     /// Build the use case listing the playlists the caller may see.
     fn list_playlists(&self) -> Arc<dyn ListPlaylistsUseCase>;
+
+    /// Build the use case listing the shows the caller may see.
+    fn list_series(&self) -> Arc<dyn ListSeriesUseCase>;
+
+    /// Build the use case listing the episodes of a season.
+    fn list_series_episodes(&self) -> Arc<dyn ListSeriesEpisodesUseCase>;
 
     /// Build the use case removing one track of a playlist.
     fn remove_playlist_track(&self) -> Arc<dyn RemovePlaylistTrackUseCase>;

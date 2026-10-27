@@ -190,6 +190,25 @@ class Movie {
   release_date: date
 }
 
+class Series {
+  name: string
+  plot: string
+  country_of_origin: string
+  first_air_date: date
+}
+
+class Season {
+  index: SeasonIndex
+  name: string
+}
+
+class Episode {
+  index: EpisodeIndex
+  name: string
+  plot: string
+  air_date: date
+}
+
 class User {
   username: string
   email: string
@@ -287,6 +306,11 @@ class File {
 Movie "*" -- "*" Genre: Categorize by >
 Movie "1" -- "1" Video: Subject in >
 
+Series "*" -- "*" Genre: Categorize by >
+Series "1" -- "*" Season: Contains >
+Season "1" -- "*" Episode: Sequences >
+Episode "1" -- "1" Video: Subject in >
+
 Person "1" -- "*" Movie: Direct >
 Person "*" -- "*" Movie: Acted in >
 Person "*" -- "*" MusicGroup: Is part of >
@@ -346,6 +370,11 @@ end note
 | **TrackIndex**     | The placement of a **MusicRecording** within the container that sequences it: an album-scoped medium index or a zero-based playlist index.                                                                                                                                                               |
 | **MusicRecording** | A unique master audio capture or sound recording session, independent of the physical formats on which it is distributed.                                                                                                                                                                                |
 | **Movie**          | A self-contained, long-form narrative or documentary film produced for artistic, cinematic, or entertainment purposes.                                                                                                                                                                                   |
+| **Series**         | A show whose story is told across ordered seasons of episodes.                                                                                                                                                                                                                                           |
+| **Season**         | An ordered group of **Episode** within a **Series**, addressed by its index within that series.                                                                                                                                                                                                          |
+| **Episode**        | One instalment of a **Season**, addressed by its index within that season and backed by exactly one **Video**.                                                                                                                                                                                           |
+| **SeasonIndex**    | The series-scoped identity of a **Season**; a season is addressed by its index within its series.                                                                                                                                                                                                        |
+| **EpisodeIndex**   | The season-scoped identity of an **Episode**; an episode is addressed by its index within its season.                                                                                                                                                                                                    |
 | **Video**          | An abstract domain representation of a video file                                                                                                                                                                                                                                                        |
 | **SubtitleStream** | A text data stream embedded within a video container that provides timed subtitle or caption text.                                                                                                                                                                                                       |
 | **AudioStream**    | A discrete audio track or channel stream embedded within a multi-stream media file.                                                                                                                                                                                                                      |
