@@ -1,8 +1,4 @@
 //! Per-client rate limiting for the login endpoint.
-//!
-// TODO(system-test): the limiter is covered by unit and handler tests only. A
-// system test that exercises both client-IP topologies and asserts the `429`
-// plus `Retry-After` is still owed (see #156).
 
 use std::net::IpAddr;
 use std::net::SocketAddr;

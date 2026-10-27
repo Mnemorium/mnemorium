@@ -140,8 +140,18 @@ impl EnvConfigurationSource {
                 // envy renders the offending value inside its message, so only
                 // the field name is kept: an environment value never reaches an
                 // error chain (`OBS-004`).
-                let variable = error.to_string().rsplit_once(" provided by ").map_or_else(
-                    || format!("{ENVIRONMENT_PREFIX}*"),
+                let raw = error.to_string();
+                let variable = raw.rsplit_once(" provided by ").map_or_else(
+                    || {
+                        // envy names the field for a typed value, but not for an
+                        // unsupported enum variant; the rotation is the only enum
+                        // the environment carries, so the rejection names it.
+                        if raw.starts_with("unknown variant") {
+                            format!("{ENVIRONMENT_PREFIX}LOGGING_ROTATION")
+                        } else {
+                            format!("{ENVIRONMENT_PREFIX}*")
+                        }
+                    },
                     |(_message, field)| format!("{ENVIRONMENT_PREFIX}{}", field.trim()),
                 );
                 ConfigurationSourceError::InvalidConfiguration(anyhow::anyhow!(
@@ -293,6 +303,28 @@ mod tests {
         // Assert
         assert_eq!(partial.logging.rotation, Some(Rotation::Minutely));
         Ok(())
+    }
+
+    #[test]
+    fn environment_configuration_invalid_rotation_names_the_variable() {
+        // Arrange
+        let adapter = EnvConfigurationSource::new();
+
+        // Act
+        let error = adapter
+            .read_from([variable("MNEMORIUM_LOGGING_ROTATION", "FORTNIGHTLY")])
+            .err();
+
+        // Assert
+        let message = error.as_ref().map(ToString::to_string).unwrap_or_default();
+        assert!(
+            message.contains("MNEMORIUM_LOGGING_ROTATION"),
+            "the rejection must name the variable, got: {message:?}"
+        );
+        assert!(
+            !message.contains("FORTNIGHTLY"),
+            "the rejection must not carry the value, got: {message:?}"
+        );
     }
 
     /// Read a partial from the given pairs.
