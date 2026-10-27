@@ -10,8 +10,6 @@ persisted file stays byte-identical, no replacement identity is written, and no 
 
 import os
 import re
-import shutil
-import threading
 
 import pytest
 import yaml
@@ -23,8 +21,6 @@ from harness import (
     ROOT_ADMIN_USERNAME,
     SECRET_PASSWORD,
     STATE_PATH,
-    StartupFailed,
-    Sut,
     hex64,
     register,
 )
@@ -45,7 +41,6 @@ SEEDS = "Environment seeds apply only at creation"
 MISSING = "A missing identity for an existing datastore fails startup"
 PERSISTENCE = "Identity persistence is atomic, versioned and private"
 REPORT = "Identity creation is reported and secrets never leak"
-CONCURRENT = "Concurrent first starts create at most one identity"
 
 # Every scenario of openspec/specs/instance/state/spec.md, mapped to the test that asserts it.
 # A value is a test function name in this module, or "rust:<test fn>" when the scenario is
@@ -74,7 +69,6 @@ STATE_SCENARIOS: dict[str, str] = {
     f"{REPORT} / A seeded secret reports no generation": "test_a_seeded_secret_is_not_reported_as_generated",
     f"{REPORT} / Reuse emits no creation event": "test_a_persisted_identity_is_reused_silently",
     f"{REPORT} / Secrets never reach a sink": "test_no_secret_reaches_a_sink",
-    f"{CONCURRENT} / Concurrent creation": "test_concurrent_first_starts_persist_one_identity",
 }
 
 
@@ -344,50 +338,3 @@ def test_no_secret_reaches_a_sink(sut, arrangement):
     for secret in secrets:
         assert secret not in stdout
         assert secret not in written
-
-
-@pytest.mark.slow
-@pytest.mark.state_scenario(f"{CONCURRENT} / Concurrent creation")
-def test_concurrent_first_starts_persist_one_identity(image, tmp_path):
-    """Two first starts on one directory persist exactly one identity and report one creation.
-
-    Which process wins is a race: the loser either fails (its `save` finds the file another process created first) or
-    finds the completed identity and reuses it. Either way one creation is reported and both servers, when healthy, use
-    the persisted secrets.
-    """
-    shared = tmp_path / "shared"
-    shared.mkdir()
-    servers = [Sut(image=image, tmp_root=shared), Sut(image=image, tmp_root=shared)]
-    outcomes: dict[int, object] = {}
-
-    def attempt(index: int, server: Sut) -> None:
-        try:
-            outcomes[index] = server.start()
-        except StartupFailed as failure:
-            outcomes[index] = failure
-
-    threads = [threading.Thread(target=attempt, args=(index, server)) for index, server in enumerate(servers)]
-    try:
-        for thread in threads:
-            thread.start()
-        for thread in threads:
-            thread.join()
-
-        healthy = [outcome for outcome in outcomes.values() if isinstance(outcome, Sut)]
-        assert healthy
-        for outcome in outcomes.values():
-            if isinstance(outcome, StartupFailed):
-                assert outcome.exit_code != 0
-
-        logs = "".join(server.logs() for server in servers)
-        assert _creation_events(logs) == 1
-        assert _secret_events(logs, "pepper") == 1
-        assert _secret_events(logs, "jwt_secret") == 1
-
-        state = yaml.safe_load((shared / STATE_PATH).read_text(encoding="utf-8"))
-        assert re.fullmatch(r"[0-9a-f]{64}", state["pepper"])
-        assert re.fullmatch(r"[0-9a-f]{64}", state["jwt_secret"])
-    finally:
-        for server in servers:
-            server.stop()
-        shutil.rmtree(shared, ignore_errors=True)

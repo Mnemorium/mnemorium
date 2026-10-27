@@ -63,12 +63,19 @@ STARTUP_TIMEOUT_S = 20.0
 POLL_INTERVAL_S = 0.1
 REQUEST_TIMEOUT_S = 10
 
+# A container in any other state is still on its way: `created` and `restarting` are transient, and an empty read means
+# `docker inspect` itself failed, so each is polled rather than read as a terminal outcome (TEST-060).
+TERMINAL_STATUSES = frozenset({"exited", "dead", "removing"})
+
 
 class StartupFailed(AssertionError):
-    """A server that should have become healthy exited first; carries its exit code and logs."""
+    """A server that should have become healthy did not; carries why, its exit code and its logs."""
 
-    def __init__(self, exit_code: int, output: str) -> None:
-        super().__init__(f"server exited with code {exit_code} before it became healthy\n{output}")
+    def __init__(self, exit_code: int, output: str, reason: str | None = None) -> None:
+        if reason is None:
+            reason = f"server exited with code {exit_code} before it became healthy"
+        super().__init__(f"{reason}\n{output}")
+        self.reason = reason
         self.exit_code = exit_code
         self.output = output
 
@@ -103,18 +110,23 @@ class Sut:
     ) -> Sut:
         """Write the pre-start state, run the container and wait until `/health` answers."""
         self._prepare(env=env, config=config, config_yaml=config_yaml, files=files)
-        self._run(env)
-        if not self.base_url:
-            raise StartupFailed(self._exit_code(), self.logs())
+        reason = self._run(env)
+        if reason is not None:
+            raise StartupFailed(self._exit_code(), self.logs(), reason)
 
         deadline = time.monotonic() + STARTUP_TIMEOUT_S
         while time.monotonic() < deadline:
-            if self._status() != "running":
-                raise StartupFailed(self._exit_code(), self.logs())
+            status = self._status()
+            if status in TERMINAL_STATUSES:
+                raise StartupFailed(
+                    self._exit_code(), self.logs(), f"server entered state {status!r} before it became healthy"
+                )
             if self._healthy():
                 return self
             time.sleep(POLL_INTERVAL_S)
-        raise StartupFailed(self._exit_code(), self.logs())
+        raise StartupFailed(
+            self._exit_code(), self.logs(), f"server answered no health check within {STARTUP_TIMEOUT_S:g}s"
+        )
 
     def start_expecting_failure(
         self,
@@ -131,7 +143,7 @@ class Sut:
         deadline = time.monotonic() + STARTUP_TIMEOUT_S
         while time.monotonic() < deadline:
             status = self._status()
-            if status in {"exited", "dead", "removing"}:
+            if status in TERMINAL_STATUSES:
                 return StartupFailure(self._exit_code(), self.logs())
             time.sleep(POLL_INTERVAL_S)
         pytest.fail(
@@ -286,7 +298,8 @@ class Sut:
         for relative, content in (files or {}).items():
             self.write(relative, content)
 
-    def _run(self, env: dict[str, str] | None) -> None:
+    def _run(self, env: dict[str, str] | None) -> str | None:
+        """Start the container and wait for its published port; None once it has one, else why the wait ended."""
         args = [
             "docker",
             "run",
@@ -313,10 +326,12 @@ class Sut:
             port = self._published_port()
             if port is not None:
                 self.base_url = f"http://127.0.0.1:{port}"
-                return
-            if self._status() != "running":
-                return
+                return None
+            status = self._status()
+            if status in TERMINAL_STATUSES:
+                return f"server entered state {status!r} before it published a port"
             time.sleep(POLL_INTERVAL_S)
+        return f"server published no port within {STARTUP_TIMEOUT_S:g}s"
 
     def _healthy(self) -> bool:
         try:
