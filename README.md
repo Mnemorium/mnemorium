@@ -1,6 +1,3 @@
-<!-- TODO: add the header assets at .github/assets/logo.png and .github/assets/banner.png (referenced below). -->
-<!-- The first line is an HTML comment so markdownlint MD041 stays happy. -->
-
 <a id="readme-top"></a>
 
 <div align="center">
@@ -15,7 +12,6 @@
   </p>
 </div>
 
-<!-- TODO: add the banner asset at .github/assets/banner.png. -->
 <p align="center">
   <img src=".github/assets/banner.png" alt="Mnemorium banner" width="100%" />
 </p>
@@ -27,14 +23,16 @@
   <a href="https://github.com/Mnemorium/mnemorium/releases">
     <img src="https://img.shields.io/github/v/release/Mnemorium/mnemorium" alt="Latest release" />
   </a>
+  <a href="https://hub.docker.com/r/wpelletier/mnemorium">
+    <img src="https://img.shields.io/docker/pulls/wpelletier/mnemorium" alt="Docker Hub pulls" />
+  </a>
   <a href="https://github.com/Mnemorium/mnemorium/blob/main/LICENSE">
     <img src="https://img.shields.io/badge/license-MIT-yellow.svg" alt="License: MIT" />
   </a>
   <a href="https://www.rust-lang.org/">
     <img src="https://img.shields.io/badge/rust-1.98.0-orange?logo=rust" alt="Rust version" />
   </a>
-  <!-- TODO: add a Docker Hub pulls badge and a documentation-site badge once the image -->
-  <!-- and the documentation site are published. -->
+  <!-- TODO: add a documentation-site badge once the documentation site is published. -->
 </p>
 
 <p align="center">
@@ -179,10 +177,7 @@ default password is revealed only by the start that creates the account; change 
 
 TODO: add a realistic end-to-end usage example.
 
-The API is served under `/api/v1`. The OpenAPI specification is generated to [`docs/openapi.json`](docs/openapi.json),
-and the running server can expose an interactive Swagger UI.
-
-<!-- TODO: document the Swagger UI path once it is confirmed. -->
+The API is served under `/api/v1`. The OpenAPI specification is generated to [`docs/openapi.json`](docs/openapi.json).
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
