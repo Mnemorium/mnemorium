@@ -65,11 +65,6 @@
 
 TODO: describe Mnemorium: what it is, who it is for, and the problem it solves.
 
-<!-- TODO: replace with a real screenshot or a short demo recording. -->
-<p align="center">
-  <em>Screenshot placeholder.</em>
-</p>
-
 Mnemorium is a self-hosted media server designed for home use. Two design goals shape the whole project:
 
 - **One container:** a single Docker container ships the entire backend — no external services.
