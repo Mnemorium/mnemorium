@@ -84,7 +84,6 @@ async fn main() -> Result<(), anyhow::Error> {
     }
     if configuration_file_created {
         warn!(
-            storage_root = configuration.asset().storage().root(),
             datastore = DATABASE_PATH,
             "the configuration file did not exist; wrote the built-in defaults"
         );
@@ -140,16 +139,12 @@ async fn main() -> Result<(), anyhow::Error> {
     let user_use_case_factory = Arc::new(RuntimeUserUseCaseFactory::new(Arc::clone(
         &unit_of_work_factory,
     )));
-    let library_use_case_factory = Arc::new(RuntimeLibraryUseCaseFactory::new(
-        Arc::clone(&configuration),
-        Arc::clone(&unit_of_work_factory),
-    ));
+    let library_use_case_factory = Arc::new(RuntimeLibraryUseCaseFactory::new(Arc::clone(
+        &unit_of_work_factory,
+    )));
 
-    // The startup storage directories are created once from the root the Asset
-    // and Library factories read.
-    let storage_root = PathBuf::from(configuration.asset().storage().root());
     let file_storage = Arc::new(FileSystemStorage::new());
-    EnsureStorageDirectories::new(Arc::clone(&file_storage), storage_root)
+    EnsureStorageDirectories::new(Arc::clone(&file_storage))
         .execute(EnsureStorageDirectoriesCommand::new())
         .await?;
 

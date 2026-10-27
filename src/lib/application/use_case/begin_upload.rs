@@ -1,6 +1,4 @@
 use std::future::Future;
-use std::path::Path;
-use std::path::PathBuf;
 use std::pin::Pin;
 use std::sync::Arc;
 
@@ -35,8 +33,6 @@ pub struct BeginUpload<F, S> {
     file_storage: Arc<S>,
     /// Maximum size of a single uploaded file, in bytes.
     max_file_size_bytes: u64,
-    /// Root directory holding the upload and file folders.
-    root: PathBuf,
     /// Factory opening the unit of work wrapping the upload creation.
     unit_of_work_factory: Arc<F>,
 }
@@ -47,7 +43,6 @@ impl<F: UnitOfWorkFactory, S: FileStorage> BeginUpload<F, S> {
     pub fn new(
         unit_of_work_factory: Arc<F>,
         file_storage: Arc<S>,
-        root: PathBuf,
         chunk_size: u64,
         expiry_seconds: u64,
         max_file_size_bytes: u64,
@@ -57,7 +52,6 @@ impl<F: UnitOfWorkFactory, S: FileStorage> BeginUpload<F, S> {
             expiry_seconds,
             file_storage,
             max_file_size_bytes,
-            root,
             unit_of_work_factory,
         }
     }
@@ -78,7 +72,6 @@ where
         let expiry_seconds = self.expiry_seconds;
         let file_storage = Arc::clone(&self.file_storage);
         let max_file_size_bytes = self.max_file_size_bytes;
-        let root = self.root.clone();
         let unit_of_work_factory = Arc::clone(&self.unit_of_work_factory);
 
         Box::pin(async move {
@@ -178,7 +171,7 @@ where
                 staged_upload_id = Some(upload.upload_id());
 
                 file_storage
-                    .create_upload_file(&staged_path(&root, upload.upload_id()), upload.file_size())
+                    .create_upload_file(&staged_path(upload.upload_id()), upload.file_size())
                     .await
                     .map_err(|error| BeginUploadError::Unknown(error.into()))?;
 
@@ -219,15 +212,14 @@ where
                         // The commit outcome is ambiguous: the row may or may
                         // not be persisted. Removing the staging file cannot
                         // wedge later uploads, whereas leaving it behind can.
-                        discard_staging(file_storage.as_ref(), root.as_path(), staged_upload_id)
-                            .await;
+                        discard_staging(file_storage.as_ref(), staged_upload_id).await;
                         Err(BeginUploadError::Unknown(error.into()))
                     }
                 },
                 Err(error) => {
                     // The unit-of-work adapter owns the rollback-failure log (OBS-002).
                     let _rollback = unit_of_work.rollback().await;
-                    discard_staging(file_storage.as_ref(), root.as_path(), staged_upload_id).await;
+                    discard_staging(file_storage.as_ref(), staged_upload_id).await;
                     Err(error)
                 }
             }
@@ -242,7 +234,7 @@ where
 /// failure log (`OBS-002`) and the caller already carries the error that aborted
 /// the begin. A staging file survives only a process death between creating it
 /// and committing the row; a future reaper covers that.
-async fn discard_staging<S>(file_storage: &S, root: &Path, upload_id: Option<NumericID>)
+async fn discard_staging<S>(file_storage: &S, upload_id: Option<NumericID>)
 where
     S: FileStorage,
 {
@@ -250,7 +242,7 @@ where
         return;
     };
     if file_storage
-        .delete_upload_file(&staged_path(root, staged))
+        .delete_upload_file(&staged_path(staged))
         .await
         .is_err()
     {
@@ -262,7 +254,6 @@ where
 mod tests {
     use std::error::Error;
     use std::io as stdio;
-    use std::path::PathBuf;
     use std::sync::Arc;
     use std::sync::Mutex;
     use std::sync::PoisonError;
@@ -277,7 +268,6 @@ mod tests {
     use crate::application::port::begin_upload::BeginUploadCommand;
     use crate::application::port::begin_upload::BeginUploadError;
     use crate::application::port::begin_upload::BeginUploadUseCase as _;
-    use crate::application::use_case::test_fixtures::ROOT;
     use crate::application::use_case::test_fixtures::TTL_SECONDS;
     use crate::domain::model::integrity_hash::IntegrityHash;
     use crate::domain::model::upload::MAX_TOTAL_CHUNKS;
@@ -399,7 +389,6 @@ mod tests {
             use_case: BeginUpload::new(
                 Arc::clone(&harness.factory),
                 Arc::new(file_storage),
-                PathBuf::from(ROOT),
                 CHUNK_SIZE,
                 expiry_seconds,
                 max_file_size_bytes,

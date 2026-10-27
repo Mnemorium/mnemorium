@@ -1,5 +1,4 @@
 use std::future::Future;
-use std::path::PathBuf;
 use std::pin::Pin;
 use std::sync::Arc;
 
@@ -31,8 +30,6 @@ pub struct WriteUploadChunk<F, S, H> {
     file_storage: Arc<S>,
     /// Content hasher computing the chunk digest.
     hasher: H,
-    /// Root directory holding the upload and file folders.
-    root: PathBuf,
     /// Factory opening the unit of work wrapping the chunk write.
     unit_of_work_factory: Arc<F>,
 }
@@ -44,14 +41,12 @@ impl<F: UnitOfWorkFactory, S: FileStorage, H: ContentHasher> WriteUploadChunk<F,
         unit_of_work_factory: Arc<F>,
         file_storage: Arc<S>,
         hasher: H,
-        root: PathBuf,
         expiry_seconds: u64,
     ) -> Self {
         Self {
             expiry_seconds,
             file_storage,
             hasher,
-            root,
             unit_of_work_factory,
         }
     }
@@ -76,7 +71,6 @@ where
     > {
         let expiry_seconds = self.expiry_seconds;
         let file_storage = Arc::clone(&self.file_storage);
-        let root = self.root.clone();
         let unit_of_work_factory = Arc::clone(&self.unit_of_work_factory);
         let hasher = &self.hasher;
 
@@ -119,7 +113,7 @@ where
                     // access. The adapters own the failure logs (`OBS-002`), so a failed
                     // cleanup is swallowed here.
                     if file_storage
-                        .delete_upload_file(&staged_path(&root, upload.upload_id()))
+                        .delete_upload_file(&staged_path(upload.upload_id()))
                         .await
                         .is_err()
                     {
@@ -206,7 +200,7 @@ where
 
                 match file_storage
                     .add_chunk(
-                        &staged_path(&root, upload.upload_id()),
+                        &staged_path(upload.upload_id()),
                         offset,
                         command.chunk().to_vec(),
                     )
@@ -345,7 +339,6 @@ mod tests {
     use std::collections::VecDeque;
     use std::error::Error;
     use std::io as stdio;
-    use std::path::PathBuf;
     use std::sync::Arc;
     use std::sync::Mutex;
     use std::sync::PoisonError;
@@ -358,7 +351,6 @@ mod tests {
     use crate::application::port::write_upload_chunk::WriteUploadChunkCommand;
     use crate::application::port::write_upload_chunk::WriteUploadChunkError;
     use crate::application::port::write_upload_chunk::WriteUploadChunkUseCase as _;
-    use crate::application::use_case::test_fixtures::ROOT;
     use crate::application::use_case::test_fixtures::TTL_SECONDS;
     use crate::domain::model::integrity_hash::IntegrityHash;
     use crate::domain::model::upload::ChunkBitmap;
@@ -543,7 +535,6 @@ mod tests {
             Arc::new(factory),
             Arc::new(file_storage),
             hasher,
-            PathBuf::from(ROOT),
             TTL_SECONDS,
         );
         let command =
@@ -606,7 +597,6 @@ mod tests {
             Arc::new(factory),
             Arc::new(file_storage),
             hasher,
-            PathBuf::from(ROOT),
             TTL_SECONDS,
         );
         let command =
@@ -642,7 +632,6 @@ mod tests {
             Arc::new(factory),
             Arc::new(MockFileStorage::new()),
             hasher,
-            PathBuf::from(ROOT),
             TTL_SECONDS,
         );
         let command =
@@ -685,7 +674,6 @@ mod tests {
             Arc::new(factory),
             Arc::new(MockFileStorage::new()),
             hasher,
-            PathBuf::from(ROOT),
             TTL_SECONDS,
         );
         let command =
@@ -776,7 +764,6 @@ mod tests {
             Arc::new(factory),
             Arc::new(file_storage),
             hasher,
-            PathBuf::from(ROOT),
             TTL_SECONDS,
         );
         let command =
@@ -841,7 +828,6 @@ mod tests {
             Arc::clone(&harness.factory),
             Arc::new(file_storage),
             hasher,
-            PathBuf::from(ROOT),
             TTL_SECONDS,
         );
         let command =
@@ -875,7 +861,6 @@ mod tests {
             Arc::new(factory),
             Arc::new(MockFileStorage::new()),
             hasher,
-            PathBuf::from(ROOT),
             TTL_SECONDS,
         );
         let command =
@@ -910,7 +895,6 @@ mod tests {
             Arc::new(factory),
             Arc::new(MockFileStorage::new()),
             hasher,
-            PathBuf::from(ROOT),
             TTL_SECONDS,
         );
         let command =
@@ -958,7 +942,6 @@ mod tests {
             Arc::new(factory),
             Arc::new(MockFileStorage::new()),
             hasher,
-            PathBuf::from(ROOT),
             TTL_SECONDS,
         );
         // Chunk `0` is persisted with a size of 4, so its start must be 0.
@@ -993,7 +976,6 @@ mod tests {
             Arc::new(factory),
             Arc::new(MockFileStorage::new()),
             hasher,
-            PathBuf::from(ROOT),
             TTL_SECONDS,
         );
         let command = WriteUploadChunkCommand::new(5, 0, 0, b"12".to_vec(), hash(CHUNK_DIGEST), 3);
@@ -1037,7 +1019,6 @@ mod tests {
             Arc::new(factory),
             Arc::new(MockFileStorage::new()),
             hasher,
-            PathBuf::from(ROOT),
             TTL_SECONDS,
         );
         let command =
@@ -1089,7 +1070,6 @@ mod tests {
             Arc::new(factory),
             Arc::new(file_storage),
             hasher,
-            PathBuf::from(ROOT),
             TTL_SECONDS,
         );
         let command =
@@ -1140,7 +1120,6 @@ mod tests {
             Arc::new(factory),
             Arc::new(file_storage),
             hasher,
-            PathBuf::from(ROOT),
             TTL_SECONDS,
         );
         let command =
@@ -1196,7 +1175,6 @@ mod tests {
             Arc::new(factory),
             Arc::new(file_storage),
             hasher,
-            PathBuf::from(ROOT),
             TTL_SECONDS,
         );
         let command =
@@ -1244,7 +1222,6 @@ mod tests {
             Arc::new(factory),
             Arc::new(MockFileStorage::new()),
             hasher,
-            PathBuf::from(ROOT),
             TTL_SECONDS,
         );
         let command =

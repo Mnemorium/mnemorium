@@ -161,9 +161,14 @@ Configuration is layered: built-in defaults, then the optional `config.yaml` fil
 has a default, so an absent, empty or partial file is valid: the settings it omits keep their built-in value, and the
 complete default file is written on the first start. A `MNEMORIUM_*` variable naming a setting overrides the file —
 `logging.level` is `MNEMORIUM_LOGGING_LEVEL`, `security.rate_limit.burst_size` is
-`MNEMORIUM_SECURITY_RATE_LIMIT_BURST_SIZE` — and an unknown name is ignored. The non-derivable part of the instance —
-the site pepper and the token signing secret — lives in `state.yaml`, which is written once and must be backed up
-together with the datastore (`mnemorium.db`).
+`MNEMORIUM_SECURITY_RATE_LIMIT_BURST_SIZE` — and an unknown variable name is ignored, while an unknown key in
+`config.yaml` fails startup. The non-derivable part of the instance — the site pepper and the token signing secret —
+lives in `state.yaml`, which is written once and must be backed up together with the datastore (`mnemorium.db`).
+
+The asset storage root is not configurable. `asset.storage.root` is no longer read: a `config.yaml` that still names it
+fails startup, so delete the key. Media written under a custom root must be moved into `data/` before upgrading, and
+`MNEMORIUM_ASSET_STORAGE_ROOT` is discarded silently, so a deployment that set it must move its files into `data/` as
+well.
 
 TODO: link to a document that explains the configuration.
 

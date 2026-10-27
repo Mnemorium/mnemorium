@@ -1,7 +1,4 @@
-use std::path::PathBuf;
 use std::sync::Arc;
-
-use tokio::sync::Semaphore;
 
 use crate::application::port::asset_use_case_factory::AssetUseCaseFactory;
 use crate::application::port::begin_upload::BeginUploadUseCase;
@@ -17,13 +14,13 @@ use crate::infrastructure::outbound::file_system::file_storage::FileSystemStorag
 use crate::infrastructure::outbound::media_probe::LocalMediaProbe;
 use crate::infrastructure::outbound::sha2::content_hasher::Sha2ContentHasher;
 use crate::infrastructure::outbound::sqlx::unit_of_work::SqlxUnitOfWorkFactory;
+use tokio::sync::Semaphore;
 
 /// Builds the Asset use cases from the live configuration.
 ///
-/// Every accessor reads the current configuration for the storage root, the
-/// chunk size and the upload expiry, so a runtime configuration change is picked
-/// up by the next request. The file storage adapter is stateless and rebuilt per
-/// accessor from the live storage root.
+/// Every accessor reads the current configuration for the chunk size and the
+/// upload expiry, so a runtime configuration change is picked up by the next
+/// request. The file storage adapter is stateless and rebuilt per accessor.
 pub struct RuntimeAssetUseCaseFactory {
     /// Live application configuration.
     configuration: Arc<Configuration>,
@@ -60,7 +57,6 @@ impl AssetUseCaseFactory for RuntimeAssetUseCaseFactory {
         Arc::new(BeginUpload::new(
             Arc::clone(&self.unit_of_work_factory),
             Self::file_storage(),
-            PathBuf::from(live.asset().storage().root()),
             live.asset().upload().chunk_size_bytes(),
             live.asset().upload().expiry_seconds(),
             live.asset().upload().max_file_size_bytes(),
@@ -75,7 +71,6 @@ impl AssetUseCaseFactory for RuntimeAssetUseCaseFactory {
             Arc::new(LocalMediaProbe::with_permits(Arc::clone(
                 &self.probe_permits,
             ))),
-            PathBuf::from(live.asset().storage().root()),
             live.asset().upload().expiry_seconds(),
         ))
     }
@@ -85,7 +80,6 @@ impl AssetUseCaseFactory for RuntimeAssetUseCaseFactory {
         Arc::new(GetUpload::new(
             Arc::clone(&self.unit_of_work_factory),
             Self::file_storage(),
-            PathBuf::from(live.asset().storage().root()),
             live.asset().upload().expiry_seconds(),
         ))
     }
@@ -96,7 +90,6 @@ impl AssetUseCaseFactory for RuntimeAssetUseCaseFactory {
             Arc::clone(&self.unit_of_work_factory),
             Self::file_storage(),
             Sha2ContentHasher,
-            PathBuf::from(live.asset().storage().root()),
             live.asset().upload().expiry_seconds(),
         ))
     }

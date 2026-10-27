@@ -1,5 +1,4 @@
 use std::future::Future;
-use std::path::PathBuf;
 use std::pin::Pin;
 use std::sync::Arc;
 
@@ -14,15 +13,13 @@ use crate::domain::port::file_storage::FileStorage;
 pub struct EnsureStorageDirectories<S> {
     /// Storage adapter creating the folders.
     file_storage: Arc<S>,
-    /// Root directory holding the upload and file folders.
-    root: PathBuf,
 }
 
 impl<S: FileStorage> EnsureStorageDirectories<S> {
     /// Create a new use case.
     #[must_use]
-    pub fn new(file_storage: Arc<S>, root: PathBuf) -> Self {
-        Self { file_storage, root }
+    pub fn new(file_storage: Arc<S>) -> Self {
+        Self { file_storage }
     }
 }
 
@@ -32,11 +29,10 @@ impl<S: FileStorage> EnsureStorageDirectoriesUseCase for EnsureStorageDirectorie
         _command: EnsureStorageDirectoriesCommand,
     ) -> Pin<Box<dyn Future<Output = Result<(), EnsureStorageDirectoriesError>> + Send + 'future>>
     {
-        let root = self.root.clone();
         let file_storage = Arc::clone(&self.file_storage);
 
         Box::pin(async move {
-            for path in [uploads_path(&root), files_path(&root)] {
+            for path in [uploads_path(), files_path()] {
                 let exist = file_storage
                     .directory_exist(path.as_path())
                     .await
@@ -56,10 +52,8 @@ impl<S: FileStorage> EnsureStorageDirectoriesUseCase for EnsureStorageDirectorie
 #[cfg(test)]
 mod tests {
     use std::error::Error;
-    use std::path::PathBuf;
     use std::sync::Arc;
 
-    use crate::application::use_case::test_fixtures::ROOT;
     use crate::domain::port::error::StorageError;
     use crate::domain::port::file_storage::MockFileStorage;
 
@@ -79,7 +73,7 @@ mod tests {
             .expect_create_directory()
             .times(2)
             .returning(|_| Box::pin(async { Ok(()) }));
-        let use_case = EnsureStorageDirectories::new(Arc::new(file_storage), PathBuf::from(ROOT));
+        let use_case = EnsureStorageDirectories::new(Arc::new(file_storage));
 
         // Act
         use_case
@@ -99,7 +93,7 @@ mod tests {
             .times(2)
             .returning(|_| Box::pin(async { Ok(true) }));
         file_storage.expect_create_directory().times(0);
-        let use_case = EnsureStorageDirectories::new(Arc::new(file_storage), PathBuf::from(ROOT));
+        let use_case = EnsureStorageDirectories::new(Arc::new(file_storage));
 
         // Act
         use_case
@@ -119,7 +113,7 @@ mod tests {
             .expect_directory_exist()
             .returning(|_| Box::pin(async { Err(StorageError::Unavailable) }));
         file_storage.expect_create_directory().times(0);
-        let use_case = EnsureStorageDirectories::new(Arc::new(file_storage), PathBuf::from(ROOT));
+        let use_case = EnsureStorageDirectories::new(Arc::new(file_storage));
 
         // Act
         let result = use_case

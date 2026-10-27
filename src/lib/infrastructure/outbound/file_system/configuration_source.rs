@@ -214,8 +214,8 @@ mod tests {
             "an absent configuration file must be generated"
         );
         assert_eq!(
-            loaded.partial().asset.storage.root.as_deref(),
-            Some("data"),
+            loaded.partial().asset.upload.chunk_size_bytes,
+            Some(5_242_880),
             "the generated file names every setting of the default document"
         );
         assert_eq!(
@@ -325,7 +325,7 @@ mod tests {
         // Arrange
         let directory = tempdir()?;
         let path = directory.path().join("config.yaml");
-        let original = "asset:\n  upload:\n    expiry_seconds: 60\n";
+        let original = "security:\n  jwt:\n    ttl: 60\n";
         fs::write(&path, original)?;
         let resolver = resolver(&path);
 
@@ -333,12 +333,10 @@ mod tests {
         let loaded = resolver.resolve()?;
 
         // Assert
-        let asset = &loaded.partial().asset;
-        assert_eq!(asset.upload.expiry_seconds, Some(60));
-        assert_eq!(asset.upload.chunk_size_bytes, None);
-        assert_eq!(asset.upload.max_file_size_bytes, None);
+        let security = &loaded.partial().security;
+        assert_eq!(security.jwt.ttl, Some(60));
         assert_eq!(
-            asset.storage.root, None,
+            security.rate_limit.burst_size, None,
             "an omitted sibling mapping stays unnamed"
         );
         Ok(())
@@ -362,6 +360,38 @@ mod tests {
                 Err(ConfigurationSourceError::InvalidConfiguration(_))
             ),
             "an unknown key must fail instead of being ignored, got: {result:?}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn configuration_source_removed_storage_root_key_is_rejected() -> Result<(), Box<dyn Error>> {
+        // Arrange: the setting an earlier release published is now unknown, so
+        // an operator who kept it in `config.yaml` must delete it.
+        let directory = tempdir()?;
+        let path = directory.path().join("config.yaml");
+        fs::write(&path, "asset:\n  storage:\n    root: data\n")?;
+        let resolver = resolver(&path);
+
+        // Act
+        let result = resolver.resolve();
+
+        // Assert
+        let message = result
+            .as_ref()
+            .err()
+            .map(ToString::to_string)
+            .unwrap_or_default();
+        assert!(
+            matches!(
+                result,
+                Err(ConfigurationSourceError::InvalidConfiguration(_))
+            ),
+            "the retired key must fail instead of being ignored, got: {result:?}"
+        );
+        assert!(
+            message.contains("storage"),
+            "the rejection must name the retired key, got: {message:?}"
         );
         Ok(())
     }
