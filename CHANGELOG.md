@@ -1,3 +1,9 @@
+## [0.23.0](https://github.com/Mnemorium/mnemorium/compare/v0.22.2...v0.23.0) (2026-10-27)
+
+### Features
+
+* **api:** browse movies and series ([#339](https://github.com/Mnemorium/mnemorium/issues/339)) ([a6d4c0f](https://github.com/Mnemorium/mnemorium/commit/a6d4c0f0924b18d74ed22c11906d8bcfb41eb9d8))
+
 ## [0.22.2](https://github.com/Mnemorium/mnemorium/compare/v0.22.1...v0.22.2) (2026-10-27)
 
 ### Bug Fixes
