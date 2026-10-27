@@ -1,3 +1,9 @@
+## [0.24.0](https://github.com/Mnemorium/mnemorium/compare/v0.23.1...v0.24.0) (2026-10-27)
+
+### Features
+
+* **api:** add cover art to library resources ([#350](https://github.com/Mnemorium/mnemorium/issues/350)) ([e0b4f6c](https://github.com/Mnemorium/mnemorium/commit/e0b4f6c1818cdf51b0b0aba0ebc5da7257a883f8))
+
 ## [0.23.1](https://github.com/Mnemorium/mnemorium/compare/v0.23.0...v0.23.1) (2026-10-27)
 
 ### Bug Fixes
