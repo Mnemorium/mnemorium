@@ -665,4 +665,272 @@ mod tests {
         assert!(matches!(result, Err(RepositoryError::AlreadyExist)));
         Ok(())
     }
+
+    /// Seed a show with a lowercase country of origin.
+    async fn seed_series(pool: &SqlitePool, series_id: i64) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            "INSERT INTO series (series_id, name, plot, country_of_origin, first_air_date)
+             VALUES (?1, ?2, 'A plot', 'us', '1990-04-08')",
+        )
+        .bind(series_id)
+        .bind(format!("series {series_id}"))
+        .execute(pool)
+        .await?;
+        Ok(())
+    }
+
+    /// Seed a season of `series_id` at `season_index`.
+    async fn seed_season(
+        pool: &SqlitePool,
+        season_id: i64,
+        series_id: i64,
+        season_index: i64,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query("INSERT INTO season (season_id, series_id, season_index) VALUES (?1, ?2, ?3)")
+            .bind(season_id)
+            .bind(series_id)
+            .bind(season_index)
+            .execute(pool)
+            .await?;
+        Ok(())
+    }
+
+    /// Seed an episode of `season_id` at `episode_index`, backed by `video_id`.
+    async fn seed_episode(
+        pool: &SqlitePool,
+        episode_id: i64,
+        season_id: i64,
+        episode_index: i64,
+        video_id: i64,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            "INSERT INTO episode (
+                episode_id, season_id, episode_index, name, plot, air_date, video_id
+             )
+             VALUES (?1, ?2, ?3, ?4, 'A plot', '1991-04-08', ?5)",
+        )
+        .bind(episode_id)
+        .bind(season_id)
+        .bind(episode_index)
+        .bind(format!("episode {episode_id}"))
+        .bind(video_id)
+        .execute(pool)
+        .await?;
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn series_insert_normalises_country_of_origin_uppercase() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let pool = in_memory_pool().await?;
+
+        // Act
+        seed_series(&pool, 1).await?;
+
+        // Assert
+        let stored: String = sqlx::query_scalar("SELECT country_of_origin FROM series")
+            .fetch_one(&pool)
+            .await?;
+        assert_eq!(
+            stored, "US",
+            "the insert trigger must normalise country_of_origin to uppercase"
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn series_update_normalises_country_of_origin_uppercase() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let pool = in_memory_pool().await?;
+        seed_series(&pool, 1).await?;
+
+        // Act
+        sqlx::query("UPDATE series SET country_of_origin = 'ca' WHERE series_id = 1")
+            .execute(&pool)
+            .await?;
+
+        // Assert
+        let stored: String = sqlx::query_scalar("SELECT country_of_origin FROM series")
+            .fetch_one(&pool)
+            .await?;
+        assert_eq!(
+            stored, "CA",
+            "the update trigger must normalise country_of_origin to uppercase"
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn season_rejects_an_index_above_the_u32_range() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let pool = in_memory_pool().await?;
+        seed_series(&pool, 1).await?;
+
+        // Act
+        let result = seed_season(&pool, 40, 1, 4_294_967_296)
+            .await
+            .map_err(RepositoryError::from);
+
+        // Assert
+        assert!(matches!(
+            result,
+            Err(RepositoryError::DataIntegrityViolation)
+        ));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn season_accepts_the_largest_u32_index() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let pool = in_memory_pool().await?;
+        seed_series(&pool, 1).await?;
+
+        // Act
+        seed_season(&pool, 40, 1, 4_294_967_295).await?;
+
+        // Assert
+        let stored: i64 = sqlx::query_scalar("SELECT season_index FROM season")
+            .fetch_one(&pool)
+            .await?;
+        assert_eq!(stored, 4_294_967_295);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn episode_rejects_an_index_above_the_u32_range() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let pool = in_memory_pool().await?;
+        seed_media(&pool).await?;
+        seed_series(&pool, 1).await?;
+        seed_season(&pool, 40, 1, 1).await?;
+
+        // Act
+        let result = seed_episode(&pool, 60, 40, 4_294_967_296, 1)
+            .await
+            .map_err(RepositoryError::from);
+
+        // Assert
+        assert!(matches!(
+            result,
+            Err(RepositoryError::DataIntegrityViolation)
+        ));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn season_rejects_a_duplicate_index_within_a_series() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let pool = in_memory_pool().await?;
+        seed_series(&pool, 1).await?;
+        seed_season(&pool, 40, 1, 1).await?;
+
+        // Act
+        let result = seed_season(&pool, 41, 1, 1)
+            .await
+            .map_err(RepositoryError::from);
+
+        // Assert
+        assert!(matches!(result, Err(RepositoryError::AlreadyExist)));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn episode_rejects_a_duplicate_index_within_a_season() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let pool = in_memory_pool().await?;
+        seed_media(&pool).await?;
+        seed_series(&pool, 1).await?;
+        seed_season(&pool, 40, 1, 1).await?;
+        seed_episode(&pool, 60, 40, 1, 1).await?;
+        sqlx::query(
+            "INSERT INTO file (file_id, path, user_id, is_public, mime_type_id, integrity_hash)
+             VALUES (3, 'c.mp4', 1, 0, 'video/mp4', ?1)",
+        )
+        .bind(format!("{:064x}", 3i32))
+        .execute(&pool)
+        .await?;
+        sqlx::query(
+            "INSERT INTO video (video_id, duration_ms, codec, frame_count, width, height, color_id, scan_type, file_id)
+             VALUES (2, 1000.0, 'H264', 30, 10, 10, 'YCbCr', 'PROGRESSIVE', 3)",
+        )
+        .execute(&pool)
+        .await?;
+
+        // Act
+        let result = seed_episode(&pool, 61, 40, 1, 2)
+            .await
+            .map_err(RepositoryError::from);
+
+        // Assert
+        assert!(matches!(result, Err(RepositoryError::AlreadyExist)));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn episode_rejects_a_video_already_assigned() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let pool = in_memory_pool().await?;
+        seed_media(&pool).await?;
+        seed_series(&pool, 1).await?;
+        seed_season(&pool, 40, 1, 1).await?;
+        seed_season(&pool, 41, 1, 2).await?;
+        seed_episode(&pool, 60, 40, 1, 1).await?;
+
+        // Act
+        let result = seed_episode(&pool, 61, 41, 1, 1)
+            .await
+            .map_err(RepositoryError::from);
+
+        // Assert
+        assert!(matches!(result, Err(RepositoryError::AlreadyExist)));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn deleting_series_cascades_its_seasons_and_episodes() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let pool = in_memory_pool().await?;
+        seed_media(&pool).await?;
+        seed_series(&pool, 1).await?;
+        seed_season(&pool, 40, 1, 1).await?;
+        seed_episode(&pool, 60, 40, 1, 1).await?;
+
+        // Act
+        sqlx::query("DELETE FROM series WHERE series_id = 1")
+            .execute(&pool)
+            .await?;
+
+        // Assert
+        let seasons: i64 = sqlx::query_scalar("SELECT count(*) FROM season")
+            .fetch_one(&pool)
+            .await?;
+        let episodes: i64 = sqlx::query_scalar("SELECT count(*) FROM episode")
+            .fetch_one(&pool)
+            .await?;
+        assert_eq!(seasons, 0, "deleting a show must cascade its seasons");
+        assert_eq!(episodes, 0, "deleting a show must cascade its episodes");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn deleting_season_cascades_its_episodes() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let pool = in_memory_pool().await?;
+        seed_media(&pool).await?;
+        seed_series(&pool, 1).await?;
+        seed_season(&pool, 40, 1, 1).await?;
+        seed_episode(&pool, 60, 40, 1, 1).await?;
+
+        // Act
+        sqlx::query("DELETE FROM season WHERE season_id = 40")
+            .execute(&pool)
+            .await?;
+
+        // Assert
+        let episodes: i64 = sqlx::query_scalar("SELECT count(*) FROM episode")
+            .fetch_one(&pool)
+            .await?;
+        assert_eq!(episodes, 0, "deleting a season must cascade its episodes");
+        Ok(())
+    }
 }

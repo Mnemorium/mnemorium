@@ -1893,7 +1893,7 @@ enforce invariants.
 | `PERS-005` | Seeds                       | Seed the reference data (`audio_channel`, `color`, `gallery`, `language`, `mime_type`) from the migrations.                                                                                                                                    |                                           |
 | `PERS-006` | Invariants                  | A `user` row with `user_id = 0` (the Root Admin) cannot be deleted or modified.                                                                                                                                                                |                                           |
 | `PERS-007` | Invariants                  | A `gallery` row with `gallery_id = 0` (the default gallery) cannot be deleted or modified.                                                                                                                                                     |                                           |
-| `PERS-008` | Invariants                  | Normalise `codec`, `genre_id` and `movie.country_of_origin` to uppercase on insert/update.                                                                                                                                                     |                                           |
+| `PERS-008` | Invariants                  | Normalise `codec`, `genre_id`, `movie.country_of_origin` and `series.country_of_origin` to uppercase on insert/update.                                                                                                                         |                                           |
 | `PERS-011` | Entity-relationship diagram | Keep the entity-relationship diagram in sync with `migrations/` in the same change that changes a table, column, constraint, trigger or seed.                                                                                                  | [§ Diagram](#entity-relationship-diagram) |
 | `PERS-012` | Entity-relationship diagram | Use only the markers `PK`, `FK`, `NN`, `UN`, `CC`, `DF`.                                                                                                                                                                                       | [§ Legend](#legend)                       |
 | `PERS-013` | Entity-relationship diagram | Put the FK marker on the child table and draw relationships from the "one" side to the "many" side.                                                                                                                                            | [§ Diagram](#entity-relationship-diagram) |
@@ -2106,6 +2106,39 @@ entity movie {
    * video_id: INTEGER <<FK, NN, UN>>
 }
 
+entity series {
+   * series_id: INTEGER <<PK>>
+   --
+   * name: TEXT <<NN>>
+   * plot: TEXT <<NN>>
+   * country_of_origin: VARCHAR(30) <<NN>>
+   * first_air_date: DATE <<NN, DF(date('now'))>>
+}
+
+entity series_genre {
+   * series_id: INTEGER <<FK, PK>>
+   * genre_id: TEXT <<FK, PK>>
+}
+
+entity season {
+   * season_id: INTEGER <<PK>>
+   --
+   * series_id: INTEGER <<FK, NN>>
+   * season_index: INTEGER <<NN, DF(0), CC(season_index BETWEEN 0 AND 4294967295)>>
+   name: TEXT
+}
+
+entity episode {
+   * episode_id: INTEGER <<PK>>
+   --
+   * season_id: INTEGER <<FK, NN>>
+   * episode_index: INTEGER <<NN, CC(episode_index BETWEEN 0 AND 4294967295)>>
+   * name: TEXT <<NN>>
+   * plot: TEXT <<NN>>
+   * air_date: DATE <<NN>>
+   * video_id: INTEGER <<FK, NN, UN>>
+}
+
 entity language {
    * language_id: INTEGER <<PK>>
    --
@@ -2223,6 +2256,13 @@ image ||--|| file
 
 movie ||--|| video
 movie ||--o{ movie_genre
+
+series ||--o{ series_genre
+series ||--o{ season
+season ||--o{ episode
+episode ||--|| video
+
+genre ||--o{ series_genre
 
 stream ||--o| audio_stream
 stream ||--o| subtitle_stream

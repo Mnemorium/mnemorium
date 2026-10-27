@@ -25,10 +25,17 @@ use handler::library::get_gallery::__path_get_gallery;
 use handler::library::get_gallery_item::__path_get_gallery_item;
 use handler::library::get_gallery_item_list::__path_get_gallery_item_list;
 use handler::library::get_gallery_list::__path_get_gallery_list;
+use handler::library::get_movie::__path_get_movie;
+use handler::library::get_movie_list::__path_get_movie_list;
 use handler::library::get_playlist::__path_get_playlist;
 use handler::library::get_playlist_list::__path_get_playlist_list;
 use handler::library::get_playlist_track::__path_get_playlist_track;
 use handler::library::get_playlist_track_list::__path_get_playlist_track_list;
+use handler::library::get_series::__path_get_series;
+use handler::library::get_series_episode::__path_get_series_episode;
+use handler::library::get_series_episode_list::__path_get_series_episode_list;
+use handler::library::get_series_list::__path_get_series_list;
+use handler::library::get_series_season::__path_get_series_season;
 use handler::library::patch_playlist::__path_patch_playlist;
 use handler::library::post_gallery::__path_post_gallery;
 use handler::library::post_gallery_item::__path_post_gallery_item;
@@ -40,6 +47,7 @@ use handler::user::get_user_list::__path_get_user_list;
 use handler::user::patch_user::__path_patch_user;
 
 use crate::domain::model::user::Role;
+use crate::domain::model::video::ScanType;
 use crate::infrastructure::inbound::rest::api_error::ErrorBody;
 use crate::infrastructure::inbound::rest::hal::Link;
 use crate::infrastructure::inbound::rest::hal::SelfLinks;
@@ -58,6 +66,8 @@ use crate::infrastructure::inbound::rest::handler::library::AlbumLinks;
 use crate::infrastructure::inbound::rest::handler::library::AlbumListLinks;
 use crate::infrastructure::inbound::rest::handler::library::AlbumListResponse;
 use crate::infrastructure::inbound::rest::handler::library::AlbumResponse;
+use crate::infrastructure::inbound::rest::handler::library::EpisodeListResponse;
+use crate::infrastructure::inbound::rest::handler::library::EpisodeResponse;
 use crate::infrastructure::inbound::rest::handler::library::GalleryItemDetailResponse;
 use crate::infrastructure::inbound::rest::handler::library::GalleryItemResponse;
 use crate::infrastructure::inbound::rest::handler::library::GalleryItemType;
@@ -65,15 +75,28 @@ use crate::infrastructure::inbound::rest::handler::library::GalleryLinks;
 use crate::infrastructure::inbound::rest::handler::library::GalleryResponse;
 use crate::infrastructure::inbound::rest::handler::library::MediumLinks;
 use crate::infrastructure::inbound::rest::handler::library::MediumResponse;
+use crate::infrastructure::inbound::rest::handler::library::MovieLinks;
+use crate::infrastructure::inbound::rest::handler::library::MovieListLinks;
+use crate::infrastructure::inbound::rest::handler::library::MovieListResponse;
+use crate::infrastructure::inbound::rest::handler::library::MovieResponse;
 use crate::infrastructure::inbound::rest::handler::library::PlaylistLinks;
 use crate::infrastructure::inbound::rest::handler::library::PlaylistListLinks;
 use crate::infrastructure::inbound::rest::handler::library::PlaylistListResponse;
 use crate::infrastructure::inbound::rest::handler::library::PlaylistResponse;
 use crate::infrastructure::inbound::rest::handler::library::PlaylistTrackLinks;
 use crate::infrastructure::inbound::rest::handler::library::PlaylistTrackResponse;
+use crate::infrastructure::inbound::rest::handler::library::SeasonResponse;
+use crate::infrastructure::inbound::rest::handler::library::SeriesEpisodeLinks;
+use crate::infrastructure::inbound::rest::handler::library::SeriesLinks;
+use crate::infrastructure::inbound::rest::handler::library::SeriesListLinks;
+use crate::infrastructure::inbound::rest::handler::library::SeriesListResponse;
+use crate::infrastructure::inbound::rest::handler::library::SeriesResponse;
+use crate::infrastructure::inbound::rest::handler::library::SeriesSeasonLinks;
+use crate::infrastructure::inbound::rest::handler::library::SeriesSummaryResponse;
 use crate::infrastructure::inbound::rest::handler::library::TrackLinks;
 use crate::infrastructure::inbound::rest::handler::library::TrackListResponse;
 use crate::infrastructure::inbound::rest::handler::library::TrackResponse;
+use crate::infrastructure::inbound::rest::handler::library::VideoResponse;
 use crate::infrastructure::inbound::rest::handler::library::get_gallery_list::GalleryListLinks;
 use crate::infrastructure::inbound::rest::handler::library::get_gallery_list::GalleryListResponse;
 use crate::infrastructure::inbound::rest::handler::library::patch_playlist::PatchPlaylistRequest;
@@ -118,8 +141,8 @@ impl utoipa::Modify for SecurityAddon {
     servers(
         (url = "http://0.0.0.0:4080/api/v1", description = "Local development server")
     ),
-    paths(get_health, get_upload, patch_credential, post_login, post_register, post_upload, post_upload_complete, put_upload_chunk, get_me, get_user, get_user_list, patch_user, delete_gallery, delete_gallery_item, delete_playlist, delete_playlist_track, get_album, get_album_list, get_album_medium, get_album_track, get_album_track_list, get_gallery, get_gallery_item, get_gallery_item_list, get_gallery_list, get_playlist, get_playlist_list, get_playlist_track, get_playlist_track_list, patch_playlist, post_gallery, post_gallery_item, post_playlist, put_playlist_track),
-    components(schemas(AlbumLinks, AlbumListLinks, AlbumListResponse, AlbumResponse, ErrorBody, GalleryItemDetailResponse, GalleryItemResponse, GalleryItemType, GalleryLinks, GalleryListLinks, GalleryListResponse, GalleryResponse, GetMeResponse, GetUserListResponse, GetUserResponse, Link, LoginRequest, LoginResponse, MediumLinks, MediumResponse, PatchCredentialRequest, PatchPlaylistRequest, PatchUserRequest, PatchUserResponse, PlaylistLinks, PlaylistListLinks, PlaylistListResponse, PlaylistResponse, PlaylistTrackLinks, PlaylistTrackResponse, PostGalleryItemRequest, PostGalleryRequest, PostPlaylistRequest, PostUploadCompleteResponse, PostUploadRequest, PostUploadResponse, PutUploadChunkRequest, RegisterRequest, RegisterResponse, ReorderPlaylistTracksRequest, Role, SelfLinks, TrackLinks, TrackListResponse, TrackResponse, UploadSessionLinks, UploadSessionResponse, UserListLinks)),
+    paths(get_health, get_upload, patch_credential, post_login, post_register, post_upload, post_upload_complete, put_upload_chunk, get_me, get_user, get_user_list, patch_user, delete_gallery, delete_gallery_item, delete_playlist, delete_playlist_track, get_album, get_album_list, get_album_medium, get_album_track, get_album_track_list, get_gallery, get_gallery_item, get_gallery_item_list, get_gallery_list, get_movie, get_movie_list, get_playlist, get_playlist_list, get_playlist_track, get_playlist_track_list, get_series, get_series_episode, get_series_episode_list, get_series_list, get_series_season, patch_playlist, post_gallery, post_gallery_item, post_playlist, put_playlist_track),
+    components(schemas(AlbumLinks, AlbumListLinks, AlbumListResponse, AlbumResponse, EpisodeListResponse, EpisodeResponse, ErrorBody, GalleryItemDetailResponse, GalleryItemResponse, GalleryItemType, GalleryLinks, GalleryListLinks, GalleryListResponse, GalleryResponse, GetMeResponse, GetUserListResponse, GetUserResponse, Link, LoginRequest, LoginResponse, MediumLinks, MediumResponse, MovieLinks, MovieListLinks, MovieListResponse, MovieResponse, PatchCredentialRequest, PatchPlaylistRequest, PatchUserRequest, PatchUserResponse, PlaylistLinks, PlaylistListLinks, PlaylistListResponse, PlaylistResponse, PlaylistTrackLinks, PlaylistTrackResponse, PostGalleryItemRequest, PostGalleryRequest, PostPlaylistRequest, PostUploadCompleteResponse, PostUploadRequest, PostUploadResponse, PutUploadChunkRequest, RegisterRequest, RegisterResponse, ReorderPlaylistTracksRequest, Role, ScanType, SeasonResponse, SelfLinks, SeriesEpisodeLinks, SeriesLinks, SeriesListLinks, SeriesListResponse, SeriesResponse, SeriesSeasonLinks, SeriesSummaryResponse, TrackLinks, TrackListResponse, TrackResponse, UploadSessionLinks, UploadSessionResponse, UserListLinks, VideoResponse)),
     tags(
         (name = "system", description = "System-level endpoints"),
         (name = "asset", description = "Asset bounded context"),

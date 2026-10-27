@@ -1,4 +1,5 @@
 use crate::domain::alias::NumericID;
+use crate::domain::model::video::ScanType as DomainScanType;
 
 /// Scan type of a video, matching the `chk_video_scan_type` check constraint in
 /// the `video` table.
@@ -38,4 +39,21 @@ pub struct Video {
     pub video_id: NumericID,
     /// Width of the video, in pixels.
     pub width: i64,
+}
+
+/// Parse a stored scan-type token into its domain value.
+///
+/// Returns `None` when `value` is not one of the tokens the
+/// `chk_video_scan_type` check constraint admits, so an adapter can report a
+/// value the domain cannot hold as a data-integrity failure rather than serving
+/// it.
+#[must_use]
+pub(crate) fn parse_scan_type(value: &str) -> Option<DomainScanType> {
+    match value {
+        "INTERLACED" => Some(DomainScanType::Interlaced),
+        "MBAFF" => Some(DomainScanType::Mbaff),
+        "PAFF" => Some(DomainScanType::Paff),
+        "PROGRESSIVE" => Some(DomainScanType::Progressive),
+        _ => None,
+    }
 }

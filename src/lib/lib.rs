@@ -39,8 +39,19 @@ mod test_helpers {
     use crate::application::port::library_use_case_factory::MockLibraryUseCaseFactory;
     use crate::application::port::user_use_case_factory::MockUserUseCaseFactory;
     use crate::application::port::user_use_case_factory::UserUseCaseFactory;
+    use crate::domain::alias::NumericID;
     use crate::domain::model::configuration::Configuration;
+    use crate::domain::model::episode::Episode;
+    use crate::domain::model::episode::EpisodeIndex;
     use crate::domain::model::instance_state::InstanceState;
+    use crate::domain::model::movie::Movie;
+    use crate::domain::model::season::Season;
+    use crate::domain::model::season::SeasonIndex;
+    use crate::domain::model::series::Series;
+    use crate::domain::model::user::Role;
+    use crate::domain::model::user::User;
+    use crate::domain::model::video::ScanType;
+    use crate::domain::model::video::Video;
     use crate::domain::port::asset_unit_of_work::AssetUnitOfWork;
     use crate::domain::port::credential_repository::CredentialRepository;
     use crate::domain::port::credential_repository::MockCredentialRepository;
@@ -55,10 +66,14 @@ mod test_helpers {
     use crate::domain::port::library_unit_of_work::LibraryUnitOfWork;
     use crate::domain::port::mime_type_repository::MimeTypeRepository;
     use crate::domain::port::mime_type_repository::MockMimeTypeRepository;
+    use crate::domain::port::movie_repository::MockMovieRepository;
+    use crate::domain::port::movie_repository::MovieRepository;
     use crate::domain::port::music_album_repository::MockMusicAlbumRepository;
     use crate::domain::port::music_album_repository::MusicAlbumRepository;
     use crate::domain::port::music_playlist_repository::MockMusicPlaylistRepository;
     use crate::domain::port::music_playlist_repository::MusicPlaylistRepository;
+    use crate::domain::port::series_repository::MockSeriesRepository;
+    use crate::domain::port::series_repository::SeriesRepository;
     use crate::domain::port::unit_of_work::UnitOfWork;
     use crate::domain::port::unit_of_work::UnitOfWorkFactory;
     use crate::domain::port::upload_repository::MockUploadRepository;
@@ -122,12 +137,16 @@ mod test_helpers {
         pub images: MockImageRepository,
         /// Mime type repository.
         pub mime_types: MockMimeTypeRepository,
+        /// Movie repository.
+        pub movies: MockMovieRepository,
         /// Music album repository.
         pub music_albums: MockMusicAlbumRepository,
         /// Music playlist repository.
         pub music_playlists: MockMusicPlaylistRepository,
         /// Set when `rollback` is called.
         pub rolled_back: Arc<AtomicBool>,
+        /// Series repository.
+        pub series: MockSeriesRepository,
         /// Upload repository.
         pub uploads: MockUploadRepository,
         /// User repository.
@@ -147,9 +166,11 @@ mod test_helpers {
                 galleries: MockGalleryRepository::new(),
                 images: MockImageRepository::new(),
                 mime_types: MockMimeTypeRepository::new(),
+                movies: MockMovieRepository::new(),
                 music_albums: MockMusicAlbumRepository::new(),
                 music_playlists: MockMusicPlaylistRepository::new(),
                 rolled_back: Arc::new(AtomicBool::new(false)),
+                series: MockSeriesRepository::new(),
                 uploads: MockUploadRepository::new(),
                 users: MockUserRepository::new(),
                 videos: MockVideoRepository::new(),
@@ -178,12 +199,20 @@ mod test_helpers {
             &mut self.images
         }
 
+        fn movies(&mut self) -> impl MovieRepository + '_ {
+            &mut self.movies
+        }
+
         fn music_albums(&mut self) -> impl MusicAlbumRepository + '_ {
             &mut self.music_albums
         }
 
         fn music_playlists(&mut self) -> impl MusicPlaylistRepository + '_ {
             &mut self.music_playlists
+        }
+
+        fn series(&mut self) -> impl SeriesRepository + '_ {
+            &mut self.series
         }
 
         fn videos(&mut self) -> impl VideoRepository + '_ {
@@ -455,6 +484,113 @@ mod test_helpers {
     #[must_use]
     pub fn album_release_date() -> NaiveDate {
         NaiveDate::from_ymd_opt(1959, 8, 17).unwrap_or_default()
+    }
+
+    /// The date the video fixtures air or release on.
+    #[must_use]
+    pub fn video_date() -> NaiveDate {
+        NaiveDate::from_ymd_opt(1990, 4, 8).unwrap_or_default()
+    }
+
+    /// Build a progressive video backed by `file_id`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the fixed video values violate the domain rules.
+    pub fn sample_video(video_id: NumericID, file_id: NumericID) -> Result<Video, Box<dyn Error>> {
+        Ok(Video::try_new(
+            video_id,
+            1000.0,
+            "H264".to_owned(),
+            30,
+            1920,
+            1080,
+            "YCbCr".to_owned(),
+            ScanType::Progressive,
+            file_id,
+        )?)
+    }
+
+    /// Build a film named `Movie {id}`, bearing one genre and one video.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the fixed film values violate the domain rules.
+    pub fn sample_movie(id: NumericID) -> Result<Movie, Box<dyn Error>> {
+        Ok(Movie::try_new(
+            id,
+            format!("Movie {id}"),
+            "A plot".to_owned(),
+            "US".to_owned(),
+            video_date(),
+            vec!["DRAMA".to_owned()],
+            sample_video(id, id)?,
+        )?)
+    }
+
+    /// Build a show named `Series {id}` with `seasons` and one genre.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the fixed show values violate the domain rules.
+    pub fn sample_series(id: NumericID, seasons: Vec<Season>) -> Result<Series, Box<dyn Error>> {
+        Ok(Series::try_new(
+            id,
+            format!("Series {id}"),
+            "A plot".to_owned(),
+            "US".to_owned(),
+            video_date(),
+            vec!["DRAMA".to_owned()],
+            seasons,
+        )?)
+    }
+
+    /// Build a season at `season_index` holding `episodes`.
+    #[must_use]
+    pub fn sample_season(season_index: u32, episodes: Vec<Episode>) -> Season {
+        Season::new(SeasonIndex::new(season_index), None, episodes)
+    }
+
+    /// Build an episode named `Episode {episode_index}` with one video.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the fixed episode values violate the domain rules.
+    pub fn sample_episode(
+        episode_index: u32,
+        video_id: NumericID,
+    ) -> Result<Episode, Box<dyn Error>> {
+        Ok(Episode::try_new(
+            EpisodeIndex::new(episode_index),
+            format!("Episode {episode_index}"),
+            "A plot".to_owned(),
+            video_date(),
+            sample_video(video_id, video_id)?,
+        )?)
+    }
+
+    /// Expect the caller load to find a standard user named `caller`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the fixed caller cannot be built.
+    pub fn expect_caller(
+        users: &mut MockUserRepository,
+        caller_id: NumericID,
+    ) -> Result<(), Box<dyn Error>> {
+        let caller = User::try_new(
+            caller_id,
+            "caller".to_owned(),
+            None,
+            caller_id,
+            Role::Standard,
+        )?;
+        users
+            .expect_search()
+            .times(1)
+            .withf(move |filter| filter.id == Some(caller_id))
+            .return_once(move |_| Box::pin(async move { Ok(vec![caller]) }));
+        Ok(())
     }
 
     /// Split `response` into its status, `Content-Type` header and decoded JSON

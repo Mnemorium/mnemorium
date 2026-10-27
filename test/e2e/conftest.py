@@ -31,6 +31,8 @@ ME_PATH = f"{API_PREFIX}/user/me"
 
 LIBRARY_GALLERY_PATH = f"{API_PREFIX}/library/gallery"
 LIBRARY_ALBUM_PATH = f"{API_PREFIX}/library/music/album"
+LIBRARY_MOVIE_PATH = f"{API_PREFIX}/library/movie"
+LIBRARY_SERIES_PATH = f"{API_PREFIX}/library/series"
 UPLOAD_PATH = f"{API_PREFIX}/asset/upload"
 
 ROOT_ADMIN_USERNAME = "root"
@@ -552,6 +554,104 @@ def get_album_track(server_url: str) -> Callable[[str, int, int, int], requests.
         )
 
     return _get_album_track
+
+
+@pytest.fixture
+def list_movies(server_url: str) -> Callable[[str, str], requests.Response]:
+    """Return a callable that GETs the film collection with a query string."""
+
+    def _list_movies(token: str, query: str = "") -> requests.Response:
+        return requests.get(
+            f"{server_url}{LIBRARY_MOVIE_PATH}{query}",
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=10,
+        )
+
+    return _list_movies
+
+
+@pytest.fixture
+def get_movie(server_url: str) -> Callable[[str, int], requests.Response]:
+    """Return a callable that GETs one film by its identifier."""
+
+    def _get_movie(token: str, movie_id: int) -> requests.Response:
+        return requests.get(
+            f"{server_url}{LIBRARY_MOVIE_PATH}/{movie_id}",
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=10,
+        )
+
+    return _get_movie
+
+
+@pytest.fixture
+def list_series(server_url: str) -> Callable[[str, str], requests.Response]:
+    """Return a callable that GETs the show collection with a query string."""
+
+    def _list_series(token: str, query: str = "") -> requests.Response:
+        return requests.get(
+            f"{server_url}{LIBRARY_SERIES_PATH}{query}",
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=10,
+        )
+
+    return _list_series
+
+
+@pytest.fixture
+def get_series(server_url: str) -> Callable[[str, int], requests.Response]:
+    """Return a callable that GETs one show by its identifier."""
+
+    def _get_series(token: str, series_id: int) -> requests.Response:
+        return requests.get(
+            f"{server_url}{LIBRARY_SERIES_PATH}/{series_id}",
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=10,
+        )
+
+    return _get_series
+
+
+@pytest.fixture
+def get_series_season(server_url: str) -> Callable[[str, int, int], requests.Response]:
+    """Return a callable that GETs one season of a show."""
+
+    def _get_series_season(token: str, series_id: int, season_index: int) -> requests.Response:
+        return requests.get(
+            f"{server_url}{LIBRARY_SERIES_PATH}/{series_id}/season/{season_index}",
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=10,
+        )
+
+    return _get_series_season
+
+
+@pytest.fixture
+def list_series_episodes(server_url: str) -> Callable[[str, int, int], requests.Response]:
+    """Return a callable that GETs the episodes of one season of a show."""
+
+    def _list_series_episodes(token: str, series_id: int, season_index: int) -> requests.Response:
+        return requests.get(
+            f"{server_url}{LIBRARY_SERIES_PATH}/{series_id}/season/{season_index}/episode",
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=10,
+        )
+
+    return _list_series_episodes
+
+
+@pytest.fixture
+def get_series_episode(server_url: str) -> Callable[[str, int, int, int], requests.Response]:
+    """Return a callable that GETs one episode of a show season."""
+
+    def _get_series_episode(token: str, series_id: int, season_index: int, episode_index: int) -> requests.Response:
+        return requests.get(
+            f"{server_url}{LIBRARY_SERIES_PATH}/{series_id}/season/{season_index}/episode/{episode_index}",
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=10,
+        )
+
+    return _get_series_episode
 
 
 LIBRARY_PLAYLIST_PATH = f"{API_PREFIX}/library/music/playlist"

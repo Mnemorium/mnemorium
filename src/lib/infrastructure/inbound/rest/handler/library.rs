@@ -11,10 +11,17 @@ pub mod get_gallery;
 pub mod get_gallery_item;
 pub mod get_gallery_item_list;
 pub mod get_gallery_list;
+pub mod get_movie;
+pub mod get_movie_list;
 pub mod get_playlist;
 pub mod get_playlist_list;
 pub mod get_playlist_track;
 pub mod get_playlist_track_list;
+pub mod get_series;
+pub mod get_series_episode;
+pub mod get_series_episode_list;
+pub mod get_series_list;
+pub mod get_series_season;
 pub mod patch_playlist;
 pub mod post_gallery;
 pub mod post_gallery_item;
@@ -44,23 +51,39 @@ use crate::application::port::get_album_track::GetAlbumTrackResponse;
 use crate::application::port::get_gallery::GalleryItemSummary;
 use crate::application::port::get_gallery::GetGalleryResponse as GetGalleryResponseData;
 use crate::application::port::get_gallery_item::GetGalleryItemResponse;
+use crate::application::port::get_movie::GetMovieError;
+use crate::application::port::get_movie::GetMovieResponse as GetMovieResponseData;
 use crate::application::port::get_playlist::GetPlaylistError;
 use crate::application::port::get_playlist_track::GetPlaylistTrackError;
+use crate::application::port::get_series::GetSeriesError;
+use crate::application::port::get_series::GetSeriesResponse as GetSeriesResponseData;
+use crate::application::port::get_series_episode::GetSeriesEpisodeError;
+use crate::application::port::get_series_episode::GetSeriesEpisodeResponse;
+use crate::application::port::get_series_season::GetSeriesSeasonError;
+use crate::application::port::get_series_season::GetSeriesSeasonResponse;
 use crate::application::port::list_album_tracks::ListAlbumTracksError;
 use crate::application::port::list_album_tracks::ListAlbumTracksItem;
 use crate::application::port::list_albums::ListAlbumsError;
 use crate::application::port::list_albums::ListAlbumsItem;
 use crate::application::port::list_galleries::ListGalleriesItem;
+use crate::application::port::list_movies::ListMoviesError;
+use crate::application::port::list_movies::ListMoviesItem;
 use crate::application::port::list_playlists::ListPlaylistsError;
 use crate::application::port::list_playlists::ListPlaylistsItem;
+use crate::application::port::list_series::ListSeriesError;
+use crate::application::port::list_series::ListSeriesItem;
+use crate::application::port::list_series_episodes::ListSeriesEpisodesError;
+use crate::application::port::list_series_episodes::ListSeriesEpisodesItem;
 use crate::application::port::remove_playlist_track::RemovePlaylistTrackError;
 use crate::application::port::reorder_playlist_tracks::ReorderPlaylistTracksError;
 use crate::application::port::update_playlist::UpdatePlaylistError;
+use crate::application::port::video_summary::VideoSummary;
 use crate::domain::alias::NumericID;
 use crate::domain::model::gallery_item::GalleryItemMedia;
 use crate::domain::model::music_album::ProductionType;
 use crate::domain::model::music_playlist::MusicPlaylist;
 use crate::domain::model::music_recording::MusicRecording;
+use crate::domain::model::video::ScanType;
 use crate::infrastructure::inbound::rest::api_error::ApiError;
 use crate::infrastructure::inbound::rest::app_state::AppState;
 use crate::infrastructure::inbound::rest::hal::Link;
@@ -79,11 +102,20 @@ use crate::infrastructure::inbound::rest::handler::library::get_gallery::get_gal
 use crate::infrastructure::inbound::rest::handler::library::get_gallery_item::get_gallery_item;
 use crate::infrastructure::inbound::rest::handler::library::get_gallery_item_list::get_gallery_item_list;
 use crate::infrastructure::inbound::rest::handler::library::get_gallery_list::get_gallery_list;
+use crate::infrastructure::inbound::rest::handler::library::get_movie::get_movie;
+use crate::infrastructure::inbound::rest::handler::library::get_movie_list::ListMoviesQuery;
+use crate::infrastructure::inbound::rest::handler::library::get_movie_list::get_movie_list;
 use crate::infrastructure::inbound::rest::handler::library::get_playlist::get_playlist;
 use crate::infrastructure::inbound::rest::handler::library::get_playlist_list::ListPlaylistsQuery;
 use crate::infrastructure::inbound::rest::handler::library::get_playlist_list::get_playlist_list;
 use crate::infrastructure::inbound::rest::handler::library::get_playlist_track::get_playlist_track;
 use crate::infrastructure::inbound::rest::handler::library::get_playlist_track_list::get_playlist_track_list;
+use crate::infrastructure::inbound::rest::handler::library::get_series::get_series;
+use crate::infrastructure::inbound::rest::handler::library::get_series_episode::get_series_episode;
+use crate::infrastructure::inbound::rest::handler::library::get_series_episode_list::get_series_episode_list;
+use crate::infrastructure::inbound::rest::handler::library::get_series_list::ListSeriesQuery;
+use crate::infrastructure::inbound::rest::handler::library::get_series_list::get_series_list;
+use crate::infrastructure::inbound::rest::handler::library::get_series_season::get_series_season;
 use crate::infrastructure::inbound::rest::handler::library::patch_playlist::patch_playlist;
 use crate::infrastructure::inbound::rest::handler::library::post_gallery::post_gallery;
 use crate::infrastructure::inbound::rest::handler::library::post_gallery_item::post_gallery_item;
@@ -714,6 +746,522 @@ impl From<GetAlbumTrackResponse> for TrackResponse {
     }
 }
 
+/// HAL links exposed by a film representation.
+///
+/// The `self` link addresses the film; the video is embedded in the
+/// representation and carries no links of its own (`API-037`).
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[non_exhaustive]
+pub struct MovieLinks {
+    /// Link to the film resource itself.
+    #[serde(rename = "self")]
+    pub self_link: Link,
+}
+
+impl MovieLinks {
+    /// Build the links of the film identified by `movie_id`.
+    #[must_use]
+    pub fn for_movie(movie_id: NumericID) -> Self {
+        Self {
+            self_link: Link::new(&format!("/api/v1/library/movie/{movie_id}")),
+        }
+    }
+}
+
+/// The video backing a film or an episode.
+#[derive(Debug, Serialize, ToSchema)]
+#[non_exhaustive]
+pub struct VideoResponse {
+    /// Codec of the video.
+    pub codec: String,
+    /// Duration of the video, in milliseconds.
+    pub duration_ms: f64,
+    /// Identifier of the backing file.
+    pub file_id: NumericID,
+    /// Height of the video, in pixels.
+    pub height: i64,
+    /// Unique identifier of the video.
+    pub id: NumericID,
+    /// Scan type of the video.
+    pub scan_type: ScanType,
+    /// Width of the video, in pixels.
+    pub width: i64,
+}
+
+impl From<&VideoSummary> for VideoResponse {
+    fn from(video: &VideoSummary) -> Self {
+        Self {
+            codec: video.codec().to_owned(),
+            duration_ms: video.duration_ms(),
+            file_id: video.file_id(),
+            height: video.height(),
+            id: video.id(),
+            scan_type: video.scan_type(),
+            width: video.width(),
+        }
+    }
+}
+
+/// A film representation.
+#[derive(Debug, Serialize, ToSchema)]
+#[non_exhaustive]
+pub struct MovieResponse {
+    /// Country of origin of the film.
+    pub country_of_origin: String,
+    /// Genres of the film, ordered by genre identifier.
+    pub genres: Vec<String>,
+    /// Unique identifier of the film.
+    pub id: NumericID,
+    /// Links to the film.
+    #[serde(rename = "_links")]
+    pub links: MovieLinks,
+    /// Name of the film.
+    pub name: String,
+    /// Plot of the film.
+    pub plot: String,
+    /// Date of the release of the film, in `YYYY-MM-DD` form.
+    pub release_date: String,
+    /// Video backing the film.
+    pub video: VideoResponse,
+}
+
+impl From<&ListMoviesItem> for MovieResponse {
+    fn from(item: &ListMoviesItem) -> Self {
+        Self {
+            country_of_origin: item.country_of_origin().to_owned(),
+            genres: item.genre_ids().to_vec(),
+            id: item.id(),
+            links: MovieLinks::for_movie(item.id()),
+            name: item.name().to_owned(),
+            plot: item.plot().to_owned(),
+            release_date: format_date(item.release_date()),
+            video: VideoResponse::from(item.video()),
+        }
+    }
+}
+
+impl From<&GetMovieResponseData> for MovieResponse {
+    fn from(response: &GetMovieResponseData) -> Self {
+        Self {
+            country_of_origin: response.country_of_origin().to_owned(),
+            genres: response.genre_ids().to_vec(),
+            id: response.id(),
+            links: MovieLinks::for_movie(response.id()),
+            name: response.name().to_owned(),
+            plot: response.plot().to_owned(),
+            release_date: format_date(response.release_date()),
+            video: VideoResponse::from(response.video()),
+        }
+    }
+}
+
+/// HAL links exposed by a film collection representation.
+///
+/// The `self` link addresses the collection view the representation is about,
+/// `next` and `prev` navigate that same view when another page exists, and the
+/// templated `search` link exposes the collection filters (`API-037`,
+/// `API-042`). The active filter and the page size are carried into every link
+/// so a filtered or paginated listing stays navigable.
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[non_exhaustive]
+pub struct MovieListLinks {
+    /// Link to the next page, when one exists.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub next: Option<Link>,
+    /// Link to the previous page, when one exists.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prev: Option<Link>,
+    /// Templated link exposing the collection's search filters.
+    pub search: Link,
+    /// Link to the collection itself.
+    #[serde(rename = "self")]
+    pub self_link: Link,
+}
+
+impl MovieListLinks {
+    /// Build the links of a film collection page.
+    ///
+    /// `query` carries the active filter, `limit` and `offset` are the
+    /// effective page, `returned` is the number of films in the page and
+    /// `total` the number of matching films before pagination.
+    #[must_use]
+    pub fn for_page(
+        query: &ListMoviesQuery,
+        limit: usize,
+        offset: usize,
+        returned: usize,
+        total: usize,
+    ) -> Self {
+        let next = (offset.saturating_add(returned) < total)
+            .then(|| Link::new(&movie_page_href(query, limit, offset.saturating_add(limit))));
+        let prev = (offset > 0)
+            .then(|| Link::new(&movie_page_href(query, limit, offset.saturating_sub(limit))));
+        Self {
+            next,
+            prev,
+            search: Link::templated("/api/v1/library/movie{?name,limit,offset}"),
+            self_link: Link::new(&movie_page_href(query, limit, offset)),
+        }
+    }
+}
+
+/// Films matching the requested filters.
+#[derive(Debug, Serialize, ToSchema)]
+#[non_exhaustive]
+pub struct MovieListResponse {
+    /// The films of the returned page.
+    pub items: Vec<MovieResponse>,
+    /// Navigation links of the collection.
+    #[serde(rename = "_links")]
+    pub links: MovieListLinks,
+}
+
+/// HAL links exposed by a show representation.
+///
+/// The `self` link addresses the show; the seasons are embedded and each
+/// season carries its own links (`API-037`).
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[non_exhaustive]
+pub struct SeriesLinks {
+    /// Link to the show resource itself.
+    #[serde(rename = "self")]
+    pub self_link: Link,
+}
+
+impl SeriesLinks {
+    /// Build the links of the show identified by `series_id`.
+    #[must_use]
+    pub fn for_series(series_id: NumericID) -> Self {
+        Self {
+            self_link: Link::new(&format!("/api/v1/library/series/{series_id}")),
+        }
+    }
+}
+
+/// HAL links exposed by a season representation.
+///
+/// The `self` link addresses the season, the `series` link the show that holds
+/// it, and the `episodes` link the season's episode collection (`API-034`,
+/// `API-037`).
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[non_exhaustive]
+pub struct SeriesSeasonLinks {
+    /// Link to the episode collection of the season.
+    pub episodes: Link,
+    /// Link to the season resource itself.
+    #[serde(rename = "self")]
+    pub self_link: Link,
+    /// Link to the show that holds the season.
+    pub series: Link,
+}
+
+impl SeriesSeasonLinks {
+    /// Build the links of a season identified by its show and index.
+    #[must_use]
+    pub fn for_season(series_id: NumericID, season_index: u32) -> Self {
+        Self {
+            episodes: Link::new(&format!(
+                "/api/v1/library/series/{series_id}/season/{season_index}/episode"
+            )),
+            self_link: Link::new(&format!(
+                "/api/v1/library/series/{series_id}/season/{season_index}"
+            )),
+            series: Link::new(&format!("/api/v1/library/series/{series_id}")),
+        }
+    }
+}
+
+/// HAL links exposed by an episode representation.
+///
+/// The `self` link addresses the episode, the `series` link the show that holds
+/// it, and the `season` link the season that sequences it (`API-034`,
+/// `API-037`).
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[non_exhaustive]
+pub struct SeriesEpisodeLinks {
+    /// Link to the season that sequences the episode.
+    pub season: Link,
+    /// Link to the episode resource itself.
+    #[serde(rename = "self")]
+    pub self_link: Link,
+    /// Link to the show that holds the episode.
+    pub series: Link,
+}
+
+impl SeriesEpisodeLinks {
+    /// Build the links of an episode identified by its show, season and index.
+    #[must_use]
+    pub fn for_episode(series_id: NumericID, season_index: u32, episode_index: u32) -> Self {
+        Self {
+            season: Link::new(&format!(
+                "/api/v1/library/series/{series_id}/season/{season_index}"
+            )),
+            self_link: Link::new(&format!(
+                "/api/v1/library/series/{series_id}/season/{season_index}/episode/{episode_index}"
+            )),
+            series: Link::new(&format!("/api/v1/library/series/{series_id}")),
+        }
+    }
+}
+
+/// One season of a show.
+#[derive(Debug, Serialize, ToSchema)]
+#[non_exhaustive]
+pub struct SeasonResponse {
+    /// Number of episodes the season holds.
+    pub episode_count: usize,
+    /// Series-scoped index of the season.
+    pub index: u32,
+    /// Links to the season, its show and its episode collection.
+    #[serde(rename = "_links")]
+    pub links: SeriesSeasonLinks,
+    /// Name of the season, when set.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    /// Identifier of the show holding the season.
+    pub series_id: NumericID,
+}
+
+impl SeasonResponse {
+    /// Assemble a season representation from its parts.
+    #[must_use]
+    pub fn new(
+        series_id: NumericID,
+        index: u32,
+        name: Option<String>,
+        episode_count: usize,
+    ) -> Self {
+        Self {
+            episode_count,
+            index,
+            links: SeriesSeasonLinks::for_season(series_id, index),
+            name,
+            series_id,
+        }
+    }
+}
+
+impl From<&GetSeriesSeasonResponse> for SeasonResponse {
+    fn from(response: &GetSeriesSeasonResponse) -> Self {
+        Self::new(
+            response.series_id(),
+            response.index(),
+            response.name().map(str::to_owned),
+            response.episode_count(),
+        )
+    }
+}
+
+/// A show representation: its metadata and season summaries.
+#[derive(Debug, Serialize, ToSchema)]
+#[non_exhaustive]
+pub struct SeriesResponse {
+    /// Country of origin of the show.
+    pub country_of_origin: String,
+    /// Date of the first airing of the show, in `YYYY-MM-DD` form.
+    pub first_air_date: String,
+    /// Genres of the show, ordered by genre identifier.
+    pub genres: Vec<String>,
+    /// Unique identifier of the show.
+    pub id: NumericID,
+    /// Links to the show.
+    #[serde(rename = "_links")]
+    pub links: SeriesLinks,
+    /// Name of the show.
+    pub name: String,
+    /// Plot of the show.
+    pub plot: String,
+    /// Seasons of the show, ordered by index.
+    pub seasons: Vec<SeasonResponse>,
+}
+
+impl From<&GetSeriesResponseData> for SeriesResponse {
+    fn from(response: &GetSeriesResponseData) -> Self {
+        Self {
+            country_of_origin: response.country_of_origin().to_owned(),
+            first_air_date: format_date(response.first_air_date()),
+            genres: response.genre_ids().to_vec(),
+            id: response.id(),
+            links: SeriesLinks::for_series(response.id()),
+            name: response.name().to_owned(),
+            plot: response.plot().to_owned(),
+            seasons: response
+                .seasons()
+                .iter()
+                .map(|season| {
+                    SeasonResponse::new(
+                        response.id(),
+                        season.index(),
+                        season.name().map(str::to_owned),
+                        season.episode_count(),
+                    )
+                })
+                .collect(),
+        }
+    }
+}
+
+/// One show of a listing: its identifier and name only.
+#[derive(Debug, Serialize, ToSchema)]
+#[non_exhaustive]
+pub struct SeriesSummaryResponse {
+    /// Unique identifier of the show.
+    pub id: NumericID,
+    /// Links to the show.
+    #[serde(rename = "_links")]
+    pub links: SelfLinks,
+    /// Name of the show.
+    pub name: String,
+}
+
+impl From<&ListSeriesItem> for SeriesSummaryResponse {
+    fn from(item: &ListSeriesItem) -> Self {
+        Self {
+            id: item.id(),
+            links: SelfLinks::new(&format!("/api/v1/library/series/{}", item.id())),
+            name: item.name().to_owned(),
+        }
+    }
+}
+
+/// HAL links exposed by a show collection representation.
+///
+/// The `self` link addresses the collection view the representation is about,
+/// `next` and `prev` navigate that same view when another page exists, and the
+/// templated `search` link exposes the collection filters (`API-037`,
+/// `API-042`).
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[non_exhaustive]
+pub struct SeriesListLinks {
+    /// Link to the next page, when one exists.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub next: Option<Link>,
+    /// Link to the previous page, when one exists.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prev: Option<Link>,
+    /// Templated link exposing the collection's search filters.
+    pub search: Link,
+    /// Link to the collection itself.
+    #[serde(rename = "self")]
+    pub self_link: Link,
+}
+
+impl SeriesListLinks {
+    /// Build the links of a show collection page.
+    #[must_use]
+    pub fn for_page(
+        query: &ListSeriesQuery,
+        limit: usize,
+        offset: usize,
+        returned: usize,
+        total: usize,
+    ) -> Self {
+        let next = (offset.saturating_add(returned) < total).then(|| {
+            Link::new(&series_page_href(
+                query,
+                limit,
+                offset.saturating_add(limit),
+            ))
+        });
+        let prev = (offset > 0).then(|| {
+            Link::new(&series_page_href(
+                query,
+                limit,
+                offset.saturating_sub(limit),
+            ))
+        });
+        Self {
+            next,
+            prev,
+            search: Link::templated("/api/v1/library/series{?name,limit,offset}"),
+            self_link: Link::new(&series_page_href(query, limit, offset)),
+        }
+    }
+}
+
+/// Shows matching the requested filters.
+#[derive(Debug, Serialize, ToSchema)]
+#[non_exhaustive]
+pub struct SeriesListResponse {
+    /// The shows of the returned page.
+    pub items: Vec<SeriesSummaryResponse>,
+    /// Navigation links of the collection.
+    #[serde(rename = "_links")]
+    pub links: SeriesListLinks,
+}
+
+/// An episode representation.
+#[derive(Debug, Serialize, ToSchema)]
+#[non_exhaustive]
+pub struct EpisodeResponse {
+    /// Date of the first airing of the episode, in `YYYY-MM-DD` form.
+    pub air_date: String,
+    /// Season-scoped index of the episode.
+    pub id: u32,
+    /// Links to the episode, its show and its season.
+    #[serde(rename = "_links")]
+    pub links: SeriesEpisodeLinks,
+    /// Name of the episode.
+    pub name: String,
+    /// Plot of the episode.
+    pub plot: String,
+    /// Series-scoped index of the season holding the episode.
+    pub season_index: u32,
+    /// Identifier of the show holding the episode.
+    pub series_id: NumericID,
+    /// Video backing the episode.
+    pub video: VideoResponse,
+}
+
+impl From<&ListSeriesEpisodesItem> for EpisodeResponse {
+    fn from(item: &ListSeriesEpisodesItem) -> Self {
+        Self {
+            air_date: format_date(item.air_date()),
+            id: item.id(),
+            links: SeriesEpisodeLinks::for_episode(
+                item.series_id(),
+                item.season_index(),
+                item.id(),
+            ),
+            name: item.name().to_owned(),
+            plot: item.plot().to_owned(),
+            season_index: item.season_index(),
+            series_id: item.series_id(),
+            video: VideoResponse::from(item.video()),
+        }
+    }
+}
+
+impl From<&GetSeriesEpisodeResponse> for EpisodeResponse {
+    fn from(response: &GetSeriesEpisodeResponse) -> Self {
+        Self {
+            air_date: format_date(response.air_date()),
+            id: response.id(),
+            links: SeriesEpisodeLinks::for_episode(
+                response.series_id(),
+                response.season_index(),
+                response.id(),
+            ),
+            name: response.name().to_owned(),
+            plot: response.plot().to_owned(),
+            season_index: response.season_index(),
+            series_id: response.series_id(),
+            video: VideoResponse::from(response.video()),
+        }
+    }
+}
+
+/// Episodes of one season.
+#[derive(Debug, Serialize, ToSchema)]
+#[non_exhaustive]
+pub struct EpisodeListResponse {
+    /// The episodes of the season, ordered by index.
+    pub items: Vec<EpisodeResponse>,
+    /// Navigation links of the collection.
+    #[serde(rename = "_links")]
+    pub links: SelfLinks,
+}
+
 /// HAL links exposed by a music playlist representation.
 ///
 /// The `self` link addresses the canonical playlist; the `tracks` link exposes
@@ -1102,6 +1650,87 @@ impl From<GetAlbumTrackError> for ApiError {
     }
 }
 
+/// Map a list-films error to its API error.
+impl From<ListMoviesError> for ApiError {
+    fn from(err: ListMoviesError) -> Self {
+        match err {
+            ListMoviesError::NoSuchCaller => Self::Unauthorized(err.to_string()),
+            ListMoviesError::Unknown(_) => Self::InternalServerError,
+        }
+    }
+}
+
+/// Map a fetch-film error to its API error.
+impl From<GetMovieError> for ApiError {
+    fn from(err: GetMovieError) -> Self {
+        match err {
+            GetMovieError::NoSuchMovie => Self::NotFound(err.to_string()),
+            GetMovieError::NoSuchCaller => Self::Unauthorized(err.to_string()),
+            GetMovieError::Unknown(_) => Self::InternalServerError,
+        }
+    }
+}
+
+/// Map a list-shows error to its API error.
+impl From<ListSeriesError> for ApiError {
+    fn from(err: ListSeriesError) -> Self {
+        match err {
+            ListSeriesError::NoSuchCaller => Self::Unauthorized(err.to_string()),
+            ListSeriesError::Unknown(_) => Self::InternalServerError,
+        }
+    }
+}
+
+/// Map a fetch-show error to its API error.
+impl From<GetSeriesError> for ApiError {
+    fn from(err: GetSeriesError) -> Self {
+        match err {
+            GetSeriesError::NoSuchSeries => Self::NotFound(err.to_string()),
+            GetSeriesError::NoSuchCaller => Self::Unauthorized(err.to_string()),
+            GetSeriesError::Unknown(_) => Self::InternalServerError,
+        }
+    }
+}
+
+/// Map a fetch-season error to its API error.
+impl From<GetSeriesSeasonError> for ApiError {
+    fn from(err: GetSeriesSeasonError) -> Self {
+        match err {
+            GetSeriesSeasonError::NoSuchSeries | GetSeriesSeasonError::NoSuchSeason => {
+                Self::NotFound(err.to_string())
+            }
+            GetSeriesSeasonError::NoSuchCaller => Self::Unauthorized(err.to_string()),
+            GetSeriesSeasonError::Unknown(_) => Self::InternalServerError,
+        }
+    }
+}
+
+/// Map a list-episodes error to its API error.
+impl From<ListSeriesEpisodesError> for ApiError {
+    fn from(err: ListSeriesEpisodesError) -> Self {
+        match err {
+            ListSeriesEpisodesError::NoSuchSeries | ListSeriesEpisodesError::NoSuchSeason => {
+                Self::NotFound(err.to_string())
+            }
+            ListSeriesEpisodesError::NoSuchCaller => Self::Unauthorized(err.to_string()),
+            ListSeriesEpisodesError::Unknown(_) => Self::InternalServerError,
+        }
+    }
+}
+
+/// Map a fetch-episode error to its API error.
+impl From<GetSeriesEpisodeError> for ApiError {
+    fn from(err: GetSeriesEpisodeError) -> Self {
+        match err {
+            GetSeriesEpisodeError::NoSuchSeries
+            | GetSeriesEpisodeError::NoSuchSeason
+            | GetSeriesEpisodeError::NoSuchEpisode => Self::NotFound(err.to_string()),
+            GetSeriesEpisodeError::NoSuchCaller => Self::Unauthorized(err.to_string()),
+            GetSeriesEpisodeError::Unknown(_) => Self::InternalServerError,
+        }
+    }
+}
+
 /// Canonical URI reference of the gallery item identified by `item_id`.
 #[must_use]
 pub(crate) fn gallery_item_self_href(gallery_id: NumericID, item_id: NumericID) -> String {
@@ -1222,6 +1851,60 @@ fn album_page_href(query: &ListAlbumsQuery, limit: usize, offset: usize) -> Stri
     href
 }
 
+/// Build the href of the film collection view at `limit`/`offset`, preserving
+/// the active filter so a filtered page keeps its navigation (`API-037`).
+fn movie_page_href(query: &ListMoviesQuery, limit: usize, offset: usize) -> String {
+    let mut href = String::from("/api/v1/library/movie?");
+    push_name_filter(&mut href, query.name.as_deref());
+    href.push_str("limit=");
+    href.push_str(&limit.to_string());
+    href.push_str("&offset=");
+    href.push_str(&offset.to_string());
+    href
+}
+
+/// Build the href of the show collection view at `limit`/`offset`, preserving
+/// the active filter so a filtered page keeps its navigation (`API-037`).
+fn series_page_href(query: &ListSeriesQuery, limit: usize, offset: usize) -> String {
+    let mut href = String::from("/api/v1/library/series?");
+    push_name_filter(&mut href, query.name.as_deref());
+    href.push_str("limit=");
+    href.push_str(&limit.to_string());
+    href.push_str("&offset=");
+    href.push_str(&offset.to_string());
+    href
+}
+
+/// Append the percent-encoded `name` filter to `href`, when one is active.
+///
+/// The unreserved character set keeps the value inside the query string, so it
+/// cannot break out of it.
+fn push_name_filter(href: &mut String, name: Option<&str>) {
+    let Some(filter) = name else {
+        return;
+    };
+    href.push_str("name=");
+    for byte in filter.bytes() {
+        match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' => {
+                href.push(char::from(byte));
+            }
+            _ => {
+                let high = char::from_digit(u32::from(byte >> 4u8), 16)
+                    .unwrap_or('0')
+                    .to_ascii_uppercase();
+                let low = char::from_digit(u32::from(byte & 0x0fu8), 16)
+                    .unwrap_or('0')
+                    .to_ascii_uppercase();
+                href.push('%');
+                href.push(high);
+                href.push(low);
+            }
+        }
+    }
+    href.push('&');
+}
+
 /// Parse a music album identifier from a path segment.
 pub(crate) fn parse_album_id(value: &str) -> Result<NumericID, ApiError> {
     value.parse::<NumericID>().map_err(|_| {
@@ -1236,6 +1919,34 @@ pub(crate) fn parse_album_id(value: &str) -> Result<NumericID, ApiError> {
             "rejected a malformed music album identifier"
         );
         ApiError::BadRequest("invalid music album identifier".to_owned())
+    })
+}
+
+/// Parse a `u32` season index from a path segment.
+pub(crate) fn parse_season_index(value: &str) -> Result<u32, ApiError> {
+    value.parse::<u32>().map_err(|_| {
+        warn!(
+            target: "security",
+            event = "input_validation_failed",
+            field = "season_index",
+            reason = "invalid_index",
+            "rejected a malformed season index"
+        );
+        ApiError::BadRequest("invalid season index".to_owned())
+    })
+}
+
+/// Parse a show identifier from a path segment.
+pub(crate) fn parse_series_id(value: &str) -> Result<NumericID, ApiError> {
+    value.parse::<NumericID>().map_err(|_| {
+        warn!(
+            target: "security",
+            event = "input_validation_failed",
+            field = "series_id",
+            reason = "invalid_identifier",
+            "rejected a malformed show identifier"
+        );
+        ApiError::BadRequest("invalid show identifier".to_owned())
     })
 }
 
@@ -1334,6 +2045,26 @@ pub fn library_routes(state: &AppState) -> Router {
             get(get_gallery_item).delete(delete_gallery_item),
         );
 
+    let movie: Router<AppState> = Router::new()
+        .route("/movie", get(get_movie_list))
+        .route("/movie/{movie_id}", get(get_movie));
+
+    let series: Router<AppState> = Router::new()
+        .route("/series", get(get_series_list))
+        .route("/series/{series_id}", get(get_series))
+        .route(
+            "/series/{series_id}/season/{season_index}",
+            get(get_series_season),
+        )
+        .route(
+            "/series/{series_id}/season/{season_index}/episode",
+            get(get_series_episode_list),
+        )
+        .route(
+            "/series/{series_id}/season/{season_index}/episode/{episode_index}",
+            get(get_series_episode),
+        );
+
     let playlist: Router<AppState> = Router::new()
         .route(
             "/music/playlist",
@@ -1356,7 +2087,9 @@ pub fn library_routes(state: &AppState) -> Router {
 
     gallery
         .merge(album)
+        .merge(movie)
         .merge(playlist)
+        .merge(series)
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
             authenticate::<JwtTokenProvider>,
@@ -1388,11 +2121,37 @@ mod tests {
     use crate::application::port::get_gallery::GetGalleryResponse;
     use crate::application::port::get_gallery::GetGalleryUseCase;
     use crate::application::port::get_gallery::MockGetGalleryUseCase;
+    use crate::application::port::get_movie::GetMovieResponse;
+    use crate::application::port::get_movie::GetMovieUseCase;
+    use crate::application::port::get_movie::MockGetMovieUseCase;
+    use crate::application::port::get_series::GetSeriesResponse;
+    use crate::application::port::get_series::GetSeriesUseCase;
+    use crate::application::port::get_series::MockGetSeriesUseCase;
+    use crate::application::port::get_series_episode::GetSeriesEpisodeResponse;
+    use crate::application::port::get_series_episode::GetSeriesEpisodeUseCase;
+    use crate::application::port::get_series_episode::MockGetSeriesEpisodeUseCase;
+    use crate::application::port::get_series_season::GetSeriesSeasonResponse;
+    use crate::application::port::get_series_season::GetSeriesSeasonUseCase;
+    use crate::application::port::get_series_season::MockGetSeriesSeasonUseCase;
     use crate::application::port::library_use_case_factory::MockLibraryUseCaseFactory;
+    use crate::application::port::list_movies::ListMoviesResponse;
+    use crate::application::port::list_movies::ListMoviesUseCase;
+    use crate::application::port::list_movies::MockListMoviesUseCase;
+    use crate::application::port::list_series::ListSeriesResponse;
+    use crate::application::port::list_series::ListSeriesUseCase;
+    use crate::application::port::list_series::MockListSeriesUseCase;
+    use crate::application::port::list_series_episodes::ListSeriesEpisodesResponse;
+    use crate::application::port::list_series_episodes::ListSeriesEpisodesUseCase;
+    use crate::application::port::list_series_episodes::MockListSeriesEpisodesUseCase;
+    use crate::application::port::video_summary::VideoSummary;
     use crate::domain::port::token_provider::TokenProvider as _;
+    use crate::infrastructure::inbound::rest::app_state::AppState;
     use crate::infrastructure::outbound::jwt::token_provider::JwtTokenProvider;
     use crate::test_helpers::TEST_JWT_SECRET;
     use crate::test_helpers::app_state_with_library;
+    use crate::test_helpers::sample_episode;
+    use crate::test_helpers::sample_movie;
+    use crate::test_helpers::video_date;
 
     /// A fixed instant the fixtures timestamp with.
     fn ts() -> NaiveDateTime {
@@ -1507,6 +2266,235 @@ mod tests {
 
         // Assert
         assert_eq!(response.status(), StatusCode::NO_CONTENT);
+        Ok(())
+    }
+
+    /// Drive one route through the real router and return the response.
+    async fn reach(state: &AppState, uri: &str) -> Result<Response, Box<dyn Error>> {
+        let request = Request::builder()
+            .method("GET")
+            .uri(uri)
+            .header(header::AUTHORIZATION, format!("Bearer {}", bearer().await?))
+            .body(Body::empty())?;
+        Ok(library_routes(state).oneshot(request).await?)
+    }
+
+    #[tokio::test]
+    async fn library_routes_movie_list_route_reaches_handler() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let mut use_case = MockListMoviesUseCase::new();
+        use_case
+            .expect_execute()
+            .times(1)
+            .return_once(|_| Box::pin(async { Ok(ListMoviesResponse::new(Vec::new(), 0)) }));
+        let mut factory = MockLibraryUseCaseFactory::new();
+        factory
+            .expect_list_movies()
+            .times(0..=1)
+            .return_once(move || Arc::new(use_case) as Arc<dyn ListMoviesUseCase>);
+        let state = app_state_with_library(Arc::new(factory))?;
+
+        // Act
+        let response = reach(&state, "/movie").await?;
+
+        // Assert
+        assert_eq!(
+            response.status(),
+            StatusCode::OK,
+            "the film collection route must reach its handler"
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn library_routes_movie_route_reaches_handler() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let movie = sample_movie(3)?;
+        let response_data = GetMovieResponse::new(
+            movie.id(),
+            movie.name().to_owned(),
+            movie.plot().to_owned(),
+            movie.country_of_origin().to_owned(),
+            movie.release_date(),
+            movie.genre_ids().to_vec(),
+            VideoSummary::from(movie.video()),
+        );
+        let mut use_case = MockGetMovieUseCase::new();
+        use_case.expect_execute().times(1).return_once(move |_| {
+            let copy = response_data.clone();
+            Box::pin(async move { Ok(copy) })
+        });
+        let mut factory = MockLibraryUseCaseFactory::new();
+        factory
+            .expect_get_movie()
+            .times(0..=1)
+            .return_once(move || Arc::new(use_case) as Arc<dyn GetMovieUseCase>);
+        let state = app_state_with_library(Arc::new(factory))?;
+
+        // Act
+        let response = reach(&state, "/movie/3").await?;
+
+        // Assert
+        assert_eq!(
+            response.status(),
+            StatusCode::OK,
+            "the film route must reach its handler"
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn library_routes_series_list_route_reaches_handler() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let mut use_case = MockListSeriesUseCase::new();
+        use_case
+            .expect_execute()
+            .times(1)
+            .return_once(|_| Box::pin(async { Ok(ListSeriesResponse::new(Vec::new(), 0)) }));
+        let mut factory = MockLibraryUseCaseFactory::new();
+        factory
+            .expect_list_series()
+            .times(0..=1)
+            .return_once(move || Arc::new(use_case) as Arc<dyn ListSeriesUseCase>);
+        let state = app_state_with_library(Arc::new(factory))?;
+
+        // Act
+        let response = reach(&state, "/series").await?;
+
+        // Assert
+        assert_eq!(
+            response.status(),
+            StatusCode::OK,
+            "the show collection route must reach its handler"
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn library_routes_series_route_reaches_handler() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let response_data = GetSeriesResponse::new(
+            3,
+            "Twin Peaks".to_owned(),
+            "A plot".to_owned(),
+            "US".to_owned(),
+            video_date(),
+            Vec::new(),
+            Vec::new(),
+        );
+        let mut use_case = MockGetSeriesUseCase::new();
+        use_case.expect_execute().times(1).return_once(move |_| {
+            let copy = response_data.clone();
+            Box::pin(async move { Ok(copy) })
+        });
+        let mut factory = MockLibraryUseCaseFactory::new();
+        factory
+            .expect_get_series()
+            .times(0..=1)
+            .return_once(move || Arc::new(use_case) as Arc<dyn GetSeriesUseCase>);
+        let state = app_state_with_library(Arc::new(factory))?;
+
+        // Act
+        let response = reach(&state, "/series/3").await?;
+
+        // Assert
+        assert_eq!(
+            response.status(),
+            StatusCode::OK,
+            "the show route must reach its handler"
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn library_routes_series_season_route_reaches_handler() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let mut use_case = MockGetSeriesSeasonUseCase::new();
+        use_case
+            .expect_execute()
+            .times(1)
+            .return_once(|_| Box::pin(async { Ok(GetSeriesSeasonResponse::new(3, 1, None, 0)) }));
+        let mut factory = MockLibraryUseCaseFactory::new();
+        factory
+            .expect_get_series_season()
+            .times(0..=1)
+            .return_once(move || Arc::new(use_case) as Arc<dyn GetSeriesSeasonUseCase>);
+        let state = app_state_with_library(Arc::new(factory))?;
+
+        // Act
+        let response = reach(&state, "/series/3/season/1").await?;
+
+        // Assert
+        assert_eq!(
+            response.status(),
+            StatusCode::OK,
+            "the season route must reach its handler"
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn library_routes_series_episode_list_route_reaches_handler() -> Result<(), Box<dyn Error>>
+    {
+        // Arrange
+        let mut use_case = MockListSeriesEpisodesUseCase::new();
+        use_case
+            .expect_execute()
+            .times(1)
+            .return_once(|_| Box::pin(async { Ok(ListSeriesEpisodesResponse::new(Vec::new())) }));
+        let mut factory = MockLibraryUseCaseFactory::new();
+        factory
+            .expect_list_series_episodes()
+            .times(0..=1)
+            .return_once(move || Arc::new(use_case) as Arc<dyn ListSeriesEpisodesUseCase>);
+        let state = app_state_with_library(Arc::new(factory))?;
+
+        // Act
+        let response = reach(&state, "/series/3/season/1/episode").await?;
+
+        // Assert
+        assert_eq!(
+            response.status(),
+            StatusCode::OK,
+            "the episode collection route must reach its handler"
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn library_routes_series_episode_route_reaches_handler() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let episode = sample_episode(1, 11)?;
+        let response_data = GetSeriesEpisodeResponse::new(
+            episode.index().value(),
+            3,
+            1,
+            episode.name().to_owned(),
+            episode.plot().to_owned(),
+            episode.air_date(),
+            VideoSummary::from(episode.video()),
+        );
+        let mut use_case = MockGetSeriesEpisodeUseCase::new();
+        use_case.expect_execute().times(1).return_once(move |_| {
+            let copy = response_data.clone();
+            Box::pin(async move { Ok(copy) })
+        });
+        let mut factory = MockLibraryUseCaseFactory::new();
+        factory
+            .expect_get_series_episode()
+            .times(0..=1)
+            .return_once(move || Arc::new(use_case) as Arc<dyn GetSeriesEpisodeUseCase>);
+        let state = app_state_with_library(Arc::new(factory))?;
+
+        // Act
+        let response = reach(&state, "/series/3/season/1/episode/1").await?;
+
+        // Assert
+        assert_eq!(
+            response.status(),
+            StatusCode::OK,
+            "the episode route must reach its handler"
+        );
         Ok(())
     }
 }
