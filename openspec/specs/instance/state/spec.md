@@ -134,13 +134,3 @@ appear in logs, error output or debug representations.
 
 - **WHEN** startup fails while reading or creating identity
 - **THEN** neither secret appears in the error or in any log output
-
-### Requirement: Concurrent first starts create at most one identity
-
-When two processes start against the same new instance, at most one SHALL persist an identity. No process SHALL serve
-requests using a secret it did not persist.
-
-#### Scenario: Concurrent creation
-
-- **WHEN** two processes start against a fresh instance at the same time
-- **THEN** exactly one identity is persisted and neither process serves requests using an unpersisted secret

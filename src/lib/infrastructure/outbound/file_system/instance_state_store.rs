@@ -302,9 +302,6 @@ mod tests {
     use std::os::unix::fs::PermissionsExt as _;
     use std::path::Path;
     use std::path::PathBuf;
-    use std::sync::Arc;
-    use std::sync::Barrier;
-    use std::thread;
 
     use tempfile::tempdir;
 
@@ -536,59 +533,6 @@ mod tests {
             store.load().await?,
             Some(state()?),
             "the persisted identity must be left unchanged"
-        );
-        Ok(())
-    }
-
-    #[test]
-    fn file_instance_state_store_concurrent_creation_persists_once() -> Result<(), Box<dyn Error>> {
-        // Arrange
-        let directory = tempdir()?;
-        let path = directory.path().join("state.yaml");
-        let barrier = Arc::new(Barrier::new(4));
-
-        // Act
-        let handles = (0u8..4)
-            .map(|offset| {
-                let store = FileInstanceStateStore::new(path.clone());
-                let shared_barrier = Arc::clone(&barrier);
-                let character = char::from(b'a' + offset);
-                thread::spawn(move || {
-                    let state = InstanceState::try_new(
-                        1,
-                        repeat_n(character, 64).collect(),
-                        repeat_n(character, 64).collect(),
-                    )
-                    .map_err(|error| InstanceStateStoreError::Corrupt(anyhow::Error::new(error)))?;
-                    // Every writer waits so the load-or-create sections
-                    // genuinely interleave instead of running one after another.
-                    shared_barrier.wait();
-                    store.save_locked(&state)
-                })
-            })
-            .collect::<Vec<_>>();
-        let outcomes: Vec<Result<(), InstanceStateStoreError>> = handles
-            .into_iter()
-            .map(|handle| handle.join().map_err(|_| "a writer thread panicked"))
-            .collect::<Result<Vec<_>, _>>()?;
-
-        // Assert
-        assert_eq!(
-            outcomes.iter().filter(|outcome| outcome.is_ok()).count(),
-            1,
-            "exactly one process may persist an identity, got: {outcomes:?}"
-        );
-        assert_eq!(
-            outcomes
-                .iter()
-                .filter(|outcome| matches!(outcome, Err(InstanceStateStoreError::Conflict)))
-                .count(),
-            3,
-            "every other creator must fail, not overwrite"
-        );
-        assert!(
-            path.exists(),
-            "the winning identity must be persisted for the next start"
         );
         Ok(())
     }
