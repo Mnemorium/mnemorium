@@ -277,7 +277,6 @@ mod tests {
     use crate::domain::model::configuration::Configuration;
     use crate::domain::model::configuration::Rotation;
     use crate::domain::model::partial_configuration::PartialAsset;
-    use crate::domain::model::partial_configuration::PartialAssetStorage;
     use crate::domain::model::partial_configuration::PartialAssetUpload;
     use crate::domain::model::partial_configuration::PartialConfiguration;
     use crate::domain::model::partial_configuration::PartialJwt;
