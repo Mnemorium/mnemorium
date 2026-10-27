@@ -632,6 +632,7 @@ mod tests {
 
     use chrono::NaiveDate;
     use chrono::NaiveDateTime;
+    use rstest::rstest;
     use tracing::subscriber::DefaultGuard;
     use tracing::subscriber::set_default;
     use tracing_subscriber::fmt;
@@ -2740,6 +2741,80 @@ mod tests {
                 }))
             })
         });
+        let harness = use_case_with_media(
+            phase_one_uploads,
+            MockFileRepository::new(),
+            MockImageRepository::new(),
+            MockVideoRepository::new(),
+            phase_two_uploads,
+            phase_two_files,
+            MockImageRepository::new(),
+            MockVideoRepository::new(),
+            file_storage,
+            media_probe,
+        );
+
+        // Act
+        let result = harness
+            .use_case
+            .execute(CompleteUploadCommand::new(5, 3))
+            .await;
+
+        // Assert
+        assert!(matches!(result, Err(CompleteUploadError::Unknown(_))));
+        assert!(harness.phase_two_rolled_back.load(Ordering::SeqCst));
+        assert!(!harness.phase_two_committed.load(Ordering::SeqCst));
+        let logs = captured_logs(&buffer);
+        assert!(
+            logs.contains("ERROR") && logs.contains("event=\"application_error\""),
+            "the constructor failure must emit the catalogued application_error: {logs}"
+        );
+        assert!(
+            logs.contains("operation=complete_upload"),
+            "the event must name the owning operation: {logs}"
+        );
+        Ok(())
+    }
+
+    #[rstest]
+    #[case::negative(-1.0f64)]
+    #[case::not_finite(f64::INFINITY)]
+    #[tokio::test]
+    async fn complete_upload_video_with_invalid_duration_returns_unknown(
+        #[case] duration_ms: f64,
+    ) -> Result<(), Box<dyn Error>> {
+        // Arrange: the probe yields a duration the domain constructor rejects
+        // as not finite or negative; no media row is written and the unit rolls
+        // back.
+        let (buffer, _capture) = capture_logs();
+        let resolved = upload_with_mime(5, 3, 4, &[0], false, "video/mp4")?;
+        let mut phase_one_uploads = MockUploadRepository::new();
+        expect_upload(&mut phase_one_uploads, resolved.clone());
+        let mut phase_two_uploads = MockUploadRepository::new();
+        expect_upload(&mut phase_two_uploads, resolved);
+        let mut phase_two_files = MockFileRepository::new();
+        expect_file_create(&mut phase_two_files);
+        let mut file_storage = MockFileStorage::new();
+        expect_integrity_hash(&mut file_storage, DIGEST);
+        expect_promote(&mut file_storage);
+        expect_restore(&mut file_storage);
+        let mut media_probe = MockMediaProbe::new();
+        media_probe
+            .expect_probe_video()
+            .times(1)
+            .returning(move |_| {
+                Box::pin(async move {
+                    Ok(Some(ProbedVideo {
+                        codec: "h264".to_owned(),
+                        color_id: "YCbCr".to_owned(),
+                        duration_ms,
+                        frame_count: 30,
+                        height: 480,
+                        scan_type: ScanType::Progressive,
+                        width: 640,
+                    }))
+                })
+            });
         let harness = use_case_with_media(
             phase_one_uploads,
             MockFileRepository::new(),

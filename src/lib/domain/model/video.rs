@@ -4,6 +4,9 @@ use crate::domain::alias::NumericID;
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum VideoError {
+    /// The duration is not finite or is negative.
+    #[error("video duration must be finite and non-negative")]
+    InvalidDurationMs,
     /// The frame count is not positive.
     #[error("video frame count must be greater than zero")]
     InvalidFrameCount,
@@ -105,14 +108,16 @@ impl Video {
         self.scan_type
     }
 
-    /// Initialise a new `Video`, validating `frame_count`, `width` and
-    /// `height`.
+    /// Initialise a new `Video`, validating `duration_ms`, `frame_count`,
+    /// `width` and `height`.
     ///
     /// # Errors
     ///
-    /// Returns [`VideoError::InvalidFrameCount`] when `frame_count` is not
-    /// positive, [`VideoError::InvalidWidth`] when `width` is not positive, and
-    /// [`VideoError::InvalidHeight`] when `height` is not positive.
+    /// Returns [`VideoError::InvalidDurationMs`] when `duration_ms` is not
+    /// finite or is negative, [`VideoError::InvalidFrameCount`] when
+    /// `frame_count` is not positive, [`VideoError::InvalidWidth`] when `width`
+    /// is not positive, and [`VideoError::InvalidHeight`] when `height` is not
+    /// positive.
     #[expect(
         clippy::too_many_arguments,
         reason = "try_new mirrors every video column"
@@ -128,6 +133,9 @@ impl Video {
         scan_type: ScanType,
         file_id: NumericID,
     ) -> Result<Self, VideoError> {
+        if !duration_ms.is_finite() || duration_ms < 0.0f64 {
+            return Err(VideoError::InvalidDurationMs);
+        }
         if frame_count <= 0 {
             return Err(VideoError::InvalidFrameCount);
         }
