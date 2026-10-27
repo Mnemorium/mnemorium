@@ -14,6 +14,7 @@ CREATE TABLE video (
         color_id
     ),
     CONSTRAINT fk_video_file FOREIGN KEY (file_id) REFERENCES file (file_id),
+    CONSTRAINT chk_video_duration_ms CHECK (duration_ms >= 0),
     CONSTRAINT chk_video_frame_count CHECK (frame_count > 0),
     CONSTRAINT chk_video_width CHECK (width > 0),
     CONSTRAINT chk_video_height CHECK (height > 0),
