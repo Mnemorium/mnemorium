@@ -1,3 +1,9 @@
+## [0.25.0](https://github.com/Mnemorium/mnemorium/compare/v0.24.0...v0.25.0) (2026-10-28)
+
+### Features
+
+* **application:** add permission authorization ([#361](https://github.com/Mnemorium/mnemorium/issues/361)) ([c6fea92](https://github.com/Mnemorium/mnemorium/commit/c6fea922f7cbf4d190e700f4c322b8450c7ceafb))
+
 ## [0.24.0](https://github.com/Mnemorium/mnemorium/compare/v0.23.1...v0.24.0) (2026-10-27)
 
 ### Features
