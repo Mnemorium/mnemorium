@@ -6,15 +6,20 @@ use crate::application::port::delete_playlist::DeletePlaylistCommand;
 use crate::application::port::delete_playlist::DeletePlaylistError;
 use crate::application::port::delete_playlist::DeletePlaylistUseCase;
 use crate::application::security_event;
+use crate::domain::model::permission::Action;
+use crate::domain::port::identity_unit_of_work::IdentityUnitOfWork;
 use crate::domain::port::library_unit_of_work::LibraryUnitOfWork;
 use crate::domain::port::music_playlist_repository::MusicPlaylistFilter;
 use crate::domain::port::music_playlist_repository::MusicPlaylistRepository as _;
+use crate::domain::port::permission_repository::PermissionFilter;
+use crate::domain::port::permission_repository::PermissionRepository as _;
 use crate::domain::port::unit_of_work::UnitOfWork as _;
 use crate::domain::port::unit_of_work::UnitOfWorkFactory;
 use crate::domain::port::user_repository::UserFilter;
 use crate::domain::port::user_repository::UserRepository as _;
 use crate::domain::port::user_unit_of_work::UserUnitOfWork;
-use crate::domain::service::library_access::LibraryAccess;
+use crate::domain::service::authorization::Authorization;
+use crate::domain::service::authorization::Decision;
 
 /// Use case implementation for deleting a playlist.
 pub struct DeletePlaylist<F> {
@@ -35,7 +40,7 @@ impl<F: UnitOfWorkFactory> DeletePlaylist<F> {
 impl<F> DeletePlaylistUseCase for DeletePlaylist<F>
 where
     F: UnitOfWorkFactory,
-    F::Uow: LibraryUnitOfWork + UserUnitOfWork,
+    F::Uow: IdentityUnitOfWork + LibraryUnitOfWork + UserUnitOfWork,
 {
     fn execute<'future>(
         &'future self,
@@ -62,6 +67,15 @@ where
                     .next()
                     .ok_or(DeletePlaylistError::NoSuchCaller)?;
 
+                let permissions = unit_of_work
+                    .permissions()
+                    .search(&PermissionFilter {
+                        user_id: Some(caller.id()),
+                        ..PermissionFilter::default()
+                    })
+                    .await
+                    .map_err(|error| DeletePlaylistError::Unknown(error.into()))?;
+
                 let playlist = unit_of_work
                     .music_playlists()
                     .search(&MusicPlaylistFilter {
@@ -74,15 +88,19 @@ where
                     .next()
                     .ok_or(DeletePlaylistError::NoSuchPlaylist)?;
 
-                if !LibraryAccess::can_read_playlist(&playlist, &caller) {
-                    // An invisible playlist is reported exactly like a missing
-                    // one (`API-044`).
-                    security_event::authorization_failed(caller.id(), "delete", "music_playlist");
-                    return Err(DeletePlaylistError::NoSuchPlaylist);
-                }
-                if !playlist.is_owned_by(caller.id()) {
-                    security_event::authorization_failed(caller.id(), "delete", "music_playlist");
-                    return Err(DeletePlaylistError::Forbidden);
+                if let Decision::Deny(denial) =
+                    Authorization::decide(&caller, &permissions, Action::PlaylistManage, &playlist)
+                {
+                    security_event::authorization_failed(
+                        caller.id(),
+                        denial.action().verb(),
+                        denial.action().target(),
+                    );
+                    return Err(if denial.conceals() {
+                        DeletePlaylistError::NoSuchPlaylist
+                    } else {
+                        DeletePlaylistError::Forbidden
+                    });
                 }
 
                 let deleted = unit_of_work
@@ -132,6 +150,7 @@ mod tests {
     use crate::test_helpers::GalleryFactoryHarness;
     use crate::test_helpers::TestFactory;
     use crate::test_helpers::TestUnitOfWork;
+    use crate::test_helpers::no_permissions;
 
     use super::DeletePlaylist;
 
@@ -155,6 +174,7 @@ mod tests {
         playlists: MockMusicPlaylistRepository,
     ) -> GalleryFactoryHarness {
         let unit_of_work = TestUnitOfWork {
+            permissions: no_permissions(),
             music_playlists: playlists,
             users,
             ..TestUnitOfWork::default()
@@ -210,18 +230,43 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn delete_playlist_visible_non_owner_returns_forbidden() -> Result<(), Box<dyn Error>> {
+    async fn delete_playlist_root_admin_deletes_another_users_playlist()
+    -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 0, Role::Admin)?;
+        let mut playlists = MockMusicPlaylistRepository::new();
+        expect_playlist(&mut playlists, playlist(3, 4, "Private", false));
+        playlists
+            .expect_delete()
+            .times(1)
+            .withf(|id| *id == 3)
+            .returning(|_| Box::pin(async { Ok(true) }));
+        let harness = harness_with(users, playlists);
+        let use_case: UseCase = DeletePlaylist::new(Arc::clone(&harness.factory));
+
+        // Act: the Root Admin manages every playlist.
+        let result = use_case.execute(DeletePlaylistCommand::new(0, 3)).await;
+
+        // Assert
+        assert!(result.is_ok());
+        assert!(harness.committed.load(Ordering::SeqCst));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn delete_playlist_visible_non_owner_returns_forbidden() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let mut users = MockUserRepository::new();
+        expect_caller(&mut users, 9, Role::Standard)?;
         let mut playlists = MockMusicPlaylistRepository::new();
         expect_playlist(&mut playlists, playlist(3, 4, "Public", true));
         playlists.expect_delete().times(0);
         let harness = harness_with(users, playlists);
         let use_case: UseCase = DeletePlaylist::new(Arc::clone(&harness.factory));
 
-        // Act: the Root Admin can read but does not own the playlist.
-        let result = use_case.execute(DeletePlaylistCommand::new(0, 3)).await;
+        // Act
+        let result = use_case.execute(DeletePlaylistCommand::new(9, 3)).await;
 
         // Assert
         assert!(matches!(result, Err(DeletePlaylistError::Forbidden)));

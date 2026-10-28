@@ -14,9 +14,9 @@ use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 
 /// Delete a music playlist and its track placements.
 ///
-/// Only the owner may delete a playlist. A caller who can read a public
-/// playlist but is not its owner answers `403 Forbidden`; a playlist the caller
-/// cannot read answers `404 Not Found`. The shared recordings, audio and files
+/// The owner and the Root Admin may delete a playlist. A caller who can read a
+/// playlist but may not manage it answers `403 Forbidden`; one that cannot read
+/// it answers `404 Not Found`. The shared recordings, audio and files
 /// survive.
 #[utoipa::path(
     delete,
@@ -47,7 +47,7 @@ use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
             status = FORBIDDEN,
             body = ErrorBody,
             content_type = "application/hal+json",
-            description = "The caller does not own the playlist"
+            description = "The caller can read the playlist but may not manage it"
         ),
         (
             status = NOT_FOUND,

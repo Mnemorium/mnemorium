@@ -1103,13 +1103,12 @@ application orchestrates that deletion instead; [`PERS-020`](#persistence) is th
 ### 2. Domain services
 
 A domain service is a concrete type under `src/lib/domain/service/` holding a business rule shared by two or more use
-cases: `LibraryAccess` holds the Library visibility and ownership predicates, `NamePolicy` the name rule shared by the
-named Library resources, and `PasswordPolicy` the password rule shared by registration and credential change. It is
-declared as a concrete type rather than an interface, so the application layer calls it directly with no trait between;
-it is stateless, keeping nothing between calls, and performs no I/O; and it receives the models or values it operates on
-as parameters. A domain model never invokes a domain service: the name rule runs in the use case that constructs or
-renames the model, because the use case must see the typed `NamePolicyError` to answer `422` (`API-045`, `API-041`).
-`ARCH-005` states the rule, and `check_arch_005` in `script/rule_enforcer.sh` enforces the model-to-service direction.
+cases. It is declared as a concrete type rather than an interface, so the application layer calls it directly with no
+trait between; it is stateless, keeping nothing between calls, and performs no I/O; and it receives the models or values
+it operates on as parameters. Prefer a domain model's own invariant first: introduce a service only when the same rule
+spans use cases. A domain model never invokes a domain service: the rule runs in the use case that constructs or updates
+the model, because the use case must see the typed error to answer `422` (`API-045`, `API-041`). `ARCH-005` states the
+rule, and `check_arch_005` in `script/rule_enforcer.sh` enforces the model-to-service direction.
 
 ---
 
@@ -2224,6 +2223,20 @@ entity gallery_item {
    * added_at: TEXT <<NN, DF(CURRENT_TIMESTAMP)>>
 }
 
+entity permission {
+   * permission_id: INTEGER <<PK>>
+   --
+   * user_id: INTEGER <<FK, NN, UN(user_id, action_name)>>
+   * action_name: TEXT <<NN, UN(user_id, action_name)>>
+   * scope: TEXT <<NN, CC(scope IN ('ALL', 'PUBLIC_OR_OWNED', 'OWNED', 'LISTED', 'NONE'))>>
+}
+
+entity permission_resource {
+   * permission_id: INTEGER <<PK, FK>>
+   * resource_type: TEXT <<PK>>
+   * resource_id: INTEGER <<PK>>
+}
+
 
 user ||--|| credential
 user ||--o{ music_playlist
@@ -2299,6 +2312,9 @@ language ||--o{ subtitle_stream
 gallery ||--o{ gallery_item
 image ||--o| gallery_item
 video ||--o| gallery_item
+
+user ||--o{ permission
+permission ||--o{ permission_resource
 
 @enduml
 ```
@@ -2888,6 +2904,7 @@ longest-prefix match, and every scope owns at least one path. Adding or removing
 | Tests   | `test-config`    | `test/configuration/**`                   | Configuration tests             |
 | Docs    | `user`           | `README.md`                               | Repository README               |
 | Docs    | `user`           | `docs/index.md`                           | Documentation home page         |
+| Docs    | `user`           | `docs/Permissions.md`                     | Permissions guide               |
 | Docs    | `user`           | `docs/assets/**`                          | Documentation theme assets      |
 | Docs    | `user`           | `docs/openapi.json`                       | Published OpenAPI specification |
 | Docs    | `user`           | `mkdocs.yml`                              | MkDocs site configuration       |
@@ -3106,7 +3123,7 @@ required.
 | Field               | Content                                                                                                                                                                                                                         |
 | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `Description`       | One or two sentences stating the business intent of the use case.                                                                                                                                                               |
-| `Primary actor`     | The actor who initiates the use case, named with a [Glossary](Glossary.md) actor term (`Standard User`, `Admin`, `Root Admin`).                                                                                                 |
+| `Primary actor`     | The actor who initiates the use case, named with a [Glossary](Glossary.md) actor term (`Standard User` or `Admin`); a use case only the Root Admin may perform says so in `Pre condition(s)`.                                   |
 | `Parameters`        | One bullet per input the triggering event carries, in business vocabulary (§ 5.4), or `None — the event carries no data.` when it carries none.                                                                                 |
 | `Pre condition(s)`  | One condition per bullet; every condition holds before the use case can run.                                                                                                                                                    |
 | `Trigger`           | One bullet per triggering event, each a single external event (§ 5.3).                                                                                                                                                          |
@@ -3133,9 +3150,9 @@ The actor who initiates the use case is the only actor the entry declares. A par
 external system, a service the use case calls — is named in the flow where it matters; the entry has no field for it.
 
 The entry lists the roles the use case is for, and does not split one role in two when the split changes nothing.
-`Admin` covers every administrator, the Root Admin included; `Root Admin` is listed only when the use case is the Root
-Admin's alone — booting the service, initializing the root account. An override the Root Admin holds over a resource it
-does not own is stated in the flow that grants it, never in the actor list.
+`Admin` covers every administrator, the Root Admin included: a use case only the Root Admin may perform says so in
+`Pre condition(s)`, never by naming a separate actor. An override the Root Admin holds over a resource it does not own
+is stated in the flow that grants it, never in the actor list.
 
 `System` is never an actor. The system's work is the use case's body (§ 5.5), and a trigger only the system can produce
 would break the external-origin rule (§ 5.3). A use case started by the service coming up names the person who starts
@@ -3318,9 +3335,9 @@ reading any entry.
 - **Membership.** A use case appears in exactly one diagram: the one of the section that holds its entry. A capability
   spanning several contexts is filed where it is owned, and [§ 7.3](#73-cross-context-use-cases) governs how its writes
   stay atomic.
-- **Actors.** Only the [Glossary](Glossary.md) actors — `Standard User`, `Admin`, `Root Admin` — declared outside the
-  package. `Admin` covers every administrator, the Root Admin included; `Root Admin` is drawn only where a use case is
-  the Root Admin's alone (§ 5.2).
+- **Actors.** Only the [Glossary](Glossary.md) actors — `Standard User` and `Admin` — declared outside the package.
+  `Admin` covers every administrator, the Root Admin included; a use case only the Root Admin may perform states it in
+  its pre-conditions, never as a distinct actor (§ 5.2).
 - **Nodes.** `usecase "UC-013 - Create a music playlist" as UC013`: the identifier and the business name, joined so
   `check_doc_008` can verify the correspondence.
 - **No invented structure.** No `<<include>>`, no `<<extend>>`, no package the code does not have. The diagram mirrors
@@ -3472,6 +3489,13 @@ event must be one this catalog declares. A field is an identifier, a code or a c
 | `sensitive_data_access`     | `debug` | `actor`, `object`            | a request reads personal data                                                               |
 | `system_object`             | `info`  | `object`, `action`           | a system-level object is created (the instance identity, the Root Admin)                    |
 | `unexpected_http_method`    | `warn`  | `method`, `path`             | a request uses a method the route does not support                                          |
+
+The `authz_failed` fields are a closed vocabulary shared with the permission catalog (`docs/Permissions.md`). `action`
+is the denied action's verb, one of `read`, `moderate`, `manage`, `use`, `write`, `update`, `update_role`, `create` or
+`patch_credential`; `target` is its target, one of `catalog`, `gallery`, `playlist`, `file`, `upload` or `user`. The
+`Authorization` domain service names both, and the application use case that loads the caller, the caller's permissions
+and the resource emits exactly one event per denied decision before mapping the denial. A collection filter that drops
+an item by asking the same service is a negative decision, not a denial, so it emits no event.
 
 An explicit, narrow exception to the field rule above: `authn_failed.claimed_identity` is the submitted username,
 because it is the only identity available when authentication fails and no identifier can stand in for it. The field

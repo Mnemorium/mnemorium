@@ -7,7 +7,12 @@ use crate::application::port::get_series_episode::GetSeriesEpisodeError;
 use crate::application::port::get_series_episode::GetSeriesEpisodeResponse;
 use crate::application::port::get_series_episode::GetSeriesEpisodeUseCase;
 use crate::application::port::video_summary::VideoSummary;
+use crate::application::security_event;
+use crate::domain::model::permission::Action;
+use crate::domain::port::identity_unit_of_work::IdentityUnitOfWork;
 use crate::domain::port::library_unit_of_work::LibraryUnitOfWork;
+use crate::domain::port::permission_repository::PermissionFilter;
+use crate::domain::port::permission_repository::PermissionRepository as _;
 use crate::domain::port::series_repository::SeriesFilter;
 use crate::domain::port::series_repository::SeriesRepository as _;
 use crate::domain::port::unit_of_work::UnitOfWork as _;
@@ -15,6 +20,8 @@ use crate::domain::port::unit_of_work::UnitOfWorkFactory;
 use crate::domain::port::user_repository::UserFilter;
 use crate::domain::port::user_repository::UserRepository as _;
 use crate::domain::port::user_unit_of_work::UserUnitOfWork;
+use crate::domain::service::authorization::Authorization;
+use crate::domain::service::authorization::Decision;
 
 /// Use case implementation for fetching one episode of a season.
 pub struct GetSeriesEpisode<F> {
@@ -35,7 +42,7 @@ impl<F: UnitOfWorkFactory> GetSeriesEpisode<F> {
 impl<F> GetSeriesEpisodeUseCase for GetSeriesEpisode<F>
 where
     F: UnitOfWorkFactory,
-    F::Uow: LibraryUnitOfWork + UserUnitOfWork,
+    F::Uow: IdentityUnitOfWork + LibraryUnitOfWork + UserUnitOfWork,
 {
     fn execute<'future>(
         &'future self,
@@ -56,7 +63,7 @@ where
                 .map_err(|error| GetSeriesEpisodeError::Unknown(error.into()))?;
 
             let result = async {
-                unit_of_work
+                let caller = unit_of_work
                     .users()
                     .search(&UserFilter {
                         id: Some(command.caller_id()),
@@ -67,6 +74,15 @@ where
                     .into_iter()
                     .next()
                     .ok_or(GetSeriesEpisodeError::NoSuchCaller)?;
+
+                let permissions = unit_of_work
+                    .permissions()
+                    .search(&PermissionFilter {
+                        user_id: Some(caller.id()),
+                        ..PermissionFilter::default()
+                    })
+                    .await
+                    .map_err(|error| GetSeriesEpisodeError::Unknown(error.into()))?;
 
                 let shown = unit_of_work
                     .series()
@@ -79,6 +95,16 @@ where
                     .into_iter()
                     .next()
                     .ok_or(GetSeriesEpisodeError::NoSuchSeries)?;
+                if let Decision::Deny(denial) =
+                    Authorization::decide(&caller, &permissions, Action::CatalogRead, &shown)
+                {
+                    security_event::authorization_failed(
+                        caller.id(),
+                        denial.action().verb(),
+                        denial.action().target(),
+                    );
+                    return Err(GetSeriesEpisodeError::NoSuchSeries);
+                }
 
                 let season = shown
                     .seasons()
@@ -140,6 +166,7 @@ mod tests {
     use crate::test_helpers::TestFactory;
     use crate::test_helpers::TestUnitOfWork;
     use crate::test_helpers::expect_caller;
+    use crate::test_helpers::no_permissions;
     use crate::test_helpers::sample_episode;
     use crate::test_helpers::sample_season;
     use crate::test_helpers::sample_series;
@@ -156,6 +183,7 @@ mod tests {
         series: MockSeriesRepository,
     ) -> GalleryFactoryHarness {
         let unit_of_work = TestUnitOfWork {
+            permissions: no_permissions(),
             series,
             users,
             ..TestUnitOfWork::default()

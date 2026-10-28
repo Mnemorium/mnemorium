@@ -84,7 +84,7 @@ def test_the_owner_removes_its_own_item(
     )
 
 
-def test_an_admin_cannot_remove_an_item_from_a_private_gallery(
+def test_an_admin_cannot_remove_an_item_from_a_hidden_gallery(
     create_gallery: Callable[[str, str, bool], requests.Response],
     upload_media: Callable[[str, str, bytes, str], int],
     register_media: Callable[[str, int], int],
@@ -107,12 +107,12 @@ def test_an_admin_cannot_remove_an_item_from_a_private_gallery(
 
     response = delete_gallery_item(admin_token, gallery_id, item_id)
 
-    assert_error_body(response, 403)
+    assert_error_body(response, 404)
     kept = get_gallery_item(standard_user_token, gallery_id, item_id)
     assert kept.status_code == 200, f"the item must survive a denied removal: {kept.text}"
 
 
-def test_another_user_cannot_remove_an_item_from_a_private_gallery(
+def test_another_user_cannot_remove_an_item_from_a_hidden_gallery(
     create_gallery: Callable[[str, str, bool], requests.Response],
     upload_media: Callable[[str, str, bytes, str], int],
     register_media: Callable[[str, int], int],
@@ -135,7 +135,7 @@ def test_another_user_cannot_remove_an_item_from_a_private_gallery(
 
     response = delete_gallery_item(second_standard_user_token, gallery_id, item_id)
 
-    assert_error_body(response, 403)
+    assert_error_body(response, 404)
     kept = get_gallery_item(standard_user_token, gallery_id, item_id)
     assert kept.status_code == 200, f"the item must survive a denied removal: {kept.text}"
 

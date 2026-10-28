@@ -51,19 +51,22 @@ def test_a_visible_non_owner_cannot_delete_a_playlist(
     assert_error_body(response, 403)
 
 
-def test_root_admin_cannot_delete_another_users_playlist(
+def test_root_admin_deletes_another_users_playlist(
     create_playlist: Callable[[str, str, bool], requests.Response],
     delete_playlist: Callable[[str, int], requests.Response],
+    get_playlist: Callable[[str, int], requests.Response],
     assert_error_body: Callable[[requests.Response, int], None],
     standard_user_token: str,
     root_admin_token: str,
 ) -> None:
     created = create_playlist(standard_user_token, f"Root {time.time_ns()}")
     assert created.status_code == 201, f"create failed: {created.status_code} {created.text}"
+    playlist_id = created.json()["id"]
 
-    response = delete_playlist(root_admin_token, created.json()["id"])
+    response = delete_playlist(root_admin_token, playlist_id)
 
-    assert_error_body(response, 403)
+    assert response.status_code == 204, f"delete failed: {response.status_code} {response.text}"
+    assert_error_body(get_playlist(standard_user_token, playlist_id), 404)
 
 
 def test_an_invisible_playlist_answers_not_found(

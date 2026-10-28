@@ -9,9 +9,11 @@ use handler::asset::post_upload::__path_post_upload;
 use handler::asset::post_upload_complete::__path_post_upload_complete;
 use handler::asset::put_upload_chunk::__path_put_upload_chunk;
 use handler::get_health::__path_get_health;
+use handler::identity::get_permission::__path_get_permission;
 use handler::identity::patch_credential::__path_patch_credential;
 use handler::identity::post_login::__path_post_login;
 use handler::identity::post_register::__path_post_register;
+use handler::identity::put_permission::__path_put_permission;
 use handler::library::delete_gallery::__path_delete_gallery;
 use handler::library::delete_gallery_item::__path_delete_gallery_item;
 use handler::library::delete_playlist::__path_delete_playlist;
@@ -57,6 +59,11 @@ use crate::infrastructure::inbound::rest::handler::asset::post_upload::PostUploa
 use crate::infrastructure::inbound::rest::handler::asset::post_upload::PostUploadResponse;
 use crate::infrastructure::inbound::rest::handler::asset::post_upload_complete::PostUploadCompleteResponse;
 use crate::infrastructure::inbound::rest::handler::asset::put_upload_chunk::PutUploadChunkRequest;
+use crate::infrastructure::inbound::rest::handler::identity::PermissionGrantResponse;
+use crate::infrastructure::inbound::rest::handler::identity::PermissionOverrideRequest;
+use crate::infrastructure::inbound::rest::handler::identity::PermissionRequest;
+use crate::infrastructure::inbound::rest::handler::identity::PermissionResource;
+use crate::infrastructure::inbound::rest::handler::identity::PermissionResponse;
 use crate::infrastructure::inbound::rest::handler::identity::patch_credential::PatchCredentialRequest;
 use crate::infrastructure::inbound::rest::handler::identity::post_login::LoginRequest;
 use crate::infrastructure::inbound::rest::handler::identity::post_login::LoginResponse;
@@ -141,8 +148,8 @@ impl utoipa::Modify for SecurityAddon {
     servers(
         (url = "http://0.0.0.0:4080/api/v1", description = "Local development server")
     ),
-    paths(get_health, get_upload, patch_credential, post_login, post_register, post_upload, post_upload_complete, put_upload_chunk, get_me, get_user, get_user_list, patch_user, delete_gallery, delete_gallery_item, delete_playlist, delete_playlist_track, get_album, get_album_list, get_album_medium, get_album_track, get_album_track_list, get_gallery, get_gallery_item, get_gallery_item_list, get_gallery_list, get_movie, get_movie_list, get_playlist, get_playlist_list, get_playlist_track, get_playlist_track_list, get_series, get_series_episode, get_series_episode_list, get_series_list, get_series_season, patch_playlist, post_gallery, post_gallery_item, post_playlist, put_playlist_track),
-    components(schemas(AlbumLinks, AlbumListLinks, AlbumListResponse, AlbumResponse, EpisodeListResponse, EpisodeResponse, ErrorBody, GalleryItemDetailResponse, GalleryItemResponse, GalleryItemType, GalleryLinks, GalleryListLinks, GalleryListResponse, GalleryResponse, GetMeResponse, GetUserListResponse, GetUserResponse, Link, LoginRequest, LoginResponse, MediumLinks, MediumResponse, MovieLinks, MovieListLinks, MovieListResponse, MovieResponse, PatchCredentialRequest, PatchPlaylistRequest, PatchUserRequest, PatchUserResponse, PlaylistLinks, PlaylistListLinks, PlaylistListResponse, PlaylistResponse, PlaylistTrackLinks, PlaylistTrackResponse, PostGalleryItemRequest, PostGalleryRequest, PostPlaylistRequest, PostUploadCompleteResponse, PostUploadRequest, PostUploadResponse, PutUploadChunkRequest, RegisterRequest, RegisterResponse, ReorderPlaylistTracksRequest, Role, ScanType, SeasonResponse, SelfLinks, SeriesEpisodeLinks, SeriesLinks, SeriesListLinks, SeriesListResponse, SeriesResponse, SeriesSeasonLinks, SeriesSummaryResponse, TrackLinks, TrackListResponse, TrackResponse, UploadSessionLinks, UploadSessionResponse, UserListLinks, VideoResponse)),
+    paths(get_health, get_upload, patch_credential, post_login, post_register, post_upload, post_upload_complete, put_upload_chunk, get_me, get_permission, get_user, get_user_list, patch_user, put_permission, delete_gallery, delete_gallery_item, delete_playlist, delete_playlist_track, get_album, get_album_list, get_album_medium, get_album_track, get_album_track_list, get_gallery, get_gallery_item, get_gallery_item_list, get_gallery_list, get_movie, get_movie_list, get_playlist, get_playlist_list, get_playlist_track, get_playlist_track_list, get_series, get_series_episode, get_series_episode_list, get_series_list, get_series_season, patch_playlist, post_gallery, post_gallery_item, post_playlist, put_playlist_track),
+    components(schemas(AlbumLinks, AlbumListLinks, AlbumListResponse, AlbumResponse, EpisodeListResponse, EpisodeResponse, ErrorBody, GalleryItemDetailResponse, GalleryItemResponse, GalleryItemType, GalleryLinks, GalleryListLinks, GalleryListResponse, GalleryResponse, GetMeResponse, GetUserListResponse, GetUserResponse, Link, LoginRequest, LoginResponse, MediumLinks, MediumResponse, MovieLinks, MovieListLinks, MovieListResponse, MovieResponse, PatchCredentialRequest, PatchPlaylistRequest, PatchUserRequest, PatchUserResponse, PermissionGrantResponse, PermissionOverrideRequest, PermissionRequest, PermissionResource, PermissionResponse, PlaylistLinks, PlaylistListLinks, PlaylistListResponse, PlaylistResponse, PlaylistTrackLinks, PlaylistTrackResponse, PostGalleryItemRequest, PostGalleryRequest, PostPlaylistRequest, PostUploadCompleteResponse, PostUploadRequest, PostUploadResponse, PutUploadChunkRequest, RegisterRequest, RegisterResponse, ReorderPlaylistTracksRequest, Role, ScanType, SeasonResponse, SelfLinks, SeriesEpisodeLinks, SeriesLinks, SeriesListLinks, SeriesListResponse, SeriesResponse, SeriesSeasonLinks, SeriesSummaryResponse, TrackLinks, TrackListResponse, TrackResponse, UploadSessionLinks, UploadSessionResponse, UserListLinks, VideoResponse)),
     tags(
         (name = "system", description = "System-level endpoints"),
         (name = "asset", description = "Asset bounded context"),

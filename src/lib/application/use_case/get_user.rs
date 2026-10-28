@@ -7,12 +7,17 @@ use crate::application::port::get_user::GetUserError;
 use crate::application::port::get_user::GetUserResponse;
 use crate::application::port::get_user::GetUserUseCase;
 use crate::application::security_event;
-use crate::domain::model::user::Role;
+use crate::domain::model::permission::Action;
+use crate::domain::port::identity_unit_of_work::IdentityUnitOfWork;
+use crate::domain::port::permission_repository::PermissionFilter;
+use crate::domain::port::permission_repository::PermissionRepository as _;
 use crate::domain::port::unit_of_work::UnitOfWork as _;
 use crate::domain::port::unit_of_work::UnitOfWorkFactory;
 use crate::domain::port::user_repository::UserFilter;
 use crate::domain::port::user_repository::UserRepository as _;
 use crate::domain::port::user_unit_of_work::UserUnitOfWork;
+use crate::domain::service::authorization::Authorization;
+use crate::domain::service::authorization::Decision;
 
 /// Use case implementation for fetching a user by identifier.
 pub struct GetUser<F> {
@@ -33,7 +38,7 @@ impl<F: UnitOfWorkFactory> GetUser<F> {
 impl<F> GetUserUseCase for GetUser<F>
 where
     F: UnitOfWorkFactory,
-    F::Uow: UserUnitOfWork,
+    F::Uow: IdentityUnitOfWork + UserUnitOfWork,
 {
     fn execute<'future>(
         &'future self,
@@ -59,10 +64,6 @@ where
                     .into_iter()
                     .next()
                     .ok_or(GetUserError::NoSuchCaller)?;
-                if caller.role() != Role::Admin {
-                    security_event::authorization_failed(caller.id(), "read", "user");
-                    return Err(GetUserError::NotAdmin);
-                }
 
                 let user = unit_of_work
                     .users()
@@ -75,6 +76,25 @@ where
                     .into_iter()
                     .next()
                     .ok_or(GetUserError::NoSuchUser)?;
+
+                let permissions = unit_of_work
+                    .permissions()
+                    .search(&PermissionFilter {
+                        user_id: Some(caller.id()),
+                        ..PermissionFilter::default()
+                    })
+                    .await
+                    .map_err(|error| GetUserError::Unknown(error.into()))?;
+                if let Decision::Deny(denial) =
+                    Authorization::decide(&caller, &permissions, Action::UserRead, &user)
+                {
+                    security_event::authorization_failed(
+                        caller.id(),
+                        denial.action().verb(),
+                        denial.action().target(),
+                    );
+                    return Err(GetUserError::NotAdmin);
+                }
 
                 Ok(GetUserResponse::new(
                     user.id(),
@@ -114,13 +134,19 @@ mod tests {
     use crate::application::port::get_user::GetUserCommand;
     use crate::application::port::get_user::GetUserError;
     use crate::application::port::get_user::GetUserUseCase as _;
+    use crate::domain::model::permission::Action;
+    use crate::domain::model::permission::Permission;
+    use crate::domain::model::permission::Scope;
     use crate::domain::model::user::Role;
     use crate::domain::model::user::User;
     use crate::domain::model::user::UserError;
     use crate::domain::port::error::RepositoryError;
+    use crate::domain::port::permission_repository::MockPermissionRepository;
     use crate::domain::port::user_repository::MockUserRepository;
     use crate::test_helpers::TestFactory;
     use crate::test_helpers::TestUnitOfWork;
+    use crate::test_helpers::expect_permissions;
+    use crate::test_helpers::no_permissions;
 
     use super::GetUser;
 
@@ -143,6 +169,7 @@ mod tests {
         setup(&mut user_repository)?;
 
         let unit_of_work = TestUnitOfWork {
+            permissions: no_permissions(),
             users: user_repository,
             ..TestUnitOfWork::default()
         };
@@ -246,9 +273,13 @@ mod tests {
             let caller = user(1, "alice", None, Role::Standard)?;
             user_repository
                 .expect_search()
-                .times(1)
                 .withf(|filter| filter.id == Some(1))
                 .return_once(move |_| Box::pin(async move { Ok(vec![caller]) }));
+            let target = user(2, "brad", None, Role::Standard)?;
+            user_repository
+                .expect_search()
+                .withf(|filter| filter.id == Some(2))
+                .return_once(move |_| Box::pin(async move { Ok(vec![target]) }));
             Ok(())
         })?;
         let command = GetUserCommand::new(1, 2);
@@ -259,6 +290,43 @@ mod tests {
         // Assert
         assert!(matches!(result, Err(GetUserError::NotAdmin)));
         assert!(harness.rolled_back.load(Ordering::SeqCst));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn get_user_standard_caller_granted_read_returns_profile() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let mut user_repository = MockUserRepository::new();
+        let caller = user(1, "alice", None, Role::Standard)?;
+        user_repository
+            .expect_search()
+            .withf(|filter| filter.id == Some(1))
+            .return_once(move |_| Box::pin(async move { Ok(vec![caller]) }));
+        let target = user(2, "brad", None, Role::Standard)?;
+        user_repository
+            .expect_search()
+            .withf(|filter| filter.id == Some(2))
+            .return_once(move |_| Box::pin(async move { Ok(vec![target]) }));
+        let mut permissions = MockPermissionRepository::new();
+        expect_permissions(
+            &mut permissions,
+            1,
+            vec![Permission::try_new(1, Action::UserRead, Scope::All)?],
+        );
+        let unit_of_work = TestUnitOfWork {
+            permissions,
+            users: user_repository,
+            ..TestUnitOfWork::default()
+        };
+        let factory = TestFactory::new(unit_of_work);
+        let use_case: UseCase = GetUser::new(Arc::new(factory));
+        let command = GetUserCommand::new(1, 2);
+
+        // Act
+        let response = use_case.execute(command).await?;
+
+        // Assert
+        assert_eq!(response.id(), 2);
         Ok(())
     }
 

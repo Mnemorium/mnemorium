@@ -886,7 +886,7 @@
         "type": "object"
       },
       "PatchPlaylistRequest": {
-        "description": "Payload to update a playlist's metadata and/or append a recording.\n\nEvery field is optional. `name` and `is_public` are owner-only; `add_track`\nis allowed to any caller who can read the playlist. A request mixing an\nowner-only field with `add_track` from a non-owner is rejected as a whole.",
+        "description": "Payload to update a playlist's metadata and/or append a recording.\n\nEvery field is optional. `name` and `is_public` require `playlist.manage`,\nwhich the role presets grant to the owner and the Root Admin; `add_track`\nrequires `playlist.moderate`. A request mixing the two from a caller that\nmay moderate but not manage is rejected as a whole.",
         "properties": {
           "add_track": {
             "oneOf": [
@@ -985,6 +985,130 @@
           "_links",
           "role",
           "username"
+        ],
+        "type": "object"
+      },
+      "PermissionGrantResponse": {
+        "description": "One action's scope in a permission representation.",
+        "properties": {
+          "action": {
+            "description": "Stored name of the action (`playlist.read`).",
+            "type": "string"
+          },
+          "resources": {
+            "description": "Aggregates a `LISTED` scope names; empty otherwise.",
+            "items": {
+              "$ref": "#/components/schemas/PermissionResource"
+            },
+            "type": "array"
+          },
+          "scope": {
+            "description": "The scope the action grants (`ALL`, `LISTED`, ...).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "action",
+          "resources",
+          "scope"
+        ],
+        "type": "object"
+      },
+      "PermissionOverrideRequest": {
+        "description": "One requested override.",
+        "properties": {
+          "action": {
+            "description": "Action the override names (`playlist.read`).",
+            "type": "string"
+          },
+          "resources": {
+            "description": "Aggregates a `LISTED` scope names; empty otherwise.",
+            "items": {
+              "$ref": "#/components/schemas/PermissionResource"
+            },
+            "type": "array"
+          },
+          "scope": {
+            "description": "Requested scope (`ALL`, `PUBLIC_OR_OWNED`, `OWNED`, `LISTED`, `NONE`).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "action",
+          "scope"
+        ],
+        "type": "object"
+      },
+      "PermissionRequest": {
+        "description": "Complete override set a user must end with.",
+        "properties": {
+          "permissions": {
+            "description": "Every override the user must hold.",
+            "items": {
+              "$ref": "#/components/schemas/PermissionOverrideRequest"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "permissions"
+        ],
+        "type": "object"
+      },
+      "PermissionResource": {
+        "description": "One named aggregate of a `LISTED` scope in a permission representation.",
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/i64",
+            "description": "Identifier of the aggregate."
+          },
+          "kind": {
+            "description": "Kind of the aggregate (`GALLERY`, `MUSIC_PLAYLIST`, ...).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind"
+        ],
+        "type": "object"
+      },
+      "PermissionResponse": {
+        "description": "Effective permissions of one user.",
+        "properties": {
+          "_links": {
+            "$ref": "#/components/schemas/SelfLinks",
+            "description": "Link to the permission resource itself."
+          },
+          "defaults": {
+            "description": "Role presets per configurable action.",
+            "items": {
+              "$ref": "#/components/schemas/PermissionGrantResponse"
+            },
+            "type": "array"
+          },
+          "overrides": {
+            "description": "Stored overrides per action.",
+            "items": {
+              "$ref": "#/components/schemas/PermissionGrantResponse"
+            },
+            "type": "array"
+          },
+          "role": {
+            "$ref": "#/components/schemas/Role",
+            "description": "Role the presets are read from."
+          },
+          "user_id": {
+            "$ref": "#/components/schemas/i64",
+            "description": "Identifier of the user the permissions apply to."
+          }
+        },
+        "required": [
+          "defaults",
+          "_links",
+          "overrides",
+          "role",
+          "user_id"
         ],
         "type": "object"
       },
@@ -1367,7 +1491,7 @@
         "type": "string"
       },
       "RegisterRequest": {
-        "description": "Payload to register a new user.\n\nThe requested `role` is granted only when the authenticated caller is\nallowed to create it: the Root Admin can register `Admin` or `Standard`\nusers, an `Admin` user can register `Standard` users only.",
+        "description": "Payload to register a new user.\n\nThe requested `role` is granted only when the caller holds the matching\npermission: `user.create_admin` for an `Admin` account and `user.create`\nfor a `Standard` one. The default presets grant `user.create` to Admin and\nRoot and `user.create_admin` to the Root Admin only, and a per-user\noverride can change either.",
         "properties": {
           "email": {
             "description": "Email address of the new user, when provided.",
@@ -2819,7 +2943,7 @@
     },
     "/identity/register": {
       "post": {
-        "description": "The Root Admin (user identifier `0`) may register `Admin` or `Standard`\nusers; an `Admin` user may register `Standard` users only; any other role is\nrejected with `403`.",
+        "description": "Creating a `Standard` account requires `user.create`; creating an `Admin`\naccount requires `user.create_admin`. A caller that does not hold the\nmatching permission receives `403` and creates nothing, and a token naming\na deleted account receives `401`.",
         "operationId": "post_register",
         "requestBody": {
           "content": {
@@ -3176,7 +3300,7 @@
     },
     "/library/gallery/{id}": {
       "delete": {
-        "description": "Only the owner of the gallery may delete it; administrators have no\noverride. The seeded default gallery (identifier `0`) is never deletable and\nanswers `409`. Deletion is permanent.",
+        "description": "The owner and the Root Admin may delete a gallery; the role presets give\n`gallery.manage` to the owner and the Root Admin's short-circuit allows it\non every gallery. A caller who can read the gallery but may not manage it\nanswers `403 Forbidden`; one that cannot read it answers `404 Not Found`.\nThe seeded default gallery (identifier `0`) is never deletable and answers\n`409`. Deletion is permanent.",
         "operationId": "delete_gallery",
         "parameters": [
           {
@@ -3221,7 +3345,7 @@
                 }
               }
             },
-            "description": "Caller is not the owner of the gallery"
+            "description": "The caller can read the gallery but may not manage it"
           },
           "404": {
             "content": {
@@ -3231,7 +3355,7 @@
                 }
               }
             },
-            "description": "Unknown gallery"
+            "description": "Unknown or inaccessible gallery"
           },
           "409": {
             "content": {
@@ -3265,7 +3389,7 @@
         ]
       },
       "get": {
-        "description": "Any authenticated caller may read a public gallery; a private gallery is\nreadable by its owner and the Root Admin only. The representation carries\nthe gallery and its items, ordered by position.",
+        "description": "An authenticated caller reads a gallery its `gallery.read` permission\ncovers. A gallery the caller cannot read answers `404 Not Found`,\nindistinguishable from a missing one. The representation carries the\ngallery and its items, ordered by position.",
         "operationId": "get_gallery",
         "parameters": [
           {
@@ -3309,16 +3433,6 @@
             },
             "description": "Missing or invalid credentials"
           },
-          "403": {
-            "content": {
-              "application/hal+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "Caller is not allowed to read the gallery"
-          },
           "404": {
             "content": {
               "application/hal+json": {
@@ -3327,7 +3441,7 @@
                 }
               }
             },
-            "description": "Unknown gallery"
+            "description": "Unknown or inaccessible gallery"
           },
           "500": {
             "content": {
@@ -3353,7 +3467,7 @@
     },
     "/library/gallery/{id}/item": {
       "get": {
-        "description": "This route is a true alias of `GET /library/gallery/{id}`: it returns the\nsame gallery representation, and the `_links.self` of that representation is\nthe canonical gallery URI, never this alias path (`API-042`).",
+        "description": "This route is a true alias of `GET /library/gallery/{id}`: it returns the\nsame gallery representation, and the `_links.self` of that representation is\nthe canonical gallery URI, never this alias path (`API-042`). A gallery the\ncaller cannot read answers `404 Not Found`, indistinguishable from a\nmissing one.",
         "operationId": "get_gallery_item_list",
         "parameters": [
           {
@@ -3397,16 +3511,6 @@
             },
             "description": "Missing or invalid credentials"
           },
-          "403": {
-            "content": {
-              "application/hal+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "Caller is not allowed to read the gallery"
-          },
           "404": {
             "content": {
               "application/hal+json": {
@@ -3415,7 +3519,7 @@
                 }
               }
             },
-            "description": "Unknown gallery"
+            "description": "Unknown or inaccessible gallery"
           },
           "500": {
             "content": {
@@ -3519,7 +3623,7 @@
                 }
               }
             },
-            "description": "Unknown gallery"
+            "description": "Unknown or inaccessible gallery"
           },
           "409": {
             "content": {
@@ -3639,7 +3743,7 @@
                 }
               }
             },
-            "description": "Caller is not allowed to delete items of the gallery"
+            "description": "The caller can read the gallery but may not moderate it"
           },
           "404": {
             "content": {
@@ -3649,7 +3753,7 @@
                 }
               }
             },
-            "description": "Unknown gallery or item"
+            "description": "Unknown or inaccessible gallery, or unknown item"
           },
           "500": {
             "content": {
@@ -3673,7 +3777,7 @@
         ]
       },
       "get": {
-        "description": "Any authenticated caller may read an item of a public gallery; an item of a\nprivate gallery is readable by the gallery owner and the Root Admin only.\nThe item is scoped to the gallery named in the path.",
+        "description": "An authenticated caller reads an item of a gallery its `gallery.read`\npermission covers; an item of a gallery the caller cannot read answers\n`404 Not Found`. The item is scoped to the gallery named in the path.",
         "operationId": "get_gallery_item",
         "parameters": [
           {
@@ -3726,16 +3830,6 @@
             },
             "description": "Missing or invalid credentials"
           },
-          "403": {
-            "content": {
-              "application/hal+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "Caller is not allowed to read the gallery"
-          },
           "404": {
             "content": {
               "application/hal+json": {
@@ -3744,7 +3838,7 @@
                 }
               }
             },
-            "description": "Unknown gallery or item"
+            "description": "Unknown or inaccessible gallery, or unknown item"
           },
           "500": {
             "content": {
@@ -3923,7 +4017,7 @@
                 }
               }
             },
-            "description": "Unknown film"
+            "description": "Unknown or inaccessible film"
           },
           "500": {
             "content": {
@@ -4102,7 +4196,7 @@
                 }
               }
             },
-            "description": "Unknown music album"
+            "description": "Unknown or inaccessible music album"
           },
           "500": {
             "content": {
@@ -4191,7 +4285,7 @@
                 }
               }
             },
-            "description": "Unknown music album, or medium of the album"
+            "description": "Unknown or inaccessible music album, or a medium the album does not hold"
           },
           "500": {
             "content": {
@@ -4280,7 +4374,7 @@
                 }
               }
             },
-            "description": "Unknown music album, or medium of the album"
+            "description": "Unknown or inaccessible music album, or a medium the album does not hold"
           },
           "500": {
             "content": {
@@ -4380,7 +4474,7 @@
                 }
               }
             },
-            "description": "Unknown music album, medium, or track of the medium"
+            "description": "Unknown or inaccessible music album, or a medium or track the album does not hold"
           },
           "500": {
             "content": {
@@ -4638,7 +4732,7 @@
     },
     "/library/music/playlist/{playlist_id}": {
       "delete": {
-        "description": "Only the owner may delete a playlist. A caller who can read a public\nplaylist but is not its owner answers `403 Forbidden`; a playlist the caller\ncannot read answers `404 Not Found`. The shared recordings, audio and files\nsurvive.",
+        "description": "The owner and the Root Admin may delete a playlist. A caller who can read a\nplaylist but may not manage it answers `403 Forbidden`; one that cannot read\nit answers `404 Not Found`. The shared recordings, audio and files\nsurvive.",
         "operationId": "delete_playlist",
         "parameters": [
           {
@@ -4683,7 +4777,7 @@
                 }
               }
             },
-            "description": "The caller does not own the playlist"
+            "description": "The caller can read the playlist but may not manage it"
           },
           "404": {
             "content": {
@@ -4793,7 +4887,7 @@
         ]
       },
       "patch": {
-        "description": "Omitted fields stay unchanged. `name` and `is_public` require ownership;\nadding a track requires read access to the playlist. The request is atomic:\na rejected field applies nothing.",
+        "description": "Omitted fields stay unchanged. `name` and `is_public` require\n`playlist.manage`; adding a track requires `playlist.moderate`. The request\nis atomic: a rejected field applies nothing.",
         "operationId": "patch_playlist",
         "parameters": [
           {
@@ -4855,7 +4949,7 @@
                 }
               }
             },
-            "description": "The caller does not own the playlist"
+            "description": "The caller can read the playlist but may not change its metadata or moderate its tracks"
           },
           "404": {
             "content": {
@@ -5447,7 +5541,7 @@
                 }
               }
             },
-            "description": "Unknown show"
+            "description": "Unknown or inaccessible show"
           },
           "500": {
             "content": {
@@ -5536,7 +5630,7 @@
                 }
               }
             },
-            "description": "Unknown show, or season of the show"
+            "description": "Unknown or inaccessible show, or a season the show does not hold"
           },
           "500": {
             "content": {
@@ -5625,7 +5719,7 @@
                 }
               }
             },
-            "description": "Unknown show, or season of the show"
+            "description": "Unknown or inaccessible show, or a season the show does not hold"
           },
           "500": {
             "content": {
@@ -5725,7 +5819,7 @@
                 }
               }
             },
-            "description": "Unknown show, season, or episode of the season"
+            "description": "Unknown or inaccessible show, or a season or episode the show does not hold"
           },
           "500": {
             "content": {
@@ -6126,6 +6220,220 @@
         "summary": "Update a user profile",
         "tags": [
           "user"
+        ]
+      }
+    },
+    "/user/{user_id}/permission": {
+      "get": {
+        "description": "Requires the Root Admin. Returns one entry per configurable action: the\nscope it resolves to, whether a stored override supplies it, and the\naggregates a `LISTED` scope names.",
+        "operationId": "get_permission",
+        "parameters": [
+          {
+            "description": "Identifier of the user whose permissions are read",
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/i64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionResponse"
+                }
+              }
+            },
+            "description": "Effective permissions"
+          },
+          "400": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Invalid user identifier"
+          },
+          "401": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid credentials, or a deleted caller"
+          },
+          "403": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Caller is not the Root Admin, or the target is the Root Admin"
+          },
+          "404": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unknown user"
+          },
+          "500": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unexpected error"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ],
+        "summary": "Read a user's effective permissions",
+        "tags": [
+          "identity"
+        ]
+      },
+      "put": {
+        "description": "Requires the Root Admin. The body carries the complete override set the\nuser must end with: an action absent from the body falls back to its role\npreset. The request is validated as a whole and applied atomically.",
+        "operationId": "put_permission",
+        "parameters": [
+          {
+            "description": "Identifier of the user whose permissions are replaced",
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/i64"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PermissionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionResponse"
+                }
+              }
+            },
+            "description": "Permissions replaced"
+          },
+          "400": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Invalid user identifier or malformed request body"
+          },
+          "401": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid credentials, or a deleted caller"
+          },
+          "403": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Caller is not the Root Admin, or the target is the Root Admin"
+          },
+          "404": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unknown user"
+          },
+          "413": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request body exceeds the maximum allowed size"
+          },
+          "415": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request body is not application/json"
+          },
+          "422": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "An action, scope or listed resource is unknown, or a permission is invalid"
+          },
+          "500": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unexpected error"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ],
+        "summary": "Replace a user's permission overrides",
+        "tags": [
+          "identity"
         ]
       }
     }

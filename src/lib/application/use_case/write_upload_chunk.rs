@@ -13,6 +13,7 @@ use crate::application::use_case::upload_layout::staged_path;
 use crate::application::use_case::upload_session::caller_file_id;
 use crate::application::use_case::upload_session::expiry;
 use crate::application::use_case::upload_session::received_bitmap;
+use crate::domain::model::permission::Action;
 use crate::domain::port::asset_unit_of_work::AssetUnitOfWork;
 use crate::domain::port::content_hasher::ContentHasher;
 use crate::domain::port::error::RepositoryError;
@@ -21,6 +22,11 @@ use crate::domain::port::unit_of_work::UnitOfWork as _;
 use crate::domain::port::unit_of_work::UnitOfWorkFactory;
 use crate::domain::port::upload_repository::UploadFilter;
 use crate::domain::port::upload_repository::UploadRepository as _;
+use crate::domain::port::user_repository::UserFilter;
+use crate::domain::port::user_repository::UserRepository as _;
+use crate::domain::port::user_unit_of_work::UserUnitOfWork;
+use crate::domain::service::authorization::Authorization;
+use crate::domain::service::authorization::Decision;
 
 /// Use case implementation for writing one chunk of an upload session.
 pub struct WriteUploadChunk<F, S, H> {
@@ -55,7 +61,7 @@ impl<F: UnitOfWorkFactory, S: FileStorage, H: ContentHasher> WriteUploadChunk<F,
 impl<F, S, H> WriteUploadChunkUseCase for WriteUploadChunk<F, S, H>
 where
     F: UnitOfWorkFactory,
-    F::Uow: AssetUnitOfWork,
+    F::Uow: AssetUnitOfWork + UserUnitOfWork,
     S: FileStorage,
     H: ContentHasher,
 {
@@ -81,6 +87,20 @@ where
                 .map_err(|error| WriteUploadChunkError::Unknown(error.into()))?;
 
             let result = async {
+                let caller = unit_of_work
+                    .users()
+                    .search(&UserFilter {
+                        id: Some(command.user_id()),
+                        ..UserFilter::default()
+                    })
+                    .await
+                    .map_err(|error| {
+                        AttemptError::Business(WriteUploadChunkError::Unknown(error.into()))
+                    })?
+                    .into_iter()
+                    .next()
+                    .ok_or(AttemptError::Business(WriteUploadChunkError::NoSuchCaller))?;
+
                 let upload = unit_of_work
                     .uploads()
                     .search(&UploadFilter {
@@ -99,8 +119,14 @@ where
                 // it. The denial is a security decision the use case owns, so it
                 // logs the catalogued `authz_failed` event (`OBS-002`,
                 // `OBS-006`); the caller still receives the not-found result.
-                if upload.user_id() != command.user_id() {
-                    security_event::authorization_failed(command.user_id(), "write", "upload");
+                if let Decision::Deny(denial) =
+                    Authorization::decide(&caller, &[], Action::UploadWrite, &upload)
+                {
+                    security_event::authorization_failed(
+                        caller.id(),
+                        denial.action().verb(),
+                        denial.action().target(),
+                    );
                     return Err(AttemptError::Business(WriteUploadChunkError::NoSuchUpload));
                 }
 
@@ -308,6 +334,7 @@ where
                         | WriteUploadChunkError::InvalidChunk
                         | WriteUploadChunkError::InvalidChunkRange
                         | WriteUploadChunkError::InvalidContentDigest
+                        | WriteUploadChunkError::NoSuchCaller
                         | WriteUploadChunkError::NoSuchUpload
                         | WriteUploadChunkError::Unknown(_) => None,
                     };
@@ -368,6 +395,7 @@ mod tests {
     use crate::test_helpers::DIGEST;
     use crate::test_helpers::TestFactory;
     use crate::test_helpers::TestUnitOfWork;
+    use crate::test_helpers::any_caller;
 
     use super::WriteUploadChunk;
 
@@ -524,6 +552,7 @@ mod tests {
                 })
             });
         let unit_of_work = TestUnitOfWork {
+            users: any_caller(),
             files: file_repository,
             uploads,
             ..TestUnitOfWork::default()
@@ -587,6 +616,7 @@ mod tests {
             .times(1)
             .returning(|_, _, _| Box::pin(async { Ok(true) }));
         let unit_of_work = TestUnitOfWork {
+            users: any_caller(),
             uploads,
             ..TestUnitOfWork::default()
         };
@@ -622,6 +652,7 @@ mod tests {
             .times(1)
             .returning(|_| Box::pin(async { Ok(Vec::new()) }));
         let unit_of_work = TestUnitOfWork {
+            users: any_caller(),
             uploads,
             ..TestUnitOfWork::default()
         };
@@ -664,6 +695,7 @@ mod tests {
         let mut uploads = MockUploadRepository::new();
         expect_upload(&mut uploads, upload(5, 3, 8, &[], false)?);
         let unit_of_work = TestUnitOfWork {
+            users: any_caller(),
             uploads,
             ..TestUnitOfWork::default()
         };
@@ -749,6 +781,7 @@ mod tests {
             .times(1)
             .returning(|_| Box::pin(async { Ok(true) }));
         let unit_of_work = TestUnitOfWork {
+            users: any_caller(),
             uploads,
             ..TestUnitOfWork::default()
         };
@@ -819,6 +852,7 @@ mod tests {
             .times(1)
             .returning(|_| Box::pin(async { Ok(()) }));
         let unit_of_work = TestUnitOfWork {
+            users: any_caller(),
             uploads,
             ..TestUnitOfWork::default()
         };
@@ -851,6 +885,7 @@ mod tests {
         let mut uploads = MockUploadRepository::new();
         expect_upload(&mut uploads, upload(5, 3, 4, &[0], true)?);
         let unit_of_work = TestUnitOfWork {
+            users: any_caller(),
             uploads,
             ..TestUnitOfWork::default()
         };
@@ -885,6 +920,7 @@ mod tests {
         let mut uploads = MockUploadRepository::new();
         expect_upload(&mut uploads, upload(5, 3, 4, &[], false)?);
         let unit_of_work = TestUnitOfWork {
+            users: any_caller(),
             uploads,
             ..TestUnitOfWork::default()
         };
@@ -932,6 +968,7 @@ mod tests {
         let mut uploads = MockUploadRepository::new();
         expect_upload(&mut uploads, upload(5, 3, 8, &[], false)?);
         let unit_of_work = TestUnitOfWork {
+            users: any_caller(),
             uploads,
             ..TestUnitOfWork::default()
         };
@@ -966,6 +1003,7 @@ mod tests {
         let mut uploads = MockUploadRepository::new();
         expect_upload(&mut uploads, upload(5, 3, 8, &[], false)?);
         let unit_of_work = TestUnitOfWork {
+            users: any_caller(),
             uploads,
             ..TestUnitOfWork::default()
         };
@@ -1009,6 +1047,7 @@ mod tests {
         let mut uploads = MockUploadRepository::new();
         expect_upload(&mut uploads, upload(5, 3, 8, &[], false)?);
         let unit_of_work = TestUnitOfWork {
+            users: any_caller(),
             uploads,
             ..TestUnitOfWork::default()
         };
@@ -1060,6 +1099,7 @@ mod tests {
             .times(1)
             .returning(|_, _, _| Box::pin(async { Err(StorageError::Unavailable) }));
         let unit_of_work = TestUnitOfWork {
+            users: any_caller(),
             uploads,
             ..TestUnitOfWork::default()
         };
@@ -1110,6 +1150,7 @@ mod tests {
             .times(1)
             .returning(|_, _, _| Box::pin(async { Ok(false) }));
         let unit_of_work = TestUnitOfWork {
+            users: any_caller(),
             uploads,
             ..TestUnitOfWork::default()
         };
@@ -1165,6 +1206,7 @@ mod tests {
             .times(1)
             .returning(|_, _, _| Box::pin(async { Ok(true) }));
         let unit_of_work = TestUnitOfWork {
+            users: any_caller(),
             uploads,
             ..TestUnitOfWork::default()
         };
@@ -1198,6 +1240,7 @@ mod tests {
         let mut uploads = MockUploadRepository::new();
         expect_upload(&mut uploads, upload(5, 3, 8, &[], false)?);
         let unit_of_work = TestUnitOfWork {
+            users: any_caller(),
             uploads,
             ..TestUnitOfWork::default()
         };

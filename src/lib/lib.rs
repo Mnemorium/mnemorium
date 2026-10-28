@@ -46,6 +46,9 @@ mod test_helpers {
     use crate::domain::model::episode::EpisodeIndex;
     use crate::domain::model::instance_state::InstanceState;
     use crate::domain::model::movie::Movie;
+    use crate::domain::model::music_album::MusicAlbum;
+    use crate::domain::model::music_medium::MusicMedium;
+    use crate::domain::model::permission::Permission;
     use crate::domain::model::season::Season;
     use crate::domain::model::season::SeasonIndex;
     use crate::domain::model::series::Series;
@@ -73,6 +76,8 @@ mod test_helpers {
     use crate::domain::port::music_album_repository::MusicAlbumRepository;
     use crate::domain::port::music_playlist_repository::MockMusicPlaylistRepository;
     use crate::domain::port::music_playlist_repository::MusicPlaylistRepository;
+    use crate::domain::port::permission_repository::MockPermissionRepository;
+    use crate::domain::port::permission_repository::PermissionRepository;
     use crate::domain::port::series_repository::MockSeriesRepository;
     use crate::domain::port::series_repository::SeriesRepository;
     use crate::domain::port::unit_of_work::UnitOfWork;
@@ -144,6 +149,8 @@ mod test_helpers {
         pub music_albums: MockMusicAlbumRepository,
         /// Music playlist repository.
         pub music_playlists: MockMusicPlaylistRepository,
+        /// Permission repository.
+        pub permissions: MockPermissionRepository,
         /// Set when `rollback` is called.
         pub rolled_back: Arc<AtomicBool>,
         /// Series repository.
@@ -170,6 +177,7 @@ mod test_helpers {
                 movies: MockMovieRepository::new(),
                 music_albums: MockMusicAlbumRepository::new(),
                 music_playlists: MockMusicPlaylistRepository::new(),
+                permissions: MockPermissionRepository::new(),
                 rolled_back: Arc::new(AtomicBool::new(false)),
                 series: MockSeriesRepository::new(),
                 uploads: MockUploadRepository::new(),
@@ -182,6 +190,10 @@ mod test_helpers {
     impl IdentityUnitOfWork for TestUnitOfWork {
         fn credentials(&mut self) -> impl CredentialRepository + '_ {
             &mut self.credentials
+        }
+
+        fn permissions(&mut self) -> impl PermissionRepository + '_ {
+            &mut self.permissions
         }
     }
 
@@ -530,6 +542,27 @@ mod test_helpers {
         )?)
     }
 
+    /// Build an album named `Album {id}` with no medium.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the fixed album values violate the domain rules.
+    pub fn sample_album(
+        id: NumericID,
+        mediums: Vec<MusicMedium>,
+    ) -> Result<MusicAlbum, Box<dyn Error>> {
+        Ok(MusicAlbum::try_new(
+            id,
+            format!("Album {id}"),
+            album_release_date(),
+            None,
+            Vec::new(),
+            None,
+            None,
+            mediums,
+        )?)
+    }
+
     /// Build a show named `Series {id}` with `seasons` and one genre.
     ///
     /// # Errors
@@ -594,6 +627,50 @@ mod test_helpers {
             .withf(move |filter| filter.id == Some(caller_id))
             .return_once(move |_| Box::pin(async move { Ok(vec![caller]) }));
         Ok(())
+    }
+
+    /// Expect the permission load to find `overrides` for `caller_id`.
+    pub fn expect_permissions(
+        permissions: &mut MockPermissionRepository,
+        caller_id: NumericID,
+        overrides: Vec<Permission>,
+    ) {
+        permissions
+            .expect_search()
+            .times(1)
+            .withf(move |filter| filter.user_id == Some(caller_id) && filter.action.is_none())
+            .return_once(move |_| Box::pin(async move { Ok(overrides) }));
+    }
+
+    /// Return a user repository resolving any requested identifier.
+    ///
+    /// A use case whose test does not exercise the caller load stubs it with
+    /// this repository: identifier `0` resolves to the Root Admin and any other
+    /// identifier to a Standard user.
+    #[must_use]
+    pub fn any_caller() -> MockUserRepository {
+        let mut users = MockUserRepository::new();
+        users.expect_search().returning(|filter| {
+            let found = filter.id.and_then(|id| {
+                let role = if id == 0 { Role::Admin } else { Role::Standard };
+                User::try_new(id, "caller".to_owned(), None, id.max(1), role).ok()
+            });
+            Box::pin(async move { Ok(found.into_iter().collect()) })
+        });
+        users
+    }
+
+    /// Return a permission repository that finds no override, for any caller.
+    ///
+    /// A use case whose test does not exercise a permission stubs the load
+    /// with this repository instead of repeating the expectation.
+    #[must_use]
+    pub fn no_permissions() -> MockPermissionRepository {
+        let mut permissions = MockPermissionRepository::new();
+        permissions
+            .expect_search()
+            .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+        permissions
     }
 
     /// Split `response` into its status, `Content-Type` header and decoded JSON

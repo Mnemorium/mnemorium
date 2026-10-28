@@ -795,3 +795,32 @@ def create_owned_playlist(
     created = create_playlist(token, f"Playlist {time.time_ns()}", is_public)
     assert created.status_code == 201, f"create failed: {created.status_code} {created.text}"
     return created.json()["id"]
+
+
+@pytest.fixture(scope="session")
+def get_permission(server_url: str) -> Callable[[str, int], requests.Response]:
+    """Return a callable that GETs a user's effective permissions."""
+
+    def _get_permission(token: str, user_id: int) -> requests.Response:
+        return requests.get(
+            f"{server_url}{API_PREFIX}/user/{user_id}/permission",
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=10,
+        )
+
+    return _get_permission
+
+
+@pytest.fixture(scope="session")
+def put_permission(server_url: str) -> Callable[[str, int, list[dict]], requests.Response]:
+    """Return a callable that PUTs a complete permission override set."""
+
+    def _put_permission(token: str, user_id: int, permissions: list[dict]) -> requests.Response:
+        return requests.put(
+            f"{server_url}{API_PREFIX}/user/{user_id}/permission",
+            headers={"Authorization": f"Bearer {token}"},
+            json={"permissions": permissions},
+            timeout=10,
+        )
+
+    return _put_permission

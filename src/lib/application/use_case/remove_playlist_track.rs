@@ -8,15 +8,20 @@ use crate::application::port::remove_playlist_track::RemovePlaylistTrackCommand;
 use crate::application::port::remove_playlist_track::RemovePlaylistTrackError;
 use crate::application::port::remove_playlist_track::RemovePlaylistTrackUseCase;
 use crate::application::security_event;
+use crate::domain::model::permission::Action;
+use crate::domain::port::identity_unit_of_work::IdentityUnitOfWork;
 use crate::domain::port::library_unit_of_work::LibraryUnitOfWork;
 use crate::domain::port::music_playlist_repository::MusicPlaylistFilter;
 use crate::domain::port::music_playlist_repository::MusicPlaylistRepository as _;
+use crate::domain::port::permission_repository::PermissionFilter;
+use crate::domain::port::permission_repository::PermissionRepository as _;
 use crate::domain::port::unit_of_work::UnitOfWork as _;
 use crate::domain::port::unit_of_work::UnitOfWorkFactory;
 use crate::domain::port::user_repository::UserFilter;
 use crate::domain::port::user_repository::UserRepository as _;
 use crate::domain::port::user_unit_of_work::UserUnitOfWork;
-use crate::domain::service::library_access::LibraryAccess;
+use crate::domain::service::authorization::Authorization;
+use crate::domain::service::authorization::Decision;
 
 /// Use case implementation for removing one track of a playlist.
 pub struct RemovePlaylistTrack<F> {
@@ -37,7 +42,7 @@ impl<F: UnitOfWorkFactory> RemovePlaylistTrack<F> {
 impl<F> RemovePlaylistTrackUseCase for RemovePlaylistTrack<F>
 where
     F: UnitOfWorkFactory,
-    F::Uow: LibraryUnitOfWork + UserUnitOfWork,
+    F::Uow: IdentityUnitOfWork + LibraryUnitOfWork + UserUnitOfWork,
 {
     fn execute<'future>(
         &'future self,
@@ -64,6 +69,15 @@ where
                     .next()
                     .ok_or(RemovePlaylistTrackError::NoSuchCaller)?;
 
+                let permissions = unit_of_work
+                    .permissions()
+                    .search(&PermissionFilter {
+                        user_id: Some(caller.id()),
+                        ..PermissionFilter::default()
+                    })
+                    .await
+                    .map_err(|error| RemovePlaylistTrackError::Unknown(error.into()))?;
+
                 let mut playlist = unit_of_work
                     .music_playlists()
                     .search(&MusicPlaylistFilter {
@@ -76,15 +90,22 @@ where
                     .next()
                     .ok_or(RemovePlaylistTrackError::NoSuchPlaylist)?;
 
-                if !LibraryAccess::can_read_playlist(&playlist, &caller) {
-                    // The response stays indistinguishable from a missing
-                    // playlist (`API-044`).
+                if let Decision::Deny(denial) = Authorization::decide(
+                    &caller,
+                    &permissions,
+                    Action::PlaylistModerate,
+                    &playlist,
+                ) {
                     security_event::authorization_failed(
                         caller.id(),
-                        "remove_track",
-                        "music_playlist",
+                        denial.action().verb(),
+                        denial.action().target(),
                     );
-                    return Err(RemovePlaylistTrackError::NoSuchPlaylist);
+                    return Err(if denial.conceals() {
+                        RemovePlaylistTrackError::NoSuchPlaylist
+                    } else {
+                        RemovePlaylistTrackError::Forbidden
+                    });
                 }
 
                 let removed = unit_of_work
@@ -144,6 +165,7 @@ mod tests {
     use crate::test_helpers::GalleryFactoryHarness;
     use crate::test_helpers::TestFactory;
     use crate::test_helpers::TestUnitOfWork;
+    use crate::test_helpers::no_permissions;
 
     use super::RemovePlaylistTrack;
 
@@ -185,6 +207,7 @@ mod tests {
         playlists: MockMusicPlaylistRepository,
     ) -> GalleryFactoryHarness {
         let unit_of_work = TestUnitOfWork {
+            permissions: no_permissions(),
             music_playlists: playlists,
             users,
             ..TestUnitOfWork::default()

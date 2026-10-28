@@ -23,9 +23,11 @@ use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 
 /// Payload to register a new user.
 ///
-/// The requested `role` is granted only when the authenticated caller is
-/// allowed to create it: the Root Admin can register `Admin` or `Standard`
-/// users, an `Admin` user can register `Standard` users only.
+/// The requested `role` is granted only when the caller holds the matching
+/// permission: `user.create_admin` for an `Admin` account and `user.create`
+/// for a `Standard` one. The default presets grant `user.create` to Admin and
+/// Root and `user.create_admin` to the Root Admin only, and a per-user
+/// override can change either.
 #[derive(Debug, Deserialize, ToSchema)]
 #[non_exhaustive]
 pub struct RegisterRequest {
@@ -87,6 +89,7 @@ impl From<RegisterUserError> for ApiError {
     fn from(err: RegisterUserError) -> Self {
         match err {
             RegisterUserError::Forbidden => Self::Forbidden(err.to_string()),
+            RegisterUserError::NoSuchCaller => Self::Unauthorized(err.to_string()),
             RegisterUserError::InvalidEmail
             | RegisterUserError::InvalidPassword
             | RegisterUserError::InvalidUsername => Self::UnprocessableEntity(err.to_string()),
@@ -100,9 +103,10 @@ impl From<RegisterUserError> for ApiError {
 
 /// Register a new user on behalf of an authenticated caller.
 ///
-/// The Root Admin (user identifier `0`) may register `Admin` or `Standard`
-/// users; an `Admin` user may register `Standard` users only; any other role is
-/// rejected with `403`.
+/// Creating a `Standard` account requires `user.create`; creating an `Admin`
+/// account requires `user.create_admin`. A caller that does not hold the
+/// matching permission receives `403` and creates nothing, and a token naming
+/// a deleted account receives `401`.
 #[utoipa::path(
     post,
     operation_id = "post_register",

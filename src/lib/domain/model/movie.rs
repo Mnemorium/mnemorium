@@ -1,6 +1,9 @@
 use chrono::NaiveDate;
 
 use crate::domain::alias::NumericID;
+use crate::domain::model::permission::Protected;
+use crate::domain::model::permission::ResourceKind;
+use crate::domain::model::permission::ResourceRef;
 use crate::domain::model::video::Video;
 
 /// Error returned when initialising a `Movie`.
@@ -124,5 +127,23 @@ impl Movie {
     #[must_use]
     pub fn video(&self) -> &Video {
         &self.video
+    }
+}
+
+impl Protected for Movie {
+    fn is_privileged_account(&self) -> bool {
+        false
+    }
+
+    fn is_publicly_visible(&self) -> bool {
+        true
+    }
+
+    fn owner_id(&self) -> Option<NumericID> {
+        None
+    }
+
+    fn resource_ref(&self) -> Option<ResourceRef> {
+        Some(ResourceRef::new(ResourceKind::Movie, self.id))
     }
 }

@@ -131,7 +131,7 @@ impl From<AddGalleryItemError> for ApiError {
             status = NOT_FOUND,
             body = ErrorBody,
             content_type = "application/hal+json",
-            description = "Unknown gallery"
+            description = "Unknown or inaccessible gallery"
         ),
         (
             status = CONFLICT,

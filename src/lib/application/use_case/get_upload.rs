@@ -13,12 +13,18 @@ use crate::application::use_case::upload_layout::staged_path;
 use crate::application::use_case::upload_session::caller_file_id;
 use crate::application::use_case::upload_session::expiry;
 use crate::application::use_case::upload_session::received_bitmap;
+use crate::domain::model::permission::Action;
 use crate::domain::port::asset_unit_of_work::AssetUnitOfWork;
 use crate::domain::port::file_storage::FileStorage;
 use crate::domain::port::unit_of_work::UnitOfWork as _;
 use crate::domain::port::unit_of_work::UnitOfWorkFactory;
 use crate::domain::port::upload_repository::UploadFilter;
 use crate::domain::port::upload_repository::UploadRepository as _;
+use crate::domain::port::user_repository::UserFilter;
+use crate::domain::port::user_repository::UserRepository as _;
+use crate::domain::port::user_unit_of_work::UserUnitOfWork;
+use crate::domain::service::authorization::Authorization;
+use crate::domain::service::authorization::Decision;
 
 /// Outcome of the business logic wrapped by the unit-of-work lifecycle.
 enum Flow<T, E> {
@@ -57,7 +63,7 @@ impl<F: UnitOfWorkFactory, S: FileStorage> GetUpload<F, S> {
 impl<F, S> GetUploadUseCase for GetUpload<F, S>
 where
     F: UnitOfWorkFactory,
-    F::Uow: AssetUnitOfWork,
+    F::Uow: AssetUnitOfWork + UserUnitOfWork,
     S: FileStorage,
 {
     fn execute<'future>(
@@ -76,6 +82,21 @@ where
                 .map_err(|error| GetUploadError::Unknown(error.into()))?;
 
             let flow = async {
+                let caller = match unit_of_work
+                    .users()
+                    .search(&UserFilter {
+                        id: Some(command.user_id()),
+                        ..UserFilter::default()
+                    })
+                    .await
+                {
+                    Ok(found) => match found.into_iter().next() {
+                        Some(caller) => caller,
+                        None => return Flow::Failed(GetUploadError::NoSuchCaller),
+                    },
+                    Err(error) => return Flow::Failed(GetUploadError::Unknown(error.into())),
+                };
+
                 let found = match unit_of_work
                     .uploads()
                     .search(&UploadFilter {
@@ -95,8 +116,14 @@ where
                 // it. The denial is a security decision the use case owns, so it
                 // logs the catalogued `authz_failed` event (`OBS-002`,
                 // `OBS-006`); the caller still receives the not-found result.
-                if upload.user_id() != command.user_id() {
-                    security_event::authorization_failed(command.user_id(), "read", "upload");
+                if let Decision::Deny(denial) =
+                    Authorization::decide(&caller, &[], Action::UploadRead, &upload)
+                {
+                    security_event::authorization_failed(
+                        caller.id(),
+                        denial.action().verb(),
+                        denial.action().target(),
+                    );
                     return Flow::Failed(GetUploadError::NoSuchUpload);
                 }
 
@@ -208,11 +235,13 @@ mod tests {
     use crate::domain::port::file_repository::MockFileRepository;
     use crate::domain::port::file_storage::MockFileStorage;
     use crate::domain::port::upload_repository::MockUploadRepository;
+    use crate::domain::port::user_repository::MockUserRepository;
     use crate::test_helpers::AssetFactoryHarness;
     use crate::test_helpers::CHUNK_SIZE;
     use crate::test_helpers::DIGEST;
     use crate::test_helpers::TestFactory;
     use crate::test_helpers::TestUnitOfWork;
+    use crate::test_helpers::any_caller;
 
     use super::GetUpload;
 
@@ -272,6 +301,7 @@ mod tests {
         file_storage: MockFileStorage,
     ) -> Harness {
         let unit_of_work = TestUnitOfWork {
+            users: any_caller(),
             files,
             uploads,
             ..TestUnitOfWork::default()
@@ -499,6 +529,53 @@ mod tests {
             logs.contains("target=upload"),
             "the event must name the denied target: {logs}"
         );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn get_upload_root_admin_other_user_returns_no_such_upload() -> Result<(), Box<dyn Error>>
+    {
+        // Arrange
+        let mut uploads = MockUploadRepository::new();
+        expect_upload(&mut uploads, upload(5, 3, 4, &[0], false, timestamp())?);
+        let harness = use_case_with(uploads, MockFileRepository::new(), MockFileStorage::new());
+        let command = GetUploadCommand::new(0, 5);
+
+        // Act
+        let result = harness.use_case.execute(command).await;
+
+        // Assert
+        assert!(matches!(result, Err(GetUploadError::NoSuchUpload)));
+        assert!(harness.rolled_back.load(Ordering::SeqCst));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn get_upload_deleted_caller_returns_no_such_caller() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let mut users = MockUserRepository::new();
+        users
+            .expect_search()
+            .times(1)
+            .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+        let unit_of_work = TestUnitOfWork {
+            users,
+            ..TestUnitOfWork::default()
+        };
+        let harness = AssetFactoryHarness::new(unit_of_work);
+        let use_case: UseCase = GetUpload::new(
+            Arc::clone(&harness.factory),
+            Arc::new(MockFileStorage::new()),
+            TTL_SECONDS,
+        );
+        let command = GetUploadCommand::new(99, 5);
+
+        // Act
+        let result = use_case.execute(command).await;
+
+        // Assert
+        assert!(matches!(result, Err(GetUploadError::NoSuchCaller)));
+        assert!(harness.rolled_back.load(Ordering::SeqCst));
         Ok(())
     }
 

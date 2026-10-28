@@ -18,6 +18,7 @@ use crate::application::use_case::upload_session::expiry;
 use crate::domain::alias::NumericID;
 use crate::domain::model::file::File;
 use crate::domain::model::image::Image;
+use crate::domain::model::permission::Action;
 use crate::domain::model::upload::Upload;
 use crate::domain::model::video::Video;
 use crate::domain::port::asset_unit_of_work::AssetUnitOfWork;
@@ -34,7 +35,12 @@ use crate::domain::port::unit_of_work::UnitOfWork;
 use crate::domain::port::unit_of_work::UnitOfWorkFactory;
 use crate::domain::port::upload_repository::UploadFilter;
 use crate::domain::port::upload_repository::UploadRepository as _;
+use crate::domain::port::user_repository::UserFilter;
+use crate::domain::port::user_repository::UserRepository as _;
+use crate::domain::port::user_unit_of_work::UserUnitOfWork;
 use crate::domain::port::video_repository::VideoRepository as _;
+use crate::domain::service::authorization::Authorization;
+use crate::domain::service::authorization::Decision;
 
 /// Outcome of the business logic wrapped by the unit-of-work lifecycle.
 enum Flow<T, E> {
@@ -130,7 +136,7 @@ impl<F: UnitOfWorkFactory, S: FileStorage, P: MediaProbe> CompleteUpload<F, S, P
 impl<F, S, P> CompleteUploadUseCase for CompleteUpload<F, S, P>
 where
     F: UnitOfWorkFactory,
-    F::Uow: AssetUnitOfWork + LibraryUnitOfWork,
+    F::Uow: AssetUnitOfWork + LibraryUnitOfWork + UserUnitOfWork,
     S: FileStorage,
     P: MediaProbe,
 {
@@ -501,9 +507,24 @@ async fn resolve<U, S>(
     expiry_seconds: u64,
 ) -> Resolution
 where
-    U: AssetUnitOfWork,
+    U: AssetUnitOfWork + UserUnitOfWork,
     S: FileStorage,
 {
+    let caller = match unit_of_work
+        .users()
+        .search(&UserFilter {
+            id: Some(command.user_id()),
+            ..UserFilter::default()
+        })
+        .await
+    {
+        Ok(found) => match found.into_iter().next() {
+            Some(caller) => caller,
+            None => return Resolution::Failed(CompleteUploadError::NoSuchCaller),
+        },
+        Err(error) => return Resolution::Failed(CompleteUploadError::Unknown(error.into())),
+    };
+
     let found = match unit_of_work
         .uploads()
         .search(&UploadFilter {
@@ -523,8 +544,14 @@ where
     // denial is a security decision the use case owns, so it logs the
     // catalogued `authz_failed` event once (`OBS-002`, `OBS-006`); the caller
     // still receives the not-found result, never a disclosure of the owner.
-    if upload.user_id() != command.user_id() {
-        security_event::authorization_failed(command.user_id(), "complete", "upload");
+    if let Decision::Deny(denial) =
+        Authorization::decide(&caller, &[], Action::UploadWrite, &upload)
+    {
+        security_event::authorization_failed(
+            caller.id(),
+            denial.action().verb(),
+            denial.action().target(),
+        );
         return Resolution::Failed(CompleteUploadError::NoSuchUpload);
     }
 
@@ -665,6 +692,7 @@ mod tests {
     use crate::test_helpers::TestUnitOfWork;
     use crate::test_helpers::TestUnitOfWorkFactory;
     use crate::test_helpers::TestUow;
+    use crate::test_helpers::any_caller;
 
     use super::CompleteUpload;
 
@@ -732,6 +760,7 @@ mod tests {
         file_storage: MockFileStorage,
     ) -> Harness {
         let phase_one = TestUnitOfWork {
+            users: any_caller(),
             files: phase_one_files,
             uploads: phase_one_uploads,
             ..TestUnitOfWork::default()
@@ -739,6 +768,7 @@ mod tests {
         let phase_one_committed = Arc::clone(&phase_one.committed);
         let phase_one_rolled_back = Arc::clone(&phase_one.rolled_back);
         let phase_two = TestUnitOfWork {
+            users: any_caller(),
             files: phase_two_files,
             uploads: phase_two_uploads,
             ..TestUnitOfWork::default()
@@ -774,6 +804,7 @@ mod tests {
         videos: MockVideoRepository,
     ) -> (TestUow, Arc<AtomicBool>, Arc<AtomicBool>) {
         let unit_of_work = TestUnitOfWork {
+            users: any_caller(),
             files,
             images,
             uploads,
@@ -1161,8 +1192,8 @@ mod tests {
             "the event must carry the caller as the actor: {logs}"
         );
         assert!(
-            logs.contains("action=complete"),
-            "the event must classify the denied action as a completion: {logs}"
+            logs.contains("action=write"),
+            "the event must classify the denied action as an upload write: {logs}"
         );
         assert!(
             logs.contains("target=upload"),
@@ -1698,6 +1729,7 @@ mod tests {
         let mut phase_one_uploads = MockUploadRepository::new();
         expect_upload(&mut phase_one_uploads, resolved.clone());
         let phase_one = TestUnitOfWork {
+            users: any_caller(),
             uploads: phase_one_uploads,
             ..TestUnitOfWork::default()
         };
@@ -1762,6 +1794,7 @@ mod tests {
             .times(1)
             .returning(|file| Box::pin(async move { Ok(file) }));
         let phase_two = TestUnitOfWork {
+            users: any_caller(),
             files: phase_two_files,
             uploads: phase_two_uploads,
             ..TestUnitOfWork::default()

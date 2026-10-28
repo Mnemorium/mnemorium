@@ -10,6 +10,8 @@ use crate::application::port::register_user::RegisterUserResponse;
 use crate::application::port::register_user::RegisterUserUseCase;
 use crate::application::security_event;
 use crate::domain::model::credential::Credential;
+use crate::domain::model::permission::Action;
+use crate::domain::model::permission::Global;
 use crate::domain::model::user::Role;
 use crate::domain::model::user::User;
 use crate::domain::model::user::UserError;
@@ -17,11 +19,15 @@ use crate::domain::port::credential_repository::CredentialRepository as _;
 use crate::domain::port::error::RepositoryError;
 use crate::domain::port::identity_unit_of_work::IdentityUnitOfWork;
 use crate::domain::port::password_hasher::PasswordHasher;
+use crate::domain::port::permission_repository::PermissionFilter;
+use crate::domain::port::permission_repository::PermissionRepository as _;
 use crate::domain::port::unit_of_work::UnitOfWork as _;
 use crate::domain::port::unit_of_work::UnitOfWorkFactory;
 use crate::domain::port::user_repository::UserFilter;
 use crate::domain::port::user_repository::UserRepository as _;
 use crate::domain::port::user_unit_of_work::UserUnitOfWork;
+use crate::domain::service::authorization::Authorization;
+use crate::domain::service::authorization::Decision;
 use crate::domain::service::password_policy::PasswordPolicy;
 use crate::domain::service::password_policy::PasswordPolicyError;
 use crate::domain::service::username_policy::UsernamePolicy;
@@ -96,103 +102,113 @@ where
                 .await
                 .map_err(|error| RegisterUserError::Unknown(error.into()))?;
 
-            let result = async {
-                let caller = unit_of_work
-                    .users()
-                    .search(&UserFilter {
-                        id: Some(command.caller_id()),
-                        ..UserFilter::default()
-                    })
-                    .await
-                    .map_err(|error| RegisterUserError::Unknown(error.into()))?
-                    .into_iter()
-                    .next()
-                    .ok_or_else(|| {
-                        security_event::authorization_failed(command.caller_id(), "create", "user");
-                        RegisterUserError::Forbidden
-                    })?;
-
-                let authorized = match command.role() {
-                    Role::Admin => caller.role() == Role::Admin && caller.id() == 0,
-                    Role::Standard => caller.role() == Role::Admin,
-                };
-                if !authorized {
-                    security_event::authorization_failed(caller.id(), "create", "user");
-                    return Err(RegisterUserError::Forbidden);
-                }
-
-                let username_taken = !unit_of_work
-                    .users()
-                    .search(&UserFilter {
-                        username: Some(username.clone()),
-                        ..UserFilter::default()
-                    })
-                    .await
-                    .map_err(|error| RegisterUserError::Unknown(error.into()))?
-                    .is_empty();
-                if username_taken {
-                    return Err(RegisterUserError::UsernameAlreadyExists);
-                }
-                if let Some(email_address) = email.as_deref() {
-                    let email_taken = !unit_of_work
+            let result =
+                async {
+                    let caller = unit_of_work
                         .users()
                         .search(&UserFilter {
-                            email: Some(email_address.to_owned()),
+                            id: Some(command.caller_id()),
+                            ..UserFilter::default()
+                        })
+                        .await
+                        .map_err(|error| RegisterUserError::Unknown(error.into()))?
+                        .into_iter()
+                        .next()
+                        .ok_or(RegisterUserError::NoSuchCaller)?;
+
+                    let permissions = unit_of_work
+                        .permissions()
+                        .search(&PermissionFilter {
+                            user_id: Some(caller.id()),
+                            ..PermissionFilter::default()
+                        })
+                        .await
+                        .map_err(|error| RegisterUserError::Unknown(error.into()))?;
+                    let action = match command.role() {
+                        Role::Admin => Action::UserCreateAdmin,
+                        Role::Standard => Action::UserCreate,
+                    };
+                    if let Decision::Deny(denial) =
+                        Authorization::decide(&caller, &permissions, action, &Global)
+                    {
+                        security_event::authorization_failed(
+                            caller.id(),
+                            denial.action().verb(),
+                            denial.action().target(),
+                        );
+                        return Err(RegisterUserError::Forbidden);
+                    }
+
+                    let username_taken = !unit_of_work
+                        .users()
+                        .search(&UserFilter {
+                            username: Some(username.clone()),
                             ..UserFilter::default()
                         })
                         .await
                         .map_err(|error| RegisterUserError::Unknown(error.into()))?
                         .is_empty();
-                    if email_taken {
-                        return Err(RegisterUserError::EmailAlreadyExists);
+                    if username_taken {
+                        return Err(RegisterUserError::UsernameAlreadyExists);
                     }
-                }
+                    if let Some(email_address) = email.as_deref() {
+                        let email_taken = !unit_of_work
+                            .users()
+                            .search(&UserFilter {
+                                email: Some(email_address.to_owned()),
+                                ..UserFilter::default()
+                            })
+                            .await
+                            .map_err(|error| RegisterUserError::Unknown(error.into()))?
+                            .is_empty();
+                        if email_taken {
+                            return Err(RegisterUserError::EmailAlreadyExists);
+                        }
+                    }
 
-                // The Argon2 hash is computed while the unit of work holds one pooled
-                // connection, blocking that connection for its duration. The pool defaults
-                // above one connection and SQLite runs in write-ahead logging mode, so
-                // other requests keep being served; do not move the hash off the
-                // transaction without authorizing the caller first.
-                let password_hash = password_hasher
-                    .hash_password(command.password())
-                    .await
-                    .map_err(|error| RegisterUserError::Unknown(error.into()))?;
-                let pending_credential =
-                    Credential::try_new(0, password_hash, Utc::now().naive_utc()).map_err(
-                        |error| {
-                            security_event::application_error("register_user");
-                            RegisterUserError::Unknown(error.into())
-                        },
-                    )?;
-                let credential = unit_of_work
-                    .credentials()
-                    .create(pending_credential)
-                    .await
-                    .map_err(|error| RegisterUserError::Unknown(error.into()))?;
+                    // The Argon2 hash is computed while the unit of work holds one pooled
+                    // connection, blocking that connection for its duration. The pool defaults
+                    // above one connection and SQLite runs in write-ahead logging mode, so
+                    // other requests keep being served; do not move the hash off the
+                    // transaction without authorizing the caller first.
+                    let password_hash = password_hasher
+                        .hash_password(command.password())
+                        .await
+                        .map_err(|error| RegisterUserError::Unknown(error.into()))?;
+                    let pending_credential =
+                        Credential::try_new(0, password_hash, Utc::now().naive_utc()).map_err(
+                            |error| {
+                                security_event::application_error("register_user");
+                                RegisterUserError::Unknown(error.into())
+                            },
+                        )?;
+                    let credential = unit_of_work
+                        .credentials()
+                        .create(pending_credential)
+                        .await
+                        .map_err(|error| RegisterUserError::Unknown(error.into()))?;
 
-                let pending_user =
-                    User::try_new(0, username, email, credential.id(), command.role()).map_err(
-                        |error| {
-                            security_event::application_error("register_user");
-                            RegisterUserError::Unknown(error.into())
-                        },
-                    )?;
-                let user =
-                    unit_of_work.users().create(pending_user).await.map_err(
+                    let pending_user =
+                        User::try_new(0, username, email, credential.id(), command.role())
+                            .map_err(|error| {
+                                security_event::application_error("register_user");
+                                RegisterUserError::Unknown(error.into())
+                            })?;
+                    let user = unit_of_work.users().create(pending_user).await.map_err(
                         |error| match error {
                             RepositoryError::AlreadyExist => RegisterUserError::UserAlreadyExists,
                             other => RegisterUserError::Unknown(other.into()),
                         },
                     )?;
 
-                Ok(RegisterUserResponse::new(
-                    user.id(),
-                    user.username().to_owned(),
-                    user.email().map(str::to_owned),
-                    user.role(),
-                ))
-            }
-            .await;
+                    Ok(RegisterUserResponse::new(
+                        user.id(),
+                        user.username().to_owned(),
+                        user.email().map(str::to_owned),
+                        user.role(),
+                    ))
+                }
+                .await;
 
             match result {
                 Ok(value) => {
@@ -223,6 +239,9 @@ mod tests {
     use crate::application::port::register_user::RegisterUserCommand;
     use crate::application::port::register_user::RegisterUserError;
     use crate::application::port::register_user::RegisterUserUseCase as _;
+    use crate::domain::model::permission::Action;
+    use crate::domain::model::permission::Permission;
+    use crate::domain::model::permission::Scope;
     use crate::domain::model::user::Role;
     use crate::domain::model::user::User;
     use crate::domain::model::user::UserError;
@@ -230,10 +249,13 @@ mod tests {
     use crate::domain::port::error::PasswordHasherError;
     use crate::domain::port::error::RepositoryError;
     use crate::domain::port::password_hasher::MockPasswordHasher;
+    use crate::domain::port::permission_repository::MockPermissionRepository;
     use crate::domain::port::user_repository::MockUserRepository;
     use crate::test_helpers::SECRET_PASSWORD;
     use crate::test_helpers::TestFactory;
     use crate::test_helpers::TestUnitOfWork;
+    use crate::test_helpers::expect_permissions;
+    use crate::test_helpers::no_permissions;
 
     use super::RegisterUser;
 
@@ -270,8 +292,9 @@ mod tests {
         )?;
 
         let unit_of_work = TestUnitOfWork {
-            users: user_repository,
             credentials: credential_repository,
+            permissions: no_permissions(),
+            users: user_repository,
             ..TestUnitOfWork::default()
         };
         let committed = Arc::clone(&unit_of_work.committed);
@@ -418,6 +441,44 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn register_user_standard_caller_granted_creation_creates_standard_user()
+    -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let mut user_repository = MockUserRepository::new();
+        let mut credential_repository = MockCredentialRepository::new();
+        let mut password_hasher = MockPasswordHasher::new();
+        expect_caller(&mut user_repository, user(3, "bobby", Role::Standard)?);
+        expect_unique_search(&mut user_repository);
+        expect_successful_persistence(
+            &mut credential_repository,
+            &mut password_hasher,
+            &mut user_repository,
+        );
+        let mut permissions = MockPermissionRepository::new();
+        expect_permissions(
+            &mut permissions,
+            3,
+            vec![Permission::try_new(3, Action::UserCreate, Scope::All)?],
+        );
+        let unit_of_work = TestUnitOfWork {
+            credentials: credential_repository,
+            permissions,
+            users: user_repository,
+            ..TestUnitOfWork::default()
+        };
+        let factory = TestFactory::new(unit_of_work);
+        let use_case: UseCase = RegisterUser::new(Arc::new(factory), Arc::new(password_hasher));
+        let command = command(3, "evelyn", Role::Standard);
+
+        // Act
+        let response = use_case.execute(command).await?;
+
+        // Assert
+        assert_eq!(response.role(), Role::Standard);
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn register_user_standard_caller_register_user_forbidden() -> Result<(), Box<dyn Error>> {
         // Arrange
         let harness = use_case_with(|user_repository, _, _| {
@@ -456,7 +517,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn register_user_unknown_caller_forbidden() -> Result<(), Box<dyn Error>> {
+    async fn register_user_unknown_caller_returns_no_such_caller() -> Result<(), Box<dyn Error>> {
         // Arrange
         let harness = use_case_with(|user_repository, _, _| {
             expect_unique_search(user_repository);
@@ -468,7 +529,7 @@ mod tests {
         let result = harness.use_case.execute(command).await;
 
         // Assert
-        assert!(matches!(result, Err(RegisterUserError::Forbidden)));
+        assert!(matches!(result, Err(RegisterUserError::NoSuchCaller)));
         assert!(harness.rolled_back.load(Ordering::SeqCst));
         Ok(())
     }

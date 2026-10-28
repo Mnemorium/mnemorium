@@ -11,6 +11,7 @@ use crate::application::port::delete_gallery_item::DeleteGalleryItemUseCase;
 use crate::application::security_event;
 use crate::application::use_case::upload_layout::stored_file_path;
 use crate::domain::model::gallery_item::GalleryItemMedia;
+use crate::domain::model::permission::Action;
 use crate::domain::port::asset_unit_of_work::AssetUnitOfWork;
 use crate::domain::port::error::RepositoryError;
 use crate::domain::port::file_repository::FileFilter;
@@ -19,9 +20,12 @@ use crate::domain::port::file_storage::FileStorage;
 use crate::domain::port::gallery_repository::GalleryFilter;
 use crate::domain::port::gallery_repository::GalleryItemFilter;
 use crate::domain::port::gallery_repository::GalleryRepository as _;
+use crate::domain::port::identity_unit_of_work::IdentityUnitOfWork;
 use crate::domain::port::image_repository::ImageFilter;
 use crate::domain::port::image_repository::ImageRepository as _;
 use crate::domain::port::library_unit_of_work::LibraryUnitOfWork;
+use crate::domain::port::permission_repository::PermissionFilter;
+use crate::domain::port::permission_repository::PermissionRepository as _;
 use crate::domain::port::unit_of_work::UnitOfWork as _;
 use crate::domain::port::unit_of_work::UnitOfWorkFactory;
 use crate::domain::port::user_repository::UserFilter;
@@ -29,7 +33,8 @@ use crate::domain::port::user_repository::UserRepository as _;
 use crate::domain::port::user_unit_of_work::UserUnitOfWork;
 use crate::domain::port::video_repository::VideoFilter;
 use crate::domain::port::video_repository::VideoRepository as _;
-use crate::domain::service::library_access::LibraryAccess;
+use crate::domain::service::authorization::Authorization;
+use crate::domain::service::authorization::Decision;
 
 /// Use case implementation for deleting one item of a gallery.
 pub struct DeleteGalleryItem<F, S> {
@@ -53,7 +58,7 @@ impl<F: UnitOfWorkFactory, S: FileStorage> DeleteGalleryItem<F, S> {
 impl<F, S> DeleteGalleryItemUseCase for DeleteGalleryItem<F, S>
 where
     F: UnitOfWorkFactory,
-    F::Uow: LibraryUnitOfWork + UserUnitOfWork + AssetUnitOfWork,
+    F::Uow: AssetUnitOfWork + IdentityUnitOfWork + LibraryUnitOfWork + UserUnitOfWork,
     S: FileStorage,
 {
     fn execute<'future>(
@@ -82,6 +87,15 @@ where
                     .next()
                     .ok_or(DeleteGalleryItemError::NoSuchCaller)?;
 
+                let permissions = unit_of_work
+                    .permissions()
+                    .search(&PermissionFilter {
+                        user_id: Some(caller.id()),
+                        ..PermissionFilter::default()
+                    })
+                    .await
+                    .map_err(|error| DeleteGalleryItemError::Unknown(error.into()))?;
+
                 let mut gallery = unit_of_work
                     .galleries()
                     .search(&GalleryFilter {
@@ -94,9 +108,19 @@ where
                     .next()
                     .ok_or(DeleteGalleryItemError::NoSuchGallery)?;
 
-                if !LibraryAccess::can_read_gallery(&gallery, &caller) {
-                    security_event::authorization_failed(caller.id(), "delete", "gallery_item");
-                    return Err(DeleteGalleryItemError::Forbidden);
+                if let Decision::Deny(denial) =
+                    Authorization::decide(&caller, &permissions, Action::GalleryModerate, &gallery)
+                {
+                    security_event::authorization_failed(
+                        caller.id(),
+                        denial.action().verb(),
+                        denial.action().target(),
+                    );
+                    return Err(if denial.conceals() {
+                        DeleteGalleryItemError::NoSuchGallery
+                    } else {
+                        DeleteGalleryItemError::Forbidden
+                    });
                 }
 
                 let detail = unit_of_work
@@ -157,8 +181,9 @@ where
                 // the destruction side of the own-media rule the add path
                 // enforces. Any other caller's removal still commits, keeping the
                 // file.
-                let removable =
-                    stored.filter(|file| caller.is_root_admin() || caller.id() == file.user_id());
+                let removable = stored.filter(|file| {
+                    Authorization::decide(&caller, &permissions, Action::FileUse, file).is_allowed()
+                });
                 let file_path = match removable.as_ref() {
                     Some(file) => {
                         // A `file` is shared per `(user_id, integrity_hash)`, so
@@ -282,6 +307,7 @@ mod tests {
     use crate::test_helpers::GalleryFactoryHarness;
     use crate::test_helpers::TestFactory;
     use crate::test_helpers::TestUnitOfWork;
+    use crate::test_helpers::no_permissions;
 
     use super::DeleteGalleryItem;
 
@@ -342,6 +368,7 @@ mod tests {
         files: MockFileRepository,
     ) -> GalleryFactoryHarness {
         let unit_of_work = TestUnitOfWork {
+            permissions: no_permissions(),
             files,
             galleries,
             images,
@@ -1088,7 +1115,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn delete_gallery_item_other_private_caller_returns_forbidden()
+    async fn delete_gallery_item_other_private_caller_returns_no_such_gallery()
     -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut users = MockUserRepository::new();
@@ -1111,7 +1138,7 @@ mod tests {
             .await;
 
         // Assert
-        assert!(matches!(result, Err(DeleteGalleryItemError::Forbidden)));
+        assert!(matches!(result, Err(DeleteGalleryItemError::NoSuchGallery)));
         assert!(harness.rolled_back.load(Ordering::SeqCst));
         Ok(())
     }

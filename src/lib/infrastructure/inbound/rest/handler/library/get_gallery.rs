@@ -17,7 +17,6 @@ use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 impl From<GetGalleryError> for ApiError {
     fn from(err: GetGalleryError) -> Self {
         match err {
-            GetGalleryError::Forbidden => Self::Forbidden(err.to_string()),
             GetGalleryError::NoSuchCaller => Self::Unauthorized(err.to_string()),
             GetGalleryError::NoSuchGallery => Self::NotFound(err.to_string()),
             GetGalleryError::Unknown(_) => Self::InternalServerError,
@@ -27,9 +26,10 @@ impl From<GetGalleryError> for ApiError {
 
 /// Fetch a gallery and its items by its identifier.
 ///
-/// Any authenticated caller may read a public gallery; a private gallery is
-/// readable by its owner and the Root Admin only. The representation carries
-/// the gallery and its items, ordered by position.
+/// An authenticated caller reads a gallery its `gallery.read` permission
+/// covers. A gallery the caller cannot read answers `404 Not Found`,
+/// indistinguishable from a missing one. The representation carries the
+/// gallery and its items, ordered by position.
 #[utoipa::path(
     get,
     operation_id = "get_gallery",
@@ -58,16 +58,10 @@ impl From<GetGalleryError> for ApiError {
             description = "Missing or invalid credentials"
         ),
         (
-            status = FORBIDDEN,
-            body = ErrorBody,
-            content_type = "application/hal+json",
-            description = "Caller is not allowed to read the gallery"
-        ),
-        (
             status = NOT_FOUND,
             body = ErrorBody,
             content_type = "application/hal+json",
-            description = "Unknown gallery"
+            description = "Unknown or inaccessible gallery"
         ),
         (
             status = INTERNAL_SERVER_ERROR,
@@ -260,24 +254,6 @@ mod tests {
         // Assert
         assert_eq!(status, StatusCode::OK);
         assert_eq!(payload.get("owner_id"), Some(&Value::Null));
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn get_gallery_forbidden_returns_forbidden() -> Result<(), Box<dyn Error>> {
-        // Arrange
-        let mut use_case = MockGetGalleryUseCase::new();
-        expect_error(&mut use_case, GetGalleryError::Forbidden);
-
-        // Act
-        let response = send(use_case, 1, "3").await?;
-
-        // Assert
-        assert_eq!(response.status(), StatusCode::FORBIDDEN);
-        assert_eq!(
-            error_message_of(&response).as_deref(),
-            Some("the caller is not allowed to read this gallery")
-        );
         Ok(())
     }
 

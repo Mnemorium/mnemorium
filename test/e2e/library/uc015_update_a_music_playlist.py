@@ -81,10 +81,9 @@ def test_a_non_owner_cannot_update_metadata(
     assert_error_body(response, 403)
 
 
-def test_root_admin_cannot_update_another_users_playlist(
+def test_root_admin_updates_another_users_playlist(
     create_playlist: Callable[[str, str, bool], requests.Response],
     patch_playlist: Callable[[str, int, dict], requests.Response],
-    assert_error_body: Callable[[requests.Response, int], None],
     standard_user_token: str,
     root_admin_token: str,
 ) -> None:
@@ -97,7 +96,8 @@ def test_root_admin_cannot_update_another_users_playlist(
         {"is_public": True},
     )
 
-    assert_error_body(response, 403)
+    assert response.status_code == 200, f"update failed: {response.status_code} {response.text}"
+    assert response.json()["is_public"] is True
 
 
 def test_a_duplicate_name_is_rejected(

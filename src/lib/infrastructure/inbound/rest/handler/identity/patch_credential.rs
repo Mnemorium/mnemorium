@@ -33,6 +33,7 @@ impl From<PatchCredentialError> for ApiError {
     fn from(err: PatchCredentialError) -> Self {
         match err {
             PatchCredentialError::Forbidden => Self::Forbidden(err.to_string()),
+            PatchCredentialError::NoSuchCaller => Self::Unauthorized(err.to_string()),
             PatchCredentialError::InvalidPassword => Self::UnprocessableEntity(err.to_string()),
             PatchCredentialError::Unknown(_) => Self::InternalServerError,
             PatchCredentialError::UnknownCredential => Self::NotFound(err.to_string()),

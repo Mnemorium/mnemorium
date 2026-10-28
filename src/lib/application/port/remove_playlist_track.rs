@@ -49,6 +49,9 @@ impl RemovePlaylistTrackCommand {
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum RemovePlaylistTrackError {
+    /// The caller may read the playlist but does not own it.
+    #[error("the caller may not modify this playlist")]
+    Forbidden,
     /// The authenticated caller does not exist anymore.
     #[error("the authenticated user does not exist")]
     NoSuchCaller,

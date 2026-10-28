@@ -7,7 +7,11 @@ use crate::application::port::list_series::ListSeriesError;
 use crate::application::port::list_series::ListSeriesItem;
 use crate::application::port::list_series::ListSeriesResponse;
 use crate::application::port::list_series::ListSeriesUseCase;
+use crate::domain::model::permission::Action;
+use crate::domain::port::identity_unit_of_work::IdentityUnitOfWork;
 use crate::domain::port::library_unit_of_work::LibraryUnitOfWork;
+use crate::domain::port::permission_repository::PermissionFilter;
+use crate::domain::port::permission_repository::PermissionRepository as _;
 use crate::domain::port::series_repository::SeriesFilter;
 use crate::domain::port::series_repository::SeriesRepository as _;
 use crate::domain::port::unit_of_work::UnitOfWork as _;
@@ -15,6 +19,7 @@ use crate::domain::port::unit_of_work::UnitOfWorkFactory;
 use crate::domain::port::user_repository::UserFilter;
 use crate::domain::port::user_repository::UserRepository as _;
 use crate::domain::port::user_unit_of_work::UserUnitOfWork;
+use crate::domain::service::authorization::Authorization;
 
 /// Use case implementation for listing the shows the caller may see.
 pub struct ListSeries<F> {
@@ -35,7 +40,7 @@ impl<F: UnitOfWorkFactory> ListSeries<F> {
 impl<F> ListSeriesUseCase for ListSeries<F>
 where
     F: UnitOfWorkFactory,
-    F::Uow: LibraryUnitOfWork + UserUnitOfWork,
+    F::Uow: IdentityUnitOfWork + LibraryUnitOfWork + UserUnitOfWork,
 {
     fn execute<'future>(
         &'future self,
@@ -51,7 +56,7 @@ where
                 .map_err(|error| ListSeriesError::Unknown(error.into()))?;
 
             let result = async {
-                unit_of_work
+                let caller = unit_of_work
                     .users()
                     .search(&UserFilter {
                         id: Some(command.caller_id()),
@@ -63,7 +68,16 @@ where
                     .next()
                     .ok_or(ListSeriesError::NoSuchCaller)?;
 
-                let series = unit_of_work
+                let permissions = unit_of_work
+                    .permissions()
+                    .search(&PermissionFilter {
+                        user_id: Some(caller.id()),
+                        ..PermissionFilter::default()
+                    })
+                    .await
+                    .map_err(|error| ListSeriesError::Unknown(error.into()))?;
+
+                let mut series = unit_of_work
                     .series()
                     .search(&SeriesFilter {
                         name: command.name().map(str::to_owned),
@@ -71,6 +85,11 @@ where
                     })
                     .await
                     .map_err(|error| ListSeriesError::Unknown(error.into()))?;
+
+                series.retain(|shown| {
+                    Authorization::decide(&caller, &permissions, Action::CatalogRead, shown)
+                        .is_allowed()
+                });
 
                 let total = series.len();
                 let offset = command.offset().unwrap_or(0);
@@ -127,6 +146,7 @@ mod tests {
     use crate::test_helpers::TestFactory;
     use crate::test_helpers::TestUnitOfWork;
     use crate::test_helpers::expect_caller;
+    use crate::test_helpers::no_permissions;
     use crate::test_helpers::sample_episode;
     use crate::test_helpers::sample_season;
     use crate::test_helpers::sample_series;
@@ -143,6 +163,7 @@ mod tests {
         series: MockSeriesRepository,
     ) -> GalleryFactoryHarness {
         let unit_of_work = TestUnitOfWork {
+            permissions: no_permissions(),
             series,
             users,
             ..TestUnitOfWork::default()

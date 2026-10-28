@@ -72,6 +72,9 @@ impl ReorderPlaylistTracksResponse {
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum ReorderPlaylistTracksError {
+    /// The caller may read the playlist but does not own it.
+    #[error("the caller may not modify this playlist")]
+    Forbidden,
     /// The requested order is not a complete permutation of the current track
     /// indices.
     #[error("the requested order is not a valid permutation of the playlist tracks")]

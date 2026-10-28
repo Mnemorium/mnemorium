@@ -7,11 +7,17 @@ use crate::application::port::get_current_user::GetCurrentUserError;
 use crate::application::port::get_current_user::GetCurrentUserResponse;
 use crate::application::port::get_current_user::GetCurrentUserUseCase;
 use crate::application::security_event;
+use crate::domain::model::permission::Action;
+use crate::domain::port::identity_unit_of_work::IdentityUnitOfWork;
+use crate::domain::port::permission_repository::PermissionFilter;
+use crate::domain::port::permission_repository::PermissionRepository as _;
 use crate::domain::port::unit_of_work::UnitOfWork as _;
 use crate::domain::port::unit_of_work::UnitOfWorkFactory;
 use crate::domain::port::user_repository::UserFilter;
 use crate::domain::port::user_repository::UserRepository as _;
 use crate::domain::port::user_unit_of_work::UserUnitOfWork;
+use crate::domain::service::authorization::Authorization;
+use crate::domain::service::authorization::Decision;
 
 /// Use case implementation for fetching the current user.
 pub struct GetCurrentUser<F> {
@@ -32,7 +38,7 @@ impl<F: UnitOfWorkFactory> GetCurrentUser<F> {
 impl<F> GetCurrentUserUseCase for GetCurrentUser<F>
 where
     F: UnitOfWorkFactory,
-    F::Uow: UserUnitOfWork,
+    F::Uow: IdentityUnitOfWork + UserUnitOfWork,
 {
     fn execute<'future>(
         &'future self,
@@ -64,6 +70,25 @@ where
                     .into_iter()
                     .next()
                     .ok_or(GetCurrentUserError::NoSuchUser)?;
+
+                let permissions = unit_of_work
+                    .permissions()
+                    .search(&PermissionFilter {
+                        user_id: Some(user.id()),
+                        ..PermissionFilter::default()
+                    })
+                    .await
+                    .map_err(|error| GetCurrentUserError::Unknown(error.into()))?;
+                if let Decision::Deny(denial) =
+                    Authorization::decide(&user, &permissions, Action::UserRead, &user)
+                {
+                    security_event::authorization_failed(
+                        user.id(),
+                        denial.action().verb(),
+                        denial.action().target(),
+                    );
+                    return Err(GetCurrentUserError::NoSuchUser);
+                }
 
                 Ok(GetCurrentUserResponse::new(
                     user.id(),
@@ -110,6 +135,7 @@ mod tests {
     use crate::domain::port::user_repository::MockUserRepository;
     use crate::test_helpers::TestFactory;
     use crate::test_helpers::TestUnitOfWork;
+    use crate::test_helpers::no_permissions;
 
     use super::GetCurrentUser;
 
@@ -132,6 +158,7 @@ mod tests {
         setup(&mut user_repository)?;
 
         let unit_of_work = TestUnitOfWork {
+            permissions: no_permissions(),
             users: user_repository,
             ..TestUnitOfWork::default()
         };

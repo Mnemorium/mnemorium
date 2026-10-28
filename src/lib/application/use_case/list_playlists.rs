@@ -7,15 +7,19 @@ use crate::application::port::list_playlists::ListPlaylistsError;
 use crate::application::port::list_playlists::ListPlaylistsItem;
 use crate::application::port::list_playlists::ListPlaylistsResponse;
 use crate::application::port::list_playlists::ListPlaylistsUseCase;
+use crate::domain::model::permission::Action;
+use crate::domain::port::identity_unit_of_work::IdentityUnitOfWork;
 use crate::domain::port::library_unit_of_work::LibraryUnitOfWork;
 use crate::domain::port::music_playlist_repository::MusicPlaylistFilter;
 use crate::domain::port::music_playlist_repository::MusicPlaylistRepository as _;
+use crate::domain::port::permission_repository::PermissionFilter;
+use crate::domain::port::permission_repository::PermissionRepository as _;
 use crate::domain::port::unit_of_work::UnitOfWork as _;
 use crate::domain::port::unit_of_work::UnitOfWorkFactory;
 use crate::domain::port::user_repository::UserFilter;
 use crate::domain::port::user_repository::UserRepository as _;
 use crate::domain::port::user_unit_of_work::UserUnitOfWork;
-use crate::domain::service::library_access::LibraryAccess;
+use crate::domain::service::authorization::Authorization;
 
 /// Use case implementation for listing the playlists the caller may see.
 pub struct ListPlaylists<F> {
@@ -36,7 +40,7 @@ impl<F: UnitOfWorkFactory> ListPlaylists<F> {
 impl<F> ListPlaylistsUseCase for ListPlaylists<F>
 where
     F: UnitOfWorkFactory,
-    F::Uow: LibraryUnitOfWork + UserUnitOfWork,
+    F::Uow: IdentityUnitOfWork + LibraryUnitOfWork + UserUnitOfWork,
 {
     fn execute<'future>(
         &'future self,
@@ -67,6 +71,15 @@ where
                     .next()
                     .ok_or(ListPlaylistsError::NoSuchCaller)?;
 
+                let permissions = unit_of_work
+                    .permissions()
+                    .search(&PermissionFilter {
+                        user_id: Some(caller.id()),
+                        ..PermissionFilter::default()
+                    })
+                    .await
+                    .map_err(|error| ListPlaylistsError::Unknown(error.into()))?;
+
                 let mut playlists = unit_of_work
                     .music_playlists()
                     .search(&MusicPlaylistFilter {
@@ -77,7 +90,10 @@ where
                     })
                     .await
                     .map_err(|error| ListPlaylistsError::Unknown(error.into()))?;
-                playlists.retain(|playlist| LibraryAccess::can_read_playlist(playlist, &caller));
+                playlists.retain(|playlist| {
+                    Authorization::decide(&caller, &permissions, Action::PlaylistRead, playlist)
+                        .is_allowed()
+                });
 
                 let total = playlists.len();
                 let offset = command.offset().unwrap_or(0);
@@ -145,6 +161,7 @@ mod tests {
     use crate::test_helpers::GalleryFactoryHarness;
     use crate::test_helpers::TestFactory;
     use crate::test_helpers::TestUnitOfWork;
+    use crate::test_helpers::no_permissions;
 
     use super::ListPlaylists;
 
@@ -189,6 +206,7 @@ mod tests {
         playlists: MockMusicPlaylistRepository,
     ) -> GalleryFactoryHarness {
         let unit_of_work = TestUnitOfWork {
+            permissions: no_permissions(),
             music_playlists: playlists,
             users,
             ..TestUnitOfWork::default()

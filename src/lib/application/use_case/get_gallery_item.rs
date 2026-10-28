@@ -7,16 +7,21 @@ use crate::application::port::get_gallery_item::GetGalleryItemError;
 use crate::application::port::get_gallery_item::GetGalleryItemResponse;
 use crate::application::port::get_gallery_item::GetGalleryItemUseCase;
 use crate::application::security_event;
+use crate::domain::model::permission::Action;
 use crate::domain::port::gallery_repository::GalleryFilter;
 use crate::domain::port::gallery_repository::GalleryItemFilter;
 use crate::domain::port::gallery_repository::GalleryRepository as _;
+use crate::domain::port::identity_unit_of_work::IdentityUnitOfWork;
 use crate::domain::port::library_unit_of_work::LibraryUnitOfWork;
+use crate::domain::port::permission_repository::PermissionFilter;
+use crate::domain::port::permission_repository::PermissionRepository as _;
 use crate::domain::port::unit_of_work::UnitOfWork as _;
 use crate::domain::port::unit_of_work::UnitOfWorkFactory;
 use crate::domain::port::user_repository::UserFilter;
 use crate::domain::port::user_repository::UserRepository as _;
 use crate::domain::port::user_unit_of_work::UserUnitOfWork;
-use crate::domain::service::library_access::LibraryAccess;
+use crate::domain::service::authorization::Authorization;
+use crate::domain::service::authorization::Decision;
 
 /// Use case implementation for fetching one item of a gallery.
 pub struct GetGalleryItem<F> {
@@ -37,7 +42,7 @@ impl<F: UnitOfWorkFactory> GetGalleryItem<F> {
 impl<F> GetGalleryItemUseCase for GetGalleryItem<F>
 where
     F: UnitOfWorkFactory,
-    F::Uow: LibraryUnitOfWork + UserUnitOfWork,
+    F::Uow: IdentityUnitOfWork + LibraryUnitOfWork + UserUnitOfWork,
 {
     fn execute<'future>(
         &'future self,
@@ -70,6 +75,15 @@ where
                     .next()
                     .ok_or(GetGalleryItemError::NoSuchCaller)?;
 
+                let permissions = unit_of_work
+                    .permissions()
+                    .search(&PermissionFilter {
+                        user_id: Some(caller.id()),
+                        ..PermissionFilter::default()
+                    })
+                    .await
+                    .map_err(|error| GetGalleryItemError::Unknown(error.into()))?;
+
                 let gallery = unit_of_work
                     .galleries()
                     .search(&GalleryFilter {
@@ -82,9 +96,15 @@ where
                     .next()
                     .ok_or(GetGalleryItemError::NoSuchGallery)?;
 
-                if !LibraryAccess::can_read_gallery(&gallery, &caller) {
-                    security_event::authorization_failed(caller.id(), "read", "gallery_item");
-                    return Err(GetGalleryItemError::Forbidden);
+                if let Decision::Deny(denial) =
+                    Authorization::decide(&caller, &permissions, Action::GalleryRead, &gallery)
+                {
+                    security_event::authorization_failed(
+                        caller.id(),
+                        denial.action().verb(),
+                        denial.action().target(),
+                    );
+                    return Err(GetGalleryItemError::NoSuchGallery);
                 }
 
                 let detail = unit_of_work
@@ -155,6 +175,7 @@ mod tests {
     use crate::test_helpers::GalleryFactoryHarness;
     use crate::test_helpers::TestFactory;
     use crate::test_helpers::TestUnitOfWork;
+    use crate::test_helpers::no_permissions;
 
     use super::GetGalleryItem;
 
@@ -185,6 +206,7 @@ mod tests {
         galleries: MockGalleryRepository,
     ) -> GalleryFactoryHarness {
         let unit_of_work = TestUnitOfWork {
+            permissions: no_permissions(),
             galleries,
             users,
             ..TestUnitOfWork::default()
@@ -315,7 +337,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn get_gallery_item_non_root_admin_private_item_returns_forbidden()
+    async fn get_gallery_item_non_root_admin_private_item_returns_no_such_gallery()
     -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut users = MockUserRepository::new();
@@ -330,13 +352,13 @@ mod tests {
         let result = use_case.execute(GetGalleryItemCommand::new(1, 3, 42)).await;
 
         // Assert
-        assert!(matches!(result, Err(GetGalleryItemError::Forbidden)));
+        assert!(matches!(result, Err(GetGalleryItemError::NoSuchGallery)));
         assert!(harness.rolled_back.load(Ordering::SeqCst));
         Ok(())
     }
 
     #[tokio::test]
-    async fn get_gallery_item_other_caller_private_gallery_returns_forbidden()
+    async fn get_gallery_item_other_caller_private_gallery_returns_no_such_gallery()
     -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut users = MockUserRepository::new();
@@ -351,7 +373,7 @@ mod tests {
         let result = use_case.execute(GetGalleryItemCommand::new(9, 3, 42)).await;
 
         // Assert
-        assert!(matches!(result, Err(GetGalleryItemError::Forbidden)));
+        assert!(matches!(result, Err(GetGalleryItemError::NoSuchGallery)));
         assert!(harness.rolled_back.load(Ordering::SeqCst));
         Ok(())
     }

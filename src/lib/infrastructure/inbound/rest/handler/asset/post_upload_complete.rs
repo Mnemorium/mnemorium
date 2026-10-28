@@ -56,6 +56,7 @@ impl From<CompleteUploadError> for ApiError {
             | CompleteUploadError::IntegrityMismatch
             | CompleteUploadError::UnsupportedMedia => Self::UnprocessableEntity(err.to_string()),
             CompleteUploadError::Expired => Self::Gone(err.to_string()),
+            CompleteUploadError::NoSuchCaller => Self::Unauthorized(err.to_string()),
             CompleteUploadError::NoSuchUpload => Self::NotFound(err.to_string()),
             CompleteUploadError::Unknown(_) => Self::InternalServerError,
         }

@@ -9,16 +9,21 @@ use crate::application::port::patch_credential::PatchCredentialError;
 use crate::application::port::patch_credential::PatchCredentialUseCase;
 use crate::application::security_event;
 use crate::domain::model::credential::Credential;
-use crate::domain::model::user::Role;
+use crate::domain::model::permission::Action;
+use crate::domain::model::permission::Global;
 use crate::domain::port::credential_repository::CredentialFilter;
 use crate::domain::port::credential_repository::CredentialRepository as _;
 use crate::domain::port::identity_unit_of_work::IdentityUnitOfWork;
 use crate::domain::port::password_hasher::PasswordHasher;
+use crate::domain::port::permission_repository::PermissionFilter;
+use crate::domain::port::permission_repository::PermissionRepository as _;
 use crate::domain::port::unit_of_work::UnitOfWork as _;
 use crate::domain::port::unit_of_work::UnitOfWorkFactory;
 use crate::domain::port::user_repository::UserFilter;
 use crate::domain::port::user_repository::UserRepository as _;
 use crate::domain::port::user_unit_of_work::UserUnitOfWork;
+use crate::domain::service::authorization::Authorization;
+use crate::domain::service::authorization::Decision;
 use crate::domain::service::password_policy::PasswordPolicy;
 use crate::domain::service::password_policy::PasswordPolicyError;
 
@@ -81,17 +86,24 @@ where
                     .map_err(|error| PatchCredentialError::Unknown(error.into()))?
                     .into_iter()
                     .next()
-                    .ok_or_else(|| {
-                        security_event::authorization_failed(
-                            command.caller_id(),
-                            "patch",
-                            "credential",
-                        );
-                        PatchCredentialError::Forbidden
-                    })?;
+                    .ok_or(PatchCredentialError::NoSuchCaller)?;
 
-                if !(caller.role() == Role::Admin && caller.id() == 0) {
-                    security_event::authorization_failed(caller.id(), "patch", "credential");
+                let permissions = unit_of_work
+                    .permissions()
+                    .search(&PermissionFilter {
+                        user_id: Some(caller.id()),
+                        ..PermissionFilter::default()
+                    })
+                    .await
+                    .map_err(|error| PatchCredentialError::Unknown(error.into()))?;
+                if let Decision::Deny(denial) =
+                    Authorization::decide(&caller, &permissions, Action::CredentialPatch, &Global)
+                {
+                    security_event::authorization_failed(
+                        caller.id(),
+                        denial.action().verb(),
+                        denial.action().target(),
+                    );
                     return Err(PatchCredentialError::Forbidden);
                 }
 
@@ -168,6 +180,7 @@ mod tests {
     use crate::test_helpers::SECRET_PASSWORD;
     use crate::test_helpers::TestFactory;
     use crate::test_helpers::TestUnitOfWork;
+    use crate::test_helpers::no_permissions;
 
     use super::PatchCredential;
 
@@ -203,8 +216,9 @@ mod tests {
         )?;
 
         let unit_of_work = TestUnitOfWork {
-            users: user_repository,
             credentials: credential_repository,
+            permissions: no_permissions(),
+            users: user_repository,
             ..TestUnitOfWork::default()
         };
         let committed = Arc::clone(&unit_of_work.committed);
@@ -349,7 +363,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn patch_credential_unknown_caller_forbidden() -> Result<(), Box<dyn Error>> {
+    async fn patch_credential_unknown_caller_returns_no_such_caller() -> Result<(), Box<dyn Error>>
+    {
         // Arrange
         let harness = use_case_with(|user_repository, _, _| {
             user_repository
@@ -364,7 +379,7 @@ mod tests {
         let result = harness.use_case.execute(command).await;
 
         // Assert
-        assert!(matches!(result, Err(PatchCredentialError::Forbidden)));
+        assert!(matches!(result, Err(PatchCredentialError::NoSuchCaller)));
         assert!(harness.rolled_back.load(Ordering::SeqCst));
         Ok(())
     }

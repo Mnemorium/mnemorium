@@ -10,15 +10,20 @@ use crate::application::port::reorder_playlist_tracks::ReorderPlaylistTracksResp
 use crate::application::port::reorder_playlist_tracks::ReorderPlaylistTracksUseCase;
 use crate::application::security_event;
 use crate::domain::model::music_playlist::MusicPlaylistError;
+use crate::domain::model::permission::Action;
+use crate::domain::port::identity_unit_of_work::IdentityUnitOfWork;
 use crate::domain::port::library_unit_of_work::LibraryUnitOfWork;
 use crate::domain::port::music_playlist_repository::MusicPlaylistFilter;
 use crate::domain::port::music_playlist_repository::MusicPlaylistRepository as _;
+use crate::domain::port::permission_repository::PermissionFilter;
+use crate::domain::port::permission_repository::PermissionRepository as _;
 use crate::domain::port::unit_of_work::UnitOfWork as _;
 use crate::domain::port::unit_of_work::UnitOfWorkFactory;
 use crate::domain::port::user_repository::UserFilter;
 use crate::domain::port::user_repository::UserRepository as _;
 use crate::domain::port::user_unit_of_work::UserUnitOfWork;
-use crate::domain::service::library_access::LibraryAccess;
+use crate::domain::service::authorization::Authorization;
+use crate::domain::service::authorization::Decision;
 
 /// Use case implementation for reordering the tracks of a playlist.
 pub struct ReorderPlaylistTracks<F> {
@@ -39,7 +44,7 @@ impl<F: UnitOfWorkFactory> ReorderPlaylistTracks<F> {
 impl<F> ReorderPlaylistTracksUseCase for ReorderPlaylistTracks<F>
 where
     F: UnitOfWorkFactory,
-    F::Uow: LibraryUnitOfWork + UserUnitOfWork,
+    F::Uow: IdentityUnitOfWork + LibraryUnitOfWork + UserUnitOfWork,
 {
     #[expect(
         clippy::wildcard_enum_match_arm,
@@ -76,6 +81,15 @@ where
                     .next()
                     .ok_or(ReorderPlaylistTracksError::NoSuchCaller)?;
 
+                let permissions = unit_of_work
+                    .permissions()
+                    .search(&PermissionFilter {
+                        user_id: Some(caller.id()),
+                        ..PermissionFilter::default()
+                    })
+                    .await
+                    .map_err(|error| ReorderPlaylistTracksError::Unknown(error.into()))?;
+
                 let mut playlist = unit_of_work
                     .music_playlists()
                     .search(&MusicPlaylistFilter {
@@ -88,11 +102,22 @@ where
                     .next()
                     .ok_or(ReorderPlaylistTracksError::NoSuchPlaylist)?;
 
-                if !LibraryAccess::can_read_playlist(&playlist, &caller) {
-                    // The response stays indistinguishable from a missing
-                    // playlist (`API-044`).
-                    security_event::authorization_failed(caller.id(), "reorder", "music_playlist");
-                    return Err(ReorderPlaylistTracksError::NoSuchPlaylist);
+                if let Decision::Deny(denial) = Authorization::decide(
+                    &caller,
+                    &permissions,
+                    Action::PlaylistModerate,
+                    &playlist,
+                ) {
+                    security_event::authorization_failed(
+                        caller.id(),
+                        denial.action().verb(),
+                        denial.action().target(),
+                    );
+                    return Err(if denial.conceals() {
+                        ReorderPlaylistTracksError::NoSuchPlaylist
+                    } else {
+                        ReorderPlaylistTracksError::Forbidden
+                    });
                 }
 
                 let order =
@@ -164,6 +189,7 @@ mod tests {
     use crate::test_helpers::GalleryFactoryHarness;
     use crate::test_helpers::TestFactory;
     use crate::test_helpers::TestUnitOfWork;
+    use crate::test_helpers::no_permissions;
 
     use super::ReorderPlaylistTracks;
 
@@ -205,6 +231,7 @@ mod tests {
         playlists: MockMusicPlaylistRepository,
     ) -> GalleryFactoryHarness {
         let unit_of_work = TestUnitOfWork {
+            permissions: no_permissions(),
             music_playlists: playlists,
             users,
             ..TestUnitOfWork::default()

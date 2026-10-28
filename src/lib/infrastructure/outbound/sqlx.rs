@@ -8,6 +8,7 @@ pub mod model;
 pub mod movie_repository;
 pub mod music_album_repository;
 pub mod music_playlist_repository;
+pub mod permission_repository;
 pub mod query_filter;
 pub mod series_repository;
 pub mod sqlite3;

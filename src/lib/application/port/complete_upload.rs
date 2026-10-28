@@ -79,6 +79,9 @@ pub enum CompleteUploadError {
     /// The recomputed integrity hash does not match the hash declared at init.
     #[error("the integrity hash does not match the declared one")]
     IntegrityMismatch,
+    /// The authenticated caller does not exist anymore.
+    #[error("the authenticated user does not exist")]
+    NoSuchCaller,
     /// No upload session matches the requested identifier.
     #[error("no upload session matches this identifier")]
     NoSuchUpload,

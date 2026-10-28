@@ -18,7 +18,6 @@ use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 impl From<GetGalleryItemError> for ApiError {
     fn from(err: GetGalleryItemError) -> Self {
         match err {
-            GetGalleryItemError::Forbidden => Self::Forbidden(err.to_string()),
             GetGalleryItemError::NoSuchCaller => Self::Unauthorized(err.to_string()),
             GetGalleryItemError::NoSuchGallery | GetGalleryItemError::NoSuchItem => {
                 Self::NotFound(err.to_string())
@@ -30,9 +29,9 @@ impl From<GetGalleryItemError> for ApiError {
 
 /// Fetch one item of a gallery by its identifiers.
 ///
-/// Any authenticated caller may read an item of a public gallery; an item of a
-/// private gallery is readable by the gallery owner and the Root Admin only.
-/// The item is scoped to the gallery named in the path.
+/// An authenticated caller reads an item of a gallery its `gallery.read`
+/// permission covers; an item of a gallery the caller cannot read answers
+/// `404 Not Found`. The item is scoped to the gallery named in the path.
 #[utoipa::path(
     get,
     operation_id = "get_gallery_item",
@@ -62,16 +61,10 @@ impl From<GetGalleryItemError> for ApiError {
             description = "Missing or invalid credentials"
         ),
         (
-            status = FORBIDDEN,
-            body = ErrorBody,
-            content_type = "application/hal+json",
-            description = "Caller is not allowed to read the gallery"
-        ),
-        (
             status = NOT_FOUND,
             body = ErrorBody,
             content_type = "application/hal+json",
-            description = "Unknown gallery or item"
+            description = "Unknown or inaccessible gallery, or unknown item"
         ),
         (
             status = INTERNAL_SERVER_ERROR,
@@ -229,24 +222,6 @@ mod tests {
                 "name": "sunset.jpg",
                 "added_at": "2026-10-06T12:00:00"
             })
-        );
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn get_gallery_item_forbidden_returns_forbidden() -> Result<(), Box<dyn Error>> {
-        // Arrange
-        let mut use_case = MockGetGalleryItemUseCase::new();
-        expect_error(&mut use_case, GetGalleryItemError::Forbidden);
-
-        // Act
-        let response = send(use_case, 1, "3", "42").await?;
-
-        // Assert
-        assert_eq!(response.status(), StatusCode::FORBIDDEN);
-        assert_eq!(
-            error_message_of(&response).as_deref(),
-            Some("the caller is not allowed to read this gallery")
         );
         Ok(())
     }

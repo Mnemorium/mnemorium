@@ -1,6 +1,9 @@
 use chrono::NaiveDateTime;
 
 use crate::domain::alias::NumericID;
+use crate::domain::model::permission::Protected;
+use crate::domain::model::permission::ResourceKind;
+use crate::domain::model::permission::ResourceRef;
 
 /// Identifier of the seeded, undeletable default gallery.
 pub const DEFAULT_GALLERY_ID: NumericID = 0;
@@ -110,5 +113,23 @@ impl Gallery {
     #[must_use]
     pub fn user_id(&self) -> Option<NumericID> {
         self.user_id
+    }
+}
+
+impl Protected for Gallery {
+    fn is_privileged_account(&self) -> bool {
+        false
+    }
+
+    fn is_publicly_visible(&self) -> bool {
+        self.is_public()
+    }
+
+    fn owner_id(&self) -> Option<NumericID> {
+        self.user_id
+    }
+
+    fn resource_ref(&self) -> Option<ResourceRef> {
+        Some(ResourceRef::new(ResourceKind::Gallery, self.gallery_id))
     }
 }

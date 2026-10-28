@@ -172,6 +172,9 @@ pub enum WriteUploadChunkError {
     /// The declared `Content-Digest` digest does not match the chunk.
     #[error("the content digest does not match the chunk")]
     InvalidContentDigest,
+    /// The authenticated caller does not exist anymore.
+    #[error("the authenticated user does not exist")]
+    NoSuchCaller,
     /// No upload session matches the requested identifier.
     #[error("no upload session matches this identifier")]
     NoSuchUpload,

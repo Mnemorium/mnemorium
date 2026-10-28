@@ -1,8 +1,10 @@
 use std::sync::Arc;
 
+use crate::application::port::get_permission::GetPermissionUseCase;
 use crate::application::port::login_user::LoginUserUseCase;
 use crate::application::port::patch_credential::PatchCredentialUseCase;
 use crate::application::port::register_user::RegisterUserUseCase;
+use crate::application::port::replace_permission::ReplacePermissionUseCase;
 
 /// Builds the use cases of the Identity bounded context on demand.
 ///
@@ -10,6 +12,9 @@ use crate::application::port::register_user::RegisterUserUseCase;
 /// that every request gets a use case bound to the current configuration.
 #[cfg_attr(test, mockall::automock)]
 pub trait IdentityUseCaseFactory: Send + Sync {
+    /// Build the use case reading a user's effective permissions.
+    fn get_permission(&self) -> Arc<dyn GetPermissionUseCase>;
+
     /// Build the use case authenticating a user.
     fn login_user(&self) -> Arc<dyn LoginUserUseCase>;
 
@@ -18,4 +23,7 @@ pub trait IdentityUseCaseFactory: Send + Sync {
 
     /// Build the use case registering a new user.
     fn register_user(&self) -> Arc<dyn RegisterUserUseCase>;
+
+    /// Build the use case replacing a user's permission overrides.
+    fn replace_permission(&self) -> Arc<dyn ReplacePermissionUseCase>;
 }

@@ -87,6 +87,7 @@ impl From<BeginUploadError> for ApiError {
                 Self::UnprocessableEntity(err.to_string())
             }
             BeginUploadError::FileTooLarge => Self::PayloadTooLarge(err.to_string()),
+            BeginUploadError::NoSuchCaller => Self::Unauthorized(err.to_string()),
             BeginUploadError::Unknown(_) => Self::InternalServerError,
             BeginUploadError::UnsupportedMediaType => Self::UnsupportedMediaType(err.to_string()),
         }

@@ -7,12 +7,18 @@ use crate::application::port::list_users::ListUsersError;
 use crate::application::port::list_users::ListUsersResponse;
 use crate::application::port::list_users::ListUsersUseCase;
 use crate::application::security_event;
-use crate::domain::model::user::Role;
+use crate::domain::model::permission::Action;
+use crate::domain::model::permission::Global;
+use crate::domain::port::identity_unit_of_work::IdentityUnitOfWork;
+use crate::domain::port::permission_repository::PermissionFilter;
+use crate::domain::port::permission_repository::PermissionRepository as _;
 use crate::domain::port::unit_of_work::UnitOfWork as _;
 use crate::domain::port::unit_of_work::UnitOfWorkFactory;
 use crate::domain::port::user_repository::UserFilter;
 use crate::domain::port::user_repository::UserRepository as _;
 use crate::domain::port::user_unit_of_work::UserUnitOfWork;
+use crate::domain::service::authorization::Authorization;
+use crate::domain::service::authorization::Decision;
 
 /// Use case implementation for listing the users of the instance.
 pub struct ListUsers<F> {
@@ -33,7 +39,7 @@ impl<F: UnitOfWorkFactory> ListUsers<F> {
 impl<F> ListUsersUseCase for ListUsers<F>
 where
     F: UnitOfWorkFactory,
-    F::Uow: UserUnitOfWork,
+    F::Uow: IdentityUnitOfWork + UserUnitOfWork,
 {
     fn execute<'future>(
         &'future self,
@@ -61,8 +67,23 @@ where
                     .into_iter()
                     .next()
                     .ok_or(ListUsersError::NoSuchCaller)?;
-                if caller.role() != Role::Admin {
-                    security_event::authorization_failed(caller.id(), "read", "user_list");
+
+                let permissions = unit_of_work
+                    .permissions()
+                    .search(&PermissionFilter {
+                        user_id: Some(caller.id()),
+                        ..PermissionFilter::default()
+                    })
+                    .await
+                    .map_err(|error| ListUsersError::Unknown(error.into()))?;
+                if let Decision::Deny(denial) =
+                    Authorization::decide(&caller, &permissions, Action::UserRead, &Global)
+                {
+                    security_event::authorization_failed(
+                        caller.id(),
+                        denial.action().verb(),
+                        denial.action().target(),
+                    );
                     return Err(ListUsersError::NotAdmin);
                 }
 
@@ -128,6 +149,7 @@ mod tests {
     use crate::domain::port::user_repository::MockUserRepository;
     use crate::test_helpers::TestFactory;
     use crate::test_helpers::TestUnitOfWork;
+    use crate::test_helpers::no_permissions;
 
     use super::ListUsers;
 
@@ -150,6 +172,7 @@ mod tests {
         setup(&mut user_repository)?;
 
         let unit_of_work = TestUnitOfWork {
+            permissions: no_permissions(),
             users: user_repository,
             ..TestUnitOfWork::default()
         };

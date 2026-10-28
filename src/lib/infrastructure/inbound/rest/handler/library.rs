@@ -1625,6 +1625,7 @@ impl From<RemovePlaylistTrackError> for ApiError {
             RemovePlaylistTrackError::NoSuchPlaylist | RemovePlaylistTrackError::NoSuchTrack => {
                 Self::NotFound(err.to_string())
             }
+            RemovePlaylistTrackError::Forbidden => Self::Forbidden(err.to_string()),
             RemovePlaylistTrackError::NoSuchCaller => Self::Unauthorized(err.to_string()),
             RemovePlaylistTrackError::Unknown(_) => Self::InternalServerError,
         }
@@ -1635,6 +1636,7 @@ impl From<RemovePlaylistTrackError> for ApiError {
 impl From<ReorderPlaylistTracksError> for ApiError {
     fn from(err: ReorderPlaylistTracksError) -> Self {
         match err {
+            ReorderPlaylistTracksError::Forbidden => Self::Forbidden(err.to_string()),
             ReorderPlaylistTracksError::InvalidOrder => Self::UnprocessableEntity(err.to_string()),
             ReorderPlaylistTracksError::NoSuchCaller => Self::Unauthorized(err.to_string()),
             ReorderPlaylistTracksError::NoSuchPlaylist => Self::NotFound(err.to_string()),

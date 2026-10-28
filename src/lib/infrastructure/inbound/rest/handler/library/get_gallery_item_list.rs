@@ -16,7 +16,9 @@ use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 ///
 /// This route is a true alias of `GET /library/gallery/{id}`: it returns the
 /// same gallery representation, and the `_links.self` of that representation is
-/// the canonical gallery URI, never this alias path (`API-042`).
+/// the canonical gallery URI, never this alias path (`API-042`). A gallery the
+/// caller cannot read answers `404 Not Found`, indistinguishable from a
+/// missing one.
 #[utoipa::path(
     get,
     operation_id = "get_gallery_item_list",
@@ -45,16 +47,10 @@ use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
             description = "Missing or invalid credentials"
         ),
         (
-            status = FORBIDDEN,
-            body = ErrorBody,
-            content_type = "application/hal+json",
-            description = "Caller is not allowed to read the gallery"
-        ),
-        (
             status = NOT_FOUND,
             body = ErrorBody,
             content_type = "application/hal+json",
-            description = "Unknown gallery"
+            description = "Unknown or inaccessible gallery"
         ),
         (
             status = INTERNAL_SERVER_ERROR,
@@ -208,27 +204,6 @@ mod tests {
         assert_eq!(
             error_message_of(&response).as_deref(),
             Some("a gallery with this identifier does not exist")
-        );
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn get_gallery_item_list_forbidden_returns_forbidden() -> Result<(), Box<dyn Error>> {
-        // Arrange
-        let mut use_case = MockGetGalleryUseCase::new();
-        use_case
-            .expect_execute()
-            .times(1)
-            .return_once(|_| Box::pin(async { Err(GetGalleryError::Forbidden) }));
-
-        // Act
-        let response = send(use_case, 1, "3").await?;
-
-        // Assert
-        assert_eq!(response.status(), StatusCode::FORBIDDEN);
-        assert_eq!(
-            error_message_of(&response).as_deref(),
-            Some("the caller is not allowed to read this gallery")
         );
         Ok(())
     }

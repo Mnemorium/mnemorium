@@ -4,6 +4,9 @@ use crate::domain::alias::NumericID;
 use crate::domain::model::integrity_hash::DIGEST_HEX_LENGTH;
 use crate::domain::model::integrity_hash::IntegrityHash;
 use crate::domain::model::integrity_hash::IntegrityHashError;
+use crate::domain::model::permission::Protected;
+use crate::domain::model::permission::ResourceKind;
+use crate::domain::model::permission::ResourceRef;
 
 /// Hard upper bound on the number of chunks an upload may be split into.
 ///
@@ -354,6 +357,24 @@ impl Upload {
     #[must_use]
     pub fn user_id(&self) -> NumericID {
         self.user_id
+    }
+}
+
+impl Protected for Upload {
+    fn is_privileged_account(&self) -> bool {
+        false
+    }
+
+    fn is_publicly_visible(&self) -> bool {
+        false
+    }
+
+    fn owner_id(&self) -> Option<NumericID> {
+        Some(self.user_id)
+    }
+
+    fn resource_ref(&self) -> Option<ResourceRef> {
+        Some(ResourceRef::new(ResourceKind::Upload, self.upload_id))
     }
 }
 

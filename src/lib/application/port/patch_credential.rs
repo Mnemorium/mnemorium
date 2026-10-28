@@ -55,6 +55,9 @@ pub enum PatchCredentialError {
     /// The password does not satisfy the password policy.
     #[error("password does not satisfy the password policy")]
     InvalidPassword,
+    /// The authenticated caller does not exist anymore.
+    #[error("the authenticated user does not exist")]
+    NoSuchCaller,
     /// An unexpected or unmapped error occurred.
     #[error("an unknown error occurred: {0}")]
     Unknown(#[source] anyhow::Error),

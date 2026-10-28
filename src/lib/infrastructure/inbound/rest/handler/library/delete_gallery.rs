@@ -26,9 +26,12 @@ impl From<DeleteGalleryError> for ApiError {
 
 /// Delete a gallery and its items by its identifier.
 ///
-/// Only the owner of the gallery may delete it; administrators have no
-/// override. The seeded default gallery (identifier `0`) is never deletable and
-/// answers `409`. Deletion is permanent.
+/// The owner and the Root Admin may delete a gallery; the role presets give
+/// `gallery.manage` to the owner and the Root Admin's short-circuit allows it
+/// on every gallery. A caller who can read the gallery but may not manage it
+/// answers `403 Forbidden`; one that cannot read it answers `404 Not Found`.
+/// The seeded default gallery (identifier `0`) is never deletable and answers
+/// `409`. Deletion is permanent.
 #[utoipa::path(
     delete,
     operation_id = "delete_gallery",
@@ -58,13 +61,13 @@ impl From<DeleteGalleryError> for ApiError {
             status = FORBIDDEN,
             body = ErrorBody,
             content_type = "application/hal+json",
-            description = "Caller is not the owner of the gallery"
+            description = "The caller can read the gallery but may not manage it"
         ),
         (
             status = NOT_FOUND,
             body = ErrorBody,
             content_type = "application/hal+json",
-            description = "Unknown gallery"
+            description = "Unknown or inaccessible gallery"
         ),
         (
             status = CONFLICT,

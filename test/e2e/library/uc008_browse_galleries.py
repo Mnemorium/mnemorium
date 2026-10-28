@@ -185,7 +185,7 @@ def test_a_private_gallery_is_hidden_from_another_user(
     assert any(item["id"] == gallery_id for item in visible.json()["items"])
 
 
-def test_reading_another_users_private_gallery_is_forbidden(
+def test_reading_another_users_private_gallery_is_not_found(
     create_gallery: Callable[[str, str, bool], requests.Response],
     get_gallery: Callable[[str, int], requests.Response],
     standard_user_token: str,
@@ -198,7 +198,7 @@ def test_reading_another_users_private_gallery_is_forbidden(
 
     response = get_gallery(second_standard_user_token, gallery_id)
 
-    assert_error_body(response, 403)
+    assert_error_body(response, 404)
 
 
 def test_an_admin_cannot_read_another_users_private_gallery(
@@ -214,7 +214,7 @@ def test_an_admin_cannot_read_another_users_private_gallery(
 
     response = get_gallery(admin_token, gallery_id)
 
-    assert_error_body(response, 403)
+    assert_error_body(response, 404)
 
 
 def test_the_root_admin_can_read_any_private_gallery(

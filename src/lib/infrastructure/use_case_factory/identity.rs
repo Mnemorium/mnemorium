@@ -1,12 +1,16 @@
 use std::sync::Arc;
 
+use crate::application::port::get_permission::GetPermissionUseCase;
 use crate::application::port::identity_use_case_factory::IdentityUseCaseFactory;
 use crate::application::port::login_user::LoginUserUseCase;
 use crate::application::port::patch_credential::PatchCredentialUseCase;
 use crate::application::port::register_user::RegisterUserUseCase;
+use crate::application::port::replace_permission::ReplacePermissionUseCase;
+use crate::application::use_case::get_permission::GetPermission;
 use crate::application::use_case::login_user::LoginUser;
 use crate::application::use_case::patch_credential::PatchCredential;
 use crate::application::use_case::register_user::RegisterUser;
+use crate::application::use_case::replace_permission::ReplacePermission;
 use crate::domain::model::configuration::Configuration;
 use crate::domain::model::instance_state::InstanceState;
 use crate::infrastructure::outbound::argon2::password_hasher::Argon2PasswordHasher;
@@ -60,6 +64,10 @@ impl RuntimeIdentityUseCaseFactory {
 }
 
 impl IdentityUseCaseFactory for RuntimeIdentityUseCaseFactory {
+    fn get_permission(&self) -> Arc<dyn GetPermissionUseCase> {
+        Arc::new(GetPermission::new(Arc::clone(&self.unit_of_work_factory)))
+    }
+
     fn login_user(&self) -> Arc<dyn LoginUserUseCase> {
         Arc::new(LoginUser::new(
             Arc::clone(&self.unit_of_work_factory),
@@ -80,5 +88,11 @@ impl IdentityUseCaseFactory for RuntimeIdentityUseCaseFactory {
             Arc::clone(&self.unit_of_work_factory),
             self.password_hasher(),
         ))
+    }
+
+    fn replace_permission(&self) -> Arc<dyn ReplacePermissionUseCase> {
+        Arc::new(ReplacePermission::new(Arc::clone(
+            &self.unit_of_work_factory,
+        )))
     }
 }

@@ -20,6 +20,7 @@ use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 impl From<GetUploadError> for ApiError {
     fn from(err: GetUploadError) -> Self {
         match err {
+            GetUploadError::NoSuchCaller => Self::Unauthorized(err.to_string()),
             GetUploadError::NoSuchUpload => Self::NotFound(err.to_string()),
             GetUploadError::Unknown(_) => Self::InternalServerError,
         }

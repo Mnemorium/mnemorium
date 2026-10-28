@@ -4,6 +4,9 @@ use crate::domain::alias::NumericID;
 use crate::domain::model::integrity_hash::DIGEST_HEX_LENGTH;
 use crate::domain::model::integrity_hash::IntegrityHash;
 use crate::domain::model::integrity_hash::IntegrityHashError;
+use crate::domain::model::permission::Protected;
+use crate::domain::model::permission::ResourceKind;
+use crate::domain::model::permission::ResourceRef;
 
 /// Error returned when initialising or updating a `File`.
 #[derive(Debug, thiserror::Error)]
@@ -139,5 +142,23 @@ impl File {
         } else {
             Ok(path)
         }
+    }
+}
+
+impl Protected for File {
+    fn is_privileged_account(&self) -> bool {
+        false
+    }
+
+    fn is_publicly_visible(&self) -> bool {
+        self.is_public()
+    }
+
+    fn owner_id(&self) -> Option<NumericID> {
+        Some(self.user_id)
+    }
+
+    fn resource_ref(&self) -> Option<ResourceRef> {
+        Some(ResourceRef::new(ResourceKind::File, self.id))
     }
 }

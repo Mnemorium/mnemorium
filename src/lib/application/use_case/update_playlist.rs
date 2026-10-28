@@ -10,16 +10,21 @@ use crate::application::port::update_playlist::UpdatePlaylistResponse;
 use crate::application::port::update_playlist::UpdatePlaylistUseCase;
 use crate::application::security_event;
 use crate::domain::model::music_playlist::MusicPlaylistError;
+use crate::domain::model::permission::Action;
 use crate::domain::port::error::RepositoryError;
+use crate::domain::port::identity_unit_of_work::IdentityUnitOfWork;
 use crate::domain::port::library_unit_of_work::LibraryUnitOfWork;
 use crate::domain::port::music_playlist_repository::MusicPlaylistFilter;
 use crate::domain::port::music_playlist_repository::MusicPlaylistRepository as _;
+use crate::domain::port::permission_repository::PermissionFilter;
+use crate::domain::port::permission_repository::PermissionRepository as _;
 use crate::domain::port::unit_of_work::UnitOfWork as _;
 use crate::domain::port::unit_of_work::UnitOfWorkFactory;
 use crate::domain::port::user_repository::UserFilter;
 use crate::domain::port::user_repository::UserRepository as _;
 use crate::domain::port::user_unit_of_work::UserUnitOfWork;
-use crate::domain::service::library_access::LibraryAccess;
+use crate::domain::service::authorization::Authorization;
+use crate::domain::service::authorization::Decision;
 use crate::domain::service::name_policy::NamePolicy;
 use crate::domain::service::name_policy::NamePolicyError;
 
@@ -42,7 +47,7 @@ impl<F: UnitOfWorkFactory> UpdatePlaylist<F> {
 impl<F> UpdatePlaylistUseCase for UpdatePlaylist<F>
 where
     F: UnitOfWorkFactory,
-    F::Uow: LibraryUnitOfWork + UserUnitOfWork,
+    F::Uow: IdentityUnitOfWork + LibraryUnitOfWork + UserUnitOfWork,
 {
     #[expect(
         clippy::wildcard_enum_match_arm,
@@ -79,6 +84,15 @@ where
                     .next()
                     .ok_or(UpdatePlaylistError::NoSuchCaller)?;
 
+                let permissions = unit_of_work
+                    .permissions()
+                    .search(&PermissionFilter {
+                        user_id: Some(caller.id()),
+                        ..PermissionFilter::default()
+                    })
+                    .await
+                    .map_err(|error| UpdatePlaylistError::Unknown(error.into()))?;
+
                 let mut playlist = unit_of_work
                     .music_playlists()
                     .search(&MusicPlaylistFilter {
@@ -91,20 +105,58 @@ where
                     .next()
                     .ok_or(UpdatePlaylistError::NoSuchPlaylist)?;
 
-                if !LibraryAccess::can_read_playlist(&playlist, &caller) {
-                    // The response stays indistinguishable from a missing
-                    // playlist (`API-044`).
-                    security_event::authorization_failed(caller.id(), "update", "music_playlist");
+                if let Decision::Deny(denial) =
+                    Authorization::decide(&caller, &permissions, Action::PlaylistRead, &playlist)
+                {
+                    security_event::authorization_failed(
+                        caller.id(),
+                        denial.action().verb(),
+                        denial.action().target(),
+                    );
                     return Err(UpdatePlaylistError::NoSuchPlaylist);
                 }
 
                 // Metadata is owner-only; the check covers the whole mixed
                 // request, so a non-owner's `add_track` is rejected with it and
                 // nothing is applied.
-                let owner_only = command.name().is_some() || command.is_public().is_some();
-                if owner_only && !playlist.is_owned_by(caller.id()) {
-                    security_event::authorization_failed(caller.id(), "update", "music_playlist");
-                    return Err(UpdatePlaylistError::Forbidden);
+                let metadata_requested = command.name().is_some() || command.is_public().is_some();
+                if metadata_requested
+                    && let Decision::Deny(denial) = Authorization::decide(
+                        &caller,
+                        &permissions,
+                        Action::PlaylistManage,
+                        &playlist,
+                    )
+                {
+                    security_event::authorization_failed(
+                        caller.id(),
+                        denial.action().verb(),
+                        denial.action().target(),
+                    );
+                    return Err(if denial.conceals() {
+                        UpdatePlaylistError::NoSuchPlaylist
+                    } else {
+                        UpdatePlaylistError::Forbidden
+                    });
+                }
+                if command.add_track().is_some()
+                    && let Decision::Deny(denial) = Authorization::decide(
+                        &caller,
+                        &permissions,
+                        Action::PlaylistModerate,
+                        &playlist,
+                    )
+                {
+                    security_event::authorization_failed(
+                        caller.id(),
+                        denial.action().verb(),
+                        denial.action().target(),
+                    );
+                    return Err(if denial.conceals() {
+                        UpdatePlaylistError::NoSuchPlaylist
+                    } else {
+                        UpdatePlaylistError::Forbidden
+                    });
                 }
 
                 if let Some(requested_name) = command.name() {
@@ -224,14 +276,20 @@ mod tests {
     use crate::domain::model::music_playlist::MusicPlaylist;
     use crate::domain::model::music_recording::MusicRecording;
     use crate::domain::model::music_recording::TrackIndex;
+    use crate::domain::model::permission::Action;
+    use crate::domain::model::permission::Permission;
+    use crate::domain::model::permission::Scope;
     use crate::domain::model::user::Role;
     use crate::domain::model::user::User;
     use crate::domain::port::error::RepositoryError;
     use crate::domain::port::music_playlist_repository::MockMusicPlaylistRepository;
+    use crate::domain::port::permission_repository::MockPermissionRepository;
     use crate::domain::port::user_repository::MockUserRepository;
     use crate::test_helpers::GalleryFactoryHarness;
     use crate::test_helpers::TestFactory;
     use crate::test_helpers::TestUnitOfWork;
+    use crate::test_helpers::expect_permissions;
+    use crate::test_helpers::no_permissions;
 
     use super::UpdatePlaylist;
 
@@ -274,6 +332,7 @@ mod tests {
         playlists: MockMusicPlaylistRepository,
     ) -> GalleryFactoryHarness {
         let unit_of_work = TestUnitOfWork {
+            permissions: no_permissions(),
             music_playlists: playlists,
             users,
             ..TestUnitOfWork::default()
@@ -357,6 +416,85 @@ mod tests {
         assert_eq!(response.playlist().name(), "New");
         assert!(response.playlist().is_public());
         assert!(harness.committed.load(Ordering::SeqCst));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn update_playlist_root_admin_renames_another_users_playlist()
+    -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let mut users = MockUserRepository::new();
+        expect_caller(&mut users, 0, Role::Admin)?;
+        let mut playlists = MockMusicPlaylistRepository::new();
+        let stored = playlist(3, 4, "Mine", false, Vec::new());
+        let loaded_at = stored.last_modified_at();
+        expect_playlist(&mut playlists, stored);
+        playlists
+            .expect_search()
+            .times(1)
+            .withf(|filter| filter.name.as_deref() == Some("Root"))
+            .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+        playlists
+            .expect_save()
+            .times(1)
+            .withf(move |saved| saved.name() == "Root" && saved.last_modified_at() > loaded_at)
+            .returning(|saved| Box::pin(async move { Ok(saved) }));
+        let harness = harness_with(users, playlists);
+        let use_case: UseCase = UpdatePlaylist::new(Arc::clone(&harness.factory));
+
+        // Act
+        let response = use_case
+            .execute(UpdatePlaylistCommand::new(
+                0,
+                3,
+                Some("Root".to_owned()),
+                None,
+                None,
+            ))
+            .await?;
+
+        // Assert
+        assert_eq!(response.playlist().name(), "Root");
+        assert!(harness.committed.load(Ordering::SeqCst));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn update_playlist_readable_but_not_moderatable_add_track_returns_forbidden()
+    -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let mut users = MockUserRepository::new();
+        expect_caller(&mut users, 9, Role::Standard)?;
+        let mut playlists = MockMusicPlaylistRepository::new();
+        expect_playlist(&mut playlists, playlist(3, 4, "Public", true, Vec::new()));
+        playlists.expect_add_track().times(0);
+        let mut permissions = MockPermissionRepository::new();
+        expect_permissions(
+            &mut permissions,
+            9,
+            vec![Permission::try_new(
+                9,
+                Action::PlaylistModerate,
+                Scope::None,
+            )?],
+        );
+        let unit_of_work = TestUnitOfWork {
+            music_playlists: playlists,
+            permissions,
+            users,
+            ..TestUnitOfWork::default()
+        };
+        let harness = GalleryFactoryHarness::new(unit_of_work);
+        let use_case: UseCase = UpdatePlaylist::new(Arc::clone(&harness.factory));
+
+        // Act
+        let result = use_case
+            .execute(UpdatePlaylistCommand::new(9, 3, None, None, Some(7)))
+            .await;
+
+        // Assert
+        assert!(matches!(result, Err(UpdatePlaylistError::Forbidden)));
+        assert!(harness.rolled_back.load(Ordering::SeqCst));
         Ok(())
     }
 

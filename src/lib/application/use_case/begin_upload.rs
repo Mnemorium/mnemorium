@@ -22,6 +22,9 @@ use crate::domain::port::mime_type_repository::MimeTypeRepository as _;
 use crate::domain::port::unit_of_work::UnitOfWork as _;
 use crate::domain::port::unit_of_work::UnitOfWorkFactory;
 use crate::domain::port::upload_repository::UploadRepository as _;
+use crate::domain::port::user_repository::UserFilter;
+use crate::domain::port::user_repository::UserRepository as _;
+use crate::domain::port::user_unit_of_work::UserUnitOfWork;
 
 /// Use case implementation for beginning an upload session.
 pub struct BeginUpload<F, S> {
@@ -60,7 +63,7 @@ impl<F: UnitOfWorkFactory, S: FileStorage> BeginUpload<F, S> {
 impl<F, S> BeginUploadUseCase for BeginUpload<F, S>
 where
     F: UnitOfWorkFactory,
-    F::Uow: AssetUnitOfWork,
+    F::Uow: AssetUnitOfWork + UserUnitOfWork,
     S: FileStorage,
 {
     fn execute<'future>(
@@ -119,6 +122,18 @@ where
             let mut staged_upload_id: Option<NumericID> = None;
 
             let result = async {
+                let caller = unit_of_work
+                    .users()
+                    .search(&UserFilter {
+                        id: Some(command.user_id()),
+                        ..UserFilter::default()
+                    })
+                    .await
+                    .map_err(|error| BeginUploadError::Unknown(error.into()))?
+                    .into_iter()
+                    .next()
+                    .ok_or(BeginUploadError::NoSuchCaller)?;
+
                 let content_type_supported = unit_of_work
                     .mime_types()
                     .exists(command.content_type())
@@ -134,7 +149,7 @@ where
 
                 let pending = Upload::try_new(
                     0,
-                    command.user_id(),
+                    caller.id(),
                     command.file_name().to_owned(),
                     file_size,
                     command.content_type().to_owned(),
@@ -277,11 +292,13 @@ mod tests {
     use crate::domain::port::file_storage::MockFileStorage;
     use crate::domain::port::mime_type_repository::MockMimeTypeRepository;
     use crate::domain::port::upload_repository::MockUploadRepository;
+    use crate::domain::port::user_repository::MockUserRepository;
     use crate::test_helpers::AssetFactoryHarness;
     use crate::test_helpers::CHUNK_SIZE;
     use crate::test_helpers::DIGEST;
     use crate::test_helpers::TestFactory;
     use crate::test_helpers::TestUnitOfWork;
+    use crate::test_helpers::any_caller;
 
     use super::BeginUpload;
 
@@ -380,6 +397,7 @@ mod tests {
         let mut file_storage = MockFileStorage::new();
         setup(&mut uploads, &mut mime_types, &mut file_storage)?;
         let unit_of_work = TestUnitOfWork {
+            users: any_caller(),
             mime_types,
             uploads,
             ..TestUnitOfWork::default()
@@ -472,6 +490,36 @@ mod tests {
             chrono::Utc::now().naive_utc(),
         )
         .map_err(|_| RepositoryError::OperationFailed)
+    }
+
+    #[tokio::test]
+    async fn begin_upload_deleted_caller_returns_no_such_caller() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let mut users = MockUserRepository::new();
+        users
+            .expect_search()
+            .times(1)
+            .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+        let unit_of_work = TestUnitOfWork {
+            users,
+            ..TestUnitOfWork::default()
+        };
+        let harness = AssetFactoryHarness::new(unit_of_work);
+        let use_case = BeginUpload::new(
+            Arc::clone(&harness.factory),
+            Arc::new(MockFileStorage::new()),
+            CHUNK_SIZE,
+            TTL_SECONDS,
+            DEFAULT_MAX_FILE_SIZE,
+        );
+
+        // Act
+        let result = use_case.execute(command(8)).await;
+
+        // Assert
+        assert!(matches!(result, Err(BeginUploadError::NoSuchCaller)));
+        assert!(harness.rolled_back.load(Ordering::SeqCst));
+        Ok(())
     }
 
     #[tokio::test]
