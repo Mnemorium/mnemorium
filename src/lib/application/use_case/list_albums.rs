@@ -8,14 +8,19 @@ use crate::application::port::list_albums::ListAlbumsItem;
 use crate::application::port::list_albums::ListAlbumsMediumItem;
 use crate::application::port::list_albums::ListAlbumsResponse;
 use crate::application::port::list_albums::ListAlbumsUseCase;
+use crate::domain::model::permission::Action;
+use crate::domain::port::identity_unit_of_work::IdentityUnitOfWork;
 use crate::domain::port::library_unit_of_work::LibraryUnitOfWork;
 use crate::domain::port::music_album_repository::MusicAlbumFilter;
 use crate::domain::port::music_album_repository::MusicAlbumRepository as _;
+use crate::domain::port::permission_repository::PermissionFilter;
+use crate::domain::port::permission_repository::PermissionRepository as _;
 use crate::domain::port::unit_of_work::UnitOfWork as _;
 use crate::domain::port::unit_of_work::UnitOfWorkFactory;
 use crate::domain::port::user_repository::UserFilter;
 use crate::domain::port::user_repository::UserRepository as _;
 use crate::domain::port::user_unit_of_work::UserUnitOfWork;
+use crate::domain::service::authorization::Authorization;
 
 /// Use case implementation for listing the music albums the caller may see.
 pub struct ListAlbums<F> {
@@ -36,7 +41,7 @@ impl<F: UnitOfWorkFactory> ListAlbums<F> {
 impl<F> ListAlbumsUseCase for ListAlbums<F>
 where
     F: UnitOfWorkFactory,
-    F::Uow: LibraryUnitOfWork + UserUnitOfWork,
+    F::Uow: IdentityUnitOfWork + LibraryUnitOfWork + UserUnitOfWork,
 {
     fn execute<'future>(
         &'future self,
@@ -52,7 +57,7 @@ where
                 .map_err(|error| ListAlbumsError::Unknown(error.into()))?;
 
             let result = async {
-                unit_of_work
+                let caller = unit_of_work
                     .users()
                     .search(&UserFilter {
                         id: Some(command.caller_id()),
@@ -64,7 +69,16 @@ where
                     .next()
                     .ok_or(ListAlbumsError::NoSuchCaller)?;
 
-                let albums = unit_of_work
+                let permissions = unit_of_work
+                    .permissions()
+                    .search(&PermissionFilter {
+                        user_id: Some(caller.id()),
+                        ..PermissionFilter::default()
+                    })
+                    .await
+                    .map_err(|error| ListAlbumsError::Unknown(error.into()))?;
+
+                let mut albums = unit_of_work
                     .music_albums()
                     .search(&MusicAlbumFilter {
                         name: command.name().map(str::to_owned),
@@ -72,6 +86,11 @@ where
                     })
                     .await
                     .map_err(|error| ListAlbumsError::Unknown(error.into()))?;
+
+                albums.retain(|album| {
+                    Authorization::decide(&caller, &permissions, Action::CatalogRead, album)
+                        .is_allowed()
+                });
 
                 let total = albums.len();
                 let offset = command.offset().unwrap_or(0);
@@ -156,6 +175,7 @@ mod tests {
     use crate::test_helpers::TestFactory;
     use crate::test_helpers::TestUnitOfWork;
     use crate::test_helpers::album_release_date;
+    use crate::test_helpers::no_permissions;
 
     use super::ListAlbums;
 
@@ -220,6 +240,7 @@ mod tests {
         albums: MockMusicAlbumRepository,
     ) -> GalleryFactoryHarness {
         let unit_of_work = TestUnitOfWork {
+            permissions: no_permissions(),
             music_albums: albums,
             users,
             ..TestUnitOfWork::default()

@@ -48,7 +48,7 @@ use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
             status = NOT_FOUND,
             body = ErrorBody,
             content_type = "application/hal+json",
-            description = "Unknown film"
+            description = "Unknown or inaccessible film"
         ),
         (
             status = INTERNAL_SERVER_ERROR,

@@ -17,6 +17,7 @@ pub mod music_album_repository;
 pub mod music_playlist_repository;
 pub mod password_generator;
 pub mod password_hasher;
+pub mod permission_repository;
 pub mod secret_generator;
 pub mod series_repository;
 pub mod token_provider;

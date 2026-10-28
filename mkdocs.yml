@@ -25,6 +25,7 @@ theme:
 
 nav:
   - Home: index.md
+  - Permissions: Permissions.md
   - Development:
       - Overview: development/Overview.md
       - Technical Design: development/TechnicalDesign.md

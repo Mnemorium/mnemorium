@@ -55,7 +55,7 @@ def test_the_owner_removes_its_own_gallery(
     assert readded.status_code == 404, f"the medium still exists: {readded.status_code} {readded.text}"
 
 
-def test_a_non_owner_cannot_remove_a_gallery(
+def test_a_non_owner_cannot_remove_a_hidden_gallery(
     create_gallery: Callable[[str, str, bool], requests.Response],
     get_gallery: Callable[[str, int], requests.Response],
     delete_gallery: Callable[[str, int], requests.Response],
@@ -65,10 +65,10 @@ def test_a_non_owner_cannot_remove_a_gallery(
 ) -> None:
     gallery_id = create_owned_gallery(create_gallery, standard_user_token)
 
-    # Only the owner may delete the gallery; another Standard User may not.
+    # A private gallery the caller cannot read answers not found.
     response = delete_gallery(second_standard_user_token, gallery_id)
 
-    assert_error_body(response, 403)
+    assert_error_body(response, 404)
     kept = get_gallery(standard_user_token, gallery_id)
     assert kept.status_code == 200, f"the gallery must survive a denied removal: {kept.text}"
 
@@ -83,12 +83,29 @@ def test_an_admin_cannot_remove_another_users_gallery(
 ) -> None:
     gallery_id = create_owned_gallery(create_gallery, standard_user_token, is_public=True)
 
-    # The Root Admin has no override; a non-owner Admin is refused too.
+    # A public gallery is readable, so the refusal is revealed: a non-owner
+    # Admin cannot manage another user's gallery.
     response = delete_gallery(admin_token, gallery_id)
 
     assert_error_body(response, 403)
     kept = get_gallery(standard_user_token, gallery_id)
     assert kept.status_code == 200, f"the gallery must survive a denied removal: {kept.text}"
+
+
+def test_the_root_admin_removes_another_users_private_gallery(
+    create_gallery: Callable[[str, str, bool], requests.Response],
+    get_gallery: Callable[[str, int], requests.Response],
+    delete_gallery: Callable[[str, int], requests.Response],
+    standard_user_token: str,
+    root_admin_token: str,
+    assert_error_body: Callable[[requests.Response, int], None],
+) -> None:
+    gallery_id = create_owned_gallery(create_gallery, standard_user_token)
+
+    response = delete_gallery(root_admin_token, gallery_id)
+
+    assert response.status_code == 204, f"delete failed: {response.status_code} {response.text}"
+    assert_error_body(get_gallery(root_admin_token, gallery_id), 404)
 
 
 def test_the_default_gallery_cannot_be_removed(

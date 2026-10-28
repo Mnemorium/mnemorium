@@ -8,14 +8,19 @@ use crate::application::port::list_movies::ListMoviesItem;
 use crate::application::port::list_movies::ListMoviesResponse;
 use crate::application::port::list_movies::ListMoviesUseCase;
 use crate::application::port::video_summary::VideoSummary;
+use crate::domain::model::permission::Action;
+use crate::domain::port::identity_unit_of_work::IdentityUnitOfWork;
 use crate::domain::port::library_unit_of_work::LibraryUnitOfWork;
 use crate::domain::port::movie_repository::MovieFilter;
 use crate::domain::port::movie_repository::MovieRepository as _;
+use crate::domain::port::permission_repository::PermissionFilter;
+use crate::domain::port::permission_repository::PermissionRepository as _;
 use crate::domain::port::unit_of_work::UnitOfWork as _;
 use crate::domain::port::unit_of_work::UnitOfWorkFactory;
 use crate::domain::port::user_repository::UserFilter;
 use crate::domain::port::user_repository::UserRepository as _;
 use crate::domain::port::user_unit_of_work::UserUnitOfWork;
+use crate::domain::service::authorization::Authorization;
 
 /// Use case implementation for listing the films the caller may see.
 pub struct ListMovies<F> {
@@ -36,7 +41,7 @@ impl<F: UnitOfWorkFactory> ListMovies<F> {
 impl<F> ListMoviesUseCase for ListMovies<F>
 where
     F: UnitOfWorkFactory,
-    F::Uow: LibraryUnitOfWork + UserUnitOfWork,
+    F::Uow: IdentityUnitOfWork + LibraryUnitOfWork + UserUnitOfWork,
 {
     fn execute<'future>(
         &'future self,
@@ -52,7 +57,7 @@ where
                 .map_err(|error| ListMoviesError::Unknown(error.into()))?;
 
             let result = async {
-                unit_of_work
+                let caller = unit_of_work
                     .users()
                     .search(&UserFilter {
                         id: Some(command.caller_id()),
@@ -64,7 +69,16 @@ where
                     .next()
                     .ok_or(ListMoviesError::NoSuchCaller)?;
 
-                let movies = unit_of_work
+                let permissions = unit_of_work
+                    .permissions()
+                    .search(&PermissionFilter {
+                        user_id: Some(caller.id()),
+                        ..PermissionFilter::default()
+                    })
+                    .await
+                    .map_err(|error| ListMoviesError::Unknown(error.into()))?;
+
+                let mut movies = unit_of_work
                     .movies()
                     .search(&MovieFilter {
                         name: command.name().map(str::to_owned),
@@ -72,6 +86,11 @@ where
                     })
                     .await
                     .map_err(|error| ListMoviesError::Unknown(error.into()))?;
+
+                movies.retain(|movie| {
+                    Authorization::decide(&caller, &permissions, Action::CatalogRead, movie)
+                        .is_allowed()
+                });
 
                 let total = movies.len();
                 let offset = command.offset().unwrap_or(0);
@@ -127,13 +146,21 @@ mod tests {
     use crate::application::port::list_movies::ListMoviesUseCase as _;
     use crate::application::port::video_summary::VideoSummary;
     use crate::domain::model::movie::Movie;
+    use crate::domain::model::permission::Action;
+    use crate::domain::model::permission::Permission;
+    use crate::domain::model::permission::ResourceKind;
+    use crate::domain::model::permission::ResourceRef;
+    use crate::domain::model::permission::Scope;
     use crate::domain::port::error::RepositoryError;
     use crate::domain::port::movie_repository::MockMovieRepository;
+    use crate::domain::port::permission_repository::MockPermissionRepository;
     use crate::domain::port::user_repository::MockUserRepository;
     use crate::test_helpers::GalleryFactoryHarness;
     use crate::test_helpers::TestFactory;
     use crate::test_helpers::TestUnitOfWork;
     use crate::test_helpers::expect_caller;
+    use crate::test_helpers::expect_permissions;
+    use crate::test_helpers::no_permissions;
     use crate::test_helpers::sample_movie;
     use crate::test_helpers::sample_video;
     use crate::test_helpers::video_date;
@@ -149,6 +176,7 @@ mod tests {
         movies: MockMovieRepository,
     ) -> GalleryFactoryHarness {
         let unit_of_work = TestUnitOfWork {
+            permissions: no_permissions(),
             movies,
             users,
             ..TestUnitOfWork::default()
@@ -291,6 +319,86 @@ mod tests {
             Some(2),
             "the page must start at the requested offset"
         );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn list_movies_none_override_returns_an_empty_collection() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let mut users = MockUserRepository::new();
+        expect_caller(&mut users, 1)?;
+        let mut movies = MockMovieRepository::new();
+        let movie = sample_movie(7)?;
+        movies
+            .expect_search()
+            .times(1)
+            .return_once(move |_| Box::pin(async move { Ok(vec![movie]) }));
+        let mut permissions = MockPermissionRepository::new();
+        expect_permissions(
+            &mut permissions,
+            1,
+            vec![Permission::try_new(1, Action::CatalogRead, Scope::None)?],
+        );
+        let unit_of_work = TestUnitOfWork {
+            movies,
+            permissions,
+            users,
+            ..TestUnitOfWork::default()
+        };
+        let harness = GalleryFactoryHarness::new(unit_of_work);
+        let use_case: UseCase = ListMovies::new(Arc::clone(&harness.factory));
+
+        // Act
+        let response = use_case
+            .execute(ListMoviesCommand::new(1, None, None, None))
+            .await?;
+
+        // Assert
+        assert_eq!(response.total(), 0);
+        assert!(response.movies().is_empty());
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn list_movies_listed_override_returns_only_the_named_film() -> Result<(), Box<dyn Error>>
+    {
+        // Arrange
+        let mut users = MockUserRepository::new();
+        expect_caller(&mut users, 1)?;
+        let mut movies = MockMovieRepository::new();
+        let named = sample_movie(7)?;
+        let other = sample_movie(8)?;
+        movies
+            .expect_search()
+            .times(1)
+            .return_once(move |_| Box::pin(async move { Ok(vec![named.clone(), other.clone()]) }));
+        let mut permissions = MockPermissionRepository::new();
+        expect_permissions(
+            &mut permissions,
+            1,
+            vec![Permission::try_new(
+                1,
+                Action::CatalogRead,
+                Scope::Listed(vec![ResourceRef::new(ResourceKind::Movie, 7)]),
+            )?],
+        );
+        let unit_of_work = TestUnitOfWork {
+            movies,
+            permissions,
+            users,
+            ..TestUnitOfWork::default()
+        };
+        let harness = GalleryFactoryHarness::new(unit_of_work);
+        let use_case: UseCase = ListMovies::new(Arc::clone(&harness.factory));
+
+        // Act
+        let response = use_case
+            .execute(ListMoviesCommand::new(1, None, None, None))
+            .await?;
+
+        // Assert
+        assert_eq!(response.total(), 1);
+        assert_eq!(response.movies().first().map(ListMoviesItem::id), Some(7));
         Ok(())
     }
 

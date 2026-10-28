@@ -79,6 +79,10 @@ See `docs/development/TechnicalDesign.md` § 8 (Documentation), `DOC-001` for th
 code-example conventions: an example cites the source it restates, tracks that
 code, and marks elided regions with `// [...]`.
 
+The permissions guide — the action catalog, the five scopes, the resolution
+order, the Root Admin and upload rules, denial semantics and the administration
+API — is `docs/Permissions.md`.
+
 ## Logging
 
 See `docs/development/TechnicalDesign.md` § 9 (Logging & Observability),

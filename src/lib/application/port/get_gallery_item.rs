@@ -138,9 +138,6 @@ impl GetGalleryItemResponse {
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum GetGalleryItemError {
-    /// The caller is not allowed to read the gallery.
-    #[error("the caller is not allowed to read this gallery")]
-    Forbidden,
     /// The authenticated caller does not exist anymore.
     #[error("the authenticated user does not exist")]
     NoSuchCaller,

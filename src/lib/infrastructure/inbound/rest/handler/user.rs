@@ -17,6 +17,8 @@ use crate::domain::model::user::Role;
 use crate::infrastructure::inbound::rest::api_error::ApiError;
 use crate::infrastructure::inbound::rest::app_state::AppState;
 use crate::infrastructure::inbound::rest::hal::SelfLinks;
+use crate::infrastructure::inbound::rest::handler::identity::get_permission::get_permission;
+use crate::infrastructure::inbound::rest::handler::identity::put_permission::put_permission;
 use crate::infrastructure::inbound::rest::handler::user::get_me::get_me;
 use crate::infrastructure::inbound::rest::handler::user::get_user::get_user;
 use crate::infrastructure::inbound::rest::handler::user::get_user_list::get_user_list;
@@ -93,9 +95,13 @@ pub fn user_routes(state: &AppState) -> Router {
 
     let list_users: Router<AppState> = Router::new().route("/", get(get_user_list));
 
+    let permission: Router<AppState> =
+        Router::new().route("/{id}/permission", get(get_permission).put(put_permission));
+
     me.merge(by_id)
         .merge(patch_by_id)
         .merge(list_users)
+        .merge(permission)
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
             authenticate::<JwtTokenProvider>,

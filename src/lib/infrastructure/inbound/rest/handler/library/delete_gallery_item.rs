@@ -62,13 +62,13 @@ impl From<DeleteGalleryItemError> for ApiError {
             status = FORBIDDEN,
             body = ErrorBody,
             content_type = "application/hal+json",
-            description = "Caller is not allowed to delete items of the gallery"
+            description = "The caller can read the gallery but may not moderate it"
         ),
         (
             status = NOT_FOUND,
             body = ErrorBody,
             content_type = "application/hal+json",
-            description = "Unknown gallery or item"
+            description = "Unknown or inaccessible gallery, or unknown item"
         ),
         (
             status = INTERNAL_SERVER_ERROR,

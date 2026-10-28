@@ -9,6 +9,7 @@ use crate::application::port::delete_gallery::DeleteGalleryUseCase;
 use crate::application::security_event;
 use crate::application::use_case::upload_layout::stored_file_path;
 use crate::domain::model::gallery_item::GalleryItemMedia;
+use crate::domain::model::permission::Action;
 use crate::domain::port::asset_unit_of_work::AssetUnitOfWork;
 use crate::domain::port::error::RepositoryError;
 use crate::domain::port::file_repository::FileFilter;
@@ -17,9 +18,12 @@ use crate::domain::port::file_storage::FileStorage;
 use crate::domain::port::gallery_repository::GalleryFilter;
 use crate::domain::port::gallery_repository::GalleryItemFilter;
 use crate::domain::port::gallery_repository::GalleryRepository as _;
+use crate::domain::port::identity_unit_of_work::IdentityUnitOfWork;
 use crate::domain::port::image_repository::ImageFilter;
 use crate::domain::port::image_repository::ImageRepository as _;
 use crate::domain::port::library_unit_of_work::LibraryUnitOfWork;
+use crate::domain::port::permission_repository::PermissionFilter;
+use crate::domain::port::permission_repository::PermissionRepository as _;
 use crate::domain::port::unit_of_work::UnitOfWork as _;
 use crate::domain::port::unit_of_work::UnitOfWorkFactory;
 use crate::domain::port::user_repository::UserFilter;
@@ -27,6 +31,8 @@ use crate::domain::port::user_repository::UserRepository as _;
 use crate::domain::port::user_unit_of_work::UserUnitOfWork;
 use crate::domain::port::video_repository::VideoFilter;
 use crate::domain::port::video_repository::VideoRepository as _;
+use crate::domain::service::authorization::Authorization;
+use crate::domain::service::authorization::Decision;
 
 /// Use case implementation for deleting a gallery and its items.
 pub struct DeleteGallery<F, S> {
@@ -50,7 +56,7 @@ impl<F: UnitOfWorkFactory, S: FileStorage> DeleteGallery<F, S> {
 impl<F, S> DeleteGalleryUseCase for DeleteGallery<F, S>
 where
     F: UnitOfWorkFactory,
-    F::Uow: LibraryUnitOfWork + UserUnitOfWork + AssetUnitOfWork,
+    F::Uow: AssetUnitOfWork + IdentityUnitOfWork + LibraryUnitOfWork + UserUnitOfWork,
     S: FileStorage,
 {
     fn execute<'future>(
@@ -79,6 +85,15 @@ where
                     .next()
                     .ok_or(DeleteGalleryError::NoSuchCaller)?;
 
+                let permissions = unit_of_work
+                    .permissions()
+                    .search(&PermissionFilter {
+                        user_id: Some(caller.id()),
+                        ..PermissionFilter::default()
+                    })
+                    .await
+                    .map_err(|error| DeleteGalleryError::Unknown(error.into()))?;
+
                 let gallery = unit_of_work
                     .galleries()
                     .search(&GalleryFilter {
@@ -94,9 +109,19 @@ where
                 if gallery.is_system() {
                     return Err(DeleteGalleryError::DefaultGallery);
                 }
-                if !gallery.is_owned_by(caller.id()) {
-                    security_event::authorization_failed(caller.id(), "delete", "gallery");
-                    return Err(DeleteGalleryError::Forbidden);
+                if let Decision::Deny(denial) =
+                    Authorization::decide(&caller, &permissions, Action::GalleryManage, &gallery)
+                {
+                    security_event::authorization_failed(
+                        caller.id(),
+                        denial.action().verb(),
+                        denial.action().target(),
+                    );
+                    return Err(if denial.conceals() {
+                        DeleteGalleryError::NoSuchGallery
+                    } else {
+                        DeleteGalleryError::Forbidden
+                    });
                 }
 
                 let items = unit_of_work
@@ -150,8 +175,10 @@ where
                     // its row and bytes are destroyed only for that user or the
                     // Root Admin, the own-media rule the add path enforces. Any
                     // other caller's removal still commits, keeping the file.
-                    let removable = stored
-                        .filter(|file| caller.is_root_admin() || caller.id() == file.user_id());
+                    let removable = stored.filter(|file| {
+                        Authorization::decide(&caller, &permissions, Action::FileUse, file)
+                            .is_allowed()
+                    });
                     if let Some(file) = removable {
                         // A `file` is shared per `(user_id, integrity_hash)`, so
                         // another media row may still reference it; the delete is
@@ -272,6 +299,7 @@ mod tests {
     use crate::test_helpers::GalleryFactoryHarness;
     use crate::test_helpers::TestFactory;
     use crate::test_helpers::TestUnitOfWork;
+    use crate::test_helpers::no_permissions;
 
     use super::DeleteGallery;
 
@@ -327,6 +355,7 @@ mod tests {
         files: MockFileRepository,
     ) -> GalleryFactoryHarness {
         let unit_of_work = TestUnitOfWork {
+            permissions: no_permissions(),
             files,
             galleries,
             images,
@@ -901,7 +930,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn delete_gallery_admin_not_owner_returns_forbidden() -> Result<(), Box<dyn Error>> {
+    async fn delete_gallery_admin_not_owner_returns_no_such_gallery() -> Result<(), Box<dyn Error>>
+    {
         // Arrange
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 1, Role::Admin)?;
@@ -921,8 +951,43 @@ mod tests {
         let result = use_case.execute(DeleteGalleryCommand::new(1, 3)).await;
 
         // Assert
-        assert!(matches!(result, Err(DeleteGalleryError::Forbidden)));
+        assert!(matches!(result, Err(DeleteGalleryError::NoSuchGallery)));
         assert!(harness.rolled_back.load(Ordering::SeqCst));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn delete_gallery_root_admin_deletes_another_users_gallery() -> Result<(), Box<dyn Error>>
+    {
+        // Arrange
+        let mut users = MockUserRepository::new();
+        expect_caller(&mut users, 0, Role::Admin)?;
+        let mut galleries = MockGalleryRepository::new();
+        expect_gallery(&mut galleries, gallery(3, Some(4), "Mine", false));
+        galleries
+            .expect_search_items()
+            .times(1)
+            .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+        galleries
+            .expect_delete()
+            .times(1)
+            .withf(|id| *id == 3)
+            .returning(|_| Box::pin(async { Ok(true) }));
+        let harness = harness_with(
+            users,
+            galleries,
+            MockImageRepository::new(),
+            MockVideoRepository::new(),
+            MockFileRepository::new(),
+        );
+        let use_case = use_case(&harness, MockFileStorage::new());
+
+        // Act
+        let result = use_case.execute(DeleteGalleryCommand::new(0, 3)).await;
+
+        // Assert
+        assert!(result.is_ok());
+        assert!(harness.committed.load(Ordering::SeqCst));
         Ok(())
     }
 

@@ -14,6 +14,7 @@ use crate::domain::port::mime_type_repository::MimeTypeRepository;
 use crate::domain::port::movie_repository::MovieRepository;
 use crate::domain::port::music_album_repository::MusicAlbumRepository;
 use crate::domain::port::music_playlist_repository::MusicPlaylistRepository;
+use crate::domain::port::permission_repository::PermissionRepository;
 use crate::domain::port::series_repository::SeriesRepository;
 use crate::domain::port::unit_of_work::UnitOfWork;
 use crate::domain::port::unit_of_work::UnitOfWorkFactory;
@@ -29,6 +30,7 @@ use crate::infrastructure::outbound::sqlx::mime_type_repository::SqlxMimeTypeRep
 use crate::infrastructure::outbound::sqlx::movie_repository::SqlxMovieRepository;
 use crate::infrastructure::outbound::sqlx::music_album_repository::SqlxMusicAlbumRepository;
 use crate::infrastructure::outbound::sqlx::music_playlist_repository::SqlxMusicPlaylistRepository;
+use crate::infrastructure::outbound::sqlx::permission_repository::SqlxPermissionRepository;
 use crate::infrastructure::outbound::sqlx::series_repository::SqlxSeriesRepository;
 use crate::infrastructure::outbound::sqlx::upload_repository::SqlxUploadRepository;
 use crate::infrastructure::outbound::sqlx::user_repository::SqlxUserRepository;
@@ -64,6 +66,10 @@ impl AssetUnitOfWork for SqlxUnitOfWork {
 impl IdentityUnitOfWork for SqlxUnitOfWork {
     fn credentials(&mut self) -> impl CredentialRepository + '_ {
         SqlxCredentialRepository::new(self.transaction())
+    }
+
+    fn permissions(&mut self) -> impl PermissionRepository + '_ {
+        SqlxPermissionRepository::new(self.transaction())
     }
 }
 

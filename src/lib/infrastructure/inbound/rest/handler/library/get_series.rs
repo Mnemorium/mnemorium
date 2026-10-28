@@ -48,7 +48,7 @@ use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
             status = NOT_FOUND,
             body = ErrorBody,
             content_type = "application/hal+json",
-            description = "Unknown show"
+            description = "Unknown or inaccessible show"
         ),
         (
             status = INTERNAL_SERVER_ERROR,

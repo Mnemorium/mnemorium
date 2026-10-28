@@ -51,7 +51,7 @@ use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
             status = NOT_FOUND,
             body = ErrorBody,
             content_type = "application/hal+json",
-            description = "Unknown music album, medium, or track of the medium"
+            description = "Unknown or inaccessible music album, or a medium or track the album does not hold"
         ),
         (
             status = INTERNAL_SERVER_ERROR,

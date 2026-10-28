@@ -144,6 +144,9 @@ pub enum RegisterUserError {
         "username must be between {MIN_USERNAME_LENGTH} and {MAX_USERNAME_LENGTH} characters long, contain no uppercase letter, and not begin or end with whitespace"
     )]
     InvalidUsername,
+    /// The authenticated caller does not exist anymore.
+    #[error("the authenticated user does not exist")]
+    NoSuchCaller,
     /// An unexpected or unmapped error occurred.
     #[error("an unknown error occurred: {0}")]
     Unknown(#[source] anyhow::Error),

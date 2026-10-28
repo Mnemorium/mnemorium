@@ -50,15 +50,17 @@ left to right direction
 skinparam style strictuml
 
 actor "Standard User" as StandardUser
-actor "Root Admin" as RootAdmin
+actor "Admin" as Admin
 
 package "Identity" {
   usecase "UC-002 - Authenticate" as UC002
   usecase "UC-003 - Initialize the root admin" as UC003
+  usecase "UC-024 - Administer user permissions" as UC024
 }
 
 StandardUser --> UC002
-RootAdmin --> UC003
+Admin --> UC003
+Admin --> UC024
 @enduml
 ```
 
@@ -115,7 +117,7 @@ changed.
 
 #### Primary actor
 
-- Root Admin
+- Admin
 
 #### Parameters
 
@@ -124,6 +126,7 @@ changed.
 
 #### Pre condition(s)
 
+- The caller is the Root Admin.
 - First-Time Admin Authentication is enabled in configuration.
 - The default password corresponding to the Root Admin account has not been replaced yet.
 
@@ -156,6 +159,61 @@ changed.
 - The Root Admin holds a personal credential.
 - The default password is no longer valid and is no longer shown to the operator while the configuration has First-Time
   Admin Authentication enabled.
+
+---
+
+### UC-024 - Administer User Permissions
+
+#### Description
+
+Allow the Root Admin to shape what one user may do beyond the default authority its role grants: inspect the effective
+authority and replace the per-user overrides; a replacement that names no override resets them so the role defaults
+apply again.
+
+#### Primary actor
+
+- Admin
+
+#### Parameters
+
+- user — the account whose authority is administered; required.
+- overrides — the complete set of action scopes the user must hold instead of the role defaults; required for a
+  replacement, and absent for an inspection. An empty set resets the user to the role defaults.
+
+#### Pre condition(s)
+
+- The caller is authenticated.
+- The caller is the Root Admin.
+- The target user exists and is not the Root Admin.
+
+#### Trigger
+
+- The Root Admin submits a permission request for one user.
+
+#### Happy path
+
+1. The Root Admin submits a permission request for one user.
+2. The system verifies the caller may administer permissions.
+3. The system verifies the target user exists and is not the Root Admin.
+4. The system applies the request: it reports the role defaults and the stored overrides, or replaces every override
+   with the requested set, an empty set resetting the user to the role defaults.
+5. The system confirms the resulting effective authority.
+
+#### Alternative flow
+
+- 2a. The caller may not administer permissions; the system rejects the request and stores nothing.
+- 3a. No user exists for the requested account; the system rejects the request.
+- 3b. The target user is the Root Admin; the system rejects the request and stores nothing.
+- 4a. The requested override set names an action that cannot be overridden, a scope the action does not support, no
+  aggregate for a listed scope, a duplicate aggregate, or the same action twice; the system rejects the request and
+  leaves the previous overrides in place.
+
+#### Post condition(s)
+
+- The target user's overrides are exactly the requested set, or are removed when the replacement is empty; the role
+  defaults always describe the authority of an action without an override.
+- Every action without an override follows the role default.
+- The Root Admin never holds an override.
 
 ## User
 
@@ -195,7 +253,7 @@ Allow an Administrator to create a new user in the system and assign the appropr
 
 #### Pre condition(s)
 
-- The caller is authenticated as an Admin.
+- The caller is authenticated.
 
 #### Trigger
 
@@ -205,7 +263,9 @@ Allow an Administrator to create a new user in the system and assign the appropr
 
 1. The Admin submits a user-creation request.
 2. The system validates the request.
-3. The system verifies the caller may grant the requested role.
+3. The system verifies the caller may create the requested role: creating an Admin account needs the permission to
+   create administrators, which the role defaults grant to the Root Admin only, while creating a Standard account needs
+   the permission to create users, which they grant to Admin and Root.
 4. The system verifies that no user already exists with the username or email.
 5. The system secures the password and saves the new user with its credential.
 6. The system returns the created account.
@@ -214,8 +274,8 @@ Allow an Administrator to create a new user in the system and assign the appropr
 
 - 2a. The request is invalid: a required value is missing or cannot be used; the system rejects the request and creates
   nothing.
-- 3a. The Admin is not the Root Admin and requests the Admin role for the new user; the system rejects the request and
-  creates nothing.
+- 3a. The caller does not hold the permission the requested role needs; the system rejects the request and creates
+  nothing.
 
 #### Post condition(s)
 
@@ -392,8 +452,9 @@ Allow an authenticated user to browse the galleries and items they may see.
 
 ##### Alternative flow
 
-- 2a. The caller requests a private gallery it neither owns nor reads as the Root Admin; the system rejects the request.
-- 3a. No gallery matches the requested identifier; the system rejects the request.
+- 2a. The caller cannot read the requested gallery; the system reports it as not found, indistinguishable from a missing
+  one. The Root Admin reads every gallery, including another user's private one.
+- 3a. No gallery matches the requested identifier; the system reports it as not found.
 - 5a. No item matching the requested identifier belongs to the gallery; the system rejects the request.
 
 ##### Post condition(s)
@@ -439,10 +500,11 @@ Allow an authenticated user to append one of their images to a gallery they may 
 ##### Alternative flow
 
 - 1a. The named medium is not an image; the system rejects the request.
-- 2a. The gallery is private and the caller is neither its owner nor the Root Admin; the system rejects the request.
-- 2b. No gallery matches the requested identifier; the system rejects the request.
+- 2a. The caller cannot read the gallery; the system reports it as not found. The Root Admin contributes to every
+  gallery.
+- 2b. No gallery matches the requested identifier; the system reports it as not found.
 - 3a. No image matches the requested identifier; the system rejects the request.
-- 4a. The image belongs to another user and the caller is not the Root Admin; the system rejects the request.
+- 4a. The backing file belongs to another user and the caller is not the Root Admin; the system rejects the request.
 - 5a. The image already belongs to a gallery; the system rejects the request.
 
 ##### Post condition(s)
@@ -487,8 +549,9 @@ caller owns the file — the backing file.
 
 ##### Alternative flow
 
-- 2a. The gallery is private and the caller is neither its owner nor the Root Admin; the system rejects the request.
-- 2b. No gallery matches the requested identifier; the system rejects the request.
+- 2a. The caller cannot read the gallery; the system reports it as not found. The Root Admin contributes to every
+  gallery.
+- 2b. No gallery matches the requested identifier; the system reports it as not found.
 - 3a. The image is not in the gallery named in the request; the system reports it as not found.
 
 ##### Post condition(s)
@@ -502,7 +565,7 @@ caller owns the file — the backing file.
 
 ##### Description
 
-Allow the owner to delete a gallery together with its items, their media, and the backing files.
+Allow the owner or the Root Admin to delete a gallery together with its items, their media, and the backing files.
 
 ##### Primary actor
 
@@ -523,18 +586,18 @@ Allow the owner to delete a gallery together with its items, their media, and th
 
 ##### Happy path
 
-1. The caller submits a request to delete one of its galleries.
+1. The caller submits a request to delete a gallery.
 2. The system verifies the gallery is not the default gallery.
-3. The system verifies the caller owns the gallery.
+3. The system verifies the caller may manage the gallery: the owner and the Root Admin may.
 4. The system deletes every item, its image or video record, and its backing file.
 5. The system deletes the gallery.
 6. The system confirms the deletion.
 
 ##### Alternative flow
 
-- 1a. No gallery matches the requested identifier; the system rejects the request.
+- 1a. No gallery matches the requested identifier, or the caller cannot read it; the system reports it as not found.
 - 2a. The gallery is the default gallery; the system rejects the request.
-- 3a. The caller is not the owner; the system rejects the request.
+- 3a. The caller can read the gallery but may not manage it; the system rejects the request and deletes nothing.
 
 ##### Post condition(s)
 
@@ -579,8 +642,9 @@ Allow an authenticated user to append one of their videos to a gallery they may 
 ##### Alternative flow
 
 - 1a. The named medium is not a video; the system rejects the request.
-- 2a. The gallery is private and the caller is neither its owner nor the Root Admin; the system rejects the request.
-- 2b. No gallery matches the requested identifier; the system rejects the request.
+- 2a. The caller cannot read the gallery; the system reports it as not found. The Root Admin contributes to every
+  gallery.
+- 2b. No gallery matches the requested identifier; the system reports it as not found.
 - 3a. No video matches the requested identifier; the system rejects the request.
 - 4a. The video belongs to another user and the caller is not the Root Admin; the system rejects the request.
 - 5a. The video already belongs to a gallery; the system rejects the request.
@@ -627,8 +691,9 @@ caller owns the file — the backing file.
 
 ##### Alternative flow
 
-- 2a. The gallery is private and the caller is neither its owner nor the Root Admin; the system rejects the request.
-- 2b. No gallery matches the requested identifier; the system rejects the request.
+- 2a. The caller cannot read the gallery; the system reports it as not found. The Root Admin contributes to every
+  gallery.
+- 2b. No gallery matches the requested identifier; the system reports it as not found.
 - 3a. The video is not in the gallery named in the request; the system reports it as not found.
 
 ##### Post condition(s)
@@ -818,7 +883,8 @@ Allow an authenticated user to list the playlists they may see, read one playlis
 
 1. The caller asks to list the music playlists it may see.
 2. The system verifies the caller's account still exists, applies the requested filters, retains the playlists the
-   caller can read and returns the requested page.
+   caller can read and returns the requested page. The Root Admin sees every playlist, and a narrowed or widened
+   authority changes the set.
 3. The caller asks to read one specific playlist.
 4. The system verifies the playlist exists and the caller can read it, and returns its metadata and tracks in order.
 5. The caller requests one track of the playlist by its position.
@@ -844,7 +910,8 @@ Allow an authenticated user to list the playlists they may see, read one playlis
 
 ##### Description
 
-Allow the owner of a playlist to rename it or change its visibility.
+Allow the owner or the Root Admin to rename a playlist or change its visibility, and a caller who may moderate the
+playlist to append a track.
 
 ##### Primary actor
 
@@ -860,7 +927,7 @@ Allow the owner of a playlist to rename it or change its visibility.
 
 ##### Pre condition(s)
 
-- The caller is authenticated and owns the playlist.
+- The caller is authenticated and may read the playlist.
 
 ##### Trigger
 
@@ -870,7 +937,8 @@ Allow the owner of a playlist to rename it or change its visibility.
 
 1. The caller sends one or both changes for one of its playlists.
 2. The system verifies the caller's account still exists and the playlist exists.
-3. The system verifies the caller can read the playlist and owns it.
+3. The system verifies the caller may manage the playlist's metadata, which the owner and the Root Admin may, and may
+   moderate its tracks when the request appends one.
 4. The system validates the new name and its per-owner uniqueness, when present.
 5. The system stores the changes, advances the last-modified time and returns the updated playlist.
 
@@ -879,7 +947,8 @@ Allow the owner of a playlist to rename it or change its visibility.
 - 1a. The request is unauthenticated; the system rejects the request.
 - 2a. The playlist reference is not valid; the system rejects the request.
 - 2b. No playlist matches the reference, or the caller cannot read it; the system reports it as not found.
-- 3a. The caller can read the playlist but does not own it; the system rejects the request and applies nothing.
+- 3a. The caller can read the playlist but may not manage its metadata, or may not moderate its tracks; the system
+  rejects the whole request and applies nothing.
 - 4a. The name cannot be used: it is empty, whitespace only or too long; the system rejects the request and applies
   nothing.
 - 4b. The name is already used by another playlist the caller owns; the system rejects the request and applies nothing.
@@ -1033,7 +1102,7 @@ Allow a caller who can read a playlist to replace its track order with a request
 
 ##### Description
 
-Allow the owner of a playlist to delete it and its track placements.
+Allow the owner or the Root Admin to delete a playlist and its track placements.
 
 ##### Primary actor
 
@@ -1046,7 +1115,7 @@ Allow the owner of a playlist to delete it and its track placements.
 
 ##### Pre condition(s)
 
-- The caller is authenticated and owns the playlist.
+- The caller is authenticated and may read the playlist.
 
 ##### Trigger
 
@@ -1056,7 +1125,8 @@ Allow the owner of a playlist to delete it and its track placements.
 
 1. The caller deletes one of its playlists.
 2. The system verifies the caller's account still exists and the playlist exists.
-3. The system verifies the caller can read the playlist and owns it.
+3. The system verifies the caller may manage the playlist's metadata, which the owner and the Root Admin may, and may
+   moderate its tracks when the request appends one.
 4. The system deletes the playlist and its track placements and confirms the removal.
 
 ##### Alternative flow
@@ -1064,7 +1134,7 @@ Allow the owner of a playlist to delete it and its track placements.
 - 1a. The request is unauthenticated; the system rejects the request.
 - 1b. The playlist reference is malformed; the system rejects the request.
 - 2a. No playlist matches the reference, or the caller cannot read it; the system reports it as not found.
-- 3a. The caller can read the playlist but does not own it; the system rejects the request and deletes nothing.
+- 3a. The caller can read the playlist but may not manage it; the system rejects the request and deletes nothing.
 
 ##### Post condition(s)
 
@@ -1122,17 +1192,19 @@ that backs it.
 ##### Happy path
 
 1. The caller asks to list the films the system holds, optionally narrowing the listing by name and choosing the page.
-2. The system verifies the caller's account still exists and returns the matching films in a stable order, each with its
-   genres and the video that backs it.
+2. The system verifies the caller's account still exists and returns the matching films the caller may read in a stable
+   order, each with its genres and the video that backs it.
 3. The caller asks to read one film by its reference.
-4. The system verifies the film exists and returns its details, its genres and the video that backs it.
+4. The system verifies the film exists and the caller may read it, and returns its details, its genres and the video
+   that backs it.
 
 ##### Alternative flow
 
 - 1a. The request is unauthenticated; the system rejects the request.
 - 1b. The requested page cannot be honoured; the system rejects the request.
 - 3a. The film reference is not valid; the system rejects the request.
-- 3b. No film matches the reference; the system reports it as not found.
+- 3b. No film matches the reference, or the caller may not read it; the system reports it as not found, without
+  distinguishing the two cases.
 
 ##### Post condition(s)
 
@@ -1175,10 +1247,11 @@ each level's details and the video behind each episode.
 ##### Happy path
 
 1. The caller asks to list the shows the system holds, optionally narrowing the listing by name and choosing the page.
-2. The system verifies the caller's account still exists and returns the matching shows in a stable order, each with its
-   reference and name as a navigation index.
+2. The system verifies the caller's account still exists and returns the matching shows the caller may read in a stable
+   order, each with its reference and name as a navigation index.
 3. The caller asks to read one show by its reference.
-4. The system verifies the show exists and returns its details, its genres and each season's summary in season order.
+4. The system verifies the show exists and the caller may read it, and returns its details, its genres and each season's
+   summary in season order.
 5. The caller asks to read one season of the show by its position.
 6. The system verifies the show and the season, and returns the season's details and its episode count.
 7. The caller asks to list the episodes of one season.
@@ -1192,7 +1265,8 @@ each level's details and the video behind each episode.
 - 1a. The request is unauthenticated; the system rejects the request.
 - 1b. The requested page cannot be honoured; the system rejects the request.
 - 3a. The show reference is not valid; the system rejects the request.
-- 3b. No show matches the reference; the system reports it as not found.
+- 3b. No show matches the reference, or the caller may not read it; the system reports it as not found, without
+  distinguishing the two cases.
 - 5a. The season position is not valid; the system rejects the request.
 - 5b. The show holds no season at the requested position; the system reports it as not found.
 - 9a. The episode position is not valid; the system rejects the request.
@@ -1209,13 +1283,13 @@ each level's details and the video behind each episode.
 left to right direction
 skinparam style strictuml
 
-actor "Root Admin" as RootAdmin
+actor "Admin" as Admin
 
 package "Configuration" {
   usecase "UC-004 - Load the configuration" as UC004
 }
 
-RootAdmin --> UC004
+Admin --> UC004
 @enduml
 ```
 
@@ -1229,7 +1303,7 @@ settings the environment overrode.
 
 #### Primary actor
 
-- Root Admin
+- Admin
 
 #### Parameters
 
@@ -1237,6 +1311,7 @@ None — the event carries no data.
 
 #### Pre condition(s)
 
+- The caller is the Root Admin.
 - The instance state has been established.
 
 #### Trigger

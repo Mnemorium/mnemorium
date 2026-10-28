@@ -9,7 +9,7 @@ Lets a client browse the films the server holds and read each film's metadata, g
 ### Requirement: Movie reads require an authenticated account
 
 Every movie endpoint SHALL require a valid bearer token, and a token that names an account which no longer exists SHALL
-be rejected.
+be rejected. A caller whose `catalog.read` permission does not cover the film SHALL receive `404 Not Found`.
 
 #### Scenario: Missing or invalid credentials
 
@@ -23,18 +23,33 @@ be rejected.
 
 #### Scenario: An authenticated caller is never forbidden
 
-- **WHEN** an authenticated caller reads any movie
+- **WHEN** an authenticated caller with the default permission reads any film
 - **THEN** the system returns the representation and never a `403 Forbidden`
+
+#### Scenario: A restricted caller cannot read a film
+
+- **WHEN** an authenticated caller whose `catalog.read` permission does not cover a film requests it
+- **THEN** the system returns `404 Not Found`, indistinguishable from an unknown film
 
 ### Requirement: List movies
 
-The system SHALL return the films it holds through `GET /api/v1/library/movie`. Movies SHALL NOT be scoped to an owner:
-every authenticated caller sees the same films.
+The system SHALL return the films the caller's `catalog.read` permission covers through `GET /api/v1/library/movie`. The
+default permission covers every film for every authenticated caller; a per-user override may narrow the set.
 
 #### Scenario: Authenticated caller lists movies
 
-- **WHEN** an authenticated caller requests `GET /api/v1/library/movie`
+- **WHEN** an authenticated caller with the default permission requests `GET /api/v1/library/movie`
 - **THEN** the system returns `200 OK` with a HAL collection of movie representations
+
+#### Scenario: A restricted caller lists only permitted films
+
+- **WHEN** an authenticated caller whose `catalog.read` permission covers only some films requests the collection
+- **THEN** the system returns only the films that permission covers
+
+#### Scenario: A caller with no catalog access lists no films
+
+- **WHEN** an authenticated caller whose `catalog.read` permission is `NONE` requests the collection
+- **THEN** the system returns `200 OK` with an empty collection
 
 #### Scenario: Movie representation content
 

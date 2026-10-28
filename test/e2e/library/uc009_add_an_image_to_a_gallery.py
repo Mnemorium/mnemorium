@@ -54,7 +54,7 @@ def test_adding_an_owned_image_to_a_public_gallery_appends_it(
     assert stored_body["items"][0]["name"] == file_name
 
 
-def test_adding_to_another_users_private_gallery_is_forbidden(
+def test_adding_to_another_users_private_gallery_is_not_found(
     create_gallery: Callable[[str, str, bool], requests.Response],
     upload_media: Callable[[str, str, bytes, str], int],
     register_media: Callable[[str, int], int],
@@ -76,7 +76,7 @@ def test_adding_to_another_users_private_gallery_is_forbidden(
 
     response = add_gallery_item(second_standard_user_token, gallery_id, "image", file_id)
 
-    assert_error_body(response, 403)
+    assert_error_body(response, 404)
 
 
 def test_adding_media_owned_by_another_user_is_unprocessable(

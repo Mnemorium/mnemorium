@@ -26,9 +26,10 @@ pub struct AddPlaylistTrackRequest {
 
 /// Payload to update a playlist's metadata and/or append a recording.
 ///
-/// Every field is optional. `name` and `is_public` are owner-only; `add_track`
-/// is allowed to any caller who can read the playlist. A request mixing an
-/// owner-only field with `add_track` from a non-owner is rejected as a whole.
+/// Every field is optional. `name` and `is_public` require `playlist.manage`,
+/// which the role presets grant to the owner and the Root Admin; `add_track`
+/// requires `playlist.moderate`. A request mixing the two from a caller that
+/// may moderate but not manage is rejected as a whole.
 #[derive(Debug, Deserialize, ToSchema)]
 #[non_exhaustive]
 pub struct PatchPlaylistRequest {
@@ -43,9 +44,9 @@ pub struct PatchPlaylistRequest {
 
 /// Update a playlist's metadata and/or append a recording.
 ///
-/// Omitted fields stay unchanged. `name` and `is_public` require ownership;
-/// adding a track requires read access to the playlist. The request is atomic:
-/// a rejected field applies nothing.
+/// Omitted fields stay unchanged. `name` and `is_public` require
+/// `playlist.manage`; adding a track requires `playlist.moderate`. The request
+/// is atomic: a rejected field applies nothing.
 #[utoipa::path(
     patch,
     operation_id = "patch_playlist",
@@ -90,7 +91,7 @@ pub struct PatchPlaylistRequest {
             status = FORBIDDEN,
             body = ErrorBody,
             content_type = "application/hal+json",
-            description = "The caller does not own the playlist"
+            description = "The caller can read the playlist but may not change its metadata or moderate its tracks"
         ),
         (
             status = NOT_FOUND,

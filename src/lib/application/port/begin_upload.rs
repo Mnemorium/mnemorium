@@ -128,6 +128,9 @@ pub enum BeginUploadError {
     /// The file size is zero.
     #[error("the file size must be greater than zero")]
     InvalidFileSize,
+    /// The authenticated caller does not exist anymore.
+    #[error("the authenticated user does not exist")]
+    NoSuchCaller,
     /// An unexpected or unmapped error occurred.
     #[error("an unknown error occurred: {0}")]
     Unknown(#[source] anyhow::Error),

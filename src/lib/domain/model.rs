@@ -15,6 +15,7 @@ pub mod music_medium;
 pub mod music_playlist;
 pub mod music_recording;
 pub mod partial_configuration;
+pub mod permission;
 pub mod season;
 pub mod series;
 pub mod upload;

@@ -52,7 +52,7 @@ use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
             status = NOT_FOUND,
             body = ErrorBody,
             content_type = "application/hal+json",
-            description = "Unknown show, season, or episode of the season"
+            description = "Unknown or inaccessible show, or a season or episode the show does not hold"
         ),
         (
             status = INTERNAL_SERVER_ERROR,

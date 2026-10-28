@@ -7,14 +7,19 @@ use crate::application::port::update_user::UpdateUserError;
 use crate::application::port::update_user::UpdateUserResponse;
 use crate::application::port::update_user::UpdateUserUseCase;
 use crate::application::security_event;
-use crate::domain::model::user::Role;
+use crate::domain::model::permission::Action;
 use crate::domain::model::user::UserError;
 use crate::domain::port::error::RepositoryError;
+use crate::domain::port::identity_unit_of_work::IdentityUnitOfWork;
+use crate::domain::port::permission_repository::PermissionFilter;
+use crate::domain::port::permission_repository::PermissionRepository as _;
 use crate::domain::port::unit_of_work::UnitOfWork as _;
 use crate::domain::port::unit_of_work::UnitOfWorkFactory;
 use crate::domain::port::user_repository::UserFilter;
 use crate::domain::port::user_repository::UserRepository as _;
 use crate::domain::port::user_unit_of_work::UserUnitOfWork;
+use crate::domain::service::authorization::Authorization;
+use crate::domain::service::authorization::Decision;
 use crate::domain::service::username_policy::UsernamePolicy;
 use crate::domain::service::username_policy::UsernamePolicyError;
 
@@ -37,7 +42,7 @@ impl<F: UnitOfWorkFactory> UpdateUser<F> {
 impl<F> UpdateUserUseCase for UpdateUser<F>
 where
     F: UnitOfWorkFactory,
-    F::Uow: UserUnitOfWork,
+    F::Uow: IdentityUnitOfWork + UserUnitOfWork,
 {
     #[expect(
         clippy::wildcard_enum_match_arm,
@@ -68,10 +73,15 @@ where
                     .into_iter()
                     .next()
                     .ok_or(UpdateUserError::NoSuchCaller)?;
-                if caller.role() != Role::Admin {
-                    security_event::authorization_failed(caller.id(), "update", "user");
-                    return Err(UpdateUserError::NotAdmin);
-                }
+
+                let permissions = unit_of_work
+                    .permissions()
+                    .search(&PermissionFilter {
+                        user_id: Some(caller.id()),
+                        ..PermissionFilter::default()
+                    })
+                    .await
+                    .map_err(|error| UpdateUserError::Unknown(error.into()))?;
 
                 let mut user = unit_of_work
                     .users()
@@ -88,11 +98,25 @@ where
                 if user.id() == 0 {
                     return Err(UpdateUserError::TargetNotModifiable);
                 }
-                if user.role() == Role::Admin && caller.id() != 0 && caller.id() != user.id() {
-                    return Err(UpdateUserError::TargetNotModifiable);
+                if let Decision::Deny(denial) =
+                    Authorization::decide(&caller, &permissions, Action::UserUpdate, &user)
+                {
+                    security_event::authorization_failed(
+                        caller.id(),
+                        denial.action().verb(),
+                        denial.action().target(),
+                    );
+                    return Err(UpdateUserError::NotAdmin);
                 }
-                if command.role().is_some() && caller.id() != 0 {
-                    security_event::authorization_failed(caller.id(), "update_role", "user");
+                if command.role().is_some()
+                    && let Decision::Deny(denial) =
+                        Authorization::decide(&caller, &permissions, Action::UserRoleChange, &user)
+                {
+                    security_event::authorization_failed(
+                        caller.id(),
+                        denial.action().verb(),
+                        denial.action().target(),
+                    );
                     return Err(UpdateUserError::RoleChangeForbidden);
                 }
 
@@ -209,6 +233,7 @@ mod tests {
     use crate::domain::port::user_repository::MockUserRepository;
     use crate::test_helpers::TestFactory;
     use crate::test_helpers::TestUnitOfWork;
+    use crate::test_helpers::no_permissions;
 
     use super::UpdateUser;
 
@@ -231,6 +256,7 @@ mod tests {
         setup(&mut user_repository)?;
 
         let unit_of_work = TestUnitOfWork {
+            permissions: no_permissions(),
             users: user_repository,
             ..TestUnitOfWork::default()
         };
@@ -311,6 +337,7 @@ mod tests {
             .returning(|user| Box::pin(async move { Ok(user) }));
 
         let unit_of_work = TestUnitOfWork {
+            permissions: no_permissions(),
             users: user_repository,
             ..TestUnitOfWork::default()
         };
@@ -379,9 +406,13 @@ mod tests {
             let caller = user(3, "bobby", None, Role::Standard)?;
             user_repository
                 .expect_search()
-                .times(1)
                 .withf(|filter| filter.id == Some(3))
                 .return_once(move |_| Box::pin(async move { Ok(vec![caller]) }));
+            let target = user(2, "brad", None, Role::Standard)?;
+            user_repository
+                .expect_search()
+                .withf(|filter| filter.id == Some(2))
+                .return_once(move |_| Box::pin(async move { Ok(vec![target]) }));
             Ok(())
         })?;
         let command = command(3, 2, Some("renamed"), None, None);
@@ -418,7 +449,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn update_user_non_root_admin_updates_other_admin_returns_target_not_modifiable()
+    async fn update_user_non_root_admin_updates_other_admin_returns_not_admin()
     -> Result<(), Box<dyn Error>> {
         // Arrange
         let harness = use_case_with(|user_repository| {
@@ -434,7 +465,7 @@ mod tests {
         let result = harness.use_case.execute(command).await;
 
         // Assert
-        assert!(matches!(result, Err(UpdateUserError::TargetNotModifiable)));
+        assert!(matches!(result, Err(UpdateUserError::NotAdmin)));
         assert!(harness.rolled_back.load(Ordering::SeqCst));
         Ok(())
     }
@@ -592,6 +623,7 @@ mod tests {
             .returning(|_| Box::pin(async { Err(RepositoryError::OperationFailed) }));
 
         let unit_of_work = TestUnitOfWork {
+            permissions: no_permissions(),
             users: user_repository,
             ..TestUnitOfWork::default()
         };
@@ -813,6 +845,7 @@ mod tests {
             .returning(|_| Box::pin(async { Err(RepositoryError::AlreadyExist) }));
 
         let unit_of_work = TestUnitOfWork {
+            permissions: no_permissions(),
             users: user_repository,
             ..TestUnitOfWork::default()
         };

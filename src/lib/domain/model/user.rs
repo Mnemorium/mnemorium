@@ -6,6 +6,9 @@ use email_address::EmailAddress;
 use email_address::Options;
 
 use crate::domain::alias::NumericID;
+use crate::domain::model::permission::Protected;
+use crate::domain::model::permission::ResourceKind;
+use crate::domain::model::permission::ResourceRef;
 
 /// Error returned when initialising or updating a `User`.
 #[derive(Debug, thiserror::Error)]
@@ -184,5 +187,23 @@ impl Debug for User {
             .field("role", &self.role)
             .field("username", &"**")
             .finish_non_exhaustive()
+    }
+}
+
+impl Protected for User {
+    fn is_privileged_account(&self) -> bool {
+        self.role == Role::Admin
+    }
+
+    fn is_publicly_visible(&self) -> bool {
+        false
+    }
+
+    fn owner_id(&self) -> Option<NumericID> {
+        Some(self.id)
+    }
+
+    fn resource_ref(&self) -> Option<ResourceRef> {
+        Some(ResourceRef::new(ResourceKind::User, self.id))
     }
 }
