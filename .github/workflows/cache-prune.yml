@@ -1,0 +1,49 @@
+---
+name: Cache prune
+
+on:
+  schedule:
+    - cron: "17 4 * * *"
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: read
+
+concurrency:
+  group: cache-prune
+  cancel-in-progress: false
+
+jobs:
+  prune:
+    name: Drop superseded Buildx and Rust caches
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Prune cache families
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          # keep_newest <key-prefix> <n>: delete every cache in the family
+          # except the <n> most recently created ones.
+          keep_newest() {
+            local prefix=$1 keep=$2
+            gh cache list --limit 100 --json id,key,createdAt \
+              | jq -r --arg p "$prefix" --argjson k "$keep" \
+                  'sort_by(.createdAt) | reverse
+                   | map(select(.key | startswith($p)))
+                   | .[$k:] | .[].id' \
+              | while read -r id; do
+                  gh cache delete "$id" || true
+                done
+          }
+
+          # Only the newest release cache is ever restored (restore-keys
+          # picks the most recent match), so the older ones are dead weight.
+          keep_newest "Linux-buildx-release-" 1
+          # PR caches are ref-scoped: one per open PR, plus one spare.
+          keep_newest "Linux-buildx-e2e-" 3
+          keep_newest "v0-rust-rust-" 2
