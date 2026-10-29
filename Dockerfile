@@ -1,7 +1,6 @@
-FROM rust:1.98-alpine3.21 AS chef
-
-RUN apk add --no-cache musl-dev=1.2.5-r11 \
-    && cargo install --locked cargo-chef --version 0.1.78
+# The prebuilt cargo-chef image is rust:1.98-alpine3.21 with cargo-chef and
+# musl-dev already installed; `cargo install` costs ~90 s on every cold build.
+FROM lukemathwalker/cargo-chef:0.1.78-rust-1.98-alpine3.21 AS chef
 WORKDIR /app
 
 FROM chef AS planner
