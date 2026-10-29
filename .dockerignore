@@ -11,6 +11,7 @@ events.ndjson
 .ruff_cache/
 .github/
 .opencode/
+openspec/
 .agents/
 .mkdocs.yml
 test/
