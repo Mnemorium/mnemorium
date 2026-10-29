@@ -170,3 +170,23 @@ impl Video {
         self.width
     }
 }
+
+/// Metadata extracted from a video file.
+#[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
+pub struct ProbedVideo {
+    /// Codec of the video.
+    pub codec: String,
+    /// Identifier of the colour space of the video.
+    pub color_id: String,
+    /// Duration of the video, in milliseconds.
+    pub duration_ms: f64,
+    /// Number of frames in the video.
+    pub frame_count: i64,
+    /// Height of the video, in pixels.
+    pub height: i64,
+    /// Scan type of the video.
+    pub scan_type: ScanType,
+    /// Width of the video, in pixels.
+    pub width: i64,
+}

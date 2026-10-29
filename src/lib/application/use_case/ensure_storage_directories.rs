@@ -4,8 +4,9 @@ use std::sync::Arc;
 
 use crate::application::port::ensure_storage_directories::EnsureStorageDirectoriesCommand;
 use crate::application::port::ensure_storage_directories::EnsureStorageDirectoriesError;
+use crate::application::port::ensure_storage_directories::EnsureStorageDirectoriesResponse;
 use crate::application::port::ensure_storage_directories::EnsureStorageDirectoriesUseCase;
-use crate::application::use_case::upload_layout::files_path;
+use crate::application::use_case::upload_layout::media_root;
 use crate::application::use_case::upload_layout::uploads_path;
 use crate::domain::port::file_storage::FileStorage;
 
@@ -27,24 +28,40 @@ impl<S: FileStorage> EnsureStorageDirectoriesUseCase for EnsureStorageDirectorie
     fn execute<'future>(
         &'future self,
         _command: EnsureStorageDirectoriesCommand,
-    ) -> Pin<Box<dyn Future<Output = Result<(), EnsureStorageDirectoriesError>> + Send + 'future>>
-    {
+    ) -> Pin<
+        Box<
+            dyn Future<
+                    Output = Result<
+                        EnsureStorageDirectoriesResponse,
+                        EnsureStorageDirectoriesError,
+                    >,
+                > + Send
+                + 'future,
+        >,
+    > {
         let file_storage = Arc::clone(&self.file_storage);
 
         Box::pin(async move {
-            for path in [uploads_path(), files_path()] {
-                let exist = file_storage
-                    .directory_exist(path.as_path())
+            // The staging area is server-owned, so it is recreated when absent.
+            let staging = uploads_path();
+            let exist = file_storage
+                .directory_exist(staging.as_path())
+                .await
+                .map_err(|error| EnsureStorageDirectoriesError::Unknown(error.into()))?;
+            if !exist {
+                file_storage
+                    .create_directory(staging.as_path())
                     .await
                     .map_err(|error| EnsureStorageDirectoriesError::Unknown(error.into()))?;
-                if !exist {
-                    file_storage
-                        .create_directory(path.as_path())
-                        .await
-                        .map_err(|error| EnsureStorageDirectoriesError::Unknown(error.into()))?;
-                }
             }
-            Ok(())
+
+            // The library root is the operator's mount: it is never created.
+            // Absence is reported so the caller can warn once and continue.
+            let media_root_present = file_storage
+                .directory_exist(media_root().as_path())
+                .await
+                .map_err(|error| EnsureStorageDirectoriesError::Unknown(error.into()))?;
+            Ok(EnsureStorageDirectoriesResponse::new(media_root_present))
         })
     }
 }
@@ -54,6 +71,8 @@ mod tests {
     use std::error::Error;
     use std::sync::Arc;
 
+    use crate::application::use_case::upload_layout::media_root;
+    use crate::application::use_case::upload_layout::uploads_path;
     use crate::domain::port::error::StorageError;
     use crate::domain::port::file_storage::MockFileStorage;
 
@@ -62,8 +81,9 @@ mod tests {
     use super::EnsureStorageDirectoriesUseCase as _;
 
     #[tokio::test]
-    async fn ensure_storage_directories_missing_creates_both() -> Result<(), Box<dyn Error>> {
-        // Arrange
+    async fn ensure_storage_directories_creates_only_the_staging_folder()
+    -> Result<(), Box<dyn Error>> {
+        // Arrange: neither folder exists.
         let mut file_storage = MockFileStorage::new();
         file_storage
             .expect_directory_exist()
@@ -71,36 +91,46 @@ mod tests {
             .returning(|_| Box::pin(async { Ok(false) }));
         file_storage
             .expect_create_directory()
-            .times(2)
+            .times(1)
+            .withf(|path| path == uploads_path())
             .returning(|_| Box::pin(async { Ok(()) }));
         let use_case = EnsureStorageDirectories::new(Arc::new(file_storage));
 
         // Act
-        use_case
+        let response = use_case
             .execute(EnsureStorageDirectoriesCommand::new())
             .await?;
 
-        // Assert
+        // Assert: no `create_directory` call addressed the library root.
+        assert!(!response.media_root_present());
         Ok(())
     }
 
     #[tokio::test]
-    async fn ensure_storage_directories_existing_creates_none() -> Result<(), Box<dyn Error>> {
+    async fn ensure_storage_directories_reports_a_present_media_root() -> Result<(), Box<dyn Error>>
+    {
         // Arrange
         let mut file_storage = MockFileStorage::new();
         file_storage
             .expect_directory_exist()
-            .times(2)
+            .withf(|path| path == media_root())
+            .times(1)
+            .returning(|_| Box::pin(async { Ok(true) }));
+        file_storage
+            .expect_directory_exist()
+            .withf(|path| path == uploads_path())
+            .times(1)
             .returning(|_| Box::pin(async { Ok(true) }));
         file_storage.expect_create_directory().times(0);
         let use_case = EnsureStorageDirectories::new(Arc::new(file_storage));
 
         // Act
-        use_case
+        let response = use_case
             .execute(EnsureStorageDirectoriesCommand::new())
             .await?;
 
         // Assert
+        assert!(response.media_root_present());
         Ok(())
     }
 

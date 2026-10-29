@@ -361,103 +361,51 @@ mod tests {
     )]
 
     use std::error::Error;
-    use std::io as stdio;
-    use std::sync::Arc;
-    use std::sync::Mutex;
-    use std::sync::PoisonError;
 
     use chrono::NaiveDateTime;
     use sqlx::Sqlite;
     use sqlx::Transaction;
     use sqlx::sqlite::SqlitePoolOptions;
-    use tracing::subscriber::DefaultGuard;
-    use tracing::subscriber::set_default;
-    use tracing_subscriber::fmt;
-    use tracing_subscriber::layer::SubscriberExt as _;
 
     use crate::domain::model::music_playlist::MusicPlaylist;
     use crate::domain::model::music_recording::MusicRecording;
     use crate::domain::port::error::RepositoryError;
     use crate::domain::port::music_playlist_repository::MusicPlaylistFilter;
     use crate::domain::port::music_playlist_repository::MusicPlaylistRepository as _;
+    use tracing_test::traced_test;
 
     use super::SqlxMusicPlaylistRepository;
 
-    /// Append-only sink that lets a test read back the lines [`fmt`] emits.
-    #[derive(Clone)]
-    struct CaptureWriter {
-        /// Buffer shared with the test that asserts on the captured output.
-        buffer: Arc<Mutex<Vec<u8>>>,
-    }
-
-    #[expect(
-        clippy::missing_trait_methods,
-        reason = "only the raw `write` and `flush` are meaningful for an in-memory capture buffer"
-    )]
-    impl stdio::Write for CaptureWriter {
-        fn flush(&mut self) -> stdio::Result<()> {
-            Ok(())
-        }
-
-        fn write(&mut self, buf: &[u8]) -> stdio::Result<usize> {
-            let mut buffer = self.buffer.lock().unwrap_or_else(PoisonError::into_inner);
-            buffer.extend_from_slice(buf);
-            Ok(buf.len())
-        }
-    }
-
-    /// Hand every formatted event to a fresh clone of the shared buffer.
-    #[expect(
-        clippy::missing_trait_methods,
-        reason = "the default `make_writer_for` already routes through `make_writer`"
-    )]
-    impl<'writer> fmt::MakeWriter<'writer> for CaptureWriter {
-        type Writer = Self;
-
-        fn make_writer(&'writer self) -> Self::Writer {
-            self.clone()
-        }
-    }
-
-    /// Install a capturing subscriber on the current thread and return the
-    /// shared buffer plus the guard that keeps it active.
-    fn capture_logs() -> (Arc<Mutex<Vec<u8>>>, DefaultGuard) {
-        let buffer = Arc::new(Mutex::new(Vec::new()));
-        let subscriber = tracing_subscriber::registry().with(
-            fmt::layer().with_ansi(false).with_writer(CaptureWriter {
-                buffer: Arc::clone(&buffer),
-            }),
-        );
-        let guard = set_default(subscriber);
-        (buffer, guard)
-    }
-
-    /// Read the captured bytes back as a lossy UTF-8 string.
-    fn captured_logs(buffer: &Mutex<Vec<u8>>) -> String {
-        let bytes = buffer.lock().unwrap_or_else(PoisonError::into_inner);
-        String::from_utf8_lossy(bytes.as_slice()).into_owned()
-    }
-
     /// Assert the captured output is exactly one `output_validation_failed`
     /// event with `reason`.
-    fn assert_output_validation_failed(logs: &str, reason: &str) {
-        assert_eq!(
-            logs.matches("WARN").count(),
-            1,
-            "rejected stored data must emit exactly one warn event: {logs}"
-        );
-        assert!(
-            logs.contains("event=\"output_validation_failed\""),
-            "the event must be output_validation_failed: {logs}"
-        );
-        assert!(
-            logs.contains(&format!("reason=\"{reason}\"")),
-            "the event must carry the stable reason `{reason}`: {logs}"
-        );
-        assert!(
-            !logs.contains("sqlx"),
-            "the event must not carry the sqlx detail: {logs}"
-        );
+    fn assert_output_validation_failed(lines: &[&str], reason: &str) -> Result<(), String> {
+        let ours: Vec<&str> = lines
+            .iter()
+            .copied()
+            .filter(|line| line.contains("security:"))
+            .collect();
+        let warn_count = ours.iter().filter(|line| line.contains("WARN")).count();
+        if warn_count != 1 {
+            return Err(format!(
+                "rejected stored data must emit exactly one warn event (found {warn_count})"
+            ));
+        }
+        if !ours
+            .iter()
+            .any(|line| line.contains("event=\"output_validation_failed\""))
+        {
+            return Err("the event must be output_validation_failed".to_owned());
+        }
+        if !ours
+            .iter()
+            .any(|line| line.contains(&format!("reason=\"{reason}\"")))
+        {
+            return Err(format!("the event must carry the stable reason `{reason}`"));
+        }
+        if ours.iter().any(|line| line.contains("sqlx")) {
+            return Err("the event must not carry the sqlx detail".to_owned());
+        }
+        Ok(())
     }
 
     /// Open a migrated in-memory database and begin one transaction.
@@ -499,8 +447,8 @@ mod tests {
         path: &str,
     ) -> Result<(), sqlx::Error> {
         sqlx::query(
-            "INSERT INTO file (file_id, path, user_id, is_public, mime_type_id, integrity_hash)
-             VALUES (?1, ?2, ?3, 0, 'audio/mpeg', ?4)",
+            "INSERT INTO file (file_id, path, user_id, is_public, mime_type_id, size_bytes, modified_at, origin, integrity_hash)
+             VALUES (?1, ?2, ?3, 0, 'audio/mpeg', 1024, '2026-10-06 00:00:00', 'UPLOADED', ?4)",
         )
         .bind(file_id)
         .bind(path)
@@ -520,10 +468,10 @@ mod tests {
     ) -> Result<(), sqlx::Error> {
         sqlx::query(
             "INSERT INTO audio (
-                audio_id, name, duration_ms, codec, sample_rate_hz, audio_channel_id,
+                audio_id, name, duration_ms, codec, sample_rate_hz,
                 bit_depth, block_size, file_id
              )
-             VALUES (?1, ?2, 1000.0, 'MP3', 44100.0, '2.0', 16, 16, ?3)",
+             VALUES (?1, ?2, 1000.0, 'MP3', 44100.0, 16, 16, ?3)",
         )
         .bind(audio_id)
         .bind(name)
@@ -584,8 +532,8 @@ mod tests {
         user_id: i64,
     ) -> Result<(), sqlx::Error> {
         sqlx::query(
-            "INSERT INTO file (file_id, path, user_id, is_public, mime_type_id, integrity_hash)
-             VALUES (?1, ?2, ?3, 0, 'image/png', ?4)",
+            "INSERT INTO file (file_id, path, user_id, is_public, mime_type_id, size_bytes, modified_at, origin, integrity_hash)
+             VALUES (?1, ?2, ?3, 0, 'image/png', 1024, '2026-10-06 00:00:00', 'UPLOADED', ?4)",
         )
         .bind(file_id)
         .bind(format!("{file_id}.png"))
@@ -877,6 +825,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[traced_test]
     async fn search_rejects_a_track_index_outside_the_u32_range() -> Result<(), Box<dyn Error>> {
         // Arrange: the range check is probed by relaxing it for this seed.
         let mut transaction = begin_transaction().await?;
@@ -888,7 +837,6 @@ mod tests {
             .await?;
         seed_placement(&mut transaction, 7, 30, 4_294_967_296).await?;
         let mut repository = SqlxMusicPlaylistRepository::new(&mut transaction);
-        let (buffer, _capture) = capture_logs();
 
         // Act
         let result = repository.search(&MusicPlaylistFilter::default()).await;
@@ -898,7 +846,7 @@ mod tests {
             result,
             Err(RepositoryError::DataIntegrityViolation)
         ));
-        assert_output_validation_failed(&captured_logs(&buffer), "track_index_out_of_range");
+        logs_assert(|lines| assert_output_validation_failed(lines, "track_index_out_of_range"));
         Ok(())
     }
 
@@ -987,6 +935,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[traced_test]
     async fn search_rejects_a_recording_whose_stored_isrc_code_is_malformed()
     -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -999,7 +948,6 @@ mod tests {
         seed_playlist(&mut transaction, 7, "Mix", 1, false).await?;
         seed_placement(&mut transaction, 7, 30, 0).await?;
         let mut repository = SqlxMusicPlaylistRepository::new(&mut transaction);
-        let (buffer, _capture) = capture_logs();
 
         // Act
         let result = repository.search(&MusicPlaylistFilter::default()).await;
@@ -1009,7 +957,7 @@ mod tests {
             result,
             Err(RepositoryError::DataIntegrityViolation)
         ));
-        assert_output_validation_failed(&captured_logs(&buffer), "invalid_recording");
+        logs_assert(|lines| assert_output_validation_failed(lines, "invalid_recording"));
         Ok(())
     }
 

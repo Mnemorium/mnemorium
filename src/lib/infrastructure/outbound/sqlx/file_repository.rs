@@ -4,6 +4,7 @@ use sqlx::Transaction;
 
 use crate::domain::alias::NumericID;
 use crate::domain::model::file::File;
+use crate::domain::model::file::Origin;
 use crate::domain::model::integrity_hash::IntegrityHash;
 use crate::domain::port::error::RepositoryError;
 use crate::domain::port::file_repository::FileFilter;
@@ -34,9 +35,12 @@ impl FileRepository for SqlxFileRepository<'_> {
                 is_public,
                 mime_type_id,
                 uploaded_at,
+                size_bytes,
+                modified_at,
+                origin,
                 integrity_hash
             )
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
             RETURNING
                 file_id,
                 path,
@@ -44,6 +48,9 @@ impl FileRepository for SqlxFileRepository<'_> {
                 is_public,
                 mime_type_id,
                 uploaded_at,
+                size_bytes,
+                modified_at,
+                origin,
                 integrity_hash",
         )
         .bind(file.path())
@@ -51,7 +58,10 @@ impl FileRepository for SqlxFileRepository<'_> {
         .bind(file.is_public())
         .bind(file.mime_type_id())
         .bind(file.uploaded_at())
-        .bind(file.integrity_hash().as_str())
+        .bind(file.size_bytes())
+        .bind(file.modified_at())
+        .bind(file.origin().as_str())
+        .bind(file.integrity_hash().map(IntegrityHash::as_str))
         .fetch_one(&mut **self.transaction)
         .await?;
 
@@ -66,6 +76,37 @@ impl FileRepository for SqlxFileRepository<'_> {
         Ok(result.rows_affected() > 0)
     }
 
+    async fn save(&mut self, file: File) -> Result<File, RepositoryError> {
+        let row = sqlx::query_as::<_, SqlxFile>(
+            "INSERT INTO file (file_id, path, is_public, integrity_hash)
+             VALUES (?1, ?2, ?3, ?4)
+             ON CONFLICT (file_id) DO UPDATE SET
+                path = excluded.path,
+                is_public = excluded.is_public,
+                integrity_hash = excluded.integrity_hash
+             RETURNING
+                file_id,
+                path,
+                user_id,
+                is_public,
+                mime_type_id,
+                uploaded_at,
+                size_bytes,
+                modified_at,
+                origin,
+                integrity_hash",
+        )
+        .bind(file.id())
+        .bind(file.path())
+        .bind(file.is_public())
+        .bind(file.integrity_hash().map(IntegrityHash::as_str))
+        .fetch_optional(&mut **self.transaction)
+        .await?
+        .ok_or(RepositoryError::OperationFailed)?;
+
+        domain_file(row)
+    }
+
     async fn search(&mut self, filter: &FileFilter) -> Result<Vec<File>, RepositoryError> {
         let mut builder = QueryBuilder::<Sqlite>::new(
             "SELECT
@@ -75,6 +116,9 @@ impl FileRepository for SqlxFileRepository<'_> {
                 is_public,
                 mime_type_id,
                 uploaded_at,
+                size_bytes,
+                modified_at,
+                origin,
                 integrity_hash
             FROM file",
         );
@@ -90,6 +134,9 @@ impl FileRepository for SqlxFileRepository<'_> {
                 "integrity_hash = ",
                 integrity_hash,
             );
+        }
+        if let Some(path) = filter.path.as_deref() {
+            push_filter(&mut first, &mut builder, "path = ", path);
         }
         if let Some(user_id) = filter.user_id {
             push_filter(&mut first, &mut builder, "user_id = ", user_id);
@@ -125,8 +172,14 @@ fn push_filter<'value, T>(
 
 /// Map a persisted file row back to the domain model.
 fn domain_file(row: SqlxFile) -> Result<File, RepositoryError> {
-    let integrity_hash = IntegrityHash::try_new(row.integrity_hash)
-        .map_err(|_| RepositoryError::DataIntegrityViolation)?;
+    let integrity_hash = row
+        .integrity_hash
+        .map(|digest| {
+            IntegrityHash::try_new(digest).map_err(|_| RepositoryError::DataIntegrityViolation)
+        })
+        .transpose()?;
+    let origin =
+        Origin::parse(row.origin.as_str()).ok_or(RepositoryError::DataIntegrityViolation)?;
     File::try_new(
         row.file_id,
         row.path,
@@ -134,7 +187,10 @@ fn domain_file(row: SqlxFile) -> Result<File, RepositoryError> {
         row.is_public,
         row.mime_type_id,
         row.uploaded_at,
+        row.size_bytes,
+        row.modified_at,
         integrity_hash,
+        Some(origin),
     )
     .map_err(|_| RepositoryError::DataIntegrityViolation)
 }
@@ -144,12 +200,14 @@ mod tests {
     use std::error::Error;
 
     use chrono::NaiveDate;
+    use chrono::NaiveDateTime;
     use rstest::rstest;
     use sqlx::Sqlite;
     use sqlx::Transaction;
     use sqlx::sqlite::SqlitePoolOptions;
 
     use crate::domain::model::file::File;
+    use crate::domain::model::file::Origin;
     use crate::domain::model::integrity_hash::IntegrityHash;
     use crate::domain::port::error::RepositoryError;
     use crate::domain::port::file_repository::FileFilter;
@@ -202,7 +260,34 @@ mod tests {
             false,
             "video/mp4".to_owned(),
             NaiveDate::from_ymd_opt(2026, 9, 26).ok_or("invalid fixture date")?,
-            IntegrityHash::try_new(integrity_hash.to_owned())?,
+            1024,
+            modified_at()?,
+            Some(IntegrityHash::try_new(integrity_hash.to_owned())?),
+            Some(Origin::Uploaded),
+        )?)
+    }
+
+    /// Build a scanned file with no digest.
+    fn scanned(id: i64, path: &str, user_id: i64) -> Result<File, Box<dyn Error>> {
+        Ok(File::try_new(
+            id,
+            path.to_owned(),
+            user_id,
+            false,
+            "video/mp4".to_owned(),
+            NaiveDate::from_ymd_opt(2026, 9, 26).ok_or("invalid fixture date")?,
+            2048,
+            modified_at()?,
+            None,
+            None,
+        )?)
+    }
+
+    /// Fixture modification instant.
+    fn modified_at() -> Result<NaiveDateTime, Box<dyn Error>> {
+        Ok(NaiveDateTime::parse_from_str(
+            "2026-09-26 10:00:00",
+            "%Y-%m-%d %H:%M:%S",
         )?)
     }
 
@@ -233,7 +318,10 @@ mod tests {
         assert_eq!(persisted.user_id(), 1);
         assert!(!persisted.is_public());
         assert_eq!(persisted.mime_type_id(), "video/mp4");
-        assert_eq!(persisted.integrity_hash().as_str(), DIGEST);
+        assert_eq!(
+            persisted.integrity_hash().map(IntegrityHash::as_str),
+            Some(DIGEST)
+        );
         assert_eq!(found.first(), Some(&persisted));
         Ok(())
     }
@@ -309,8 +397,11 @@ mod tests {
         let mut transaction = begin_transaction().await?;
         seed_user(&mut transaction, 1).await?;
         sqlx::query(
-            "INSERT INTO file (file_id, path, user_id, is_public, mime_type_id, integrity_hash)
-             VALUES (10, 'files/1_photo.png', 1, 0, 'image/png', ?1)",
+            "INSERT INTO file (
+                file_id, path, user_id, is_public, mime_type_id, size_bytes, modified_at,
+                integrity_hash
+             )
+             VALUES (10, 'files/1_photo.png', 1, 0, 'image/png', 10, '2026-10-06 00:00:00', ?1)",
         )
         .bind(DIGEST)
         .execute(&mut *transaction)
@@ -406,7 +497,10 @@ mod tests {
 
         // Assert
         assert_eq!(stored.user_id(), 2);
-        assert_eq!(stored.integrity_hash().as_str(), DIGEST);
+        assert_eq!(
+            stored.integrity_hash().map(IntegrityHash::as_str),
+            Some(DIGEST)
+        );
         Ok(())
     }
 
@@ -468,7 +562,10 @@ mod tests {
             false,
             "application/unknown".to_owned(),
             NaiveDate::from_ymd_opt(2026, 9, 26).ok_or("invalid fixture date")?,
-            IntegrityHash::try_new(DIGEST.to_owned())?,
+            1024,
+            modified_at()?,
+            Some(IntegrityHash::try_new(DIGEST.to_owned())?),
+            Some(Origin::Uploaded),
         )?;
 
         // Act
@@ -483,14 +580,43 @@ mod tests {
         Ok(())
     }
 
+    #[tokio::test]
+    async fn create_and_read_back_a_scanned_file_without_digest() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let mut transaction = begin_transaction().await?;
+        seed_user(&mut transaction, 1).await?;
+        let pending = scanned(0, "found/clip.mp4", 1)?;
+
+        // Act
+        let mut repository = SqlxFileRepository::new(&mut transaction);
+        let persisted = repository.create(pending).await?;
+        let found = repository
+            .search(&FileFilter {
+                id: Some(persisted.id()),
+                ..FileFilter::default()
+            })
+            .await?;
+
+        // Assert: the nullable digest and the size and instant round-trip.
+        assert!(persisted.integrity_hash().is_none());
+        assert_eq!(persisted.origin(), Origin::Scanned);
+        assert_eq!(persisted.size_bytes(), 2048);
+        assert_eq!(found.first(), Some(&persisted));
+        Ok(())
+    }
+
     #[rstest]
     #[case::integrity_hash_length(
-        "INSERT INTO file (path, user_id, is_public, mime_type_id, integrity_hash)
-         VALUES ('files/short.mp4', 1, 0, 'video/mp4', 'too-short')"
+        "INSERT INTO file (path, user_id, is_public, mime_type_id, size_bytes, modified_at, integrity_hash)
+         VALUES ('files/short.mp4', 1, 0, 'video/mp4', 1, '2026-10-06 00:00:00', 'too-short')"
     )]
     #[case::is_public_out_of_range(
-        "INSERT INTO file (path, user_id, is_public, mime_type_id, integrity_hash)
-         VALUES ('files/public.mp4', 1, 2, 'video/mp4', '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef')"
+        "INSERT INTO file (path, user_id, is_public, mime_type_id, size_bytes, modified_at, integrity_hash)
+         VALUES ('files/public.mp4', 1, 2, 'video/mp4', 1, '2026-10-06 00:00:00', '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef')"
+    )]
+    #[case::origin_not_known(
+        "INSERT INTO file (path, user_id, is_public, mime_type_id, size_bytes, modified_at, origin, integrity_hash)
+         VALUES ('files/origin.mp4', 1, 0, 'video/mp4', 1, '2026-10-06 00:00:00', 'BORROWED', NULL)"
     )]
     #[tokio::test]
     async fn create_violating_a_check_returns_data_integrity_violation(

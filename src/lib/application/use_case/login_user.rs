@@ -161,29 +161,12 @@ where
 
 #[cfg(test)]
 mod tests {
-    use std::collections::BTreeMap;
-    use std::collections::HashMap;
     use std::error::Error;
-    use std::fmt::Debug;
     use std::sync::Arc;
-    use std::sync::Mutex;
-    use std::sync::Once;
-    use std::sync::OnceLock;
     use std::sync::atomic::AtomicBool;
     use std::sync::atomic::Ordering;
-    use std::thread;
-    use std::thread::ThreadId;
 
     use chrono::NaiveDateTime;
-    use tracing::Event;
-    use tracing::Level;
-    use tracing::field::Field;
-    use tracing::field::Visit;
-    use tracing::subscriber::set_global_default;
-    use tracing_subscriber::layer::Context;
-    use tracing_subscriber::layer::Layer;
-    use tracing_subscriber::layer::SubscriberExt as _;
-    use tracing_subscriber::registry;
 
     use crate::application::port::login_user::LoginUserCommand;
     use crate::application::port::login_user::LoginUserError;
@@ -203,6 +186,7 @@ mod tests {
     use crate::test_helpers::SECRET_PASSWORD;
     use crate::test_helpers::TestFactory;
     use crate::test_helpers::TestUnitOfWork;
+    use tracing_test::traced_test;
 
     use super::LoginUser;
 
@@ -216,143 +200,6 @@ mod tests {
         rolled_back: Arc<AtomicBool>,
         /// The use case under test.
         use_case: UseCase,
-    }
-
-    /// A captured `tracing` event: its level, target and fields.
-    #[derive(Clone, Debug)]
-    struct CapturedEvent {
-        /// Recorded fields, keyed by name.
-        fields: BTreeMap<String, String>,
-        /// Severity level of the event.
-        level: Level,
-        /// Target of the event.
-        target: String,
-    }
-
-    /// A handle to the process-wide, per-thread event sink.
-    #[derive(Clone, Copy, Default)]
-    struct CaptureEvents;
-
-    /// Collect the fields of one event into a map.
-    #[derive(Default)]
-    struct FieldVisitor {
-        /// Recorded fields, keyed by name.
-        fields: BTreeMap<String, String>,
-    }
-
-    impl CaptureEvents {
-        /// Return the single event captured on this thread, if exactly one was.
-        #[expect(
-            clippy::trivially_copy_pass_by_ref,
-            clippy::unused_self,
-            reason = "`self` is an intentional handle; the data lives in the thread sink"
-        )]
-        fn single(&self) -> Option<CapturedEvent> {
-            let sink = sink().lock().ok()?;
-            let events = sink.get(&thread::current().id())?;
-            if events.len() == 1 {
-                events.first().cloned()
-            } else {
-                None
-            }
-        }
-
-        /// Return the events captured on this thread.
-        #[expect(
-            clippy::trivially_copy_pass_by_ref,
-            clippy::unused_self,
-            reason = "`self` is an intentional handle; the data lives in the thread sink"
-        )]
-        fn snapshot(&self) -> Vec<CapturedEvent> {
-            sink()
-                .lock()
-                .ok()
-                .and_then(|sink| sink.get(&thread::current().id()).cloned())
-                .unwrap_or_default()
-        }
-    }
-
-    #[expect(
-        clippy::missing_trait_methods,
-        reason = "only `on_event` is needed; every other `Layer` method keeps its default"
-    )]
-    impl<S: tracing::Subscriber> Layer<S> for CaptureEvents {
-        /// Record every event the subscriber receives on its thread's sink.
-        fn on_event(&self, event: &Event<'_>, _context: Context<'_, S>) {
-            let metadata = event.metadata();
-            let mut visitor = FieldVisitor::default();
-            event.record(&mut visitor);
-            let captured = CapturedEvent {
-                level: *metadata.level(),
-                target: metadata.target().to_owned(),
-                fields: visitor.fields,
-            };
-            if let Ok(mut sink) = sink().lock() {
-                sink.entry(thread::current().id())
-                    .or_default()
-                    .push(captured);
-            }
-        }
-    }
-
-    #[expect(
-        clippy::missing_trait_methods,
-        reason = "only the field types the catalog emits are recorded; the rest keep their defaults"
-    )]
-    impl Visit for FieldVisitor {
-        /// Record a boolean field.
-        fn record_bool(&mut self, field: &Field, value: bool) {
-            self.fields
-                .insert(field.name().to_owned(), value.to_string());
-        }
-
-        /// Record a `Debug`-formatted field.
-        fn record_debug(&mut self, field: &Field, value: &dyn Debug) {
-            self.fields
-                .insert(field.name().to_owned(), format!("{value:?}"));
-        }
-
-        /// Record a signed-integer field.
-        fn record_i64(&mut self, field: &Field, value: i64) {
-            self.fields
-                .insert(field.name().to_owned(), value.to_string());
-        }
-
-        /// Record a string field.
-        fn record_str(&mut self, field: &Field, value: &str) {
-            self.fields
-                .insert(field.name().to_owned(), value.to_owned());
-        }
-
-        /// Record an unsigned-integer field.
-        fn record_u64(&mut self, field: &Field, value: u64) {
-            self.fields
-                .insert(field.name().to_owned(), value.to_string());
-        }
-    }
-
-    /// Return the process-wide, per-thread event sink.
-    fn sink() -> &'static Mutex<HashMap<ThreadId, Vec<CapturedEvent>>> {
-        static SINK: OnceLock<Mutex<HashMap<ThreadId, Vec<CapturedEvent>>>> = OnceLock::new();
-        SINK.get_or_init(|| Mutex::new(HashMap::new()))
-    }
-
-    /// Install the capturing subscriber and clear this thread's sink.
-    ///
-    /// The subscriber is installed once per process: a thread-local dispatcher
-    /// would race the global callsite-interest cache when other tests exercise
-    /// the same callsites without one.
-    fn capture() -> (CaptureEvents, ()) {
-        static INSTALL: Once = Once::new();
-        INSTALL.call_once(|| {
-            let subscriber = registry().with(CaptureEvents);
-            // A second install can only lose a race to an equivalent subscriber.
-            let _installed = set_global_default(subscriber);
-        });
-        if let Ok(mut sink) = sink().lock() {
-            sink.remove(&thread::current().id());
-        }
-        (CaptureEvents, ())
     }
 
     fn use_case_with(
@@ -638,6 +485,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[traced_test]
     async fn login_user_valid_credentials_emits_authn_succeeded() -> Result<(), Box<dyn Error>> {
         // Arrange
         let harness = use_case_with(
@@ -652,26 +500,36 @@ mod tests {
             },
         )?;
         let command = command("alice", SECRET_PASSWORD);
-        let (capture, _guard) = capture();
 
         // Act
         assert!(harness.use_case.execute(command).await.is_ok());
 
         // Assert
-        let Some(event) = capture.single() else {
-            return Err("expected exactly one security event".into());
-        };
-        assert_eq!(event.target, "security");
-        assert_eq!(event.level, Level::INFO);
-        assert_eq!(
-            event.fields.get("event").map(String::as_str),
-            Some("authn_succeeded")
+        assert!(logs_contain("INFO"), "expected an info event");
+        assert!(
+            logs_contain("security:"),
+            "the event must name the security target"
         );
-        assert_eq!(event.fields.get("actor").map(String::as_str), Some("1"));
+        logs_assert(|lines| {
+            let count = lines
+                .iter()
+                .filter(|line| line.contains("event=\"authn_succeeded\""))
+                .count();
+            (count == 1).then_some(()).ok_or_else(|| {
+                format!("expected exactly one authn_succeeded event (found {count})")
+            })
+        });
+        logs_assert(|lines| {
+            let count = lines.iter().filter(|line| line.contains("actor=1")).count();
+            (count == 1)
+                .then_some(())
+                .ok_or_else(|| format!("expected the actor field (found {count})"))
+        });
         Ok(())
     }
 
     #[tokio::test]
+    #[traced_test]
     async fn login_user_wrong_password_emits_authn_failed() -> Result<(), Box<dyn Error>> {
         // Arrange
         let harness = use_case_with(
@@ -686,33 +544,48 @@ mod tests {
             },
         )?;
         let command = command("alice", "wrong-password");
-        let (capture, _guard) = capture();
 
         // Act
         assert!(harness.use_case.execute(command).await.is_err());
 
         // Assert
-        let Some(event) = capture.single() else {
-            return Err("expected exactly one security event".into());
-        };
-        assert_eq!(event.target, "security");
-        assert_eq!(event.level, Level::WARN);
-        assert_eq!(
-            event.fields.get("event").map(String::as_str),
-            Some("authn_failed")
+        assert!(logs_contain("WARN"), "expected a warn event");
+        assert!(
+            logs_contain("security:"),
+            "the event must name the security target"
         );
-        assert_eq!(
-            event.fields.get("reason").map(String::as_str),
-            Some("invalid_credentials")
-        );
-        assert_eq!(
-            event.fields.get("claimed_identity").map(String::as_str),
-            Some("alice")
-        );
+        logs_assert(|lines| {
+            let count = lines
+                .iter()
+                .filter(|line| line.contains("event=\"authn_failed\""))
+                .count();
+            (count == 1)
+                .then_some(())
+                .ok_or_else(|| format!("expected exactly one authn_failed event (found {count})"))
+        });
+        logs_assert(|lines| {
+            let count = lines
+                .iter()
+                .filter(|line| line.contains("reason=\"invalid_credentials\""))
+                .count();
+            (count == 1)
+                .then_some(())
+                .ok_or_else(|| format!("expected the uniform reason (found {count})"))
+        });
+        logs_assert(|lines| {
+            let count = lines
+                .iter()
+                .filter(|line| line.contains("claimed_identity=alice"))
+                .count();
+            (count == 1)
+                .then_some(())
+                .ok_or_else(|| format!("expected the claimed identity (found {count})"))
+        });
         Ok(())
     }
 
     #[tokio::test]
+    #[traced_test]
     async fn login_user_unknown_username_emits_uniform_authn_failed() -> Result<(), Box<dyn Error>>
     {
         // Arrange
@@ -728,33 +601,48 @@ mod tests {
             Ok(())
         })?;
         let command = command("ghost", SECRET_PASSWORD);
-        let (capture, _guard) = capture();
 
         // Act
         assert!(harness.use_case.execute(command).await.is_err());
 
         // Assert
-        let Some(event) = capture.single() else {
-            return Err("expected exactly one security event".into());
-        };
-        assert_eq!(event.target, "security");
-        assert_eq!(event.level, Level::WARN);
-        assert_eq!(
-            event.fields.get("event").map(String::as_str),
-            Some("authn_failed")
+        assert!(logs_contain("WARN"), "expected a warn event");
+        assert!(
+            logs_contain("security:"),
+            "the event must name the security target"
         );
-        assert_eq!(
-            event.fields.get("reason").map(String::as_str),
-            Some("invalid_credentials")
-        );
-        assert_eq!(
-            event.fields.get("claimed_identity").map(String::as_str),
-            Some("ghost")
-        );
+        logs_assert(|lines| {
+            let count = lines
+                .iter()
+                .filter(|line| line.contains("event=\"authn_failed\""))
+                .count();
+            (count == 1)
+                .then_some(())
+                .ok_or_else(|| format!("expected exactly one authn_failed event (found {count})"))
+        });
+        logs_assert(|lines| {
+            let count = lines
+                .iter()
+                .filter(|line| line.contains("reason=\"invalid_credentials\""))
+                .count();
+            (count == 1)
+                .then_some(())
+                .ok_or_else(|| format!("expected the uniform reason (found {count})"))
+        });
+        logs_assert(|lines| {
+            let count = lines
+                .iter()
+                .filter(|line| line.contains("claimed_identity=ghost"))
+                .count();
+            (count == 1)
+                .then_some(())
+                .ok_or_else(|| format!("expected the claimed identity (found {count})"))
+        });
         Ok(())
     }
 
     #[tokio::test]
+    #[traced_test]
     async fn login_user_unknown_username_escapes_claimed_identity() -> Result<(), Box<dyn Error>> {
         // Arrange
         let harness = use_case_with(|user_repository, _, password_hasher, _| {
@@ -769,29 +657,28 @@ mod tests {
             Ok(())
         })?;
         let command = command("bad\nname", SECRET_PASSWORD);
-        let (capture, _guard) = capture();
 
         // Act
         assert!(harness.use_case.execute(command).await.is_err());
 
         // Assert
-        let Some(event) = capture.single() else {
-            return Err("expected exactly one security event".into());
-        };
-        let claimed_identity = event
-            .fields
-            .get("claimed_identity")
-            .map(String::as_str)
-            .ok_or("expected a claimed_identity field")?;
+        logs_assert(|lines| {
+            (lines.len() == 1).then_some(()).ok_or_else(|| {
+                format!(
+                    "the claimed identity must not forge a log record (found {})",
+                    lines.len()
+                )
+            })
+        });
         assert!(
-            !claimed_identity.contains(['\n', '\r']),
-            "the claimed identity must not forge a log record"
+            logs_contain(r"claimed_identity=bad\nname"),
+            "the claimed identity must be escaped"
         );
-        assert_eq!(claimed_identity, "bad\\nname");
         Ok(())
     }
 
     #[tokio::test]
+    #[traced_test]
     async fn login_user_missing_credential_emits_application_error() -> Result<(), Box<dyn Error>> {
         // Arrange
         let harness = use_case_with(|user_repository, credential_repository, _, _| {
@@ -803,29 +690,39 @@ mod tests {
             Ok(())
         })?;
         let command = command("alice", SECRET_PASSWORD);
-        let (capture, _guard) = capture();
 
         // Act
         assert!(harness.use_case.execute(command).await.is_err());
 
         // Assert
-        let Some(event) = capture.single() else {
-            return Err("expected exactly one security event".into());
-        };
-        assert_eq!(event.target, "security");
-        assert_eq!(event.level, Level::ERROR);
-        assert_eq!(
-            event.fields.get("event").map(String::as_str),
-            Some("application_error")
+        assert!(logs_contain("ERROR"), "expected an error event");
+        assert!(
+            logs_contain("security:"),
+            "the event must name the security target"
         );
-        assert_eq!(
-            event.fields.get("operation").map(String::as_str),
-            Some("login_user")
-        );
+        logs_assert(|lines| {
+            let count = lines
+                .iter()
+                .filter(|line| line.contains("event=\"application_error\""))
+                .count();
+            (count == 1).then_some(()).ok_or_else(|| {
+                format!("expected exactly one application_error event (found {count})")
+            })
+        });
+        logs_assert(|lines| {
+            let count = lines
+                .iter()
+                .filter(|line| line.contains("operation=login_user"))
+                .count();
+            (count == 1)
+                .then_some(())
+                .ok_or_else(|| format!("expected the operation field (found {count})"))
+        });
         Ok(())
     }
 
     #[tokio::test]
+    #[traced_test]
     async fn login_user_port_failure_emits_no_authn_event() -> Result<(), Box<dyn Error>> {
         // Arrange
         let harness = use_case_with(|user_repository, _, _, _| {
@@ -836,14 +733,13 @@ mod tests {
             Ok(())
         })?;
         let command = command("alice", SECRET_PASSWORD);
-        let (capture, _guard) = capture();
 
         // Act
         assert!(harness.use_case.execute(command).await.is_err());
 
         // Assert
         assert!(
-            capture.snapshot().is_empty(),
+            !logs_contain("event="),
             "a port failure is owned by the adapter"
         );
         Ok(())

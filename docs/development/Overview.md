@@ -26,6 +26,7 @@ document describes the source layout those rules constrain.
         │   └── service
         └── infrastructure
             ├── inbound
+            │   ├── media_ingest.rs
             │   ├── rest.rs
             │   └── rest
             │       ├── api_error.rs
@@ -52,9 +53,11 @@ document describes the source layout those rules constrain.
             ├── outbound
             │   ├── argon2
             │   ├── file_system
+            │   ├── infer
             │   ├── jwt
             │   ├── media_probe.rs
             │   ├── moka.rs
+            │   ├── notify
             │   ├── random
             │   ├── sha2
             │   └── sqlx
@@ -84,6 +87,7 @@ document describes the source layout those rules constrain.
 | `src/lib/domain/port/permission_repository.rs`                  | Port persisting and querying per-user permission overrides                                                                        |
 | `src/lib/domain/service`                                        | Domain Service implementation; see Terms Glossary for more info on it                                                             |
 | `src/lib/domain/service/authorization.rs`                       | Authorization policy deciding one action over one resource, with the denial's concealment rule                                    |
+| `src/lib/infrastructure/inbound/media_ingest.rs`                | Runtime driving the startup ingest scan and the filesystem change observer, drained on shutdown                                   |
 | `src/lib/infrastructure/inbound/rest`                           | HTTP adapter layer                                                                                                                |
 | `src/lib/infrastructure/inbound/rest/api_error.rs`              | API Error declaration                                                                                                             |
 | `src/lib/infrastructure/inbound/rest/app_state.rs`              | Application state shared by the HTTP layer: immutable configuration, instance identity and per-context use-case factories         |
@@ -95,9 +99,12 @@ document describes the source layout those rules constrain.
 | `src/lib/infrastructure/outbound`                               | Outbound Port adapter declaration                                                                                                 |
 | `src/lib/infrastructure/outbound/argon2`                        | Argon2 password hasher adapter                                                                                                    |
 | `src/lib/infrastructure/outbound/envy`                          | Environment adapters: the configuration loader and the state creation seeds, both mapping the prefixed variables onto their model |
-| `src/lib/infrastructure/outbound/file_system`                   | Configuration source, file storage and instance state adapters                                                                    |
+| `src/lib/infrastructure/outbound/file_system`                   | Configuration source, file storage, instance state and read-only media-source adapters                                            |
+| `src/lib/infrastructure/outbound/file_system/media_source.rs`   | Read-only media-source adapter walking the library root, skipping hidden entries and symbolic links                               |
 | `src/lib/infrastructure/outbound/jwt`                           | JWT token provider adapter                                                                                                        |
 | `src/lib/infrastructure/outbound/media_probe.rs`                | Media probe adapter decoding images in-process and videos through `ffprobe`                                                       |
+| `src/lib/infrastructure/outbound/infer`                         | Content-type sniffer adapter over `infer`, reporting a file's media type and nothing else                                         |
+| `src/lib/infrastructure/outbound/notify/media_change_source.rs` | Change-source adapter observing the library root with `notify` and translating create, rename and remove events                   |
 | `src/lib/infrastructure/outbound/moka.rs`                       | In-memory cache adapter                                                                                                           |
 | `src/lib/infrastructure/outbound/random`                        | Password and secret generator adapters                                                                                            |
 | `src/lib/infrastructure/outbound/sha2`                          | SHA-256 content hasher adapter                                                                                                    |

@@ -3,6 +3,7 @@ use sqlx::SqlitePool;
 use sqlx::Transaction;
 
 use crate::domain::port::asset_unit_of_work::AssetUnitOfWork;
+use crate::domain::port::audio_repository::AudioRepository;
 use crate::domain::port::credential_repository::CredentialRepository;
 use crate::domain::port::error::UnitOfWorkError;
 use crate::domain::port::file_repository::FileRepository;
@@ -22,6 +23,7 @@ use crate::domain::port::upload_repository::UploadRepository;
 use crate::domain::port::user_repository::UserRepository;
 use crate::domain::port::user_unit_of_work::UserUnitOfWork;
 use crate::domain::port::video_repository::VideoRepository;
+use crate::infrastructure::outbound::sqlx::audio_repository::SqlxAudioRepository;
 use crate::infrastructure::outbound::sqlx::credential_repository::SqlxCredentialRepository;
 use crate::infrastructure::outbound::sqlx::file_repository::SqlxFileRepository;
 use crate::infrastructure::outbound::sqlx::gallery_repository::SqlxGalleryRepository;
@@ -74,6 +76,10 @@ impl IdentityUnitOfWork for SqlxUnitOfWork {
 }
 
 impl LibraryUnitOfWork for SqlxUnitOfWork {
+    fn audios(&mut self) -> impl AudioRepository + '_ {
+        SqlxAudioRepository::new(self.transaction())
+    }
+
     fn galleries(&mut self) -> impl GalleryRepository + '_ {
         SqlxGalleryRepository::new(self.transaction())
     }

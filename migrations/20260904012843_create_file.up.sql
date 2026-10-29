@@ -5,7 +5,10 @@ CREATE TABLE file (
     is_public BOOLEAN NOT NULL DEFAULT 0,
     mime_type_id TEXT NOT NULL,
     uploaded_at DATE NOT NULL DEFAULT (date('now')),
-    integrity_hash CHAR(64) NOT NULL,
+    size_bytes INTEGER NOT NULL,
+    modified_at TEXT NOT NULL,
+    origin TEXT NOT NULL DEFAULT 'SCANNED',
+    integrity_hash CHAR(64),
     CONSTRAINT pk_file_file_id PRIMARY KEY (file_id),
     CONSTRAINT uq_file_path UNIQUE (path),
     CONSTRAINT uq_file_user_id_integrity_hash UNIQUE (user_id, integrity_hash),
@@ -14,5 +17,8 @@ CREATE TABLE file (
         mime_type_id
     ) REFERENCES mime_type (mime_type_id),
     CONSTRAINT chk_file_is_public CHECK (is_public IN (0, 1)),
-    CONSTRAINT chk_file_integrity_hash CHECK (length(integrity_hash) = 64)
+    CONSTRAINT chk_file_origin CHECK (origin IN ('UPLOADED', 'SCANNED')),
+    CONSTRAINT chk_file_integrity_hash CHECK (
+        integrity_hash IS NULL OR length(integrity_hash) = 64
+    )
 );

@@ -10,16 +10,18 @@ use crate::application::port::complete_upload::CompleteUploadError;
 use crate::application::port::complete_upload::CompleteUploadResponse;
 use crate::application::port::complete_upload::CompleteUploadUseCase;
 use crate::application::security_event;
-use crate::application::use_case::upload_layout::FILES_FOLDER;
-use crate::application::use_case::upload_layout::files_path;
+use crate::application::use_case::upload_layout::media_path;
 use crate::application::use_case::upload_layout::staged_path;
 use crate::application::use_case::upload_session::caller_file_id;
 use crate::application::use_case::upload_session::expiry;
 use crate::domain::alias::NumericID;
 use crate::domain::model::file::File;
+use crate::domain::model::file::Origin;
 use crate::domain::model::image::Image;
+use crate::domain::model::image::ProbedImage;
 use crate::domain::model::permission::Action;
 use crate::domain::model::upload::Upload;
+use crate::domain::model::video::ProbedVideo;
 use crate::domain::model::video::Video;
 use crate::domain::port::asset_unit_of_work::AssetUnitOfWork;
 use crate::domain::port::error::MediaProbeError;
@@ -29,8 +31,6 @@ use crate::domain::port::file_storage::FileStorage;
 use crate::domain::port::image_repository::ImageRepository as _;
 use crate::domain::port::library_unit_of_work::LibraryUnitOfWork;
 use crate::domain::port::media_probe::MediaProbe;
-use crate::domain::port::media_probe::ProbedImage;
-use crate::domain::port::media_probe::ProbedVideo;
 use crate::domain::port::unit_of_work::UnitOfWork;
 use crate::domain::port::unit_of_work::UnitOfWorkFactory;
 use crate::domain::port::upload_repository::UploadFilter;
@@ -309,32 +309,36 @@ where
                     )));
                 }
                 let staged = staged_path(upload.upload_id());
-                let final_file = files_path().join(format!("{}_{}", upload.upload_id(), file_name));
-                match file_storage.promote(&staged, &final_file).await {
+                let relative_path = format!("{}_{}", upload.upload_id(), file_name);
+                let final_file = media_path(&relative_path);
+                let promoted_file = match file_storage.promote(&staged, &final_file).await {
                     // The staged file vanished after it was hashed: the upload
                     // is absent, mirroring the repository's missing-entity
                     // outcome rather than a storage failure.
-                    Ok(false) => return Flow::Failed(CompleteUploadError::NoSuchUpload),
-                    Ok(true) => {}
+                    Ok(None) => return Flow::Failed(CompleteUploadError::NoSuchUpload),
+                    Ok(Some(promoted_file)) => promoted_file,
                     Err(error) => return Flow::Failed(CompleteUploadError::Unknown(error.into())),
-                }
+                };
                 promoted = Some(Promoted {
                     final_path: final_file,
                     staged_path: staged,
                 });
 
-                let relative = PathBuf::from(FILES_FOLDER)
-                    .join(format!("{}_{}", upload.upload_id(), file_name))
-                    .to_string_lossy()
-                    .into_owned();
+                // TODO(ingest): an uploaded audio file is stored without its
+                // audio row, because only `image/` and `video/` media kinds are
+                // registered here; the ingest scan's verification pass creates
+                // the missing audio row and repairs the gap on its next run.
                 let pending = match File::try_new(
                     0,
-                    relative,
+                    relative_path,
                     command.user_id(),
                     false,
                     upload.mime_type_id().to_owned(),
                     Utc::now().date_naive(),
-                    upload.integrity_hash().clone(),
+                    promoted_file.size_bytes,
+                    promoted_file.modified_at,
+                    Some(upload.integrity_hash().clone()),
+                    Some(Origin::Uploaded),
                 ) {
                     Ok(pending) => pending,
                     Err(error) => {
@@ -650,40 +654,35 @@ fn probe_fault(error: MediaProbeError) -> CompleteUploadError {
 #[cfg(test)]
 mod tests {
     use std::error::Error;
-    use std::io as stdio;
     use std::sync::Arc;
     use std::sync::Mutex;
-    use std::sync::PoisonError;
     use std::sync::atomic::AtomicBool;
     use std::sync::atomic::Ordering;
 
     use chrono::NaiveDate;
     use chrono::NaiveDateTime;
-    use rstest::rstest;
-    use tracing::subscriber::DefaultGuard;
-    use tracing::subscriber::set_default;
-    use tracing_subscriber::fmt;
-    use tracing_subscriber::layer::SubscriberExt as _;
 
     use crate::application::port::complete_upload::CompleteUploadCommand;
     use crate::application::port::complete_upload::CompleteUploadError;
     use crate::application::port::complete_upload::CompleteUploadUseCase as _;
     use crate::application::use_case::test_fixtures::TTL_SECONDS;
     use crate::domain::model::file::File;
+    use crate::domain::model::file::Origin;
     use crate::domain::model::image::Orientation;
+    use crate::domain::model::image::ProbedImage;
     use crate::domain::model::integrity_hash::IntegrityHash;
     use crate::domain::model::upload::ChunkBitmap;
     use crate::domain::model::upload::Upload;
+    use crate::domain::model::video::ProbedVideo;
     use crate::domain::model::video::ScanType;
     use crate::domain::port::error::MediaProbeError;
     use crate::domain::port::error::RepositoryError;
     use crate::domain::port::error::StorageError;
     use crate::domain::port::file_repository::MockFileRepository;
     use crate::domain::port::file_storage::MockFileStorage;
+    use crate::domain::port::file_storage::PromotedFile;
     use crate::domain::port::image_repository::MockImageRepository;
     use crate::domain::port::media_probe::MockMediaProbe;
-    use crate::domain::port::media_probe::ProbedImage;
-    use crate::domain::port::media_probe::ProbedVideo;
     use crate::domain::port::upload_repository::MockUploadRepository;
     use crate::domain::port::video_repository::MockVideoRepository;
     use crate::test_helpers::CHUNK_SIZE;
@@ -693,6 +692,7 @@ mod tests {
     use crate::test_helpers::TestUnitOfWorkFactory;
     use crate::test_helpers::TestUow;
     use crate::test_helpers::any_caller;
+    use tracing_test::traced_test;
 
     use super::CompleteUpload;
 
@@ -717,34 +717,6 @@ mod tests {
         phase_two_rolled_back: Arc<AtomicBool>,
         /// The use case under test.
         use_case: UseCase,
-    }
-
-    /// Append-only sink that lets a test read back the lines [`fmt`] emits.
-    #[derive(Clone)]
-    struct CaptureWriter {
-        /// Buffer shared with the test that asserts on the captured output.
-        buffer: Arc<Mutex<Vec<u8>>>,
-    }
-
-    impl stdio::Write for CaptureWriter {
-        fn flush(&mut self) -> stdio::Result<()> {
-            Ok(())
-        }
-
-        fn write(&mut self, buf: &[u8]) -> stdio::Result<usize> {
-            let mut buffer = self.buffer.lock().unwrap_or_else(PoisonError::into_inner);
-            buffer.extend_from_slice(buf);
-            Ok(buf.len())
-        }
-    }
-
-    /// Hand every formatted event to a fresh clone of the shared buffer.
-    impl<'writer> fmt::MakeWriter<'writer> for CaptureWriter {
-        type Writer = Self;
-
-        fn make_writer(&'writer self) -> Self::Writer {
-            self.clone()
-        }
     }
 
     /// Build a completion whose two phases each open their own unit of work.
@@ -867,6 +839,17 @@ mod tests {
         chrono::Utc::now().naive_utc()
     }
 
+    /// Metadata of the file a successful promote writes into the media root.
+    fn promoted_file() -> PromotedFile {
+        PromotedFile {
+            modified_at: NaiveDate::from_ymd_opt(2026, 1, 1)
+                .unwrap_or_default()
+                .and_hms_opt(0, 0, 0)
+                .unwrap_or_default(),
+            size_bytes: i64::try_from(CHUNK_SIZE).unwrap_or_default(),
+        }
+    }
+
     /// Build a complete upload whose mime type is not a media type, so the
     /// completion tests that do not target registration skip the probe.
     fn upload(
@@ -962,8 +945,16 @@ mod tests {
             false,
             "video/mp4".to_owned(),
             NaiveDate::from_ymd_opt(2026, 1, 1).unwrap_or_default(),
-            IntegrityHash::try_new(DIGEST.to_owned())
-                .map_err(|_| RepositoryError::OperationFailed)?,
+            0,
+            NaiveDate::from_ymd_opt(2026, 1, 1)
+                .unwrap_or_default()
+                .and_hms_opt(0, 0, 0)
+                .unwrap_or_default(),
+            Some(
+                IntegrityHash::try_new(DIGEST.to_owned())
+                    .map_err(|_| RepositoryError::OperationFailed)?,
+            ),
+            Some(Origin::Uploaded),
         )
         .map_err(|_| RepositoryError::OperationFailed)
     }
@@ -997,6 +988,13 @@ mod tests {
         phase_two_files
             .expect_create()
             .times(1)
+            .withf(|file| {
+                file.path() == "5_clip.mp4"
+                    && file.origin() == Origin::Uploaded
+                    && file.integrity_hash().is_some()
+                    && file.size_bytes() == promoted_file().size_bytes
+                    && file.modified_at() == promoted_file().modified_at
+            })
             .returning(|mut file| {
                 file.set_is_public(false);
                 Box::pin(async move { Ok(file) })
@@ -1013,7 +1011,7 @@ mod tests {
         file_storage
             .expect_promote()
             .times(1)
-            .returning(|_, _| Box::pin(async { Ok(true) }));
+            .returning(|_, _| Box::pin(async { Ok(Some(promoted_file())) }));
         let harness = use_case_with(
             phase_one_uploads,
             MockFileRepository::new(),
@@ -1062,7 +1060,7 @@ mod tests {
         file_storage
             .expect_promote()
             .times(1)
-            .returning(|_, _| Box::pin(async { Ok(true) }));
+            .returning(|_, _| Box::pin(async { Ok(Some(promoted_file())) }));
         file_storage
             .expect_restore()
             .times(1)
@@ -1150,9 +1148,9 @@ mod tests {
     }
 
     #[tokio::test]
+    #[traced_test]
     async fn complete_upload_other_user_returns_no_such_upload() -> Result<(), Box<dyn Error>> {
         // Arrange
-        let (buffer, _capture) = capture_logs();
         let mut phase_one_uploads = MockUploadRepository::new();
         expect_upload(&mut phase_one_uploads, upload(5, 3, 4, &[0], false)?);
         let harness = use_case_with(
@@ -1172,32 +1170,36 @@ mod tests {
         assert!(harness.phase_one_rolled_back.load(Ordering::SeqCst));
         // The owner check aborts the read-only phase, so the mutating phase is
         // never reached: the denial must be logged exactly once (`OBS-002`).
-        let logs = captured_logs(&buffer);
-        assert_eq!(
-            logs.matches("WARN").count(),
-            1,
-            "the owner check must emit exactly one warn event: {logs}"
-        );
-        assert_eq!(
-            logs.matches("event=\"authz_failed\"").count(),
-            1,
-            "the owner check must emit exactly one authz_failed event: {logs}"
+        logs_assert(|lines| {
+            let count = lines.iter().filter(|line| line.contains("WARN")).count();
+            (count == 1).then_some(()).ok_or_else(|| {
+                format!("the owner check must emit exactly one warn event (found {count})")
+            })
+        });
+        logs_assert(|lines| {
+            let count = lines
+                .iter()
+                .filter(|line| line.contains("event=\"authz_failed\""))
+                .count();
+            (count == 1).then_some(()).ok_or_else(|| {
+                format!("the owner check must emit exactly one authz_failed event (found {count})")
+            })
+        });
+        assert!(
+            logs_contain("security"),
+            "the event must target the reserved security target"
         );
         assert!(
-            logs.contains("security"),
-            "the event must target the reserved security target: {logs}"
+            logs_contain(" actor=99 "),
+            "the event must carry the caller as the actor"
         );
         assert!(
-            logs.contains(" actor=99 "),
-            "the event must carry the caller as the actor: {logs}"
+            logs_contain("action=write"),
+            "the event must classify the denied action as an upload write"
         );
         assert!(
-            logs.contains("action=write"),
-            "the event must classify the denied action as an upload write: {logs}"
-        );
-        assert!(
-            logs.contains("target=upload"),
-            "the event must name the denied target: {logs}"
+            logs_contain("target=upload"),
+            "the event must name the denied target"
         );
         Ok(())
     }
@@ -1389,7 +1391,7 @@ mod tests {
         file_storage
             .expect_promote()
             .times(1)
-            .returning(|_, _| Box::pin(async { Ok(true) }));
+            .returning(|_, _| Box::pin(async { Ok(Some(promoted_file())) }));
         let harness = use_case_with(
             phase_one_uploads,
             MockFileRepository::new(),
@@ -1477,7 +1479,7 @@ mod tests {
         file_storage
             .expect_promote()
             .times(1)
-            .returning(|_, _| Box::pin(async { Ok(true) }));
+            .returning(|_, _| Box::pin(async { Ok(Some(promoted_file())) }));
         file_storage
             .expect_restore()
             .times(1)
@@ -1599,7 +1601,7 @@ mod tests {
         file_storage
             .expect_promote()
             .times(1)
-            .returning(|_, _| Box::pin(async { Ok(true) }));
+            .returning(|_, _| Box::pin(async { Ok(Some(promoted_file())) }));
         file_storage
             .expect_restore()
             .times(1)
@@ -1644,7 +1646,7 @@ mod tests {
         file_storage
             .expect_promote()
             .times(1)
-            .returning(|_, _| Box::pin(async { Ok(true) }));
+            .returning(|_, _| Box::pin(async { Ok(Some(promoted_file())) }));
         file_storage
             .expect_restore()
             .times(1)
@@ -1697,7 +1699,7 @@ mod tests {
         file_storage
             .expect_promote()
             .times(1)
-            .returning(|_, _| Box::pin(async { Ok(true) }));
+            .returning(|_, _| Box::pin(async { Ok(Some(promoted_file())) }));
         file_storage
             .expect_restore()
             .times(1)
@@ -1759,7 +1761,7 @@ mod tests {
         file_storage
             .expect_promote()
             .times(1)
-            .returning(|_, _| Box::pin(async { Ok(true) }));
+            .returning(|_, _| Box::pin(async { Ok(Some(promoted_file())) }));
 
         // The phase-2 search records that the hash ran before the mutating
         // phase touched the datastore.
@@ -2017,25 +2019,6 @@ mod tests {
         }
     }
 
-    /// Install a capturing subscriber on the current thread and return the
-    /// shared buffer plus the guard that keeps it active.
-    fn capture_logs() -> (Arc<Mutex<Vec<u8>>>, DefaultGuard) {
-        let buffer = Arc::new(Mutex::new(Vec::new()));
-        let subscriber = tracing_subscriber::registry().with(
-            fmt::layer().with_ansi(false).with_writer(CaptureWriter {
-                buffer: Arc::clone(&buffer),
-            }),
-        );
-        let guard = set_default(subscriber);
-        (buffer, guard)
-    }
-
-    /// Read the captured bytes back as a lossy UTF-8 string.
-    fn captured_logs(buffer: &Mutex<Vec<u8>>) -> String {
-        let bytes = buffer.lock().unwrap_or_else(PoisonError::into_inner);
-        String::from_utf8_lossy(bytes.as_slice()).into_owned()
-    }
-
     #[tokio::test]
     async fn complete_upload_registers_an_image() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -2072,7 +2055,7 @@ mod tests {
         file_storage
             .expect_promote()
             .times(1)
-            .returning(|_, _| Box::pin(async { Ok(true) }));
+            .returning(|_, _| Box::pin(async { Ok(Some(promoted_file())) }));
         let mut media_probe = MockMediaProbe::new();
         media_probe
             .expect_probe_image()
@@ -2140,7 +2123,7 @@ mod tests {
         file_storage
             .expect_promote()
             .times(1)
-            .returning(|_, _| Box::pin(async { Ok(true) }));
+            .returning(|_, _| Box::pin(async { Ok(Some(promoted_file())) }));
         let mut media_probe = MockMediaProbe::new();
         media_probe
             .expect_probe_video()
@@ -2206,7 +2189,7 @@ mod tests {
         file_storage
             .expect_promote()
             .times(1)
-            .returning(|_, _| Box::pin(async { Ok(true) }));
+            .returning(|_, _| Box::pin(async { Ok(Some(promoted_file())) }));
         let mut media_probe = MockMediaProbe::new();
         media_probe
             .expect_probe_video()
@@ -2264,7 +2247,7 @@ mod tests {
         file_storage
             .expect_promote()
             .times(1)
-            .returning(|_, _| Box::pin(async { Ok(true) }));
+            .returning(|_, _| Box::pin(async { Ok(Some(promoted_file())) }));
         file_storage
             .expect_restore()
             .times(1)
@@ -2441,7 +2424,7 @@ mod tests {
         file_storage
             .expect_promote()
             .times(1)
-            .returning(|_, _| Box::pin(async { Ok(true) }));
+            .returning(|_, _| Box::pin(async { Ok(Some(promoted_file())) }));
     }
 
     /// Wire a file storage that restores the promoted file after a failed write.
@@ -2682,11 +2665,11 @@ mod tests {
     }
 
     #[tokio::test]
+    #[traced_test]
     async fn complete_upload_invalid_image_metadata_returns_unknown() -> Result<(), Box<dyn Error>>
     {
         // Arrange: the probe yields a non-positive width, which the domain
         // constructor rejects; no media row is written and the unit rolls back.
-        let (buffer, _capture) = capture_logs();
         let resolved = upload_with_mime(5, 3, 4, &[0], false, "image/png")?;
         let mut phase_one_uploads = MockUploadRepository::new();
         expect_upload(&mut phase_one_uploads, resolved.clone());
@@ -2731,24 +2714,23 @@ mod tests {
         assert!(matches!(result, Err(CompleteUploadError::Unknown(_))));
         assert!(harness.phase_two_rolled_back.load(Ordering::SeqCst));
         assert!(!harness.phase_two_committed.load(Ordering::SeqCst));
-        let logs = captured_logs(&buffer);
         assert!(
-            logs.contains("ERROR") && logs.contains("event=\"application_error\""),
-            "the constructor failure must emit the catalogued application_error: {logs}"
+            logs_contain("ERROR") && logs_contain("event=\"application_error\""),
+            "the constructor failure must emit the catalogued application_error"
         );
         assert!(
-            logs.contains("operation=complete_upload"),
-            "the event must name the owning operation: {logs}"
+            logs_contain("operation=complete_upload"),
+            "the event must name the owning operation"
         );
         Ok(())
     }
 
     #[tokio::test]
+    #[traced_test]
     async fn complete_upload_invalid_video_metadata_returns_unknown() -> Result<(), Box<dyn Error>>
     {
         // Arrange: the probe yields a non-positive frame count, which the domain
         // constructor rejects; no media row is written and the unit rolls back.
-        let (buffer, _capture) = capture_logs();
         let resolved = upload_with_mime(5, 3, 4, &[0], false, "video/mp4")?;
         let mut phase_one_uploads = MockUploadRepository::new();
         expect_upload(&mut phase_one_uploads, resolved.clone());
@@ -2797,29 +2779,60 @@ mod tests {
         assert!(matches!(result, Err(CompleteUploadError::Unknown(_))));
         assert!(harness.phase_two_rolled_back.load(Ordering::SeqCst));
         assert!(!harness.phase_two_committed.load(Ordering::SeqCst));
-        let logs = captured_logs(&buffer);
         assert!(
-            logs.contains("ERROR") && logs.contains("event=\"application_error\""),
-            "the constructor failure must emit the catalogued application_error: {logs}"
+            logs_contain("ERROR") && logs_contain("event=\"application_error\""),
+            "the constructor failure must emit the catalogued application_error"
         );
         assert!(
-            logs.contains("operation=complete_upload"),
-            "the event must name the owning operation: {logs}"
+            logs_contain("operation=complete_upload"),
+            "the event must name the owning operation"
         );
         Ok(())
     }
 
-    #[rstest]
-    #[case::negative(-1.0f64)]
-    #[case::not_finite(f64::INFINITY)]
     #[tokio::test]
-    async fn complete_upload_video_with_invalid_duration_returns_unknown(
-        #[case] duration_ms: f64,
-    ) -> Result<(), Box<dyn Error>> {
+    #[traced_test]
+    async fn complete_upload_video_with_negative_duration_returns_unknown()
+    -> Result<(), Box<dyn Error>> {
+        // Act
+        assert_invalid_video_duration(-1.0f64).await?;
+
+        // Assert
+        assert!(
+            logs_contain("ERROR") && logs_contain("event=\"application_error\""),
+            "the constructor failure must emit the catalogued application_error"
+        );
+        assert!(
+            logs_contain("operation=complete_upload"),
+            "the event must name the owning operation"
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    #[traced_test]
+    async fn complete_upload_video_with_not_finite_duration_returns_unknown()
+    -> Result<(), Box<dyn Error>> {
+        // Act
+        assert_invalid_video_duration(f64::INFINITY).await?;
+
+        // Assert
+        assert!(
+            logs_contain("ERROR") && logs_contain("event=\"application_error\""),
+            "the constructor failure must emit the catalogued application_error"
+        );
+        assert!(
+            logs_contain("operation=complete_upload"),
+            "the event must name the owning operation"
+        );
+        Ok(())
+    }
+
+    /// Run the completion whose probe yields a duration the domain rejects.
+    async fn assert_invalid_video_duration(duration_ms: f64) -> Result<(), Box<dyn Error>> {
         // Arrange: the probe yields a duration the domain constructor rejects
         // as not finite or negative; no media row is written and the unit rolls
         // back.
-        let (buffer, _capture) = capture_logs();
         let resolved = upload_with_mime(5, 3, 4, &[0], false, "video/mp4")?;
         let mut phase_one_uploads = MockUploadRepository::new();
         expect_upload(&mut phase_one_uploads, resolved.clone());
@@ -2871,15 +2884,6 @@ mod tests {
         assert!(matches!(result, Err(CompleteUploadError::Unknown(_))));
         assert!(harness.phase_two_rolled_back.load(Ordering::SeqCst));
         assert!(!harness.phase_two_committed.load(Ordering::SeqCst));
-        let logs = captured_logs(&buffer);
-        assert!(
-            logs.contains("ERROR") && logs.contains("event=\"application_error\""),
-            "the constructor failure must emit the catalogued application_error: {logs}"
-        );
-        assert!(
-            logs.contains("operation=complete_upload"),
-            "the event must name the owning operation: {logs}"
-        );
         Ok(())
     }
 }

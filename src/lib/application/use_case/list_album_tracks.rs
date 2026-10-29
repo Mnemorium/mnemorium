@@ -160,16 +160,8 @@ where
 #[cfg(test)]
 mod tests {
     use std::error::Error;
-    use std::io as stdio;
     use std::sync::Arc;
-    use std::sync::Mutex;
-    use std::sync::PoisonError;
     use std::sync::atomic::Ordering;
-
-    use tracing::subscriber::DefaultGuard;
-    use tracing::subscriber::set_default;
-    use tracing_subscriber::fmt;
-    use tracing_subscriber::layer::SubscriberExt as _;
 
     use crate::application::port::list_album_tracks::ListAlbumTracksCommand;
     use crate::application::port::list_album_tracks::ListAlbumTracksError;
@@ -190,74 +182,12 @@ mod tests {
     use crate::test_helpers::TestUnitOfWork;
     use crate::test_helpers::album_release_date;
     use crate::test_helpers::no_permissions;
+    use tracing_test::traced_test;
 
     use super::ListAlbumTracks;
 
     /// The use case under test, bound to the mocked unit-of-work factory.
     type UseCase = ListAlbumTracks<TestFactory>;
-
-    /// Append-only sink that lets a test read back the lines [`fmt`] emits.
-    #[derive(Clone)]
-    struct CaptureWriter {
-        /// Buffer shared with the test that asserts on the captured output.
-        buffer: Arc<Mutex<Vec<u8>>>,
-    }
-
-    #[expect(
-        clippy::missing_trait_methods,
-        reason = "only the raw `write` and `flush` are meaningful for an in-memory capture buffer"
-    )]
-    impl stdio::Write for CaptureWriter {
-        fn flush(&mut self) -> stdio::Result<()> {
-            Ok(())
-        }
-
-        fn write(&mut self, buf: &[u8]) -> stdio::Result<usize> {
-            let mut buffer = self.buffer.lock().unwrap_or_else(PoisonError::into_inner);
-            buffer.extend_from_slice(buf);
-            Ok(buf.len())
-        }
-    }
-
-    /// Hand every formatted event to a fresh clone of the shared buffer.
-    #[expect(
-        clippy::missing_trait_methods,
-        reason = "the default `make_writer_for` already routes through `make_writer`"
-    )]
-    impl<'writer> fmt::MakeWriter<'writer> for CaptureWriter {
-        type Writer = Self;
-
-        fn make_writer(&'writer self) -> Self::Writer {
-            self.clone()
-        }
-    }
-
-    /// Install a capturing subscriber on the current thread and return the
-    /// shared buffer plus the guard that keeps it active.
-    #[expect(
-        clippy::single_call_fn,
-        reason = "the capture fixture names the test-only logging setup"
-    )]
-    fn capture_logs() -> (Arc<Mutex<Vec<u8>>>, DefaultGuard) {
-        let buffer = Arc::new(Mutex::new(Vec::new()));
-        let subscriber = tracing_subscriber::registry().with(
-            fmt::layer().with_ansi(false).with_writer(CaptureWriter {
-                buffer: Arc::clone(&buffer),
-            }),
-        );
-        let guard = set_default(subscriber);
-        (buffer, guard)
-    }
-
-    /// Read the captured bytes back as a lossy UTF-8 string.
-    #[expect(
-        clippy::single_call_fn,
-        reason = "the capture fixture names the test-only logging setup"
-    )]
-    fn captured_logs(buffer: &Mutex<Vec<u8>>) -> String {
-        let bytes = buffer.lock().unwrap_or_else(PoisonError::into_inner);
-        String::from_utf8_lossy(bytes.as_slice()).into_owned()
-    }
 
     /// Build a `CD` medium at `medium_index` sequencing one recording per
     /// track index.
@@ -553,6 +483,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[traced_test]
     async fn list_album_tracks_playlist_placement_in_a_medium_logs_application_error()
     -> Result<(), Box<dyn Error>> {
         // Arrange: a medium holding a playlist placement is an internal
@@ -583,26 +514,25 @@ mod tests {
         expect_album(&mut albums, album);
         let harness = harness_with(users, albums);
         let use_case: UseCase = ListAlbumTracks::new(Arc::clone(&harness.factory));
-        let (buffer, _capture) = capture_logs();
 
         // Act
         let result = use_case.execute(ListAlbumTracksCommand::new(1, 7, 1)).await;
 
         // Assert
         assert!(matches!(result, Err(ListAlbumTracksError::Unknown(_))));
-        let logs = captured_logs(&buffer);
-        assert_eq!(
-            logs.matches("ERROR").count(),
-            1,
-            "the use case must emit exactly one error event: {logs}"
+        logs_assert(|lines| {
+            let count = lines.iter().filter(|line| line.contains("ERROR")).count();
+            (count == 1).then_some(()).ok_or_else(|| {
+                format!("the use case must emit exactly one error event (found {count})")
+            })
+        });
+        assert!(
+            logs_contain("event=\"application_error\""),
+            "the event must be application_error"
         );
         assert!(
-            logs.contains("event=\"application_error\""),
-            "the event must be application_error: {logs}"
-        );
-        assert!(
-            logs.contains("operation=list_album_tracks"),
-            "the event must name the owning operation: {logs}"
+            logs_contain("operation=list_album_tracks"),
+            "the event must name the owning operation"
         );
         assert!(harness.rolled_back.load(Ordering::SeqCst));
         Ok(())

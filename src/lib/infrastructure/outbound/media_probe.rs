@@ -12,6 +12,7 @@ use std::future::Future;
 use std::io::Error;
 use std::io::ErrorKind;
 use std::path::Path;
+use std::path::PathBuf;
 use std::process::Stdio;
 use std::sync::Arc;
 #[cfg(test)]
@@ -30,12 +31,13 @@ use tokio::time::timeout;
 use tracing::error;
 use tracing::warn;
 
+use crate::domain::model::audio::ProbedAudio;
 use crate::domain::model::image::Orientation;
+use crate::domain::model::image::ProbedImage;
+use crate::domain::model::video::ProbedVideo;
 use crate::domain::model::video::ScanType;
 use crate::domain::port::error::MediaProbeError;
 use crate::domain::port::media_probe::MediaProbe;
-use crate::domain::port::media_probe::ProbedImage;
-use crate::domain::port::media_probe::ProbedVideo;
 
 /// Name of the video probe binary resolved from `PATH`.
 const FFPROBE: &str = "ffprobe";
@@ -164,12 +166,14 @@ struct ProbeStream {
     avg_frame_rate: Option<String>,
     /// Codec name, for example `"h264"`.
     codec_name: Option<String>,
-    /// Stream kind, for example `"video"`.
+    /// Stream kind, for example `"video"` or `"audio"`.
     codec_type: Option<String>,
     /// Stream duration, in seconds, as a string.
     duration: Option<String>,
     /// Field order, for example `"progressive"` or `"tt"`.
     field_order: Option<String>,
+    /// Frame size, in samples, when the codec reports one.
+    frame_size: Option<u32>,
     /// Stream height, in pixels.
     height: Option<u32>,
     /// Declared number of frames, as a string.
@@ -178,11 +182,76 @@ struct ProbeStream {
     pix_fmt: Option<String>,
     /// Nominal frame rate, as a `"numerator/denominator"` string.
     r_frame_rate: Option<String>,
+    /// Sample format, for example `"s16"` or `"fltp"`.
+    sample_fmt: Option<String>,
+    /// Sample rate, in hertz, as a string.
+    sample_rate: Option<String>,
     /// Stream width, in pixels.
     width: Option<u32>,
 }
 
 impl MediaProbe for LocalMediaProbe {
+    fn probe_audio(
+        &self,
+        path: &Path,
+    ) -> impl Future<Output = Result<Option<ProbedAudio>, MediaProbeError>> + Send {
+        let owned = path.to_path_buf();
+        let program = self.program.clone();
+        let probe_timeout = self.probe_timeout;
+        let permits = Arc::clone(&self.permits);
+        async move {
+            let Some(output) = probe_document(program, probe_timeout, permits, owned).await? else {
+                return Ok(None);
+            };
+
+            let streams = output.streams.unwrap_or_default();
+            let Some(stream) = streams
+                .iter()
+                .find(|stream| stream.codec_type.as_deref() == Some("audio"))
+            else {
+                log_validation_failure("unsupported_media");
+                return Err(MediaProbeError::UnsupportedMedia);
+            };
+
+            let Some(codec) = stream.codec_name.clone().filter(|name| !name.is_empty()) else {
+                log_validation_failure("unsupported_media");
+                return Err(MediaProbeError::UnsupportedMedia);
+            };
+
+            let duration_s = output
+                .format
+                .as_ref()
+                .and_then(|format| format.duration.as_deref())
+                .or(stream.duration.as_deref())
+                .and_then(parse_finite)
+                .unwrap_or(0.0f64);
+            let sample_rate_hz = stream
+                .sample_rate
+                .as_deref()
+                .and_then(parse_finite)
+                .unwrap_or(0.0f64);
+
+            Ok(Some(ProbedAudio {
+                // The sample format implies the depth; the content does not
+                // report one for every codec, and an unknown value stays absent.
+                bit_depth: stream.sample_fmt.as_deref().and_then(
+                    |sample_format| match sample_format {
+                        "u8" | "u8p" => Some(8),
+                        "s16" | "s16p" => Some(16),
+                        "s32" | "s32p" | "flt" | "fltp" => Some(32),
+                        "dbl" | "dblp" => Some(64),
+                        _ => None,
+                    },
+                ),
+                // `frame_size` is absent for PCM and every lossy codec.
+                block_size: stream.frame_size.map(i64::from).filter(|size| *size > 0),
+                codec,
+                duration_ms: duration_s * MILLIS_PER_SECOND,
+                sample_rate_hz,
+            }))
+        }
+    }
+
     fn probe_image(
         &self,
         path: &Path,
@@ -248,104 +317,9 @@ impl MediaProbe for LocalMediaProbe {
         let probe_timeout = self.probe_timeout;
         let permits = Arc::clone(&self.permits);
         async move {
-            match fs::metadata(&owned).await {
-                Ok(_) => {}
-                Err(err) if err.kind() == ErrorKind::NotFound => return Ok(None),
-                Err(err) => return Err(io_fault(err)),
-            }
-
-            // Untrusted uploaded bytes are handed to `ffprobe` as itself. The
-            // probe is bounded by a wall clock, a stdout cap, a concurrency
-            // permit and an explicit `-protocol_whitelist file`; a fuller sandbox
-            // (rlimits, uid-drop, namespaces) is a separate architectural
-            // decision tracked by https://github.com/Mnemorium/mnemorium/issues/242.
-            let _permit = acquire_probe_permit(&permits).await?;
-
-            let mut command = Command::new(&program);
-            command.kill_on_drop(true);
-            command.stdin(Stdio::null());
-            command.stdout(Stdio::piped());
-            // The probe's stderr is never surfaced: discarding it means a chatty
-            // `ffprobe` cannot fill the pipe and stall the probe into a false
-            // timeout.
-            command.stderr(Stdio::null());
-            command.args([
-                "-v",
-                "error",
-                // Only the local file protocol is allowed, so a crafted container
-                // cannot make `ffprobe` open a nested network protocol.
-                "-protocol_whitelist",
-                "file",
-                "-print_format",
-                "json",
-                "-show_format",
-                "-show_streams",
-            ]);
-            // Bound a single allocation the memory-unsafe parser can make.
-            command.arg("-max_alloc");
-            command.arg(MAX_PROBE_ALLOCATION_BYTES.to_string());
-            command.arg(&owned);
-            let mut child = match command.spawn() {
-                Ok(child) => child,
-                Err(err) if err.kind() == ErrorKind::NotFound => {
-                    log_fault("missing_binary");
-                    return Err(MediaProbeError::OperationFailed);
-                }
-                Err(err) => {
-                    log_fault("spawn_failure");
-                    return Err(MediaProbeError::Unknown(err.into()));
-                }
+            let Some(output) = probe_document(program, probe_timeout, permits, owned).await? else {
+                return Ok(None);
             };
-
-            let piped_stdout = child.stdout.take();
-            let read = timeout(probe_timeout, async {
-                let mut buffer = Vec::new();
-                if let Some(stdout) = piped_stdout {
-                    stdout
-                        .take(MAX_PROBE_STDOUT_BYTES)
-                        .read_to_end(&mut buffer)
-                        .await?;
-                }
-                let truncated =
-                    u64::try_from(buffer.len()).unwrap_or(u64::MAX) >= MAX_PROBE_STDOUT_BYTES;
-                if truncated {
-                    // Kill before waiting so a probe flooding the pipe cannot
-                    // deadlock.
-                    child.kill().await?;
-                }
-                let status = child.wait().await?;
-                Ok::<_, Error>((status, buffer, truncated))
-            })
-            .await;
-
-            let (status, buffer, truncated) = match read {
-                Ok(Ok(output)) => output,
-                Ok(Err(err)) => return Err(io_fault(err)),
-                Err(_elapsed) => {
-                    log_fault("timeout");
-                    return Err(MediaProbeError::Timeout);
-                }
-            };
-
-            if truncated {
-                // The probe's output overran the cap: the content is
-                // client-fixable noise and the event matches the returned client
-                // rejection (`OBS-005`, `OBS-006`).
-                log_validation_failure("output_too_large");
-                return Err(MediaProbeError::UnsupportedMedia);
-            }
-            if !status.success() {
-                // A valid binary that exits non-zero on existing bytes reports
-                // input it cannot decode, a client rejection rather than a
-                // dependency fault.
-                log_validation_failure("exit_status");
-                return Err(MediaProbeError::UnsupportedMedia);
-            }
-
-            let output: ProbeOutput = serde_json::from_slice(&buffer).map_err(|_| {
-                log_fault("malformed_output");
-                MediaProbeError::OperationFailed
-            })?;
 
             let streams = output.streams.unwrap_or_default();
             let Some(stream) = streams
@@ -558,6 +532,113 @@ async fn acquire_probe_permit(
             Err(MediaProbeError::Timeout)
         }
     }
+}
+
+/// Run `ffprobe` on `path` and parse its JSON document.
+///
+/// `Ok(None)` reports a file absent at `path`; every other outcome is a
+/// classified probe result. The child is bounded by the wall clock, the stdout
+/// cap, the concurrency permit and the explicit file-only protocol allow-list.
+async fn probe_document(
+    program: OsString,
+    probe_timeout: Duration,
+    permits: Arc<Semaphore>,
+    path: PathBuf,
+) -> Result<Option<ProbeOutput>, MediaProbeError> {
+    match fs::metadata(&path).await {
+        Ok(_) => {}
+        Err(err) if err.kind() == ErrorKind::NotFound => return Ok(None),
+        Err(err) => return Err(io_fault(err)),
+    }
+
+    // Untrusted uploaded bytes are handed to `ffprobe` as itself. The probe is
+    // bounded by a wall clock, a stdout cap, a concurrency permit and an
+    // explicit `-protocol_whitelist file`; a fuller sandbox (rlimits, uid-drop,
+    // namespaces) is a separate architectural decision tracked by
+    // https://github.com/Mnemorium/mnemorium/issues/242.
+    let _permit = acquire_probe_permit(&permits).await?;
+
+    let mut command = Command::new(&program);
+    command.kill_on_drop(true);
+    command.stdin(Stdio::null());
+    command.stdout(Stdio::piped());
+    // The probe's stderr is never surfaced: discarding it means a chatty
+    // `ffprobe` cannot fill the pipe and stall the probe into a false timeout.
+    command.stderr(Stdio::null());
+    command.args([
+        "-v",
+        "error",
+        // Only the local file protocol is allowed, so a crafted container cannot
+        // make `ffprobe` open a nested network protocol.
+        "-protocol_whitelist",
+        "file",
+        "-print_format",
+        "json",
+        "-show_format",
+        "-show_streams",
+    ]);
+    // Bound a single allocation the memory-unsafe parser can make.
+    command.arg("-max_alloc");
+    command.arg(MAX_PROBE_ALLOCATION_BYTES.to_string());
+    command.arg(&path);
+    let mut child = match command.spawn() {
+        Ok(child) => child,
+        Err(err) if err.kind() == ErrorKind::NotFound => {
+            log_fault("missing_binary");
+            return Err(MediaProbeError::OperationFailed);
+        }
+        Err(err) => {
+            log_fault("spawn_failure");
+            return Err(MediaProbeError::Unknown(err.into()));
+        }
+    };
+
+    let piped_stdout = child.stdout.take();
+    let read = timeout(probe_timeout, async {
+        let mut buffer = Vec::new();
+        if let Some(stdout) = piped_stdout {
+            stdout
+                .take(MAX_PROBE_STDOUT_BYTES)
+                .read_to_end(&mut buffer)
+                .await?;
+        }
+        let truncated = u64::try_from(buffer.len()).unwrap_or(u64::MAX) >= MAX_PROBE_STDOUT_BYTES;
+        if truncated {
+            // Kill before waiting so a probe flooding the pipe cannot deadlock.
+            child.kill().await?;
+        }
+        let status = child.wait().await?;
+        Ok::<_, Error>((status, buffer, truncated))
+    })
+    .await;
+
+    let (status, buffer, truncated) = match read {
+        Ok(Ok(output)) => output,
+        Ok(Err(err)) => return Err(io_fault(err)),
+        Err(_elapsed) => {
+            log_fault("timeout");
+            return Err(MediaProbeError::Timeout);
+        }
+    };
+
+    if truncated {
+        // The probe's output overran the cap: the content is client-fixable noise
+        // and the event matches the returned client rejection (`OBS-005`,
+        // `OBS-006`).
+        log_validation_failure("output_too_large");
+        return Err(MediaProbeError::UnsupportedMedia);
+    }
+    if !status.success() {
+        // A valid binary that exits non-zero on existing bytes reports input it
+        // cannot decode, a client rejection rather than a dependency fault.
+        log_validation_failure("exit_status");
+        return Err(MediaProbeError::UnsupportedMedia);
+    }
+
+    serde_json::from_slice(&buffer).map(Some).map_err(|_| {
+        log_fault("malformed_output");
+        MediaProbeError::OperationFailed
+    })
 }
 
 /// Emit the catalogued `output_validation_failed` (`warn`) for stored bytes
@@ -1146,6 +1227,9 @@ mod tests {
     #[rstest]
     #[case::srgb("rgb24", "sRGB")]
     #[case::unmapped("pal8", "YCbCr")]
+    #[rstest]
+    #[case::srgb("rgb24", "sRGB")]
+    #[case::unmapped("pal8", "YCbCr")]
     #[cfg(unix)]
     #[tokio::test]
     async fn probe_video_maps_pixel_format(
@@ -1175,6 +1259,101 @@ mod tests {
 
         // Assert
         assert_eq!(probed.color_id, expected);
+        Ok(())
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn probe_audio_lossy_without_frame_size_leaves_block_size_absent()
+    -> Result<(), Box<dyn Error>> {
+        // Arrange: AAC reports a sample format but no frame size.
+        let _gate = spawn_gate().acquire_owned().await?;
+        let tmp = tempdir()?;
+        let program = stub(
+            tmp.path(),
+            "ffprobe",
+            "cat <<'JSON'\n{\"streams\":[{\"codec_type\":\"audio\",\"codec_name\":\"aac\",\"sample_rate\":\"48000\",\"sample_fmt\":\"fltp\"}],\"format\":{\"duration\":\"2.5\"}}\nJSON",
+        )?;
+        let media = tmp.path().join("track.m4a");
+        fs::write(&media, b"stub")?;
+        let probe = LocalMediaProbe::with_program(program, STUB_TIMEOUT);
+
+        // Act
+        let probed = probe
+            .probe_audio(&media)
+            .await?
+            .ok_or("the audio should exist")?;
+
+        // Assert
+        assert_eq!(probed.codec, "aac");
+        assert_eq!(probed.bit_depth, Some(32));
+        assert!(probed.block_size.is_none());
+        assert!((probed.sample_rate_hz - 48_000.0f64).abs() < f64::EPSILON);
+        assert!((probed.duration_ms - 2_500.0f64).abs() < f64::EPSILON);
+        Ok(())
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn probe_audio_lossless_reports_both_measurements() -> Result<(), Box<dyn Error>> {
+        // Arrange: FLAC reports a sample format and a frame size.
+        let _gate = spawn_gate().acquire_owned().await?;
+        let tmp = tempdir()?;
+        let program = stub(
+            tmp.path(),
+            "ffprobe",
+            "cat <<'JSON'\n{\"streams\":[{\"codec_type\":\"audio\",\"codec_name\":\"flac\",\"sample_rate\":\"44100\",\"sample_fmt\":\"s32\",\"frame_size\":4096}],\"format\":{\"duration\":\"1.0\"}}\nJSON",
+        )?;
+        let media = tmp.path().join("track.flac");
+        fs::write(&media, b"stub")?;
+        let probe = LocalMediaProbe::with_program(program, STUB_TIMEOUT);
+
+        // Act
+        let probed = probe
+            .probe_audio(&media)
+            .await?
+            .ok_or("the audio should exist")?;
+
+        // Assert
+        assert_eq!(probed.bit_depth, Some(32));
+        assert_eq!(probed.block_size, Some(4096));
+        Ok(())
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn probe_audio_undecodable_file_returns_unsupported_media() -> Result<(), Box<dyn Error>>
+    {
+        // Arrange
+        let _gate = spawn_gate().acquire_owned().await?;
+        let tmp = tempdir()?;
+        let program = stub(tmp.path(), "ffprobe", "exit 1")?;
+        let media = tmp.path().join("track.mp3");
+        fs::write(&media, b"stub")?;
+        let probe = LocalMediaProbe::with_program(program, STUB_TIMEOUT);
+
+        // Act
+        let result = probe.probe_audio(&media).await;
+
+        // Assert
+        assert!(
+            matches!(result, Err(MediaProbeError::UnsupportedMedia)),
+            "unexpected probe result: {result:?}"
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn probe_audio_missing_file_returns_none() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let tmp = tempdir()?;
+        let probe = LocalMediaProbe::new();
+
+        // Act
+        let probed = probe.probe_audio(&tmp.path().join("absent.mp3")).await?;
+
+        // Assert
+        assert!(probed.is_none());
         Ok(())
     }
 }

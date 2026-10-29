@@ -1,9 +1,21 @@
 use std::future::Future;
 use std::path::Path;
 
+use chrono::NaiveDateTime;
+
 use crate::domain::model::integrity_hash::DIGEST_HEX_LENGTH;
 use crate::domain::model::integrity_hash::IntegrityHash;
 use crate::domain::port::error::StorageError;
+
+/// Metadata of a file promoted into the media library.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct PromotedFile {
+    /// Instant at which the promoted content was last modified.
+    pub modified_at: NaiveDateTime,
+    /// Size of the promoted content, in bytes.
+    pub size_bytes: i64,
+}
 
 /// Port for storing uploaded file content on a storage backend.
 ///
@@ -79,15 +91,18 @@ pub trait FileStorage: Send + Sync {
         path: &Path,
     ) -> impl Future<Output = Result<Option<IntegrityHash<DIGEST_HEX_LENGTH>>, StorageError>> + Send;
 
-    /// Move the file at `staged` to `final_path`.
+    /// Move the file at `staged` to `final_path`, returning the promoted
+    /// content's size and modification instant.
     ///
     /// A staged file that does not exist is a valid outcome, reported as
-    /// `Ok(false)`.
+    /// `Ok(None)`. The returned metadata is read from the promoted file, so a
+    /// later scan can recognise the same content by size and modification
+    /// instant without reading it.
     fn promote(
         &self,
         staged: &Path,
         final_path: &Path,
-    ) -> impl Future<Output = Result<bool, StorageError>> + Send;
+    ) -> impl Future<Output = Result<Option<PromotedFile>, StorageError>> + Send;
 
     /// Move the file at `final_path` back to `staged`.
     ///

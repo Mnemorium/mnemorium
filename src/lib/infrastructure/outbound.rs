@@ -1,9 +1,11 @@
 pub mod argon2;
 pub mod envy;
 pub mod file_system;
+pub mod infer;
 pub mod jwt;
 pub mod media_probe;
 pub mod moka;
+pub mod notify;
 pub mod random;
 pub mod sha2;
 pub mod sqlx;

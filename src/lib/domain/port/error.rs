@@ -250,6 +250,30 @@ pub enum MediaProbeError {
     UnsupportedMedia,
 }
 
+/// Error returned when sniffing a file's content type fails.
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
+pub enum ContentTypeSnifferError {
+    /// The content could not be read for a non-specific reason.
+    #[error("the content type could not be read for a non-specific reason")]
+    OperationFailed,
+    /// An unexpected or unmapped error occurred.
+    #[error("an unexpected or unmapped error occurred: {0}")]
+    Unknown(#[source] anyhow::Error),
+}
+
+/// Error returned when discovering files under the library root fails.
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
+pub enum MediaSourceError {
+    /// The library root could not be walked for a non-specific reason.
+    #[error("the library root could not be walked for a non-specific reason")]
+    OperationFailed,
+    /// An unexpected or unmapped error occurred.
+    #[error("an unexpected or unmapped error occurred: {0}")]
+    Unknown(#[source] anyhow::Error),
+}
+
 /// Error returned when a file storage operation fails.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
