@@ -1,3 +1,9 @@
+## [0.26.0](https://github.com/Mnemorium/mnemorium/compare/v0.25.0...v0.26.0) (2026-10-29)
+
+### Features
+
+* **application:** ingest media from mount ([#364](https://github.com/Mnemorium/mnemorium/issues/364)) ([0087e52](https://github.com/Mnemorium/mnemorium/commit/0087e524f8cd6fc23ca0e9148670732d4babde18))
+
 ## [0.25.0](https://github.com/Mnemorium/mnemorium/compare/v0.24.0...v0.25.0) (2026-10-28)
 
 ### Features
