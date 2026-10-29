@@ -1,5 +1,4 @@
 pub mod audio;
-pub mod audio_channel;
 pub mod configuration;
 pub mod credential;
 pub mod episode;

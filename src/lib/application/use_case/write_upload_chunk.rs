@@ -365,15 +365,10 @@ enum AttemptError {
 mod tests {
     use std::collections::VecDeque;
     use std::error::Error;
-    use std::io as stdio;
     use std::sync::Arc;
     use std::sync::Mutex;
     use std::sync::PoisonError;
     use std::sync::atomic::Ordering;
-
-    use tracing::subscriber::set_default;
-    use tracing_subscriber::fmt;
-    use tracing_subscriber::layer::SubscriberExt as _;
 
     use crate::application::port::write_upload_chunk::WriteUploadChunkCommand;
     use crate::application::port::write_upload_chunk::WriteUploadChunkError;
@@ -396,6 +391,7 @@ mod tests {
     use crate::test_helpers::TestFactory;
     use crate::test_helpers::TestUnitOfWork;
     use crate::test_helpers::any_caller;
+    use tracing_test::traced_test;
 
     use super::WriteUploadChunk;
 
@@ -406,42 +402,6 @@ mod tests {
         "f8638b979b2f4f793ddb6dbd197e0ee25a7a6ea32b0ae22f5e3c5d119d839e75";
     const WRONG_CHUNK_DIGEST: &str =
         "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff";
-
-    /// Append-only sink that lets a test read back the lines [`fmt`] emits.
-    #[derive(Clone)]
-    struct CaptureWriter {
-        /// Buffer shared with the test that asserts on the captured output.
-        buffer: Arc<Mutex<Vec<u8>>>,
-    }
-
-    #[expect(
-        clippy::missing_trait_methods,
-        reason = "only the raw `write` and `flush` are meaningful for an in-memory capture buffer"
-    )]
-    impl stdio::Write for CaptureWriter {
-        fn flush(&mut self) -> stdio::Result<()> {
-            Ok(())
-        }
-
-        fn write(&mut self, buf: &[u8]) -> stdio::Result<usize> {
-            let mut buffer = self.buffer.lock().unwrap_or_else(PoisonError::into_inner);
-            buffer.extend_from_slice(buf);
-            Ok(buf.len())
-        }
-    }
-
-    /// Hand every formatted event to a fresh clone of the shared buffer.
-    #[expect(
-        clippy::missing_trait_methods,
-        reason = "the default `make_writer_for` already routes through `make_writer`"
-    )]
-    impl<'writer> fmt::MakeWriter<'writer> for CaptureWriter {
-        type Writer = Self;
-
-        fn make_writer(&'writer self) -> Self::Writer {
-            self.clone()
-        }
-    }
 
     /// Build an [`IntegrityHash`] from a literal digest.
     #[expect(
@@ -678,20 +638,9 @@ mod tests {
     }
 
     #[tokio::test]
+    #[traced_test]
     async fn write_upload_chunk_other_user_returns_no_such_upload() -> Result<(), Box<dyn Error>> {
         let hasher = MockContentHasher::new();
-        // Arrange
-        // Install a capturing subscriber on the current thread. The guard must
-        // stay alive for the whole execute: `#[tokio::test]` runs on a
-        // current-thread runtime, so the awaited call is polled on this thread
-        // and sees the scoped default dispatcher.
-        let buffer = Arc::new(Mutex::new(Vec::new()));
-        let subscriber = tracing_subscriber::registry().with(
-            fmt::layer().with_ansi(false).with_writer(CaptureWriter {
-                buffer: Arc::clone(&buffer),
-            }),
-        );
-        let _capture = set_default(subscriber);
         let mut uploads = MockUploadRepository::new();
         expect_upload(&mut uploads, upload(5, 3, 8, &[], false)?);
         let unit_of_work = TestUnitOfWork {
@@ -716,33 +665,36 @@ mod tests {
 
         // Assert
         assert!(matches!(result, Err(WriteUploadChunkError::NoSuchUpload)));
-        let bytes = buffer.lock().unwrap_or_else(PoisonError::into_inner);
-        let logs = String::from_utf8_lossy(bytes.as_slice()).into_owned();
-        assert_eq!(
-            logs.matches("WARN").count(),
-            1,
-            "the owner check must emit exactly one warn event: {logs}"
-        );
-        assert_eq!(
-            logs.matches("event=\"authz_failed\"").count(),
-            1,
-            "the owner check must emit exactly one authz_failed event: {logs}"
+        logs_assert(|lines| {
+            let count = lines.iter().filter(|line| line.contains("WARN")).count();
+            (count == 1).then_some(()).ok_or_else(|| {
+                format!("the owner check must emit exactly one warn event (found {count})")
+            })
+        });
+        logs_assert(|lines| {
+            let count = lines
+                .iter()
+                .filter(|line| line.contains("event=\"authz_failed\""))
+                .count();
+            (count == 1).then_some(()).ok_or_else(|| {
+                format!("the owner check must emit exactly one authz_failed event (found {count})")
+            })
+        });
+        assert!(
+            logs_contain("security"),
+            "the event must target the reserved security target"
         );
         assert!(
-            logs.contains("security"),
-            "the event must target the reserved security target: {logs}"
+            logs_contain(" actor=99 "),
+            "the event must carry the caller as the actor"
         );
         assert!(
-            logs.contains(" actor=99 "),
-            "the event must carry the caller as the actor: {logs}"
+            logs_contain("action=write"),
+            "the event must classify the denied action as a write"
         );
         assert!(
-            logs.contains("action=write"),
-            "the event must classify the denied action as a write: {logs}"
-        );
-        assert!(
-            logs.contains("target=upload"),
-            "the event must name the denied target: {logs}"
+            logs_contain("target=upload"),
+            "the event must name the denied target"
         );
         Ok(())
     }

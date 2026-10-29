@@ -9,7 +9,6 @@ use crate::application::port::delete_gallery_item::DeleteGalleryItemCommand;
 use crate::application::port::delete_gallery_item::DeleteGalleryItemError;
 use crate::application::port::delete_gallery_item::DeleteGalleryItemUseCase;
 use crate::application::security_event;
-use crate::application::use_case::upload_layout::stored_file_path;
 use crate::domain::model::gallery_item::GalleryItemMedia;
 use crate::domain::model::permission::Action;
 use crate::domain::port::asset_unit_of_work::AssetUnitOfWork;
@@ -38,8 +37,9 @@ use crate::domain::service::authorization::Decision;
 
 /// Use case implementation for deleting one item of a gallery.
 pub struct DeleteGalleryItem<F, S> {
-    /// Storage adapter removing the backing file's bytes.
-    file_storage: Arc<S>,
+    /// Storage adapter kept for the removal path. Byte deletion is disabled
+    /// (`TODO(ingest)`), so the field is held but not read.
+    _file_storage: Arc<S>,
     /// Factory opening the unit of work wrapping the deletion.
     unit_of_work_factory: Arc<F>,
 }
@@ -49,7 +49,7 @@ impl<F: UnitOfWorkFactory, S: FileStorage> DeleteGalleryItem<F, S> {
     #[must_use]
     pub fn new(unit_of_work_factory: Arc<F>, file_storage: Arc<S>) -> Self {
         Self {
-            file_storage,
+            _file_storage: file_storage,
             unit_of_work_factory,
         }
     }
@@ -65,7 +65,6 @@ where
         &'future self,
         command: DeleteGalleryItemCommand,
     ) -> Pin<Box<dyn Future<Output = Result<(), DeleteGalleryItemError>> + Send + 'future>> {
-        let file_storage = Arc::clone(&self.file_storage);
         let unit_of_work_factory = Arc::clone(&self.unit_of_work_factory);
 
         Box::pin(async move {
@@ -246,18 +245,12 @@ where
                         .commit()
                         .await
                         .map_err(|error| DeleteGalleryItemError::Unknown(error.into()))?;
-                    // The rows have committed; the bytes cannot join the
-                    // transaction, so they are removed best-effort afterwards.
-                    if let Some(stored_path) = file_path
-                        && file_storage
-                            .delete_upload_file(&stored_file_path(&stored_path))
-                            .await
-                            .is_err()
-                    {
-                        // The file-storage adapter owns the failure log
-                        // (`OBS-002`); the committed deletion stands, so the
-                        // removal is not failed.
-                    }
+                    // TODO(ingest): the path now addresses the operator's media
+                    // mount, and a scanned file was never the server's to
+                    // remove. Byte deletion is intentionally disabled; only the
+                    // recorded reference is removed. Re-enable a guarded removal
+                    // once a deletion policy consults `file.origin`.
+                    drop(file_path);
                     Ok(())
                 }
                 Err(error) => {
@@ -273,7 +266,6 @@ where
 #[cfg(test)]
 mod tests {
     use std::error::Error;
-    use std::path::Path;
     use std::sync::Arc;
     use std::sync::atomic::Ordering;
 
@@ -284,6 +276,7 @@ mod tests {
     use crate::application::port::delete_gallery_item::DeleteGalleryItemError;
     use crate::application::port::delete_gallery_item::DeleteGalleryItemUseCase as _;
     use crate::domain::model::file::File;
+    use crate::domain::model::file::Origin;
     use crate::domain::model::gallery::Gallery;
     use crate::domain::model::gallery_item::GalleryItem;
     use crate::domain::model::gallery_item::GalleryItemMedia;
@@ -295,7 +288,6 @@ mod tests {
     use crate::domain::model::video::ScanType;
     use crate::domain::model::video::Video;
     use crate::domain::port::error::RepositoryError;
-    use crate::domain::port::error::StorageError;
     use crate::domain::port::file_repository::MockFileRepository;
     use crate::domain::port::file_storage::MockFileStorage;
     use crate::domain::port::gallery_repository::GalleryItemDetail;
@@ -356,7 +348,13 @@ mod tests {
             false,
             "image/png".to_owned(),
             NaiveDate::from_ymd_opt(2026, 10, 16).ok_or("invalid fixture date")?,
-            IntegrityHash::try_new(DIGEST.to_owned())?,
+            0,
+            NaiveDate::from_ymd_opt(2026, 10, 16)
+                .ok_or("invalid fixture date")?
+                .and_hms_opt(0, 0, 0)
+                .ok_or("invalid fixture time")?,
+            Some(IntegrityHash::try_new(DIGEST.to_owned())?),
+            Some(Origin::Uploaded),
         )?)
     }
 
@@ -419,13 +417,9 @@ mod tests {
         Ok(())
     }
 
-    /// Expect the bytes of the backing file to be removed under the root.
+    /// Expect no byte deletion: the mount belongs to the operator.
     fn expect_backing_bytes(file_storage: &mut MockFileStorage) {
-        file_storage
-            .expect_delete_upload_file()
-            .times(1)
-            .withf(|path| path == Path::new("data/files/1_photo.png"))
-            .returning(|_| Box::pin(async { Ok(()) }));
+        file_storage.expect_delete_upload_file().times(0);
     }
 
     fn expect_caller(
@@ -534,11 +528,9 @@ mod tests {
         let mut videos = MockVideoRepository::new();
         let mut files = MockFileRepository::new();
         expect_removable_backing_file(&mut images, &mut videos, &mut files, 4)?;
+        // The mount belongs to the operator: no byte deletion may occur.
         let mut file_storage = MockFileStorage::new();
-        file_storage
-            .expect_delete_upload_file()
-            .times(1)
-            .returning(|_| Box::pin(async { Err(StorageError::OperationFailed) }));
+        file_storage.expect_delete_upload_file().times(0);
         let harness = harness_with(users, galleries, images, videos, files);
         let use_case = use_case(&harness, file_storage);
 
@@ -547,8 +539,8 @@ mod tests {
             .execute(DeleteGalleryItemCommand::new(4, 3, 42))
             .await;
 
-        // Assert: the rows have committed, so a failure removing the bytes does
-        // not fail the removal — the file-storage adapter logs it (OBS-002).
+        // Assert: the reference is removed, the content is not, and the row
+        // deletion commits.
         assert!(result.is_ok());
         assert!(harness.committed.load(Ordering::SeqCst));
         assert!(!harness.rolled_back.load(Ordering::SeqCst));

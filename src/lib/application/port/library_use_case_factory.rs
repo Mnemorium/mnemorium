@@ -17,6 +17,7 @@ use crate::application::port::get_playlist_track::GetPlaylistTrackUseCase;
 use crate::application::port::get_series::GetSeriesUseCase;
 use crate::application::port::get_series_episode::GetSeriesEpisodeUseCase;
 use crate::application::port::get_series_season::GetSeriesSeasonUseCase;
+use crate::application::port::ingest_media::IngestMediaUseCase;
 use crate::application::port::list_album_tracks::ListAlbumTracksUseCase;
 use crate::application::port::list_albums::ListAlbumsUseCase;
 use crate::application::port::list_galleries::ListGalleriesUseCase;
@@ -84,6 +85,10 @@ pub trait LibraryUseCaseFactory: Send + Sync {
 
     /// Build the use case fetching one season of a show.
     fn get_series_season(&self) -> Arc<dyn GetSeriesSeasonUseCase>;
+
+    /// Build the use case reconciling the library root with the registered
+    /// files.
+    fn ingest_media(&self) -> Arc<dyn IngestMediaUseCase>;
 
     /// Build the use case listing the tracks of a music album.
     fn list_album_tracks(&self) -> Arc<dyn ListAlbumTracksUseCase>;

@@ -278,6 +278,7 @@ mod tests {
     use crate::application::port::add_gallery_item::AddGalleryItemResponse;
     use crate::application::port::add_gallery_item::AddGalleryItemUseCase as _;
     use crate::domain::model::file::File;
+    use crate::domain::model::file::Origin;
     use crate::domain::model::gallery::Gallery;
     use crate::domain::model::gallery_item::GalleryItem;
     use crate::domain::model::gallery_item::GalleryItemMedia;
@@ -330,7 +331,13 @@ mod tests {
             false,
             "image/png".to_owned(),
             NaiveDate::from_ymd_opt(2026, 1, 1).unwrap_or_default(),
-            IntegrityHash::try_new(DIGEST.to_owned())?,
+            0,
+            NaiveDate::from_ymd_opt(2026, 1, 1)
+                .unwrap_or_default()
+                .and_hms_opt(0, 0, 0)
+                .unwrap_or_default(),
+            Some(IntegrityHash::try_new(DIGEST.to_owned())?),
+            Some(Origin::Uploaded),
         )?)
     }
 

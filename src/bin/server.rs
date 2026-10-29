@@ -7,6 +7,7 @@ use std::time::Duration;
 use mnemorium::application::port::ensure_storage_directories::EnsureStorageDirectoriesCommand;
 use mnemorium::application::port::ensure_storage_directories::EnsureStorageDirectoriesUseCase as _;
 use mnemorium::application::port::initialize_root_admin::InitializeRootAdminUseCase as _;
+use mnemorium::application::port::library_use_case_factory::LibraryUseCaseFactory;
 use mnemorium::application::port::load_configuration::LoadConfigurationUseCase as _;
 use mnemorium::application::port::load_state::DATABASE_PATH;
 use mnemorium::application::port::load_state::LoadStateUseCase as _;
@@ -16,6 +17,7 @@ use mnemorium::application::use_case::ensure_storage_directories::EnsureStorageD
 use mnemorium::application::use_case::initialize_root_admin::InitializeRootAdmin;
 use mnemorium::application::use_case::load_configuration::LoadConfiguration;
 use mnemorium::application::use_case::load_state::LoadState;
+use mnemorium::infrastructure::inbound::media_ingest::MediaIngestRunner;
 use mnemorium::infrastructure::inbound::rest::app_state::AppState;
 use mnemorium::infrastructure::inbound::rest::handler;
 use mnemorium::infrastructure::inbound::rest::middleware::rate_limit::LoginRateLimiter;
@@ -139,19 +141,22 @@ async fn main() -> Result<(), anyhow::Error> {
     let user_use_case_factory = Arc::new(RuntimeUserUseCaseFactory::new(Arc::clone(
         &unit_of_work_factory,
     )));
-    let library_use_case_factory = Arc::new(RuntimeLibraryUseCaseFactory::new(Arc::clone(
-        &unit_of_work_factory,
-    )));
+    let probe_permits = LocalMediaProbe::new_permits();
+    let library_use_case_factory: Arc<dyn LibraryUseCaseFactory> =
+        Arc::new(RuntimeLibraryUseCaseFactory::new(
+            Arc::clone(&unit_of_work_factory),
+            Arc::clone(&probe_permits),
+        ));
 
     let file_storage = Arc::new(FileSystemStorage::new());
-    EnsureStorageDirectories::new(Arc::clone(&file_storage))
+    let storage_directories = EnsureStorageDirectories::new(Arc::clone(&file_storage))
         .execute(EnsureStorageDirectoriesCommand::new())
         .await?;
 
     let asset_use_case_factory = Arc::new(RuntimeAssetUseCaseFactory::new(
         Arc::clone(&configuration),
         Arc::clone(&unit_of_work_factory),
-        LocalMediaProbe::new_permits(),
+        Arc::clone(&probe_permits),
     ));
 
     let login_rate_limiter = Arc::new(LoginRateLimiter::new(configuration.security().rate_limit()));
@@ -161,11 +166,22 @@ async fn main() -> Result<(), anyhow::Error> {
         configuration,
         identity_use_case_factory,
         instance_state,
-        library_use_case_factory,
+        Arc::clone(&library_use_case_factory),
         user_use_case_factory,
     );
 
     let app = handler::setup_routes(&state, &login_rate_limiter);
+
+    // The library ingest starts only after the router is built, so readiness
+    // never waits for a large library. The scan and the observer both drain on
+    // the shutdown signal below.
+    let media_ingest = Arc::new(
+        MediaIngestRunner::new(
+            library_use_case_factory,
+            storage_directories.media_root_present(),
+        )
+        .start(),
+    );
 
     let rate_limit_cleanup_interval = Duration::from_mins(1);
     tokio::spawn(async move {
@@ -195,7 +211,8 @@ async fn main() -> Result<(), anyhow::Error> {
                 "Mnemorium server listening on 0.0.0.0:4080"
             );
 
-            let shutdown_signal = async {
+            let media_ingest_signal = Arc::clone(&media_ingest);
+            let shutdown_signal = async move {
                 let interrupt = async {
                     if let Err(err) = ctrl_c().await {
                         error!(kind = ?err.kind(), "Failed to install SIGINT handler");
@@ -228,6 +245,9 @@ async fn main() -> Result<(), anyhow::Error> {
                     outcome = "draining",
                     "shutdown signal received; draining in-flight requests"
                 );
+                // Stop the ingest drivers before axum drains, so neither a scan
+                // nor an observer outlives the process.
+                media_ingest_signal.shutdown();
             };
 
             match axum::serve(
@@ -250,8 +270,11 @@ async fn main() -> Result<(), anyhow::Error> {
                     error!(kind = ?err.kind(), "Fail to run axum server");
                 }
             }
+            media_ingest.wait().await;
         }
         Err(err) => {
+            media_ingest.shutdown();
+            media_ingest.wait().await;
             error!(kind = ?err.kind(), "Fail to bind TcpListener to port");
         }
     }

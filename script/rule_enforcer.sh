@@ -154,6 +154,7 @@ RULES=(
 	"TEST-052:check_test_052"
 	"TEST-053:check_test_053"
 	"TEST-054:check_test_054"
+	"TEST-062:check_test_062"
 	"OBS-001:check_obs_001"
 	"OBS-003:check_obs_003"
 	"OBS-004:check_obs_004"
@@ -404,19 +405,26 @@ check_sty_rust_001() {
 
 	config="$(rule_config "$id")" || return 2
 
-	# The allowlist is the set of code locations permitted to hold a single-use extraction: a production `#[expect(clippy::single_call_fn, reason = "...")]` is permitted only at a `<file>::<function>` listed here.
+	# The allowlist is the set of code locations permitted to hold a single-use extraction: a production `#[expect(clippy::single_call_fn, reason = "...")]` is permitted only at a `<file>::<function>` listed here, and a module-wide exemption only at the bare `<file>` listed here.
 	while IFS= read -r location; do
 		[ -n "$location" ] || continue
 		allowed["$location"]=1
 	done < <(jq -r '.allowed_locations[]?' <<<"$config")
 
-	# sty-rust-001 extracts every production `#[expect(clippy::single_call_fn, reason = "...")]` together with the function it annotates; test modules and `#[cfg(test)]` items are excluded by the rule.
+	# sty-rust-001 extracts every production `#[expect(clippy::single_call_fn, reason = "...")]` together with the function it annotates, and every module-wide exemption together with its file; test modules and `#[cfg(test)]` items are excluded by the rule.
 	matches="$(scan_json "$id" src)" || return 1
 	[ -n "$matches" ] || return 0
 
 	while IFS=$'\t' read -r file line func reason; do
 		[ -n "$file" ] || continue
-		location="${file}::${func}"
+		# A module-wide exemption captures no function name; jq fills the empty TSV column.
+		[ "$func" = "-" ] && func=""
+		# A module-wide exemption names no function: its reviewed location is the file.
+		if [ -n "$func" ]; then
+			location="${file}::${func}"
+		else
+			location="$file"
+		fi
 		if [ -z "$reason" ]; then
 			printf 'error: %s: %s:%s: single-use extraction at %s carries no reason; add one\n' \
 				"$id" "$file" "$line" "$location" >&2
@@ -424,13 +432,19 @@ check_sty_rust_001() {
 			continue
 		fi
 		if [ -z "${allowed[$location]+set}" ]; then
-			printf 'error: %s: %s:%s: single-use extraction at %s is not allowlisted; add "%s" to allowed_locations\n' \
-				"$id" "$file" "$line" "$location" "$location" >&2
+			if [ -n "$func" ]; then
+				printf 'error: %s: %s:%s: single-use extraction at %s is not allowlisted; add "%s" to allowed_locations\n' \
+					"$id" "$file" "$line" "$location" "$location" >&2
+			else
+				printf 'error: %s: %s:%s: module-wide single-use extraction exemption at %s is not allowlisted; scope it to one function or add "%s" to allowed_locations\n' \
+					"$id" "$file" "$line" "$location" "$location" >&2
+			fi
+
 			result=1
 		fi
 	done < <(printf '%s\n' "$matches" |
 		jq -r '[.file, ((.range.start.line + 1) | tostring),
-			.metaVariables.single.FUNC.text,
+			(.metaVariables.single.FUNC.text // "-"),
 			(.text | gsub("\\s+"; " ") |
 				capture("reason *= *\"(?<r>[^\"]*)\"")? | .r // "")] | @tsv')
 
@@ -3439,7 +3453,7 @@ check_test_054() {
 		test_line="$(grep -nE '^[[:space:]]*(pub[[:space:]]+)?mod tests?\b' "$file" |
 			head -n 1 | cut -d: -f1)"
 		if [ -z "$test_line" ] ||
-			! sed -n "1,${test_line}p" "$file" | grep -qE '#\[cfg\(test\)\]'; then
+			[ "$(sed -n "1,${test_line}p" "$file" | grep -cE '#\[cfg\(test\)\]')" -eq 0 ]; then
 			printf 'error: %s: %s: a native-binary adapter must carry a #[cfg(test)] integration test module in the same file\n' \
 				"$id" "$file" >&2
 			result=1
@@ -3504,6 +3518,59 @@ check_test_054() {
 		printf 'error: %s: no native-binary adapter found under %s\n' "$id" "$outbound" >&2
 		return 1
 	fi
+
+	return "$result"
+}
+
+# check_test_062 — a logging test uses #[traced_test] and installs no subscriber of its own (TEST-062).
+check_test_062() {
+	local id="TEST-062"
+	local src_dir="src"
+	local file forbidden violation result=0
+
+	need_dir "$id" "$src_dir" || return 1
+
+	# Clause 1 — no logging test installs its own subscriber or capture writer.
+	while IFS= read -r forbidden; do
+		[ -n "$forbidden" ] || continue
+		printf 'error: %s: %s: a logging test uses #[traced_test] instead of a subscriber of its own\n' \
+			"$id" "$forbidden" >&2
+		result=1
+	done < <(grep -rnE 'fn (capture_logs|captured_logs)\(|struct CaptureWriter\b|MakeWriter|subscriber::set_default\(' \
+		"$src_dir" --include='*.rs' || true)
+
+	# Clause 2 — every logs_contain/logs_assert call sits in a #[traced_test] function.
+	while IFS= read -r file; do
+		[ -n "$file" ] || continue
+		while IFS= read -r violation; do
+			[ -n "$violation" ] || continue
+			printf 'error: %s: %s: a function asserting on logs is not annotated #[traced_test]\n' \
+				"$id" "$violation" >&2
+			result=1
+		done < <(awk '
+			FNR == 1 { attrs = ""; in_fn = 0 }
+			/^[[:space:]]*#!?\[/ || /^[[:space:]]*\/\// { attrs = attrs "\n" $0; next }
+			/^[[:space:]]*$/ { attrs = ""; next }
+			/^[[:space:]]*(pub([[:space:]]*\([^)]*\))?[[:space:]]+)?(async[[:space:]]+)?fn[[:space:]]+[A-Za-z_]/ {
+				in_fn = 1
+				fn_line = FNR
+				fn_annotated = (attrs ~ /traced_test/)
+				attrs = ""
+				next
+			}
+			in_fn {
+				if ($0 ~ /logs_(contain|assert)[[:space:]]*\(/ && !fn_annotated) {
+					printf "%s:%d\n", FILENAME, fn_line
+					in_fn = 0
+					next
+				}
+				if ($0 ~ /^    }$/) {
+					in_fn = 0
+				}
+			}
+			{ attrs = "" }
+		' "$file")
+	done < <(grep -rlE 'logs_(contain|assert)[[:space:]]*\(' "$src_dir" --include='*.rs' | sort)
 
 	return "$result"
 }

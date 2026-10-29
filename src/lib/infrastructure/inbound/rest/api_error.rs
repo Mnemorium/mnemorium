@@ -333,10 +333,6 @@ pub(crate) fn error_response(status: StatusCode, message: String, path: &str) ->
 #[cfg(test)]
 mod tests {
     use std::error::Error;
-    use std::io as stdio;
-    use std::sync::Arc;
-    use std::sync::Mutex;
-    use std::sync::PoisonError;
 
     use axum::Json;
     use axum::Router;
@@ -358,23 +354,13 @@ mod tests {
     use axum::routing::post;
     use rstest::rstest;
     use tower::ServiceExt as _;
-    use tracing::subscriber::DefaultGuard;
-    use tracing::subscriber::set_default;
-    use tracing_subscriber::fmt;
-    use tracing_subscriber::layer::SubscriberExt as _;
 
     use crate::infrastructure::inbound::rest::app_state::AppState;
     use crate::test_helpers::app_state;
     use crate::test_helpers::error_message_of;
+    use tracing_test::traced_test;
 
     use super::ApiError;
-
-    /// Append-only sink that lets a test read back the lines [`fmt`] emits.
-    #[derive(Clone)]
-    struct CaptureWriter {
-        /// Buffer shared with the test that asserts on the captured output.
-        buffer: Arc<Mutex<Vec<u8>>>,
-    }
 
     /// Body schema the probe route deserializes into.
     ///
@@ -392,35 +378,6 @@ mod tests {
     #[derive(serde::Deserialize, serde::Serialize)]
     struct QueryProbe {
         count: u64,
-    }
-
-    #[expect(
-        clippy::missing_trait_methods,
-        reason = "only the raw `write` and `flush` are meaningful for an in-memory capture buffer"
-    )]
-    impl stdio::Write for CaptureWriter {
-        fn flush(&mut self) -> stdio::Result<()> {
-            Ok(())
-        }
-
-        fn write(&mut self, buf: &[u8]) -> stdio::Result<usize> {
-            let mut buffer = self.buffer.lock().unwrap_or_else(PoisonError::into_inner);
-            buffer.extend_from_slice(buf);
-            Ok(buf.len())
-        }
-    }
-
-    /// Hand every formatted event to a fresh clone of the shared buffer.
-    #[expect(
-        clippy::missing_trait_methods,
-        reason = "the default `make_writer_for` already routes through `make_writer`"
-    )]
-    impl<'writer> fmt::MakeWriter<'writer> for CaptureWriter {
-        type Writer = Self;
-
-        fn make_writer(&'writer self) -> Self::Writer {
-            self.clone()
-        }
     }
 
     /// Echo the probe count, converting any rejection through the impl.
@@ -498,29 +455,6 @@ mod tests {
         Ok(response)
     }
 
-    /// Install a capturing subscriber on the current thread and return the
-    /// shared buffer plus the guard that keeps it active.
-    ///
-    /// The guard must stay alive for the whole probe: `#[tokio::test]` runs on a
-    /// current-thread runtime, so the awaited request is polled on this thread
-    /// and sees the scoped default dispatcher.
-    fn capture_logs() -> (Arc<Mutex<Vec<u8>>>, DefaultGuard) {
-        let buffer = Arc::new(Mutex::new(Vec::new()));
-        let subscriber = tracing_subscriber::registry().with(
-            fmt::layer().with_ansi(false).with_writer(CaptureWriter {
-                buffer: Arc::clone(&buffer),
-            }),
-        );
-        let guard = set_default(subscriber);
-        (buffer, guard)
-    }
-
-    /// Read the captured bytes back as a lossy UTF-8 string.
-    fn captured_logs(buffer: &Mutex<Vec<u8>>) -> String {
-        let bytes = buffer.lock().unwrap_or_else(PoisonError::into_inner);
-        String::from_utf8_lossy(bytes.as_slice()).into_owned()
-    }
-
     #[tokio::test]
     async fn json_rejection_invalid_syntax_returns_generic_bad_request()
     -> Result<(), Box<dyn Error>> {
@@ -537,10 +471,10 @@ mod tests {
     }
 
     #[tokio::test]
+    #[traced_test]
     async fn json_rejection_wrong_type_returns_unprocessable_entity() -> Result<(), Box<dyn Error>>
     {
         // Arrange
-        let (buffer, _capture) = capture_logs();
 
         // Act
         let response = rejection_response(
@@ -567,22 +501,21 @@ mod tests {
             !message.contains("column"),
             "message leaked a parse position"
         );
-        let logs = captured_logs(&buffer);
         assert!(
-            !logs.contains("LEAK_SENTINEL"),
-            "the sink must never carry the offending body: {logs}"
+            !logs_contain("LEAK_SENTINEL"),
+            "the sink must never carry the offending body"
         );
         assert!(
-            !logs.contains("invalid type"),
-            "the sink must never carry serde detail: {logs}"
+            !logs_contain("invalid type"),
+            "the sink must never carry serde detail"
         );
         assert!(
-            !logs.contains("line"),
-            "the sink must never carry a parse position: {logs}"
+            !logs_contain("line"),
+            "the sink must never carry a parse position"
         );
         assert!(
-            !logs.contains("column"),
-            "the sink must never carry a parse position: {logs}"
+            !logs_contain("column"),
+            "the sink must never carry a parse position"
         );
         Ok(())
     }
@@ -616,10 +549,10 @@ mod tests {
     }
 
     #[tokio::test]
+    #[traced_test]
     async fn from_bytes_rejection_oversized_body_logs_limit_exceeded_once()
     -> Result<(), Box<dyn Error>> {
         // Arrange
-        let (buffer, _capture) = capture_logs();
 
         // Act
         let response =
@@ -628,41 +561,47 @@ mod tests {
 
         // Assert
         assert_eq!(response.status(), StatusCode::PAYLOAD_TOO_LARGE);
-        let logs = captured_logs(&buffer);
-        assert_eq!(
-            logs.matches("WARN").count(),
-            1,
-            "the oversized-body 413 must emit exactly one warn event: {logs}"
-        );
-        assert_eq!(
-            logs.matches("event=\"limit_exceeded\"").count(),
-            1,
-            "the oversized-body 413 must emit exactly one limit_exceeded event: {logs}"
+        logs_assert(|lines| {
+            let count = lines.iter().filter(|line| line.contains("WARN")).count();
+            (count == 1).then_some(()).ok_or_else(|| {
+                format!("the oversized-body 413 must emit exactly one warn event (found {count})")
+            })
+        });
+        logs_assert(|lines| {
+            let count = lines
+                .iter()
+                .filter(|line| line.contains("event=\"limit_exceeded\""))
+                .count();
+            (count == 1)
+                .then_some(())
+                .ok_or_else(|| format!(
+                    "the oversized-body 413 must emit exactly one limit_exceeded event (found {count})"
+                ))
+        });
+        assert!(
+            logs_contain("source=\"request_body\""),
+            "the event must classify the source as the request body"
         );
         assert!(
-            logs.contains("source=\"request_body\""),
-            "the event must classify the source as the request body: {logs}"
+            logs_contain("reason=\"size_limit_exceeded\""),
+            "the event must classify the reason as the size limit"
         );
         assert!(
-            logs.contains("reason=\"size_limit_exceeded\""),
-            "the event must classify the reason as the size limit: {logs}"
+            logs_contain("security"),
+            "the event must target the reserved security target"
         );
         assert!(
-            logs.contains("security"),
-            "the event must target the reserved security target: {logs}"
-        );
-        assert!(
-            !logs.contains("1234567890"),
-            "the captured event must not contain the request-body value: {logs}"
+            !logs_contain("1234567890"),
+            "the captured event must not contain the request-body value"
         );
         Ok(())
     }
 
     #[tokio::test]
+    #[traced_test]
     async fn from_bytes_rejection_oversized_body_does_not_log_buffer_failed()
     -> Result<(), Box<dyn Error>> {
         // Arrange
-        let (buffer, _capture) = capture_logs();
 
         // Act
         let response =
@@ -671,52 +610,49 @@ mod tests {
 
         // Assert
         assert_eq!(response.status(), StatusCode::PAYLOAD_TOO_LARGE);
-        let logs = captured_logs(&buffer);
         assert!(
-            !logs.contains("buffer_failed"),
-            "the oversized body must not also log the sibling buffer_failed event: {logs}"
+            !logs_contain("event=\"buffer_failed\""),
+            "the oversized body must not also log the sibling buffer_failed event"
         );
         assert!(
-            !logs.contains("input_validation_failed"),
-            "the oversized body must not also log the input_validation_failed event: {logs}"
+            !logs_contain("event=\"input_validation_failed\""),
+            "the oversized body must not also log the input_validation_failed event"
         );
         Ok(())
     }
 
     #[tokio::test]
+    #[traced_test]
     async fn from_bytes_rejection_valid_body_logs_no_limit_exceeded() -> Result<(), Box<dyn Error>>
     {
         // Arrange
-        let (buffer, _capture) = capture_logs();
 
         // Act
         let response = rejection_response(r#"{"count":1}"#, Some("application/json"), None).await?;
 
         // Assert
         assert_eq!(response.status(), StatusCode::OK);
-        let logs = captured_logs(&buffer);
         assert!(
-            !logs.contains("limit_exceeded"),
-            "a valid body within the limit must not emit a limit_exceeded event: {logs}"
+            !logs_contain("event=\"limit_exceeded\""),
+            "a valid body within the limit must not emit a limit_exceeded event"
         );
         Ok(())
     }
 
     #[tokio::test]
+    #[traced_test]
     async fn from_bytes_rejection_probe_body_within_limit_logs_no_limit_exceeded()
     -> Result<(), Box<dyn Error>> {
         // Arrange
-        let (buffer, _capture) = capture_logs();
 
         // Act
         let response = bytes_rejection_response("LEAK_SENTINEL", 32).await?;
 
         // Assert
         assert_eq!(response.status(), StatusCode::OK);
-        let logs = captured_logs(&buffer);
         assert!(
-            !logs.contains("limit_exceeded"),
-            "a raw body within the limit must not emit a limit_exceeded event: {logs}"
+            !logs_contain("event=\"limit_exceeded\""),
+            "a raw body within the limit must not emit a limit_exceeded event"
         );
         Ok(())
     }
@@ -760,9 +696,9 @@ mod tests {
     }
 
     #[test]
+    #[traced_test]
     fn missing_path_params_maps_to_internal_server_error() {
         // Arrange
-        let (buffer, _capture) = capture_logs();
         let rejection = PathRejection::MissingPathParams(MissingPathParams::default());
 
         // Act
@@ -770,22 +706,27 @@ mod tests {
 
         // Assert
         assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
-        let logs = captured_logs(&buffer);
-        assert_eq!(
-            logs.matches("event=\"extractor_fault\"").count(),
-            1,
-            "a missing path-parameter extension must emit exactly one extractor_fault: {logs}"
-        );
+        logs_assert(|lines| {
+            let count = lines
+                .iter()
+                .filter(|line| line.contains("event=\"extractor_fault\""))
+                .count();
+            (count == 1)
+                .then_some(())
+                .ok_or_else(|| format!(
+                    "a missing path-parameter extension must emit exactly one extractor_fault (found {count})"
+                ))
+        });
         assert!(
-            logs.contains("reason=\"missing_path_params\""),
-            "the event must classify the reason: {logs}"
+            logs_contain("reason=\"missing_path_params\""),
+            "the event must classify the reason"
         );
     }
 
     #[test]
+    #[traced_test]
     fn client_path_rejection_logs_one_classified_event_without_the_value() {
         // Arrange
-        let (buffer, _capture) = capture_logs();
 
         // Act
         let (status, message) = ApiError::from(ErrorKind::ParseError {
@@ -805,47 +746,53 @@ mod tests {
             !message.contains("i64"),
             "the client message must not echo the expected type name (`API-040`)"
         );
-        let logs = captured_logs(&buffer);
-        assert_eq!(
-            logs.matches("WARN").count(),
-            1,
-            "a client path rejection must emit exactly one warn event: {logs}"
-        );
-        assert_eq!(
-            logs.matches("event=\"input_validation_failed\"").count(),
-            1,
-            "a client path rejection must emit exactly one input_validation_failed event: {logs}"
+        logs_assert(|lines| {
+            let count = lines.iter().filter(|line| line.contains("WARN")).count();
+            (count == 1).then_some(()).ok_or_else(|| {
+                format!("a client path rejection must emit exactly one warn event (found {count})")
+            })
+        });
+        logs_assert(|lines| {
+            let count = lines
+                .iter()
+                .filter(|line| line.contains("event=\"input_validation_failed\""))
+                .count();
+            (count == 1)
+                .then_some(())
+                .ok_or_else(|| format!(
+                    "a client path rejection must emit exactly one input_validation_failed event (found {count})"
+                ))
+        });
+        assert!(
+            logs_contain("field=\"path\""),
+            "the event must identify the path field"
         );
         assert!(
-            logs.contains("field=\"path\""),
-            "the event must identify the path field: {logs}"
+            logs_contain("reason=\"parse\""),
+            "the event must classify the reason"
         );
         assert!(
-            logs.contains("reason=\"parse\""),
-            "the event must classify the reason: {logs}"
+            logs_contain("security"),
+            "the event must target the reserved security target"
         );
         assert!(
-            logs.contains("security"),
-            "the event must target the reserved security target: {logs}"
+            !logs_contain("extractor_fault"),
+            "a client path rejection must not emit the server event"
         );
         assert!(
-            !logs.contains("extractor_fault"),
-            "a client path rejection must not emit the server event: {logs}"
+            !logs_contain("LEAK_SENTINEL"),
+            "the event must not echo the rejected value"
         );
         assert!(
-            !logs.contains("LEAK_SENTINEL"),
-            "the event must not echo the rejected value: {logs}"
-        );
-        assert!(
-            !logs.contains("i64"),
-            "the event must not echo the expected type name: {logs}"
+            !logs_contain("i64"),
+            "the event must not echo the expected type name"
         );
     }
 
     #[test]
+    #[traced_test]
     fn misconfigured_path_logs_one_extractor_fault() {
         // Arrange
-        let (buffer, _capture) = capture_logs();
 
         // Act
         let (status, message) = ApiError::from(ErrorKind::WrongNumberOfParameters {
@@ -857,63 +804,80 @@ mod tests {
         // Assert
         assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
         assert_eq!(message, "an unexpected error occurred");
-        let logs = captured_logs(&buffer);
-        assert_eq!(
-            logs.matches("ERROR").count(),
-            1,
-            "a server path misconfiguration must emit exactly one error event: {logs}"
-        );
-        assert_eq!(
-            logs.matches("event=\"extractor_fault\"").count(),
-            1,
-            "a server path misconfiguration must emit exactly one extractor_fault: {logs}"
+        logs_assert(|lines| {
+            let count = lines.iter().filter(|line| line.contains("ERROR")).count();
+            (count == 1)
+                .then_some(())
+                .ok_or_else(|| format!(
+                    "a server path misconfiguration must emit exactly one error event (found {count})"
+                ))
+        });
+        logs_assert(|lines| {
+            let count = lines
+                .iter()
+                .filter(|line| line.contains("event=\"extractor_fault\""))
+                .count();
+            (count == 1)
+                .then_some(())
+                .ok_or_else(|| format!(
+                    "a server path misconfiguration must emit exactly one extractor_fault (found {count})"
+                ))
+        });
+        assert!(
+            logs_contain("reason=\"wrong_number_of_parameters\""),
+            "the event must classify the reason"
         );
         assert!(
-            logs.contains("reason=\"wrong_number_of_parameters\""),
-            "the event must classify the reason: {logs}"
-        );
-        assert!(
-            !logs.contains("input_validation_failed"),
-            "a server fault must not be logged as a client-validation event: {logs}"
+            !logs_contain("event=\"input_validation_failed\""),
+            "a server fault must not be logged as a client-validation event"
         );
     }
 
     #[test]
+    #[traced_test]
     fn reject_enum_logs_one_enum_validation_failed() {
         // Arrange
-        let (buffer, _capture) = capture_logs();
 
         // Act
         let (status, _message) = ApiError::reject_enum("role").status_and_message();
 
         // Assert
         assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
-        let logs = captured_logs(&buffer);
-        assert_eq!(
-            logs.matches("event=\"enum_validation_failed\"").count(),
-            1,
-            "a discrete-list rejection must emit exactly one enum_validation_failed: {logs}"
-        );
-        assert_eq!(
-            logs.matches("WARN").count(),
-            1,
-            "a discrete-list rejection must emit exactly one warn event: {logs}"
+        logs_assert(|lines| {
+            let count = lines
+                .iter()
+                .filter(|line| line.contains("event=\"enum_validation_failed\""))
+                .count();
+            (count == 1)
+                .then_some(())
+                .ok_or_else(|| format!(
+                    "a discrete-list rejection must emit exactly one enum_validation_failed (found {count})"
+                ))
+        });
+        logs_assert(|lines| {
+            let count = lines.iter().filter(|line| line.contains("WARN")).count();
+            (count == 1).then_some(()).ok_or_else(|| {
+                format!(
+                    "a discrete-list rejection must emit exactly one warn event (found {count})"
+                )
+            })
+        });
+        assert!(
+            logs_contain("field=role"),
+            "the event must name the rejected field"
         );
         assert!(
-            logs.contains("field=role"),
-            "the event must name the rejected field: {logs}"
+            logs_contain("reason=\"invalid_value\""),
+            "the event must classify the reason"
         );
         assert!(
-            logs.contains("reason=\"invalid_value\""),
-            "the event must classify the reason: {logs}"
-        );
-        assert!(
-            logs.contains("security"),
-            "the event must target the reserved security target: {logs}"
+            logs_contain("security"),
+            "the event must target the reserved security target"
         );
     }
 
     #[tokio::test]
+    #[traced_test]
     async fn query_rejection_invalid_value_logs_one_input_validation_failed()
     -> Result<(), Box<dyn Error>> {
         // Arrange: a `QueryRejection` cannot be constructed directly, so the
@@ -921,7 +885,6 @@ mod tests {
         // `Query` extractor rejects only with `FailedToDeserializeQueryString`
         // (`400 Bad Request`), so the size-limit arm of the `From<QueryRejection>`
         // impl is a defensive classification that no extractor reaches today.
-        let (buffer, _capture) = capture_logs();
         let uri: Uri = "/probe?count=LEAK_SENTINEL".parse()?;
 
         // Act
@@ -934,36 +897,42 @@ mod tests {
         // and the malformed value never reaches the sink (`OBS-003`).
         assert_eq!(status, StatusCode::BAD_REQUEST);
         assert_eq!(message, "the request query string is invalid");
-        let logs = captured_logs(&buffer);
-        assert_eq!(
-            logs.matches("WARN").count(),
-            1,
-            "an invalid query string must emit exactly one warn event: {logs}"
-        );
-        assert_eq!(
-            logs.matches("event=\"input_validation_failed\"").count(),
-            1,
-            "an invalid query string must emit exactly one input_validation_failed event: {logs}"
+        logs_assert(|lines| {
+            let count = lines.iter().filter(|line| line.contains("WARN")).count();
+            (count == 1).then_some(()).ok_or_else(|| {
+                format!("an invalid query string must emit exactly one warn event (found {count})")
+            })
+        });
+        logs_assert(|lines| {
+            let count = lines
+                .iter()
+                .filter(|line| line.contains("event=\"input_validation_failed\""))
+                .count();
+            (count == 1)
+                .then_some(())
+                .ok_or_else(|| format!(
+                    "an invalid query string must emit exactly one input_validation_failed event (found {count})"
+                ))
+        });
+        assert!(
+            !logs_contain("event=\"limit_exceeded\""),
+            "an invalid query string must not be classified as a size-limit rejection"
         );
         assert!(
-            !logs.contains("limit_exceeded"),
-            "an invalid query string must not be classified as a size-limit rejection: {logs}"
+            logs_contain("security"),
+            "the event must target the reserved security target"
         );
         assert!(
-            logs.contains("security"),
-            "the event must target the reserved security target: {logs}"
+            logs_contain("field=\"query\""),
+            "the event must identify the query field"
         );
         assert!(
-            logs.contains("field=\"query\""),
-            "the event must identify the query field: {logs}"
+            logs_contain("reason=\"invalid_value\""),
+            "the event must classify the reason as an invalid value"
         );
         assert!(
-            logs.contains("reason=\"invalid_value\""),
-            "the event must classify the reason as an invalid value: {logs}"
-        );
-        assert!(
-            !logs.contains("LEAK_SENTINEL"),
-            "the event must not echo the rejected value: {logs}"
+            !logs_contain("LEAK_SENTINEL"),
+            "the event must not echo the rejected value"
         );
         Ok(())
     }

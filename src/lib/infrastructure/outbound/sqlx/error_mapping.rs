@@ -164,81 +164,13 @@ pub(crate) fn emit_catalogued_failure(kind: &str, operation: &str, expected_cons
 #[cfg(test)]
 mod tests {
     use std::error::Error;
-    use std::io as stdio;
-    use std::sync::Arc;
-    use std::sync::Mutex;
-    use std::sync::PoisonError;
 
     use sqlx::SqlitePool;
     use sqlx::sqlite::SqlitePoolOptions;
-    use tracing::subscriber::DefaultGuard;
-    use tracing::subscriber::set_default;
-    use tracing_subscriber::fmt;
-    use tracing_subscriber::layer::SubscriberExt as _;
 
     use crate::domain::port::error::RepositoryError;
     use crate::domain::port::error::UnitOfWorkError;
-
-    /// Append-only sink that lets a test read back the lines [`fmt`] emits.
-    #[derive(Clone)]
-    struct CaptureWriter {
-        /// Buffer shared with the test that asserts on the captured output.
-        buffer: Arc<Mutex<Vec<u8>>>,
-    }
-
-    #[expect(
-        clippy::missing_trait_methods,
-        reason = "only the raw `write` and `flush` are meaningful for an in-memory capture buffer"
-    )]
-    impl stdio::Write for CaptureWriter {
-        fn flush(&mut self) -> stdio::Result<()> {
-            Ok(())
-        }
-
-        fn write(&mut self, buf: &[u8]) -> stdio::Result<usize> {
-            let mut buffer = self.buffer.lock().unwrap_or_else(PoisonError::into_inner);
-            buffer.extend_from_slice(buf);
-            Ok(buf.len())
-        }
-    }
-
-    /// Hand every formatted event to a fresh clone of the shared buffer.
-    #[expect(
-        clippy::missing_trait_methods,
-        reason = "the default `make_writer_for` already routes through `make_writer`"
-    )]
-    impl<'writer> fmt::MakeWriter<'writer> for CaptureWriter {
-        type Writer = Self;
-
-        fn make_writer(&'writer self) -> Self::Writer {
-            self.clone()
-        }
-    }
-
-    /// Install a capturing subscriber on the current thread and return the
-    /// shared buffer plus the guard that keeps it active.
-    ///
-    /// The guard must stay alive for the whole probe: `#[tokio::test]` runs on
-    /// a current-thread runtime, so the awaited query is polled on this thread
-    /// and sees the scoped default dispatcher. The subscriber is scoped to this
-    /// thread, so no process-global subscriber is installed and tests stay
-    /// isolated.
-    fn capture_logs() -> (Arc<Mutex<Vec<u8>>>, DefaultGuard) {
-        let buffer = Arc::new(Mutex::new(Vec::new()));
-        let subscriber = tracing_subscriber::registry().with(
-            fmt::layer().with_ansi(false).with_writer(CaptureWriter {
-                buffer: Arc::clone(&buffer),
-            }),
-        );
-        let guard = set_default(subscriber);
-        (buffer, guard)
-    }
-
-    /// Read the captured bytes back as a lossy UTF-8 string.
-    fn captured_logs(buffer: &Mutex<Vec<u8>>) -> String {
-        let bytes = buffer.lock().unwrap_or_else(PoisonError::into_inner);
-        String::from_utf8_lossy(bytes.as_slice()).into_owned()
-    }
+    use tracing_test::traced_test;
 
     /// Build an in-memory `SQLite` pool holding `schema`.
     async fn probe_pool(schema: &'static str) -> Result<SqlitePool, Box<dyn Error>> {
@@ -252,57 +184,82 @@ mod tests {
 
     /// Assert the captured output is the single `warn` `constraint_rejected`
     /// event for `kind` on the reserved `security` target.
-    fn assert_constraint_rejected(logs: &str, kind: &str) {
-        assert_eq!(
-            logs.matches("WARN").count(),
-            1,
-            "an expected constraint must emit exactly one warn event: {logs}"
-        );
-        assert!(
-            logs.contains("event=\"constraint_rejected\""),
-            "the event must be constraint_rejected: {logs}"
-        );
-        assert!(
-            logs.contains(&format!("kind=\"{kind}\"")),
-            "the event must carry the stable kind `{kind}`: {logs}"
-        );
-        assert!(
-            logs.contains("operation=\"repository\""),
-            "the event must name the repository operation: {logs}"
-        );
-        assert!(
-            logs.contains("security"),
-            "the event must target the reserved security target: {logs}"
-        );
+    fn assert_constraint_rejected(lines: &[&str], kind: &str) -> Result<(), String> {
+        let ours: Vec<&str> = lines
+            .iter()
+            .copied()
+            .filter(|line| line.contains("security:"))
+            .collect();
+        let warn_count = ours.iter().filter(|line| line.contains("WARN")).count();
+        if warn_count != 1 {
+            return Err(format!(
+                "an expected constraint must emit exactly one warn event (found {warn_count})"
+            ));
+        }
+        if !ours
+            .iter()
+            .any(|line| line.contains("event=\"constraint_rejected\""))
+        {
+            return Err("the event must be constraint_rejected".to_owned());
+        }
+        if !ours
+            .iter()
+            .any(|line| line.contains(&format!("kind=\"{kind}\"")))
+        {
+            return Err(format!("the event must carry the stable kind `{kind}`"));
+        }
+        if !ours
+            .iter()
+            .any(|line| line.contains("operation=\"repository\""))
+        {
+            return Err("the event must name the repository operation".to_owned());
+        }
+        if !ours.iter().any(|line| line.contains("security")) {
+            return Err("the event must target the reserved security target".to_owned());
+        }
+        Ok(())
     }
 
     /// Assert the captured output is the single `error` `port_fault` event for
     /// `kind` and `operation` on the reserved `security` target.
-    fn assert_port_fault(logs: &str, kind: &str, operation: &str) {
-        assert_eq!(
-            logs.matches("ERROR").count(),
-            1,
-            "a dependency fault must emit exactly one error event: {logs}"
-        );
-        assert!(
-            logs.contains("event=\"port_fault\""),
-            "the event must be port_fault: {logs}"
-        );
-        assert!(
-            logs.contains(&format!("kind=\"{kind}\"")),
-            "the event must carry the stable kind `{kind}`: {logs}"
-        );
-        assert!(
-            logs.contains(&format!("operation=\"{operation}\"")),
-            "the event must name the owning operation: {logs}"
-        );
-        assert!(
-            logs.contains("security"),
-            "the event must target the reserved security target: {logs}"
-        );
+    fn assert_port_fault(lines: &[&str], kind: &str, operation: &str) -> Result<(), String> {
+        let ours: Vec<&str> = lines
+            .iter()
+            .copied()
+            .filter(|line| line.contains("security:"))
+            .collect();
+        let error_count = ours.iter().filter(|line| line.contains("ERROR")).count();
+        if error_count != 1 {
+            return Err(format!(
+                "a dependency fault must emit exactly one error event (found {error_count})"
+            ));
+        }
+        if !ours
+            .iter()
+            .any(|line| line.contains("event=\"port_fault\""))
+        {
+            return Err("the event must be port_fault".to_owned());
+        }
+        if !ours
+            .iter()
+            .any(|line| line.contains(&format!("kind=\"{kind}\"")))
+        {
+            return Err(format!("the event must carry the stable kind `{kind}`"));
+        }
+        if !ours
+            .iter()
+            .any(|line| line.contains(&format!("operation=\"{operation}\"")))
+        {
+            return Err("the event must name the owning operation".to_owned());
+        }
+        if !ours.iter().any(|line| line.contains("security")) {
+            return Err("the event must target the reserved security target".to_owned());
+        }
+        Ok(())
     }
 
     #[tokio::test]
+    #[traced_test]
     async fn constraint_trigger_abort_logs_constraint_rejected() -> Result<(), Box<dyn Error>> {
         // Arrange: a guard trigger whose `RAISE(ABORT)` reports extended code 1811.
         let pool = probe_pool(
@@ -316,7 +273,6 @@ mod tests {
              END;",
         )
         .await?;
-        let (buffer, _capture) = capture_logs();
 
         // Act
         let mapped = sqlx::query("INSERT INTO probe (value) VALUES (0)")
@@ -326,15 +282,15 @@ mod tests {
 
         // Assert: a handled conflict is a `warn` `constraint_rejected` event.
         assert!(matches!(mapped, Err(RepositoryError::Conflict)));
-        assert_constraint_rejected(&captured_logs(&buffer), "conflict");
+        logs_assert(|lines| assert_constraint_rejected(lines, "conflict"));
         Ok(())
     }
 
     #[tokio::test]
+    #[traced_test]
     async fn check_violation_logs_port_fault() -> Result<(), Box<dyn Error>> {
         // Arrange
         let pool = probe_pool("CREATE TABLE probe (value INTEGER CHECK (value > 0));").await?;
-        let (buffer, _capture) = capture_logs();
 
         // Act
         let mapped = sqlx::query("INSERT INTO probe (value) VALUES (0)")
@@ -347,18 +303,18 @@ mod tests {
             mapped,
             Err(RepositoryError::DataIntegrityViolation)
         ));
-        assert_port_fault(&captured_logs(&buffer), "check_violation", "repository");
+        logs_assert(|lines| assert_port_fault(lines, "check_violation", "repository"));
         Ok(())
     }
 
     #[tokio::test]
+    #[traced_test]
     async fn unique_violation_logs_constraint_rejected() -> Result<(), Box<dyn Error>> {
         // Arrange
         let pool = probe_pool("CREATE TABLE probe (value INTEGER UNIQUE);").await?;
         sqlx::query("INSERT INTO probe (value) VALUES (1)")
             .execute(&pool)
             .await?;
-        let (buffer, _capture) = capture_logs();
 
         // Act
         let mapped = sqlx::query("INSERT INTO probe (value) VALUES (1)")
@@ -368,11 +324,12 @@ mod tests {
 
         // Assert
         assert!(matches!(mapped, Err(RepositoryError::AlreadyExist)));
-        assert_constraint_rejected(&captured_logs(&buffer), "unique_violation");
+        logs_assert(|lines| assert_constraint_rejected(lines, "unique_violation"));
         Ok(())
     }
 
     #[tokio::test]
+    #[traced_test]
     async fn port_fault_logs_never_carry_the_sqlx_debug() -> Result<(), Box<dyn Error>> {
         // Arrange: a trigger whose `RAISE(ABORT)` message is a unique sentinel.
         let pool = probe_pool(
@@ -386,7 +343,6 @@ mod tests {
              END;",
         )
         .await?;
-        let (buffer, _capture) = capture_logs();
 
         // Act
         let mapped = sqlx::query("INSERT INTO probe (value) VALUES (0)")
@@ -396,23 +352,23 @@ mod tests {
 
         // Assert: the mapped event carries only the stable classification.
         assert!(matches!(mapped, Err(RepositoryError::Conflict)));
-        let logs = captured_logs(&buffer);
-        assert!(
-            !logs.contains("LEAK_SENTINEL"),
-            "the event must not carry the raw sqlx Debug: {logs}"
-        );
-        assert!(
-            !logs.contains("SqliteError"),
-            "the event must not carry the raw sqlx error type: {logs}"
-        );
+        logs_assert(|lines| {
+            let leaked = lines
+                .iter()
+                .filter(|line| line.contains("security:"))
+                .any(|line| line.contains("LEAK_SENTINEL") || line.contains("SqliteError"));
+            (!leaked)
+                .then_some(())
+                .ok_or_else(|| "the event must not carry the raw sqlx detail".to_owned())
+        });
         Ok(())
     }
 
     #[tokio::test]
+    #[traced_test]
     async fn unit_of_work_failure_logs_port_fault() -> Result<(), Box<dyn Error>> {
         // Arrange: a database failure surfaced through the unit of work.
         let pool = probe_pool("CREATE TABLE probe (value INTEGER);").await?;
-        let (buffer, _capture) = capture_logs();
 
         // Act
         let mapped = sqlx::query("SELECT missing FROM probe")
@@ -422,7 +378,7 @@ mod tests {
 
         // Assert: no expected constraint can arise here, so it stays a fault.
         assert!(matches!(mapped, Err(UnitOfWorkError::OperationFailed)));
-        assert_port_fault(&captured_logs(&buffer), "operation_failed", "unit_of_work");
+        logs_assert(|lines| assert_port_fault(lines, "operation_failed", "unit_of_work"));
         Ok(())
     }
 }

@@ -170,15 +170,15 @@ mod tests {
         .execute(pool)
         .await?;
         sqlx::query(
-            "INSERT INTO file (file_id, path, user_id, is_public, mime_type_id, integrity_hash)
-             VALUES (1, 'a.png', 1, 0, 'image/png', ?1)",
+            "INSERT INTO file (file_id, path, user_id, is_public, mime_type_id, size_bytes, modified_at, origin, integrity_hash)
+             VALUES (1, 'a.png', 1, 0, 'image/png', 1024, '2026-10-06 00:00:00', 'UPLOADED', ?1)",
         )
         .bind(DIGEST)
         .execute(pool)
         .await?;
         sqlx::query(
-            "INSERT INTO file (file_id, path, user_id, is_public, mime_type_id, integrity_hash)
-             VALUES (2, 'b.mp4', 1, 0, 'video/mp4', ?1)",
+            "INSERT INTO file (file_id, path, user_id, is_public, mime_type_id, size_bytes, modified_at, origin, integrity_hash)
+             VALUES (2, 'b.mp4', 1, 0, 'video/mp4', 1024, '2026-10-06 00:00:00', 'UPLOADED', ?1)",
         )
         .bind(DIGEST_ALT)
         .execute(pool)
@@ -843,8 +843,8 @@ mod tests {
         seed_season(&pool, 40, 1, 1).await?;
         seed_episode(&pool, 60, 40, 1, 1).await?;
         sqlx::query(
-            "INSERT INTO file (file_id, path, user_id, is_public, mime_type_id, integrity_hash)
-             VALUES (3, 'c.mp4', 1, 0, 'video/mp4', ?1)",
+            "INSERT INTO file (file_id, path, user_id, is_public, mime_type_id, size_bytes, modified_at, origin, integrity_hash)
+             VALUES (3, 'c.mp4', 1, 0, 'video/mp4', 1024, '2026-10-06 00:00:00', 'UPLOADED', ?1)",
         )
         .bind(format!("{:064x}", 3i32))
         .execute(&pool)

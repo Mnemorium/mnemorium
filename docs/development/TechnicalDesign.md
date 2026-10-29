@@ -965,12 +965,13 @@ exists — including an empty or partial one — is never rewritten. A test comp
 `Configuration::default()`, so the two cannot drift.
 
 Secrets are not configuration. The site pepper and the token signing secret live in the instance state (`state.yaml`,
-[§ 10.2](#102-instance-identity)). Three paths are fixed facts rather than settings, each a constant owned by the module
+[§ 10.2](#102-instance-identity)). Two paths are fixed facts rather than settings, each a constant owned by the module
 that composes it: the datastore path is declared once as `DATABASE_PATH` in the load-state port
-(`src/lib/application/port/load_state.rs`), beside `STATE_PATH`; and the media storage root is `STORAGE_ROOT` in the
-upload-layout module (`src/lib/application/use_case/upload_layout.rs`), which owns every path composed from it. None of
-them can be set through the file or the environment. The two seed variables in § 10.2 are the only environment inputs
-that reach the state, and they apply only at creation.
+(`src/lib/application/port/load_state.rs`), beside `STATE_PATH`; and the library root is `MEDIA_ROOT` in the
+upload-layout module (`src/lib/application/use_case/upload_layout.rs`), which owns every path composed from it, beside
+the server-owned staging root. Neither can be set through the file or the environment. The library root is the
+operator's mount and is never created by the server; the staging root is server-owned and recreated when absent. The two
+seed variables in § 10.2 are the only environment inputs that reach the state, and they apply only at creation.
 
 The configuration also carries the logging settings (`logging.level`, `logging.rotation`, `logging.max_files`,
 `logging.ansi`). The `tracing` subscriber is installed from the resolved configuration after `LoadConfiguration` and
@@ -1898,7 +1899,7 @@ enforce invariants.
 | `PERS-002` | Datastore & migrations      | Version the schema with migrations in `migrations/`, one `.up.sql`/`.down.sql` pair per change.                                                                                                                                                |                                           |
 | `PERS-003` | Datastore & migrations      | Apply the migrations at startup with `sqlx::migrate!` in `src/lib/infrastructure/outbound/sqlx/sqlite3.rs`.                                                                                                                                    |                                           |
 | `PERS-004` | Datastore & migrations      | Run the migrations at boot inside `init_db`.                                                                                                                                                                                                   |                                           |
-| `PERS-005` | Seeds                       | Seed the reference data (`audio_channel`, `color`, `gallery`, `language`, `mime_type`) from the migrations.                                                                                                                                    |                                           |
+| `PERS-005` | Seeds                       | Seed the reference data (`color`, `gallery`, `language`, `mime_type`) from the migrations.                                                                                                                                                     |                                           |
 | `PERS-006` | Invariants                  | A `user` row with `user_id = 0` (the Root Admin) cannot be deleted or modified.                                                                                                                                                                |                                           |
 | `PERS-007` | Invariants                  | A `gallery` row with `gallery_id = 0` (the default gallery) cannot be deleted or modified.                                                                                                                                                     |                                           |
 | `PERS-008` | Invariants                  | Normalise `codec`, `genre_id`, `movie.country_of_origin` and `series.country_of_origin` to uppercase on insert/update.                                                                                                                         |                                           |
@@ -1991,13 +1992,6 @@ entity music_playlist {
    cover_file_id: INTEGER <<FK>>
 }
 
-entity audio_channel {
-   * audio_channel_id: TEXT <<PK>>
-   --
-   * nb_channel: INTEGER <<NN>>
-   * description: TEXT <<NN>>
-}
-
 entity audio {
    * audio_id: INTEGER <<PK>>
    --
@@ -2005,9 +1999,8 @@ entity audio {
    * duration_ms: REAL <<NN, CC(duration_ms >= 0)>>
    * codec: TEXT <<NN>>
    * sample_rate_hz: REAL <<NN, CC(sample_rate_hz >= 0)>>
-   * audio_channel_id: TEXT <<FK, NN>>
-   * bit_depth: INTEGER <<NN, CC(bit_depth > 0 AND (bit_depth & (bit_depth - 1)) = 0)>>
-   * block_size: INTEGER <<NN, CC(block_size > 0 AND (block_size & (block_size - 1)) = 0)>>
+   bit_depth: INTEGER <<CC(bit_depth IS NULL OR bit_depth > 0)>>
+   block_size: INTEGER <<CC(block_size IS NULL OR block_size > 0)>>
    * file_id: INTEGER <<FK, NN, UN>>
 }
 
@@ -2067,7 +2060,10 @@ entity file {
    * is_public: BOOLEAN <<NN, DF(0)>>
    * mime_type_id: TEXT <<FK, NN>>
    * uploaded_at: DATE <<NN, DF(date('now'))>>
-   * integrity_hash: CHAR(64) <<NN, CC(length(integrity_hash) = 64)>>
+   * size_bytes: INTEGER <<NN>>
+   * modified_at: TEXT <<NN>>
+   * origin: TEXT <<NN, DF('SCANNED'), CC(origin IN ('UPLOADED', 'SCANNED'))>>
+   integrity_hash: CHAR(64) <<CC(integrity_hash IS NULL OR length(integrity_hash) = 64)>>
 }
 
 entity upload {
@@ -2255,8 +2251,6 @@ music_playlist ||--o{ music_track
 
 music_recording ||--o{ music_track
 
-audio_channel ||--o{ audio
-
 audio ||--|| music_recording
 audio ||--|| file
 
@@ -2335,7 +2329,9 @@ The `music_playlist` entity enforces a composite unique key on `(user_id, name)`
 caller owns at most one playlist per name, while different callers may each own a playlist with the same name.
 
 The `file` entity enforces a composite unique key on `(user_id, integrity_hash)`: a caller stores one file record per
-integrity hash, while different callers may each store their own copy.
+integrity hash, while different callers may each store their own copy. `integrity_hash` is nullable: an uploaded file
+carries the digest that verifies its content and deduplicates it, while a scanned file carries none, and `SQLite` treats
+`NULL` values as distinct, so the unique key does not apply to a scanned row.
 
 The five library resources that may carry artwork -- `movie`, `series`, `season`, `music_album` and `music_playlist` --
 each hold a nullable `cover_file_id` into `file` (`fk_<table>_cover_file`). The reference crosses into the Asset bounded
@@ -2438,6 +2434,7 @@ the flows the E2E suite covers come from the critical exception paths in [UseCas
 | `TEST-059` | Configuration test | An operator message is matched through the suite's single constants module, never inline. A structured `event=` / `component=` field is matched where the server emits one.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | [§ Configuration test](#configuration-test)     |
 | `TEST-060` | Configuration test | Each test starts its own container with its own writable working directory, published on a random loopback port; no test touches another test's container, the `test/e2e` container, or the repository working tree.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | [§ Configuration test](#configuration-test)     |
 | `TEST-061` | Configuration test | A refusal case asserts the refusal effect: the persisted file is byte-identical, no replacement identity is written, no `config.yaml` or datastore is created, and the secret value never reaches stdout or a log file.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | [§ Configuration test](#configuration-test)     |
+| `TEST-062` | Logging test       | A test that asserts on emitted log output is annotated `#[traced_test]` from `tracing-test` and matches through `logs_contain`/`logs_assert`; it installs no subscriber of its own — no `tracing::subscriber::set_default`, no `MakeWriter`/capture writer and no `capture_logs`/`captured_logs` helper.                                                                                                                                                                                                                                                                                                                                                                                                      | [§ Logging test](#logging-test)                 |
 
 ---
 
@@ -2587,6 +2584,42 @@ approval.
 
 ---
 
+### Logging test
+
+A test that asserts on emitted log output uses `#[traced_test]` from `tracing-test` and matches through the injected
+`logs_contain` and `logs_assert` helpers ([TEST-062](#logging-test)). It installs no subscriber of its own: no
+`tracing::subscriber::set_default`, no `MakeWriter` capture writer and no `capture_logs`/`captured_logs` helper.
+
+`#[traced_test]` installs one global subscriber for the whole test binary and opens a span named after the test, so the
+capture does not depend on a thread-local dispatcher. A scoped dispatcher is what made the capture tests flaky: the
+`tracing` callsite cache is process-wide, and installing or dropping a scoped subscriber on one test thread while
+another test emits an event could cache the event as disabled, silently losing it. The global subscriber removes both
+the install churn and the per-thread limitation.
+
+The dependency enables `tracing-test`'s `no-env-filter` feature because the server emits its security events on the
+reserved `security` target (`OBS-007`), which the crate's default `<crate>=trace` filter would drop. The consequence is
+that every dependency's lines are captured too, so:
+
+- match the event or message token in `logs_contain` (`event="limit_exceeded"`, `kind="watch_registration_failed"`),
+  never the plain level; a level-only count also matches a dependency's line;
+- use `logs_assert` for an exact count or an absence check, and restrict an absence check to the test's own event lines
+  — `line.contains("security:")` — because a dependency legitimately logs the raw error (for example sqlx logs the SQL
+  and the `RAISE(ABORT)` message a security event must redact);
+- do not use a needle that also appears in the test's own name: the line carries the test span, so
+  `from_bytes_rejection_oversized_body_does_not_log_buffer_failed` matches `buffer_failed` in its own prefix — assert on
+  `event="buffer_failed"` instead;
+- a shared assertion helper takes `&[&str]` and returns `Result<(), String>`, and the test calls it from
+  `logs_assert(|lines| helper(lines, …))`; the injected functions exist only in the annotated function body.
+
+`logs_contain` and `logs_assert` see only the lines tagged with the test's span, so the asserted event must be emitted
+on the test thread. `#[tokio::test]` runs on a current-thread runtime and the awaited call is polled on that thread; do
+not assert logs emitted from `spawn_blocking`, a worker thread or the `notify` watcher thread.
+
+`#[traced_test]` follows the test attribute (`#[tokio::test]`, then `#[traced_test]`). It does not compose with
+`#[rstest]`'s parameterised cases, so a case matrix is written as one test per case over a shared helper.
+
+---
+
 ### Shell script
 
 Shell scripts in the `script/` folder are tooling and CI glue, not application code, so they have no unit, integration
@@ -2708,6 +2741,7 @@ Source: `Cargo.toml`.
 | [infer](https://crates.io/crates/infer)                           | Infers a file type from its magic number signature.                             | 0.22.0  | MIT                                |
 | [jsonwebtoken](https://crates.io/crates/jsonwebtoken)             | Creates and decodes JWTs in a strongly typed way.                               | 11.0.0  | MIT                                |
 | [moka](https://crates.io/crates/moka)                             | Fast, concurrent cache library inspired by Java Caffeine.                       | 0.12.16 | (MIT OR Apache-2.0) AND Apache-2.0 |
+| [notify](https://crates.io/crates/notify)                         | Cross-platform filesystem notification library.                                 | 8.2.1   | CC0-1.0                            |
 | [rand](https://crates.io/crates/rand)                             | Random number generators and other randomness functionality.                    | 0.10.2  | MIT OR Apache-2.0                  |
 | [reqwest](https://crates.io/crates/reqwest)                       | Higher level HTTP client library.                                               | 0.13.4  | MIT OR Apache-2.0                  |
 | [serde](https://crates.io/crates/serde)                           | Generic serialization and deserialization framework.                            | 1.0.229 | MIT OR Apache-2.0                  |
@@ -2728,12 +2762,13 @@ Source: `Cargo.toml`.
 
 #### 5.2 Development
 
-| Name                                          | Description                                           | Version | License           |
-| --------------------------------------------- | ----------------------------------------------------- | ------- | ----------------- |
-| [mockall](https://crates.io/crates/mockall)   | Powerful mock object library for Rust.                | 0.15.0  | MIT OR Apache-2.0 |
-| [rstest](https://crates.io/crates/rstest)     | Fixture-based test framework with table-driven tests. | 0.26.1  | MIT OR Apache-2.0 |
-| [tempfile](https://crates.io/crates/tempfile) | Manages temporary files and directories.              | 3.27.0  | MIT OR Apache-2.0 |
-| [wiremock](https://crates.io/crates/wiremock) | HTTP mocking to test Rust applications.               | 0.6.5   | MIT OR Apache-2.0 |
+| Name                                                  | Description                                                         | Version | License           |
+| ----------------------------------------------------- | ------------------------------------------------------------------- | ------- | ----------------- |
+| [mockall](https://crates.io/crates/mockall)           | Powerful mock object library for Rust.                              | 0.15.0  | MIT OR Apache-2.0 |
+| [rstest](https://crates.io/crates/rstest)             | Fixture-based test framework with table-driven tests.               | 0.26.1  | MIT OR Apache-2.0 |
+| [tempfile](https://crates.io/crates/tempfile)         | Manages temporary files and directories.                            | 3.27.0  | MIT OR Apache-2.0 |
+| [tracing-test](https://crates.io/crates/tracing-test) | Captures `tracing` output for a test through one global subscriber. | 0.2.6   | MIT               |
+| [wiremock](https://crates.io/crates/wiremock)         | HTTP mocking to test Rust applications.                             | 0.6.5   | MIT OR Apache-2.0 |
 
 ---
 
@@ -3463,32 +3498,34 @@ the same way.
 These events are normative: each is emitted at its declared level with its declared fields, and a `security`-target
 event must be one this catalog declares. A field is an identifier, a code or a classification — never a value.
 
-| Event                       | Level   | Fields                       | Emitted when                                                                                |
-| --------------------------- | ------- | ---------------------------- | ------------------------------------------------------------------------------------------- |
-| `input_validation_failed`   | `warn`  | `field`, `reason`            | a client-supplied value fails validation in a handler or use case                           |
-| `enum_validation_failed`    | `warn`  | `field`, `reason`            | a discrete, finite list (for example `Role`) rejects a value                                |
-| `output_validation_failed`  | `warn`  | `reason`                     | stored data fails to decode, or an integrity check fails                                    |
-| `authn_succeeded`           | `info`  | `actor`                      | a credential is accepted                                                                    |
-| `authn_failed`              | `warn`  | `claimed_identity`, `reason` | a credential is rejected; one reason, never distinguishing a bad identity from a bad secret |
-| `authz_failed`              | `warn`  | `actor`, `action`, `target`  | an authorization decision denies an action                                                  |
-| `session_validation_failed` | `warn`  | `reason`                     | a token is missing, invalid or expired                                                      |
-| `rate_limit_exceeded`       | `warn`  | `route`, `reason`            | a request is rejected by a rate limiter                                                     |
-| `limit_exceeded`            | `warn`  | `source`, `reason`           | a request body or query string exceeds a configured size limit                              |
-| `deserialization_failed`    | `warn`  | `source`, `reason`           | a JSON body or the configuration fails to deserialize                                       |
-| `extractor_fault`           | `error` | `reason`                     | an inbound extractor rejects a request for a server-side fault                              |
-| `application_error`         | `error` | `operation`                  | a use case originates an internal `Unknown`                                                 |
-| `port_fault`                | `error` | `kind`, `operation`          | an outbound adapter maps a dependency failure                                               |
-| `constraint_rejected`       | `warn`  | `kind`, `operation`          | an outbound adapter maps an expected constraint to a business result                        |
-| `token_provider_fault`      | `error` | `kind`                       | the inbound token boundary receives an operational fault from the token provider            |
-| `lifecycle`                 | `info`  | `component`, `outcome`       | startup, shutdown or logging initialization                                                 |
-| `user_admin`                | `info`  | `actor`, `action`, `target`  | a user is created or updated, a role or credential changes                                  |
-| `secret_initialized`        | `info`  | `component`                  | the pepper or the signing secret is generated when the instance identity is created         |
-| `credential_rotated`        | `info`  | `actor`                      | a password is replaced or rehashed                                                          |
-| `upload`                    | `info`  | `actor`, `upload`, `outcome` | an upload is accepted, a chunk written, or an upload completed                              |
-| `suspicious_business_logic` | `warn`  | `actor`, `action`, `reason`  | an action is out of order, nonsensical in context, or exceeds a limit                       |
-| `sensitive_data_access`     | `debug` | `actor`, `object`            | a request reads personal data                                                               |
-| `system_object`             | `info`  | `object`, `action`           | a system-level object is created (the instance identity, the Root Admin)                    |
-| `unexpected_http_method`    | `warn`  | `method`, `path`             | a request uses a method the route does not support                                          |
+| Event                       | Level   | Fields                                                                  | Emitted when                                                                                |
+| --------------------------- | ------- | ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| `input_validation_failed`   | `warn`  | `field`, `reason`                                                       | a client-supplied value fails validation in a handler or use case                           |
+| `enum_validation_failed`    | `warn`  | `field`, `reason`                                                       | a discrete, finite list (for example `Role`) rejects a value                                |
+| `output_validation_failed`  | `warn`  | `reason`                                                                | stored data fails to decode, or an integrity check fails                                    |
+| `authn_succeeded`           | `info`  | `actor`                                                                 | a credential is accepted                                                                    |
+| `authn_failed`              | `warn`  | `claimed_identity`, `reason`                                            | a credential is rejected; one reason, never distinguishing a bad identity from a bad secret |
+| `authz_failed`              | `warn`  | `actor`, `action`, `target`                                             | an authorization decision denies an action                                                  |
+| `session_validation_failed` | `warn`  | `reason`                                                                | a token is missing, invalid or expired                                                      |
+| `rate_limit_exceeded`       | `warn`  | `route`, `reason`                                                       | a request is rejected by a rate limiter                                                     |
+| `limit_exceeded`            | `warn`  | `source`, `reason`                                                      | a request body or query string exceeds a configured size limit                              |
+| `deserialization_failed`    | `warn`  | `source`, `reason`                                                      | a JSON body or the configuration fails to deserialize                                       |
+| `extractor_fault`           | `error` | `reason`                                                                | an inbound extractor rejects a request for a server-side fault                              |
+| `ingest`                    | `info`  | `registered`, `completed`, `untouched`, `changed`, `missing`, `skipped` | a library ingest operation (scan or observed change) finishes; never a file name or path    |
+| `ingest_fault`              | `warn`  | `kind`, `operation`                                                     | the change observer degraded (a failed watch registration, a watcher error or overflow)     |
+| `application_error`         | `error` | `operation`                                                             | a use case originates an internal `Unknown`                                                 |
+| `port_fault`                | `error` | `kind`, `operation`                                                     | an outbound adapter maps a dependency failure                                               |
+| `constraint_rejected`       | `warn`  | `kind`, `operation`                                                     | an outbound adapter maps an expected constraint to a business result                        |
+| `token_provider_fault`      | `error` | `kind`                                                                  | the inbound token boundary receives an operational fault from the token provider            |
+| `lifecycle`                 | `info`  | `component`, `outcome`                                                  | startup, shutdown or logging initialization                                                 |
+| `user_admin`                | `info`  | `actor`, `action`, `target`                                             | a user is created or updated, a role or credential changes                                  |
+| `secret_initialized`        | `info`  | `component`                                                             | the pepper or the signing secret is generated when the instance identity is created         |
+| `credential_rotated`        | `info`  | `actor`                                                                 | a password is replaced or rehashed                                                          |
+| `upload`                    | `info`  | `actor`, `upload`, `outcome`                                            | an upload is accepted, a chunk written, or an upload completed                              |
+| `suspicious_business_logic` | `warn`  | `actor`, `action`, `reason`                                             | an action is out of order, nonsensical in context, or exceeds a limit                       |
+| `sensitive_data_access`     | `debug` | `actor`, `object`                                                       | a request reads personal data                                                               |
+| `system_object`             | `info`  | `object`, `action`                                                      | a system-level object is created (the instance identity, the Root Admin)                    |
+| `unexpected_http_method`    | `warn`  | `method`, `path`                                                        | a request uses a method the route does not support                                          |
 
 The `authz_failed` fields are a closed vocabulary shared with the permission catalog (`docs/Permissions.md`). `action`
 is the denied action's verb, one of `read`, `moderate`, `manage`, `use`, `write`, `update`, `update_role`, `create` or

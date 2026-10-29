@@ -57,6 +57,8 @@ mod test_helpers {
     use crate::domain::model::video::ScanType;
     use crate::domain::model::video::Video;
     use crate::domain::port::asset_unit_of_work::AssetUnitOfWork;
+    use crate::domain::port::audio_repository::AudioRepository;
+    use crate::domain::port::audio_repository::MockAudioRepository;
     use crate::domain::port::credential_repository::CredentialRepository;
     use crate::domain::port::credential_repository::MockCredentialRepository;
     use crate::domain::port::error::UnitOfWorkError;
@@ -129,6 +131,8 @@ mod test_helpers {
     /// repositories it stubs, so adding a repository to a context touches this
     /// fixture alone.
     pub struct TestUnitOfWork {
+        /// Audio repository.
+        pub audios: MockAudioRepository,
         /// Set to force `commit` to fail.
         pub commit_fails: Arc<AtomicBool>,
         /// Set when `commit` is called.
@@ -167,6 +171,7 @@ mod test_helpers {
         /// A unit of work holding a fresh mock per repository.
         fn default() -> Self {
             Self {
+                audios: MockAudioRepository::new(),
                 commit_fails: Arc::new(AtomicBool::new(false)),
                 committed: Arc::new(AtomicBool::new(false)),
                 credentials: MockCredentialRepository::new(),
@@ -204,6 +209,10 @@ mod test_helpers {
     }
 
     impl LibraryUnitOfWork for TestUnitOfWork {
+        fn audios(&mut self) -> impl AudioRepository + '_ {
+            &mut self.audios
+        }
+
         fn galleries(&mut self) -> impl GalleryRepository + '_ {
             &mut self.galleries
         }

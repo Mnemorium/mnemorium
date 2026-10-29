@@ -209,10 +209,7 @@ pub async fn post_register(
 #[cfg(test)]
 mod tests {
     use std::error::Error;
-    use std::io as stdio;
     use std::sync::Arc;
-    use std::sync::Mutex;
-    use std::sync::PoisonError;
 
     use axum::body::Body;
     use axum::body::to_bytes;
@@ -225,10 +222,6 @@ mod tests {
     use serde_json::Value;
     use serde_json::json;
     use tower::ServiceExt as _;
-    use tracing::subscriber::DefaultGuard;
-    use tracing::subscriber::set_default;
-    use tracing_subscriber::fmt;
-    use tracing_subscriber::layer::SubscriberExt as _;
 
     use super::post_register;
     use crate::application::port::identity_use_case_factory::MockIdentityUseCaseFactory;
@@ -243,42 +236,7 @@ mod tests {
     use crate::test_helpers::SECRET_PASSWORD;
     use crate::test_helpers::app_state_with_identity;
     use crate::test_helpers::error_message_of;
-
-    /// Append-only sink that lets a test read back the lines [`fmt`] emits.
-    #[derive(Clone)]
-    struct CaptureWriter {
-        /// Buffer shared with the test that asserts on the captured output.
-        buffer: Arc<Mutex<Vec<u8>>>,
-    }
-
-    #[expect(
-        clippy::missing_trait_methods,
-        reason = "only the raw `write` and `flush` are meaningful for an in-memory capture buffer"
-    )]
-    impl stdio::Write for CaptureWriter {
-        fn flush(&mut self) -> stdio::Result<()> {
-            Ok(())
-        }
-
-        fn write(&mut self, buf: &[u8]) -> stdio::Result<usize> {
-            let mut buffer = self.buffer.lock().unwrap_or_else(PoisonError::into_inner);
-            buffer.extend_from_slice(buf);
-            Ok(buf.len())
-        }
-    }
-
-    /// Hand every formatted event to a fresh clone of the shared buffer.
-    #[expect(
-        clippy::missing_trait_methods,
-        reason = "the default `make_writer_for` already routes through `make_writer`"
-    )]
-    impl<'writer> fmt::MakeWriter<'writer> for CaptureWriter {
-        type Writer = Self;
-
-        fn make_writer(&'writer self) -> Self::Writer {
-            self.clone()
-        }
-    }
+    use tracing_test::traced_test;
 
     /// Send `body` through the endpoint router on behalf of `caller_id`,
     /// injecting the caller identifier the way the auth middleware does.
@@ -347,38 +305,11 @@ mod tests {
             .return_once(move |_| Box::pin(async { Err(error) }));
     }
 
-    /// Install a capturing subscriber on the current thread and return the
-    /// shared buffer plus the guard that keeps it active.
-    #[expect(
-        clippy::single_call_fn,
-        reason = "the module-local capture helper mirrors the pattern the other handler suites use"
-    )]
-    fn capture_logs() -> (Arc<Mutex<Vec<u8>>>, DefaultGuard) {
-        let buffer = Arc::new(Mutex::new(Vec::new()));
-        let subscriber = tracing_subscriber::registry().with(
-            fmt::layer().with_ansi(false).with_writer(CaptureWriter {
-                buffer: Arc::clone(&buffer),
-            }),
-        );
-        let guard = set_default(subscriber);
-        (buffer, guard)
-    }
-
-    /// Read the captured bytes back as a lossy UTF-8 string.
-    #[expect(
-        clippy::single_call_fn,
-        reason = "the module-local read-back helper mirrors the pattern the other handler suites use"
-    )]
-    fn captured_logs(buffer: &Mutex<Vec<u8>>) -> String {
-        let bytes = buffer.lock().unwrap_or_else(PoisonError::into_inner);
-        String::from_utf8_lossy(bytes.as_slice()).into_owned()
-    }
-
     #[tokio::test]
+    #[traced_test]
     async fn post_register_invalid_role_logs_enum_validation_failed() -> Result<(), Box<dyn Error>>
     {
         // Arrange
-        let (buffer, _capture) = capture_logs();
         let use_case = MockRegisterUserUseCase::new();
 
         // Act
@@ -398,23 +329,28 @@ mod tests {
 
         // Assert
         assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
-        let logs = captured_logs(&buffer);
-        assert_eq!(
-            logs.matches("event=\"enum_validation_failed\"").count(),
-            1,
-            "an invalid role must emit exactly one enum_validation_failed: {logs}"
+        logs_assert(|lines| {
+            let count = lines
+                .iter()
+                .filter(|line| line.contains("event=\"enum_validation_failed\""))
+                .count();
+            (count == 1).then_some(()).ok_or_else(|| {
+                format!(
+                    "an invalid role must emit exactly one enum_validation_failed (found {count})"
+                )
+            })
+        });
+        assert!(
+            logs_contain("field=role"),
+            "the event must name the role field"
         );
         assert!(
-            logs.contains("field=role"),
-            "the event must name the role field: {logs}"
+            !logs_contain("deserialization_failed"),
+            "an invalid role must not also emit deserialization_failed"
         );
         assert!(
-            !logs.contains("deserialization_failed"),
-            "an invalid role must not also emit deserialization_failed: {logs}"
-        );
-        assert!(
-            !logs.contains("SUPERADMIN"),
-            "the event must not echo the rejected value: {logs}"
+            !logs_contain("SUPERADMIN"),
+            "the event must not echo the rejected value"
         );
         Ok(())
     }

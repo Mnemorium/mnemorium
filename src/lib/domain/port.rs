@@ -1,6 +1,8 @@
 pub mod asset_unit_of_work;
+pub mod audio_repository;
 pub mod configuration_source;
 pub mod content_hasher;
+pub mod content_type_sniffer;
 pub mod credential_repository;
 pub mod error;
 pub mod file_repository;
@@ -11,6 +13,7 @@ pub mod image_repository;
 pub mod instance_state_store;
 pub mod library_unit_of_work;
 pub mod media_probe;
+pub mod media_source;
 pub mod mime_type_repository;
 pub mod movie_repository;
 pub mod music_album_repository;

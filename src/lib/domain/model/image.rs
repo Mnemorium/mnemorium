@@ -137,3 +137,15 @@ impl Image {
         self.width_px
     }
 }
+
+/// Metadata extracted from an image file.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct ProbedImage {
+    /// Height of the image, in pixels.
+    pub height_px: i64,
+    /// Orientation of the image.
+    pub orientation: Orientation,
+    /// Width of the image, in pixels.
+    pub width_px: i64,
+}

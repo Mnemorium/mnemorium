@@ -19,6 +19,16 @@ impl<'transaction> SqlxMimeTypeRepository<'transaction> {
 }
 
 impl MimeTypeRepository for SqlxMimeTypeRepository<'_> {
+    async fn all_ids(&mut self) -> Result<Vec<String>, RepositoryError> {
+        let ids = sqlx::query_scalar::<_, String>(
+            "SELECT mime_type_id FROM mime_type ORDER BY mime_type_id",
+        )
+        .fetch_all(&mut **self.transaction)
+        .await?;
+
+        Ok(ids)
+    }
+
     async fn exists(&mut self, mime_type_id: &str) -> Result<bool, RepositoryError> {
         let count =
             sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM mime_type WHERE mime_type_id = ?")
@@ -49,6 +59,22 @@ mod tests {
             .await?;
         sqlx::migrate!("./migrations").run(&pool).await?;
         pool.begin().await
+    }
+
+    #[tokio::test]
+    async fn all_ids_returns_the_seeded_mime_types() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let mut transaction = begin_transaction().await?;
+        let mut repository = SqlxMimeTypeRepository::new(&mut transaction);
+
+        // Act
+        let ids = repository.all_ids().await?;
+
+        // Assert: the supported set comes from the seed and includes media.
+        assert!(ids.iter().any(|id| id == "image/png"));
+        assert!(ids.iter().any(|id| id == "video/mp4"));
+        assert!(ids.iter().any(|id| id == "audio/mpeg"));
+        Ok(())
     }
 
     #[tokio::test]

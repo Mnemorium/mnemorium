@@ -13,6 +13,8 @@ pub struct FileFilter {
     pub id: Option<NumericID>,
     /// Filter on the integrity hash.
     pub integrity_hash: Option<String>,
+    /// Filter on the path relative to the library root.
+    pub path: Option<String>,
     /// Filter on the owning user identifier.
     pub user_id: Option<NumericID>,
 }
@@ -42,6 +44,13 @@ pub trait FileRepository: Send + Sync {
         id: NumericID,
     ) -> impl Future<Output = Result<bool, RepositoryError>> + Send;
 
+    /// Update an existing `file` targeted by its identifier, returning the
+    /// persisted file.
+    ///
+    /// A missing target is reported as [`RepositoryError::OperationFailed`]: the
+    /// ingest only updates a row it read in the same operation.
+    fn save(&mut self, file: File) -> impl Future<Output = Result<File, RepositoryError>> + Send;
+
     /// Search files matching `filter`, returned as `Vec<File>`.
     ///
     /// Returns an empty list when no file matches; a missing match is a valid
@@ -63,6 +72,10 @@ impl<T: FileRepository + ?Sized> FileRepository for &mut T {
         id: NumericID,
     ) -> impl Future<Output = Result<bool, RepositoryError>> + Send {
         (**self).delete(id)
+    }
+
+    fn save(&mut self, file: File) -> impl Future<Output = Result<File, RepositoryError>> + Send {
+        (**self).save(file)
     }
 
     fn search(

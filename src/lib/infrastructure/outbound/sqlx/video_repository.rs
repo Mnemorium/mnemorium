@@ -232,8 +232,8 @@ mod tests {
         mime_type_id: &str,
     ) -> Result<(), sqlx::Error> {
         sqlx::query(
-            "INSERT INTO file (file_id, path, user_id, is_public, mime_type_id, integrity_hash)
-             VALUES (?1, ?2, ?3, 0, ?4, ?5)",
+            "INSERT INTO file (file_id, path, user_id, is_public, mime_type_id, size_bytes, modified_at, origin, integrity_hash)
+             VALUES (?1, ?2, ?3, 0, ?4, 1024, '2026-10-06 00:00:00', 'UPLOADED', ?5)",
         )
         .bind(file_id)
         .bind(path)

@@ -158,10 +158,16 @@ complete default file is written on the first start. A `MNEMORIUM_*` variable na
 `config.yaml` fails startup. The non-derivable part of the instance — the site pepper and the token signing secret —
 lives in `state.yaml`, which is written once and must be backed up together with the datastore (`mnemorium.db`).
 
-The asset storage root is not configurable. `asset.storage.root` is no longer read: a `config.yaml` that still names it
-fails startup, so delete the key. Media written under a custom root must be moved into `data/` before upgrading, and
-`MNEMORIUM_ASSET_STORAGE_ROOT` is discarded silently, so a deployment that set it must move its files into `data/` as
-well.
+With the container image the working directory is `/app`, so mount your library at `/app/media`:
+
+```sh
+docker run -v /path/to/your/library:/app/media:rw -p 4080:4080 mnemorium
+```
+
+Mount the library read-write: completed uploads are promoted into this directory, so a read-only export makes an upload
+fail at promote time with a logged fault. The server never creates the directory; when it is absent the server logs a
+warning, keeps running and registers nothing. Files already under the mount are registered by the startup scan, and a
+file added while the server runs is registered without a restart on a local filesystem.
 
 TODO: link to a document that explains the configuration.
 

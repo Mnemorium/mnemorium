@@ -268,17 +268,9 @@ where
 #[cfg(test)]
 mod tests {
     use std::error::Error;
-    use std::io as stdio;
     use std::sync::Arc;
-    use std::sync::Mutex;
-    use std::sync::PoisonError;
     use std::sync::atomic::AtomicBool;
     use std::sync::atomic::Ordering;
-
-    use tracing::subscriber::DefaultGuard;
-    use tracing::subscriber::set_default;
-    use tracing_subscriber::fmt;
-    use tracing_subscriber::layer::SubscriberExt as _;
 
     use crate::application::port::begin_upload::BeginUploadCommand;
     use crate::application::port::begin_upload::BeginUploadError;
@@ -299,6 +291,7 @@ mod tests {
     use crate::test_helpers::TestFactory;
     use crate::test_helpers::TestUnitOfWork;
     use crate::test_helpers::any_caller;
+    use tracing_test::traced_test;
 
     use super::BeginUpload;
 
@@ -320,42 +313,6 @@ mod tests {
         rolled_back: Arc<AtomicBool>,
         /// The use case under test.
         use_case: UseCase,
-    }
-
-    /// Append-only sink that lets a test read back the lines [`fmt`] emits.
-    #[derive(Clone)]
-    struct CaptureWriter {
-        /// Buffer shared with the test that asserts on the captured output.
-        buffer: Arc<Mutex<Vec<u8>>>,
-    }
-
-    #[expect(
-        clippy::missing_trait_methods,
-        reason = "only the raw `write` and `flush` are meaningful for an in-memory capture buffer"
-    )]
-    impl stdio::Write for CaptureWriter {
-        fn flush(&mut self) -> stdio::Result<()> {
-            Ok(())
-        }
-
-        fn write(&mut self, buf: &[u8]) -> stdio::Result<usize> {
-            let mut buffer = self.buffer.lock().unwrap_or_else(PoisonError::into_inner);
-            buffer.extend_from_slice(buf);
-            Ok(buf.len())
-        }
-    }
-
-    /// Hand every formatted event to a fresh clone of the shared buffer.
-    #[expect(
-        clippy::missing_trait_methods,
-        reason = "the default `make_writer_for` already routes through `make_writer`"
-    )]
-    impl<'writer> fmt::MakeWriter<'writer> for CaptureWriter {
-        type Writer = Self;
-
-        fn make_writer(&'writer self) -> Self::Writer {
-            self.clone()
-        }
     }
 
     fn use_case_with(
@@ -441,29 +398,6 @@ mod tests {
             .expect_exists()
             .times(1)
             .returning(move |_| Box::pin(async move { Ok(exists) }));
-    }
-
-    /// Install a capturing subscriber on the current thread and return the
-    /// shared buffer plus the guard that keeps it active.
-    ///
-    /// The guard must stay alive for the whole execute: `#[tokio::test]` runs on
-    /// a current-thread runtime, so the awaited call is polled on this thread and
-    /// sees the scoped default dispatcher.
-    fn capture_logs() -> (Arc<Mutex<Vec<u8>>>, DefaultGuard) {
-        let buffer = Arc::new(Mutex::new(Vec::new()));
-        let subscriber = tracing_subscriber::registry().with(
-            fmt::layer().with_ansi(false).with_writer(CaptureWriter {
-                buffer: Arc::clone(&buffer),
-            }),
-        );
-        let guard = set_default(subscriber);
-        (buffer, guard)
-    }
-
-    /// Read the captured bytes back as a lossy UTF-8 string.
-    fn captured_logs(buffer: &Mutex<Vec<u8>>) -> String {
-        let bytes = buffer.lock().unwrap_or_else(PoisonError::into_inner);
-        String::from_utf8_lossy(bytes.as_slice()).into_owned()
     }
 
     #[expect(
@@ -598,9 +532,9 @@ mod tests {
     }
 
     #[tokio::test]
+    #[traced_test]
     async fn begin_upload_invalid_file_name_returns_error() -> Result<(), Box<dyn Error>> {
         // Arrange
-        let (buffer, _capture) = capture_logs();
         let harness = use_case_with(|_, mime_types, _| {
             expect_mime_type(mime_types, true);
             Ok(())
@@ -618,32 +552,40 @@ mod tests {
 
         // Assert
         assert!(matches!(result, Err(BeginUploadError::InvalidFileName)));
-        let logs = captured_logs(&buffer);
-        assert_eq!(
-            logs.matches("WARN").count(),
-            1,
-            "the invalid-name rejection must emit exactly one warn event: {logs}"
-        );
-        assert_eq!(
-            logs.matches("event=\"input_validation_failed\"").count(),
-            1,
-            "the invalid-name rejection must emit exactly one input_validation_failed event: {logs}"
+        logs_assert(|lines| {
+            let count = lines.iter().filter(|line| line.contains("WARN")).count();
+            (count == 1).then_some(()).ok_or_else(|| {
+                format!(
+                    "the invalid-name rejection must emit exactly one warn event (found {count})"
+                )
+            })
+        });
+        logs_assert(|lines| {
+            let count = lines
+                .iter()
+                .filter(|line| line.contains("event=\"input_validation_failed\""))
+                .count();
+            (count == 1)
+                .then_some(())
+                .ok_or_else(|| format!(
+                    "the invalid-name rejection must emit exactly one input_validation_failed event (found {count})"
+                ))
+        });
+        assert!(
+            logs_contain("security"),
+            "the event must target the reserved security target"
         );
         assert!(
-            logs.contains("security"),
-            "the event must target the reserved security target: {logs}"
+            logs_contain("field=file_name"),
+            "the event must name the rejected field"
         );
         assert!(
-            logs.contains("field=file_name"),
-            "the event must name the rejected field: {logs}"
+            logs_contain("reason=invalid"),
+            "the event must classify the reason as an invalid name"
         );
         assert!(
-            logs.contains("reason=invalid"),
-            "the event must classify the reason as an invalid name: {logs}"
-        );
-        assert!(
-            !logs.contains("escape.mp4"),
-            "the event must not echo the client-supplied file name: {logs}"
+            !logs_contain("escape.mp4"),
+            "the event must not echo the client-supplied file name"
         );
         Ok(())
     }
@@ -799,9 +741,9 @@ mod tests {
     }
 
     #[tokio::test]
+    #[traced_test]
     async fn begin_upload_file_at_max_size_succeeds() -> Result<(), Box<dyn Error>> {
         // Arrange
-        let (buffer, _capture) = capture_logs();
         let max_file_size = 10;
         let harness = use_case_with_max(
             |uploads, mime_types, file_storage| {
@@ -826,21 +768,20 @@ mod tests {
         // Assert
         assert_eq!(response.chunk_size(), CHUNK_SIZE);
         assert!(harness.committed.load(Ordering::SeqCst));
-        let logs = captured_logs(&buffer);
         assert!(
-            !logs.contains("suspicious_business_logic"),
-            "a file at the size limit must not emit a suspicious_business_logic event: {logs}"
+            !logs_contain("suspicious_business_logic"),
+            "a file at the size limit must not emit a suspicious_business_logic event"
         );
         Ok(())
     }
 
     #[tokio::test]
+    #[traced_test]
     async fn begin_upload_file_over_max_size_returns_file_too_large() -> Result<(), Box<dyn Error>>
     {
         // Arrange
         // No repository or storage expectation: the rejection must happen before
         // any of them is reached (mockall fails the test on an unexpected call).
-        let (buffer, _capture) = capture_logs();
         let harness = use_case_with_max(|_, _, _| Ok(()), 10)?;
         let command = command(11);
 
@@ -851,42 +792,50 @@ mod tests {
         assert!(matches!(result, Err(BeginUploadError::FileTooLarge)));
         assert!(!harness.committed.load(Ordering::SeqCst));
         assert!(!harness.rolled_back.load(Ordering::SeqCst));
-        let logs = captured_logs(&buffer);
-        assert_eq!(
-            logs.matches("WARN").count(),
-            1,
-            "the declared-size rejection must emit exactly one warn event: {logs}"
-        );
-        assert_eq!(
-            logs.matches("event=\"suspicious_business_logic\"").count(),
-            1,
-            "the declared-size rejection must emit exactly one suspicious_business_logic event: {logs}"
+        logs_assert(|lines| {
+            let count = lines.iter().filter(|line| line.contains("WARN")).count();
+            (count == 1).then_some(()).ok_or_else(|| {
+                format!(
+                    "the declared-size rejection must emit exactly one warn event (found {count})"
+                )
+            })
+        });
+        logs_assert(|lines| {
+            let count = lines
+                .iter()
+                .filter(|line| line.contains("event=\"suspicious_business_logic\""))
+                .count();
+            (count == 1)
+                .then_some(())
+                .ok_or_else(|| format!(
+                    "the declared-size rejection must emit exactly one suspicious_business_logic event (found {count})"
+                ))
+        });
+        assert!(
+            logs_contain("security"),
+            "the event must target the reserved security target"
         );
         assert!(
-            logs.contains("security"),
-            "the event must target the reserved security target: {logs}"
+            logs_contain(" actor=3 "),
+            "the event must carry the command's actor"
         );
         assert!(
-            logs.contains(" actor=3 "),
-            "the event must carry the command's actor: {logs}"
+            logs_contain("action=begin_upload"),
+            "the event must carry the use-case action"
         );
         assert!(
-            logs.contains("action=begin_upload"),
-            "the event must carry the use-case action: {logs}"
-        );
-        assert!(
-            logs.contains("reason=file_size_exceeded"),
-            "the event must classify the reason as the declared size: {logs}"
+            logs_contain("reason=file_size_exceeded"),
+            "the event must classify the reason as the declared size"
         );
         Ok(())
     }
 
     #[tokio::test]
+    #[traced_test]
     async fn begin_upload_zero_file_size_returns_invalid_file_size() -> Result<(), Box<dyn Error>> {
         // Arrange
         // No repository or storage expectation: the rejection must happen before
         // any of them is reached (mockall fails the test on an unexpected call).
-        let (buffer, _capture) = capture_logs();
         let harness = use_case_with_max(|_, _, _| Ok(()), DEFAULT_MAX_FILE_SIZE)?;
         let command = command(0);
 
@@ -897,43 +846,49 @@ mod tests {
         assert!(matches!(result, Err(BeginUploadError::InvalidFileSize)));
         assert!(!harness.committed.load(Ordering::SeqCst));
         assert!(!harness.rolled_back.load(Ordering::SeqCst));
-        let logs = captured_logs(&buffer);
-        assert_eq!(
-            logs.matches("WARN").count(),
-            1,
-            "the zero-size rejection must emit exactly one warn event: {logs}"
-        );
-        assert_eq!(
-            logs.matches("event=\"input_validation_failed\"").count(),
-            1,
-            "the zero-size rejection must emit exactly one input_validation_failed event: {logs}"
+        logs_assert(|lines| {
+            let count = lines.iter().filter(|line| line.contains("WARN")).count();
+            (count == 1).then_some(()).ok_or_else(|| {
+                format!("the zero-size rejection must emit exactly one warn event (found {count})")
+            })
+        });
+        logs_assert(|lines| {
+            let count = lines
+                .iter()
+                .filter(|line| line.contains("event=\"input_validation_failed\""))
+                .count();
+            (count == 1)
+                .then_some(())
+                .ok_or_else(|| format!(
+                    "the zero-size rejection must emit exactly one input_validation_failed event (found {count})"
+                ))
+        });
+        assert!(
+            logs_contain("security"),
+            "the event must target the reserved security target"
         );
         assert!(
-            logs.contains("security"),
-            "the event must target the reserved security target: {logs}"
+            logs_contain("field=file_size"),
+            "the event must name the rejected field"
         );
         assert!(
-            logs.contains("field=file_size"),
-            "the event must name the rejected field: {logs}"
+            logs_contain("reason=zero"),
+            "the event must classify the reason as the declared size"
         );
         assert!(
-            logs.contains("reason=zero"),
-            "the event must classify the reason as the declared size: {logs}"
-        );
-        assert!(
-            !logs.contains("clip.mp4"),
-            "the event must not echo the client-supplied file name: {logs}"
+            !logs_contain("clip.mp4"),
+            "the event must not echo the client-supplied file name"
         );
         Ok(())
     }
 
     #[tokio::test]
+    #[traced_test]
     async fn begin_upload_max_total_chunks_succeeds() -> Result<(), Box<dyn Error>> {
         // Arrange
         // Exactly `MAX_TOTAL_CHUNKS` chunks is the largest file the chunk-count
         // backstop accepts. `max_file_size_bytes` equals the declared size, so
         // the size rule is satisfied at its limit and the chunk rule decides.
-        let (buffer, _capture) = capture_logs();
         let harness = use_case_with_max(
             |uploads, mime_types, file_storage| {
                 expect_mime_type(mime_types, true);
@@ -959,21 +914,20 @@ mod tests {
         assert_eq!(response.chunk_size(), CHUNK_SIZE);
         assert!(harness.committed.load(Ordering::SeqCst));
         assert!(!harness.rolled_back.load(Ordering::SeqCst));
-        let logs = captured_logs(&buffer);
         assert!(
-            !logs.contains("suspicious_business_logic"),
-            "a file at the chunk-count limit must not emit a suspicious_business_logic event: {logs}"
+            !logs_contain("suspicious_business_logic"),
+            "a file at the chunk-count limit must not emit a suspicious_business_logic event"
         );
         Ok(())
     }
 
     #[tokio::test]
+    #[traced_test]
     async fn begin_upload_too_many_chunks_returns_file_too_large() -> Result<(), Box<dyn Error>> {
         // Arrange
         // One byte past the largest file that fits in `MAX_TOTAL_CHUNKS`
         // chunks. `max_file_size_bytes` equals the declared size, so the size
         // rule is satisfied and only the chunk-count backstop can reject.
-        let (buffer, _capture) = capture_logs();
         let file_size = MAX_TOTAL_CHUNKS_FILE_BYTES + 1;
         let harness = use_case_with_max(|_, _, _| Ok(()), file_size)?;
         let command = command(file_size);
@@ -985,32 +939,40 @@ mod tests {
         assert!(matches!(result, Err(BeginUploadError::FileTooLarge)));
         assert!(!harness.committed.load(Ordering::SeqCst));
         assert!(!harness.rolled_back.load(Ordering::SeqCst));
-        let logs = captured_logs(&buffer);
-        assert_eq!(
-            logs.matches("WARN").count(),
-            1,
-            "the chunk-count rejection must emit exactly one warn event: {logs}"
-        );
-        assert_eq!(
-            logs.matches("event=\"suspicious_business_logic\"").count(),
-            1,
-            "the chunk-count rejection must emit exactly one suspicious_business_logic event: {logs}"
+        logs_assert(|lines| {
+            let count = lines.iter().filter(|line| line.contains("WARN")).count();
+            (count == 1).then_some(()).ok_or_else(|| {
+                format!(
+                    "the chunk-count rejection must emit exactly one warn event (found {count})"
+                )
+            })
+        });
+        logs_assert(|lines| {
+            let count = lines
+                .iter()
+                .filter(|line| line.contains("event=\"suspicious_business_logic\""))
+                .count();
+            (count == 1)
+                .then_some(())
+                .ok_or_else(|| format!(
+                    "the chunk-count rejection must emit exactly one suspicious_business_logic event (found {count})"
+                ))
+        });
+        assert!(
+            logs_contain("security"),
+            "the event must target the reserved security target"
         );
         assert!(
-            logs.contains("security"),
-            "the event must target the reserved security target: {logs}"
+            logs_contain(" actor=3 "),
+            "the event must carry the command's actor"
         );
         assert!(
-            logs.contains(" actor=3 "),
-            "the event must carry the command's actor: {logs}"
+            logs_contain("action=begin_upload"),
+            "the event must carry the use-case action"
         );
         assert!(
-            logs.contains("action=begin_upload"),
-            "the event must carry the use-case action: {logs}"
-        );
-        assert!(
-            logs.contains("reason=total_chunks_exceeded"),
-            "the event must classify the reason as the chunk-count limit: {logs}"
+            logs_contain("reason=total_chunks_exceeded"),
+            "the event must classify the reason as the chunk-count limit"
         );
         Ok(())
     }

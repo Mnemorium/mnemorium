@@ -22,6 +22,7 @@ pub mod get_series_episode;
 pub mod get_series_season;
 pub mod get_upload;
 pub mod get_user;
+pub mod ingest_media;
 pub mod initialize_root_admin;
 pub mod list_album_tracks;
 pub mod list_albums;

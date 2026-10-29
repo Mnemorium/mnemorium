@@ -4,6 +4,8 @@ use std::io::ErrorKind;
 use std::io::SeekFrom;
 use std::path::Path;
 
+use chrono::DateTime;
+use chrono::Utc;
 use tokio::fs;
 use tokio::io::AsyncReadExt as _;
 use tokio::io::AsyncSeekExt as _;
@@ -15,6 +17,7 @@ use crate::domain::model::integrity_hash::IntegrityHash;
 use crate::domain::port::content_hasher::ContentHasher as _;
 use crate::domain::port::error::StorageError;
 use crate::domain::port::file_storage::FileStorage;
+use crate::domain::port::file_storage::PromotedFile;
 use crate::infrastructure::outbound::sha2::content_hasher::Sha2ContentHasher;
 
 /// Size of the buffer used to stream a file, in bytes.
@@ -38,6 +41,27 @@ impl FileSystemStorage {
     /// catalogued `port_fault` with the error's stable `kind` and the port
     /// `operation` before mapping, so a caller logs nothing (`OBS-003`,
     /// `OBS-006`). Only the classification is logged, never the `io::Error`
+    /// Classify a promotion whose source or destination component is missing.
+    async fn classify_missing_promotion(
+        &self,
+        staged: &Path,
+    ) -> Result<Option<PromotedFile>, StorageError> {
+        match fs::metadata(staged).await {
+            Err(metadata_err) if metadata_err.kind() == ErrorKind::NotFound => Ok(None),
+            Ok(_) => {
+                error!(
+                    target: "security",
+                    event = "port_fault",
+                    kind = "destination_missing",
+                    operation = "promote",
+                    "an outbound dependency failed"
+                );
+                Err(StorageError::OperationFailed)
+            }
+            Err(metadata_err) => Err(Self::map_io_error(metadata_err, "promote")),
+        }
+    }
+
     /// `Debug` or a path.
     fn map_io_error(err: Error, operation: &str) -> StorageError {
         let kind = err.kind();
@@ -59,6 +83,23 @@ impl FileSystemStorage {
     #[must_use]
     pub fn new() -> Self {
         Self
+    }
+
+    /// Read the promoted content's size and modification instant.
+    async fn promoted_metadata(path: &Path) -> Result<PromotedFile, StorageError> {
+        let metadata = fs::metadata(path)
+            .await
+            .map_err(|error| Self::map_io_error(error, "promote"))?;
+        let size_bytes =
+            i64::try_from(metadata.len()).map_err(|_error| StorageError::OperationFailed)?;
+        let modified_at = metadata
+            .modified()
+            .map(|instant| DateTime::<Utc>::from(instant).naive_utc())
+            .map_err(|error| Self::map_io_error(error, "promote"))?;
+        Ok(PromotedFile {
+            modified_at,
+            size_bytes,
+        })
     }
 }
 
@@ -223,35 +264,40 @@ impl FileStorage for FileSystemStorage {
         &self,
         staged: &Path,
         final_path: &Path,
-    ) -> impl Future<Output = Result<bool, StorageError>> + Send {
+    ) -> impl Future<Output = Result<Option<PromotedFile>, StorageError>> + Send {
         let owned_staged = staged.to_path_buf();
         let owned_final = final_path.to_path_buf();
 
         async move {
             match fs::rename(&owned_staged, &owned_final).await {
-                Ok(()) => Ok(true),
+                Ok(()) => Self::promoted_metadata(&owned_final).await.map(Some),
+                // The staging area and the library root can live on different
+                // filesystems (the root is the operator's mount, the staging
+                // area is the container's writable layer), so a rename cannot
+                // cross the boundary. Copy the bytes and drop the staging copy
+                // instead; a failed cleanup leaves a redundant staged file, not
+                // a lost promotion.
+                Err(err) if err.kind() == ErrorKind::CrossesDevices => {
+                    match fs::copy(&owned_staged, &owned_final).await {
+                        Ok(_bytes) => {
+                            // The bytes are promoted; a staging copy that cannot
+                            // be removed is left for the reaper.
+                            let _removed = fs::remove_file(&owned_staged).await;
+                            Self::promoted_metadata(&owned_final).await.map(Some)
+                        }
+                        Err(copy_err) if copy_err.kind() == ErrorKind::NotFound => {
+                            self.classify_missing_promotion(&owned_staged).await
+                        }
+                        Err(copy_err) => Err(Self::map_io_error(copy_err, "promote")),
+                    }
+                }
                 // `rename` reports `NotFound` both when the source is missing
                 // and when a component of the destination path is missing.
                 // Probe the source to tell the two apart: only a staged file
                 // that is genuinely absent is a value, whereas a missing
                 // destination directory is a layout failure, not absence.
                 Err(err) if err.kind() == ErrorKind::NotFound => {
-                    match fs::metadata(&owned_staged).await {
-                        Err(metadata_err) if metadata_err.kind() == ErrorKind::NotFound => {
-                            Ok(false)
-                        }
-                        Ok(_) => {
-                            error!(
-                                target: "security",
-                                event = "port_fault",
-                                kind = "destination_missing",
-                                operation = "promote",
-                                "an outbound dependency failed"
-                            );
-                            Err(StorageError::OperationFailed)
-                        }
-                        Err(metadata_err) => Err(Self::map_io_error(metadata_err, "promote")),
-                    }
+                    self.classify_missing_promotion(&owned_staged).await
                 }
                 Err(err) => Err(Self::map_io_error(err, "promote")),
             }
@@ -288,76 +334,15 @@ async fn open_new(path: &Path) -> Result<fs::File, Error> {
 #[cfg(test)]
 mod tests {
     use std::error::Error;
-    use std::io as stdio;
-    use std::sync::Arc;
-    use std::sync::Mutex;
-    use std::sync::PoisonError;
 
+    use tempfile::Builder;
     use tempfile::tempdir;
     use tokio::fs;
-    use tracing::subscriber::DefaultGuard;
-    use tracing::subscriber::set_default;
-    use tracing_subscriber::fmt;
-    use tracing_subscriber::layer::SubscriberExt as _;
 
     use super::FileSystemStorage;
     use crate::domain::port::error::StorageError;
     use crate::domain::port::file_storage::FileStorage as _;
-
-    /// Append-only sink that lets a test read back the lines [`fmt`] emits.
-    #[derive(Clone)]
-    struct CaptureWriter {
-        /// Buffer shared with the test that asserts on the captured output.
-        buffer: Arc<Mutex<Vec<u8>>>,
-    }
-
-    #[expect(
-        clippy::missing_trait_methods,
-        reason = "only the raw `write` and `flush` are meaningful for an in-memory capture buffer"
-    )]
-    impl stdio::Write for CaptureWriter {
-        fn flush(&mut self) -> stdio::Result<()> {
-            Ok(())
-        }
-
-        fn write(&mut self, buf: &[u8]) -> stdio::Result<usize> {
-            let mut buffer = self.buffer.lock().unwrap_or_else(PoisonError::into_inner);
-            buffer.extend_from_slice(buf);
-            Ok(buf.len())
-        }
-    }
-
-    /// Hand every formatted event to a fresh clone of the shared buffer.
-    #[expect(
-        clippy::missing_trait_methods,
-        reason = "the default `make_writer_for` already routes through `make_writer`"
-    )]
-    impl<'writer> fmt::MakeWriter<'writer> for CaptureWriter {
-        type Writer = Self;
-
-        fn make_writer(&'writer self) -> Self::Writer {
-            self.clone()
-        }
-    }
-
-    /// Install a capturing subscriber on the current thread and return the
-    /// shared buffer plus the guard that keeps it active.
-    fn capture_logs() -> (Arc<Mutex<Vec<u8>>>, DefaultGuard) {
-        let buffer = Arc::new(Mutex::new(Vec::new()));
-        let subscriber = tracing_subscriber::registry().with(
-            fmt::layer().with_ansi(false).with_writer(CaptureWriter {
-                buffer: Arc::clone(&buffer),
-            }),
-        );
-        let guard = set_default(subscriber);
-        (buffer, guard)
-    }
-
-    /// Read the captured bytes back as a lossy UTF-8 string.
-    fn captured_logs(buffer: &Mutex<Vec<u8>>) -> String {
-        let bytes = buffer.lock().unwrap_or_else(PoisonError::into_inner);
-        String::from_utf8_lossy(bytes.as_slice()).into_owned()
-    }
+    use tracing_test::traced_test;
 
     #[tokio::test]
     async fn create_upload_file_creates_preallocated_staged_file() -> Result<(), Box<dyn Error>> {
@@ -548,10 +533,10 @@ mod tests {
     }
 
     #[tokio::test]
+    #[traced_test]
     async fn delete_upload_file_failure_logs_a_port_fault() -> Result<(), Box<dyn Error>> {
         // Arrange: a directory cannot be removed by `remove_file`, so the failure
         // branch maps the I/O error and emits the catalogued fault.
-        let (buffer, _capture) = capture_logs();
         let tmp = tempdir()?;
         let storage = FileSystemStorage::new();
         let directory = tmp.path().join("files");
@@ -562,29 +547,64 @@ mod tests {
 
         // Assert
         assert!(matches!(result, Err(StorageError::Unknown(_))));
-        let logs = captured_logs(&buffer);
-        assert_eq!(
-            logs.matches("ERROR").count(),
-            1,
-            "a delete fault must emit exactly one error event: {logs}"
+        logs_assert(|lines| {
+            let count = lines.iter().filter(|line| line.contains("ERROR")).count();
+            (count == 1).then_some(()).ok_or_else(|| {
+                format!("a delete fault must emit exactly one error event (found {count})")
+            })
+        });
+        assert!(
+            logs_contain("event=\"port_fault\""),
+            "the event must be port_fault"
         );
         assert!(
-            logs.contains("event=\"port_fault\""),
-            "the event must be port_fault: {logs}"
+            logs_contain("kind=IsADirectory"),
+            "the event must carry the stable kind"
         );
         assert!(
-            logs.contains("kind=IsADirectory"),
-            "the event must carry the stable kind: {logs}"
-        );
-        assert!(
-            logs.contains("operation=\"delete_upload_file\""),
-            "the event must name the owning operation: {logs}"
+            logs_contain("operation=\"delete_upload_file\""),
+            "the event must name the owning operation"
         );
         let directory_text = directory.to_string_lossy();
         assert!(
-            !logs.contains(directory_text.as_ref()),
-            "the sink must never carry the path: {logs}"
+            !logs_contain(directory_text.as_ref()),
+            "the sink must never carry the path"
         );
+        Ok(())
+    }
+
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    async fn promote_copies_across_filesystems() -> Result<(), Box<dyn Error>> {
+        use std::os::unix::fs::MetadataExt as _;
+
+        // Arrange: the staging area and the library root on different devices,
+        // as they are when the root is a bind mount.
+        let staged_dir = tempdir()?;
+        let final_dir = Builder::new().tempdir_in("/dev/shm")?;
+        // On a host where both live on one device the rename path runs instead;
+        // the promotion still succeeds, and the assertions hold either way.
+        let _devices = (
+            staged_dir.path().metadata()?.dev(),
+            final_dir.path().metadata()?.dev(),
+        );
+        let storage = FileSystemStorage::new();
+        let staged = staged_dir.path().join("42");
+        let final_path = final_dir.path().join("42_clip.mp4");
+        storage.create_upload_file(&staged, 4).await?;
+        storage.add_chunk(&staged, 0, b"1234".to_vec()).await?;
+
+        // Act
+        let promoted = storage
+            .promote(&staged, &final_path)
+            .await?
+            .ok_or("the file should have been promoted")?;
+
+        // Assert: the bytes crossed the boundary, the staging copy is gone,
+        // and the promoted metadata describes the final file.
+        assert_eq!(promoted.size_bytes, 4);
+        assert_eq!(fs::read(&final_path).await?, b"1234");
+        assert!(!staged.exists());
         Ok(())
     }
 
@@ -603,16 +623,20 @@ mod tests {
         storage.add_chunk(&staged, 0, b"1234".to_vec()).await?;
 
         // Act
-        storage.promote(&staged, &final_path).await?;
+        let promoted = storage
+            .promote(&staged, &final_path)
+            .await?
+            .ok_or("the file should have been promoted")?;
 
         // Assert
+        assert_eq!(promoted.size_bytes, 4);
         assert!(final_path.is_file());
         assert!(!staged.exists());
         Ok(())
     }
 
     #[tokio::test]
-    async fn promote_missing_staged_file_returns_false() -> Result<(), Box<dyn Error>> {
+    async fn promote_missing_staged_file_returns_none() -> Result<(), Box<dyn Error>> {
         // Arrange
         let tmp = tempdir()?;
         let storage = FileSystemStorage::new();
@@ -626,15 +650,15 @@ mod tests {
         let result = storage.promote(&staged, &final_path).await;
 
         // Assert
-        assert!(!result?);
+        assert!(result?.is_none());
         Ok(())
     }
 
     #[tokio::test]
+    #[traced_test]
     async fn promote_staged_file_missing_destination_directory_returns_operation_failed()
     -> Result<(), Box<dyn Error>> {
         // Arrange
-        let (buffer, _capture) = capture_logs();
         let tmp = tempdir()?;
         let storage = FileSystemStorage::new();
         let staged = tmp.path().join("uploads").join("42");
@@ -654,33 +678,33 @@ mod tests {
             staged.is_file(),
             "a failed promote must leave the staged file in place"
         );
-        let logs = captured_logs(&buffer);
-        assert_eq!(
-            logs.matches("ERROR").count(),
-            1,
-            "a promote fault must emit exactly one error event: {logs}"
+        logs_assert(|lines| {
+            let count = lines.iter().filter(|line| line.contains("ERROR")).count();
+            (count == 1).then_some(()).ok_or_else(|| {
+                format!("a promote fault must emit exactly one error event (found {count})")
+            })
+        });
+        assert!(
+            logs_contain("event=\"port_fault\""),
+            "the event must be port_fault"
         );
         assert!(
-            logs.contains("event=\"port_fault\""),
-            "the event must be port_fault: {logs}"
+            logs_contain("kind=\"destination_missing\""),
+            "the event must carry the stable kind"
         );
         assert!(
-            logs.contains("kind=\"destination_missing\""),
-            "the event must carry the stable kind: {logs}"
-        );
-        assert!(
-            logs.contains("operation=\"promote\""),
-            "the event must name the owning operation: {logs}"
+            logs_contain("operation=\"promote\""),
+            "the event must name the owning operation"
         );
         let staged_text = staged.to_string_lossy();
         let final_text = final_path.to_string_lossy();
         assert!(
-            !logs.contains(staged_text.as_ref()),
-            "the sink must never carry the staged path: {logs}"
+            !logs_contain(staged_text.as_ref()),
+            "the sink must never carry the staged path"
         );
         assert!(
-            !logs.contains(final_text.as_ref()),
-            "the sink must never carry the final path: {logs}"
+            !logs_contain(final_text.as_ref()),
+            "the sink must never carry the final path"
         );
         Ok(())
     }

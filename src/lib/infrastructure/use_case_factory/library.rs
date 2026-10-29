@@ -1,5 +1,7 @@
 use std::sync::Arc;
 
+use tokio::sync::Semaphore;
+
 use crate::application::port::add_gallery_item::AddGalleryItemUseCase;
 use crate::application::port::create_gallery::CreateGalleryUseCase;
 use crate::application::port::create_playlist::CreatePlaylistUseCase;
@@ -17,6 +19,7 @@ use crate::application::port::get_playlist_track::GetPlaylistTrackUseCase;
 use crate::application::port::get_series::GetSeriesUseCase;
 use crate::application::port::get_series_episode::GetSeriesEpisodeUseCase;
 use crate::application::port::get_series_season::GetSeriesSeasonUseCase;
+use crate::application::port::ingest_media::IngestMediaUseCase;
 use crate::application::port::library_use_case_factory::LibraryUseCaseFactory;
 use crate::application::port::list_album_tracks::ListAlbumTracksUseCase;
 use crate::application::port::list_albums::ListAlbumsUseCase;
@@ -45,6 +48,7 @@ use crate::application::use_case::get_playlist_track::GetPlaylistTrack;
 use crate::application::use_case::get_series::GetSeries;
 use crate::application::use_case::get_series_episode::GetSeriesEpisode;
 use crate::application::use_case::get_series_season::GetSeriesSeason;
+use crate::application::use_case::ingest_media::IngestMedia;
 use crate::application::use_case::list_album_tracks::ListAlbumTracks;
 use crate::application::use_case::list_albums::ListAlbums;
 use crate::application::use_case::list_galleries::ListGalleries;
@@ -55,15 +59,23 @@ use crate::application::use_case::list_series_episodes::ListSeriesEpisodes;
 use crate::application::use_case::remove_playlist_track::RemovePlaylistTrack;
 use crate::application::use_case::reorder_playlist_tracks::ReorderPlaylistTracks;
 use crate::application::use_case::update_playlist::UpdatePlaylist;
+use crate::application::use_case::upload_layout::media_root;
 use crate::infrastructure::outbound::file_system::file_storage::FileSystemStorage;
+use crate::infrastructure::outbound::file_system::media_source::LocalMediaSource;
+use crate::infrastructure::outbound::infer::content_type_sniffer::InferContentTypeSniffer;
+use crate::infrastructure::outbound::media_probe::LocalMediaProbe;
 use crate::infrastructure::outbound::sqlx::unit_of_work::SqlxUnitOfWorkFactory;
 
 /// Builds the Library use cases.
 ///
-/// The accessors build the stateless file storage adapter at the point of use,
-/// so the media-library use cases compose their paths from the fixed storage root
-/// the Asset use cases write to.
+/// The accessors build the stateless file storage and media adapters at the
+/// point of use, so the media-library use cases compose their paths from the
+/// fixed storage root the Asset use cases write to. The probe permit pool is a
+/// startup value the composition root captured; each accessor builds the probe
+/// adapter afresh from it and stores neither.
 pub struct RuntimeLibraryUseCaseFactory {
+    /// Permit pool bounding concurrent probes, shared with the upload path.
+    probe_permits: Arc<Semaphore>,
     /// Factory opening the unit of work wrapping the Library use cases.
     unit_of_work_factory: Arc<SqlxUnitOfWorkFactory>,
 }
@@ -71,8 +83,12 @@ pub struct RuntimeLibraryUseCaseFactory {
 impl RuntimeLibraryUseCaseFactory {
     /// Create a new factory.
     #[must_use]
-    pub fn new(unit_of_work_factory: Arc<SqlxUnitOfWorkFactory>) -> Self {
+    pub fn new(
+        unit_of_work_factory: Arc<SqlxUnitOfWorkFactory>,
+        probe_permits: Arc<Semaphore>,
+    ) -> Self {
         Self {
+            probe_permits,
             unit_of_work_factory,
         }
     }
@@ -157,6 +173,17 @@ impl LibraryUseCaseFactory for RuntimeLibraryUseCaseFactory {
 
     fn get_series_season(&self) -> Arc<dyn GetSeriesSeasonUseCase> {
         Arc::new(GetSeriesSeason::new(Arc::clone(&self.unit_of_work_factory)))
+    }
+
+    fn ingest_media(&self) -> Arc<dyn IngestMediaUseCase> {
+        Arc::new(IngestMedia::new(
+            Arc::clone(&self.unit_of_work_factory),
+            Arc::new(LocalMediaSource::new(media_root())),
+            Arc::new(InferContentTypeSniffer::new()),
+            Arc::new(LocalMediaProbe::with_permits(Arc::clone(
+                &self.probe_permits,
+            ))),
+        ))
     }
 
     fn list_album_tracks(&self) -> Arc<dyn ListAlbumTracksUseCase> {

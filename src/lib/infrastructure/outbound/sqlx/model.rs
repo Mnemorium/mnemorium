@@ -1,3 +1,4 @@
+pub mod audio;
 pub mod credential;
 pub mod file;
 pub mod gallery;

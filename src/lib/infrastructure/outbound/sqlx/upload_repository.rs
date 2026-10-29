@@ -336,19 +336,11 @@ fn domain_upload(row: SqlxUpload, chunk_numbers: &[usize]) -> Result<Upload, Rep
 #[cfg(test)]
 mod tests {
     use std::error::Error;
-    use std::io as stdio;
-    use std::sync::Arc;
-    use std::sync::Mutex;
-    use std::sync::PoisonError;
 
     use rstest::rstest;
     use sqlx::Sqlite;
     use sqlx::Transaction;
     use sqlx::sqlite::SqlitePoolOptions;
-    use tracing::subscriber::DefaultGuard;
-    use tracing::subscriber::set_default;
-    use tracing_subscriber::fmt;
-    use tracing_subscriber::layer::SubscriberExt as _;
 
     use crate::domain::model::integrity_hash::IntegrityHash;
     use crate::domain::model::upload::ChunkBitmap;
@@ -358,44 +350,9 @@ mod tests {
     use crate::domain::port::upload_repository::UploadRepository as _;
     use crate::test_helpers::CHUNK_SIZE;
     use crate::test_helpers::DIGEST;
+    use tracing_test::traced_test;
 
     use super::SqlxUploadRepository;
-
-    /// Append-only sink that lets a test read back the lines [`fmt`] emits.
-    #[derive(Clone)]
-    struct CaptureWriter {
-        /// Buffer shared with the test that asserts on the captured output.
-        buffer: Arc<Mutex<Vec<u8>>>,
-    }
-
-    #[expect(
-        clippy::missing_trait_methods,
-        reason = "only the raw `write` and `flush` are meaningful for an in-memory capture buffer"
-    )]
-    impl stdio::Write for CaptureWriter {
-        fn flush(&mut self) -> stdio::Result<()> {
-            Ok(())
-        }
-
-        fn write(&mut self, buf: &[u8]) -> stdio::Result<usize> {
-            let mut buffer = self.buffer.lock().unwrap_or_else(PoisonError::into_inner);
-            buffer.extend_from_slice(buf);
-            Ok(buf.len())
-        }
-    }
-
-    /// Hand every formatted event to a fresh clone of the shared buffer.
-    #[expect(
-        clippy::missing_trait_methods,
-        reason = "the default `make_writer_for` already routes through `make_writer`"
-    )]
-    impl<'writer> fmt::MakeWriter<'writer> for CaptureWriter {
-        type Writer = Self;
-
-        fn make_writer(&'writer self) -> Self::Writer {
-            self.clone()
-        }
-    }
 
     async fn begin_transaction() -> Result<Transaction<'static, Sqlite>, sqlx::Error> {
         let pool = SqlitePoolOptions::new()
@@ -425,29 +382,6 @@ mod tests {
         .execute(&mut **transaction)
         .await?;
         Ok(())
-    }
-
-    /// Install a capturing subscriber on the current thread and return the
-    /// shared buffer plus the guard that keeps it active.
-    ///
-    /// The guard must stay alive for the whole call: `#[tokio::test]` runs on a
-    /// current-thread runtime, so the awaited query is polled on this thread and
-    /// sees the scoped default dispatcher.
-    fn capture_logs() -> (Arc<Mutex<Vec<u8>>>, DefaultGuard) {
-        let buffer = Arc::new(Mutex::new(Vec::new()));
-        let subscriber = tracing_subscriber::registry().with(
-            fmt::layer().with_ansi(false).with_writer(CaptureWriter {
-                buffer: Arc::clone(&buffer),
-            }),
-        );
-        let guard = set_default(subscriber);
-        (buffer, guard)
-    }
-
-    /// Read the captured bytes back as a lossy UTF-8 string.
-    fn captured_logs(buffer: &Mutex<Vec<u8>>) -> String {
-        let bytes = buffer.lock().unwrap_or_else(PoisonError::into_inner);
-        String::from_utf8_lossy(bytes.as_slice()).into_owned()
     }
 
     /// Build a pending upload whose bitmap marks `received` chunks.
@@ -569,6 +503,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[traced_test]
     async fn finish_requires_every_chunk_and_persists_the_new_status() -> Result<(), Box<dyn Error>>
     {
         // Arrange
@@ -576,7 +511,6 @@ mod tests {
         seed_user(&mut transaction, 1).await?;
         let mut repository = SqlxUploadRepository::new(&mut transaction);
         let created = repository.create(upload(0, 1, 8, &[], false)?).await?;
-        let (buffer, _capture) = capture_logs();
 
         // Act: finishing an incomplete upload matches no row.
         let incomplete = repository.finish(created.upload_id()).await;
@@ -601,38 +535,44 @@ mod tests {
         assert_eq!(found.first(), Some(&finished));
         // An unfinished upload is the expected not-complete-yet constraint, so
         // the adapter logs it once at `warn`, never as a dependency fault.
-        let logs = captured_logs(&buffer);
-        assert_eq!(
-            logs.matches("WARN").count(),
-            1,
-            "the incomplete finish must emit exactly one warn event: {logs}"
-        );
-        assert_eq!(
-            logs.matches("event=\"constraint_rejected\"").count(),
-            1,
-            "the incomplete finish must emit exactly one constraint_rejected event: {logs}"
-        );
-        assert_eq!(
-            logs.matches("ERROR").count(),
-            0,
-            "the incomplete finish must not be logged as a dependency fault: {logs}"
+        logs_assert(|lines| {
+            let count = lines.iter().filter(|line| line.contains("WARN")).count();
+            (count == 1).then_some(()).ok_or_else(|| {
+                format!("the incomplete finish must emit exactly one warn event (found {count})")
+            })
+        });
+        logs_assert(|lines| {
+            let count = lines
+                .iter()
+                .filter(|line| line.contains("event=\"constraint_rejected\""))
+                .count();
+            (count == 1)
+                .then_some(())
+                .ok_or_else(|| format!(
+                    "the incomplete finish must emit exactly one constraint_rejected event (found {count})"
+                ))
+        });
+        assert!(
+            !logs_contain("ERROR"),
+            "the incomplete finish must not be logged as a dependency fault"
         );
         assert!(
-            logs.contains("security"),
-            "the event must target the reserved security target: {logs}"
+            logs_contain("security"),
+            "the event must target the reserved security target"
         );
         assert!(
-            logs.contains("kind=\"conflict\""),
-            "the event must carry the stable kind: {logs}"
+            logs_contain("kind=\"conflict\""),
+            "the event must carry the stable kind"
         );
         assert!(
-            logs.contains("operation=\"finish\""),
-            "the event must name the owning operation: {logs}"
+            logs_contain("operation=\"finish\""),
+            "the event must name the owning operation"
         );
         Ok(())
     }
 
     #[tokio::test]
+    #[traced_test]
     async fn finish_twice_returns_concurrency_conflict() -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut transaction = begin_transaction().await?;
@@ -642,7 +582,6 @@ mod tests {
         repository.record_chunk(created.upload_id(), 0).await?;
         repository.record_chunk(created.upload_id(), 1).await?;
         repository.finish(created.upload_id()).await?;
-        let (buffer, _capture) = capture_logs();
 
         // Act: the second writer loses the once-only transition.
         let result = repository.finish(created.upload_id()).await;
@@ -651,33 +590,38 @@ mod tests {
         assert!(matches!(result, Err(RepositoryError::ConcurrencyConflict)));
         // Losing the once-only transition to another writer is a genuine
         // dependency fault, so the adapter logs it once at `error`.
-        let logs = captured_logs(&buffer);
-        assert_eq!(
-            logs.matches("ERROR").count(),
-            1,
-            "the lost transition must emit exactly one error event: {logs}"
-        );
-        assert_eq!(
-            logs.matches("event=\"port_fault\"").count(),
-            1,
-            "the lost transition must emit exactly one port_fault event: {logs}"
-        );
-        assert_eq!(
-            logs.matches("WARN").count(),
-            0,
-            "the lost transition must not be logged as an expected constraint: {logs}"
+        logs_assert(|lines| {
+            let count = lines.iter().filter(|line| line.contains("ERROR")).count();
+            (count == 1).then_some(()).ok_or_else(|| {
+                format!("the lost transition must emit exactly one error event (found {count})")
+            })
+        });
+        logs_assert(|lines| {
+            let count = lines
+                .iter()
+                .filter(|line| line.contains("event=\"port_fault\""))
+                .count();
+            (count == 1).then_some(()).ok_or_else(|| {
+                format!(
+                    "the lost transition must emit exactly one port_fault event (found {count})"
+                )
+            })
+        });
+        assert!(
+            !logs_contain("WARN"),
+            "the lost transition must not be logged as an expected constraint"
         );
         assert!(
-            logs.contains("security"),
-            "the event must target the reserved security target: {logs}"
+            logs_contain("security"),
+            "the event must target the reserved security target"
         );
         assert!(
-            logs.contains("kind=\"concurrency_conflict\""),
-            "the event must carry the stable kind: {logs}"
+            logs_contain("kind=\"concurrency_conflict\""),
+            "the event must carry the stable kind"
         );
         assert!(
-            logs.contains("operation=\"finish\""),
-            "the event must name the owning operation: {logs}"
+            logs_contain("operation=\"finish\""),
+            "the event must name the owning operation"
         );
         Ok(())
     }

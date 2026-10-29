@@ -5,16 +5,34 @@ severity: hint
 message: extract single-use extraction exemptions for STY-RUST-001
 rule:
   all:
-    - kind: attribute_item
     - regex: "single_call_fn"
-    - precedes:
-        kind: function_item
-        has:
-          field: name
-          pattern: $FUNC
-        stopBy:
-          not:
-            kind: attribute_item
+    - any:
+        # `#[expect(clippy::single_call_fn, ...)]` on one function: keyed by <file>::<function>.
+        - all:
+            - kind: attribute_item
+            - precedes:
+                kind: function_item
+                has:
+                  field: name
+                  pattern: $FUNC
+                stopBy:
+                  not:
+                    kind: attribute_item
+        # `#[expect(clippy::single_call_fn, ...)]` on a module (inline or `mod m;`): module-wide.
+        - all:
+            - kind: attribute_item
+            - precedes:
+                kind: mod_item
+                stopBy:
+                  not:
+                    kind: attribute_item
+        # `#![expect(clippy::single_call_fn, ...)]` at file or block scope: module-wide.
+        # `#![cfg_attr(test, allow(clippy::single_call_fn, ...))]` in src/lib/lib.rs is the
+        # crate-level test exemption and stays out.
+        - all:
+            - kind: inner_attribute_item
+            - not:
+                regex: 'cfg_attr\(\s*test'
     - not:
         any:
           - follows:

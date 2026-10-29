@@ -164,6 +164,45 @@ pub fn system_object(object: &str, action: &str) {
     );
 }
 
+/// An ingest operation finished (`ingest`, `info`).
+///
+/// The record carries aggregate counts only: no file name and no path ever
+/// reaches the sink (`OBS-003`, `OBS-006`).
+pub fn media_ingest(
+    registered: u64,
+    completed: u64,
+    untouched: u64,
+    changed: u64,
+    missing: u64,
+    skipped: u64,
+) {
+    info!(
+        target: "security",
+        event = "ingest",
+        registered,
+        completed,
+        untouched,
+        changed,
+        missing,
+        skipped,
+        "reconciled the library root"
+    );
+}
+
+/// The change observer could not deliver every event (`ingest_fault`, `warn`).
+///
+/// A failed watch registration or a queue overflow is reported once; neither
+/// fails startup, and the startup scan remains the mechanism of record.
+pub fn media_ingest_fault(kind: &str) {
+    warn!(
+        target: "security",
+        event = "ingest_fault",
+        kind = %kind,
+        operation = "media_change_source",
+        "the change observer degraded; the startup scan remains authoritative"
+    );
+}
+
 /// An action was out of order, nonsensical in context, or exceeded a limit
 /// (`suspicious_business_logic`, `warn`).
 pub fn suspicious_business_logic(actor: i64, action: &str, reason: &str) {

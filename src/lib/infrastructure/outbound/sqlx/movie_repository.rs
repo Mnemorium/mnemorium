@@ -116,104 +116,52 @@ impl MovieRepository for SqlxMovieRepository<'_> {
 #[cfg(test)]
 mod tests {
     use std::error::Error;
-    use std::io as stdio;
-    use std::sync::Arc;
-    use std::sync::Mutex;
-    use std::sync::PoisonError;
 
     use chrono::NaiveDate;
     use sqlx::Sqlite;
     use sqlx::Transaction;
     use sqlx::sqlite::SqlitePoolOptions;
-    use tracing::subscriber::DefaultGuard;
-    use tracing::subscriber::set_default;
-    use tracing_subscriber::fmt;
-    use tracing_subscriber::layer::SubscriberExt as _;
 
     use crate::domain::model::movie::Movie;
     use crate::domain::model::video::ScanType;
     use crate::domain::port::error::RepositoryError;
     use crate::domain::port::movie_repository::MovieFilter;
     use crate::domain::port::movie_repository::MovieRepository as _;
+    use tracing_test::traced_test;
 
     use super::SqlxMovieRepository;
-
-    /// Append-only sink that lets a test read back the lines [`fmt`] emits.
-    #[derive(Clone)]
-    struct CaptureWriter {
-        /// Buffer shared with the test that asserts on the captured output.
-        buffer: Arc<Mutex<Vec<u8>>>,
-    }
-
-    #[expect(
-        clippy::missing_trait_methods,
-        reason = "only the raw `write` and `flush` are meaningful for an in-memory capture buffer"
-    )]
-    impl stdio::Write for CaptureWriter {
-        fn flush(&mut self) -> stdio::Result<()> {
-            Ok(())
-        }
-
-        fn write(&mut self, buf: &[u8]) -> stdio::Result<usize> {
-            let mut buffer = self.buffer.lock().unwrap_or_else(PoisonError::into_inner);
-            buffer.extend_from_slice(buf);
-            Ok(buf.len())
-        }
-    }
-
-    /// Hand every formatted event to a fresh clone of the shared buffer.
-    #[expect(
-        clippy::missing_trait_methods,
-        reason = "the default `make_writer_for` already routes through `make_writer`"
-    )]
-    impl<'writer> fmt::MakeWriter<'writer> for CaptureWriter {
-        type Writer = Self;
-
-        fn make_writer(&'writer self) -> Self::Writer {
-            self.clone()
-        }
-    }
-
-    /// Install a capturing subscriber on the current thread and return the
-    /// shared buffer plus the guard that keeps it active.
-    fn capture_logs() -> (Arc<Mutex<Vec<u8>>>, DefaultGuard) {
-        let buffer = Arc::new(Mutex::new(Vec::new()));
-        let subscriber = tracing_subscriber::registry().with(
-            fmt::layer().with_ansi(false).with_writer(CaptureWriter {
-                buffer: Arc::clone(&buffer),
-            }),
-        );
-        let guard = set_default(subscriber);
-        (buffer, guard)
-    }
-
-    /// Read the captured bytes back as a lossy UTF-8 string.
-    fn captured_logs(buffer: &Mutex<Vec<u8>>) -> String {
-        let bytes = buffer.lock().unwrap_or_else(PoisonError::into_inner);
-        String::from_utf8_lossy(bytes.as_slice()).into_owned()
-    }
 
     /// Assert the captured output is exactly one `output_validation_failed`
     /// event with `reason`, carrying neither a stored value nor an `sqlx`
     /// detail.
-    fn assert_output_validation_failed(logs: &str, reason: &str) {
-        assert_eq!(
-            logs.matches("WARN").count(),
-            1,
-            "rejected stored data must emit exactly one warn event: {logs}"
-        );
-        assert!(
-            logs.contains("event=\"output_validation_failed\""),
-            "the event must be output_validation_failed: {logs}"
-        );
-        assert!(
-            logs.contains(&format!("reason=\"{reason}\"")),
-            "the event must carry the stable reason `{reason}`: {logs}"
-        );
-        assert!(
-            !logs.contains("sqlx"),
-            "the event must not carry the sqlx detail: {logs}"
-        );
+    fn assert_output_validation_failed(lines: &[&str], reason: &str) -> Result<(), String> {
+        let ours: Vec<&str> = lines
+            .iter()
+            .copied()
+            .filter(|line| line.contains("security:"))
+            .collect();
+        let warn_count = ours.iter().filter(|line| line.contains("WARN")).count();
+        if warn_count != 1 {
+            return Err(format!(
+                "rejected stored data must emit exactly one warn event (found {warn_count})"
+            ));
+        }
+        if !ours
+            .iter()
+            .any(|line| line.contains("event=\"output_validation_failed\""))
+        {
+            return Err("the event must be output_validation_failed".to_owned());
+        }
+        if !ours
+            .iter()
+            .any(|line| line.contains(&format!("reason=\"{reason}\"")))
+        {
+            return Err(format!("the event must carry the stable reason `{reason}`"));
+        }
+        if ours.iter().any(|line| line.contains("sqlx")) {
+            return Err("the event must not carry the sqlx detail".to_owned());
+        }
+        Ok(())
     }
 
     /// Open a migrated in-memory database and begin one transaction.
@@ -246,8 +194,8 @@ mod tests {
         file_id: i64,
     ) -> Result<(), sqlx::Error> {
         sqlx::query(
-            "INSERT INTO file (file_id, path, user_id, is_public, mime_type_id, integrity_hash)
-             VALUES (?1, ?2, 1, 0, 'video/mp4', ?3)",
+            "INSERT INTO file (file_id, path, user_id, is_public, mime_type_id, size_bytes, modified_at, origin, integrity_hash)
+             VALUES (?1, ?2, 1, 0, 'video/mp4', 1024, '2026-10-06 00:00:00', 'UPLOADED', ?3)",
         )
         .bind(file_id)
         .bind(format!("{file_id}.mp4"))
@@ -391,8 +339,8 @@ mod tests {
         seed_video_file(&mut transaction, 10).await?;
         seed_video_file(&mut transaction, 11).await?;
         sqlx::query(
-            "INSERT INTO file (file_id, path, user_id, is_public, mime_type_id, integrity_hash)
-             VALUES (12, '12.png', 1, 0, 'image/png', ?1)",
+            "INSERT INTO file (file_id, path, user_id, is_public, mime_type_id, size_bytes, modified_at, origin, integrity_hash)
+             VALUES (12, '12.png', 1, 0, 'image/png', 1024, '2026-10-06 00:00:00', 'UPLOADED', ?1)",
         )
         .bind(format!("{:064x}", 12i64))
         .execute(&mut *transaction)
@@ -501,6 +449,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[traced_test]
     async fn search_rejects_a_stored_video_the_domain_cannot_hold() -> Result<(), Box<dyn Error>> {
         // Arrange: the width check is probed by relaxing it for this seed.
         let mut transaction = begin_transaction().await?;
@@ -512,7 +461,6 @@ mod tests {
         seed_video(&mut transaction, 20, 10, 0).await?;
         seed_movie(&mut transaction, 1, "Some Like It Hot", 20).await?;
         let mut repository = SqlxMovieRepository::new(&mut transaction);
-        let (buffer, _capture) = capture_logs();
 
         // Act
         let result = repository.search(&MovieFilter::default()).await;
@@ -522,11 +470,12 @@ mod tests {
             result,
             Err(RepositoryError::DataIntegrityViolation)
         ));
-        assert_output_validation_failed(&captured_logs(&buffer), "invalid_video");
+        logs_assert(|lines| assert_output_validation_failed(lines, "invalid_video"));
         Ok(())
     }
 
     #[tokio::test]
+    #[traced_test]
     async fn search_rejects_an_unknown_stored_scan_type() -> Result<(), Box<dyn Error>> {
         // Arrange: the scan-type check admits only the known tokens, so the
         // defensive mapping is probed by relaxing it for this seed.
@@ -542,7 +491,6 @@ mod tests {
             .execute(&mut *transaction)
             .await?;
         let mut repository = SqlxMovieRepository::new(&mut transaction);
-        let (buffer, _capture) = capture_logs();
 
         // Act
         let result = repository.search(&MovieFilter::default()).await;
@@ -552,11 +500,12 @@ mod tests {
             result,
             Err(RepositoryError::DataIntegrityViolation)
         ));
-        assert_output_validation_failed(&captured_logs(&buffer), "unknown_scan_type");
+        logs_assert(|lines| assert_output_validation_failed(lines, "unknown_scan_type"));
         Ok(())
     }
 
     #[tokio::test]
+    #[traced_test]
     async fn search_rejects_a_film_whose_stored_name_is_invalid() -> Result<(), Box<dyn Error>> {
         // Arrange: `movie.name` has no non-empty check, so the domain guard is
         // probed by seeding an empty name.
@@ -566,7 +515,6 @@ mod tests {
         seed_video(&mut transaction, 20, 10, 1920).await?;
         seed_movie(&mut transaction, 1, "", 20).await?;
         let mut repository = SqlxMovieRepository::new(&mut transaction);
-        let (buffer, _capture) = capture_logs();
 
         // Act
         let result = repository.search(&MovieFilter::default()).await;
@@ -576,7 +524,7 @@ mod tests {
             result,
             Err(RepositoryError::DataIntegrityViolation)
         ));
-        assert_output_validation_failed(&captured_logs(&buffer), "invalid_movie");
+        logs_assert(|lines| assert_output_validation_failed(lines, "invalid_movie"));
         Ok(())
     }
 }
