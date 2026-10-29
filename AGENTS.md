@@ -28,7 +28,7 @@ first.
 | Run       | `cargo run --bin server` (listens on `:4080`; health `GET /health`)                                                                  |
 | Test      | `cargo test` (unit + integration)                                                                                                    |
 | Coverage  | `cargo llvm-cov --lib --fail-under-functions 80 --fail-under-regions 80 --fail-under-lines 80` (gate ≥ 80%)                          |
-| E2E       | `pytest -p no:cacheprovider test/e2e` (needs the Docker server named `mnemorium-e2e`)                                                |
+| E2E       | `script/e2e.sh` (builds and runs the container; `NO_BUILD=1` reuses the image)                                                       |
 | Lint      | `cargo clippy --all-targets --all-features -- -D warnings`; `cargo fmt --all -- --check`                                             |
 | OpenAPI   | `cargo run --bin openapi_gen` (writes `docs/openapi.json`)                                                           |
 | Full gate | `devenv test` (all pre-commit hooks)                                                                                                 |

@@ -1,20 +1,17 @@
 """E2E tests for UC-006 - Upload Media File.
 
 The chunked upload flow (begin, write chunk, complete) is exercised end to end
-against the running container. Image completion and the unsupported-media
-alternative flow run against the shipped image; video completion additionally
-needs `ffprobe`, which the runtime image does not install yet (tracked by
-https://github.com/Mnemorium/mnemorium/issues/242), so that case is marked
-`xfail` and asserts the documented current `500`.
+against the running container. Image and video completion, and the
+unsupported-media alternative flow, all run against the shipped image, whose
+`ffmpeg` package provides the `ffprobe` binary the video path needs.
 """
 
 import base64
 import hashlib
 from collections.abc import Callable
 
-import pytest
 import requests
-from conftest import png
+from conftest import png, video
 
 _API_PREFIX = "/api/v1"
 _UPLOAD_PATH = f"{_API_PREFIX}/asset/upload"
@@ -102,24 +99,19 @@ def test_uc006_upload_unsupported_media(
     assert_error_body(response, 422)
 
 
-@pytest.mark.xfail(
-    strict=False,
-    reason="Waiting all music/movie/gallery endpoints to be implemented",
-)
 def test_uc006_upload_video_completion(
     server_url: str,
     standard_user_token: str,
 ) -> None:
-    # A video completion needs `ffprobe` in the runtime image; until it is
-    # installed (https://github.com/Mnemorium/mnemorium/issues/242) the probe
-    # cannot run and the endpoint answers 500. The case runs so the video path
-    # is executed; when #242 lands the assertion should flip to a real video
-    # upload asserting 200.
     response = _upload_and_complete(
         server_url,
         standard_user_token,
         "video/mp4",
         "clip.mp4",
-        png(2, 2),
+        video(),
     )
-    assert response.status_code == 500, f"unexpected: {response.status_code} {response.text}"
+
+    assert response.status_code == 200, f"complete failed: {response.status_code} {response.text}"
+    body = response.json()
+    assert isinstance(body["file_id"], int) and body["file_id"] > 0
+    assert body["is_finished"] is True

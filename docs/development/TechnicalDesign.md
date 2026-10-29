@@ -2535,6 +2535,10 @@ Python tests, the container inputs, SQL migrations, or the workflows themselves,
 exercised by the black-box suite as well as by the repository integration tests (`rust`). Its report (`junit.xml`,
 best-effort) is an optional, untrusted review input, not a gate on its own.
 
+`script/e2e.sh` starts the container and mounts a fresh, writable directory at the library root the server reads
+(`/app/media`): the server never creates that root, so the harness supplies it both for the upload flow, which promotes
+into it, and for the startup scan.
+
 A golden file or a test media file the suite consumes is stored under `test/e2e/fixture/` and loaded from there by the
 test that needs it ([TEST-052](#e2e-test)); such files are kept out of the per-context test folders
 ([TEST-042](#e2e-test)).

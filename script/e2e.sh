@@ -18,10 +18,19 @@ readonly HEALTH_TIMEOUT_S=60
 readonly JUNIT_DIR=".artifacts/e2e"
 readonly JUNIT_XML="${JUNIT_DIR}/junit.xml"
 
+# The library root is the operator's mount, never created by the server, so the
+# harness supplies it: uploads are promoted into `/app/media` and the startup
+# scan reads it. It is a fresh, world-writable directory because the container
+# runs as an unprivileged user whose uid does not match the host runner's.
+MEDIA_DIR="$(mktemp -d)"
+readonly MEDIA_DIR
+chmod 0777 "${MEDIA_DIR}"
+
 cleanup() {
 	local status=$?
 	if [[ -z ${KEEP:-} ]]; then
 		docker rm -f "${CONTAINER}" >/dev/null 2>&1 || true
+		rm -rf "${MEDIA_DIR}"
 	fi
 	exit "${status}"
 }
@@ -38,6 +47,7 @@ echo "==> Starting container ${CONTAINER}"
 docker rm -f "${CONTAINER}" >/dev/null 2>&1 || true
 docker run -d --name "${CONTAINER}" -p "${PORT}:4080" \
 	-e MNEMORIUM_SECURITY_RATE_LIMIT_BURST_SIZE=1000 \
+	-v "${MEDIA_DIR}:/app/media" \
 	"${IMAGE}" >/dev/null
 
 echo "==> Waiting for ${BASE_URL}/health"
