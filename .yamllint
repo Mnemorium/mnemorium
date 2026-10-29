@@ -13,3 +13,4 @@ ignore: |
   codeql-rust-db/
   default.yaml
   .agents/
+  openspec/
