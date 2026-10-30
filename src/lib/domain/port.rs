@@ -28,4 +28,5 @@ pub mod unit_of_work;
 pub mod upload_repository;
 pub mod user_repository;
 pub mod user_unit_of_work;
+pub mod video_metadata_provider;
 pub mod video_repository;

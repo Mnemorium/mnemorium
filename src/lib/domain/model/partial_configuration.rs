@@ -21,6 +21,8 @@
 pub struct PartialConfiguration {
     /// Asset-related settings named by the layer.
     pub asset: PartialAsset,
+    /// Library-related settings named by the layer.
+    pub library: PartialLibrary,
     /// Logging-related settings named by the layer.
     pub logging: PartialLogging,
     /// Persistence-related settings named by the layer.
@@ -49,6 +51,49 @@ pub struct PartialAssetUpload {
     pub expiry_seconds: Option<u64>,
     /// Maximum size of a single uploaded file, in bytes.
     pub max_file_size_bytes: Option<u64>,
+}
+
+/// Library-related settings named by the layer.
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Deserialize)]
+#[serde(default, deny_unknown_fields)]
+#[non_exhaustive]
+pub struct PartialLibrary {
+    /// Metadata settings named by the layer.
+    pub metadata: PartialLibraryMetadata,
+}
+
+/// Metadata settings named by the layer.
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Deserialize)]
+#[serde(default, deny_unknown_fields)]
+#[non_exhaustive]
+pub struct PartialLibraryMetadata {
+    /// Video metadata settings named by the layer.
+    pub video: PartialVideoMetadata,
+}
+
+/// Video metadata settings named by the layer.
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Deserialize)]
+#[serde(default, deny_unknown_fields)]
+#[non_exhaustive]
+pub struct PartialVideoMetadata {
+    /// Configured providers, when the layer names the list.
+    pub providers: Option<Vec<PartialVideoProvider>>,
+}
+
+/// One configured video metadata provider named by the layer.
+///
+/// The name is kept as a string so the domain constructor, not serde, rejects
+/// an unknown provider and names the setting.
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Deserialize)]
+#[serde(default, deny_unknown_fields)]
+#[non_exhaustive]
+pub struct PartialVideoProvider {
+    /// API key the adapter presents, when the layer names one.
+    pub api_key: Option<String>,
+    /// Position in the failover order, when the layer names one.
+    pub index: Option<u32>,
+    /// Provider name, when the layer names one.
+    pub name: Option<String>,
 }
 
 /// Logging-related settings named by the layer.

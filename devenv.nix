@@ -98,6 +98,7 @@
       language = "system";
       pass_filenames = false;
       files = "(\\.rs$|\\.md$|^migrations/.*\\.sql$|^rule/.*|^rule_enforcer\\.yaml$|^script/rule_enforcer\\.sh$)";
+      fail_fast = true;
     };
     # === repository governance (GOV-001)
     scopes = {
@@ -114,6 +115,7 @@
     nixfmt = {
       enable = true;
       package = multiverse.nixfmt."1.5.0";
+      fail_fast = true;
     };
     # === file/dir names
     ls-lint = {
@@ -122,6 +124,7 @@
       entry = "ls_lint";
       language = "system";
       pass_filenames = false;
+      fail_fast = true;
     };
     # === toml
     taplo.enable = true;
@@ -152,6 +155,7 @@
       pass_filenames = false;
       files = "\\.rs$";
       language = "rust";
+      fail_fast = true;
     };
 
     # === sql
@@ -190,6 +194,7 @@
       package = pkgs.markdownlint-cli2;
       entry = "markdownlint-cli2";
       files = ".*\\.md$";
+      fail_fast = true;
     };
     prettier = {
       enable = true;
@@ -198,6 +203,7 @@
       language = "system";
       files = "\\.md$";
       before = [ "markdownlint" ];
+      fail_fast = true;
     };
     yamllint = {
       enable = true;
@@ -205,6 +211,7 @@
       entry = "yamllint -c .yamllint .";
       pass_filenames = false;
       files = "\\.(yaml|yml)$";
+      fail_fast = true;
     };
 
     # === docker
@@ -213,6 +220,7 @@
       package = multiverse.hadolint."2.13.1";
       entry = "hadolint";
       files = "(^|/)Dockerfile(\\..*)?$";
+      fail_fast = true;
     };
 
     build = {
@@ -221,6 +229,7 @@
       entry = "cargo build";
       files = "\\.rs$";
       pass_filenames = false;
+      fail_fast = true;
     };
 
   };

@@ -6,14 +6,30 @@
 # be set from the environment, which overrides this file: `MNEMORIUM_` plus the
 # setting path uppercased, joined with single underscores (for example
 # MNEMORIUM_LOGGING_LEVEL or MNEMORIUM_SECURITY_RATE_LIMIT_BURST_SIZE). An
-# unknown variable name is ignored. Secrets are not configuration: the site
-# pepper and the token signing secret live in state.yaml and are never written
-# here.
+# unknown variable name is ignored. The instance secrets are not configuration:
+# the site pepper and the token signing secret live in state.yaml and are never
+# written here. A video metadata provider's `api_key` is the one configuration
+# value that carries a secret; it is read only from this file, never from the
+# environment, and never written back.
 asset:
   upload:
     chunk_size_bytes: 5242880
     expiry_seconds: 86400
     max_file_size_bytes: 107374182400
+library:
+  metadata:
+    video:
+      # Video metadata providers, tried in ascending `index` order. Each entry
+      # needs a supported `name`, a unique positive `index` and a non-empty
+      # `api_key`. An empty list leaves identification unavailable.
+      # providers:
+      #   - name: tmdb
+      #     index: 1
+      #     api_key: "..."
+      #   - name: omdb
+      #     index: 2
+      #     api_key: "..."
+      providers: []
 logging:
   ansi: false
   level: "debug,sqlx=warn"

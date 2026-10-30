@@ -92,6 +92,35 @@ pub enum ExternalServiceError {
     Unknown(#[source] anyhow::Error),
 }
 
+impl ExternalServiceError {
+    /// Return the stable classification of the failure, for a log field.
+    ///
+    /// The value is a code, never the error's `Display`: a transport error's
+    /// `Display` can embed the request address, and therefore a query key
+    /// (`OBS-003`, `OBS-004`).
+    #[must_use]
+    #[expect(
+        clippy::pattern_type_mismatch,
+        reason = "the arms name copies of a non-Copy error matched by reference"
+    )]
+    pub fn classification(&self) -> &'static str {
+        match self {
+            Self::CommunicationFailure => "communication_failure",
+            Self::DependencyFailure => "dependency_failure",
+            Self::DeserializationFailure => "deserialization_failure",
+            Self::Forbidden => "forbidden",
+            Self::InvalidRequest => "invalid_request",
+            Self::RateLimited => "rate_limited",
+            Self::RetryableFailure => "retryable_failure",
+            Self::SerializationFailure => "serialization_failure",
+            Self::Timeout => "timeout",
+            Self::Unauthorized => "unauthorized",
+            Self::Unavailable => "unavailable",
+            Self::Unknown(_) => "unknown",
+        }
+    }
+}
+
 /// Error returned when a content hashing operation fails.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]

@@ -76,17 +76,25 @@ document describes the source layout those rules constrain.
 | `src/lib`                                                       |                                                                                                                                   |
 | `src/lib/application`                                           | App Layer                                                                                                                         |
 | `src/lib/application/port`                                      | Application use-case interfaces (one application use case per file)                                                               |
+| `src/lib/application/port/identify_video.rs`                    | Internal identify-video use-case port, with no HTTP surface                                                                       |
 | `src/lib/application/security_event.rs`                         | Application-owned security-event constructors (`OBS-006`)                                                                         |
 | `src/lib/application/use_case`                                  | Application use-case implementations (one per file)                                                                               |
 | `src/lib/domain`                                                | Domain Layer                                                                                                                      |
 | `src/lib/domain/alias.rs`                                       | Type alias for the project (ex: which integer to use for IDs)                                                                     |
 | `src/lib/domain/model`                                          | Aggregate, Entity, Value object declaration                                                                                       |
+| `src/lib/domain/model/artwork.rs`                               | Downloaded artwork carried as image content plus its sniffed media type                                                           |
+| `src/lib/domain/model/genre.rs`                                 | Shared genre vocabulary mapping every provider's spelling onto one canonical value                                                |
+| `src/lib/domain/model/media_candidate.rs`                       | Provider identifier, provider-tagged external reference, search candidate and lookup target                                       |
+| `src/lib/domain/model/media_metadata.rs`                        | Provider-independent film, show and episode metadata, referring to artwork as image content                                       |
+| `src/lib/domain/model/media_query.rs`                           | Search query a media name yields, its media kind and episode position                                                             |
 | `src/lib/domain/model/permission.rs`                            | Permission aggregate, action catalog, scopes and the `Protected` resource view                                                    |
 | `src/lib/domain/port`                                           | Port interface declaration                                                                                                        |
 | `src/lib/domain/port/error.rs`                                  | Outbound port errors: the shared Repository and External Service families, plus each port's own error family                      |
 | `src/lib/domain/port/permission_repository.rs`                  | Port persisting and querying per-user permission overrides                                                                        |
+| `src/lib/domain/port/video_metadata_provider.rs`                | Outbound port asking an external metadata provider to search and to resolve one film, show or episode                             |
 | `src/lib/domain/service`                                        | Domain Service implementation; see Terms Glossary for more info on it                                                             |
 | `src/lib/domain/service/authorization.rs`                       | Authorization policy deciding one action over one resource, with the denial's concealment rule                                    |
+| `src/lib/domain/service/media_name_interpreter.rs`              | Media-name interpreter turning a file or folder name into ordered, evidence-backed search queries                                 |
 | `src/lib/infrastructure/inbound/media_ingest.rs`                | Runtime driving the startup ingest scan and the filesystem change observer, drained on shutdown                                   |
 | `src/lib/infrastructure/inbound/rest`                           | HTTP adapter layer                                                                                                                |
 | `src/lib/infrastructure/inbound/rest/api_error.rs`              | API Error declaration                                                                                                             |
@@ -107,6 +115,9 @@ document describes the source layout those rules constrain.
 | `src/lib/infrastructure/outbound/notify/media_change_source.rs` | Change-source adapter observing the library root with `notify` and translating create, rename and remove events                   |
 | `src/lib/infrastructure/outbound/moka.rs`                       | In-memory cache adapter                                                                                                           |
 | `src/lib/infrastructure/outbound/random`                        | Password and secret generator adapters                                                                                            |
+| `src/lib/infrastructure/outbound/reqwest`                       | External metadata adapters over `reqwest`, with the shared failure classification and the bounded artwork client                  |
+| `src/lib/infrastructure/outbound/reqwest/tmdb.rs`               | TMDB adapter: search and detail mapping, bearer or query-key authentication                                                       |
+| `src/lib/infrastructure/outbound/reqwest/omdb.rs`               | `OMDb` adapter: search and detail mapping, `Response:"False"` and invalid-key handling                                            |
 | `src/lib/infrastructure/outbound/sha2`                          | SHA-256 content hasher adapter                                                                                                    |
 | `src/lib/infrastructure/outbound/sqlx`                          | SQLx/SQLite repository adapters                                                                                                   |
 | `src/lib/infrastructure/outbound/sqlx/model`                    | SQLx row models                                                                                                                   |
@@ -130,6 +141,11 @@ An **application use case** (`port/<name>.rs` plus `use_case/<name>.rs`) is a te
 3. Install the logging subscriber and emit the first-boot lifecycle events.
 4. Initialize the Root Admin, open the SQLite datastore at `mnemorium.db`, create the storage directories, and build
    `AppState` with the immutable configuration, the immutable identity and the per-context factories.
+
+The Library factory resolves the video metadata chain from the immutable configuration when its `identify_video()`
+accessor is called: the configured links are built in index order, and an empty provider list leaves identification
+unavailable, so the internal `IdentifyVideo` use case reports "unavailable" rather than "no match". Configuring a
+provider sends no request until a trigger identifies a video.
 
 ## Server lifecycle
 

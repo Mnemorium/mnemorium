@@ -10,12 +10,16 @@ use crate::domain::model::configuration::AssetUpload;
 use crate::domain::model::configuration::ClientIpHeader;
 use crate::domain::model::configuration::Configuration;
 use crate::domain::model::configuration::Jwt;
+use crate::domain::model::configuration::Library;
+use crate::domain::model::configuration::LibraryMetadata;
 use crate::domain::model::configuration::Logging;
 use crate::domain::model::configuration::Persistence;
 use crate::domain::model::configuration::RateLimit;
 use crate::domain::model::configuration::RateLimitError;
 use crate::domain::model::configuration::Security;
 use crate::domain::model::configuration::Sqlite3;
+use crate::domain::model::configuration::VideoMetadata;
+use crate::domain::model::configuration::VideoProvider;
 use crate::domain::model::configuration::parse_trusted_proxies;
 use crate::domain::model::partial_configuration::PartialConfiguration;
 use crate::domain::port::configuration_source::ConfigurationSource;
@@ -136,6 +140,26 @@ fn merge(
     .map_err(|error| invalid("asset.upload", error))?;
     let asset = Asset::new(upload);
 
+    let video_metadata = match partial.library.metadata.video.providers {
+        Some(entries) => {
+            applied.push("library.metadata.video.providers");
+            let mut providers = Vec::with_capacity(entries.len());
+            for entry in entries {
+                let provider = VideoProvider::try_new(
+                    &entry.name.unwrap_or_default(),
+                    entry.index.unwrap_or_default(),
+                    entry.api_key.unwrap_or_default(),
+                )
+                .map_err(|error| invalid("library.metadata.video.providers", error))?;
+                providers.push(provider);
+            }
+            VideoMetadata::try_new(providers)
+                .map_err(|error| invalid("library.metadata.video.providers", error))?
+        }
+        None => base.library().metadata().video().clone(),
+    };
+    let library = Library::new(LibraryMetadata::new(video_metadata));
+
     let logging = Logging::try_new(
         resolve(
             partial.logging.ansi,
@@ -239,7 +263,7 @@ fn merge(
     applied.sort_unstable();
     applied.dedup();
     Ok((
-        Configuration::new(persistence, security, logging, asset),
+        Configuration::new(persistence, security, logging, asset, library),
         applied,
     ))
 }
@@ -276,13 +300,19 @@ mod tests {
     use crate::domain::model::configuration::ClientIpHeader;
     use crate::domain::model::configuration::Configuration;
     use crate::domain::model::configuration::Rotation;
+    use crate::domain::model::configuration::VideoProvider;
+    use crate::domain::model::media_candidate::ProviderId;
     use crate::domain::model::partial_configuration::PartialAsset;
     use crate::domain::model::partial_configuration::PartialAssetUpload;
     use crate::domain::model::partial_configuration::PartialConfiguration;
     use crate::domain::model::partial_configuration::PartialJwt;
+    use crate::domain::model::partial_configuration::PartialLibrary;
+    use crate::domain::model::partial_configuration::PartialLibraryMetadata;
     use crate::domain::model::partial_configuration::PartialLogging;
     use crate::domain::model::partial_configuration::PartialRateLimit;
     use crate::domain::model::partial_configuration::PartialSecurity;
+    use crate::domain::model::partial_configuration::PartialVideoMetadata;
+    use crate::domain::model::partial_configuration::PartialVideoProvider;
     use crate::domain::port::configuration_source::LoadedFileConfiguration;
     use crate::domain::port::configuration_source::MockConfigurationSource;
     use crate::domain::port::configuration_source::MockEnvironmentConfiguration;
@@ -357,6 +387,29 @@ mod tests {
         }
     }
 
+    /// One provider entry the file layer names.
+    fn provider(name: &str, index: u32, api_key: &str) -> PartialVideoProvider {
+        PartialVideoProvider {
+            api_key: Some(api_key.to_owned()),
+            index: Some(index),
+            name: Some(name.to_owned()),
+        }
+    }
+
+    /// A partial naming only the video metadata provider list.
+    fn video_providers(entries: Vec<PartialVideoProvider>) -> PartialConfiguration {
+        PartialConfiguration {
+            library: PartialLibrary {
+                metadata: PartialLibraryMetadata {
+                    video: PartialVideoMetadata {
+                        providers: Some(entries),
+                    },
+                },
+            },
+            ..PartialConfiguration::default()
+        }
+    }
+
     /// Assert the file layer naming `partial` is rejected and the message names `setting`.
     ///
     /// The environment layer must not be consulted: a file value that fails validation stops the
@@ -378,13 +431,24 @@ mod tests {
             ),
             "an invalid merged value must be reported as such, got: {result:?}"
         );
-        let message = result
-            .map_err(|error| error.to_string())
-            .err()
-            .unwrap_or_default();
+        let error = result.as_ref().err();
+        let message = error.map(ToString::to_string).unwrap_or_default();
         assert!(
             message.contains(setting),
             "the rejection must name {setting}, got: {message:?}"
+        );
+        // Every rejection fixture carries a `sentinel` key, so a leak is
+        // detectable in both the message and the debug chain (`OBS-004`).
+        let debug = error
+            .map(|failure| format!("{failure:?}"))
+            .unwrap_or_default();
+        assert!(
+            !message.contains("sentinel"),
+            "the rejection must not carry an API key, got: {message:?}"
+        );
+        assert!(
+            !debug.contains("sentinel"),
+            "the debug chain must not carry an API key, got: {debug:?}"
         );
     }
 
@@ -847,5 +911,168 @@ mod tests {
 
         // Act & Assert
         assert_rejected_naming(partial, "logging.level").await;
+    }
+
+    #[tokio::test]
+    async fn load_configuration_defaults_have_no_video_provider() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let use_case = use_case(
+            file_layer(PartialConfiguration::default(), false),
+            environment_layer(PartialConfiguration::default()),
+        );
+
+        // Act
+        let response = use_case.execute().await?;
+
+        // Assert
+        assert!(
+            response
+                .configuration()
+                .library()
+                .metadata()
+                .video()
+                .providers()
+                .is_empty(),
+            "the built-in default lists no provider, so identification is unavailable"
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn load_configuration_accepts_a_two_provider_list() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let partial = video_providers(vec![
+            provider("tmdb", 1, "sentinel-tmdb"),
+            provider("omdb", 2, "sentinel-omdb"),
+        ]);
+        let use_case = use_case(
+            file_layer(partial, false),
+            environment_layer(PartialConfiguration::default()),
+        );
+
+        // Act
+        let response = use_case.execute().await?;
+
+        // Assert
+        let providers = response
+            .configuration()
+            .library()
+            .metadata()
+            .video()
+            .providers();
+        assert_eq!(providers.len(), 2, "both entries must be kept");
+        assert_eq!(providers.first().map(VideoProvider::index), Some(1));
+        assert_eq!(providers.last().map(VideoProvider::index), Some(2));
+        assert!(
+            response.applied().is_empty(),
+            "the file layer's applied paths are not reported, only the environment's"
+        );
+
+        // The key never leaves the process: neither the redacting `Debug` nor
+        // the serialized entry carries it.
+        let provider = VideoProvider::try_new("tmdb", 1, "SENTINEL_KEY".to_owned())?;
+        let debug = format!("{provider:?}");
+        assert!(
+            !debug.contains("SENTINEL_KEY"),
+            "Debug must not expose the key, got: {debug}"
+        );
+        assert!(
+            debug.contains("Tmdb"),
+            "Debug must still name the provider, got: {debug}"
+        );
+        let serialized = yaml_serde::to_string(&provider)?;
+        assert!(
+            !serialized.contains("SENTINEL_KEY"),
+            "the key must never be written back, got: {serialized}"
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn load_configuration_orders_providers_by_their_index() -> Result<(), Box<dyn Error>> {
+        // Arrange: the file lists the entries in the reverse of their index order.
+        let partial = video_providers(vec![
+            provider("omdb", 2, "sentinel-omdb"),
+            provider("tmdb", 1, "sentinel-tmdb"),
+        ]);
+        let use_case = use_case(
+            file_layer(partial, false),
+            environment_layer(PartialConfiguration::default()),
+        );
+
+        // Act
+        let response = use_case.execute().await?;
+
+        // Assert
+        let providers = response
+            .configuration()
+            .library()
+            .metadata()
+            .video()
+            .providers();
+        assert_eq!(
+            providers
+                .first()
+                .map(VideoProvider::name)
+                .map(ProviderId::as_str),
+            Some("tmdb"),
+            "index 1 must be tried first"
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn load_configuration_unknown_provider_names_the_setting() {
+        // Arrange: the list names a provider the system does not support.
+        let partial = video_providers(vec![provider("tvdb", 1, "sentinel-key")]);
+
+        // Act & Assert
+        assert_rejected_naming(partial, "library.metadata.video.providers").await;
+    }
+
+    #[tokio::test]
+    async fn load_configuration_duplicate_provider_names_the_setting() {
+        // Arrange
+        let partial = video_providers(vec![
+            provider("tmdb", 1, "sentinel-first"),
+            provider("tmdb", 2, "sentinel-second"),
+        ]);
+
+        // Act & Assert
+        assert_rejected_naming(partial, "library.metadata.video.providers").await;
+    }
+
+    #[tokio::test]
+    async fn load_configuration_duplicate_index_names_the_setting() {
+        // Arrange
+        let partial = video_providers(vec![
+            provider("tmdb", 1, "sentinel-first"),
+            provider("omdb", 1, "sentinel-second"),
+        ]);
+
+        // Act & Assert
+        assert_rejected_naming(partial, "library.metadata.video.providers").await;
+    }
+
+    #[tokio::test]
+    async fn load_configuration_zero_index_names_the_setting() {
+        // Arrange
+        let partial = video_providers(vec![provider("tmdb", 0, "sentinel-key")]);
+
+        // Act & Assert
+        assert_rejected_naming(partial, "library.metadata.video.providers").await;
+    }
+
+    #[tokio::test]
+    async fn load_configuration_missing_key_names_the_setting() {
+        // Arrange: the entry names the provider and the index but no key.
+        let partial = video_providers(vec![PartialVideoProvider {
+            api_key: None,
+            index: Some(1),
+            name: Some("tmdb".to_owned()),
+        }]);
+
+        // Act & Assert
+        assert_rejected_naming(partial, "library.metadata.video.providers").await;
     }
 }

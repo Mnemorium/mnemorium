@@ -203,6 +203,63 @@ pub fn media_ingest_fault(kind: &str) {
     );
 }
 
+/// A metadata provider was skipped (`metadata_provider_fallback`, `warn`).
+///
+/// The record carries the provider and the failure classification only: never
+/// the query, a title, a file name or a key (`OBS-003`, `OBS-006`).
+pub fn metadata_provider_fallback(provider: &str, classification: &str) {
+    warn!(
+        target: "security",
+        event = "metadata_provider_fallback",
+        provider = %provider,
+        classification = %classification,
+        "fell over to the next metadata provider"
+    );
+}
+
+/// A lookup named a provider that is not configured
+/// (`metadata_provider_unconfigured`, `warn`).
+///
+/// The record names only the provider; the reference itself never reaches the
+/// sink (`OBS-003`, `OBS-006`).
+pub fn metadata_provider_unconfigured(provider: &str) {
+    warn!(
+        target: "security",
+        event = "metadata_provider_unconfigured",
+        provider = %provider,
+        "a lookup named a provider that is not configured"
+    );
+}
+
+/// A provider reported a genre the vocabulary does not contain
+/// (`metadata_genre_unmatched`, `debug`).
+///
+/// The record carries the count only: the term itself never reaches the sink
+/// (`OBS-003`, `OBS-006`).
+pub fn metadata_genre_unmatched(count: u64) {
+    debug!(
+        target: "security",
+        event = "metadata_genre_unmatched",
+        count,
+        "a provider reported a genre outside the shared vocabulary"
+    );
+}
+
+/// Artwork a provider reported could not be downloaded or accepted
+/// (`metadata_artwork_failed`, `warn`).
+///
+/// The record carries the provider and a stable reason: never the address, the
+/// bytes or a key (`OBS-003`, `OBS-004`).
+pub fn metadata_artwork_failed(provider: &str, reason: &str) {
+    warn!(
+        target: "security",
+        event = "metadata_artwork_failed",
+        provider = %provider,
+        reason = %reason,
+        "a provider artwork download failed"
+    );
+}
+
 /// An action was out of order, nonsensical in context, or exceeded a limit
 /// (`suspicious_business_logic`, `warn`).
 pub fn suspicious_business_logic(actor: i64, action: &str, reason: &str) {
