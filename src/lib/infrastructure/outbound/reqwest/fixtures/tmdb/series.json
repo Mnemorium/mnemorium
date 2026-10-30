@@ -1,0 +1,12 @@
+{
+  "id": 1396,
+  "name": "Breaking Bad",
+  "overview": "A chemistry teacher turns to manufacturing drugs after a terminal diagnosis.",
+  "first_air_date": "2008-01-20",
+  "origin_country": ["US"],
+  "genres": [
+    { "id": 80, "name": "Crime" },
+    { "id": 18, "name": "Drama" }
+  ],
+  "poster_path": "/poster.png"
+}

@@ -1,6 +1,10 @@
+use std::fmt::Debug;
+use std::fmt::Formatter;
+use std::fmt::Result as FmtResult;
 use std::net::IpAddr;
-
 use std::str::FromStr as _;
+
+use crate::domain::model::media_candidate::ProviderId;
 
 /// Default size of every chunk except the last, in bytes.
 pub const DEFAULT_CHUNK_SIZE_BYTES: u64 = 5_242_880;
@@ -878,12 +882,232 @@ impl Security {
     }
 }
 
+/// Error returned when initialising a video metadata provider or its list.
+///
+/// The message names the setting; it never carries an API key value
+/// (`OBS-004`).
+#[derive(Debug, PartialEq, Eq, thiserror::Error)]
+#[non_exhaustive]
+pub enum VideoMetadataError {
+    /// A listed provider has an empty API key.
+    #[error("library.metadata.video.providers api_key must not be empty")]
+    ApiKeyEmpty,
+    /// Two entries share an index.
+    #[error("library.metadata.video.providers index must be unique")]
+    DuplicateIndex,
+    /// Two entries share a provider name.
+    #[error("library.metadata.video.providers name must be unique")]
+    DuplicateProvider,
+    /// An entry's index is zero.
+    #[error("library.metadata.video.providers index must be greater than zero")]
+    InvalidIndex,
+    /// An entry names a provider the system does not support.
+    #[error("library.metadata.video.providers name must be a supported provider")]
+    UnknownProvider,
+}
+
+/// An external provider's API key.
+///
+/// The value is configuration, not instance identity, and it never leaves the
+/// process: `Debug` prints a placeholder, every holder skips it when it
+/// serializes, and only the adapter that builds a request reads the value. The
+/// key is config-file-only; the environment layer names no provider setting.
+#[derive(Clone, PartialEq, Eq, serde::Deserialize)]
+#[serde(transparent)]
+#[non_exhaustive]
+pub struct ApiKey(String);
+
+impl ApiKey {
+    /// Return the key value for the adapter that builds a request.
+    #[must_use]
+    pub fn expose(&self) -> &str {
+        &self.0
+    }
+
+    /// Return whether the key is empty.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    /// Create a new API key.
+    #[must_use]
+    pub fn new(value: String) -> Self {
+        Self(value)
+    }
+}
+
+impl Debug for ApiKey {
+    /// Redact the key (`OBS-004`): the value never reaches a log sink.
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        f.write_str("ApiKey(**)")
+    }
+}
+
+/// One configured video metadata provider.
+#[derive(Clone, PartialEq, Eq, serde::Serialize)]
+#[non_exhaustive]
+pub struct VideoProvider {
+    /// API key the adapter presents to the provider; never serialized.
+    #[serde(skip_serializing)]
+    api_key: ApiKey,
+    /// Position of the provider in the failover order; positive and unique.
+    index: u32,
+    /// Provider the entry configures.
+    name: ProviderId,
+}
+
+impl VideoProvider {
+    /// Return the provider's API key.
+    #[must_use]
+    pub fn api_key(&self) -> &ApiKey {
+        &self.api_key
+    }
+
+    /// Return the position of the provider in the failover order.
+    #[must_use]
+    pub fn index(&self) -> u32 {
+        self.index
+    }
+
+    /// Return the provider the entry configures.
+    #[must_use]
+    pub fn name(&self) -> ProviderId {
+        self.name
+    }
+
+    /// Initialise a new `VideoProvider`, validating every setting.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`VideoMetadataError::UnknownProvider`] when `name` is not a
+    /// supported provider, [`VideoMetadataError::InvalidIndex`] when `index` is
+    /// zero, and [`VideoMetadataError::ApiKeyEmpty`] when `api_key` is empty.
+    pub fn try_new(name: &str, index: u32, api_key: String) -> Result<Self, VideoMetadataError> {
+        let provider = ProviderId::parse(name).ok_or(VideoMetadataError::UnknownProvider)?;
+        if index == 0 {
+            return Err(VideoMetadataError::InvalidIndex);
+        }
+        let key = ApiKey::new(api_key);
+        if key.is_empty() {
+            return Err(VideoMetadataError::ApiKeyEmpty);
+        }
+        Ok(Self {
+            api_key: key,
+            index,
+            name: provider,
+        })
+    }
+}
+
+impl Debug for VideoProvider {
+    /// Redact the API key (`OBS-004`) while keeping the entry readable.
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        f.debug_struct("VideoProvider")
+            .field("api_key", &"**")
+            .field("index", &self.index)
+            .field("name", &self.name)
+            .finish_non_exhaustive()
+    }
+}
+
+/// Video metadata settings of the Library bounded context.
+///
+/// Constructed through [`VideoMetadata::try_new`], which validates the list; an
+/// empty list is valid and means identification is unavailable.
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize)]
+#[non_exhaustive]
+pub struct VideoMetadata {
+    /// Configured providers, ordered by their index.
+    providers: Vec<VideoProvider>,
+}
+
+impl VideoMetadata {
+    /// Return the configured providers, ordered by their index.
+    #[must_use]
+    pub fn providers(&self) -> &[VideoProvider] {
+        &self.providers
+    }
+
+    /// Initialise a new `VideoMetadata`, validating `providers` and ordering
+    /// them by index.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`VideoMetadataError::DuplicateProvider`] when two entries share
+    /// a provider name, and [`VideoMetadataError::DuplicateIndex`] when two
+    /// entries share an index.
+    pub fn try_new(providers: Vec<VideoProvider>) -> Result<Self, VideoMetadataError> {
+        let mut indices: Vec<u32> = Vec::with_capacity(providers.len());
+        let mut names: Vec<ProviderId> = Vec::with_capacity(providers.len());
+        for provider in &providers {
+            if indices.contains(&provider.index()) {
+                return Err(VideoMetadataError::DuplicateIndex);
+            }
+            if names.contains(&provider.name()) {
+                return Err(VideoMetadataError::DuplicateProvider);
+            }
+            indices.push(provider.index());
+            names.push(provider.name());
+        }
+        let mut sorted = providers;
+        sorted.sort_by_key(VideoProvider::index);
+        Ok(Self { providers: sorted })
+    }
+}
+
+/// Metadata settings of the Library bounded context.
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize)]
+#[non_exhaustive]
+pub struct LibraryMetadata {
+    /// Video metadata settings.
+    video: VideoMetadata,
+}
+
+impl LibraryMetadata {
+    /// Initialise a new `LibraryMetadata`.
+    #[must_use]
+    pub fn new(video: VideoMetadata) -> Self {
+        Self { video }
+    }
+
+    /// Return the video metadata settings.
+    #[must_use]
+    pub fn video(&self) -> &VideoMetadata {
+        &self.video
+    }
+}
+
+/// Library-related settings.
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize)]
+#[non_exhaustive]
+pub struct Library {
+    /// Metadata settings.
+    metadata: LibraryMetadata,
+}
+
+impl Library {
+    /// Return the metadata settings.
+    #[must_use]
+    pub fn metadata(&self) -> &LibraryMetadata {
+        &self.metadata
+    }
+
+    /// Initialise a new `Library`.
+    #[must_use]
+    pub fn new(metadata: LibraryMetadata) -> Self {
+        Self { metadata }
+    }
+}
+
 /// The application configuration.
 #[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize)]
 #[non_exhaustive]
 pub struct Configuration {
     /// Asset-related settings.
     asset: Asset,
+    /// Library-related settings.
+    library: Library,
     /// Logging-related settings.
     logging: Logging,
     /// Persistence-related settings.
@@ -899,6 +1123,12 @@ impl Configuration {
         &self.asset
     }
 
+    /// Return the library-related settings.
+    #[must_use]
+    pub fn library(&self) -> &Library {
+        &self.library
+    }
+
     /// Return the logging-related settings.
     #[must_use]
     pub fn logging(&self) -> &Logging {
@@ -912,9 +1142,11 @@ impl Configuration {
         security: Security,
         logging: Logging,
         asset: Asset,
+        library: Library,
     ) -> Self {
         Self {
             asset,
+            library,
             logging,
             persistence,
             security,

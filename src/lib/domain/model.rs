@@ -1,3 +1,4 @@
+pub mod artwork;
 pub mod audio;
 pub mod configuration;
 pub mod credential;
@@ -5,9 +6,13 @@ pub mod episode;
 pub mod file;
 pub mod gallery;
 pub mod gallery_item;
+pub mod genre;
 pub mod image;
 pub mod instance_state;
 pub mod integrity_hash;
+pub mod media_candidate;
+pub mod media_metadata;
+pub mod media_query;
 pub mod movie;
 pub mod music_album;
 pub mod music_medium;

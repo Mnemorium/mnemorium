@@ -146,6 +146,7 @@ async fn main() -> Result<(), anyhow::Error> {
         Arc::new(RuntimeLibraryUseCaseFactory::new(
             Arc::clone(&unit_of_work_factory),
             Arc::clone(&probe_permits),
+            Arc::clone(&configuration),
         ));
 
     let file_storage = Arc::new(FileSystemStorage::new());

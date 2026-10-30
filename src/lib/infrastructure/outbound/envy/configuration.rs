@@ -7,6 +7,7 @@ use crate::domain::model::partial_configuration::PartialAsset;
 use crate::domain::model::partial_configuration::PartialAssetUpload;
 use crate::domain::model::partial_configuration::PartialConfiguration;
 use crate::domain::model::partial_configuration::PartialJwt;
+use crate::domain::model::partial_configuration::PartialLibrary;
 use crate::domain::model::partial_configuration::PartialLogging;
 use crate::domain::model::partial_configuration::PartialPersistence;
 use crate::domain::model::partial_configuration::PartialRateLimit;
@@ -69,6 +70,10 @@ impl From<EnvConfiguration> for PartialConfiguration {
                     max_file_size_bytes: env.asset_upload_max_file_size_bytes,
                 },
             },
+            // The video metadata provider list, and the keys it carries, are
+            // config-file-only: the environment layer names no provider setting,
+            // so a prefixed variable for one is discarded like any unknown name.
+            library: PartialLibrary::default(),
             logging: PartialLogging {
                 ansi: env.logging_ansi,
                 level: env.logging_level,
@@ -170,6 +175,7 @@ mod tests {
 
     use crate::domain::model::configuration::Rotation;
     use crate::domain::model::partial_configuration::PartialConfiguration;
+    use crate::domain::model::partial_configuration::PartialLibrary;
     use crate::domain::port::error::ConfigurationSourceError;
 
     use super::EnvConfigurationSource;
@@ -285,6 +291,31 @@ mod tests {
             !message.contains("many"),
             "the rejection must not carry the value, got: {message:?}"
         );
+    }
+
+    #[test]
+    fn environment_configuration_video_provider_settings_are_not_overridable()
+    -> Result<(), Box<dyn Error>> {
+        // Arrange: the provider list and its key are config-file-only.
+        let variables = [
+            variable("MNEMORIUM_LIBRARY_METADATA_VIDEO_PROVIDERS", "tmdb"),
+            variable("MNEMORIUM_LIBRARY_METADATA_VIDEO_API_KEY", "sentinel-key"),
+            variable(
+                "MNEMORIUM_LIBRARY_METADATA_VIDEO_PROVIDERS_0_API_KEY",
+                "sentinel-key",
+            ),
+        ];
+
+        // Act
+        let partial = adapter(variables)?;
+
+        // Assert
+        assert_eq!(
+            partial.library,
+            PartialLibrary::default(),
+            "no video provider setting is environment-overridable"
+        );
+        Ok(())
     }
 
     #[test]

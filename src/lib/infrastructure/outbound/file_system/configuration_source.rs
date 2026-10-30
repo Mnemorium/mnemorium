@@ -343,6 +343,68 @@ mod tests {
     }
 
     #[test]
+    fn configuration_source_library_provider_list_is_parsed() -> Result<(), Box<dyn Error>> {
+        // Arrange: the file names one provider entry with its key.
+        let directory = tempdir()?;
+        let path = directory.path().join("config.yaml");
+        let original = "library:\n  metadata:\n    video:\n      providers:\n        - name: tmdb\n          index: 1\n          api_key: sentinel-tmdb\n";
+        fs::write(&path, original)?;
+        let resolver = resolver(&path);
+
+        // Act
+        let loaded = resolver.resolve()?;
+
+        // Assert
+        let providers = loaded
+            .partial()
+            .library
+            .metadata
+            .video
+            .providers
+            .as_ref()
+            .ok_or("the provider list must be named by the file")?;
+        assert_eq!(providers.len(), 1);
+        assert_eq!(
+            providers
+                .first()
+                .and_then(|provider| provider.name.as_deref()),
+            Some("tmdb")
+        );
+        assert_eq!(
+            providers
+                .first()
+                .and_then(|provider| provider.api_key.as_deref()),
+            Some("sentinel-tmdb")
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn configuration_source_mistyped_provider_list_is_rejected() -> Result<(), Box<dyn Error>> {
+        // Arrange: the list is a scalar instead of a sequence of entries.
+        let directory = tempdir()?;
+        let path = directory.path().join("config.yaml");
+        fs::write(
+            &path,
+            "library:\n  metadata:\n    video:\n      providers: tmdb\n",
+        )?;
+        let resolver = resolver(&path);
+
+        // Act
+        let result = resolver.resolve();
+
+        // Assert
+        assert!(
+            matches!(
+                result,
+                Err(ConfigurationSourceError::InvalidConfiguration(_))
+            ),
+            "a value of the wrong type must fail, got: {result:?}"
+        );
+        Ok(())
+    }
+
+    #[test]
     fn configuration_source_unknown_file_key_is_rejected() -> Result<(), Box<dyn Error>> {
         // Arrange
         let directory = tempdir()?;

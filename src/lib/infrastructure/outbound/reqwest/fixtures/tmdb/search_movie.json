@@ -1,0 +1,18 @@
+{
+  "page": 1,
+  "results": [
+    {
+      "poster_path": "/poster.png",
+      "release_date": "2010-07-16",
+      "title": "Inception",
+      "id": 27205
+    },
+    {
+      "title": "Inception",
+      "release_date": "2002-01-24",
+      "id": 1089
+    }
+  ],
+  "total_pages": 1,
+  "total_results": 2
+}
