@@ -1,3 +1,9 @@
+## [0.27.0](https://github.com/Mnemorium/mnemorium/compare/v0.26.0...v0.27.0) (2026-10-30)
+
+### Features
+
+* **application:** identify video metadata from media names ([#365](https://github.com/Mnemorium/mnemorium/issues/365)) ([b2834f9](https://github.com/Mnemorium/mnemorium/commit/b2834f9035475be2d109bc5b324c55d1400d17ad))
+
 ## [0.26.0](https://github.com/Mnemorium/mnemorium/compare/v0.25.0...v0.26.0) (2026-10-29)
 
 ### Features
