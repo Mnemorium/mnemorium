@@ -1,3 +1,9 @@
+## [0.28.0](https://github.com/Mnemorium/mnemorium/compare/v0.27.0...v0.28.0) (2026-10-31)
+
+### Features
+
+* **domain:** add music identification ([#368](https://github.com/Mnemorium/mnemorium/issues/368)) ([e61d3e2](https://github.com/Mnemorium/mnemorium/commit/e61d3e21db0c4e2ba6d095d9352cd7a5254d2665))
+
 ## [0.27.0](https://github.com/Mnemorium/mnemorium/compare/v0.26.0...v0.27.0) (2026-10-30)
 
 ### Features
