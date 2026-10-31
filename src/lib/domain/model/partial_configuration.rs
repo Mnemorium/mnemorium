@@ -67,8 +67,34 @@ pub struct PartialLibrary {
 #[serde(default, deny_unknown_fields)]
 #[non_exhaustive]
 pub struct PartialLibraryMetadata {
+    /// Music metadata settings named by the layer.
+    pub music: PartialMusicProviders,
     /// Video metadata settings named by the layer.
     pub video: PartialVideoMetadata,
+}
+
+/// Music metadata settings named by the layer.
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Deserialize)]
+#[serde(default, deny_unknown_fields)]
+#[non_exhaustive]
+pub struct PartialMusicProviders {
+    /// Configured providers, when the layer names the list.
+    pub providers: Option<Vec<PartialMusicProvider>>,
+}
+
+/// One configured music metadata provider named by the layer.
+///
+/// The name is kept as a string so the domain constructor, not serde, rejects
+/// an unknown provider and names the setting. A music provider has no
+/// credential, so there is no key to name.
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Deserialize)]
+#[serde(default, deny_unknown_fields)]
+#[non_exhaustive]
+pub struct PartialMusicProvider {
+    /// Position in the resolution order, when the layer names one.
+    pub index: Option<u32>,
+    /// Provider name, when the layer names one.
+    pub name: Option<String>,
 }
 
 /// Video metadata settings named by the layer.

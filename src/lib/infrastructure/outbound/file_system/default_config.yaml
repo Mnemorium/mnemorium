@@ -18,6 +18,15 @@ asset:
     max_file_size_bytes: 107374182400
 library:
   metadata:
+    music:
+      # Music metadata providers, tried in ascending `index` order. Each entry
+      # needs a supported `name` and a unique positive `index`; a music
+      # provider takes no credential, so there is no `api_key` to set. An empty
+      # list leaves music identification unavailable.
+      # providers:
+      #   - name: musicbrainz
+      #     index: 1
+      providers: []
     video:
       # Video metadata providers, tried in ascending `index` order. Each entry
       # needs a supported `name`, a unique positive `index` and a non-empty

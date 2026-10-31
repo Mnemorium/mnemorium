@@ -27,6 +27,7 @@ use crate::domain::model::media_query::VideoKind;
 use crate::domain::port::error::ExternalServiceError;
 use crate::domain::port::video_metadata_provider::VideoMetadataProvider;
 use crate::infrastructure::outbound::reqwest::ArtworkClient;
+use crate::infrastructure::outbound::reqwest::REQUEST_TIMEOUT;
 use crate::infrastructure::outbound::reqwest::classify_status;
 use crate::infrastructure::outbound::reqwest::classify_transport_error;
 use crate::infrastructure::outbound::reqwest::log_provider_fault;
@@ -36,8 +37,11 @@ use crate::infrastructure::outbound::reqwest::request_url;
 /// Base address of the `OMDb` API.
 const DEFAULT_BASE_URL: &str = "https://www.omdbapi.com/";
 
-/// Time one `OMDb` request may take.
-const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
+/// Hosts `OMDb` serves poster artwork from.
+const OMDB_ARTWORK_HOSTS: &[&str] = &["ia.media-imdb.com", "m.media-amazon.com"];
+
+/// Security-event operation name owned by the `OMDb` adapter.
+const OPERATION: &str = "video_metadata";
 
 /// One `OMDb` detail payload, for a film, a show or an episode.
 #[derive(Debug, Deserialize)]
@@ -114,7 +118,7 @@ pub struct OmdbVideoMetadataProvider {
 impl OmdbVideoMetadataProvider {
     /// Emit the owning layer's event for `error` and return it unchanged.
     fn fault(error: ExternalServiceError) -> ExternalServiceError {
-        log_provider_fault(error.classification());
+        log_provider_fault(OPERATION, error.classification());
         error
     }
 
@@ -150,7 +154,7 @@ impl OmdbVideoMetadataProvider {
             .unwrap_or_default();
         Self {
             api_key,
-            artwork: ArtworkClient::new(),
+            artwork: ArtworkClient::new(OMDB_ARTWORK_HOSTS),
             base_url,
             client,
         }

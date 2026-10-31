@@ -8,10 +8,13 @@
 //!
 //! Artwork is untrusted content fetched from a provider-supplied address, so
 //! the download is https-only, restricted to the provider's own image hosts,
-//! bounded in size and time, never follows a redirect and is accepted only when
-//! the bytes sniff as an image. A failed download yields no artwork and one
-//! catalogued event; it never fails the lookup.
+//! bounded in size and time and accepted only when the bytes sniff as an image.
+//! The video adapters never follow a redirect; the music adapter's archive
+//! addresses are followed, but only to a host already on its own allow-list. A
+//! failed download yields no artwork and one catalogued event; it never fails
+//! the lookup.
 
+pub mod musicbrainz;
 pub mod omdb;
 pub mod tmdb;
 
@@ -36,19 +39,16 @@ pub(crate) const ARTWORK_MAX_BYTES: usize = 5 * 1024 * 1024;
 /// Maximum time one artwork download may take.
 const ARTWORK_TIMEOUT: Duration = Duration::from_secs(10);
 
-/// Hosts `OMDb` serves poster artwork from.
-const OMDB_ARTWORK_HOSTS: &[&str] = &["ia.media-imdb.com", "m.media-amazon.com"];
+/// Number of redirect hops one archive download may take before it is abandoned.
+const ARTWORK_MAX_REDIRECTS: usize = 3;
 
-/// Security-event operation name owned by both metadata adapters.
-const OPERATION: &str = "video_metadata";
-
-/// Hosts TMDB serves poster artwork from.
-const TMDB_ARTWORK_HOSTS: &[&str] = &["image.tmdb.org"];
+/// Time one metadata request may take.
+pub(crate) const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// Client downloading provider artwork under the adapter's policy.
 pub(crate) struct ArtworkClient {
-    /// Hosts the client accepts, when the default per-provider list is not used.
-    allowed_hosts: Option<Vec<String>>,
+    /// Hosts the client accepts; each adapter supplies its provider's own list.
+    allowed_hosts: Vec<String>,
     /// Client that never follows a redirect and bounds one download's time.
     client: Client,
     /// Whether the address must use https.
@@ -56,37 +56,17 @@ pub(crate) struct ArtworkClient {
 }
 
 impl ArtworkClient {
-    /// Download the artwork at `address` for `provider`.
+    /// Return whether `host` is one the client accepts.
     ///
-    /// Returns `None` and emits one catalogued event when the address is not
-    /// accepted, the download fails, or the content is too large or not an
-    /// image.
-    pub(crate) async fn fetch(&self, provider: ProviderId, address: &str) -> Option<Artwork> {
-        let Ok(url) = Url::parse(address) else {
-            return Self::reject(provider, "address");
-        };
-        if self.secure_only && url.scheme() != "https" {
-            return Self::reject(provider, "scheme");
-        }
-        let host = url.host_str().unwrap_or_default();
-        let permitted = match self.allowed_hosts.as_deref() {
-            Some(hosts) => hosts
-                .iter()
-                .any(|allowed| allowed.eq_ignore_ascii_case(host)),
-            None => match provider {
-                ProviderId::Tmdb => TMDB_ARTWORK_HOSTS,
-                ProviderId::Omdb => OMDB_ARTWORK_HOSTS,
-            }
-            .iter()
-            .any(|allowed| allowed.eq_ignore_ascii_case(host)),
-        };
-        if !permitted {
-            return Self::reject(provider, "host");
-        }
+    /// An entry admits the host itself and every subdomain of it, because the
+    /// Cover Art Archive serves each image from a per-item CDN subdomain such as
+    /// `dn710607.ca.archive.org`.
+    pub(crate) fn accepts_host(&self, host: &str) -> bool {
+        host_is_allowed(&self.allowed_hosts, host)
+    }
 
-        let Ok(mut response) = self.client.get(url).send().await else {
-            return Self::reject(provider, "transport");
-        };
+    /// Read `response` as artwork under the size and content rules.
+    async fn download(&self, provider: ProviderId, mut response: Response) -> Option<Artwork> {
         if !response.status().is_success() {
             return Self::reject(provider, "status");
         }
@@ -113,10 +93,68 @@ impl ArtworkClient {
         Some(Artwork::new(bytes, media_type))
     }
 
+    /// Download the artwork at `address` for `provider`.
+    ///
+    /// Returns `None` and emits one catalogued event when the address is not
+    /// accepted, the download fails, or the content is too large or not an
+    /// image. A redirect is never followed: the response itself must be the
+    /// image.
+    pub(crate) async fn fetch(&self, provider: ProviderId, address: &str) -> Option<Artwork> {
+        let url = self.permitted_url(provider, address, false)?;
+        let Ok(response) = self.client.get(url).send().await else {
+            return Self::reject(provider, "transport");
+        };
+        self.download(provider, response).await
+    }
+
+    /// Download the artwork at `address`, following the provider's own hops.
+    ///
+    /// The Cover Art Archive names its images in plain http on its own host and
+    /// redirects every download on to `archive.org`, so an allow-listed http
+    /// address is upgraded to https before the request and each hop is re-checked
+    /// against the allow-list. The same size, time and content rules apply to the
+    /// bytes that finally arrive, and a hop out of the allow-list yields no
+    /// artwork and one event.
+    pub(crate) async fn fetch_redirected(
+        &self,
+        provider: ProviderId,
+        address: &str,
+    ) -> Option<Artwork> {
+        let url = self.permitted_url(provider, address, true)?;
+        // The hop grant belongs to the archive download alone, so the client that
+        // follows it is built here and the shared `client` keeps refusing
+        // redirects for every other adapter.
+        let allowed = self.allowed_hosts.clone();
+        let secure_only = self.secure_only;
+        let client = Client::builder()
+            .redirect(Policy::custom(move |attempt| {
+                let target = attempt.url();
+                let permitted = target.scheme() == "https" || !secure_only;
+                let known = target
+                    .host_str()
+                    .is_some_and(|host| host_is_allowed(&allowed, host));
+                if permitted && known && attempt.previous().len() < ARTWORK_MAX_REDIRECTS {
+                    attempt.follow()
+                } else {
+                    attempt.stop()
+                }
+            }))
+            .timeout(ARTWORK_TIMEOUT)
+            .build()
+            .unwrap_or_default();
+        let Ok(response) = client.get(url).send().await else {
+            return Self::reject(provider, "transport");
+        };
+        if !self.accepts_host(response.url().host_str().unwrap_or_default()) {
+            return Self::reject(provider, "host");
+        }
+        self.download(provider, response).await
+    }
+
     /// Create a client that accepts one plain-http test host.
     ///
     /// The policy is otherwise unchanged, so a test still proves the host
-    /// allow-list and the redirect refusal.
+    /// allow-list and the hop limit.
     #[cfg(test)]
     pub(crate) fn for_test(host: &str) -> Self {
         let client = Client::builder()
@@ -125,14 +163,14 @@ impl ArtworkClient {
             .build()
             .unwrap_or_default();
         Self {
-            allowed_hosts: Some(vec![host.to_owned()]),
+            allowed_hosts: vec![host.to_owned()],
             client,
             secure_only: false,
         }
     }
 
-    /// Create a client with the production policy.
-    pub(crate) fn new() -> Self {
+    /// Create a client accepting `hosts` under the production policy.
+    pub(crate) fn new(hosts: &[&str]) -> Self {
         let client = Client::builder()
             .redirect(Policy::none())
             .timeout(ARTWORK_TIMEOUT)
@@ -141,17 +179,64 @@ impl ArtworkClient {
             // all, which the first request then reports as a classified fault.
             .unwrap_or_default();
         Self {
-            allowed_hosts: None,
+            allowed_hosts: hosts.iter().map(|host| (*host).to_owned()).collect(),
             client,
             secure_only: true,
         }
     }
 
+    /// Validate `address` and return the URL to request.
+    ///
+    /// `upgrade` allows an allow-listed plain-http address to be re-schemed to
+    /// https rather than refused, which is what the archive's index names.
+    fn permitted_url(&self, provider: ProviderId, address: &str, upgrade: bool) -> Option<Url> {
+        let Ok(mut url) = Url::parse(address) else {
+            return Self::reject(provider, "address");
+        };
+        if upgrade
+            && self.secure_only
+            && url.scheme() == "http"
+            && url.host_str().is_some_and(|host| self.accepts_host(host))
+            && url.set_scheme("https").is_err()
+        {
+            return Self::reject(provider, "scheme");
+        }
+        if self.secure_only && url.scheme() != "https" {
+            return Self::reject(provider, "scheme");
+        }
+        if !self.accepts_host(url.host_str().unwrap_or_default()) {
+            return Self::reject(provider, "host");
+        }
+        Some(url)
+    }
+
     /// Emit the artwork-failure event for `provider` and yield no artwork.
-    fn reject(provider: ProviderId, reason: &str) -> Option<Artwork> {
+    fn reject<T>(provider: ProviderId, reason: &str) -> Option<T> {
         security_event::metadata_artwork_failed(provider.as_str(), reason);
         None
     }
+}
+
+/// Return whether `host` is one of `hosts` or a subdomain of one.
+///
+/// The comparison is case-insensitive and an entry must be the whole host or a
+/// dot-delimited suffix, so `notarchive.org` is not an `archive.org` subdomain.
+fn host_is_allowed(hosts: &[String], host: &str) -> bool {
+    hosts.iter().any(|entry| {
+        if host.eq_ignore_ascii_case(entry) {
+            return true;
+        }
+        host.len()
+            .checked_sub(entry.len())
+            .filter(|start| *start > 0)
+            .is_some_and(|start| {
+                host.get(start..)
+                    .is_some_and(|tail| tail.eq_ignore_ascii_case(entry))
+                    && host
+                        .get(..start)
+                        .is_some_and(|prefix| prefix.ends_with('.'))
+            })
+    })
 }
 
 /// Classify a non-success response status onto the port's error family.
@@ -228,12 +313,12 @@ pub(crate) fn request_url(base: &str, path: &str, pairs: &[(&str, &str)]) -> Opt
 
 /// Emit the catalogued `port_fault` (`error`) for one classified provider
 /// failure (`OBS-002`, `OBS-005`, `OBS-006`).
-pub(crate) fn log_provider_fault(classification: &str) {
+pub(crate) fn log_provider_fault(operation: &str, classification: &str) {
     error!(
         target: "security",
         event = "port_fault",
         kind = %classification,
-        operation = OPERATION,
+        operation = %operation,
         "an outbound dependency failed"
     );
 }

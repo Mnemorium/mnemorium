@@ -26,6 +26,7 @@ use crate::domain::model::media_query::VideoKind;
 use crate::domain::port::error::ExternalServiceError;
 use crate::domain::port::video_metadata_provider::VideoMetadataProvider;
 use crate::infrastructure::outbound::reqwest::ArtworkClient;
+use crate::infrastructure::outbound::reqwest::REQUEST_TIMEOUT;
 use crate::infrastructure::outbound::reqwest::classify_status;
 use crate::infrastructure::outbound::reqwest::classify_transport_error;
 use crate::infrastructure::outbound::reqwest::log_provider_fault;
@@ -38,8 +39,11 @@ const DEFAULT_BASE_URL: &str = "https://api.themoviedb.org/3";
 /// Base address of the TMDB image CDN.
 const DEFAULT_ARTWORK_BASE_URL: &str = "https://image.tmdb.org/t/p/w500";
 
-/// Time one TMDB request may take.
-const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
+/// Hosts TMDB serves poster artwork from.
+const TMDB_ARTWORK_HOSTS: &[&str] = &["image.tmdb.org"];
+
+/// Security-event operation name owned by the TMDB adapter.
+const OPERATION: &str = "video_metadata";
 
 /// One country entry of a TMDB detail payload.
 #[derive(Debug, Deserialize)]
@@ -139,7 +143,7 @@ pub struct TmdbVideoMetadataProvider {
 impl TmdbVideoMetadataProvider {
     /// Emit the owning layer's event for `error` and return it unchanged.
     fn fault(error: ExternalServiceError) -> ExternalServiceError {
-        log_provider_fault(error.classification());
+        log_provider_fault(OPERATION, error.classification());
         error
     }
 
@@ -212,7 +216,7 @@ impl TmdbVideoMetadataProvider {
             .unwrap_or_default();
         Self {
             api_key,
-            artwork: ArtworkClient::new(),
+            artwork: ArtworkClient::new(TMDB_ARTWORK_HOSTS),
             artwork_base_url,
             base_url,
             client,

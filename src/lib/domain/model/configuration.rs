@@ -888,7 +888,7 @@ impl Security {
 /// (`OBS-004`).
 #[derive(Debug, PartialEq, Eq, thiserror::Error)]
 #[non_exhaustive]
-pub enum VideoMetadataError {
+pub enum VideoProvidersError {
     /// A listed provider has an empty API key.
     #[error("library.metadata.video.providers api_key must not be empty")]
     ApiKeyEmpty,
@@ -904,6 +904,9 @@ pub enum VideoMetadataError {
     /// An entry names a provider the system does not support.
     #[error("library.metadata.video.providers name must be a supported provider")]
     UnknownProvider,
+    /// An entry names a provider the section cannot use.
+    #[error("library.metadata.video.providers name must be a video provider")]
+    UnsupportedProvider,
 }
 
 /// An external provider's API key.
@@ -980,17 +983,20 @@ impl VideoProvider {
     ///
     /// # Errors
     ///
-    /// Returns [`VideoMetadataError::UnknownProvider`] when `name` is not a
-    /// supported provider, [`VideoMetadataError::InvalidIndex`] when `index` is
-    /// zero, and [`VideoMetadataError::ApiKeyEmpty`] when `api_key` is empty.
-    pub fn try_new(name: &str, index: u32, api_key: String) -> Result<Self, VideoMetadataError> {
-        let provider = ProviderId::parse(name).ok_or(VideoMetadataError::UnknownProvider)?;
+    /// Returns [`VideoProvidersError::UnknownProvider`] when `name` is not a
+    /// supported provider, [`VideoProvidersError::InvalidIndex`] when `index` is
+    /// zero, and [`VideoProvidersError::ApiKeyEmpty`] when `api_key` is empty.
+    pub fn try_new(name: &str, index: u32, api_key: String) -> Result<Self, VideoProvidersError> {
+        let provider = ProviderId::parse(name).ok_or(VideoProvidersError::UnknownProvider)?;
+        if provider.serves_music() {
+            return Err(VideoProvidersError::UnsupportedProvider);
+        }
         if index == 0 {
-            return Err(VideoMetadataError::InvalidIndex);
+            return Err(VideoProvidersError::InvalidIndex);
         }
         let key = ApiKey::new(api_key);
         if key.is_empty() {
-            return Err(VideoMetadataError::ApiKeyEmpty);
+            return Err(VideoProvidersError::ApiKeyEmpty);
         }
         Ok(Self {
             api_key: key,
@@ -1013,39 +1019,39 @@ impl Debug for VideoProvider {
 
 /// Video metadata settings of the Library bounded context.
 ///
-/// Constructed through [`VideoMetadata::try_new`], which validates the list; an
+/// Constructed through [`VideoProviders::try_new`], which validates the list; an
 /// empty list is valid and means identification is unavailable.
 #[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize)]
 #[non_exhaustive]
-pub struct VideoMetadata {
+pub struct VideoProviders {
     /// Configured providers, ordered by their index.
     providers: Vec<VideoProvider>,
 }
 
-impl VideoMetadata {
+impl VideoProviders {
     /// Return the configured providers, ordered by their index.
     #[must_use]
     pub fn providers(&self) -> &[VideoProvider] {
         &self.providers
     }
 
-    /// Initialise a new `VideoMetadata`, validating `providers` and ordering
+    /// Initialise a new `VideoProviders`, validating `providers` and ordering
     /// them by index.
     ///
     /// # Errors
     ///
-    /// Returns [`VideoMetadataError::DuplicateProvider`] when two entries share
-    /// a provider name, and [`VideoMetadataError::DuplicateIndex`] when two
+    /// Returns [`VideoProvidersError::DuplicateProvider`] when two entries share
+    /// a provider name, and [`VideoProvidersError::DuplicateIndex`] when two
     /// entries share an index.
-    pub fn try_new(providers: Vec<VideoProvider>) -> Result<Self, VideoMetadataError> {
+    pub fn try_new(providers: Vec<VideoProvider>) -> Result<Self, VideoProvidersError> {
         let mut indices: Vec<u32> = Vec::with_capacity(providers.len());
         let mut names: Vec<ProviderId> = Vec::with_capacity(providers.len());
         for provider in &providers {
             if indices.contains(&provider.index()) {
-                return Err(VideoMetadataError::DuplicateIndex);
+                return Err(VideoProvidersError::DuplicateIndex);
             }
             if names.contains(&provider.name()) {
-                return Err(VideoMetadataError::DuplicateProvider);
+                return Err(VideoProvidersError::DuplicateProvider);
             }
             indices.push(provider.index());
             names.push(provider.name());
@@ -1056,24 +1062,149 @@ impl VideoMetadata {
     }
 }
 
+/// Error returned when initialising a music metadata provider or its list.
+///
+/// The message names the setting and never a value (`OBS-004`).
+#[derive(Debug, PartialEq, Eq, thiserror::Error)]
+#[non_exhaustive]
+pub enum MusicProvidersError {
+    /// Two entries share an index.
+    #[error("library.metadata.music.providers index must be unique")]
+    DuplicateIndex,
+    /// Two entries share a provider name.
+    #[error("library.metadata.music.providers name must be unique")]
+    DuplicateProvider,
+    /// An entry's index is zero.
+    #[error("library.metadata.music.providers index must be greater than zero")]
+    InvalidIndex,
+    /// An entry names a provider the system does not support.
+    #[error("library.metadata.music.providers name must be a supported provider")]
+    UnknownProvider,
+    /// An entry names a provider the section cannot use.
+    #[error("library.metadata.music.providers name must be a music provider")]
+    UnsupportedProvider,
+}
+
+/// One configured music metadata provider.
+///
+/// `MusicBrainz` takes no API key, so a music entry carries only its position and
+/// name: there is no credential field to leave empty or redact.
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
+#[non_exhaustive]
+pub struct MusicProvider {
+    /// Position of the provider in the resolution order; positive and unique.
+    index: u32,
+    /// Provider the entry configures.
+    name: ProviderId,
+}
+
+impl MusicProvider {
+    /// Return the position of the provider in the resolution order.
+    #[must_use]
+    pub fn index(&self) -> u32 {
+        self.index
+    }
+
+    /// Return the provider the entry configures.
+    #[must_use]
+    pub fn name(&self) -> ProviderId {
+        self.name
+    }
+
+    /// Initialise a new `MusicProvider`, validating every setting.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MusicProvidersError::UnknownProvider`] when `name` is not a
+    /// supported provider, [`MusicProvidersError::UnsupportedProvider`] when it
+    /// is a provider that serves video rather than music, and
+    /// [`MusicProvidersError::InvalidIndex`] when `index` is zero.
+    pub fn try_new(name: &str, index: u32) -> Result<Self, MusicProvidersError> {
+        let provider = ProviderId::parse(name).ok_or(MusicProvidersError::UnknownProvider)?;
+        if !provider.serves_music() {
+            return Err(MusicProvidersError::UnsupportedProvider);
+        }
+        if index == 0 {
+            return Err(MusicProvidersError::InvalidIndex);
+        }
+        Ok(Self {
+            index,
+            name: provider,
+        })
+    }
+}
+
+/// Music metadata settings of the Library bounded context.
+///
+/// Constructed through [`MusicProviders::try_new`], which validates the list; an
+/// empty list is valid and means music identification is unavailable.
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize)]
+#[non_exhaustive]
+pub struct MusicProviders {
+    /// Configured providers, ordered by their index.
+    providers: Vec<MusicProvider>,
+}
+
+impl MusicProviders {
+    /// Return the configured providers, ordered by their index.
+    #[must_use]
+    pub fn providers(&self) -> &[MusicProvider] {
+        &self.providers
+    }
+
+    /// Initialise a new `MusicProviders`, validating `providers` and ordering
+    /// them by index.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MusicProvidersError::DuplicateProvider`] when two entries share
+    /// a provider name, and [`MusicProvidersError::DuplicateIndex`] when two
+    /// entries share an index.
+    pub fn try_new(providers: Vec<MusicProvider>) -> Result<Self, MusicProvidersError> {
+        let mut indices: Vec<u32> = Vec::with_capacity(providers.len());
+        let mut names: Vec<ProviderId> = Vec::with_capacity(providers.len());
+        for provider in &providers {
+            if indices.contains(&provider.index()) {
+                return Err(MusicProvidersError::DuplicateIndex);
+            }
+            if names.contains(&provider.name()) {
+                return Err(MusicProvidersError::DuplicateProvider);
+            }
+            indices.push(provider.index());
+            names.push(provider.name());
+        }
+        let mut sorted = providers;
+        sorted.sort_by_key(MusicProvider::index);
+        Ok(Self { providers: sorted })
+    }
+}
+
 /// Metadata settings of the Library bounded context.
 #[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize)]
 #[non_exhaustive]
 pub struct LibraryMetadata {
+    /// Music metadata settings.
+    music: MusicProviders,
     /// Video metadata settings.
-    video: VideoMetadata,
+    video: VideoProviders,
 }
 
 impl LibraryMetadata {
+    /// Return the music metadata settings.
+    #[must_use]
+    pub fn music(&self) -> &MusicProviders {
+        &self.music
+    }
+
     /// Initialise a new `LibraryMetadata`.
     #[must_use]
-    pub fn new(video: VideoMetadata) -> Self {
-        Self { video }
+    pub fn new(music: MusicProviders, video: VideoProviders) -> Self {
+        Self { music, video }
     }
 
     /// Return the video metadata settings.
     #[must_use]
-    pub fn video(&self) -> &VideoMetadata {
+    pub fn video(&self) -> &VideoProviders {
         &self.video
     }
 }

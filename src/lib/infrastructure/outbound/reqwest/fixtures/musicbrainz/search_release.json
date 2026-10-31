@@ -1,0 +1,69 @@
+{
+  "created": "2026-10-30T00:00:00.000Z",
+  "count": 2,
+  "offset": 0,
+  "releases": [
+    {
+      "id": "a8b6c4d2-1111-4a2b-9c3d-000000000001",
+      "score": 100,
+      "title": "Kind of Blue",
+      "status": "Official",
+      "date": "1959-08-17",
+      "country": "US",
+      "artist-credit": [
+        {
+          "name": "Miles Davis",
+          "joinphrase": "",
+          "artist": {
+            "id": "561d2b98-d0f0-4a4d-9a1a-3b0d0e4f6a10",
+            "name": "Miles Davis",
+            "sort-name": "Davis, Miles"
+          }
+        }
+      ],
+      "release-group": {
+        "id": "f5093c06-23e3-404f-aeaa-40f72885ee3a",
+        "title": "Kind of Blue",
+        "primary-type": "Album"
+      },
+      "medium-list": [
+        {
+          "position": 1,
+          "format": "12\" Vinyl",
+          "track-count": 5
+        }
+      ]
+    },
+    {
+      "id": "a8b6c4d2-2222-4a2b-9c3d-000000000002",
+      "score": 90,
+      "title": "Kind of Blue",
+      "status": "Official",
+      "date": "1997-03-25",
+      "country": "GB",
+      "artist-credit": [
+        {
+          "name": "Miles Davis",
+          "joinphrase": "",
+          "artist": {
+            "id": "561d2b98-d0f0-4a4d-9a1a-3b0d0e4f6a10",
+            "name": "Miles Davis",
+            "sort-name": "Davis, Miles"
+          }
+        }
+      ],
+      "release-group": {
+        "id": "f5093c06-23e3-404f-aeaa-40f72885ee3a",
+        "title": "Kind of Blue",
+        "primary-type": "Album"
+      },
+      "medium-list": [
+        {
+          "position": 1,
+          "format": "CD",
+          "track-count": 5
+        }
+      ]
+    }
+  ]
+}

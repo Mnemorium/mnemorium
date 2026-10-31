@@ -17,6 +17,7 @@ pub mod media_source;
 pub mod mime_type_repository;
 pub mod movie_repository;
 pub mod music_album_repository;
+pub mod music_metadata_provider;
 pub mod music_playlist_repository;
 pub mod password_generator;
 pub mod password_hasher;

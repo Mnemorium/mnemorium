@@ -1,0 +1,38 @@
+{
+  "id": "8f7c9c2a-3333-4a2b-9c3d-000000000003",
+  "title": "So What",
+  "first-release-date": "1959-08-17",
+  "artist-credit": [
+    {
+      "name": "Miles Davis",
+      "joinphrase": "",
+      "artist": {
+        "id": "561d2b98-d0f0-4a4d-9a1a-3b0d0e4f6a10",
+        "name": "Miles Davis",
+        "sort-name": "Davis, Miles"
+      }
+    }
+  ],
+  "genres": [
+    {
+      "id": "0e3a9c5d-4444-4a2b-9c3d-000000000004",
+      "name": "jazz",
+      "count": 12
+    },
+    {
+      "id": "0e3a9c5d-7777-4a2b-9c3d-000000000007",
+      "name": "Bebop",
+      "count": 2
+    }
+  ],
+  "tags": [
+    {
+      "name": "instrumental",
+      "count": 3
+    }
+  ],
+  "isrcs": [
+    "USSM15900001",
+    "USSM15900002"
+  ]
+}

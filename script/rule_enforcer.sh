@@ -411,7 +411,7 @@ check_sty_rust_001() {
 		allowed["$location"]=1
 	done < <(jq -r '.allowed_locations[]?' <<<"$config")
 
-	# sty-rust-001 extracts every production `#[expect(clippy::single_call_fn, reason = "...")]` together with the function it annotates, and every module-wide exemption together with its file; test modules and `#[cfg(test)]` items are excluded by the rule.
+	# sty-rust-001 extracts every production `#[expect(clippy::single_call_fn, reason = "...")]` together with the function, `mod`, `impl` or `trait` it annotates, and every module-wide exemption together with its file; test modules and `#[cfg(test)]` items are excluded by the rule.
 	matches="$(scan_json "$id" src)" || return 1
 	[ -n "$matches" ] || return 0
 

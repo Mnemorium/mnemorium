@@ -13,13 +13,15 @@ use crate::domain::model::configuration::Jwt;
 use crate::domain::model::configuration::Library;
 use crate::domain::model::configuration::LibraryMetadata;
 use crate::domain::model::configuration::Logging;
+use crate::domain::model::configuration::MusicProvider;
+use crate::domain::model::configuration::MusicProviders;
 use crate::domain::model::configuration::Persistence;
 use crate::domain::model::configuration::RateLimit;
 use crate::domain::model::configuration::RateLimitError;
 use crate::domain::model::configuration::Security;
 use crate::domain::model::configuration::Sqlite3;
-use crate::domain::model::configuration::VideoMetadata;
 use crate::domain::model::configuration::VideoProvider;
+use crate::domain::model::configuration::VideoProviders;
 use crate::domain::model::configuration::parse_trusted_proxies;
 use crate::domain::model::partial_configuration::PartialConfiguration;
 use crate::domain::port::configuration_source::ConfigurationSource;
@@ -140,6 +142,23 @@ fn merge(
     .map_err(|error| invalid("asset.upload", error))?;
     let asset = Asset::new(upload);
 
+    let music_providers = match partial.library.metadata.music.providers {
+        Some(entries) => {
+            applied.push("library.metadata.music.providers");
+            let mut providers = Vec::with_capacity(entries.len());
+            for entry in entries {
+                let provider = MusicProvider::try_new(
+                    &entry.name.unwrap_or_default(),
+                    entry.index.unwrap_or_default(),
+                )
+                .map_err(|error| invalid("library.metadata.music.providers", error))?;
+                providers.push(provider);
+            }
+            MusicProviders::try_new(providers)
+                .map_err(|error| invalid("library.metadata.music.providers", error))?
+        }
+        None => base.library().metadata().music().clone(),
+    };
     let video_metadata = match partial.library.metadata.video.providers {
         Some(entries) => {
             applied.push("library.metadata.video.providers");
@@ -153,12 +172,12 @@ fn merge(
                 .map_err(|error| invalid("library.metadata.video.providers", error))?;
                 providers.push(provider);
             }
-            VideoMetadata::try_new(providers)
+            VideoProviders::try_new(providers)
                 .map_err(|error| invalid("library.metadata.video.providers", error))?
         }
         None => base.library().metadata().video().clone(),
     };
-    let library = Library::new(LibraryMetadata::new(video_metadata));
+    let library = Library::new(LibraryMetadata::new(music_providers, video_metadata));
 
     let logging = Logging::try_new(
         resolve(
@@ -299,6 +318,7 @@ mod tests {
     use crate::application::port::load_configuration::LoadConfigurationUseCase as _;
     use crate::domain::model::configuration::ClientIpHeader;
     use crate::domain::model::configuration::Configuration;
+    use crate::domain::model::configuration::MusicProvider;
     use crate::domain::model::configuration::Rotation;
     use crate::domain::model::configuration::VideoProvider;
     use crate::domain::model::media_candidate::ProviderId;
@@ -309,6 +329,8 @@ mod tests {
     use crate::domain::model::partial_configuration::PartialLibrary;
     use crate::domain::model::partial_configuration::PartialLibraryMetadata;
     use crate::domain::model::partial_configuration::PartialLogging;
+    use crate::domain::model::partial_configuration::PartialMusicProvider;
+    use crate::domain::model::partial_configuration::PartialMusicProviders;
     use crate::domain::model::partial_configuration::PartialRateLimit;
     use crate::domain::model::partial_configuration::PartialSecurity;
     use crate::domain::model::partial_configuration::PartialVideoMetadata;
@@ -401,9 +423,33 @@ mod tests {
         PartialConfiguration {
             library: PartialLibrary {
                 metadata: PartialLibraryMetadata {
+                    music: PartialMusicProviders::default(),
                     video: PartialVideoMetadata {
                         providers: Some(entries),
                     },
+                },
+            },
+            ..PartialConfiguration::default()
+        }
+    }
+
+    /// One music provider entry the file layer names.
+    fn music_provider(name: &str, index: u32) -> PartialMusicProvider {
+        PartialMusicProvider {
+            index: Some(index),
+            name: Some(name.to_owned()),
+        }
+    }
+
+    /// A partial naming only the music metadata provider list.
+    fn music_providers(entries: Vec<PartialMusicProvider>) -> PartialConfiguration {
+        PartialConfiguration {
+            library: PartialLibrary {
+                metadata: PartialLibraryMetadata {
+                    music: PartialMusicProviders {
+                        providers: Some(entries),
+                    },
+                    video: PartialVideoMetadata::default(),
                 },
             },
             ..PartialConfiguration::default()
@@ -1074,5 +1120,116 @@ mod tests {
 
         // Act & Assert
         assert_rejected_naming(partial, "library.metadata.video.providers").await;
+    }
+
+    #[tokio::test]
+    async fn load_configuration_accepts_a_music_provider() -> Result<(), Box<dyn Error>> {
+        // Arrange: a music provider needs no credential.
+        let partial = music_providers(vec![music_provider("musicbrainz", 1)]);
+        let use_case = use_case(
+            file_layer(partial, false),
+            environment_layer(PartialConfiguration::default()),
+        );
+
+        // Act
+        let response = use_case.execute().await?;
+
+        // Assert
+        let providers = response
+            .configuration()
+            .library()
+            .metadata()
+            .music()
+            .providers();
+        assert_eq!(providers.len(), 1, "the entry must be kept");
+        assert_eq!(
+            providers.first().map(MusicProvider::name),
+            Some(ProviderId::MusicBrainz)
+        );
+        assert_eq!(providers.first().map(MusicProvider::index), Some(1));
+        assert!(
+            response
+                .configuration()
+                .library()
+                .metadata()
+                .video()
+                .providers()
+                .is_empty(),
+            "the music section must not enable a video provider"
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn load_configuration_rejects_a_video_provider_in_the_music_section() {
+        // Arrange: TMDB serves video, not music.
+        let partial = music_providers(vec![music_provider("tmdb", 1)]);
+
+        // Act & Assert
+        assert_rejected_naming(partial, "library.metadata.music.providers").await;
+    }
+
+    #[tokio::test]
+    async fn load_configuration_rejects_a_music_provider_in_the_video_section() {
+        // Arrange: MusicBrainz needs no key and serves no video.
+        let partial = video_providers(vec![provider("musicbrainz", 1, "sentinel-key")]);
+
+        // Act & Assert
+        assert_rejected_naming(partial, "library.metadata.video.providers").await;
+    }
+
+    #[tokio::test]
+    async fn load_configuration_rejects_an_unknown_music_provider() {
+        // Arrange
+        let partial = music_providers(vec![music_provider("lastfm", 1)]);
+
+        // Act & Assert
+        assert_rejected_naming(partial, "library.metadata.music.providers").await;
+    }
+
+    #[tokio::test]
+    async fn load_configuration_rejects_a_duplicate_music_provider() {
+        // Arrange
+        let partial = music_providers(vec![
+            music_provider("musicbrainz", 1),
+            music_provider("musicbrainz", 2),
+        ]);
+
+        // Act & Assert
+        assert_rejected_naming(partial, "library.metadata.music.providers").await;
+    }
+
+    #[tokio::test]
+    async fn load_configuration_rejects_a_zero_music_index() {
+        // Arrange
+        let partial = music_providers(vec![music_provider("musicbrainz", 0)]);
+
+        // Act & Assert
+        assert_rejected_naming(partial, "library.metadata.music.providers").await;
+    }
+
+    #[tokio::test]
+    async fn load_configuration_defaults_have_no_music_provider() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let use_case = use_case(
+            file_layer(PartialConfiguration::default(), false),
+            environment_layer(PartialConfiguration::default()),
+        );
+
+        // Act
+        let response = use_case.execute().await?;
+
+        // Assert
+        assert!(
+            response
+                .configuration()
+                .library()
+                .metadata()
+                .music()
+                .providers()
+                .is_empty(),
+            "the built-in default lists no music provider, so identification is unavailable"
+        );
+        Ok(())
     }
 }

@@ -7,7 +7,8 @@
 
 pub mod failover;
 
-use crate::domain::model::configuration::VideoMetadata;
+use crate::domain::model::configuration::MusicProviders;
+use crate::domain::model::configuration::VideoProviders;
 use crate::domain::model::media_candidate::Candidate;
 use crate::domain::model::media_candidate::ProviderId;
 use crate::domain::model::media_candidate::Target;
@@ -15,6 +16,7 @@ use crate::domain::model::media_metadata::MediaMetadata;
 use crate::domain::model::media_query::MediaQuery;
 use crate::domain::port::error::ExternalServiceError;
 use crate::domain::port::video_metadata_provider::VideoMetadataProvider;
+use crate::infrastructure::outbound::reqwest::musicbrainz::MusicBrainzMetadataProvider;
 use crate::infrastructure::outbound::reqwest::omdb::OmdbVideoMetadataProvider;
 use crate::infrastructure::outbound::reqwest::tmdb::TmdbVideoMetadataProvider;
 
@@ -56,11 +58,11 @@ impl VideoMetadataProvider for ConfiguredProvider {
 /// The API key is read here, where the adapter that presents it is built; the
 /// configuration itself stays free of transport.
 #[must_use]
-pub fn configured_links(video: &VideoMetadata) -> Vec<(ProviderId, ConfiguredProvider)> {
+pub fn configured_links(video: &VideoProviders) -> Vec<(ProviderId, ConfiguredProvider)> {
     video
         .providers()
         .iter()
-        .map(|entry| {
+        .filter_map(|entry| {
             let name = entry.name();
             let api_key = entry.api_key().expose().to_owned();
             let provider = match name {
@@ -70,10 +72,32 @@ pub fn configured_links(video: &VideoMetadata) -> Vec<(ProviderId, ConfiguredPro
                 ProviderId::Tmdb => {
                     ConfiguredProvider::Tmdb(TmdbVideoMetadataProvider::new(api_key))
                 }
+                // The video settings admit no music provider, so this arm is
+                // unreachable through configuration.
+                ProviderId::MusicBrainz => return None,
             };
-            (name, provider)
+            Some((name, provider))
         })
         .collect()
+}
+
+/// Build the configured music provider.
+///
+/// Returns `None` when the configuration lists no music provider, which is how
+/// the caller reports identification as unavailable rather than as a search that
+/// ran and found nothing. A chain over one link is a pass-through, so the
+/// provider is returned on its own rather than behind a failover chain.
+///
+/// `MusicBrainz` is the only provider the music section admits, so an entry
+/// naming it is the one that builds an adapter; a section the constructor
+/// validated can hold no other music provider.
+#[must_use]
+pub fn configured_music_provider(music: &MusicProviders) -> Option<MusicBrainzMetadataProvider> {
+    music
+        .providers()
+        .iter()
+        .any(|entry| entry.name() == ProviderId::MusicBrainz)
+        .then(MusicBrainzMetadataProvider::new)
 }
 
 #[cfg(test)]
@@ -87,8 +111,10 @@ mod tests {
     use wiremock::matchers::method;
     use wiremock::matchers::path;
 
-    use crate::domain::model::configuration::VideoMetadata;
+    use crate::domain::model::configuration::MusicProvider;
+    use crate::domain::model::configuration::MusicProviders;
     use crate::domain::model::configuration::VideoProvider;
+    use crate::domain::model::configuration::VideoProviders;
     use crate::domain::model::media_candidate::Candidate;
     use crate::domain::model::media_candidate::ProviderId;
     use crate::domain::model::media_query::MediaQuery;
@@ -99,6 +125,7 @@ mod tests {
 
     use super::ConfiguredProvider;
     use super::configured_links;
+    use super::configured_music_provider;
 
     /// The golden search payload the stub serves.
     const SEARCH_MOVIE: &str = include_str!("reqwest/fixtures/tmdb/search_movie.json");
@@ -131,7 +158,7 @@ mod tests {
     #[test]
     fn configured_links_follows_the_configured_index_order() -> Result<(), Box<dyn Error>> {
         // Arrange: the entries are declared in the reverse of their index order.
-        let video = VideoMetadata::try_new(vec![
+        let video = VideoProviders::try_new(vec![
             VideoProvider::try_new("omdb", 2, "sentinel-omdb".to_owned())?,
             VideoProvider::try_new("tmdb", 1, "sentinel-tmdb".to_owned())?,
         ])?;
@@ -153,5 +180,37 @@ mod tests {
     /// Returns the constructor's error when the title is empty.
     fn query() -> Result<MediaQuery, MediaQueryError> {
         MediaQuery::try_new(VideoKind::Movie, "Inception".to_owned(), None, None)
+    }
+
+    #[test]
+    fn configured_music_provider_is_absent_when_the_list_is_empty() {
+        // Arrange: the built-in default lists no music provider.
+        let music = MusicProviders::default();
+
+        // Act
+        let provider = configured_music_provider(&music);
+
+        // Assert
+        assert!(
+            provider.is_none(),
+            "no configured music provider means identification is unavailable"
+        );
+    }
+
+    #[test]
+    fn configured_music_provider_is_built_from_the_configured_entry() -> Result<(), Box<dyn Error>>
+    {
+        // Arrange: one music provider, which needs no credential.
+        let music = MusicProviders::try_new(vec![MusicProvider::try_new("musicbrainz", 1)?])?;
+
+        // Act
+        let provider = configured_music_provider(&music);
+
+        // Assert
+        assert!(
+            provider.is_some(),
+            "a configured music provider must be composed"
+        );
+        Ok(())
     }
 }

@@ -1,0 +1,53 @@
+{
+  "id": "a8b6c4d2-2222-4a2b-9c3d-000000000002",
+  "title": "Kind of Blue",
+  "status": "Official",
+  "date": "1959",
+  "country": "N/A",
+  "artist-credit": [
+    {
+      "name": "Miles Davis",
+      "joinphrase": "",
+      "artist": {
+        "id": "561d2b98-d0f0-4a4d-9a1a-3b0d0e4f6a10",
+        "name": "Miles Davis",
+        "sort-name": "Davis, Miles"
+      }
+    }
+  ],
+  "genres": [
+    {
+      "id": "0e3a9c5d-4444-4a2b-9c3d-000000000004",
+      "name": "jazz",
+      "count": 12
+    },
+    {
+      "id": "0e3a9c5d-6666-4a2b-9c3d-000000000006",
+      "name": "Cool Jazz",
+      "count": 3
+    }
+  ],
+  "tags": [
+    {
+      "name": "favourite",
+      "count": 1
+    }
+  ],
+  "release-group": {
+    "id": "f5093c06-23e3-404f-aeaa-40f72885ee3a",
+    "title": "Kind of Blue",
+    "primary-type": "Album"
+  },
+  "media": [
+    {
+      "position": 1,
+      "format": "CD",
+      "track-count": 5
+    },
+    {
+      "position": 2,
+      "format": "CD",
+      "track-count": 4
+    }
+  ]
+}

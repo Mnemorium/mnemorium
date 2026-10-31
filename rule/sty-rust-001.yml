@@ -26,6 +26,17 @@ rule:
                 stopBy:
                   not:
                     kind: attribute_item
+        # `#[expect(clippy::single_call_fn, ...)]` on an `impl` or a `trait`: module-wide, since
+        # it silences every method the block declares.
+        - all:
+            - kind: attribute_item
+            - precedes:
+                any:
+                  - kind: impl_item
+                  - kind: trait_item
+                stopBy:
+                  not:
+                    kind: attribute_item
         # `#![expect(clippy::single_call_fn, ...)]` at file or block scope: module-wide.
         # `#![cfg_attr(test, allow(clippy::single_call_fn, ...))]` in src/lib/lib.rs is the
         # crate-level test exemption and stays out.
