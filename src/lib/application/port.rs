@@ -28,6 +28,7 @@ pub mod get_series_episode;
 pub mod get_series_season;
 pub mod get_upload;
 pub mod get_user;
+pub mod identify_music;
 pub mod identify_video;
 pub mod identity_use_case_factory;
 pub mod ingest_media;

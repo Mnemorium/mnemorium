@@ -9,6 +9,8 @@ use crate::domain::model::media_query::VideoKind;
 #[serde(rename_all = "lowercase")]
 #[non_exhaustive]
 pub enum ProviderId {
+    /// `MusicBrainz`, which serves music metadata.
+    MusicBrainz,
     /// The Open Movie Database.
     Omdb,
     /// The Movie Database.
@@ -20,6 +22,7 @@ impl ProviderId {
     #[must_use]
     pub fn as_str(self) -> &'static str {
         match self {
+            Self::MusicBrainz => "musicbrainz",
             Self::Omdb => "omdb",
             Self::Tmdb => "tmdb",
         }
@@ -33,9 +36,23 @@ impl ProviderId {
     pub fn parse(value: &str) -> Option<Self> {
         let normalized = value.trim().to_ascii_lowercase();
         match normalized.as_str() {
+            "musicbrainz" => Some(Self::MusicBrainz),
             "omdb" => Some(Self::Omdb),
             "tmdb" => Some(Self::Tmdb),
             _ => None,
+        }
+    }
+
+    /// Return whether this provider serves music rather than video.
+    ///
+    /// The predicate names the medium a provider answers for, so a
+    /// configuration section admits only the providers it can use: the music
+    /// section takes a music provider and the video section takes a video one.
+    #[must_use]
+    pub fn serves_music(self) -> bool {
+        match self {
+            Self::MusicBrainz => true,
+            Self::Omdb | Self::Tmdb => false,
         }
     }
 }

@@ -1,0 +1,12 @@
+{
+  "images": [
+    {
+      "front": false,
+      "image": "{origin}/back.jpg"
+    },
+    {
+      "front": true,
+      "image": "{origin}/cover.jpg"
+    }
+  ]
+}

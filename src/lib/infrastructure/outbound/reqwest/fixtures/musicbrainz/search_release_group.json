@@ -1,0 +1,45 @@
+{
+  "created": "2026-10-30T00:00:00.000Z",
+  "count": 2,
+  "offset": 0,
+  "release-groups": [
+    {
+      "id": "f5093c06-23e3-404f-aeaa-40f72885ee3a",
+      "score": 100,
+      "title": "Kind of Blue",
+      "primary-type": "Album",
+      "secondary-types": [],
+      "first-release-date": "1959-08-17",
+      "artist-credit": [
+        {
+          "name": "Miles Davis",
+          "joinphrase": "",
+          "artist": {
+            "id": "561d2b98-d0f0-4a4d-9a1a-3b0d0e4f6a10",
+            "name": "Miles Davis",
+            "sort-name": "Davis, Miles"
+          }
+        }
+      ]
+    },
+    {
+      "id": "0f0a6b5c-23e3-404f-aeaa-40f72885ee3a",
+      "score": 90,
+      "title": "Kind of Blue (Legacy Edition)",
+      "primary-type": "Album",
+      "secondary-types": [],
+      "first-release-date": "2008",
+      "artist-credit": [
+        {
+          "name": "Miles Davis",
+          "joinphrase": "",
+          "artist": {
+            "id": "561d2b98-d0f0-4a4d-9a1a-3b0d0e4f6a10",
+            "name": "Miles Davis",
+            "sort-name": "Davis, Miles"
+          }
+        }
+      ]
+    }
+  ]
+}

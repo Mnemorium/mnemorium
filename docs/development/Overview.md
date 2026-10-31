@@ -76,9 +76,11 @@ document describes the source layout those rules constrain.
 | `src/lib`                                                       |                                                                                                                                   |
 | `src/lib/application`                                           | App Layer                                                                                                                         |
 | `src/lib/application/port`                                      | Application use-case interfaces (one application use case per file)                                                               |
+| `src/lib/application/port/identify_music.rs`                    | Internal identify-music use-case port, with no HTTP surface                                                                       |
 | `src/lib/application/port/identify_video.rs`                    | Internal identify-video use-case port, with no HTTP surface                                                                       |
 | `src/lib/application/security_event.rs`                         | Application-owned security-event constructors (`OBS-006`)                                                                         |
 | `src/lib/application/use_case`                                  | Application use-case implementations (one per file)                                                                               |
+| `src/lib/application/use_case/identify_music.rs`                | Identify-music use case: reports unavailable with no configured provider, distinct from a search that found no candidate          |
 | `src/lib/domain`                                                | Domain Layer                                                                                                                      |
 | `src/lib/domain/alias.rs`                                       | Type alias for the project (ex: which integer to use for IDs)                                                                     |
 | `src/lib/domain/model`                                          | Aggregate, Entity, Value object declaration                                                                                       |
@@ -87,14 +89,19 @@ document describes the source layout those rules constrain.
 | `src/lib/domain/model/media_candidate.rs`                       | Provider identifier, provider-tagged external reference, search candidate and lookup target                                       |
 | `src/lib/domain/model/media_metadata.rs`                        | Provider-independent film, show and episode metadata, referring to artwork as image content                                       |
 | `src/lib/domain/model/media_query.rs`                           | Search query a media name yields, its media kind and episode position                                                             |
+| `src/lib/domain/model/music_candidate.rs`                       | Provider-independent album, release and recording candidate, plus the resolution target                                           |
+| `src/lib/domain/model/music_metadata.rs`                        | Provider-independent album, release and recording metadata, with editions, mediums and artist credits                             |
+| `src/lib/domain/model/music_query.rs`                           | Music query for an album, a release or a recording, with its artist and year evidence                                             |
 | `src/lib/domain/model/permission.rs`                            | Permission aggregate, action catalog, scopes and the `Protected` resource view                                                    |
 | `src/lib/domain/port`                                           | Port interface declaration                                                                                                        |
 | `src/lib/domain/port/error.rs`                                  | Outbound port errors: the shared Repository and External Service families, plus each port's own error family                      |
+| `src/lib/domain/port/music_metadata_provider.rs`                | Outbound port asking an external metadata provider to search music and to resolve one album, release or recording                 |
 | `src/lib/domain/port/permission_repository.rs`                  | Port persisting and querying per-user permission overrides                                                                        |
 | `src/lib/domain/port/video_metadata_provider.rs`                | Outbound port asking an external metadata provider to search and to resolve one film, show or episode                             |
 | `src/lib/domain/service`                                        | Domain Service implementation; see Terms Glossary for more info on it                                                             |
 | `src/lib/domain/service/authorization.rs`                       | Authorization policy deciding one action over one resource, with the denial's concealment rule                                    |
 | `src/lib/domain/service/media_name_interpreter.rs`              | Media-name interpreter turning a file or folder name into ordered, evidence-backed search queries                                 |
+| `src/lib/domain/service/release_order.rs`                       | Stable compact-disc partition and edition tie-breaks over album editions and release candidates                                   |
 | `src/lib/infrastructure/inbound/media_ingest.rs`                | Runtime driving the startup ingest scan and the filesystem change observer, drained on shutdown                                   |
 | `src/lib/infrastructure/inbound/rest`                           | HTTP adapter layer                                                                                                                |
 | `src/lib/infrastructure/inbound/rest/api_error.rs`              | API Error declaration                                                                                                             |
@@ -116,6 +123,7 @@ document describes the source layout those rules constrain.
 | `src/lib/infrastructure/outbound/moka.rs`                       | In-memory cache adapter                                                                                                           |
 | `src/lib/infrastructure/outbound/random`                        | Password and secret generator adapters                                                                                            |
 | `src/lib/infrastructure/outbound/reqwest`                       | External metadata adapters over `reqwest`, with the shared failure classification and the bounded artwork client                  |
+| `src/lib/infrastructure/outbound/reqwest/musicbrainz.rs`        | `MusicBrainz` adapter: query escaping, request pacing and bounded retry, mapping, and Cover Art Archive artwork                   |
 | `src/lib/infrastructure/outbound/reqwest/tmdb.rs`               | TMDB adapter: search and detail mapping, bearer or query-key authentication                                                       |
 | `src/lib/infrastructure/outbound/reqwest/omdb.rs`               | `OMDb` adapter: search and detail mapping, `Response:"False"` and invalid-key handling                                            |
 | `src/lib/infrastructure/outbound/sha2`                          | SHA-256 content hasher adapter                                                                                                    |

@@ -534,6 +534,18 @@ mod tests {
             rendered, expected,
             "the checked-in template must carry exactly the built-in defaults"
         );
+        let metadata = rendered
+            .get("library")
+            .and_then(|library| library.get("metadata"))
+            .ok_or("the template must name the library metadata section")?;
+        assert!(
+            metadata.get("music").is_some(),
+            "the template must name the music section"
+        );
+        assert!(
+            metadata.get("video").is_some(),
+            "the template must name the video section"
+        );
         Ok(())
     }
 

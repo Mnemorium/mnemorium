@@ -1,0 +1,24 @@
+{
+  "created": "2026-10-30T00:00:00.000Z",
+  "count": 1,
+  "offset": 0,
+  "recordings": [
+    {
+      "id": "8f7c9c2a-3333-4a2b-9c3d-000000000003",
+      "score": 100,
+      "title": "So What",
+      "first-release-date": "1959-08-17",
+      "artist-credit": [
+        {
+          "name": "Miles Davis",
+          "joinphrase": "",
+          "artist": {
+            "id": "561d2b98-d0f0-4a4d-9a1a-3b0d0e4f6a10",
+            "name": "Miles Davis",
+            "sort-name": "Davis, Miles"
+          }
+        }
+      ]
+    }
+  ]
+}
