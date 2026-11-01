@@ -122,6 +122,7 @@ RULES=(
 	"STY-SQL-010:check_sty_sql_010"
 	"STY-SQL-011:check_sty_sql_011"
 	"STY-SQL-012:check_sty_sql_012"
+	"PERS-022:check_pers_022"
 	"TEST-001:check_test_001"
 	"TEST-002:check_test_002"
 	"TEST-004:check_test_004"
@@ -3178,6 +3179,30 @@ check_sty_sql_012() {
 	done
 
 	return "$result"
+}
+
+check_pers_022() {
+	local id="PERS-022"
+	local target="src/lib/infrastructure/outbound/sqlx/unit_of_work.rs"
+
+	need_file "$id" "$target" || return 1
+
+	# The write-intent opener must issue `BEGIN IMMEDIATE`. A deferred
+	# transaction pins its snapshot at the first read and fails on the upgrade
+	# with SQLITE_BUSY_SNAPSHOT instead of waiting for the lock.
+	if ! awk '/fn begin_write/,/^    }/' "$target" | grep -q 'begin_with('; then
+		printf 'error: %s: %s: begin_write must open the transaction with a custom statement\n' \
+			"$id" "$target" >&2
+		return 1
+	fi
+
+	if ! grep -q 'BEGIN IMMEDIATE' "$target"; then
+		printf 'error: %s: %s: the write-intent statement must be BEGIN IMMEDIATE\n' \
+			"$id" "$target" >&2
+		return 1
+	fi
+
+	return 0
 }
 
 check_test_001() { scan_short TEST-001 src; }

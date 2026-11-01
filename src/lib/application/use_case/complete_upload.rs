@@ -156,13 +156,14 @@ where
         let unit_of_work_factory = Arc::clone(&self.unit_of_work_factory);
 
         Box::pin(async move {
-            // Phase 1: a short, read-only unit of work that resolves and
-            // validates the upload. It is closed before the staged content is
-            // hashed, releasing the pooled connection and holding no read
-            // snapshot across the hash.
+            // Phase 1: a short unit of work that resolves and validates the
+            // upload. It is closed before the staged content is hashed,
+            // releasing the pooled connection and holding no snapshot across
+            // the hash. It is write-intent because the expiry branch deletes
+            // the upload row and its staged file.
             let staged_media = {
                 let mut unit_of_work = unit_of_work_factory
-                    .begin()
+                    .begin_write()
                     .await
                     .map_err(|error| CompleteUploadError::Unknown(error.into()))?;
                 match resolve(&mut unit_of_work, &file_storage, &command, expiry_seconds).await {
@@ -257,9 +258,12 @@ where
 
             // Phase 2: a fresh mutating unit of work. The upload is re-read and
             // re-validated (a time-of-check/time-of-use re-check) before the
-            // computed digest is compared and the completion is persisted.
+            // computed digest is compared and the completion is persisted. It
+            // is a write-intent unit of work: the file row it creates takes the
+            // write lock at `BEGIN`, so a concurrent ingest queues instead of
+            // failing on the snapshot the re-read pinned.
             let mut unit_of_work = unit_of_work_factory
-                .begin()
+                .begin_write()
                 .await
                 .map_err(|error| CompleteUploadError::Unknown(error.into()))?;
             let mut promoted: Option<Promoted> = None;

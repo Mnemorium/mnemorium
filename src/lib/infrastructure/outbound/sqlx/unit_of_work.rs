@@ -38,6 +38,12 @@ use crate::infrastructure::outbound::sqlx::upload_repository::SqlxUploadReposito
 use crate::infrastructure::outbound::sqlx::user_repository::SqlxUserRepository;
 use crate::infrastructure::outbound::sqlx::video_repository::SqlxVideoRepository;
 
+/// Statement opening a write-intent transaction.
+///
+/// `BEGIN IMMEDIATE` takes the write lock up front, so a concurrent writer
+/// queues on the busy timeout instead of failing on a stale snapshot.
+const BEGIN_IMMEDIATE: &str = "BEGIN IMMEDIATE";
+
 /// Unit of work backed by a single `SQLite` transaction.
 pub struct SqlxUnitOfWork {
     /// Transaction shared by every repository the unit of work exposes.
@@ -146,6 +152,15 @@ impl UnitOfWorkFactory for SqlxUnitOfWorkFactory {
 
     async fn begin(&self) -> Result<Self::Uow, UnitOfWorkError> {
         let transaction = self.pool.begin().await.map_err(UnitOfWorkError::from)?;
+        Ok(SqlxUnitOfWork { transaction })
+    }
+
+    async fn begin_write(&self) -> Result<Self::Uow, UnitOfWorkError> {
+        let transaction = self
+            .pool
+            .begin_with(BEGIN_IMMEDIATE)
+            .await
+            .map_err(UnitOfWorkError::from)?;
         Ok(SqlxUnitOfWork { transaction })
     }
 }

@@ -156,7 +156,7 @@ where
 {
     /// Insert the missing media row of an already-registered file.
     async fn backfill(&self, file: File, media: MediaRow) -> Result<Verdict, IngestMediaError> {
-        let mut unit_of_work = self.begin().await?;
+        let mut unit_of_work = self.begin_write().await?;
         match self.insert_media_row(&mut unit_of_work, &file, media).await {
             Ok(()) => {
                 unit_of_work
@@ -196,17 +196,29 @@ where
         }
     }
 
-    /// Open a unit of work.
-    async fn begin(&self) -> Result<F::Uow, IngestMediaError> {
+    /// Open a read-only unit of work.
+    async fn begin_read(&self) -> Result<F::Uow, IngestMediaError> {
         self.unit_of_work_factory
             .begin()
             .await
             .map_err(|error| IngestMediaError::Unknown(error.into()))
     }
 
+    /// Open a unit of work that writes.
+    ///
+    /// The scan commits one file at a time while requests are in flight, so
+    /// every write takes the lock at `BEGIN` instead of upgrading a snapshot a
+    /// concurrent request invalidated meanwhile.
+    async fn begin_write(&self) -> Result<F::Uow, IngestMediaError> {
+        self.unit_of_work_factory
+            .begin_write()
+            .await
+            .map_err(|error| IngestMediaError::Unknown(error.into()))
+    }
+
     /// Return the registered file recorded at `path`, if any.
     async fn find(&self, path: &str) -> Result<Option<File>, IngestMediaError> {
-        let mut unit_of_work = self.begin().await?;
+        let mut unit_of_work = self.begin_read().await?;
         let found = unit_of_work
             .files()
             .search(&FileFilter {
@@ -329,7 +341,7 @@ where
     async fn load_snapshot(
         &self,
     ) -> Result<(HashMap<String, File>, HashSet<String>), IngestMediaError> {
-        let mut unit_of_work = self.begin().await?;
+        let mut unit_of_work = self.begin_read().await?;
         let files = unit_of_work
             .files()
             .search(&FileFilter::default())
@@ -352,7 +364,7 @@ where
 
     /// Load the supported mime type set for a single-path operation.
     async fn load_supported_mime_types(&self) -> Result<HashSet<String>, IngestMediaError> {
-        let mut unit_of_work = self.begin().await?;
+        let mut unit_of_work = self.begin_read().await?;
         let supported = unit_of_work
             .mime_types()
             .all_ids()
@@ -368,7 +380,7 @@ where
         file: &File,
         kind: MediaKind,
     ) -> Result<bool, IngestMediaError> {
-        let mut unit_of_work = self.begin().await?;
+        let mut unit_of_work = self.begin_read().await?;
         let exists = match kind {
             MediaKind::Image => !unit_of_work
                 .images()
@@ -507,7 +519,7 @@ where
             return Ok(Verdict::Skipped);
         };
 
-        let mut unit_of_work = self.begin().await?;
+        let mut unit_of_work = self.begin_write().await?;
         let Some(root_admin) = unit_of_work
             .users()
             .search(&UserFilter {
@@ -600,7 +612,7 @@ where
             return Ok(Verdict::Skipped);
         }
 
-        let mut unit_of_work = self.begin().await?;
+        let mut unit_of_work = self.begin_write().await?;
         let mut renamed = file;
         if let Err(error) = renamed.set_path(to.to_owned()) {
             discard(unit_of_work).await;

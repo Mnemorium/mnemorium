@@ -73,7 +73,7 @@ where
 
         Box::pin(async move {
             let mut unit_of_work = unit_of_work_factory
-                .begin()
+                .begin_write()
                 .await
                 .map_err(|error| InitializeRootAdminError::Unknown(error.into()))?;
 

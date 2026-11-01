@@ -289,13 +289,10 @@ mod test_helpers {
                 unit_of_works: Mutex::new(vec![unit_of_work]),
             }
         }
-    }
 
-    impl UnitOfWorkFactory for TestUnitOfWorkFactory {
-        type Uow = TestUnitOfWork;
-
-        fn begin(&self) -> impl Future<Output = Result<Self::Uow, UnitOfWorkError>> + Send {
-            let unit_of_work = match self.unit_of_works.lock() {
+        /// Pop the next prepared unit of work, tolerating a poisoned lock.
+        fn take(&self) -> Option<TestUnitOfWork> {
+            match self.unit_of_works.lock() {
                 Ok(mut guard) if !guard.is_empty() => Some(guard.remove(0)),
                 Ok(_) => None,
                 Err(poisoned) => {
@@ -306,8 +303,22 @@ mod test_helpers {
                         Some(guard.remove(0))
                     }
                 }
-            };
-            ready(unit_of_work.ok_or(UnitOfWorkError::OperationFailed))
+            }
+        }
+    }
+
+    impl UnitOfWorkFactory for TestUnitOfWorkFactory {
+        type Uow = TestUnitOfWork;
+
+        fn begin(&self) -> impl Future<Output = Result<Self::Uow, UnitOfWorkError>> + Send {
+            ready(self.take().ok_or(UnitOfWorkError::OperationFailed))
+        }
+
+        /// The double issues no SQL, so the intent changes nothing: both
+        /// openers pop the same prepared unit of work, and a write-intent call
+        /// consumes no extra queue entry.
+        fn begin_write(&self) -> impl Future<Output = Result<Self::Uow, UnitOfWorkError>> + Send {
+            self.begin()
         }
     }
 
