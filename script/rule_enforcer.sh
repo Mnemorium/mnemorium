@@ -218,10 +218,13 @@ die_code() {
 usage() {
 	cat <<'EOF'
 Usage:
-  script/rule_enforcer.sh [check]   Run every registered check (default).
-  script/rule_enforcer.sh uncovered List rulebook rules with no check.
-  script/rule_enforcer.sh list      List registered rules.
-  script/rule_enforcer.sh help      Show this help.
+  script/rule_enforcer.sh [check [ID...]]  Run every registered check (default), or only the named ones.
+  script/rule_enforcer.sh uncovered        List rulebook rules with no check.
+  script/rule_enforcer.sh list             List registered rules.
+  script/rule_enforcer.sh help             Show this help.
+
+  script/rule_enforcer.sh check STY-RUST-001   Run one rule.
+  script/rule_enforcer.sh STY-RUST-001         The same, without the `check` command.
 
   -v, --verbose   With `check`, list every check that passed, not only failures.
 
@@ -5835,6 +5838,9 @@ check_arch_005() { need_dir "ARCH-005" "src/lib/domain/model" && scan_short ARCH
 
 # --- Runner -----------------------------------------------------------------
 
+# SELECTED — the registry entries a `check` invocation selected, in argument order; empty means every registered check (filled by select_rules).
+SELECTED=()
+
 # validate_registry — every entry names a known rule and a defined function, and no ID is registered twice.
 validate_registry() {
 	local entry id fn
@@ -5855,10 +5861,40 @@ validate_registry() {
 	done
 }
 
-# run_checks — run every registered check, print each failure as `FAIL <ID> (<Section>) — <Rule>` with the check's output indented below, then a tally.
+# select_rules — resolve the rule IDs named on the command line into SELECTED, keeping argument order and ignoring a repeated ID; an unknown ID or a rulebook rule with no registered check is a usage error.
+select_rules() {
+	local id entry
+	local -A registered=()
+	local -A seen=()
+
+	for entry in "${RULES[@]}"; do
+		registered["${entry%%:*}"]="$entry"
+	done
+	for id in "$@"; do
+		if [ -z "${RULE_TEXT[$id]+set}" ]; then
+			die_code 64 "unknown rule id: $id (run script/rule_enforcer.sh list for the registered rules)"
+		fi
+		if [ -z "${registered[$id]+set}" ]; then
+			die_code 64 "rule $id has no registered check (run script/rule_enforcer.sh uncovered)"
+		fi
+		if [ -n "${seen[$id]+set}" ]; then
+			continue
+		fi
+		seen["$id"]=1
+		SELECTED+=("${registered[$id]}")
+	done
+}
+
+# run_checks — run every registered check, or every selected one, print each failure as `FAIL <ID> (<Section>) — <Rule>` with the check's output indented below, then a tally.
 run_checks() {
 	local entry id fn out rc failed=0 total=0
-	for entry in "${RULES[@]}"; do
+	local -a entries=("${RULES[@]}")
+
+	if [ "${#SELECTED[@]}" -gt 0 ]; then
+		entries=("${SELECTED[@]}")
+	fi
+
+	for entry in "${entries[@]}"; do
 		id="${entry%%:*}"
 		fn="${entry#*:}"
 		total=$((total + 1))
@@ -5882,8 +5918,13 @@ run_checks() {
 		fi
 	done
 
-	printf '%s rulebook rule(s), %s registered, %s failed\n' \
-		"${#RULE_TEXT[@]}" "$total" "$failed"
+	if [ "${#SELECTED[@]}" -gt 0 ]; then
+		printf '%s rulebook rule(s), %s registered, %s selected, %s failed\n' \
+			"${#RULE_TEXT[@]}" "${#RULES[@]}" "$total" "$failed"
+	else
+		printf '%s rulebook rule(s), %s registered, %s failed\n' \
+			"${#RULE_TEXT[@]}" "$total" "$failed"
+	fi
 	[ "$failed" -eq 0 ]
 }
 
@@ -5913,6 +5954,7 @@ cmd_list() {
 
 main() {
 	local cmd="check" arg
+	local -a ids=()
 	while [ "$#" -gt 0 ]; do
 		arg="$1"
 		shift
@@ -5927,11 +5969,20 @@ main() {
 			cmd="help"
 			;;
 		*)
-			usage >&2
-			return 64
+			if [[ $arg =~ ^[A-Z][A-Z0-9]*(-[A-Z0-9]+)*-[0-9]+$ ]]; then
+				ids+=("$arg")
+			else
+				usage >&2
+				return 64
+			fi
 			;;
 		esac
 	done
+
+	if [ "${#ids[@]}" -gt 0 ] && [ "$cmd" != "check" ]; then
+		usage >&2
+		return 64
+	fi
 
 	case "$cmd" in
 	check)
@@ -5940,6 +5991,9 @@ main() {
 		validate_config
 		warn_unknown_config_rules
 		validate_registry
+		if [ "${#ids[@]}" -gt 0 ]; then
+			select_rules "${ids[@]}"
+		fi
 		run_checks
 		;;
 	uncovered)

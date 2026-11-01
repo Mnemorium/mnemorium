@@ -31,6 +31,8 @@ first.
 | E2E       | `script/e2e.sh` (builds and runs the container; `NO_BUILD=1` reuses the image)                                                       |
 | Lint      | `cargo clippy --all-targets --all-features -- -D warnings`; `cargo fmt --all -- --check`                                             |
 | OpenAPI   | `cargo run --bin openapi_gen` (writes `docs/openapi.json`)                                                           |
+| All rules | `script/rule_enforcer.sh check` (every registered rule; CI and the pre-commit hook run this)                                         |
+| One rule  | `script/rule_enforcer.sh check STY-RUST-001` (IDs from `script/rule_enforcer.sh list`; a bare ID works too)                          |
 | Full gate | `devenv test` (all pre-commit hooks)                                                                                                 |
 
 `git commit` runs the repository's commit hooks, which need the dev
