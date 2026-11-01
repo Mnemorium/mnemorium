@@ -13,3 +13,4 @@ rule:
     - pattern: $UOW.begin()
     - pattern: $UOW.commit()
     - pattern: $UOW.rollback()
+    - pattern: $UOW.begin_write()
