@@ -4,7 +4,7 @@ from collections.abc import Callable
 import requests
 from conftest import SECRET_PASSWORD
 
-_CATALOG_READ = "catalog.read"
+_LIBRARY_READ = "library.read"
 _GALLERY_READ = "gallery.read"
 _PLAYLIST_READ = "playlist.read"
 _USER_CREATE = "user.create"
@@ -111,7 +111,7 @@ def test_uc024_granted_user_creation_lets_a_standard_user_register(
     assert refused.status_code == 403, f"expected 403 after reset: {refused.status_code} {refused.text}"
 
 
-def test_uc024_catalog_none_hides_the_library(
+def test_uc024_library_none_hides_the_library(
     root_admin_token: str,
     standard_user_token: str,
     me: Callable[[str], requests.Response],
@@ -124,7 +124,7 @@ def test_uc024_catalog_none_hides_the_library(
         replaced = put_permission(
             root_admin_token,
             user_id,
-            [{"action": _CATALOG_READ, "scope": "NONE", "resources": []}],
+            [{"action": _LIBRARY_READ, "scope": "NONE", "resources": []}],
         )
         assert replaced.status_code == 200, f"replace failed: {replaced.status_code} {replaced.text}"
 

@@ -91,7 +91,7 @@ where
                     .next()
                     .ok_or(GetSeriesError::NoSuchSeries)?;
                 if let Decision::Deny(denial) =
-                    Authorization::decide(&caller, &permissions, Action::CatalogRead, &shown)
+                    Authorization::decide(&caller, &permissions, Action::LibraryRead, &shown)
                 {
                     security_event::authorization_failed(
                         caller.id(),

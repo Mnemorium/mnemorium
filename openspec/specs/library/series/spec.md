@@ -10,7 +10,7 @@ metadata and the video summary of each episode.
 ### Requirement: Series reads require an authenticated account
 
 Every series, season and episode endpoint SHALL require a valid bearer token, and a token that names an account which no
-longer exists SHALL be rejected. A caller whose `catalog.read` permission does not cover the show SHALL receive
+longer exists SHALL be rejected. A caller whose `library.read` permission does not cover the show SHALL receive
 `404 Not Found` for the show, its seasons and its episodes.
 
 #### Scenario: Missing or invalid credentials
@@ -31,13 +31,13 @@ longer exists SHALL be rejected. A caller whose `catalog.read` permission does n
 
 #### Scenario: A restricted caller cannot read a show
 
-- **WHEN** an authenticated caller whose `catalog.read` permission does not cover a show requests the show, a season or
+- **WHEN** an authenticated caller whose `library.read` permission does not cover a show requests the show, a season or
   an episode
 - **THEN** the system returns `404 Not Found`, indistinguishable from an unknown show
 
 ### Requirement: List series
 
-The system SHALL return the shows the caller's `catalog.read` permission covers through `GET /api/v1/library/series`.
+The system SHALL return the shows the caller's `library.read` permission covers through `GET /api/v1/library/series`.
 The default permission covers every show for every authenticated caller; a per-user override may narrow the set. Each
 listed series SHALL carry only its identifier, its name and its cover.
 
@@ -48,12 +48,12 @@ listed series SHALL carry only its identifier, its name and its cover.
 
 #### Scenario: A restricted caller lists only permitted shows
 
-- **WHEN** an authenticated caller whose `catalog.read` permission covers only some shows requests the collection
+- **WHEN** an authenticated caller whose `library.read` permission covers only some shows requests the collection
 - **THEN** the system returns only the shows that permission covers
 
 #### Scenario: A caller with no catalog access lists no shows
 
-- **WHEN** an authenticated caller whose `catalog.read` permission is `NONE` requests the collection
+- **WHEN** an authenticated caller whose `library.read` permission is `NONE` requests the collection
 - **THEN** the system returns `200 OK` with an empty collection
 
 #### Scenario: Series summary content

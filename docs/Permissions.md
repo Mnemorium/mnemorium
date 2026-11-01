@@ -11,7 +11,7 @@ Authority has two independent axes, and a change usually touches only one of the
 | Axis           | Decided by                                      | Example                                                       |
 | -------------- | ----------------------------------------------- | ------------------------------------------------------------- |
 | Administration | The role preset, optionally overridden per user | Creating a user, changing a role, reading user accounts       |
-| Content        | Ownership and visibility, optionally overridden | Reading a gallery, moderating a playlist, reading the catalog |
+| Content        | Ownership and visibility, optionally overridden | Reading a gallery, moderating a playlist, reading the library |
 
 The role (`Standard` or `Admin`) determines the administration axis and the default content scope. Visibility (`public`
 or `private`) and ownership refine the content axis. A permission only overrides the _scope_ of an action; it never
@@ -23,7 +23,7 @@ Every authorizable operation has exactly one action name, and the catalog is fix
 
 | Action              | Target                    | Standard          | Admin             | Root Admin | Configurable |
 | ------------------- | ------------------------- | ----------------- | ----------------- | ---------- | ------------ |
-| `catalog.read`      | Movie, Series, MusicAlbum | `ALL`             | `ALL`             | All        | yes          |
+| `library.read`      | Movie, Series, MusicAlbum | `ALL`             | `ALL`             | All        | yes          |
 | `gallery.read`      | Gallery                   | `PUBLIC_OR_OWNED` | `PUBLIC_OR_OWNED` | All        | yes          |
 | `gallery.moderate`  | Gallery                   | `PUBLIC_OR_OWNED` | `PUBLIC_OR_OWNED` | All        | yes          |
 | `gallery.manage`    | Gallery                   | `OWNED`           | `OWNED`           | All        | yes          |
@@ -45,7 +45,7 @@ Every authorizable operation has exactly one action name, and the catalog is fix
 The table is the default matrix. `Root Admin` is not a preset: it is a short-circuit, described below.
 
 A `LISTED` scope names top-level resources only. A season, episode, medium or track is authorized through its series or
-album, so `catalog.read` never names a season or a track.
+album, so `library.read` never names a season or a track.
 
 ## Scopes
 
@@ -57,7 +57,7 @@ A scope is the reach of an action over a resource family.
 | `PUBLIC_OR_OWNED` | Public resources and the caller's own      | The default for reading and moderating galleries        |
 | `OWNED`           | Only the caller's own resources            | The default for renaming a playlist                     |
 | `LISTED`          | Exactly the resources the permission names | Share one private playlist with one user                |
-| `NONE`            | No resource                                | Hide the catalog from one user                          |
+| `NONE`            | No resource                                | Hide the library from one user                          |
 
 `LISTED` names resources by kind and identifier and must name at least one, without duplicates, of a kind the action
 targets. `ALL`, `PUBLIC_OR_OWNED`, `OWNED` and `NONE` are supported by the content actions; the administration actions
@@ -103,7 +103,7 @@ A denial is either concealed or revealed.
 | The token names a deleted account                      | `401 Unauthorized` |
 | The caller lacks an administration action              | `403 Forbidden`    |
 
-Read actions (`catalog.read`, `gallery.read`, `playlist.read`, `file.read`) and the upload actions always conceal.
+Read actions (`library.read`, `gallery.read`, `playlist.read`, `file.read`) and the upload actions always conceal.
 `gallery.moderate`, `gallery.manage`, `playlist.moderate` and `playlist.manage` conceal exactly when the caller cannot
 read the resource, so an invisible playlist answers `404` and a visible one it may not rename answers `403`.
 Administration actions and `file.use` reveal.
@@ -149,7 +149,7 @@ Authorization: Bearer <root-admin-token>
   "user_id": 5,
   "role": "STANDARD",
   "defaults": [
-    { "action": "catalog.read", "scope": "ALL", "resources": [] },
+    { "action": "library.read", "scope": "ALL", "resources": [] },
     { "action": "gallery.read", "scope": "PUBLIC_OR_OWNED", "resources": [] }
   ],
   "overrides": [{ "action": "gallery.read", "scope": "OWNED", "resources": [] }],
@@ -190,12 +190,12 @@ deletes every override, so the role presets apply again on the next request.
 
 Set the content actions to the named scope; an action a recipe does not name keeps its role preset.
 
-**All content.** Read any gallery, playlist and catalog item, public or private:
+**All content.** Read any gallery, playlist and library item, public or private:
 
 ```json
 {
   "permissions": [
-    { "action": "catalog.read", "scope": "ALL", "resources": [] },
+    { "action": "library.read", "scope": "ALL", "resources": [] },
     { "action": "gallery.read", "scope": "ALL", "resources": [] },
     { "action": "playlist.read", "scope": "ALL", "resources": [] }
   ]
@@ -207,14 +207,14 @@ Set the content actions to the named scope; an action a recipe does not name kee
 ```json
 {
   "permissions": [
-    { "action": "catalog.read", "scope": "OWNED", "resources": [] },
+    { "action": "library.read", "scope": "OWNED", "resources": [] },
     { "action": "gallery.read", "scope": "OWNED", "resources": [] },
     { "action": "playlist.read", "scope": "OWNED", "resources": [] }
   ]
 }
 ```
 
-`catalog.read` has no owner, so `OWNED` hides the whole catalog; use `NONE` to state the same intent.
+`library.read` has no owner, so `OWNED` hides the whole library; use `NONE` to state the same intent.
 
 **One shared playlist.** Share exactly one private playlist with one user:
 
@@ -233,11 +233,11 @@ Set the content actions to the named scope; an action a recipe does not name kee
 A `LISTED` scope names at least one resource and no duplicates; a season, episode, medium or track authorizes through
 its series or album, so it is never named.
 
-**No catalog.** Hide films, shows and albums from one user:
+**No library.** Hide films, shows and albums from one user:
 
 ```json
 {
-  "permissions": [{ "action": "catalog.read", "scope": "NONE", "resources": [] }]
+  "permissions": [{ "action": "library.read", "scope": "NONE", "resources": [] }]
 }
 ```
 

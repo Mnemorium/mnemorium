@@ -29,7 +29,7 @@ The effective scope SHALL be the Root Admin rule, then the caller's per-user ove
 
 #### Scenario: Override narrows access
 
-- **WHEN** a Standard User whose `catalog.read` override is `NONE` requests a film
+- **WHEN** a Standard User whose `library.read` override is `NONE` requests a film
 - **THEN** the system returns `404 Not Found`
 
 ### Requirement: Permission scopes cover resources uniformly
@@ -61,7 +61,7 @@ action's family; `PUBLIC_OR_OWNED` covers public resources and the caller's own;
 
 ### Requirement: Default permissions follow the role presets
 
-When a caller has no override, the role preset SHALL decide. A Standard User SHALL read every catalog film, show and
+When a caller has no override, the role preset SHALL decide. A Standard User SHALL read every library film, show and
 album, read and moderate public or owned galleries and playlists, manage only owned content, and read or write only
 owned uploads. An Admin SHALL additionally read, list, create and update user accounts, except that only the Root Admin
 may create an Admin or change a role or credential.

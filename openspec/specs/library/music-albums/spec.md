@@ -9,7 +9,7 @@ Lets a client browse the music albums the server holds and read the tracks each 
 ### Requirement: Album reads require an authenticated account
 
 Every music album endpoint SHALL require a valid bearer token, and a token that names an account which no longer exists
-SHALL be rejected. A caller whose `catalog.read` permission does not cover the album SHALL receive `404 Not Found` for
+SHALL be rejected. A caller whose `library.read` permission does not cover the album SHALL receive `404 Not Found` for
 the album, its mediums and its tracks.
 
 #### Scenario: Missing or invalid credentials
@@ -30,13 +30,13 @@ the album, its mediums and its tracks.
 
 #### Scenario: A restricted caller cannot read an album
 
-- **WHEN** an authenticated caller whose `catalog.read` permission does not cover an album requests the album, a medium
+- **WHEN** an authenticated caller whose `library.read` permission does not cover an album requests the album, a medium
   or a track
 - **THEN** the system returns `404 Not Found`, indistinguishable from an unknown album
 
 ### Requirement: List music albums
 
-The system SHALL return the music albums the caller's `catalog.read` permission covers through
+The system SHALL return the music albums the caller's `library.read` permission covers through
 `GET /api/v1/library/music/album`. The default permission covers every album for every authenticated caller; a per-user
 override may narrow the set.
 
@@ -47,12 +47,12 @@ override may narrow the set.
 
 #### Scenario: A restricted caller lists only permitted albums
 
-- **WHEN** an authenticated caller whose `catalog.read` permission covers only some albums requests the collection
+- **WHEN** an authenticated caller whose `library.read` permission covers only some albums requests the collection
 - **THEN** the system returns only the albums that permission covers
 
 #### Scenario: A caller with no catalog access lists no albums
 
-- **WHEN** an authenticated caller whose `catalog.read` permission is `NONE` requests the collection
+- **WHEN** an authenticated caller whose `library.read` permission is `NONE` requests the collection
 - **THEN** the system returns `200 OK` with an empty collection
 
 #### Scenario: Album representation content

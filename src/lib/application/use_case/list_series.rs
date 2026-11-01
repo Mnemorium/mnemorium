@@ -87,7 +87,7 @@ where
                     .map_err(|error| ListSeriesError::Unknown(error.into()))?;
 
                 series.retain(|shown| {
-                    Authorization::decide(&caller, &permissions, Action::CatalogRead, shown)
+                    Authorization::decide(&caller, &permissions, Action::LibraryRead, shown)
                         .is_allowed()
                 });
 
