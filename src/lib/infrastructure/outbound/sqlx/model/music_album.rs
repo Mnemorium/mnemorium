@@ -20,9 +20,6 @@ pub struct MusicAlbumRow {
     pub cover_image_id: Option<NumericID>,
     /// Identifier of the backing file, when the medium sequences a recording.
     pub file_id: Option<NumericID>,
-    /// Date of the first release of the recording, when the medium sequences a
-    /// recording.
-    pub first_release_date: Option<NaiveDate>,
     /// Comma-separated genre identifiers of the album, ordered by identifier.
     pub genres: String,
     /// ISRC code of the recording, when set.
@@ -34,6 +31,8 @@ pub struct MusicAlbumRow {
     /// Unique identifier of the album.
     #[sqlx(primary_key)]
     pub music_album_id: NumericID,
+    /// Identifier of the music group the album belongs to.
+    pub music_group_id: NumericID,
     /// Identifier of the medium, when the album holds one.
     pub music_medium_id: Option<NumericID>,
     /// Identifier of the recording, when the medium sequences one.
@@ -44,8 +43,8 @@ pub struct MusicAlbumRow {
     pub production_type: Option<String>,
     /// Name of the recording, when set.
     pub recording_name: Option<String>,
-    /// Date of the release of the album.
-    pub release_date: NaiveDate,
+    /// Date of the release of the album, when the provider reports one.
+    pub release_date: Option<NaiveDate>,
     /// Index of the recording within the medium, when the medium sequences one.
     pub track_index: Option<i64>,
 }

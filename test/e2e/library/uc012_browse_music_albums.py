@@ -4,9 +4,10 @@ No endpoint creates a music album yet, so the happy paths that observe a
 populated listing, a medium, an album medium's ordered tracks and one track's
 representation are covered by the integration tests of the SQLx music-album
 repository and the application use cases. What this file exercises against the
-running container is everything observable without seeded music: authentication
-on all five endpoints, the empty album collection shape, the query and path
-rejections, and the unknown-album, unknown-medium and unknown-track rejections.
+running container is everything observable with only the seeded bucket:
+authentication on all five endpoints, the bucket collection shape, the query and
+path rejections, and the unknown-album, unknown-medium and unknown-track
+rejections.
 """
 
 from collections.abc import Callable
@@ -45,7 +46,7 @@ def test_reading_a_track_requires_credentials(server_url: str) -> None:
     assert response.status_code == 401, f"expected 401, got {response.status_code}: {response.text}"
 
 
-def test_an_authenticated_user_lists_an_empty_album_collection(
+def test_an_authenticated_user_lists_the_seeded_bucket(
     list_albums: Callable[[str, str], requests.Response],
     standard_user_token: str,
 ) -> None:
@@ -55,7 +56,16 @@ def test_an_authenticated_user_lists_an_empty_album_collection(
     assert response.headers.get("Content-Type", "").startswith("application/hal+json")
     body = response.json()
     assert set(body.keys()) == {"items", "_links"}
-    assert body["items"] == [], "no endpoint creates music, so the collection starts empty"
+    assert len(body["items"]) == 1, "the seeded bucket is the only album"
+    bucket = body["items"][0]
+    assert bucket["id"] == 0
+    assert bucket["name"] == "Unknown"
+    assert bucket["release_date"] is None
+    assert bucket["genres"] == ["UNKNOWN"]
+    assert bucket["track_count"] == 0
+    assert [(medium["index"], medium["type"], medium["track_count"]) for medium in bucket["mediums"]] == [
+        (1, "DIGITAL", 0)
+    ], "the bucket holds one empty digital medium"
     assert body["_links"]["self"]["href"] == f"{LIBRARY_ALBUM_PATH}?limit=20&offset=0"
     assert body["_links"]["search"]["href"] == f"{LIBRARY_ALBUM_PATH}{{?name,limit,offset}}"
     assert body["_links"]["search"]["templated"] is True

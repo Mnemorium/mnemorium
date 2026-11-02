@@ -193,7 +193,6 @@ mod tests {
                 Ok(MusicRecording::try_new(
                     i64::from(index),
                     Some(format!("Track {index}")),
-                    album_release_date(),
                     None,
                     i64::from(index),
                     i64::from(index),
@@ -211,9 +210,10 @@ mod tests {
         Ok(MusicAlbum::try_new(
             album_id,
             format!("Album {album_id}"),
-            album_release_date(),
+            Some(album_release_date()),
             Some(ProductionType::Studio),
             vec!["JAZZ".to_owned()],
+            0,
             None,
             None,
             vec![medium(1, track_count)?],
@@ -225,9 +225,10 @@ mod tests {
         Ok(MusicAlbum::try_new(
             album_id,
             name.to_owned(),
-            NaiveDate::default(),
+            Some(NaiveDate::default()),
             None,
             Vec::new(),
+            0,
             None,
             None,
             Vec::new(),
@@ -295,7 +296,7 @@ mod tests {
             Some(&ListAlbumsItem::new(
                 1,
                 "Album 1".to_owned(),
-                album_release_date(),
+                Some(album_release_date()),
                 Some(ProductionType::Studio),
                 vec!["JAZZ".to_owned()],
                 1,
@@ -329,9 +330,10 @@ mod tests {
         let covered = MusicAlbum::try_new(
             1,
             "Album 1".to_owned(),
-            album_release_date(),
+            Some(album_release_date()),
             None,
             Vec::new(),
+            0,
             None,
             Some(19),
             Vec::new(),

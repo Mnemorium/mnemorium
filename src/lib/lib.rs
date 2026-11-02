@@ -575,9 +575,10 @@ mod test_helpers {
         Ok(MusicAlbum::try_new(
             id,
             format!("Album {id}"),
-            album_release_date(),
+            Some(album_release_date()),
             None,
             Vec::new(),
+            0,
             None,
             None,
             mediums,

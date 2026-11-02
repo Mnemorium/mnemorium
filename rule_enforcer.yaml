@@ -29,6 +29,7 @@ rules:
       - series::cover_image_id->image(image_id)
       - season::cover_image_id->image(image_id)
       - music_album::cover_image_id->image(image_id)
+      - music_group::cover_image_id->image(image_id)
       - music_playlist::cover_image_id->image(image_id)
   TEST-002:
     exempt_traits:

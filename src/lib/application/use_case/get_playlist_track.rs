@@ -141,7 +141,6 @@ mod tests {
     use std::sync::Arc;
     use std::sync::atomic::Ordering;
 
-    use chrono::NaiveDate;
     use chrono::NaiveDateTime;
 
     use crate::application::port::get_playlist_track::GetPlaylistTrackCommand;
@@ -168,7 +167,6 @@ mod tests {
         Ok(MusicRecording::try_new(
             recording_id,
             Some(format!("track {recording_id}")),
-            NaiveDate::from_ymd_opt(2026, 10, 20).ok_or("invalid fixture date")?,
             None,
             recording_id,
             recording_id,

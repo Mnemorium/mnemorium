@@ -175,7 +175,6 @@ mod tests {
         let recording = MusicRecording::try_new(
             900,
             Some("So What".to_owned()),
-            album_release_date(),
             None,
             1,
             101,
@@ -185,9 +184,10 @@ mod tests {
         Ok(MusicAlbum::try_new(
             album_id,
             format!("Album {album_id}"),
-            album_release_date(),
+            Some(album_release_date()),
             None,
             Vec::new(),
+            0,
             None,
             None,
             vec![MusicMedium::new(
@@ -206,9 +206,10 @@ mod tests {
         Ok(MusicAlbum::try_new(
             album_id,
             "Empty".to_owned(),
-            album_release_date(),
+            Some(album_release_date()),
             None,
             Vec::new(),
+            0,
             None,
             None,
             Vec::new(),

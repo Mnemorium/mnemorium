@@ -1,4 +1,3 @@
-use chrono::NaiveDate;
 use chrono::NaiveDateTime;
 
 use crate::domain::alias::NumericID;
@@ -22,9 +21,6 @@ pub struct MusicPlaylistRow {
     pub created_at: NaiveDateTime,
     /// Identifier of the backing file, when the playlist sequences a recording.
     pub file_id: Option<NumericID>,
-    /// Date of the first release of the recording, when the playlist sequences
-    /// a recording.
-    pub first_release_date: Option<NaiveDate>,
     /// Whether the playlist is visible to every user.
     pub is_public: bool,
     /// ISRC code of the recording, when set.

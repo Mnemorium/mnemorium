@@ -456,6 +456,224 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn music_group_accepts_a_cover_image() -> Result<(), Box<dyn Error>> {
+        // Arrange: image 1 starts unattached.
+        let pool = in_memory_pool().await?;
+        seed_media(&pool).await?;
+
+        // Act
+        sqlx::query(
+            "INSERT INTO music_group (music_group_id, stage_name, cover_image_id)
+             VALUES (1, 'The Group', 1)",
+        )
+        .execute(&pool)
+        .await?;
+
+        // Assert
+        let cover: Option<i64> =
+            sqlx::query_scalar("SELECT cover_image_id FROM music_group WHERE music_group_id = 1")
+                .fetch_one(&pool)
+                .await?;
+        let scope: Option<String> =
+            sqlx::query_scalar("SELECT scope FROM image WHERE image_id = 1")
+                .fetch_one(&pool)
+                .await?;
+        assert_eq!(cover, Some(1));
+        assert_eq!(
+            scope.as_deref(),
+            Some("LIBRARY"),
+            "a group cover must mark its image LIBRARY"
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn music_group_rejects_a_missing_cover_image() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let pool = in_memory_pool().await?;
+
+        // Act: image 99 does not exist.
+        let result = sqlx::query(
+            "INSERT INTO music_group (music_group_id, stage_name, cover_image_id)
+             VALUES (1, 'The Group', 99)",
+        )
+        .execute(&pool)
+        .await
+        .map_err(RepositoryError::from);
+
+        // Assert
+        assert!(matches!(
+            result,
+            Err(RepositoryError::DataIntegrityViolation)
+        ));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn music_album_name_is_unique_within_a_group() -> Result<(), Box<dyn Error>> {
+        // Arrange: two distinct groups.
+        let pool = in_memory_pool().await?;
+        sqlx::query(
+            "INSERT INTO music_group (music_group_id, stage_name)
+             VALUES (1, 'First Group'), (2, 'Second Group')",
+        )
+        .execute(&pool)
+        .await?;
+        sqlx::query(
+            "INSERT INTO music_album (music_album_id, name, release_date, music_group_id)
+             VALUES (1, 'Same', '1990-04-08', 1)",
+        )
+        .execute(&pool)
+        .await?;
+
+        // Act: the same name is free for another group, but not for the same.
+        sqlx::query(
+            "INSERT INTO music_album (music_album_id, name, release_date, music_group_id)
+             VALUES (2, 'Same', '1990-04-08', 2)",
+        )
+        .execute(&pool)
+        .await?;
+        let duplicate = sqlx::query(
+            "INSERT INTO music_album (music_album_id, name, release_date, music_group_id)
+             VALUES (3, 'Same', '1990-04-08', 1)",
+        )
+        .execute(&pool)
+        .await
+        .map_err(RepositoryError::from);
+
+        // Assert
+        assert!(
+            matches!(duplicate, Err(RepositoryError::AlreadyExist)),
+            "a duplicate (name, group) must be refused"
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn music_album_release_date_is_nullable() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let pool = in_memory_pool().await?;
+
+        // Act
+        sqlx::query(
+            "INSERT INTO music_album (music_album_id, name, release_date, music_group_id)
+             VALUES (1, 'Undated', NULL, 0)",
+        )
+        .execute(&pool)
+        .await?;
+
+        // Assert
+        let release_date: Option<String> =
+            sqlx::query_scalar("SELECT release_date FROM music_album WHERE music_album_id = 1")
+                .fetch_one(&pool)
+                .await?;
+        assert_eq!(release_date, None, "an album may carry no release date");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn music_recording_has_no_first_release_date_column() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let pool = in_memory_pool().await?;
+
+        // Act
+        let columns: Vec<String> =
+            sqlx::query_scalar("SELECT name FROM pragma_table_info('music_recording')")
+                .fetch_all(&pool)
+                .await?;
+
+        // Assert
+        assert!(
+            !columns.iter().any(|column| column == "first_release_date"),
+            "the recording no longer stores a first release date"
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn unknown_bucket_is_seeded_with_one_digital_medium() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let pool = in_memory_pool().await?;
+
+        // Act: read the seeded bucket.
+        let album: (String, Option<String>, i64) = sqlx::query_as(
+            "SELECT name, release_date, music_group_id
+             FROM music_album WHERE music_album_id = 0",
+        )
+        .fetch_one(&pool)
+        .await?;
+        let group: String =
+            sqlx::query_scalar("SELECT stage_name FROM music_group WHERE music_group_id = 0")
+                .fetch_one(&pool)
+                .await?;
+        let genres: Vec<String> =
+            sqlx::query_scalar("SELECT genre_id FROM music_album_genre WHERE music_album_id = 0")
+                .fetch_all(&pool)
+                .await?;
+        let mediums: Vec<(String, i64)> =
+            sqlx::query_as("SELECT type, medium_index FROM music_medium WHERE music_album_id = 0")
+                .fetch_all(&pool)
+                .await?;
+        let tracks: i64 =
+            sqlx::query_scalar("SELECT count(*) FROM music_track WHERE music_medium_id = 0")
+                .fetch_one(&pool)
+                .await?;
+
+        // Assert
+        assert_eq!(album.0, "Unknown");
+        assert_eq!(album.1, None, "the bucket carries no release date");
+        assert_eq!(album.2, 0, "the bucket belongs to group 0");
+        assert_eq!(group, "Unknown");
+        assert_eq!(genres, ["UNKNOWN"]);
+        assert_eq!(mediums, [("DIGITAL".to_owned(), 1)]);
+        assert_eq!(tracks, 0, "the bucket medium starts empty");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn unknown_bucket_cannot_be_deleted_or_modified() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let pool = in_memory_pool().await?;
+
+        // Act & Assert: each guard refuses a delete and an update.
+        let group_delete = sqlx::query("DELETE FROM music_group WHERE music_group_id = 0")
+            .execute(&pool)
+            .await
+            .map_err(RepositoryError::from);
+        let group_update =
+            sqlx::query("UPDATE music_group SET stage_name = 'Other' WHERE music_group_id = 0")
+                .execute(&pool)
+                .await
+                .map_err(RepositoryError::from);
+        let album_delete = sqlx::query("DELETE FROM music_album WHERE music_album_id = 0")
+            .execute(&pool)
+            .await
+            .map_err(RepositoryError::from);
+        let album_update =
+            sqlx::query("UPDATE music_album SET name = 'Other' WHERE music_album_id = 0")
+                .execute(&pool)
+                .await
+                .map_err(RepositoryError::from);
+        let medium_delete = sqlx::query("DELETE FROM music_medium WHERE music_medium_id = 0")
+            .execute(&pool)
+            .await
+            .map_err(RepositoryError::from);
+        let medium_update =
+            sqlx::query("UPDATE music_medium SET type = 'CD' WHERE music_medium_id = 0")
+                .execute(&pool)
+                .await
+                .map_err(RepositoryError::from);
+
+        assert!(matches!(group_delete, Err(RepositoryError::Conflict)));
+        assert!(matches!(group_update, Err(RepositoryError::Conflict)));
+        assert!(matches!(album_delete, Err(RepositoryError::Conflict)));
+        assert!(matches!(album_update, Err(RepositoryError::Conflict)));
+        assert!(matches!(medium_delete, Err(RepositoryError::Conflict)));
+        assert!(matches!(medium_update, Err(RepositoryError::Conflict)));
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn default_gallery_is_seeded_public_and_ownerless() -> Result<(), Box<dyn Error>> {
         // Arrange
         let pool = in_memory_pool().await?;
@@ -587,9 +805,10 @@ mod tests {
             .await?;
 
         // Assert
-        let stored: String = sqlx::query_scalar("SELECT genre_id FROM genre")
-            .fetch_one(&pool)
-            .await?;
+        let stored: String =
+            sqlx::query_scalar("SELECT genre_id FROM genre WHERE genre_id = 'ROCK'")
+                .fetch_one(&pool)
+                .await?;
         assert_eq!(
             stored, "ROCK",
             "the insert trigger must normalise genre_id to uppercase"
@@ -611,9 +830,10 @@ mod tests {
             .await?;
 
         // Assert
-        let stored: String = sqlx::query_scalar("SELECT genre_id FROM genre")
-            .fetch_one(&pool)
-            .await?;
+        let stored: String =
+            sqlx::query_scalar("SELECT genre_id FROM genre WHERE genre_id = 'JAZZ'")
+                .fetch_one(&pool)
+                .await?;
         assert_eq!(
             stored, "JAZZ",
             "the update trigger must normalise genre_id to uppercase"
@@ -626,8 +846,8 @@ mod tests {
         // Arrange: a genre referenced by a music album.
         let pool = in_memory_pool().await?;
         sqlx::query(
-            "INSERT INTO music_album (music_album_id, name, release_date)
-             VALUES (1, 'Album', '2026-01-01')",
+            "INSERT INTO music_album (music_album_id, name, release_date, music_group_id)
+             VALUES (1, 'Album', '2026-01-01', 0)",
         )
         .execute(&pool)
         .await?;
@@ -645,9 +865,10 @@ mod tests {
             .map_err(RepositoryError::from)?;
 
         // Assert: the parent keeps its normalised key and the child still resolves.
-        let stored: String = sqlx::query_scalar("SELECT genre_id FROM genre")
-            .fetch_one(&pool)
-            .await?;
+        let stored: String =
+            sqlx::query_scalar("SELECT genre_id FROM genre WHERE genre_id = 'ROCK'")
+                .fetch_one(&pool)
+                .await?;
         assert_eq!(
             stored, "ROCK",
             "the update must keep the genre key uppercase"
@@ -963,8 +1184,8 @@ mod tests {
         .execute(pool)
         .await?;
         sqlx::query(
-            "INSERT INTO music_album (music_album_id, name, release_date, cover_image_id)
-             VALUES (1, 'Album', '1990-04-08', ?1)",
+            "INSERT INTO music_album (music_album_id, name, release_date, cover_image_id, music_group_id)
+             VALUES (1, 'Album', '1990-04-08', ?1, 0)",
         )
         .bind(cover_image_id)
         .execute(pool)
@@ -1013,7 +1234,7 @@ mod tests {
             sqlx::query_scalar("SELECT cover_image_id FROM season")
                 .fetch_one(&pool)
                 .await?,
-            sqlx::query_scalar("SELECT cover_image_id FROM music_album")
+            sqlx::query_scalar("SELECT cover_image_id FROM music_album WHERE music_album_id = 1")
                 .fetch_one(&pool)
                 .await?,
         ];
@@ -1197,23 +1418,24 @@ mod tests {
 
         // Act
         sqlx::query(
-            "INSERT INTO music_album (music_album_id, name, release_date, cover_image_id)
-             VALUES (1, 'First', '1990-04-08', 1)",
+            "INSERT INTO music_album (music_album_id, name, release_date, cover_image_id, music_group_id)
+             VALUES (1, 'First', '1990-04-08', 1, 0)",
         )
         .execute(&pool)
         .await?;
         sqlx::query(
-            "INSERT INTO music_album (music_album_id, name, release_date, cover_image_id)
-             VALUES (2, 'Second', '1990-04-08', 1)",
+            "INSERT INTO music_album (music_album_id, name, release_date, cover_image_id, music_group_id)
+             VALUES (2, 'Second', '1990-04-08', 1, 0)",
         )
         .execute(&pool)
         .await?;
 
         // Assert
-        let covers: Vec<Option<i64>> =
-            sqlx::query_scalar("SELECT cover_image_id FROM music_album ORDER BY music_album_id")
-                .fetch_all(&pool)
-                .await?;
+        let covers: Vec<Option<i64>> = sqlx::query_scalar(
+            "SELECT cover_image_id FROM music_album WHERE music_album_id <> 0 ORDER BY music_album_id",
+        )
+        .fetch_all(&pool)
+        .await?;
         assert_eq!(
             covers,
             vec![Some(1), Some(1)],

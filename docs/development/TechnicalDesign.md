@@ -1914,7 +1914,7 @@ enforce invariants.
 | `PERS-002` | Datastore & migrations      | Version the schema with migrations in `migrations/`, one `.up.sql`/`.down.sql` pair per change.                                                                                                                                                                                                                     |                                           |
 | `PERS-003` | Datastore & migrations      | Apply the migrations at startup with `sqlx::migrate!` in `src/lib/infrastructure/outbound/sqlx/sqlite3.rs`.                                                                                                                                                                                                         |                                           |
 | `PERS-004` | Datastore & migrations      | Run the migrations at boot inside `init_db`.                                                                                                                                                                                                                                                                        |                                           |
-| `PERS-005` | Seeds                       | Seed the reference data (`color`, `gallery`, `language`, `mime_type`) from the migrations.                                                                                                                                                                                                                          |                                           |
+| `PERS-005` | Seeds                       | Seed the reference data (`color`, `gallery`, `language`, `mime_type`) and the music bucket (`genre('UNKNOWN')`, `music_group` 0, `music_album` 0 and its `DIGITAL` medium) from the migrations.                                                                                                                     |                                           |
 | `PERS-006` | Invariants                  | A `user` row with `user_id = 0` (the Root Admin) cannot be deleted or modified.                                                                                                                                                                                                                                     |                                           |
 | `PERS-007` | Invariants                  | A `gallery` row with `gallery_id = 0` (the default gallery) cannot be deleted or modified.                                                                                                                                                                                                                          |                                           |
 | `PERS-008` | Invariants                  | Normalise `codec`, `genre_id`, `movie.country_of_origin` and `series.country_of_origin` to uppercase on insert/update.                                                                                                                                                                                              |                                           |
@@ -1965,17 +1965,18 @@ entity user {
 
 entity music_album {
    * music_album_id: INTEGER <<PK>>
-   * name: TEXT <<NN>>
-   * release_date: DATE <<NN>>
+   * name: TEXT <<NN, UN(name, music_group_id)>>
+   release_date: DATE
    production_type: VARCHAR(20) <<CC(production_type IN ('COMPILATION', 'DJMIX', 'DEMO', 'LIVE', 'MIXTAPE', 'REMIX', 'SOUNDTRACK', 'STUDIO'))>>
    cover_image_id: INTEGER <<FK>>
+   * music_group_id: INTEGER <<FK, NN, UN(name, music_group_id)>>
 }
 
 entity music_medium {
    * music_medium_id: INTEGER <<PK>>
    --
    * music_album_id: INTEGER <<FK, NN>>
-   * type: TEXT <<NN, CC(type IN ('CD'))>>
+   * type: TEXT <<NN, CC(type IN ('CD', 'DIGITAL'))>>
    * medium_index: INTEGER <<NN, DF(1), CC(medium_index BETWEEN 0 AND 255)>>
 }
 
@@ -1992,7 +1993,6 @@ entity music_recording {
    * music_recording_id: INTEGER <<PK>>
    --
    * name: TEXT
-   * first_release_date: DATE <<NN>>
    * isrc_code: VARCHAR(12) <<UN>>
    * audio_id: INTEGER <<FK, NN>>
 }
@@ -2043,6 +2043,7 @@ entity music_group {
    * music_group_id: INTEGER <<PK>>
    --
    * stage_name: VARCHAR(50) <<NN, UN>>
+   cover_image_id: INTEGER <<FK>>
 }
 
 entity person {
@@ -2285,6 +2286,7 @@ mime_type ||--o{ upload
 music_group ||--o{ music_group_person
 music_group ||--o{ music_recording_group
 music_group ||--o{ music_album_group
+music_group ||--o{ music_album
 
 person ||--o{ music_group_person
 
@@ -2351,17 +2353,30 @@ integrity hash, while different callers may each store their own copy. `integrit
 carries the digest that verifies its content and deduplicates it, while a scanned file carries none, and `SQLite` treats
 `NULL` values as distinct, so the unique key does not apply to a scanned row.
 
-The five resources that may carry artwork -- `movie`, `series`, `season`, `music_album` and `music_playlist` -- each
-hold a nullable `cover_image_id` into `image` (`fk_<table>_cover_image`). The reference crosses into the Asset bounded
-context, so it declares no `ON DELETE CASCADE`: deleting an image a cover references is rejected by the foreign key and
-stays orchestrated by the application (`PERS-020`). An `image` row exists only for a probed image file, so the foreign
-key alone guarantees that a cover is an image; a dangling identifier is rejected as a data-integrity violation.
+The six resources that may carry artwork -- `movie`, `series`, `season`, `music_album`, `music_group` and
+`music_playlist` -- each hold a nullable `cover_image_id` into `image` (`fk_<table>_cover_image`). The reference crosses
+into the Asset bounded context, so it declares no `ON DELETE CASCADE`: deleting an image a cover references is rejected
+by the foreign key and stays orchestrated by the application (`PERS-020`). An `image` row exists only for a probed image
+file, so the foreign key alone guarantees that a cover is an image; a dangling identifier is rejected as a
+data-integrity violation.
 
 An `image` or `video` row carries a nullable `scope` (`LIBRARY` or `USER`) that its first attachment fixes. A catalogue
 cover's trigger pair, `tg_<table>_cover_scope_insert` and `tg_<table>_cover_scope_update`, marks the referenced image
 `LIBRARY`; a playlist cover or gallery item marks its image or video `USER`. A value already fixed in the other
 direction raises `ABORT`, which `PERS-017` maps to a conflict, and `tg_image_scope_is_immutable` /
 `tg_video_scope_is_immutable` refuse every later change. A `NULL` cover never fires a guard.
+
+The `music_album` entity enforces a composite unique key on `(name, music_group_id)`
+(`uq_music_album_name_music_group_id`): a group has at most one album per name, while another group may hold an album
+with the same name. `release_date` is nullable, so an album the provider does not date stores no date instead of a
+fabricated one.
+
+The seeded music bucket is `genre('UNKNOWN')`, `music_group` 0 (`stage_name` `Unknown`), `music_album` 0 (name
+`Unknown`, no release date, group 0) linked to that genre, and one `DIGITAL` medium at album-scoped index 1
+(`PERS-005`). `tg_music_group_delete_unknown` / `tg_music_group_update_unknown`, `tg_music_album_delete_unknown` /
+`tg_music_album_update_unknown` and `tg_music_medium_delete_unknown` / `tg_music_medium_update_unknown` refuse deleting
+or modifying each, mirroring the default gallery. The bucket is readable like any other album and appears in album
+listings.
 
 The `gallery` entity enforces a composite unique key on `(user_id, name)` (`uq_gallery_user_id_name`): a caller owns at
 most one gallery per name, while different callers may each own a gallery with the same name. `user_id` is nullable, and

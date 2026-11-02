@@ -58,8 +58,8 @@ override may narrow the set.
 #### Scenario: Album representation content
 
 - **WHEN** the system returns an album in a listing
-- **THEN** the representation carries the album's identifier, name, release date, production type, genres, total track
-  count, its cover and its mediums
+- **THEN** the representation carries the album's identifier, name, release date or `null`, production type, genres,
+  total track count, its cover and its mediums
 - **AND** the cover is the identifier of the image holding the album's artwork, or `null` when the album stores none
 - **AND** each medium carries its album-scoped index, its type, its track count, and links to the medium and its track
   collection
@@ -93,8 +93,8 @@ The system SHALL return one music album through `GET /api/v1/library/music/album
 #### Scenario: Album representation content
 
 - **WHEN** the system returns one album
-- **THEN** the representation carries the album's identifier, name, release date, production type, genres, total track
-  count, its cover and its mediums
+- **THEN** the representation carries the album's identifier, name, release date or `null`, production type, genres,
+  total track count, its cover and its mediums
 - **AND** the cover is the identifier of the image holding the album's artwork, or `null` when the album stores none
 - **AND** each medium carries its album-scoped index, its type, its track count, and links to the medium and its track
   collection
@@ -115,6 +115,22 @@ The system SHALL return one music album through `GET /api/v1/library/music/album
 
 - **WHEN** the caller supplies an `album_id` that is not a valid identifier
 - **THEN** the system returns `400 Bad Request` with a stable message
+
+### Requirement: Medium types are CD or DIGITAL
+
+The system SHALL report a medium's type from the closed set `CD` and `DIGITAL`. A release whose mediums are all compact
+discs and number more than one SHALL be represented as separate `CD` mediums; every other release SHALL be represented
+as one `DIGITAL` medium.
+
+#### Scenario: A multi-disc compact disc release
+
+- **WHEN** a release reports more than one compact-disc medium
+- **THEN** the album carries one `CD` medium per reported position
+
+#### Scenario: A single compact disc or another format
+
+- **WHEN** a release reports one compact disc or a non-disc format
+- **THEN** the album carries one `DIGITAL` medium
 
 ### Requirement: Read a music medium
 

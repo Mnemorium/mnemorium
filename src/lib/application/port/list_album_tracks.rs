@@ -1,8 +1,6 @@
 use std::future::Future;
 use std::pin::Pin;
 
-use chrono::NaiveDate;
-
 use crate::domain::alias::NumericID;
 
 /// Command to list the tracks of one medium of one music album.
@@ -55,8 +53,6 @@ pub struct ListAlbumTracksItem {
     album_id: NumericID,
     /// Identifier of the backing file.
     file_id: NumericID,
-    /// Date of the first release of the recording.
-    first_release_date: NaiveDate,
     /// ISRC code of the recording, when set.
     isrc_code: Option<String>,
     /// Album-scoped index of the medium the track is placed in.
@@ -82,12 +78,6 @@ impl ListAlbumTracksItem {
         self.file_id
     }
 
-    /// Return the date of the first release of the recording.
-    #[must_use]
-    pub fn first_release_date(&self) -> NaiveDate {
-        self.first_release_date
-    }
-
     /// Return the ISRC code of the recording, if any.
     #[must_use]
     pub fn isrc_code(&self) -> Option<&str> {
@@ -107,10 +97,6 @@ impl ListAlbumTracksItem {
     }
 
     /// Create a new listed album track.
-    #[expect(
-        clippy::too_many_arguments,
-        reason = "the constructor mirrors the fields the track representation needs"
-    )]
     #[must_use]
     pub fn new(
         album_id: NumericID,
@@ -120,12 +106,10 @@ impl ListAlbumTracksItem {
         file_id: NumericID,
         name: Option<String>,
         isrc_code: Option<String>,
-        first_release_date: NaiveDate,
     ) -> Self {
         Self {
             album_id,
             file_id,
-            first_release_date,
             isrc_code,
             medium_index,
             name,

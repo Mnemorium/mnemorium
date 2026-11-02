@@ -156,10 +156,6 @@ mod tests {
             .unwrap_or_default()
     }
 
-    fn release_date() -> NaiveDate {
-        NaiveDate::from_ymd_opt(2026, 10, 20).unwrap_or_default()
-    }
-
     fn reordered() -> Result<ReorderPlaylistTracksResponse, Box<dyn Error>> {
         Ok(ReorderPlaylistTracksResponse::new(MusicPlaylist::new(
             3,
@@ -172,7 +168,6 @@ mod tests {
             vec![MusicRecording::try_new(
                 31,
                 Some("Second".to_owned()),
-                release_date(),
                 None,
                 31,
                 202,

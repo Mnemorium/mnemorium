@@ -1,6 +1,5 @@
 use std::mem::take;
 
-use chrono::NaiveDate;
 use sqlx::QueryBuilder;
 use sqlx::Sqlite;
 use sqlx::Transaction;
@@ -66,7 +65,6 @@ impl MusicPlaylistRepository for SqlxMusicPlaylistRepository<'_> {
             "SELECT
                 music_recording.music_recording_id,
                 music_recording.name,
-                music_recording.first_release_date,
                 music_recording.isrc_code,
                 music_recording.audio_id,
                 file.file_id
@@ -83,7 +81,6 @@ impl MusicPlaylistRepository for SqlxMusicPlaylistRepository<'_> {
         MusicRecording::try_new(
             row.music_recording_id,
             row.name,
-            row.first_release_date,
             row.isrc_code,
             row.audio_id,
             row.file_id,
@@ -108,7 +105,6 @@ impl MusicPlaylistRepository for SqlxMusicPlaylistRepository<'_> {
                 cover_image_id,
                 NULL AS music_recording_id,
                 NULL AS recording_name,
-                NULL AS first_release_date,
                 NULL AS isrc_code,
                 NULL AS audio_id,
                 NULL AS file_id,
@@ -220,7 +216,6 @@ impl MusicPlaylistRepository for SqlxMusicPlaylistRepository<'_> {
                 music_track.track_index,
                 music_recording.music_recording_id,
                 music_recording.name AS recording_name,
-                music_recording.first_release_date,
                 music_recording.isrc_code,
                 music_recording.audio_id,
                 file.file_id
@@ -298,8 +293,6 @@ impl MusicPlaylistRepository for SqlxMusicPlaylistRepository<'_> {
             let recording = MusicRecording::try_new(
                 recording_id,
                 row.recording_name.clone(),
-                row.first_release_date
-                    .ok_or_else(|| stored_data_invalid("missing_first_release_date"))?,
                 row.isrc_code.clone(),
                 row.audio_id
                     .ok_or_else(|| stored_data_invalid("missing_audio_id"))?,
@@ -336,8 +329,6 @@ struct RecordingRow {
     audio_id: NumericID,
     /// Identifier of the backing file.
     file_id: NumericID,
-    /// Date of the first release of the recording.
-    first_release_date: NaiveDate,
     /// ISRC code of the recording, when set.
     isrc_code: Option<String>,
     /// Unique identifier of the recording.
@@ -498,9 +489,9 @@ mod tests {
     ) -> Result<(), sqlx::Error> {
         sqlx::query(
             "INSERT INTO music_recording (
-                music_recording_id, name, first_release_date, isrc_code, audio_id
+                music_recording_id, name, isrc_code, audio_id
              )
-             VALUES (?1, ?2, '1959-08-17', NULL, ?3)",
+             VALUES (?1, ?2, NULL, ?3)",
         )
         .bind(recording_id)
         .bind(name)
@@ -585,8 +576,8 @@ mod tests {
         recording_id: i64,
     ) -> Result<(), sqlx::Error> {
         sqlx::query(
-            "INSERT INTO music_album (music_album_id, name, release_date, production_type)
-             VALUES (1, 'Kind of Blue', '1959-08-17', NULL)",
+            "INSERT INTO music_album (music_album_id, name, release_date, production_type, music_group_id)
+             VALUES (1, 'Kind of Blue', '1959-08-17', NULL, 0)",
         )
         .execute(&mut **transaction)
         .await?;

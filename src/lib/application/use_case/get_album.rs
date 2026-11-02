@@ -182,7 +182,6 @@ mod tests {
         let recording = MusicRecording::try_new(
             900,
             Some("So What".to_owned()),
-            album_release_date(),
             None,
             1,
             101,
@@ -200,9 +199,10 @@ mod tests {
         Ok(MusicAlbum::try_new(
             album_id,
             format!("Album {album_id}"),
-            album_release_date(),
+            Some(album_release_date()),
             Some(ProductionType::Studio),
             vec!["JAZZ".to_owned()],
+            0,
             None,
             None,
             vec![medium(1)?, medium(2)?],
@@ -218,9 +218,10 @@ mod tests {
         Ok(MusicAlbum::try_new(
             album_id,
             "Empty".to_owned(),
-            album_release_date(),
+            Some(album_release_date()),
             None,
             Vec::new(),
+            0,
             None,
             None,
             Vec::new(),
@@ -285,7 +286,7 @@ mod tests {
         // Assert
         assert_eq!(response.album_id(), 7);
         assert_eq!(response.name(), "Album 7");
-        assert_eq!(response.release_date(), album_release_date());
+        assert_eq!(response.release_date(), Some(album_release_date()));
         assert_eq!(response.production_type(), Some(ProductionType::Studio));
         assert_eq!(response.genres(), ["JAZZ"]);
         assert_eq!(response.track_count(), 2);
@@ -351,9 +352,10 @@ mod tests {
         let covered = MusicAlbum::try_new(
             7,
             "Album 7".to_owned(),
-            album_release_date(),
+            Some(album_release_date()),
             None,
             Vec::new(),
+            0,
             None,
             Some(19),
             Vec::new(),

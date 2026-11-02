@@ -9,6 +9,8 @@ DROP TRIGGER tg_music_playlist_cover_scope_update;
 DROP TRIGGER tg_music_playlist_cover_scope_insert;
 DROP TRIGGER tg_season_cover_scope_update;
 DROP TRIGGER tg_season_cover_scope_insert;
+DROP TRIGGER tg_music_group_cover_scope_update;
+DROP TRIGGER tg_music_group_cover_scope_insert;
 DROP TRIGGER tg_series_cover_scope_update;
 DROP TRIGGER tg_series_cover_scope_insert;
 DROP TRIGGER tg_movie_cover_scope_update;

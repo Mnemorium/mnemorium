@@ -143,7 +143,6 @@ mod tests {
     use std::sync::Arc;
     use std::sync::atomic::Ordering;
 
-    use chrono::NaiveDate;
     use chrono::NaiveDateTime;
 
     use crate::application::port::list_playlists::ListPlaylistsCommand;
@@ -180,7 +179,6 @@ mod tests {
                 Ok(MusicRecording::try_new(
                     i64::from(index).saturating_add(100),
                     Some(format!("track {index}")),
-                    NaiveDate::from_ymd_opt(2026, 10, 20).ok_or("invalid fixture date")?,
                     None,
                     i64::from(index),
                     i64::from(index),
