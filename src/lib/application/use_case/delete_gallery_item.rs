@@ -176,10 +176,10 @@ where
                 // The gallery predicate authorizes removing the item and its
                 // medium. The backing file belongs to the user who uploaded it —
                 // a `file` is unique per `(user_id, integrity_hash)` — so its row
-                // and bytes are destroyed only for that user or the Root Admin,
-                // the destruction side of the own-media rule the add path
-                // enforces. Any other caller's removal still commits, keeping the
-                // file.
+                // and bytes are destroyed only where `file.use` covers it: its
+                // uploading user, an Admin and the Root Admin, the destruction
+                // side of the file-use rule the add path enforces. Any other
+                // caller's removal still commits, keeping the file.
                 let removable = stored.filter(|file| {
                     Authorization::decide(&caller, &permissions, Action::FileUse, file).is_allowed()
                 });

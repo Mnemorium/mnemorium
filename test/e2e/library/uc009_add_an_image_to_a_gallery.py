@@ -2,9 +2,9 @@
 
 The happy path and every alternative flow run against the running container:
 adding an owned image to a public gallery, the public/private contribution
-rules, the own-media rule for a Standard User, an Admin and the Root Admin, and
-the unknown-gallery, unknown-media, already-assigned and invalid-media-type
-rejections.
+rules, the own-media rule for a Standard User, the any-media rule for an Admin
+and the Root Admin, and the unknown-gallery, unknown-media, already-assigned and
+invalid-media-type rejections.
 
 Media registration has no route of its own (design § 8): completing an upload
 registers the image as a side effect.
@@ -102,14 +102,13 @@ def test_adding_media_owned_by_another_user_is_unprocessable(
     assert_error_body(response, 422)
 
 
-def test_an_admin_cannot_add_another_users_media(
+def test_an_admin_can_add_another_users_media(
     create_gallery: Callable[[str, str, bool], requests.Response],
     upload_media: Callable[[str, str, bytes, str], int],
     register_media: Callable[[str, int], int],
     add_gallery_item: Callable[[str, int, str, int], requests.Response],
     standard_user_token: str,
     admin_token: str,
-    assert_error_body: Callable[[requests.Response, int], None],
 ) -> None:
     gallery_id = create_owned_gallery(create_gallery, admin_token, is_public=True)
     file_id = register_image(
@@ -120,9 +119,10 @@ def test_an_admin_cannot_add_another_users_media(
         png(2, 2),
     )
 
-    response = add_gallery_item(admin_token, gallery_id, "image", file_id)
+    added = add_gallery_item(admin_token, gallery_id, "image", file_id)
 
-    assert_error_body(response, 422)
+    assert added.status_code == 201, f"add failed: {added.status_code} {added.text}"
+    assert added.json()["file_id"] == file_id
 
 
 def test_the_root_admin_can_add_another_users_media(

@@ -34,6 +34,9 @@ LIBRARY_ALBUM_PATH = f"{API_PREFIX}/library/music/album"
 LIBRARY_MOVIE_PATH = f"{API_PREFIX}/library/movie"
 LIBRARY_SERIES_PATH = f"{API_PREFIX}/library/series"
 UPLOAD_PATH = f"{API_PREFIX}/asset/upload"
+ASSET_FILE_PATH = f"{API_PREFIX}/asset/file"
+
+_ASSET_FILE_HREF_RE = re.compile(rf"^{re.escape(ASSET_FILE_PATH)}/(?P<file_id>[0-9]+)$")
 
 ROOT_ADMIN_USERNAME = "root"
 
@@ -380,7 +383,9 @@ def register_media(server_url: str) -> Callable[[str, int], int]:
 
     Media registration has no route of its own: the upload-completion handler
     registers the image or video row as a side effect (design § 8). The callable
-    returns the identifier of the finalized backing file.
+    returns the identifier of the finalized backing file, read from the
+    completion's `_links.file` href: the response links the file instead of
+    repeating its identifier as a field.
     """
 
     def _register_media(token: str, upload_id: int) -> int:
@@ -390,7 +395,10 @@ def register_media(server_url: str) -> Callable[[str, int], int]:
             timeout=30,
         )
         assert response.status_code == 200, f"complete failed: {response.status_code} {response.text}"
-        return int(response.json()["file_id"])
+        href = response.json()["_links"]["file"]["href"]
+        match = _ASSET_FILE_HREF_RE.fullmatch(href)
+        assert match is not None, f"complete did not link the finalized file: {href}"
+        return int(match.group("file_id"))
 
     return _register_media
 
