@@ -120,8 +120,8 @@ pub struct ListAlbumsItem {
     name: String,
     /// Production type of the album, when set.
     production_type: Option<ProductionType>,
-    /// Date of the release of the album.
-    release_date: NaiveDate,
+    /// Date of the release of the album, when the provider reports one.
+    release_date: Option<NaiveDate>,
     /// Number of tracks the album contains.
     track_count: usize,
 }
@@ -166,7 +166,7 @@ impl ListAlbumsItem {
     pub fn new(
         album_id: NumericID,
         name: String,
-        release_date: NaiveDate,
+        release_date: Option<NaiveDate>,
         production_type: Option<ProductionType>,
         genres: Vec<String>,
         track_count: usize,
@@ -191,9 +191,9 @@ impl ListAlbumsItem {
         self.production_type
     }
 
-    /// Return the date of the release.
+    /// Return the date of the release, when the provider reports one.
     #[must_use]
-    pub fn release_date(&self) -> NaiveDate {
+    pub fn release_date(&self) -> Option<NaiveDate> {
         self.release_date
     }
 

@@ -127,7 +127,6 @@ where
                     recording.file_id(),
                     recording.name().map(str::to_owned),
                     recording.isrc_code().map(str::to_owned),
-                    recording.first_release_date(),
                 ))
             }
             .await;
@@ -192,7 +191,6 @@ mod tests {
                 Ok(MusicRecording::try_new(
                     900i64.saturating_add(i64::from(*track_index)),
                     Some(format!("Track {track_index}")),
-                    album_release_date(),
                     Some("USRC17607839".to_owned()),
                     i64::from(*track_index),
                     100i64.saturating_add(i64::from(*track_index)),
@@ -204,9 +202,10 @@ mod tests {
         Ok(MusicAlbum::try_new(
             album_id,
             format!("Album {album_id}"),
-            album_release_date(),
+            Some(album_release_date()),
             None,
             Vec::new(),
+            0,
             None,
             None,
             vec![MusicMedium::new(MediumIndex::Cd(medium_index), tracks)],
@@ -222,9 +221,10 @@ mod tests {
         Ok(MusicAlbum::try_new(
             album_id,
             "Empty".to_owned(),
-            album_release_date(),
+            Some(album_release_date()),
             None,
             Vec::new(),
+            0,
             None,
             None,
             Vec::new(),

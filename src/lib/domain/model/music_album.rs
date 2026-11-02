@@ -95,14 +95,16 @@ pub struct MusicAlbum {
     id: NumericID,
     /// Mediums of the album, in order.
     mediums: Vec<MusicMedium>,
+    /// Identifier of the music group the album belongs to.
+    music_group_id: NumericID,
     /// Identifiers of the music groups associated with the album, when set.
     music_group_ids: Option<Vec<NumericID>>,
     /// Name of the album.
     name: String,
     /// Production type of the album, when set.
     production_type: Option<ProductionType>,
-    /// Date of the release of the album.
-    release_date: NaiveDate,
+    /// Date of the release of the album, when the provider reports one.
+    release_date: Option<NaiveDate>,
 }
 
 impl MusicAlbum {
@@ -130,6 +132,12 @@ impl MusicAlbum {
         &self.mediums
     }
 
+    /// Return the identifier of the music group the album belongs to.
+    #[must_use]
+    pub fn music_group_id(&self) -> NumericID {
+        self.music_group_id
+    }
+
     /// Return the identifiers of the associated music groups, if any.
     #[must_use]
     pub fn music_group_ids(&self) -> Option<&[NumericID]> {
@@ -148,9 +156,9 @@ impl MusicAlbum {
         self.production_type
     }
 
-    /// Return the date of the release.
+    /// Return the date of the release, when the provider reports one.
     #[must_use]
-    pub fn release_date(&self) -> NaiveDate {
+    pub fn release_date(&self) -> Option<NaiveDate> {
         self.release_date
     }
 
@@ -168,9 +176,10 @@ impl MusicAlbum {
     pub fn try_new(
         id: NumericID,
         name: String,
-        release_date: NaiveDate,
+        release_date: Option<NaiveDate>,
         production_type: Option<ProductionType>,
         genre_ids: Vec<String>,
+        music_group_id: NumericID,
         music_group_ids: Option<Vec<NumericID>>,
         cover_image_id: Option<NumericID>,
         mediums: Vec<MusicMedium>,
@@ -190,6 +199,7 @@ impl MusicAlbum {
             genre_ids,
             id,
             mediums,
+            music_group_id,
             music_group_ids: normalized_music_group_ids,
             name,
             production_type,

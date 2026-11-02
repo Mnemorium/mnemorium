@@ -17,6 +17,7 @@ pub mod media_query;
 pub mod movie;
 pub mod music_album;
 pub mod music_candidate;
+pub mod music_group;
 pub mod music_medium;
 pub mod music_metadata;
 pub mod music_playlist;

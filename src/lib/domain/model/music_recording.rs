@@ -1,5 +1,3 @@
-use chrono::NaiveDate;
-
 use crate::domain::alias::NumericID;
 
 /// Required length of `MusicRecording::isrc_code`.
@@ -61,8 +59,6 @@ pub struct MusicRecording {
     audio_id: NumericID,
     /// Identifier of the file the backing audio references.
     file_id: NumericID,
-    /// Date of the first release of the recording.
-    first_release_date: NaiveDate,
     /// Unique identifier of the recording.
     id: NumericID,
     /// Placement of the recording within its container.
@@ -86,12 +82,6 @@ impl MusicRecording {
     #[must_use]
     pub fn file_id(&self) -> NumericID {
         self.file_id
-    }
-
-    /// Return the date of the first release.
-    #[must_use]
-    pub fn first_release_date(&self) -> NaiveDate {
-        self.first_release_date
     }
 
     /// Return the unique identifier.
@@ -152,14 +142,9 @@ impl MusicRecording {
     /// Returns [`MusicRecordingError::InvalidName`] when `name` is empty, and
     /// [`MusicRecordingError::InvalidIsrcCode`] when `isrc_code` is not exactly
     /// [`ISRC_CODE_LENGTH`] characters long.
-    #[expect(
-        clippy::too_many_arguments,
-        reason = "try_new mirrors all recording columns plus the occurrence index"
-    )]
     pub fn try_new(
         id: NumericID,
         name: Option<String>,
-        first_release_date: NaiveDate,
         isrc_code: Option<String>,
         audio_id: NumericID,
         file_id: NumericID,
@@ -175,7 +160,6 @@ impl MusicRecording {
         Ok(Self {
             audio_id,
             file_id,
-            first_release_date,
             id,
             index,
             isrc_code: validated_isrc_code,

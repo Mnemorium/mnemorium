@@ -11,7 +11,7 @@ CREATE TABLE music_medium (
     CONSTRAINT chk_music_medium_medium_index CHECK (
         medium_index BETWEEN 0 AND 255
     ),
-    CONSTRAINT chk_music_medium_type CHECK (type IN ('CD')),
+    CONSTRAINT chk_music_medium_type CHECK (type IN ('CD', 'DIGITAL')),
     CONSTRAINT fk_music_medium_music_album FOREIGN KEY (
         music_album_id
     ) REFERENCES music_album (music_album_id)

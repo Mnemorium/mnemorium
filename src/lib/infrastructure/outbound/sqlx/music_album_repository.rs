@@ -50,6 +50,7 @@ impl MusicAlbumRepository for SqlxMusicAlbumRepository<'_> {
                 music_album.release_date,
                 music_album.production_type,
                 music_album.cover_image_id,
+                music_album.music_group_id,
                 COALESCE((
                     SELECT GROUP_CONCAT(genre_id, ',')
                     FROM (
@@ -64,7 +65,6 @@ impl MusicAlbumRepository for SqlxMusicAlbumRepository<'_> {
                 music_medium.type AS medium_type,
                 music_recording.music_recording_id,
                 music_recording.name AS recording_name,
-                music_recording.first_release_date,
                 music_recording.isrc_code,
                 music_recording.audio_id,
                 file.file_id,
@@ -147,8 +147,6 @@ impl MusicAlbumRepository for SqlxMusicAlbumRepository<'_> {
             let recording = MusicRecording::try_new(
                 recording_id,
                 row.recording_name.clone(),
-                row.first_release_date
-                    .ok_or_else(|| stored_data_invalid("missing_first_release_date"))?,
                 row.isrc_code.clone(),
                 row.audio_id
                     .ok_or_else(|| stored_data_invalid("missing_audio_id"))?,
@@ -191,6 +189,7 @@ impl MusicAlbumRepository for SqlxMusicAlbumRepository<'_> {
                         .filter(|genre| !genre.is_empty())
                         .map(str::to_owned)
                         .collect(),
+                    row.music_group_id,
                     None,
                     row.cover_image_id,
                     album_mediums,
@@ -341,9 +340,9 @@ mod tests {
     ) -> Result<(), sqlx::Error> {
         sqlx::query(
             "INSERT INTO music_recording (
-                music_recording_id, name, first_release_date, isrc_code, audio_id
+                music_recording_id, name, isrc_code, audio_id
              )
-             VALUES (?1, ?2, '1959-08-17', NULL, ?3)",
+             VALUES (?1, ?2, NULL, ?3)",
         )
         .bind(recording_id)
         .bind(name)
@@ -361,8 +360,8 @@ mod tests {
         production_type: Option<&str>,
     ) -> Result<(), sqlx::Error> {
         sqlx::query(
-            "INSERT INTO music_album (music_album_id, name, release_date, production_type)
-             VALUES (?1, ?2, '1959-08-17', ?3)",
+            "INSERT INTO music_album (music_album_id, name, release_date, production_type, music_group_id)
+             VALUES (?1, ?2, '1959-08-17', ?3, 0)",
         )
         .bind(album_id)
         .bind(name)
@@ -462,6 +461,19 @@ mod tests {
         Ok(())
     }
 
+    /// Search the albums the case seeded, excluding the seeded bucket (album 0).
+    async fn search_seeded(
+        repository: &mut SqlxMusicAlbumRepository<'_>,
+        filter: &MusicAlbumFilter,
+    ) -> Result<Vec<MusicAlbum>, RepositoryError> {
+        Ok(repository
+            .search(filter)
+            .await?
+            .into_iter()
+            .filter(|album| album.id() != 0)
+            .collect())
+    }
+
     /// The medium index of a recording expected to be placed in a medium.
     fn medium_index(recording: &MusicRecording) -> Option<u8> {
         recording.index().medium_index()
@@ -491,7 +503,7 @@ mod tests {
         let mut repository = SqlxMusicAlbumRepository::new(&mut transaction);
 
         // Act
-        let albums = repository.search(&MusicAlbumFilter::default()).await?;
+        let albums = search_seeded(&mut repository, &MusicAlbumFilter::default()).await?;
 
         // Assert
         assert_eq!(albums.len(), 2, "every album must be returned");
@@ -557,7 +569,7 @@ mod tests {
         let mut repository = SqlxMusicAlbumRepository::new(&mut transaction);
 
         // Act
-        let albums = repository.search(&MusicAlbumFilter::default()).await?;
+        let albums = search_seeded(&mut repository, &MusicAlbumFilter::default()).await?;
 
         // Assert
         let album = albums.first().ok_or("the album must be found")?;
@@ -593,7 +605,7 @@ mod tests {
         let mut repository = SqlxMusicAlbumRepository::new(&mut transaction);
 
         // Act
-        let albums = repository.search(&MusicAlbumFilter::default()).await?;
+        let albums = search_seeded(&mut repository, &MusicAlbumFilter::default()).await?;
 
         // Assert
         let tracks = albums
@@ -680,13 +692,133 @@ mod tests {
         let mut repository = SqlxMusicAlbumRepository::new(&mut transaction);
 
         // Act
-        let albums = repository.search(&MusicAlbumFilter::default()).await?;
+        let albums = search_seeded(&mut repository, &MusicAlbumFilter::default()).await?;
 
         // Assert
         let covered = albums.first().ok_or("the covered album must be found")?;
         assert_eq!(covered.cover_image_id(), Some(12));
         let uncovered = albums.get(1).ok_or("the uncovered album must be found")?;
         assert_eq!(uncovered.cover_image_id(), None);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn search_projects_the_music_group() -> Result<(), Box<dyn Error>> {
+        // Arrange: an album in a group other than the seeded bucket's.
+        let mut transaction = begin_transaction().await?;
+        sqlx::query("INSERT INTO music_group (music_group_id, stage_name) VALUES (5, 'Group')")
+            .execute(&mut *transaction)
+            .await?;
+        sqlx::query(
+            "INSERT INTO music_album (music_album_id, name, release_date, production_type, music_group_id)
+             VALUES (1, 'Kind of Blue', '1959-08-17', NULL, 5)",
+        )
+        .execute(&mut *transaction)
+        .await?;
+        let mut repository = SqlxMusicAlbumRepository::new(&mut transaction);
+
+        // Act
+        let albums = search_seeded(&mut repository, &MusicAlbumFilter::default()).await?;
+
+        // Assert
+        let album = albums.first().ok_or("the album must be found")?;
+        assert_eq!(album.music_group_id(), 5);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn search_projects_an_album_without_a_release_date() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let mut transaction = begin_transaction().await?;
+        sqlx::query(
+            "INSERT INTO music_album (music_album_id, name, release_date, production_type, music_group_id)
+             VALUES (1, 'Undated', NULL, NULL, 0)",
+        )
+        .execute(&mut *transaction)
+        .await?;
+        let mut repository = SqlxMusicAlbumRepository::new(&mut transaction);
+
+        // Act
+        let albums = search_seeded(&mut repository, &MusicAlbumFilter::default()).await?;
+
+        // Assert
+        let album = albums.first().ok_or("the album must be found")?;
+        assert_eq!(album.release_date(), None);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn search_reads_a_digital_medium() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let mut transaction = begin_transaction().await?;
+        seed_album(&mut transaction, 1, "Digital", None).await?;
+        sqlx::query(
+            "INSERT INTO music_medium (music_medium_id, music_album_id, type, medium_index)
+             VALUES (40, 1, 'DIGITAL', 1)",
+        )
+        .execute(&mut *transaction)
+        .await?;
+        let mut repository = SqlxMusicAlbumRepository::new(&mut transaction);
+
+        // Act
+        let albums = search_seeded(&mut repository, &MusicAlbumFilter::default()).await?;
+
+        // Assert
+        let medium = albums
+            .first()
+            .and_then(|album| album.mediums().first())
+            .ok_or("the digital medium must be hydrated")?;
+        assert_eq!(medium.index(), MediumIndex::Digital(1));
+        assert_eq!(medium.index().as_wire(), "DIGITAL");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn search_reads_a_multi_disc_compact_disc_release() -> Result<(), Box<dyn Error>> {
+        // Arrange: a release with one CD per reported position.
+        let mut transaction = begin_transaction().await?;
+        seed_album(&mut transaction, 1, "Double CD", None).await?;
+        seed_medium(&mut transaction, 40, 1, 1).await?;
+        seed_medium(&mut transaction, 41, 1, 2).await?;
+        let mut repository = SqlxMusicAlbumRepository::new(&mut transaction);
+
+        // Act
+        let albums = search_seeded(&mut repository, &MusicAlbumFilter::default()).await?;
+
+        // Assert
+        let indexes: Vec<_> = albums
+            .first()
+            .ok_or("the album must be found")?
+            .mediums()
+            .iter()
+            .map(MusicMedium::index)
+            .collect();
+        assert_eq!(indexes, vec![MediumIndex::Cd(1), MediumIndex::Cd(2)]);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn search_returns_the_unknown_bucket() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let mut transaction = begin_transaction().await?;
+        let mut repository = SqlxMusicAlbumRepository::new(&mut transaction);
+
+        // Act
+        let albums = repository.search(&MusicAlbumFilter::default()).await?;
+
+        // Assert
+        let bucket = albums.first().ok_or("the bucket must be found")?;
+        assert_eq!(bucket.id(), 0);
+        assert_eq!(bucket.name(), "Unknown");
+        assert_eq!(bucket.music_group_id(), 0);
+        assert_eq!(bucket.release_date(), None);
+        assert_eq!(bucket.genre_ids(), ["UNKNOWN"]);
+        let medium = bucket
+            .mediums()
+            .first()
+            .ok_or("the bucket medium is seeded")?;
+        assert_eq!(medium.index(), MediumIndex::Digital(1));
+        assert!(medium.tracks().is_empty(), "the bucket medium starts empty");
         Ok(())
     }
 
@@ -700,7 +832,7 @@ mod tests {
         let mut repository = SqlxMusicAlbumRepository::new(&mut transaction);
 
         // Act
-        let albums = repository.search(&MusicAlbumFilter::default()).await?;
+        let albums = search_seeded(&mut repository, &MusicAlbumFilter::default()).await?;
 
         // Assert
         let ids: Vec<_> = albums.iter().map(MusicAlbum::id).collect();
@@ -741,7 +873,7 @@ mod tests {
         let mut repository = SqlxMusicAlbumRepository::new(&mut transaction);
 
         // Act
-        let albums = repository.search(&MusicAlbumFilter::default()).await?;
+        let albums = search_seeded(&mut repository, &MusicAlbumFilter::default()).await?;
 
         // Assert
         assert_eq!(
@@ -761,7 +893,7 @@ mod tests {
         let mut repository = SqlxMusicAlbumRepository::new(&mut transaction);
 
         // Act
-        let albums = repository.search(&MusicAlbumFilter::default()).await?;
+        let albums = search_seeded(&mut repository, &MusicAlbumFilter::default()).await?;
 
         // Assert
         let album = albums.first().ok_or("the album must be found")?;
@@ -796,7 +928,7 @@ mod tests {
         let mut repository = SqlxMusicAlbumRepository::new(&mut transaction);
 
         // Act
-        let albums = repository.search(&MusicAlbumFilter::default()).await?;
+        let albums = search_seeded(&mut repository, &MusicAlbumFilter::default()).await?;
 
         // Assert
         let medium = albums
@@ -993,7 +1125,7 @@ mod tests {
         let mut repository = SqlxMusicAlbumRepository::new(&mut transaction);
 
         // Act
-        let albums = repository.search(&MusicAlbumFilter::default()).await?;
+        let albums = search_seeded(&mut repository, &MusicAlbumFilter::default()).await?;
 
         // Assert
         let tracks = albums
@@ -1021,7 +1153,7 @@ mod tests {
         let mut repository = SqlxMusicAlbumRepository::new(&mut transaction);
 
         // Act
-        let albums = repository.search(&MusicAlbumFilter::default()).await?;
+        let albums = search_seeded(&mut repository, &MusicAlbumFilter::default()).await?;
 
         // Assert
         let medium = albums

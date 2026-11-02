@@ -1,0 +1,6 @@
+DROP TRIGGER tg_music_medium_update_unknown;
+DROP TRIGGER tg_music_medium_delete_unknown;
+DROP TRIGGER tg_music_album_update_unknown;
+DROP TRIGGER tg_music_album_delete_unknown;
+DROP TRIGGER tg_music_group_update_unknown;
+DROP TRIGGER tg_music_group_delete_unknown;

@@ -466,7 +466,7 @@ pub struct MediumResponse {
     /// Links to the medium, its album and its track collection.
     #[serde(rename = "_links")]
     pub links: MediumLinks,
-    /// Stored type of the medium (`CD`).
+    /// Stored type of the medium (`CD` or `DIGITAL`).
     #[serde(rename = "type")]
     pub medium_type: String,
     /// Number of recordings the medium sequences.
@@ -585,8 +585,9 @@ pub struct AlbumResponse {
     /// Production type of the album, when set.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub production_type: Option<String>,
-    /// Date of the release of the album, in `YYYY-MM-DD` form.
-    pub release_date: String,
+    /// Date of the release of the album, in `YYYY-MM-DD` form, or `null` when
+    /// the provider reports none.
+    pub release_date: Option<String>,
     /// Number of tracks the album contains.
     pub track_count: usize,
 }
@@ -615,7 +616,7 @@ impl From<&ListAlbumsItem> for AlbumResponse {
                 .production_type()
                 .map(ProductionType::as_wire)
                 .map(str::to_owned),
-            release_date: format_date(item.release_date()),
+            release_date: item.release_date().map(format_date),
             track_count: item.track_count(),
         }
     }
@@ -645,7 +646,7 @@ impl From<&GetAlbumResponseData> for AlbumResponse {
                 .production_type()
                 .map(ProductionType::as_wire)
                 .map(str::to_owned),
-            release_date: format_date(response.release_date()),
+            release_date: response.release_date().map(format_date),
             track_count: response.track_count(),
         }
     }
@@ -703,8 +704,6 @@ pub struct TrackResponse {
     pub album_id: NumericID,
     /// Identifier of the backing file.
     pub file_id: NumericID,
-    /// Date of the first release of the recording, in `YYYY-MM-DD` form.
-    pub first_release_date: String,
     /// Track index: the position of the track within its medium.
     pub id: u8,
     /// ISRC code of the recording, when set.
@@ -725,7 +724,6 @@ impl From<&ListAlbumTracksItem> for TrackResponse {
         Self {
             album_id: item.album_id(),
             file_id: item.file_id(),
-            first_release_date: format_date(item.first_release_date()),
             id: item.track_index(),
             isrc_code: item.isrc_code().map(str::to_owned),
             links: TrackLinks::for_track(item.album_id(), item.medium_index(), item.track_index()),
@@ -741,7 +739,6 @@ impl From<GetAlbumTrackResponse> for TrackResponse {
         Self {
             album_id: response.album_id(),
             file_id: response.file_id(),
-            first_release_date: format_date(response.first_release_date()),
             id: response.track_index(),
             isrc_code: response.isrc_code().map(str::to_owned),
             links: TrackLinks::for_track(
@@ -1373,8 +1370,6 @@ impl PlaylistTrackLinks {
 pub struct PlaylistTrackResponse {
     /// Identifier of the backing file.
     pub file_id: NumericID,
-    /// Date of the first release of the recording, in `YYYY-MM-DD` form.
-    pub first_release_date: String,
     /// Zero-based index of the track within the playlist.
     pub id: u32,
     /// ISRC code of the recording, when set.
@@ -1395,7 +1390,6 @@ impl PlaylistTrackResponse {
         let index = track.index().playlist_index().unwrap_or_default();
         Self {
             file_id: track.file_id(),
-            first_release_date: format_date(track.first_release_date()),
             id: index,
             isrc_code: track.isrc_code().map(str::to_owned),
             links: PlaylistTrackLinks::for_track(playlist_id, index),

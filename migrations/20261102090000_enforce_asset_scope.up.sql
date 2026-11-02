@@ -1,5 +1,41 @@
 -- A library cover may only reference a LIBRARY image. The first attachment
 -- decides the scope; a later attachment in the other direction is a conflict.
+CREATE TRIGGER tg_music_group_cover_scope_insert
+BEFORE INSERT ON music_group
+FOR EACH ROW
+WHEN new.cover_image_id IS NOT NULL
+BEGIN
+    SELECT RAISE(ABORT, 'a library cover requires a LIBRARY image')
+    WHERE (
+        SELECT image.scope
+        FROM image
+        WHERE image.image_id = new.cover_image_id
+    )
+    = 'USER';
+
+    UPDATE image
+    SET scope = 'LIBRARY'
+    WHERE image.image_id = new.cover_image_id AND image.scope IS NULL;
+END;
+
+CREATE TRIGGER tg_music_group_cover_scope_update
+BEFORE UPDATE OF cover_image_id ON music_group
+FOR EACH ROW
+WHEN new.cover_image_id IS NOT NULL
+BEGIN
+    SELECT RAISE(ABORT, 'a library cover requires a LIBRARY image')
+    WHERE (
+        SELECT image.scope
+        FROM image
+        WHERE image.image_id = new.cover_image_id
+    )
+    = 'USER';
+
+    UPDATE image
+    SET scope = 'LIBRARY'
+    WHERE image.image_id = new.cover_image_id AND image.scope IS NULL;
+END;
+
 CREATE TRIGGER tg_music_album_cover_scope_insert
 BEFORE INSERT ON music_album
 FOR EACH ROW

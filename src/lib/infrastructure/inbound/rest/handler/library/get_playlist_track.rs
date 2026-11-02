@@ -101,7 +101,6 @@ mod tests {
     use axum::http::StatusCode;
     use axum::response::Response;
     use axum::routing::get;
-    use chrono::NaiveDate;
     use rstest::rstest;
     use serde_json::json;
     use tower::ServiceExt as _;
@@ -120,17 +119,12 @@ mod tests {
     use crate::test_helpers::error_message_of;
     use crate::test_helpers::into_parts;
 
-    fn release_date() -> NaiveDate {
-        NaiveDate::from_ymd_opt(2026, 10, 20).unwrap_or_default()
-    }
-
     fn fetched() -> Result<GetPlaylistTrackResponse, Box<dyn Error>> {
         Ok(GetPlaylistTrackResponse::new(
             3,
             MusicRecording::try_new(
                 30,
                 Some("Third".to_owned()),
-                release_date(),
                 Some("USRC17607839".to_owned()),
                 30,
                 201,
@@ -202,8 +196,7 @@ mod tests {
                 "recording_id": 30i64,
                 "file_id": 201i64,
                 "name": "Third",
-                "isrc_code": "USRC17607839",
-                "first_release_date": "2026-10-20"
+                "isrc_code": "USRC17607839"
             })
         );
         Ok(())

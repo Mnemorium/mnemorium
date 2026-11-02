@@ -131,7 +131,6 @@ where
                         recording.file_id(),
                         recording.name().map(str::to_owned),
                         recording.isrc_code().map(str::to_owned),
-                        recording.first_release_date(),
                     ));
                 }
 
@@ -202,7 +201,6 @@ mod tests {
                 Ok(MusicRecording::try_new(
                     900i64.saturating_add(i64::from(*track_index)),
                     Some(format!("Track {track_index}")),
-                    album_release_date(),
                     None,
                     i64::from(*track_index),
                     100i64.saturating_add(i64::from(*track_index)),
@@ -223,9 +221,10 @@ mod tests {
         Ok(MusicAlbum::try_new(
             album_id,
             format!("Album {album_id}"),
-            album_release_date(),
+            Some(album_release_date()),
             None,
             Vec::new(),
+            0,
             None,
             None,
             vec![medium(medium_index, track_indexes)?],
@@ -241,9 +240,10 @@ mod tests {
         Ok(MusicAlbum::try_new(
             album_id,
             "Empty".to_owned(),
-            album_release_date(),
+            Some(album_release_date()),
             None,
             Vec::new(),
+            0,
             None,
             None,
             Vec::new(),
@@ -318,7 +318,6 @@ mod tests {
                 101,
                 Some("Track 1".to_owned()),
                 None,
-                album_release_date(),
             ))
         );
         assert_eq!(
@@ -493,7 +492,6 @@ mod tests {
         let recording = MusicRecording::try_new(
             900,
             Some("Playlist placement".to_owned()),
-            album_release_date(),
             None,
             1,
             101,
@@ -503,9 +501,10 @@ mod tests {
         let album = MusicAlbum::try_new(
             7,
             "Album 7".to_owned(),
-            album_release_date(),
+            Some(album_release_date()),
             None,
             Vec::new(),
+            0,
             None,
             None,
             vec![MusicMedium::new(MediumIndex::Cd(1), vec![recording])],

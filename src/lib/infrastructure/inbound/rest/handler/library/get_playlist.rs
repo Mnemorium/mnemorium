@@ -121,10 +121,6 @@ mod tests {
             .unwrap_or_default()
     }
 
-    fn release_date() -> NaiveDate {
-        NaiveDate::from_ymd_opt(2026, 10, 20).unwrap_or_default()
-    }
-
     fn fetched() -> Result<GetPlaylistResponse, Box<dyn Error>> {
         Ok(GetPlaylistResponse::new(MusicPlaylist::new(
             3,
@@ -137,7 +133,6 @@ mod tests {
             vec![MusicRecording::try_new(
                 30,
                 Some("First".to_owned()),
-                release_date(),
                 None,
                 30,
                 201,
@@ -213,7 +208,6 @@ mod tests {
                     "file_id": 201i64,
                     "name": "First",
                     "isrc_code": null,
-                    "first_release_date": "2026-10-20",
                     "_links": {
                         "self": { "href": "/api/v1/library/music/playlist/3/track/0" },
                         "playlist": { "href": "/api/v1/library/music/playlist/3" }

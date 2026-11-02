@@ -142,7 +142,7 @@ mod tests {
         GetAlbumResponse::new(
             7,
             "Kind of Blue".to_owned(),
-            album_release_date(),
+            Some(album_release_date()),
             Some(ProductionType::Studio),
             vec!["JAZZ".to_owned()],
             5,
@@ -201,7 +201,7 @@ mod tests {
         let response = GetAlbumResponse::new(
             7,
             "Kind of Blue".to_owned(),
-            album_release_date(),
+            Some(album_release_date()),
             None,
             Vec::new(),
             0,

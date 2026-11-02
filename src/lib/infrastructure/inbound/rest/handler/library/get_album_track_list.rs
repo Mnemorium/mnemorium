@@ -119,7 +119,6 @@ mod tests {
     use crate::domain::alias::NumericID;
     use crate::infrastructure::inbound::rest::handler::library::library_routes;
     use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
-    use crate::test_helpers::album_release_date;
     use crate::test_helpers::app_state_with_library;
     use crate::test_helpers::error_message_of;
     use crate::test_helpers::into_parts;
@@ -170,16 +169,8 @@ mod tests {
                 command.caller_id() == 1 && command.album_id() == 7 && command.medium_index() == 2
             })
             .return_once(|_| {
-                let item = ListAlbumTracksItem::new(
-                    7,
-                    2,
-                    1,
-                    30,
-                    201,
-                    Some("So What".to_owned()),
-                    None,
-                    album_release_date(),
-                );
+                let item =
+                    ListAlbumTracksItem::new(7, 2, 1, 30, 201, Some("So What".to_owned()), None);
                 Box::pin(async move { Ok(ListAlbumTracksResponse::new(vec![item])) })
             });
 
@@ -212,8 +203,7 @@ mod tests {
                     "recording_id": 30i64,
                     "file_id": 201i64,
                     "name": "So What",
-                    "isrc_code": null,
-                    "first_release_date": "1959-08-17"
+                    "isrc_code": null
                 }]
             })
         );

@@ -147,8 +147,11 @@
             ]
           },
           "release_date": {
-            "description": "Date of the release of the album, in `YYYY-MM-DD` form.",
-            "type": "string"
+            "description": "Date of the release of the album, in `YYYY-MM-DD` form, or `null` when\nthe provider reports none.",
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "track_count": {
             "description": "Number of tracks the album contains.",
@@ -162,7 +165,6 @@
           "_links",
           "mediums",
           "name",
-          "release_date",
           "track_count"
         ],
         "type": "object"
@@ -868,7 +870,7 @@
             "type": "integer"
           },
           "type": {
-            "description": "Stored type of the medium (`CD`).",
+            "description": "Stored type of the medium (`CD` or `DIGITAL`).",
             "type": "string"
           }
         },
@@ -1466,10 +1468,6 @@
             "$ref": "#/components/schemas/i64",
             "description": "Identifier of the backing file."
           },
-          "first_release_date": {
-            "description": "Date of the first release of the recording, in `YYYY-MM-DD` form.",
-            "type": "string"
-          },
           "id": {
             "description": "Zero-based index of the track within the playlist.",
             "format": "int32",
@@ -1497,7 +1495,6 @@
         },
         "required": [
           "file_id",
-          "first_release_date",
           "id",
           "_links",
           "recording_id"
@@ -2122,10 +2119,6 @@
             "$ref": "#/components/schemas/i64",
             "description": "Identifier of the backing file."
           },
-          "first_release_date": {
-            "description": "Date of the first release of the recording, in `YYYY-MM-DD` form.",
-            "type": "string"
-          },
           "id": {
             "description": "Track index: the position of the track within its medium.",
             "format": "int32",
@@ -2160,7 +2153,6 @@
         "required": [
           "album_id",
           "file_id",
-          "first_release_date",
           "id",
           "_links",
           "medium_index",

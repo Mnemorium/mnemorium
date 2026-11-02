@@ -190,7 +190,6 @@ skinparam style strictuml
 
 class MusicRecording {
   name: string
-  first_release_date: date
   isrc_code: string
   index: TrackIndex
 }
