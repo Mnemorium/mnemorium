@@ -1,3 +1,9 @@
+## [0.29.0](https://github.com/Mnemorium/mnemorium/compare/v0.28.1...v0.29.0) (2026-11-02)
+
+### Features
+
+* **domain:** add library.manage permission action ([#377](https://github.com/Mnemorium/mnemorium/issues/377)) ([9a8a26e](https://github.com/Mnemorium/mnemorium/commit/9a8a26e6c6d1e48171c09e374987c6c27da15e5a))
+
 ## [0.28.1](https://github.com/Mnemorium/mnemorium/compare/v0.28.0...v0.28.1) (2026-11-01)
 
 ### Bug Fixes
