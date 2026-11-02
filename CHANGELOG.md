@@ -1,3 +1,9 @@
+## [0.30.0](https://github.com/Mnemorium/mnemorium/compare/v0.29.0...v0.30.0) (2026-11-02)
+
+### Features
+
+* **persistence:** extend the music catalogue schema ([#380](https://github.com/Mnemorium/mnemorium/issues/380)) ([78100ff](https://github.com/Mnemorium/mnemorium/commit/78100ff380a9f8729a8029dd1cbd9cfaa3166647))
+
 ## [0.29.0](https://github.com/Mnemorium/mnemorium/compare/v0.28.1...v0.29.0) (2026-11-02)
 
 ### Features
