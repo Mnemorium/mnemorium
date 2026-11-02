@@ -76,8 +76,12 @@ where
         let unit_of_work_factory = Arc::clone(&self.unit_of_work_factory);
 
         Box::pin(async move {
+            // The unit of work is write-intent even though the common path only
+            // reads: the expiry branch deletes the upload row and its staged
+            // file, and a deferred transaction would upgrade a snapshot a
+            // concurrent ingest invalidated meanwhile.
             let mut unit_of_work = unit_of_work_factory
-                .begin()
+                .begin_write()
                 .await
                 .map_err(|error| GetUploadError::Unknown(error.into()))?;
 

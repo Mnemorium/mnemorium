@@ -62,17 +62,36 @@ pub async fn init_db(db_file: &str, max_connections: u32) -> Result<SqlitePool, 
 #[cfg(test)]
 mod tests {
     use std::error::Error;
+    use std::sync::Arc;
+
+    use chrono::Utc;
     use tempfile::tempdir;
+    use tokio::sync::Barrier;
+    use tokio::task::JoinSet;
 
     use sqlx::SqlitePool;
     use sqlx::sqlite::SqlitePoolOptions;
 
     use super::init_db;
+    use crate::domain::model::file::File;
+    use crate::domain::port::asset_unit_of_work::AssetUnitOfWork as _;
     use crate::domain::port::error::RepositoryError;
+    use crate::domain::port::file_repository::FileFilter;
+    use crate::domain::port::file_repository::FileRepository as _;
+    use crate::domain::port::unit_of_work::UnitOfWork as _;
+    use crate::domain::port::unit_of_work::UnitOfWorkFactory as _;
+    use crate::infrastructure::outbound::sqlx::unit_of_work::SqlxUnitOfWorkFactory;
     use crate::test_helpers::DIGEST;
 
     /// A second digest, distinct from [`DIGEST`], for the second seeded file.
     const DIGEST_ALT: &str = "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210";
+
+    /// `SQLite` extended result code for a writer that found the lock held
+    /// (`SQLITE_BUSY`).
+    const SQLITE_BUSY: &str = "5";
+
+    /// How many units of work contend for the single `SQLite` writer.
+    const WRITERS: usize = 8;
 
     #[tokio::test]
     async fn init_db_missing_file_creates_file() -> Result<(), Box<dyn Error>> {
@@ -1085,6 +1104,199 @@ mod tests {
             .fetch_one(&pool)
             .await?;
         assert_eq!(episodes, 0, "deleting a season must cascade its episodes");
+        Ok(())
+    }
+
+    /// Open a migrated on-disk database with `connections` pooled connections.
+    ///
+    /// The write lock is observable only across two connections and only
+    /// outside `:memory:`, where each connection would get its own database.
+    /// The `init_db` tests above open an on-disk database for the same reason.
+    ///
+    /// The unit-of-work lock intent is asserted here rather than beside the
+    /// factory: `TEST-048` keeps the factory file free of test constructs, and
+    /// this module already owns the datastore configuration the intent relies
+    /// on.
+    async fn disk_pool(
+        connections: u32,
+    ) -> Result<(tempfile::TempDir, SqlitePool), Box<dyn Error>> {
+        let tmp = tempdir()?;
+        let database = tmp.path().join("test.db");
+        let pool = init_db(database.to_string_lossy().as_ref(), connections).await?;
+        Ok((tmp, pool))
+    }
+
+    /// Ask a second connection for the write lock without waiting for it.
+    ///
+    /// Succeeds when the lock is free; the probe then releases it, so the
+    /// connection returns to the pool outside any transaction.
+    async fn try_write_lock(pool: &SqlitePool) -> Result<(), sqlx::Error> {
+        let mut connection = pool.acquire().await?;
+        sqlx::query("PRAGMA busy_timeout = 0")
+            .execute(&mut *connection)
+            .await?;
+        sqlx::query("BEGIN IMMEDIATE")
+            .execute(&mut *connection)
+            .await?;
+        sqlx::query("ROLLBACK").execute(&mut *connection).await?;
+        Ok(())
+    }
+
+    /// The extended result code a failing statement carried, when it has one.
+    fn sqlite_code(error: sqlx::Error) -> Option<String> {
+        if let sqlx::Error::Database(database) = error {
+            database.code().map(std::borrow::Cow::into_owned)
+        } else {
+            None
+        }
+    }
+
+    #[tokio::test]
+    async fn begin_write_holds_the_write_lock_before_the_first_statement()
+    -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let (_tmp, pool) = disk_pool(2).await?;
+        let unit_of_work = SqlxUnitOfWorkFactory::new(pool.clone())
+            .begin_write()
+            .await?;
+
+        // Act
+        let blocked = try_write_lock(&pool).await;
+
+        // Assert
+        let code = blocked.err().and_then(sqlite_code);
+        assert_eq!(
+            code.as_deref(),
+            Some(SQLITE_BUSY),
+            "a write-intent unit of work must hold the write lock from BEGIN"
+        );
+        unit_of_work.rollback().await?;
+        pool.close().await;
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn begin_leaves_the_write_lock_to_the_write_intent_opener() -> Result<(), Box<dyn Error>>
+    {
+        // Arrange
+        let (_tmp, pool) = disk_pool(2).await?;
+        let unit_of_work = SqlxUnitOfWorkFactory::new(pool.clone()).begin().await?;
+
+        // Act
+        let locked = try_write_lock(&pool).await;
+
+        // Assert
+        assert!(
+            locked.is_ok(),
+            "a read-only unit of work must not hold the write lock"
+        );
+        unit_of_work.rollback().await?;
+        pool.close().await;
+        Ok(())
+    }
+
+    /// One unit of work that reads before it writes, then commits.
+    ///
+    /// This is the shape of every writing use case: the ingest scan searches the
+    /// row it is about to insert, so the transaction holds a snapshot before its
+    /// first write. The barrier releases the writers together so their windows
+    /// overlap; it waits before `begin`, because a write-intent transaction holds
+    /// the writer lock for its whole body.
+    async fn read_then_write(
+        factory: &SqlxUnitOfWorkFactory,
+        path: String,
+        barrier: Arc<Barrier>,
+    ) -> Result<(), String> {
+        barrier.wait().await;
+        let mut unit_of_work = factory
+            .begin_write()
+            .await
+            .map_err(|error| error.to_string())?;
+        let existing = unit_of_work
+            .files()
+            .search(&FileFilter {
+                path: Some(path.clone()),
+                ..FileFilter::default()
+            })
+            .await
+            .map_err(|error| error.to_string())?;
+        if !existing.is_empty() {
+            return Err(format!("{path} was registered before the round began"));
+        }
+        let file = File::try_new(
+            0,
+            path,
+            1,
+            false,
+            "image/png".to_owned(),
+            Utc::now().date_naive(),
+            1024,
+            Utc::now().naive_utc(),
+            None,
+            None,
+        )
+        .map_err(|error| error.to_string())?;
+        unit_of_work
+            .files()
+            .create(file)
+            .await
+            .map_err(|error| error.to_string())?;
+        unit_of_work
+            .commit()
+            .await
+            .map_err(|error| error.to_string())?;
+        Ok(())
+    }
+
+    /// Every failure the joined tasks reported, in completion order.
+    async fn joined_failures(tasks: &mut JoinSet<Result<(), String>>) -> Vec<String> {
+        let mut failures = Vec::new();
+        while let Some(joined) = tasks.join_next().await {
+            match joined {
+                Ok(Ok(())) => {}
+                Ok(Err(message)) => failures.push(message),
+                Err(error) => failures.push(error.to_string()),
+            }
+        }
+        failures
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn concurrent_read_then_write_units_of_work_all_commit() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let (_tmp, pool) = disk_pool(u32::try_from(WRITERS)?).await?;
+        seed_media(&pool).await?;
+        let factory = Arc::new(SqlxUnitOfWorkFactory::new(pool.clone()));
+        let barrier = Arc::new(Barrier::new(WRITERS));
+
+        // Act
+        let mut tasks = (0..WRITERS)
+            .map(|index| {
+                let task_factory = Arc::clone(&factory);
+                let task_barrier = Arc::clone(&barrier);
+                let path = format!("concurrent-{index}.png");
+                async move { read_then_write(&task_factory, path, task_barrier).await }
+            })
+            .collect::<JoinSet<Result<(), String>>>();
+        let failures = joined_failures(&mut tasks).await;
+        let persisted: i64 =
+            sqlx::query_scalar("SELECT count(*) FROM file WHERE path LIKE 'concurrent-%'")
+                .fetch_one(&pool)
+                .await?;
+
+        // Assert
+        assert!(
+            failures.is_empty(),
+            "concurrent units of work reported {} failure(s): {}",
+            failures.len(),
+            failures.join("; ")
+        );
+        assert_eq!(
+            persisted,
+            i64::try_from(WRITERS)?,
+            "every concurrent unit of work must commit its own file"
+        );
+        pool.close().await;
         Ok(())
     }
 }

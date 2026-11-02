@@ -1,3 +1,9 @@
+## [0.28.1](https://github.com/Mnemorium/mnemorium/compare/v0.28.0...v0.28.1) (2026-11-01)
+
+### Bug Fixes
+
+* **persistence:** open writing units of work with BEGIN IMMEDIATE ([#376](https://github.com/Mnemorium/mnemorium/issues/376)) ([6b58d4e](https://github.com/Mnemorium/mnemorium/commit/6b58d4e915d561b4aa3869521b03464c5a0d4480))
+
 ## [0.28.0](https://github.com/Mnemorium/mnemorium/compare/v0.27.0...v0.28.0) (2026-10-31)
 
 ### Features
