@@ -253,11 +253,11 @@ use case); ranking candidates here (matching is out of scope).
 | Config         | Rust model/source tests (defaults, valid list, unknown/duplicate provider, duplicate index, missing key, index order, template/partial-model tests); Python section module asserts startup and the absence of the key in logs |
 | Secrets        | sentinel key in every adapter test: the request carries it, the port error's `Display`/`Debug` and our log lines do not                                                                                                       |
 
-No E2E file: this change adds no catalogued business use case or route (`TEST-041`). No real network call: `wiremock` is
+No E2E file: this change adds no catalogued business use case or route (`TEST-039`). No real network call: `wiremock` is
 the boundary.
 
-Small fixtures are duplicated per adapter rather than shared, because `TEST-046` restricts shared Rust helpers to
-`test_helpers` and `TEST-047` requires approval.
+Small fixtures are duplicated per adapter rather than shared, because `TEST-044` restricts shared Rust helpers to
+`test_helpers` and `TEST-045` requires approval.
 
 ## Risks / Trade-offs
 
@@ -281,7 +281,7 @@ Small fixtures are duplicated per adapter rather than shared, because `TEST-046`
   caller so the justification is visible at review.
 - **`lookup` has no application caller** → adapter tests prove it; the persistence change consumes it.
 - **The config test suite is weak without an endpoint** → its section module asserts startup and log redaction;
-  rejection cases stay in Rust (`TEST-057`).
+  rejection cases stay in Rust (`TEST-055`).
 
 ## Migration Plan
 

@@ -5,7 +5,7 @@
 #   NO_BUILD=1  reuse an existing image instead of building it
 #   IMAGE=...   image tag (default: mnemorium:latest), exported as MNEMORIUM_IMAGE
 #
-# See docs/development/TechnicalDesign.md, "Testing" and "Configuration test", TEST-055..TEST-061.
+# See docs/development/TechnicalDesign.md, "Testing" and "Configuration test", TEST-053..TEST-059.
 
 set -euo pipefail
 

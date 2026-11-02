@@ -3,7 +3,7 @@
 ## Context
 
 `openspec/specs/instance/state/spec.md` declares one requirement about concurrency: _Concurrent first starts create at
-most one identity_, with a single **Concurrent creation** scenario. `TEST-056` maps every scenario of that spec to a
+most one identity_, with a single **Concurrent creation** scenario. `TEST-054` maps every scenario of that spec to a
 test, so the requirement carries a two-container configuration test
 (`test/configuration/instance_state.py::test_concurrent_first_starts_persist_one_identity`) and an in-process adapter
 test (`file_instance_state_store_concurrent_creation_persists_once`).
@@ -61,6 +61,6 @@ attribute its callers assert on is unchanged.
 ## Risks
 
 - A container stuck in `created` now costs the full `STARTUP_TIMEOUT_S` (20 s) before failing. That is a poll, not a
-  deliberate sleep, so `TEST-058` is unaffected.
+  deliberate sleep, so `TEST-056` is unaffected.
 - Removing a scenario lowers the spec's coverage of the identity lifecycle to what the product actually promises; the
   remaining six requirements and their scenarios are untouched.

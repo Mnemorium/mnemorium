@@ -2,7 +2,7 @@
 
 The layer order is proved on cheap probes rather than on every setting: `security.jwt.ttl` is visible in the login
 response, `logging.ansi` in one escape byte, and `security.rate_limit.burst_size` in two logins. No case waits for a
-clock and no assertion reads a repository file (`TEST-058`).
+clock and no assertion reads a repository file (`TEST-056`).
 """
 
 import os

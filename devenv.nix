@@ -33,6 +33,7 @@
     pkgs.shellcheck
     pkgs.cargo-deny
     pkgs.cargo-about
+    pkgs.cargo-machete
     pkgs.semgrep
     pkgs.xdg-utils
     pkgs.shfmt
@@ -172,6 +173,14 @@
       entry = "cargo deny check";
       pass_filenames = false;
       files = "Cargo\\.toml$";
+    };
+
+    cargo-machete = {
+      enable = true;
+      name = "cargo-machete";
+      entry = "cargo machete";
+      pass_filenames = false;
+      files = "(\\.rs$|(^|/)Cargo\\.(toml|lock)$)";
     };
 
     betterleaks = {

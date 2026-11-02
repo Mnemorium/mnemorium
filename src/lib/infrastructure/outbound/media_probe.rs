@@ -429,7 +429,7 @@ impl MediaProbe for LocalMediaProbe {
 /// The pool bounds probe concurrency only: a probe acquires its permit inside
 /// the adapter, after the test body has written its stub, so the pool orders a
 /// spawn against a spawn and never a spawn against a stub write. Isolating the
-/// stub file is [`spawn_gate`]'s job (`TEST-054`).
+/// stub file is [`spawn_gate`]'s job (`TEST-052`).
 #[cfg(test)]
 #[expect(
     clippy::single_call_fn,
@@ -445,7 +445,7 @@ fn test_permits() -> Arc<Semaphore> {
 /// One permit excludes every other spawning test in this binary, so no child is
 /// forked while any stub write descriptor can exist: a child forked in that
 /// window inherits a duplicate of the descriptor, and the stub author's `exec`
-/// then fails with `ETXTBSY` (`TEST-054`). The permit is acquired as the first
+/// then fails with `ETXTBSY` (`TEST-052`). The permit is acquired as the first
 /// Arrange step and held to the end of the test body, because the `exec` is not
 /// observable from the test side.
 #[cfg(test)]

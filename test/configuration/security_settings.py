@@ -6,7 +6,7 @@ is printed, and the four `rate_limit.*` settings build the login limiter's topol
 decides whether that header is read at all.
 
 A failed login is the counted request: it needs no provisioned user and cannot succeed, so each case stays small. `429`
-is asserted by status and the `Retry-After` header only; the prose belongs to the endpoint (`TEST-059`).
+is asserted by status and the `Retry-After` header only; the prose belongs to the endpoint (`TEST-057`).
 """
 
 import base64
@@ -58,7 +58,7 @@ def test_a_token_expires_after_the_configured_ttl(sut):
 
     The assertion reads the `exp` claim rather than waiting for the `401`: the token provider validates with
     jsonwebtoken's default 60-second clock-skew leeway, so the rejection is not observable inside the sleep budget
-    (`TEST-058`).
+    (`TEST-056`).
     """
     sut.start(config={"security": {"jwt": {"ttl": 1}}})
 

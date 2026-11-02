@@ -143,19 +143,18 @@ RULES=(
 	"TEST-033:check_test_033"
 	"TEST-034:check_test_034"
 	"TEST-035:check_test_035"
-	"TEST-036:check_test_036"
-	"TEST-038:check_test_038"
+	"TEST-037:check_test_037"
+	"TEST-039:check_test_039"
+	"TEST-040:check_test_040"
 	"TEST-041:check_test_041"
-	"TEST-042:check_test_042"
 	"TEST-043:check_test_043"
-	"TEST-045:check_test_045"
+	"TEST-044:check_test_044"
 	"TEST-046:check_test_046"
-	"TEST-048:check_test_048"
-	"TEST-049:check_test_049"
+	"TEST-047:check_test_047"
+	"TEST-050:check_test_050"
+	"TEST-051:check_test_051"
 	"TEST-052:check_test_052"
-	"TEST-053:check_test_053"
-	"TEST-054:check_test_054"
-	"TEST-062:check_test_062"
+	"TEST-060:check_test_060"
 	"OBS-001:check_obs_001"
 	"OBS-003:check_obs_003"
 	"OBS-004:check_obs_004"
@@ -3409,9 +3408,9 @@ check_test_019() {
 	scan_short TEST-019 "src/lib/domain/model"
 }
 
-# check_test_053 — a catalogued use case's E2E file sits in the folder named by the bounded-context section that holds its entry (TEST-053).
-check_test_053() {
-	local id="TEST-053"
+# check_test_051 — a catalogued use case's E2E file sits in the folder named by the bounded-context section that holds its entry (TEST-051).
+check_test_051() {
+	local id="TEST-051"
 	local e2e_dir="test/e2e"
 	local catalog="docs/development/UseCases.md"
 	local section seq num file base folder expected
@@ -3462,9 +3461,9 @@ check_test_053() {
 	return "$result"
 }
 
-# check_test_054 — an outbound adapter that drives a native binary is covered by an integration test in the same file (TEST-054).
-check_test_054() {
-	local id="TEST-054"
+# check_test_052 — an outbound adapter that drives a native binary is covered by an integration test in the same file (TEST-052).
+check_test_052() {
+	local id="TEST-052"
 	local outbound="src/lib/infrastructure/outbound"
 	local file test_line test_text seam error_type variant
 	local found=0 result=0
@@ -3550,9 +3549,9 @@ check_test_054() {
 	return "$result"
 }
 
-# check_test_062 — a logging test uses #[traced_test] and installs no subscriber of its own (TEST-062).
-check_test_062() {
-	local id="TEST-062"
+# check_test_060 — a logging test uses #[traced_test] and installs no subscriber of its own (TEST-060).
+check_test_060() {
+	local id="TEST-060"
 	local src_dir="src"
 	local file forbidden violation result=0
 
@@ -4124,14 +4123,14 @@ check_test_025() {
 # check_test_026 — a domain service is pure, so its tests need no doubles (TEST-026).
 check_test_026() { need_dir "TEST-026" "src/lib/domain/service" && scan_short TEST-026 "src/lib/domain/service"; }
 
-# check_test_027 — integration tests exercise the outbound port adapters (TEST-027): every repository (SQLite, moka cache) and configuration-source adapter carries its inline `#[cfg(test)] mod tests { ... }`, the module the integration test lives in (TEST-028).
+# check_test_027 — integration tests exercise the outbound port adapters (TEST-027): every repository (SQLite) and configuration-source adapter carries its inline `#[cfg(test)] mod tests { ... }`, the module the integration test lives in (TEST-028).
 check_test_027() {
 	local id="TEST-027"
 	local pattern file matches found=0 result=0
 	local -a surfaces=()
 	local -a files=()
 
-	# The rule names the families, not the paths: the repository (SQLite, moka cache) and the configuration source are transcribed as globs in rule_enforcer.yaml.
+	# The rule names the families, not the paths: the repository (SQLite) and the configuration source are transcribed as globs in rule_enforcer.yaml.
 	config_list "$id" adapter_surfaces surfaces || return 2
 
 	for pattern in "${surfaces[@]}"; do
@@ -4217,55 +4216,9 @@ check_test_033() {
 # check_test_034 — a SQLite repository integration test caps its in-memory pool at one connection (TEST-034).
 check_test_034() { need_dir "TEST-034" "src/lib/infrastructure/outbound/sqlx" && scan_short TEST-034 "src/lib/infrastructure/outbound/sqlx"; }
 
-# check_test_035 — the moka cache adapter's test mocks the wrapped repository with mockall (TEST-035).
+# check_test_035 — an external-service test stubs the service with `wiremock` and loads its canned responses from golden files (TEST-035).
 check_test_035() {
 	local id="TEST-035"
-	local surface="src/lib/infrastructure/outbound/moka.rs"
-	local module="src/lib/infrastructure/outbound/moka"
-	local file matches found=0 result=0
-	local -a files=()
-
-	if [ ! -f "$surface" ] && [ ! -d "$module" ]; then
-		printf 'error: %s: missing %s\n' "$id" "$surface" >&2
-		return 1
-	fi
-
-	mapfile -t files < <({
-		[ -f "$surface" ] && printf '%s\n' "$surface"
-		[ -d "$module" ] && find "$module" -name '*.rs'
-	} | sort -u)
-
-	for file in "${files[@]}"; do
-		[ -f "$file" ] || continue
-		# A module that holds no code (blank lines and comments only) declares no adapter: there is nothing to exercise yet.
-		if ! grep -qE '^[^/[:space:]]' "$file"; then
-			continue
-		fi
-		found=$((found + 1))
-		# The rule is about the adapter's test.
-		if ! grep -qE '^#\[cfg\(test\)\]' "$file"; then
-			continue
-		fi
-		# test-035 extracts the mockall mock the test supplies as the wrapped repository; the per-file requirement is resolved here because an ast-grep rule cannot assert the absence of a match in a file.
-		matches="$(scan_json "$id" "$file")" || return 1
-		if [ -z "$matches" ]; then
-			printf 'error: %s: %s: the moka cache adapter test does not mock the wrapped repository with mockall; supply a Mock<…>Repository double as the wrapped repository\n' \
-				"$id" "$file" >&2
-			result=1
-		fi
-	done
-
-	if [ "$found" -eq 0 ]; then
-		# The moka cache adapter is declared but unimplemented; TEST-027 owns the adapter's existence, and the rule has no subject until it lands.
-		return 0
-	fi
-
-	return "$result"
-}
-
-# check_test_036 — an external-service test stubs the service with `wiremock` and loads its canned responses from golden files (TEST-036).
-check_test_036() {
-	local id="TEST-036"
 	local surface="src/lib/infrastructure/outbound"
 	local file matches kind line text stubbed result=0
 
@@ -4303,24 +4256,24 @@ check_test_036() {
 	return "$result"
 }
 
-# check_test_038 — an external-service test module lives in the same file as the client under test (TEST-038).
-check_test_038() {
+# check_test_037 — an external-service test module lives in the same file as the client under test (TEST-037).
+check_test_037() {
 	local surface="src/lib/infrastructure/outbound"
 	local file result=0
 
-	need_dir "TEST-038" "$surface" || return 1
+	need_dir "TEST-037" "$surface" || return 1
 
 	while IFS= read -r file; do
 		[ -n "$file" ] || continue
-		scan_short TEST-038 "$file" || result=1
+		scan_short TEST-037 "$file" || result=1
 	done < <(grep -rl 'ExternalServiceError' --include='*.rs' "$surface" 2>/dev/null | sort)
 
 	return "$result"
 }
 
-# check_test_041 — one E2E file per catalogued business use case (TEST-041).
-check_test_041() {
-	local id="TEST-041"
+# check_test_039 — one E2E file per catalogued business use case (TEST-039).
+check_test_039() {
+	local id="TEST-039"
 	local e2e_dir="test/e2e"
 	local catalog="docs/development/UseCases.md"
 	local file base seq num entry result=0
@@ -4405,9 +4358,9 @@ check_test_041() {
 	return "$result"
 }
 
-# check_test_042 — the E2E suite is split into one folder per bounded context (TEST-042).
-check_test_042() {
-	local id="TEST-042"
+# check_test_040 — the E2E suite is split into one folder per bounded context (TEST-040).
+check_test_040() {
+	local id="TEST-040"
 	local e2e_dir="test/e2e"
 	local overview="docs/development/Overview.md"
 	local entry name result=0
@@ -4441,7 +4394,7 @@ check_test_042() {
 
 	while IFS= read -r entry; do
 		name="${entry##*/}"
-		# TEST-052 owns the fixture folder; __pycache__ is generated.
+		# TEST-050 owns the fixture folder; __pycache__ is generated.
 		case "$name" in
 		fixture | __pycache__) continue ;;
 		esac
@@ -4452,7 +4405,7 @@ check_test_042() {
 		fi
 	done < <(find "$e2e_dir" -mindepth 1 -maxdepth 1 -type d | sort)
 
-	# A test module belongs inside its bounded-context folder; `conftest.py` is the suite's own fixture module (TEST-043) and stays at the root.
+	# A test module belongs inside its bounded-context folder; `conftest.py` is the suite's own fixture module (TEST-041) and stays at the root.
 	while IFS= read -r file; do
 		[ -n "$file" ] || continue
 		printf 'error: %s: %s sits directly under %s; move it into its bounded-context folder\n' \
@@ -4464,9 +4417,9 @@ check_test_042() {
 	return "$result"
 }
 
-# check_test_043 — a generic E2E test provisions or registers its users with the shared `SECRET_PASSWORD` (TEST-043). test-043 extracts every `register(...)` call and its password argument; the shared-secret comparison happens here because an ast-grep rule cannot read rule_enforcer.yaml.
-check_test_043() {
-	local id="TEST-043"
+# check_test_041 — a generic E2E test provisions or registers its users with the shared `SECRET_PASSWORD` (TEST-041). test-041 extracts every `register(...)` call and its password argument; the shared-secret comparison happens here because an ast-grep rule cannot read rule_enforcer.yaml.
+check_test_041() {
+	local id="TEST-041"
 	local e2e_dir="test/e2e"
 	local conftest="$e2e_dir/conftest.py"
 	local config matches file line password location func result=0
@@ -4481,7 +4434,7 @@ check_test_043() {
 
 	config="$(rule_config "$id")" || return 2
 
-	# The exempt locations are the password-behavior tests (TEST-044): a test that picks its own explicit password is named here, never inferred.
+	# The exempt locations are the password-behavior tests (TEST-042): a test that picks its own explicit password is named here, never inferred.
 	while IFS= read -r location; do
 		[ -n "$location" ] || continue
 		allowed["$location"]=1
@@ -4495,7 +4448,7 @@ check_test_043() {
 	done < <(grep -rhoE '^[A-Za-z_][A-Za-z0-9_]*[[:space:]]*=[[:space:]]*SECRET_PASSWORD([[:space:]]|$)' \
 		"$e2e_dir" --include='*.py' | sed -E 's/[[:space:]]*=.*//')
 
-	# test-043 extracts every `register(…)` call and its password argument.
+	# test-041 extracts every `register(…)` call and its password argument.
 	matches="$(scan_json "$id" "$e2e_dir")" || return 1
 	[ -n "$matches" ] || return 0
 
@@ -4531,8 +4484,8 @@ check_test_043() {
 	return "$result"
 }
 
-check_test_045() {
-	local id="TEST-045"
+check_test_043() {
+	local id="TEST-043"
 	local e2e_dir="test/e2e"
 	local conftest="$e2e_dir/conftest.py"
 	local matches file line text name secret_re found_fixture=0 result=0
@@ -4547,7 +4500,7 @@ check_test_045() {
 	done < <(grep -rhoE '^[A-Za-z_][A-Za-z0-9_]*[[:space:]]*=[[:space:]]*SECRET_PASSWORD[[:space:]]*$' \
 		"$e2e_dir" --include='*.py' | sed -E 's/[[:space:]]*=.*$//' | sort -u)
 
-	# test-045 extracts every call that names the Root Admin — by the `ROOT_ADMIN_USERNAME` constant or the `"root"` literal.
+	# test-043 extracts every call that names the Root Admin — by the `ROOT_ADMIN_USERNAME` constant or the `"root"` literal.
 	matches="$(scan_json "$id" "$e2e_dir")" || return 1
 	require_matches "$id" "Root Admin call from $e2e_dir" "$matches" || return 1
 
@@ -4595,9 +4548,9 @@ check_test_045() {
 	return "$result"
 }
 
-# check_test_046 — shared Rust test helpers live only in the single `#[cfg(test)] mod test_helpers` in src/lib/lib.rs (TEST-046); a separate helper file or module is forbidden.
-check_test_046() {
-	local id="TEST-046"
+# check_test_044 — shared Rust test helpers live only in the single `#[cfg(test)] mod test_helpers` in src/lib/lib.rs (TEST-044); a separate helper file or module is forbidden.
+check_test_044() {
+	local id="TEST-044"
 	local module="src/lib/lib.rs"
 	local src_dir="src"
 	local file line inline gated result=0 count=0
@@ -4681,19 +4634,19 @@ check_test_046() {
 	return "$result"
 }
 
-# check_test_048 — a production factory struct has no dedicated test of its own (TEST-048): factories only wire use cases, adapters and transactions, so the assembled parts are tested where the behavior lives. test-048 matches a test construct — a `#[cfg(test)]`/`#[cfg_attr(test, ...)]` attribute, a `#[test]` (or `#[<path>::test]`), a `mod test`/`mod tests`, or a `mockall`/`automock` name.
-check_test_048() {
-	need_dir "TEST-048" "src/lib/infrastructure/use_case_factory" || return 1
-	need_file "TEST-048" "src/lib/infrastructure/outbound/sqlx/unit_of_work.rs" || return 1
-	scan_short TEST-048 "src/lib/infrastructure/use_case_factory" "src/lib/infrastructure/outbound/sqlx/unit_of_work.rs"
+# check_test_046 — a production factory struct has no dedicated test of its own (TEST-046): factories only wire use cases, adapters and transactions, so the assembled parts are tested where the behavior lives. test-046 matches a test construct — a `#[cfg(test)]`/`#[cfg_attr(test, ...)]` attribute, a `#[test]` (or `#[<path>::test]`), a `mod test`/`mod tests`, or a `mockall`/`automock` name.
+check_test_046() {
+	need_dir "TEST-046" "src/lib/infrastructure/use_case_factory" || return 1
+	need_file "TEST-046" "src/lib/infrastructure/outbound/sqlx/unit_of_work.rs" || return 1
+	scan_short TEST-046 "src/lib/infrastructure/use_case_factory" "src/lib/infrastructure/outbound/sqlx/unit_of_work.rs"
 }
 
-# check_test_049 — an endpoint test does not assert behaviour owned by middleware (TEST-049): authentication, body-size limits, the HAL error envelope, or cross-origin handling.
-check_test_049() { need_dir "TEST-049" "src/lib/infrastructure/inbound/rest/handler" && scan_short TEST-049 --globs 'src/lib/infrastructure/inbound/rest/handler/**/*.rs' src; }
+# check_test_047 — an endpoint test does not assert behaviour owned by middleware (TEST-047): authentication, body-size limits, the HAL error envelope, or cross-origin handling.
+check_test_047() { need_dir "TEST-047" "src/lib/infrastructure/inbound/rest/handler" && scan_short TEST-047 --globs 'src/lib/infrastructure/inbound/rest/handler/**/*.rs' src; }
 
-# check_test_052 — a golden file or a test media file the E2E suite consumes is stored under test/e2e/fixture/ (TEST-052).
-check_test_052() {
-	local id="TEST-052"
+# check_test_050 — a golden file or a test media file the E2E suite consumes is stored under test/e2e/fixture/ (TEST-050).
+check_test_050() {
+	local id="TEST-050"
 	local e2e_dir="test/e2e"
 	local fixture_dir="test/e2e/fixture"
 	local file count=0 result=0

@@ -4,7 +4,7 @@ The identity is the non-derivable part of the instance: the site pepper, the tok
 established. The cases cover the lifecycle the spec at `openspec/specs/instance/state/spec.md` describes — seeded,
 generated, reused verbatim across restarts, refused when a seed disagrees with the persisted file, and never leaked.
 
-Seeds are literal so a leak assertion is a substring search, and every refusal case asserts its effect (`TEST-061`): the
+Seeds are literal so a leak assertion is a substring search, and every refusal case asserts its effect (`TEST-059`): the
 persisted file stays byte-identical, no replacement identity is written, and no configuration or datastore file appears.
 """
 
@@ -44,7 +44,7 @@ REPORT = "Identity creation is reported and secrets never leak"
 
 # Every scenario of openspec/specs/instance/state/spec.md, mapped to the test that asserts it.
 # A value is a test function name in this module, or "rust:<test fn>" when the scenario is
-# decode-level and owned by the Rust store tests (TEST-057).
+# decode-level and owned by the Rust store tests (TEST-055).
 STATE_SCENARIOS: dict[str, str] = {
     f"{RESOLUTION} / Unreadable identity stops startup early": "test_the_identity_is_read_before_configuration",
     f"{RESOLUTION} / Identity is read on every start": "test_a_persisted_identity_is_reused_silently",

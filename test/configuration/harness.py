@@ -1,11 +1,11 @@
 """Harness for the configuration test suite: one containerised server per test.
 
 Every test drives the image named by `MNEMORIUM_IMAGE` as a black box. The image is never built here: a missing image
-is a configuration error and stops the run with a hint, not an implicit build (TEST-060). Each test gets its own
+is a configuration error and stops the run with a hint, not an implicit build (TEST-058). Each test gets its own
 container, its own writable working directory bind-mounted at `/app`, and its own random loopback port, so no test
 observes another test's server, the `test/e2e` container, or the repository working tree.
 
-Operator prose lives in this module only (TEST-059): a test matches a message through the constants below and never
+Operator prose lives in this module only (TEST-057): a test matches a message through the constants below and never
 inlines one. The structured `event=`/`component=` fields a lifecycle message carries are matched where the server emits
 them.
 
@@ -47,7 +47,7 @@ STATE_PATH = "state.yaml"
 DATABASE_PATH = "mnemorium.db"
 LOG_DIRECTORY = "logs"
 
-# Operator prose: the one home for messages asserted by the suite (TEST-059).
+# Operator prose: the one home for messages asserted by the suite (TEST-057).
 MSG_CONFIG_GENERATED = "the configuration file did not exist; wrote the built-in defaults"
 MSG_ENV_OVERRIDES = "the environment overrode these configuration settings"
 MSG_PASSWORD_LOGGED = re.compile(
@@ -64,7 +64,7 @@ POLL_INTERVAL_S = 0.1
 REQUEST_TIMEOUT_S = 10
 
 # A container in any other state is still on its way: `created` and `restarting` are transient, and an empty read means
-# `docker inspect` itself failed, so each is polled rather than read as a terminal outcome (TEST-060).
+# `docker inspect` itself failed, so each is polled rather than read as a terminal outcome (TEST-058).
 TERMINAL_STATUSES = frozenset({"exited", "dead", "removing"})
 
 
@@ -160,7 +160,7 @@ class Sut:
         """Stop the container, then remove it; idempotent.
 
         The graceful SIGTERM is what lets the server drain and drop its `WorkerGuard`, so a log file read after `stop()`
-        holds every line the server wrote (TEST-058's observation contract, without a sleep).
+        holds every line the server wrote (TEST-056's observation contract, without a sleep).
         """
         if not self._created:
             return

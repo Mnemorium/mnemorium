@@ -68,7 +68,7 @@ DEFAULT_GALLERY_ID = 0
 # An identifier no gallery, item or medium ever carries.
 UNKNOWN_ID = 999_999_999
 
-# The tiny, real H.264 fixture the container's `ffprobe` can probe (TEST-052).
+# The tiny, real H.264 fixture the container's `ffprobe` can probe (TEST-050).
 _VIDEO_FIXTURE = Path(__file__).resolve().parent / "fixture" / "tiny_video.mp4"
 
 # Each generated medium must have distinct bytes: the upload-completion handler

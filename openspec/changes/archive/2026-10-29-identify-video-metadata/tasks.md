@@ -125,7 +125,7 @@
 - [x] 9.6 Build the container image and confirm the `reqwest` TLS backend compiles for the Alpine/musl runtime; verify
       the image builds and the health check passes.
 
-No E2E file is added: this change introduces no catalogued business use case and no route (`TEST-041`).
+No E2E file is added: this change introduces no catalogued business use case and no route (`TEST-039`).
 
 ## Workflow follow-up
 

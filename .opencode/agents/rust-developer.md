@@ -167,7 +167,7 @@ Read the governing material at run time; never work from memory.
     factories, `use_case/` implementations.
   - `src/lib/infrastructure/inbound/rest/` — `handler/<context>/` endpoints,
     `api_error.rs`, `app_state.rs`, `middleware/`, `handler.rs`, `rest.rs`.
-  - `src/lib/infrastructure/outbound/` — `sqlx/`, `jwt/`, `argon2/`, `moka/`,
+  - `src/lib/infrastructure/outbound/` — `sqlx/`, `jwt/`, `argon2/`,
     `random/`, `config/`, and `logging`.
   - `src/lib/infrastructure/use_case_factory/` — the per-context factories.
   - `migrations/` — the SQLite schema, seeds, and triggers.

@@ -1,4 +1,4 @@
-"""The `TEST-056` gate: the instance-state module and the spec stay in step.
+"""The `TEST-054` gate: the instance-state module and the spec stay in step.
 
 Three directions are checked. Every scenario of `openspec/specs/instance/state/spec.md` is mapped in `STATE_SCENARIOS`;
 every `@pytest.mark.state_scenario` names a scenario the spec contains; and every test in `instance_state.py` carries a

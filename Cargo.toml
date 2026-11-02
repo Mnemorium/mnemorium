@@ -117,9 +117,14 @@ negative_feature_names = "deny"
 wildcard_dependencies = "deny"
 
 [dependencies]
-sqlx = { version = "0.9.0", features = ["runtime-tokio", "sqlite", "chrono"] }
+sqlx = { version = "0.9.0", default-features = false, features = [
+  "runtime-tokio",
+  "sqlite",
+  "chrono",
+  "macros",
+  "migrate",
+] }
 axum = "0.8.9"
-moka = { version = "0.12.16", features = ["sync"] }
 reqwest = "0.13.4"
 argon2 = "0.6.0"
 utoipa = { version = "5.5.0", features = ["axum_extras"] }
@@ -135,7 +140,6 @@ anyhow = "1.0.104"
 email_address = { version = "0.2.9", default-features = false }
 chrono = "0.4.45"
 jsonwebtoken = { version = "11.0.0", features = ["aws_lc_rs"] }
-tower = "0.5.3"
 rand = { version = "0.10.2", features = ["chacha"] }
 sha2 = "0.11.0"
 base64 = "0.23.1"
@@ -160,7 +164,5 @@ mockall = "0.15.0"
 rstest = "0.26.1"
 wiremock = "0.6.5"
 tempfile = "3"
+tower = "0.5.3"
 tracing-test = { version = "0.2", features = ["no-env-filter"] }
-
-[build-dependencies]
-sqlx = { version = "0.9.0", features = ["migrate"] }
