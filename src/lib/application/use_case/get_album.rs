@@ -91,7 +91,7 @@ where
                     .next()
                     .ok_or(GetAlbumError::NoSuchAlbum)?;
                 if let Decision::Deny(denial) =
-                    Authorization::decide(&caller, &permissions, Action::CatalogRead, &album)
+                    Authorization::decide(&caller, &permissions, Action::LibraryRead, &album)
                 {
                     security_event::authorization_failed(
                         caller.id(),

@@ -3553,7 +3553,7 @@ event must be one this catalog declares. A field is an identifier, a code or a c
 
 The `authz_failed` fields are a closed vocabulary shared with the permission catalog (`docs/Permissions.md`). `action`
 is the denied action's verb, one of `read`, `moderate`, `manage`, `use`, `write`, `update`, `update_role`, `create` or
-`patch_credential`; `target` is its target, one of `catalog`, `gallery`, `playlist`, `file`, `upload` or `user`. The
+`patch_credential`; `target` is its target, one of `library`, `gallery`, `playlist`, `file`, `upload` or `user`. The
 `Authorization` domain service names both, and the application use case that loads the caller, the caller's permissions
 and the resource emits exactly one event per denied decision before mapping the denial. A collection filter that drops
 an item by asking the same service is a negative decision, not a denial, so it emits no event.

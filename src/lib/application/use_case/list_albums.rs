@@ -88,7 +88,7 @@ where
                     .map_err(|error| ListAlbumsError::Unknown(error.into()))?;
 
                 albums.retain(|album| {
-                    Authorization::decide(&caller, &permissions, Action::CatalogRead, album)
+                    Authorization::decide(&caller, &permissions, Action::LibraryRead, album)
                         .is_allowed()
                 });
 

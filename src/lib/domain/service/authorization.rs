@@ -535,7 +535,7 @@ mod tests {
     }
 
     #[test]
-    fn catalog_read_covers_a_film_and_a_listed_album_is_visible() -> Result<(), Box<dyn Error>> {
+    fn library_read_covers_a_film_and_a_listed_album_is_visible() -> Result<(), Box<dyn Error>> {
         // Arrange
         let caller = user(9, Role::Standard)?;
         let movie = sample_movie(5)?;
@@ -543,17 +543,17 @@ mod tests {
         let album = sample_album(7, Vec::new())?;
         let permissions = [override_scope(
             9,
-            Action::CatalogRead,
+            Action::LibraryRead,
             Scope::Listed(vec![ResourceRef::new(ResourceKind::MusicAlbum, 7)]),
         )?];
 
         // Act
         let movie_decision =
-            Authorization::decide(&caller, &permissions, Action::CatalogRead, &movie);
+            Authorization::decide(&caller, &permissions, Action::LibraryRead, &movie);
         let series_decision =
-            Authorization::decide(&caller, &permissions, Action::CatalogRead, &series);
+            Authorization::decide(&caller, &permissions, Action::LibraryRead, &series);
         let album_decision =
-            Authorization::decide(&caller, &permissions, Action::CatalogRead, &album);
+            Authorization::decide(&caller, &permissions, Action::LibraryRead, &album);
 
         // Assert
         assert!(!movie_decision.is_allowed());

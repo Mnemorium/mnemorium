@@ -88,7 +88,7 @@ where
                     .map_err(|error| ListMoviesError::Unknown(error.into()))?;
 
                 movies.retain(|movie| {
-                    Authorization::decide(&caller, &permissions, Action::CatalogRead, movie)
+                    Authorization::decide(&caller, &permissions, Action::LibraryRead, movie)
                         .is_allowed()
                 });
 
@@ -337,7 +337,7 @@ mod tests {
         expect_permissions(
             &mut permissions,
             1,
-            vec![Permission::try_new(1, Action::CatalogRead, Scope::None)?],
+            vec![Permission::try_new(1, Action::LibraryRead, Scope::None)?],
         );
         let unit_of_work = TestUnitOfWork {
             movies,
@@ -378,7 +378,7 @@ mod tests {
             1,
             vec![Permission::try_new(
                 1,
-                Action::CatalogRead,
+                Action::LibraryRead,
                 Scope::Listed(vec![ResourceRef::new(ResourceKind::Movie, 7)]),
             )?],
         );

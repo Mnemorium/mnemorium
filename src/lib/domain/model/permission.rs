@@ -276,7 +276,7 @@ pub enum RootAccess {
 #[non_exhaustive]
 pub enum Action {
     /// Read the film, show and album catalogue.
-    CatalogRead,
+    LibraryRead,
     /// Replace the password behind a credential.
     CredentialPatch,
     /// Read a stored file.
@@ -315,7 +315,7 @@ pub enum Action {
 
 /// Every action in the catalog.
 pub const ACTIONS: [Action; 18] = [
-    Action::CatalogRead,
+    Action::LibraryRead,
     Action::CredentialPatch,
     Action::FileRead,
     Action::FileUse,
@@ -343,7 +343,7 @@ impl Action {
     #[must_use]
     pub fn as_wire(self) -> &'static str {
         match self {
-            Self::CatalogRead => "catalog.read",
+            Self::LibraryRead => "library.read",
             Self::CredentialPatch => "credential.patch",
             Self::FileRead => "file.read",
             Self::FileUse => "file.use",
@@ -373,7 +373,7 @@ impl Action {
     pub fn conceals_denial(self) -> bool {
         matches!(
             self,
-            Self::CatalogRead
+            Self::LibraryRead
                 | Self::FileRead
                 | Self::GalleryRead
                 | Self::PlaylistRead
@@ -405,7 +405,7 @@ impl Action {
         match self {
             Self::GalleryManage | Self::GalleryModerate => Some(Self::GalleryRead),
             Self::PlaylistManage | Self::PlaylistModerate => Some(Self::PlaylistRead),
-            Self::CatalogRead
+            Self::LibraryRead
             | Self::CredentialPatch
             | Self::FileRead
             | Self::FileUse
@@ -426,7 +426,7 @@ impl Action {
     #[must_use]
     pub fn resource_kinds(self) -> &'static [ResourceKind] {
         match self {
-            Self::CatalogRead => &[
+            Self::LibraryRead => &[
                 ResourceKind::Movie,
                 ResourceKind::Series,
                 ResourceKind::MusicAlbum,
@@ -451,7 +451,7 @@ impl Action {
     #[must_use]
     pub fn role_scope(self, role: Role) -> Scope {
         match self {
-            Self::CatalogRead
+            Self::LibraryRead
             | Self::GalleryModerate
             | Self::GalleryRead
             | Self::PlaylistModerate
@@ -481,7 +481,7 @@ impl Action {
     pub fn root_access(self) -> RootAccess {
         match self {
             Self::UploadRead | Self::UploadWrite => RootAccess::OwnerOnly,
-            Self::CatalogRead
+            Self::LibraryRead
             | Self::CredentialPatch
             | Self::FileRead
             | Self::FileUse
@@ -512,7 +512,7 @@ impl Action {
             | Self::UserRead
             | Self::UserRoleChange
             | Self::UserUpdate => &GLOBAL_SCOPES,
-            Self::CatalogRead
+            Self::LibraryRead
             | Self::FileRead
             | Self::FileUse
             | Self::GalleryManage
@@ -528,7 +528,7 @@ impl Action {
     #[must_use]
     pub fn target(self) -> &'static str {
         match self {
-            Self::CatalogRead => "catalog",
+            Self::LibraryRead => "library",
             Self::CredentialPatch
             | Self::PermissionManage
             | Self::UserCreate
@@ -547,7 +547,7 @@ impl Action {
     #[must_use]
     pub fn verb(self) -> &'static str {
         match self {
-            Self::CatalogRead
+            Self::LibraryRead
             | Self::FileRead
             | Self::GalleryRead
             | Self::PlaylistRead

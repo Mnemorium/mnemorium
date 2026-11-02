@@ -166,7 +166,7 @@ mod tests {
                     Ok(GetPermissionResponse::new(
                         5,
                         Role::Standard,
-                        vec![PermissionPreset::new(Action::CatalogRead, Scope::All)],
+                        vec![PermissionPreset::new(Action::LibraryRead, Scope::All)],
                         Vec::new(),
                     ))
                 })
@@ -179,7 +179,7 @@ mod tests {
         assert_eq!(status, StatusCode::OK);
         assert_eq!(body["user_id"], 5i64);
         assert_eq!(body["role"], "STANDARD");
-        assert_eq!(body["defaults"][0]["action"], "catalog.read");
+        assert_eq!(body["defaults"][0]["action"], "library.read");
         assert_eq!(body["defaults"][0]["scope"], "ALL");
         assert_eq!(body["overrides"].as_array().map(Vec::len), Some(0));
         assert_eq!(body["_links"]["self"]["href"], "/api/v1/user/5/permission");

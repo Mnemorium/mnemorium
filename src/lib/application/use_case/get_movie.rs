@@ -91,7 +91,7 @@ where
                     .next()
                     .ok_or(GetMovieError::NoSuchMovie)?;
                 if let Decision::Deny(denial) =
-                    Authorization::decide(&caller, &permissions, Action::CatalogRead, &movie)
+                    Authorization::decide(&caller, &permissions, Action::LibraryRead, &movie)
                 {
                     security_event::authorization_failed(
                         caller.id(),
@@ -300,7 +300,7 @@ mod tests {
         expect_permissions(
             &mut permissions,
             1,
-            vec![Permission::try_new(1, Action::CatalogRead, Scope::None)?],
+            vec![Permission::try_new(1, Action::LibraryRead, Scope::None)?],
         );
         let unit_of_work = TestUnitOfWork {
             movies,
