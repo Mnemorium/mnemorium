@@ -164,7 +164,7 @@ jobs:
           pip install yq==3.4.3
           npm install -g @ast-grep/cli@0.45.1
       - name: Run rulebook checks
-        run: script/rule_enforcer.sh check
+        run: script/rule_enforcer.sh check --verbose
 
   docs-only:
     needs: [gatekeeper]
