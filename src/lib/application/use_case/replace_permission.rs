@@ -207,6 +207,8 @@ mod tests {
     use std::sync::Arc;
     use std::sync::atomic::Ordering;
 
+    use rstest::rstest;
+
     use crate::application::port::replace_permission::PermissionRequest;
     use crate::application::port::replace_permission::ReplacePermissionCommand;
     use crate::application::port::replace_permission::ReplacePermissionError;
@@ -320,7 +322,7 @@ mod tests {
         let response = use_case.execute(command).await?;
 
         // Assert
-        assert_eq!(response.defaults().len(), 15);
+        assert_eq!(response.defaults().len(), 16);
         assert!(response.overrides().iter().any(|permission| {
             permission.action() == Action::GalleryRead && permission.scope() == &Scope::All
         }));
@@ -354,6 +356,36 @@ mod tests {
         // Assert
         assert!(response.overrides().is_empty());
         assert!(harness.committed.load(Ordering::SeqCst));
+        Ok(())
+    }
+
+    #[rstest]
+    #[case::owned(Scope::Owned)]
+    #[case::public_or_owned(Scope::PublicOrOwned)]
+    #[tokio::test]
+    async fn replace_permission_library_manage_rejects_an_owner_scope(
+        #[case] scope: Scope,
+    ) -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let mut permissions = MockPermissionRepository::new();
+        caller_permission_load(&mut permissions);
+        let harness = harness(permissions)?;
+        let use_case: UseCase = ReplacePermission::new(Arc::clone(&harness.factory));
+        let command = ReplacePermissionCommand::new(
+            0,
+            5,
+            vec![PermissionRequest::new(Action::LibraryManage, scope)],
+        );
+
+        // Act
+        let result = use_case.execute(command).await;
+
+        // Assert
+        assert!(matches!(
+            result,
+            Err(ReplacePermissionError::InvalidPermission)
+        ));
+        assert!(harness.rolled_back.load(Ordering::SeqCst));
         Ok(())
     }
 

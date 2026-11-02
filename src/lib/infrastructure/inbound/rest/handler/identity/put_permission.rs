@@ -271,6 +271,24 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn put_permission_stale_action_name_returns_unprocessable() -> Result<(), Box<dyn Error>>
+    {
+        // Arrange
+        let use_case = MockReplacePermissionUseCase::new();
+        let body = json!({
+            "permissions": [{ "action": "catalog.read", "scope": "ALL", "resources": [] }]
+        })
+        .to_string();
+
+        // Act
+        let response = send(use_case, 0, "5", &body).await?;
+
+        // Assert
+        assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn put_permission_unknown_scope_returns_unprocessable() -> Result<(), Box<dyn Error>> {
         // Arrange
         let use_case = MockReplacePermissionUseCase::new();

@@ -24,6 +24,7 @@ Every authorizable operation has exactly one action name, and the catalog is fix
 | Action              | Target                    | Standard          | Admin             | Root Admin | Configurable |
 | ------------------- | ------------------------- | ----------------- | ----------------- | ---------- | ------------ |
 | `library.read`      | Movie, Series, MusicAlbum | `ALL`             | `ALL`             | All        | yes          |
+| `library.manage`    | Movie, Series, MusicAlbum | `NONE`            | `ALL`             | All        | yes          |
 | `gallery.read`      | Gallery                   | `PUBLIC_OR_OWNED` | `PUBLIC_OR_OWNED` | All        | yes          |
 | `gallery.moderate`  | Gallery                   | `PUBLIC_OR_OWNED` | `PUBLIC_OR_OWNED` | All        | yes          |
 | `gallery.manage`    | Gallery                   | `OWNED`           | `OWNED`           | All        | yes          |
@@ -45,7 +46,7 @@ Every authorizable operation has exactly one action name, and the catalog is fix
 The table is the default matrix. `Root Admin` is not a preset: it is a short-circuit, described below.
 
 A `LISTED` scope names top-level resources only. A season, episode, medium or track is authorized through its series or
-album, so `library.read` never names a season or a track.
+album, so `library.read` and `library.manage` never name a season or a track.
 
 ## Scopes
 
@@ -60,8 +61,9 @@ A scope is the reach of an action over a resource family.
 | `NONE`            | No resource                                | Hide the library from one user                          |
 
 `LISTED` names resources by kind and identifier and must name at least one, without duplicates, of a kind the action
-targets. `ALL`, `PUBLIC_OR_OWNED`, `OWNED` and `NONE` are supported by the content actions; the administration actions
-support only `ALL` and `NONE`; the upload actions support only `OWNED`.
+targets. `ALL`, `PUBLIC_OR_OWNED`, `OWNED` and `NONE` are supported by the content actions; `library.manage` supports
+`ALL`, `LISTED` and `NONE` because a film, show or album has no owner; the administration actions support only `ALL` and
+`NONE`; the upload actions support only `OWNED`.
 
 ## Resolution order
 
@@ -83,8 +85,8 @@ Two rules run alongside the scope:
 ## Root Admin and uploads
 
 The Root Admin is a universal allow: it reads every gallery and playlist, manages another user's playlist or gallery,
-reads and creates user accounts, and administers permissions. The one exception is uploads: an upload session is
-readable, writable and completable only by its owner.
+writes the library, reads and creates user accounts, and administers permissions. The one exception is uploads: an
+upload session is readable, writable and completable only by its owner.
 
 The Root Admin has no overrides, and none can be given to it: the API refuses the Root Admin as a target, and any
 override recorded for it is ignored.
@@ -104,9 +106,9 @@ A denial is either concealed or revealed.
 | The caller lacks an administration action              | `403 Forbidden`    |
 
 Read actions (`library.read`, `gallery.read`, `playlist.read`, `file.read`) and the upload actions always conceal.
-`gallery.moderate`, `gallery.manage`, `playlist.moderate` and `playlist.manage` conceal exactly when the caller cannot
-read the resource, so an invisible playlist answers `404` and a visible one it may not rename answers `403`.
-Administration actions and `file.use` reveal.
+`library.manage`, `gallery.moderate`, `gallery.manage`, `playlist.moderate` and `playlist.manage` conceal exactly when
+the caller cannot read the resource, so an invisible album answers `404` and a readable one it may not rewrite answers
+`403`. Administration actions and `file.use` reveal.
 
 Every denial is logged once at warning level, naming the caller, the action and its target. Filtering a list is not a
 denial, so an item quietly dropped from a listing logs nothing.
@@ -240,6 +242,31 @@ its series or album, so it is never named.
   "permissions": [{ "action": "library.read", "scope": "NONE", "resources": [] }]
 }
 ```
+
+**Catalogue curation.** Let one user write every film, show and album:
+
+```json
+{
+  "permissions": [{ "action": "library.manage", "scope": "ALL", "resources": [] }]
+}
+```
+
+**One album.** Let one user write exactly one album:
+
+```json
+{
+  "permissions": [
+    {
+      "action": "library.manage",
+      "scope": "LISTED",
+      "resources": [{ "kind": "MUSIC_ALBUM", "id": 21 }]
+    }
+  ]
+}
+```
+
+`library.manage` accepts `ALL`, `LISTED` and `NONE` only: a film, show or album has no owner, so `OWNED` and
+`PUBLIC_OR_OWNED` are rejected with `422`.
 
 **Reset.** Replace the overrides with an empty set so the role presets apply again:
 

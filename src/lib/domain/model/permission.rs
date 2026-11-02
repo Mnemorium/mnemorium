@@ -174,6 +174,9 @@ pub const CONTENT_SCOPES: [&str; 5] = ["ALL", "LISTED", "NONE", "OWNED", "PUBLIC
 /// The scopes a global or administration action supports.
 pub const GLOBAL_SCOPES: [&str; 2] = ["ALL", "NONE"];
 
+/// The scopes a library management action supports.
+pub const LIBRARY_MANAGE_SCOPES: [&str; 3] = ["ALL", "LISTED", "NONE"];
+
 /// The only scope an upload action supports.
 pub const OWNER_SCOPES: [&str; 1] = ["OWNED"];
 
@@ -277,6 +280,8 @@ pub enum RootAccess {
 pub enum Action {
     /// Read the film, show and album catalogue.
     LibraryRead,
+    /// Write a film, show or album catalogue item.
+    LibraryManage,
     /// Replace the password behind a credential.
     CredentialPatch,
     /// Read a stored file.
@@ -314,8 +319,9 @@ pub enum Action {
 }
 
 /// Every action in the catalog.
-pub const ACTIONS: [Action; 18] = [
+pub const ACTIONS: [Action; 19] = [
     Action::LibraryRead,
+    Action::LibraryManage,
     Action::CredentialPatch,
     Action::FileRead,
     Action::FileUse,
@@ -343,6 +349,7 @@ impl Action {
     #[must_use]
     pub fn as_wire(self) -> &'static str {
         match self {
+            Self::LibraryManage => "library.manage",
             Self::LibraryRead => "library.read",
             Self::CredentialPatch => "credential.patch",
             Self::FileRead => "file.read",
@@ -405,6 +412,7 @@ impl Action {
         match self {
             Self::GalleryManage | Self::GalleryModerate => Some(Self::GalleryRead),
             Self::PlaylistManage | Self::PlaylistModerate => Some(Self::PlaylistRead),
+            Self::LibraryManage => Some(Self::LibraryRead),
             Self::LibraryRead
             | Self::CredentialPatch
             | Self::FileRead
@@ -426,7 +434,7 @@ impl Action {
     #[must_use]
     pub fn resource_kinds(self) -> &'static [ResourceKind] {
         match self {
-            Self::LibraryRead => &[
+            Self::LibraryManage | Self::LibraryRead => &[
                 ResourceKind::Movie,
                 ResourceKind::Series,
                 ResourceKind::MusicAlbum,
@@ -466,7 +474,7 @@ impl Action {
             | Self::PlaylistManage
             | Self::UploadRead
             | Self::UploadWrite => Scope::Owned,
-            Self::UserCreate | Self::UserRead | Self::UserUpdate => {
+            Self::LibraryManage | Self::UserCreate | Self::UserRead | Self::UserUpdate => {
                 if role == Role::Admin {
                     Scope::All
                 } else {
@@ -481,7 +489,8 @@ impl Action {
     pub fn root_access(self) -> RootAccess {
         match self {
             Self::UploadRead | Self::UploadWrite => RootAccess::OwnerOnly,
-            Self::LibraryRead
+            Self::LibraryManage
+            | Self::LibraryRead
             | Self::CredentialPatch
             | Self::FileRead
             | Self::FileUse
@@ -505,6 +514,7 @@ impl Action {
     pub fn supported_scopes(self) -> &'static [&'static str] {
         match self {
             Self::UploadRead | Self::UploadWrite => &OWNER_SCOPES,
+            Self::LibraryManage => &LIBRARY_MANAGE_SCOPES,
             Self::CredentialPatch
             | Self::PermissionManage
             | Self::UserCreate
@@ -528,7 +538,7 @@ impl Action {
     #[must_use]
     pub fn target(self) -> &'static str {
         match self {
-            Self::LibraryRead => "library",
+            Self::LibraryManage | Self::LibraryRead => "library",
             Self::CredentialPatch
             | Self::PermissionManage
             | Self::UserCreate
@@ -555,7 +565,10 @@ impl Action {
             | Self::UserRead => "read",
             Self::CredentialPatch => "patch_credential",
             Self::FileUse => "use",
-            Self::GalleryManage | Self::PermissionManage | Self::PlaylistManage => "manage",
+            Self::GalleryManage
+            | Self::PermissionManage
+            | Self::PlaylistManage
+            | Self::LibraryManage => "manage",
             Self::GalleryModerate | Self::PlaylistModerate => "moderate",
             Self::UploadWrite => "write",
             Self::UserCreate | Self::UserCreateAdmin => "create",
