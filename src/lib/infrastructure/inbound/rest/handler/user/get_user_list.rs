@@ -689,7 +689,7 @@ mod tests {
         let response = send(use_case, 1, "?email=a&email=b").await?;
 
         // Assert: the status is stable and the message is the one only the
-        // handler-owned rejection mapping produces (`TEST-049`).
+        // handler-owned rejection mapping produces (`TEST-047`).
         assert_eq!(response.status(), StatusCode::BAD_REQUEST);
         assert_eq!(
             error_message_of(&response).as_deref(),

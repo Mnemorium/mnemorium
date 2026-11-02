@@ -1,0 +1,7 @@
+---
+id: test-041
+language: Python
+severity: hint
+message: extract E2E user-provisioning password arguments for TEST-041
+rule:
+  pattern: register($TOKEN, $USERNAME, $EMAIL, $PASSWORD, $ROLE)

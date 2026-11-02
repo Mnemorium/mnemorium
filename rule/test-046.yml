@@ -1,9 +1,9 @@
 ---
-id: test-048
+id: test-046
 language: Rust
 severity: error
 message: >-
-  a production factory struct has no dedicated test of its own (TEST-048):
+  a production factory struct has no dedicated test of its own (TEST-046):
   remove the test construct from the factory and cover the assembled use cases
   instead — the per-context use cases, and the repository integration tests for
   SqlxUnitOfWorkFactory

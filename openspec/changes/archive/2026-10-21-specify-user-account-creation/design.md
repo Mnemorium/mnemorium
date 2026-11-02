@@ -150,7 +150,7 @@ status, representation or link changes. `docs/openapi.json` is regenerated from 
 Unicode uppercase letter, a leading and a trailing whitespace character, an internal space, and a valid lowercase value.
 Application tests cover the two call sites, the duplicate pre-check, the race mapping, the display-name email rejection
 and the existing role matrix. Handler tests cover the `400`/`422`/`409` mapping. The E2E file for UC-001 is extended,
-not duplicated (`TEST-041`); the rename path has no catalogued use case, so its `409` is covered at the application and
+not duplicated (`TEST-039`); the rename path has no catalogued use case, so its `409` is covered at the application and
 handler layers.
 
 ## Risks / Trade-offs

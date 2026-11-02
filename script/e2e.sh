@@ -6,7 +6,7 @@
 #   NO_BUILD=1  reuse an existing `mnemorium` image instead of building it
 #   KEEP=1      leave the `mnemorium-e2e` container running for inspection
 #
-# See docs/development/TechnicalDesign.md, "Testing", TEST-039..TEST-045.
+# See docs/development/TechnicalDesign.md, "Testing", TEST-038..TEST-043.
 
 set -euo pipefail
 

@@ -56,7 +56,6 @@ document describes the source layout those rules constrain.
             │   ├── infer
             │   ├── jwt
             │   ├── media_probe.rs
-            │   ├── moka.rs
             │   ├── notify
             │   ├── random
             │   ├── sha2
@@ -120,7 +119,6 @@ document describes the source layout those rules constrain.
 | `src/lib/infrastructure/outbound/media_probe.rs`                | Media probe adapter decoding images in-process and videos through `ffprobe`                                                       |
 | `src/lib/infrastructure/outbound/infer`                         | Content-type sniffer adapter over `infer`, reporting a file's media type and nothing else                                         |
 | `src/lib/infrastructure/outbound/notify/media_change_source.rs` | Change-source adapter observing the library root with `notify` and translating create, rename and remove events                   |
-| `src/lib/infrastructure/outbound/moka.rs`                       | In-memory cache adapter                                                                                                           |
 | `src/lib/infrastructure/outbound/random`                        | Password and secret generator adapters                                                                                            |
 | `src/lib/infrastructure/outbound/reqwest`                       | External metadata adapters over `reqwest`, with the shared failure classification and the bounded artwork client                  |
 | `src/lib/infrastructure/outbound/reqwest/musicbrainz.rs`        | `MusicBrainz` adapter: query escaping, request pacing and bounded retry, mapping, and Cover Art Archive artwork                   |

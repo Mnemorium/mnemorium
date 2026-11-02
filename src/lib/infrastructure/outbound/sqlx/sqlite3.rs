@@ -1573,7 +1573,7 @@ mod tests {
     /// The `init_db` tests above open an on-disk database for the same reason.
     ///
     /// The unit-of-work lock intent is asserted here rather than beside the
-    /// factory: `TEST-048` keeps the factory file free of test constructs, and
+    /// factory: `TEST-046` keeps the factory file free of test constructs, and
     /// this module already owns the datastore configuration the intent relies
     /// on.
     async fn disk_pool(

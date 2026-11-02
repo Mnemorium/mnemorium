@@ -81,7 +81,7 @@
       username for a duplicate username, a `409` naming the taken email for a duplicate email, a `422` for an uppercase
       username, a `422` for a username with leading or trailing whitespace, a `422` for a display-name email, a
       successful creation with a null email, and the 4/100 length boundaries plus a 101-character rejection. Keep
-      password-behaviour cases on their own explicit passwords (`TEST-044`). Verify with
+      password-behaviour cases on their own explicit passwords (`TEST-042`). Verify with
       `pytest -p no:cacheprovider test/e2e/user/uc001_create_a_user_account.py`.
 - [x] 6.2 Add application or handler coverage for every Spec scenario that is not reachable from the E2E file,
       especially the request-shape cases (`400` malformed JSON, missing field, wrong type, unlisted role) and the

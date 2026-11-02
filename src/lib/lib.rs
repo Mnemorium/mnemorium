@@ -504,7 +504,7 @@ mod test_helpers {
     ///
     /// The message travels in a response extension, so a handler test can assert
     /// the handler-owned message without depending on the HAL error envelope
-    /// that the root middleware builds (`TEST-049`).
+    /// that the root middleware builds (`TEST-047`).
     #[must_use]
     pub fn error_message_of(response: &Response) -> Option<String> {
         response
