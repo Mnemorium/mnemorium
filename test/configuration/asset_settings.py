@@ -1,7 +1,7 @@
 """Behavioural cases for the `asset.*` settings.
 
 `max_file_size_bytes` and `chunk_size_bytes` change what the begin and chunk endpoints accept; `expiry_seconds` changes
-how long a session can still be completed. Input parsing and input rejection are not subjects here (TEST-057): every
+how long a session can still be completed. Input parsing and input rejection are not subjects here (TEST-055): every
 case supplies a valid value and asserts its effect.
 
 `asset.storage.root` has no case: the root is a fixed constant rather than a setting (#328).

@@ -44,7 +44,7 @@ capability's specification (§ 5.6).
    `usecase "UC-NNN - <business name>" as UCNNN` — and an association from every primary actor. `DOC-008` and
    `check_doc_008` fail until the node is there. List `Root Admin` only when the use case is theirs alone; otherwise
    `Admin` covers it.
-6. **Record the E2E obligation.** The matching test is `test/e2e/<context>/uc<NNN>_<name>.py` (`TEST-041`). When the
+6. **Record the E2E obligation.** The matching test is `test/e2e/<context>/uc<NNN>_<name>.py` (`TEST-039`). When the
    test is not part of the change, add the identifier to `exempt_use_cases` in `rule_enforcer.yaml` with a `TODO`
    comment naming the missing test — the precedent is UC-005.
 7. **Verify.** Run `script/rule_enforcer.sh check` and the Markdown gates

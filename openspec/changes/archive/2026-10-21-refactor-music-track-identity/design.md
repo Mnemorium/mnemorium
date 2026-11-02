@@ -15,7 +15,7 @@ separate; this change fixes the model it will inherit.
 Constraints from the rulebook: the hexagonal direction (`AGENTS.md`), `STY-RUST-080` (filter fields), `STY-RUST-081`
 (the classic `search` returns the aggregate), `STY-RUST-084` (domain names, not columns), `PERS-011` (ER diagram),
 `PERS-014` (migrations mutable until release), `API-032`/`API-042` (HAL self links), `TEST-019` (domain models are
-tested through the application layer), and `TEST-046`/`TEST-047` (shared test helpers).
+tested through the application layer), and `TEST-044`/`TEST-045` (shared test helpers).
 
 ## Goals / Non-Goals
 

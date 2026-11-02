@@ -428,7 +428,7 @@ mod tests {
         // handler runs, so the use case must not be reached. The existing
         // `send` helper formats a `NumericID` and cannot express this URI.
         // Envelope assertions live in the `hal_errors` module and the client
-        // message is pinned in `api_error.rs` (`TEST-049`, `TEST-001`); this
+        // message is pinned in `api_error.rs` (`TEST-047`, `TEST-001`); this
         // bare router has no middleware.
         // Arrange
         let mut use_case = MockPatchCredentialUseCase::new();

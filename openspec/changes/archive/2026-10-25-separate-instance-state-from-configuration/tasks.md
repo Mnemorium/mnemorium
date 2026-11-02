@@ -24,7 +24,7 @@
       `StateSeedSource` port and probes `DATABASE_PATH` itself (3.9, `design.md` D5).
 - [x] 1.6 Register the adapter, secret type and use case in `rule_enforcer.yaml` — `OBS-004` secret types and fields,
       `TEST-027` adapter surfaces; verify `script/rule_enforcer.sh` passes. `STY-RUST-002`/`083` bounded contexts and
-      `TEST-041` exempt use cases stay unchanged: identity is a supporting capability of the Identity bounded context,
+      `TEST-039` exempt use cases stay unchanged: identity is a supporting capability of the Identity bounded context,
       so it has no REST handler folder and no catalogued use case (see 1.7). The applied entries are `InstanceState` in
       `OBS-004.secret_types`, `jwt_secret` in `OBS-004.secret_fields`, and
       `src/lib/infrastructure/outbound/file_system/instance_state_store.rs` in `TEST-027.adapter_surfaces`.
@@ -118,7 +118,7 @@
 ## 5. End-to-end and gate
 
 - [x] 5.1 Keep the E2E suite black-box over the REST API: UC-004 owns the boot lifecycle, has no REST surface and is
-      exempt from its own E2E file (`TEST-041`), so the boot scenarios (a fresh boot creates `state.yaml`, `config.yaml`
+      exempt from its own E2E file (`TEST-039`), so the boot scenarios (a fresh boot creates `state.yaml`, `config.yaml`
       and `mnemorium.db`; a restart preserves identity; an empty `config.yaml` boots on defaults; a missing `state.yaml`
       with an existing database exits non-zero) were removed from `test/e2e/` and remain tracked by `test/TODO.md` for
       the planned system-test suite. `pytest -p no:cacheprovider test/e2e` stays green; 6.5 records the current matrix.

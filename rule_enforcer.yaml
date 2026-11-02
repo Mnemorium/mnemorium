@@ -84,17 +84,16 @@ rules:
     allowed_protocols:
       - file
   TEST-027:
-    # The adapter families TEST-027 names: the repository (SQLite, moka cache)
+    # The adapter families TEST-027 names: the repository (SQLite)
     # and the configuration source. The external-services family has no
     # adapter yet (nothing raises ExternalServiceError); its path is appended
     # here when that client lands.
     adapter_surfaces:
       - src/lib/infrastructure/outbound/sqlx/*_repository.rs
-      - src/lib/infrastructure/outbound/moka.rs
       - src/lib/infrastructure/outbound/file_system/configuration_source.rs
       - src/lib/infrastructure/outbound/file_system/instance_state_store.rs
 
-  TEST-041:
+  TEST-039:
     # Business use cases excepted from the one-file-per-use-case rule, each a
     # catalogued use case id (`UC-<seq>`, as written in
     # docs/development/UseCases.md). UC-003 (Initialize Root Admin) and UC-004
@@ -160,7 +159,6 @@ rules:
       - SQLITE[0-9]*
       - JWT
       - ARGON[0-9]*
-      - MOKA
       - ENVY
     noun_exempt_files:
       - src/lib/domain/model/configuration.rs

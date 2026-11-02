@@ -20,7 +20,7 @@ Constraints from the rulebook: the hexagonal direction (`AGENTS.md`), `STY-RUST-
 (the classic `search` returns the aggregate), `STY-RUST-084` (domain names, not columns), `API-032`/`API-033`/`API-034`
 (HAL shape), `API-042` (canonical `self`), `API-044` (no existence disclosure), `API-045` (declared constraints are
 enforced), `PERS-011` (ER diagram), `PERS-014` (migrations mutable until release), `PERS-020`/`ARCH-004` (cascade
-scope), `OBS-002`/`OBS-003`/`OBS-006` (logging), and `TEST-019`/`TEST-046` (domain through application, shared
+scope), `OBS-002`/`OBS-003`/`OBS-006` (logging), and `TEST-019`/`TEST-044` (domain through application, shared
 fixtures).
 
 ## Goals / Non-Goals

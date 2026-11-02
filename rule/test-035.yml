@@ -3,24 +3,34 @@ id: test-035
 language: Rust
 severity: hint
 message: >-
-  a mockall mock of the wrapped repository in the moka cache adapter test
-  module, for TEST-035
+  extract the `wiremock` stub and any inline canned response of an
+  external-service test, for TEST-035
+files:
+  - src/lib/infrastructure/outbound/**/*.rs
 rule:
   all:
-    - any:
-        # The mockall-generated mock of a repository port (TEST-002): the
-        # `Mock<Port>` type an `#[cfg_attr(test, mockall::automock)]` trait
-        # yields. In a `use` path it is an `identifier`; in a type position a
-        # `type_identifier`.
-        - kind: type_identifier
-          regex: '^Mock[A-Za-z0-9_]*Repository$'
-        - kind: identifier
-          regex: '^Mock[A-Za-z0-9_]*Repository$'
-    # Only the adapter's test module counts: a mock name on the production side
-    # is not a test double.
     - inside:
         kind: mod_item
         stopBy: end
         follows:
           kind: attribute_item
           regex: 'cfg\([^)]*\btest\b'
+    - any:
+        # The stub the rule requires: the wiremock mock server.
+        - pattern: MockServer::start()
+        # A canned response built from an inline literal: the payload must be
+        # loaded from a golden file instead.
+        - pattern: $RECV.set_body_string($INLINE)
+        - pattern: $RECV.set_body_raw($INLINE, $TYPE)
+        - pattern: $RECV.set_body_bytes($INLINE)
+        - pattern: $RECV.set_body_json($INLINE)
+constraints:
+  INLINE:
+    any:
+      - regex: '^\s*".+"'
+      - regex: '^\s*r#".+"#'
+      - regex: '^\s*b".+"'
+      - regex: '^\s*br#".+"#'
+      - regex: '^\s*(serde_json::)?json!\('
+      - regex: '^\s*(std::)?format!\('
+      - regex: '^\s*(std::string::)?String::from\('

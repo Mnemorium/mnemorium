@@ -43,7 +43,7 @@ For Markdown, use the `lint:md` and `fmt:md` devenv tasks, or run
 
 Testing strategy and conventions live in `docs/development/TechnicalDesign.md`
 § 5; shared Rust test fixtures live in the single `#[cfg(test)] mod
-test_helpers` in `src/lib/lib.rs` (`TEST-046`).
+test_helpers` in `src/lib/lib.rs` (`TEST-044`).
 
 ## Code Style
 

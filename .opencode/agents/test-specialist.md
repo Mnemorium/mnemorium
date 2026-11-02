@@ -155,7 +155,7 @@ own reasoning. Re-read the section that governs the layer you are working on.
 ## Scope and ownership
 
 - You own every test layer: unit (HTTP handler, application, domain service),
-  Rust integration (SQLite repository, moka cache, external service), and E2E.
+  Rust integration (SQLite repository, external service), and E2E.
 - Rust unit and integration tests live inside the file under test
   (`#[cfg(test)] mod tests`); E2E tests live under `test/e2e/`, one folder per
   bounded context and one file per business use case.
@@ -266,8 +266,8 @@ for E2E only for what the lower layers cannot see.
 
 ## Gaps and approvals
 
-- Shared-helper changes needed (TEST-047 approval)
-- Known holes (for example moka, wiremock)
+- Shared-helper changes needed (TEST-045 approval)
+- Known holes (for example an adapter surface with no integration test)
 
 ## Out of scope
 ```
@@ -294,7 +294,7 @@ Report every result, including the measured coverage.
 ## Escalation
 
 - A new or changed shared test helper in `src/lib/lib.rs` requires the
-  developer's explicit approval (`TEST-047`). Stop and ask through the `question`
+  developer's explicit approval (`TEST-045`). Stop and ask through the `question`
   tool; propose the exact helper and wait.
 - If a required test cannot be written without touching production logic, report
   the missing seam instead of editing production code.
