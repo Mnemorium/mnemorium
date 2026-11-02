@@ -25,8 +25,8 @@ impl SeasonIndex {
 /// A season within a series.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Season {
-    /// Identifier of the file holding the season's artwork, when set.
-    cover_file_id: Option<NumericID>,
+    /// Identifier of the image holding the season's artwork, when set.
+    cover_image_id: Option<NumericID>,
     /// Episodes of the season, in order.
     episodes: Vec<Episode>,
     /// Series-scoped identity of the season.
@@ -36,10 +36,10 @@ pub struct Season {
 }
 
 impl Season {
-    /// Return the identifier of the file holding the season's artwork, if any.
+    /// Return the identifier of the image holding the season's artwork, if any.
     #[must_use]
-    pub fn cover_file_id(&self) -> Option<NumericID> {
-        self.cover_file_id
+    pub fn cover_image_id(&self) -> Option<NumericID> {
+        self.cover_image_id
     }
 
     /// Return the episodes of the season, in order.
@@ -65,11 +65,11 @@ impl Season {
     pub fn new(
         index: SeasonIndex,
         name: Option<String>,
-        cover_file_id: Option<NumericID>,
+        cover_image_id: Option<NumericID>,
         episodes: Vec<Episode>,
     ) -> Self {
         Self {
-            cover_file_id,
+            cover_image_id,
             episodes,
             index,
             name,

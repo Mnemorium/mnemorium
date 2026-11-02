@@ -175,7 +175,7 @@ mod tests {
                 "_links": {
                     "self": { "href": "/api/v1/library/series/7" }
                 },
-                "cover_file_id": null,
+                "cover_image_id": null,
                 "id": 7i64,
                 "name": "Twin Peaks",
                 "plot": "A plot",
@@ -190,7 +190,7 @@ mod tests {
                             "href": "/api/v1/library/series/7/season/1/episode"
                         }
                     },
-                    "cover_file_id": null,
+                    "cover_image_id": null,
                     "index": 1u32,
                     "name": "Season One",
                     "episode_count": 2i64,
@@ -230,13 +230,13 @@ mod tests {
 
         // Assert
         assert_eq!(status, StatusCode::OK);
-        assert_eq!(payload.get("cover_file_id"), Some(&json!(19i64)));
+        assert_eq!(payload.get("cover_image_id"), Some(&json!(19i64)));
         assert_eq!(
             payload.pointer("/_links/cover/href"),
             Some(&json!("/api/v1/asset/image/19"))
         );
         assert_eq!(
-            payload.pointer("/seasons/0/cover_file_id"),
+            payload.pointer("/seasons/0/cover_image_id"),
             Some(&json!(20i64))
         );
         assert_eq!(
@@ -244,7 +244,7 @@ mod tests {
             Some(&json!("/api/v1/asset/image/20"))
         );
         assert_eq!(
-            payload.pointer("/seasons/1/cover_file_id"),
+            payload.pointer("/seasons/1/cover_image_id"),
             Some(&json!(null)),
             "a season must not inherit its show's cover"
         );

@@ -1968,7 +1968,7 @@ entity music_album {
    * name: TEXT <<NN>>
    * release_date: DATE <<NN>>
    production_type: VARCHAR(20) <<CC(production_type IN ('COMPILATION', 'DJMIX', 'DEMO', 'LIVE', 'MIXTAPE', 'REMIX', 'SOUNDTRACK', 'STUDIO'))>>
-   cover_file_id: INTEGER <<FK>>
+   cover_image_id: INTEGER <<FK>>
 }
 
 entity music_medium {
@@ -2005,7 +2005,7 @@ entity music_playlist {
    * last_modified_at: TEXT <<NN, DF(CURRENT_TIMESTAMP)>>
    * user_id: INTEGER <<FK, NN>>
    * is_public: BOOLEAN <<NN, DF(0)>>
-   cover_file_id: INTEGER <<FK>>
+   cover_image_id: INTEGER <<FK>>
 }
 
 entity audio {
@@ -2115,6 +2115,7 @@ entity video {
    * height: INTEGER <<NN, CC(height > 0)>>
    * color_id: TEXT <<FK, NN>>
    * scan_type: VARCHAR(20) <<NN, CC(scan_type IN ('PROGRESSIVE', 'INTERLACED', 'MBAFF', 'PAFF'))>>
+   scope: VARCHAR(20) <<CC(scope IN ('LIBRARY', 'USER'))>>
    * file_id: INTEGER <<FK, NN, UN>>
 }
 
@@ -2126,7 +2127,7 @@ entity movie {
    * country_of_origin: VARCHAR(30) <<NN>>
    * release_date: DATE <<NN, DF(date('now'))>>
    * video_id: INTEGER <<FK, NN, UN>>
-   cover_file_id: INTEGER <<FK>>
+   cover_image_id: INTEGER <<FK>>
 }
 
 entity series {
@@ -2136,7 +2137,7 @@ entity series {
    * plot: TEXT <<NN>>
    * country_of_origin: VARCHAR(30) <<NN>>
    * first_air_date: DATE <<NN, DF(date('now'))>>
-   cover_file_id: INTEGER <<FK>>
+   cover_image_id: INTEGER <<FK>>
 }
 
 entity series_genre {
@@ -2150,7 +2151,7 @@ entity season {
    * series_id: INTEGER <<FK, NN>>
    * season_index: INTEGER <<NN, DF(0), CC(season_index BETWEEN 0 AND 4294967295)>>
    name: TEXT
-   cover_file_id: INTEGER <<FK>>
+   cover_image_id: INTEGER <<FK>>
 }
 
 entity episode {
@@ -2206,6 +2207,7 @@ entity image {
    * height_px: INTEGER <<NN, CC(height_px > 0)>>
    * orientation: VARCHAR(20) <<NN, CC(orientation IN ('LANDSCAPE', 'PORTRAIT', 'SQUARE'))>>
    * created_at: DATE <<NN>>
+   scope: VARCHAR(20) <<CC(scope IN ('LIBRARY', 'USER'))>>
    * file_id: INTEGER <<FK, NN, UN>>
 }
 
@@ -2349,13 +2351,17 @@ integrity hash, while different callers may each store their own copy. `integrit
 carries the digest that verifies its content and deduplicates it, while a scanned file carries none, and `SQLite` treats
 `NULL` values as distinct, so the unique key does not apply to a scanned row.
 
-The five library resources that may carry artwork -- `movie`, `series`, `season`, `music_album` and `music_playlist` --
-each hold a nullable `cover_file_id` into `file` (`fk_<table>_cover_file`). The reference crosses into the Asset bounded
-context, so it declares no `ON DELETE CASCADE`: deleting a file a cover references is rejected by the foreign key and
-stays orchestrated by the application (`PERS-020`). Two triggers per table, `tg_<table>_cover_is_image_insert` and
-`tg_<table>_cover_is_image_update`, raise `ABORT` unless the referenced file's `mime_type.type` is `IMAGE`; `PERS-017`
-maps that rejection to a conflict. A `NULL` cover never fires the guard, and a dangling identifier falls through to the
-foreign key.
+The five resources that may carry artwork -- `movie`, `series`, `season`, `music_album` and `music_playlist` -- each
+hold a nullable `cover_image_id` into `image` (`fk_<table>_cover_image`). The reference crosses into the Asset bounded
+context, so it declares no `ON DELETE CASCADE`: deleting an image a cover references is rejected by the foreign key and
+stays orchestrated by the application (`PERS-020`). An `image` row exists only for a probed image file, so the foreign
+key alone guarantees that a cover is an image; a dangling identifier is rejected as a data-integrity violation.
+
+An `image` or `video` row carries a nullable `scope` (`LIBRARY` or `USER`) that its first attachment fixes. A catalogue
+cover's trigger pair, `tg_<table>_cover_scope_insert` and `tg_<table>_cover_scope_update`, marks the referenced image
+`LIBRARY`; a playlist cover or gallery item marks its image or video `USER`. A value already fixed in the other
+direction raises `ABORT`, which `PERS-017` maps to a conflict, and `tg_image_scope_is_immutable` /
+`tg_video_scope_is_immutable` refuse every later change. A `NULL` cover never fires a guard.
 
 The `gallery` entity enforces a composite unique key on `(user_id, name)` (`uq_gallery_user_id_name`): a caller owns at
 most one gallery per name, while different callers may each own a gallery with the same name. `user_id` is nullable, and
@@ -2364,8 +2370,11 @@ and unique by its fixed identifier (`PERS-021`).
 
 The `gallery_item` entity stores either an `image` or a `video`, never both (`chk_gallery_item_one_media`). Two partial
 unique indexes, `uq_gallery_item_image_id` and `uq_gallery_item_video_id`, keep a media row in at most one gallery item,
-and `UNIQUE(gallery_id, item_index)` keeps the item order unique within a gallery. `ON DELETE CASCADE` is limited to one
-bounded context (`PERS-020`); the cross-context `file` foreign keys on `image` and `video` do not cascade.
+and `UNIQUE(gallery_id, item_index)` keeps the item order unique within a gallery. A `USER` image has exactly one
+referrer: `uq_gallery_item_image_id`, `uq_music_playlist_cover_image_id` and the scope triggers reject a second gallery
+item, a second playlist cover, or a gallery item and a playlist cover sharing the image, while a `LIBRARY` image is
+shared freely by catalogue covers. `ON DELETE CASCADE` is limited to one bounded context (`PERS-020`); the cross-context
+`file` foreign keys on `image` and `video` do not cascade.
 
 ---
 

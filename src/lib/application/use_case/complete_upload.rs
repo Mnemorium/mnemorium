@@ -392,6 +392,7 @@ where
                                 image.orientation,
                                 Utc::now().date_naive(),
                                 file.id(),
+                                None,
                             ) {
                                 Ok(pending_image) => pending_image,
                                 Err(error) => {
@@ -420,6 +421,7 @@ where
                                 video.color_id,
                                 video.scan_type,
                                 file.id(),
+                                None,
                             ) {
                                 Ok(pending_video) => pending_video,
                                 Err(error) => {

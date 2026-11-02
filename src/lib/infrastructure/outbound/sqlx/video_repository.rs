@@ -9,6 +9,9 @@ use crate::domain::port::error::RepositoryError;
 use crate::domain::port::video_repository::VideoFilter;
 use crate::domain::port::video_repository::VideoRepository;
 
+use super::error_mapping::stored_data_invalid;
+use super::model::scope::parse_scope;
+use super::model::scope::scope_token;
 use super::model::video::ScanType as SqlxScanType;
 use super::model::video::Video as SqlxVideo;
 use super::query_filter::push_filter;
@@ -38,9 +41,10 @@ impl VideoRepository for SqlxVideoRepository<'_> {
                 height,
                 color_id,
                 scan_type,
-                file_id
+                file_id,
+                scope
             )
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
             RETURNING
                 video_id,
                 duration_ms,
@@ -50,7 +54,8 @@ impl VideoRepository for SqlxVideoRepository<'_> {
                 height,
                 color_id,
                 scan_type,
-                file_id",
+                file_id,
+                scope",
         )
         .bind(video.duration_ms())
         .bind(video.codec())
@@ -60,6 +65,7 @@ impl VideoRepository for SqlxVideoRepository<'_> {
         .bind(video.color_id())
         .bind(sqlx_scan_type(video.scan_type()))
         .bind(video.file_id())
+        .bind(video.scope().map(scope_token))
         .fetch_one(&mut **self.transaction)
         .await?;
 
@@ -85,7 +91,8 @@ impl VideoRepository for SqlxVideoRepository<'_> {
                 height,
                 color_id,
                 scan_type,
-                file_id
+                file_id,
+                scope
             FROM video
             WHERE video_id = ?",
         )
@@ -107,7 +114,8 @@ impl VideoRepository for SqlxVideoRepository<'_> {
                 height,
                 color_id,
                 scan_type,
-                file_id
+                file_id,
+                scope
             FROM video",
         );
         let mut first = true;
@@ -160,6 +168,11 @@ fn domain_video(row: SqlxVideo) -> Result<Video, RepositoryError> {
         SqlxScanType::Paff => ScanType::Paff,
         SqlxScanType::Progressive => ScanType::Progressive,
     };
+    let scope = row
+        .scope
+        .as_deref()
+        .map(|value| parse_scope(value).ok_or_else(|| stored_data_invalid("video_scope")))
+        .transpose()?;
 
     Video::try_new(
         row.video_id,
@@ -171,6 +184,7 @@ fn domain_video(row: SqlxVideo) -> Result<Video, RepositoryError> {
         row.color_id,
         scan_type,
         row.file_id,
+        scope,
     )
     .map_err(|_| RepositoryError::DataIntegrityViolation)
 }
@@ -184,6 +198,7 @@ mod tests {
     use sqlx::Transaction;
     use sqlx::sqlite::SqlitePoolOptions;
 
+    use crate::domain::model::scope::Scope;
     use crate::domain::model::video::ScanType;
     use crate::domain::model::video::Video;
     use crate::domain::port::error::RepositoryError;
@@ -257,6 +272,7 @@ mod tests {
             "YCbCr".to_owned(),
             scan_type,
             file_id,
+            None,
         )?)
     }
 
@@ -283,6 +299,36 @@ mod tests {
         assert_eq!(persisted.color_id(), "YCbCr");
         assert_eq!(persisted.file_id(), 11);
         assert_eq!(found, Some(persisted));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn create_round_trips_a_stored_scope() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let mut transaction = begin_transaction().await?;
+        seed_user(&mut transaction, 1).await?;
+        seed_file(&mut transaction, 11, 1, "files/clip.mp4", "video/mp4").await?;
+        let pending = Video::try_new(
+            0,
+            1000.0,
+            "H264".to_owned(),
+            30,
+            640,
+            480,
+            "YCbCr".to_owned(),
+            ScanType::Progressive,
+            11,
+            Some(Scope::User),
+        )?;
+
+        // Act
+        let mut repository = SqlxVideoRepository::new(&mut transaction);
+        let persisted = repository.create(pending).await?;
+        let found = repository.get(persisted.video_id()).await?;
+
+        // Assert
+        assert_eq!(persisted.scope(), Some(Scope::User));
+        assert_eq!(found.and_then(|video| video.scope()), Some(Scope::User));
         Ok(())
     }
 
@@ -335,6 +381,7 @@ mod tests {
             "not-a-colour".to_owned(),
             ScanType::Progressive,
             11,
+            None,
         )?;
 
         // Act

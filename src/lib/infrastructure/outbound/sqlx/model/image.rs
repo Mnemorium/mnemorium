@@ -32,6 +32,8 @@ pub struct Image {
     pub name: String,
     /// Orientation of the image.
     pub orientation: Orientation,
+    /// Scope fixed by the first attachment, as stored.
+    pub scope: Option<String>,
     /// Width of the image, in pixels.
     pub width_px: i64,
 }

@@ -121,7 +121,7 @@ where
                     album.production_type(),
                     album.genre_ids().to_vec(),
                     track_count,
-                    album.cover_file_id(),
+                    album.cover_image_id(),
                     mediums,
                 ))
             }
@@ -359,7 +359,7 @@ mod tests {
             Vec::new(),
         )?;
         assert_eq!(
-            covered.cover_file_id(),
+            covered.cover_image_id(),
             Some(19),
             "an album built with artwork must report the identifier"
         );
@@ -372,7 +372,7 @@ mod tests {
         let response = use_case.execute(GetAlbumCommand::new(1, 7)).await?;
 
         // Assert
-        assert_eq!(response.cover_file_id(), Some(19));
+        assert_eq!(response.cover_image_id(), Some(19));
         Ok(())
     }
 

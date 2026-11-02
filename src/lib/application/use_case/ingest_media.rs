@@ -281,6 +281,7 @@ where
                     probed.orientation,
                     Utc::now().date_naive(),
                     file.id(),
+                    None,
                 )
                 .map_err(|error| IngestMediaError::Unknown(anyhow::Error::new(error)))?;
                 unit_of_work
@@ -301,6 +302,7 @@ where
                     probed.color_id,
                     probed.scan_type,
                     file.id(),
+                    None,
                 )
                 .map_err(|error| IngestMediaError::Unknown(anyhow::Error::new(error)))?;
                 unit_of_work
@@ -1348,6 +1350,7 @@ mod tests {
                     Orientation::Landscape,
                     NaiveDate::from_ymd_opt(2026, 10, 28).unwrap_or_default(),
                     7,
+                    None,
                 )
                 .map_err(|_| RepositoryError::DataIntegrityViolation);
                 Box::pin(async move { image.map(|found| vec![found]) })

@@ -156,6 +156,9 @@ pub enum AddGalleryItemError {
     /// The caller does not own the medium and is not the Root Admin.
     #[error("the caller does not own this medium")]
     NotOwnedMedia,
+    /// The medium's scope does not allow it to join a gallery.
+    #[error("the medium is not available to a gallery")]
+    ScopeConflict,
     /// An unexpected or unmapped error occurred.
     #[error("an unknown error occurred: {0}")]
     Unknown(#[source] anyhow::Error),

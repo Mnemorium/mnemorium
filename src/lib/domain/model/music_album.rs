@@ -87,8 +87,8 @@ pub enum MusicAlbumError {
 /// A music album.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MusicAlbum {
-    /// Identifier of the file holding the album's artwork, when set.
-    cover_file_id: Option<NumericID>,
+    /// Identifier of the image holding the album's artwork, when set.
+    cover_image_id: Option<NumericID>,
     /// Identifiers of the genres the album is associated with.
     genre_ids: Vec<String>,
     /// Unique identifier of the album.
@@ -106,10 +106,10 @@ pub struct MusicAlbum {
 }
 
 impl MusicAlbum {
-    /// Return the identifier of the file holding the album's artwork, if any.
+    /// Return the identifier of the image holding the album's artwork, if any.
     #[must_use]
-    pub fn cover_file_id(&self) -> Option<NumericID> {
-        self.cover_file_id
+    pub fn cover_image_id(&self) -> Option<NumericID> {
+        self.cover_image_id
     }
 
     /// Return the identifiers of the genres the album is associated with.
@@ -172,7 +172,7 @@ impl MusicAlbum {
         production_type: Option<ProductionType>,
         genre_ids: Vec<String>,
         music_group_ids: Option<Vec<NumericID>>,
-        cover_file_id: Option<NumericID>,
+        cover_image_id: Option<NumericID>,
         mediums: Vec<MusicMedium>,
     ) -> Result<Self, MusicAlbumError> {
         if name.is_empty() {
@@ -186,7 +186,7 @@ impl MusicAlbum {
             ids => ids,
         };
         Ok(Self {
-            cover_file_id,
+            cover_image_id,
             genre_ids,
             id,
             mediums,

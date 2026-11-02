@@ -541,6 +541,7 @@ mod test_helpers {
             "YCbCr".to_owned(),
             ScanType::Progressive,
             file_id,
+            None,
         )?)
     }
 

@@ -119,7 +119,7 @@ where
                             album.production_type(),
                             album.genre_ids().to_vec(),
                             track_count,
-                            album.cover_file_id(),
+                            album.cover_image_id(),
                             mediums,
                         )
                     })
@@ -337,13 +337,13 @@ mod tests {
             Vec::new(),
         )?;
         assert_eq!(
-            covered.cover_file_id(),
+            covered.cover_image_id(),
             Some(19),
             "an album built with artwork must report the identifier"
         );
         let uncovered = empty_album(2, "Album 2")?;
         assert_eq!(
-            uncovered.cover_file_id(),
+            uncovered.cover_image_id(),
             None,
             "an album built without artwork must report none"
         );
@@ -365,14 +365,14 @@ mod tests {
             response
                 .albums()
                 .first()
-                .and_then(ListAlbumsItem::cover_file_id),
+                .and_then(ListAlbumsItem::cover_image_id),
             Some(19)
         );
         assert_eq!(
             response
                 .albums()
                 .get(1)
-                .and_then(ListAlbumsItem::cover_file_id),
+                .and_then(ListAlbumsItem::cover_image_id),
             None
         );
         Ok(())

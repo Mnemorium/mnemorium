@@ -244,7 +244,7 @@ mod tests {
                         "self": { "href": "/api/v1/library/music/playlist/2" },
                         "tracks": { "href": "/api/v1/library/music/playlist/2/track" }
                     },
-                    "cover_file_id": null,
+                    "cover_image_id": null,
                     "id": 2i64,
                     "name": "Mix",
                     "owner_id": 1i64,

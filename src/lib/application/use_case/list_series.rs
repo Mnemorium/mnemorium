@@ -101,7 +101,7 @@ where
                         ListSeriesItem::new(
                             shown.id(),
                             shown.name().to_owned(),
-                            shown.cover_file_id(),
+                            shown.cover_image_id(),
                         )
                     })
                     .collect();
@@ -227,13 +227,13 @@ mod tests {
             Vec::new(),
         )?;
         assert_eq!(
-            covered.cover_file_id(),
+            covered.cover_image_id(),
             Some(19),
             "a show built with artwork must report the identifier"
         );
         let uncovered = sample_series(2, Vec::new())?;
         assert_eq!(
-            uncovered.cover_file_id(),
+            uncovered.cover_image_id(),
             None,
             "a show built without artwork must report none"
         );
@@ -255,14 +255,14 @@ mod tests {
             response
                 .series()
                 .first()
-                .and_then(ListSeriesItem::cover_file_id),
+                .and_then(ListSeriesItem::cover_image_id),
             Some(19)
         );
         assert_eq!(
             response
                 .series()
                 .get(1)
-                .and_then(ListSeriesItem::cover_file_id),
+                .and_then(ListSeriesItem::cover_image_id),
             None
         );
         Ok(())

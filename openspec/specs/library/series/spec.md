@@ -60,7 +60,7 @@ listed series SHALL carry only its identifier, its name and its cover.
 
 - **WHEN** the system returns a series in the listing
 - **THEN** the item carries only the series identifier, name, cover and its `_links.self`
-- **AND** the cover is the identifier of the file holding the show's artwork, or `null` when the show stores none
+- **AND** the cover is the identifier of the image holding the show's artwork, or `null` when the show stores none
 - **AND** it carries no seasons, genres, dates or counts
 
 ### Requirement: Series listing is filterable and paginated
@@ -99,7 +99,7 @@ and season summaries.
 - **WHEN** the system returns one series
 - **THEN** the representation carries the series identifier, name, plot, country of origin, first air date, genres and
   cover
-- **AND** the cover is the identifier of the file holding the show's artwork, or `null` when the show stores none
+- **AND** the cover is the identifier of the image holding the show's artwork, or `null` when the show stores none
 - **AND** it carries the seasons ordered by season index
 - **AND** each season summary carries its index, its name when set, its episode count, its cover and links to the season
   and its episode collection
@@ -144,7 +144,7 @@ series named in the path.
 - **WHEN** the system returns a season
 - **THEN** the representation carries its series identifier, its index, its name when set, its episode count, its cover
   and links to its series and its episode collection
-- **AND** the cover is the identifier of the file holding the season's artwork, or `null` when the season stores none
+- **AND** the cover is the identifier of the image holding the season's artwork, or `null` when the season stores none
 
 #### Scenario: Unknown series or season
 

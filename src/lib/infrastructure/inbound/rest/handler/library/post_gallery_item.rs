@@ -50,7 +50,9 @@ pub struct PostGalleryItemRequest {
 impl From<AddGalleryItemError> for ApiError {
     fn from(err: AddGalleryItemError) -> Self {
         match err {
-            AddGalleryItemError::AlreadyAssigned => Self::Conflict(err.to_string()),
+            AddGalleryItemError::AlreadyAssigned | AddGalleryItemError::ScopeConflict => {
+                Self::Conflict(err.to_string())
+            }
             AddGalleryItemError::Forbidden => Self::Forbidden(err.to_string()),
             AddGalleryItemError::NoSuchCaller => Self::Unauthorized(err.to_string()),
             AddGalleryItemError::NoSuchGallery => Self::NotFound(err.to_string()),
@@ -397,6 +399,12 @@ mod tests {
         AddGalleryItemError::NotOwnedMedia,
         StatusCode::UNPROCESSABLE_ENTITY,
         "the medium does not exist or does not belong to the caller"
+    )]
+    #[case::scope_conflict(
+        1,
+        AddGalleryItemError::ScopeConflict,
+        StatusCode::CONFLICT,
+        "the medium is not available to a gallery"
     )]
     #[case::forbidden(
         1,

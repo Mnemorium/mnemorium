@@ -105,7 +105,7 @@ impl MusicPlaylistRepository for SqlxMusicPlaylistRepository<'_> {
                 last_modified_at,
                 user_id,
                 is_public,
-                cover_file_id,
+                cover_image_id,
                 NULL AS music_recording_id,
                 NULL AS recording_name,
                 NULL AS first_release_date,
@@ -216,7 +216,7 @@ impl MusicPlaylistRepository for SqlxMusicPlaylistRepository<'_> {
                 music_playlist.last_modified_at,
                 music_playlist.user_id,
                 music_playlist.is_public,
-                music_playlist.cover_file_id,
+                music_playlist.cover_image_id,
                 music_track.track_index,
                 music_recording.music_recording_id,
                 music_recording.name AS recording_name,
@@ -348,7 +348,7 @@ fn domain_playlist(row: MusicPlaylistRow, tracks: Vec<MusicRecording>) -> MusicP
         row.last_modified_at,
         row.user_id,
         row.is_public,
-        row.cover_file_id,
+        row.cover_image_id,
         tracks,
     )
 }
@@ -525,20 +525,28 @@ mod tests {
         Ok(())
     }
 
-    /// Seed an image file owned by `user_id`.
-    async fn seed_image_file(
+    /// Seed an image row of `image_id` on a new PNG file of the same identifier.
+    async fn seed_image(
         transaction: &mut Transaction<'static, Sqlite>,
-        file_id: i64,
+        image_id: i64,
         user_id: i64,
     ) -> Result<(), sqlx::Error> {
         sqlx::query(
             "INSERT INTO file (file_id, path, user_id, is_public, mime_type_id, size_bytes, modified_at, origin, integrity_hash)
              VALUES (?1, ?2, ?3, 0, 'image/png', 1024, '2026-10-06 00:00:00', 'UPLOADED', ?4)",
         )
-        .bind(file_id)
-        .bind(format!("{file_id}.png"))
+        .bind(image_id)
+        .bind(format!("{image_id}.png"))
         .bind(user_id)
-        .bind(format!("{file_id:064x}"))
+        .bind(format!("{image_id:064x}"))
+        .execute(&mut **transaction)
+        .await?;
+        sqlx::query(
+            "INSERT INTO image (image_id, name, width_px, height_px, orientation, created_at, file_id)
+             VALUES (?1, ?2, 10, 10, 'SQUARE', '2026-10-06', ?1)",
+        )
+        .bind(image_id)
+        .bind(format!("{image_id}.png"))
         .execute(&mut **transaction)
         .await?;
         Ok(())
@@ -693,14 +701,14 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn search_projects_the_cover_file() -> Result<(), Box<dyn Error>> {
+    async fn search_projects_the_cover_image() -> Result<(), Box<dyn Error>> {
         // Arrange: one covered playlist and one without artwork.
         let mut transaction = begin_transaction().await?;
         seed_user(&mut transaction, 1).await?;
-        seed_image_file(&mut transaction, 12, 1).await?;
+        seed_image(&mut transaction, 12, 1).await?;
         seed_playlist(&mut transaction, 7, "Covered", 1, false).await?;
         seed_playlist(&mut transaction, 8, "Plain", 1, false).await?;
-        sqlx::query("UPDATE music_playlist SET cover_file_id = 12 WHERE music_playlist_id = 7")
+        sqlx::query("UPDATE music_playlist SET cover_image_id = 12 WHERE music_playlist_id = 7")
             .execute(&mut *transaction)
             .await?;
         let mut repository = SqlxMusicPlaylistRepository::new(&mut transaction);
@@ -712,11 +720,11 @@ mod tests {
         let covered = playlists
             .first()
             .ok_or("the covered playlist must be found")?;
-        assert_eq!(covered.cover_file_id(), Some(12));
+        assert_eq!(covered.cover_image_id(), Some(12));
         let uncovered = playlists
             .get(1)
             .ok_or("the uncovered playlist must be found")?;
-        assert_eq!(uncovered.cover_file_id(), None);
+        assert_eq!(uncovered.cover_image_id(), None);
         Ok(())
     }
 

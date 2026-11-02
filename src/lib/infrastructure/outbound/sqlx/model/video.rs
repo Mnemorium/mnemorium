@@ -34,6 +34,8 @@ pub struct Video {
     pub height: i64,
     /// Scan type of the video.
     pub scan_type: ScanType,
+    /// Scope fixed by the first attachment, as stored.
+    pub scope: Option<String>,
     /// Unique identifier of the video.
     #[sqlx(primary_key)]
     pub video_id: NumericID,

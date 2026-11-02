@@ -108,7 +108,7 @@ where
                     movie.country_of_origin().to_owned(),
                     movie.release_date(),
                     movie.genre_ids().to_vec(),
-                    movie.cover_file_id(),
+                    movie.cover_image_id(),
                     VideoSummary::from(movie.video()),
                 ))
             }
@@ -237,7 +237,7 @@ mod tests {
             sample_video(7, 7)?,
         )?;
         assert_eq!(
-            movie.cover_file_id(),
+            movie.cover_image_id(),
             Some(19),
             "a film built with artwork must report the identifier"
         );
@@ -253,7 +253,7 @@ mod tests {
         let response = use_case.execute(GetMovieCommand::new(1, 7)).await?;
 
         // Assert
-        assert_eq!(response.cover_file_id(), Some(19));
+        assert_eq!(response.cover_image_id(), Some(19));
         Ok(())
     }
 

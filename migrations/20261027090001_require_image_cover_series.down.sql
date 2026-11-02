@@ -1,2 +1,0 @@
-DROP TRIGGER tg_series_cover_is_image_update;
-DROP TRIGGER tg_series_cover_is_image_insert;

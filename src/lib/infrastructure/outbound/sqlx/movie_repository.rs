@@ -10,6 +10,7 @@ use crate::domain::port::movie_repository::MovieRepository;
 
 use super::error_mapping::stored_data_invalid;
 use super::model::movie::MovieRow;
+use super::model::scope::parse_scope;
 use super::model::video::parse_scan_type;
 use super::query_filter::push_filter;
 
@@ -37,7 +38,7 @@ impl MovieRepository for SqlxMovieRepository<'_> {
                 movie.plot,
                 movie.country_of_origin,
                 movie.release_date,
-                movie.cover_file_id,
+                movie.cover_image_id,
                 COALESCE((
                     SELECT GROUP_CONCAT(genre_id, ',')
                     FROM (
@@ -55,7 +56,8 @@ impl MovieRepository for SqlxMovieRepository<'_> {
                 video.height,
                 video.color_id,
                 video.scan_type,
-                video.file_id
+                video.file_id,
+                video.scope AS video_scope
             FROM movie
             INNER JOIN video ON video.video_id = movie.video_id",
         );
@@ -81,6 +83,13 @@ impl MovieRepository for SqlxMovieRepository<'_> {
             .map(|row| {
                 let scan_type = parse_scan_type(&row.scan_type)
                     .ok_or_else(|| stored_data_invalid("unknown_scan_type"))?;
+                let scope = row
+                    .video_scope
+                    .as_deref()
+                    .map(|value| {
+                        parse_scope(value).ok_or_else(|| stored_data_invalid("unknown_scope"))
+                    })
+                    .transpose()?;
                 let video = Video::try_new(
                     row.video_id,
                     row.duration_ms,
@@ -91,6 +100,7 @@ impl MovieRepository for SqlxMovieRepository<'_> {
                     row.color_id.clone(),
                     scan_type,
                     row.file_id,
+                    scope,
                 )
                 .map_err(|_| stored_data_invalid("invalid_video"))?;
                 Movie::try_new(
@@ -104,7 +114,7 @@ impl MovieRepository for SqlxMovieRepository<'_> {
                         .filter(|genre| !genre.is_empty())
                         .map(str::to_owned)
                         .collect(),
-                    row.cover_file_id,
+                    row.cover_image_id,
                     video,
                 )
                 .map_err(|_| stored_data_invalid("invalid_movie"))
@@ -200,6 +210,24 @@ mod tests {
         .bind(file_id)
         .bind(format!("{file_id}.mp4"))
         .bind(format!("{file_id:064x}"))
+        .execute(&mut **transaction)
+        .await?;
+        Ok(())
+    }
+
+    /// Seed an image row of `image_id` on `file_id`, in a square orientation.
+    async fn seed_image(
+        transaction: &mut Transaction<'static, Sqlite>,
+        image_id: i64,
+        file_id: i64,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            "INSERT INTO image (image_id, name, width_px, height_px, orientation, created_at, file_id)
+             VALUES (?1, ?2, 10, 10, 'SQUARE', '2026-10-06', ?3)",
+        )
+        .bind(image_id)
+        .bind(format!("{image_id}.png"))
+        .bind(file_id)
         .execute(&mut **transaction)
         .await?;
         Ok(())
@@ -332,7 +360,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn search_projects_the_cover_file() -> Result<(), Box<dyn Error>> {
+    async fn search_projects_the_cover_image() -> Result<(), Box<dyn Error>> {
         // Arrange: one covered film and one without artwork.
         let mut transaction = begin_transaction().await?;
         seed_user(&mut transaction).await?;
@@ -345,11 +373,12 @@ mod tests {
         .bind(format!("{:064x}", 12i64))
         .execute(&mut *transaction)
         .await?;
+        seed_image(&mut transaction, 12, 12).await?;
         seed_video(&mut transaction, 20, 10, 1920).await?;
         seed_video(&mut transaction, 21, 11, 1280).await?;
         seed_movie(&mut transaction, 1, "Some Like It Hot", 20).await?;
         seed_movie(&mut transaction, 2, "Sunset Boulevard", 21).await?;
-        sqlx::query("UPDATE movie SET cover_file_id = 12 WHERE movie_id = 1")
+        sqlx::query("UPDATE movie SET cover_image_id = 12 WHERE movie_id = 1")
             .execute(&mut *transaction)
             .await?;
         let mut repository = SqlxMovieRepository::new(&mut transaction);
@@ -359,9 +388,9 @@ mod tests {
 
         // Assert
         let covered = movies.first().ok_or("the covered film must be found")?;
-        assert_eq!(covered.cover_file_id(), Some(12));
+        assert_eq!(covered.cover_image_id(), Some(12));
         let uncovered = movies.get(1).ok_or("the uncovered film must be found")?;
-        assert_eq!(uncovered.cover_file_id(), None);
+        assert_eq!(uncovered.cover_image_id(), None);
         Ok(())
     }
 

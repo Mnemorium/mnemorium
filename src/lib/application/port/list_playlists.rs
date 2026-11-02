@@ -85,8 +85,8 @@ impl ListPlaylistsCommand {
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct ListPlaylistsItem {
-    /// Identifier of the file holding the playlist's artwork, when set.
-    cover_file_id: Option<NumericID>,
+    /// Identifier of the image holding the playlist's artwork, when set.
+    cover_image_id: Option<NumericID>,
     /// Date and time of the creation of the playlist.
     created_at: NaiveDateTime,
     /// Unique identifier of the playlist.
@@ -104,10 +104,10 @@ pub struct ListPlaylistsItem {
 }
 
 impl ListPlaylistsItem {
-    /// Return the identifier of the file holding the playlist's artwork, if any.
+    /// Return the identifier of the image holding the playlist's artwork, if any.
     #[must_use]
-    pub fn cover_file_id(&self) -> Option<NumericID> {
-        self.cover_file_id
+    pub fn cover_image_id(&self) -> Option<NumericID> {
+        self.cover_image_id
     }
 
     /// Return the date and time of the creation of the playlist.
@@ -154,10 +154,10 @@ impl ListPlaylistsItem {
         created_at: NaiveDateTime,
         last_modified_at: NaiveDateTime,
         track_count: usize,
-        cover_file_id: Option<NumericID>,
+        cover_image_id: Option<NumericID>,
     ) -> Self {
         Self {
-            cover_file_id,
+            cover_image_id,
             created_at,
             id,
             is_public,

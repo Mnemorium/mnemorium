@@ -56,7 +56,7 @@ default permission covers every film for every authenticated caller; a per-user 
 - **WHEN** the system returns a movie, in a listing or on a detail read
 - **THEN** the representation carries the film's identifier, name, plot, country of origin, release date, genres, video
   summary and its cover
-- **AND** the cover is the identifier of the file holding the film's artwork, or `null` when the film stores none
+- **AND** the cover is the identifier of the image holding the film's artwork, or `null` when the film stores none
 - **AND** the video summary carries the video identifier, the backing file identifier, duration, codec, width, height
   and scan type
 - **AND** the genres are the uppercase genre identifiers ordered by identifier

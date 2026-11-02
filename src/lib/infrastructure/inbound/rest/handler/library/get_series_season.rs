@@ -188,7 +188,7 @@ mod tests {
                         "href": "/api/v1/library/series/7/season/1/episode"
                     }
                 },
-                "cover_file_id": null,
+                "cover_image_id": null,
                 "series_id": 7i64,
                 "index": 1u32,
                 "name": "Season One",
@@ -220,7 +220,7 @@ mod tests {
 
         // Assert
         assert_eq!(status, StatusCode::OK);
-        assert_eq!(payload.get("cover_file_id"), Some(&json!(20i64)));
+        assert_eq!(payload.get("cover_image_id"), Some(&json!(20i64)));
         assert_eq!(
             payload.pointer("/_links/cover/href"),
             Some(&json!("/api/v1/asset/image/20"))

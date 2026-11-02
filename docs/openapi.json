@@ -24,7 +24,7 @@
               },
               {
                 "$ref": "#/components/schemas/Link",
-                "description": "Link to the album's cover file, when the album stores artwork."
+                "description": "Link to the album's cover image, when the album stores artwork."
               }
             ]
           },
@@ -106,14 +106,14 @@
             "$ref": "#/components/schemas/AlbumLinks",
             "description": "Links to the album."
           },
-          "cover_file_id": {
+          "cover_image_id": {
             "oneOf": [
               {
                 "type": "null"
               },
               {
                 "$ref": "#/components/schemas/i64",
-                "description": "Identifier of the file holding the album's artwork, when set."
+                "description": "Identifier of the image holding the album's artwork, when set."
               }
             ]
           },
@@ -732,7 +732,7 @@
               },
               {
                 "$ref": "#/components/schemas/Link",
-                "description": "Link to the film's cover file, when the film stores artwork."
+                "description": "Link to the film's cover image, when the film stores artwork."
               }
             ]
           },
@@ -818,14 +818,14 @@
             "description": "Country of origin of the film.",
             "type": "string"
           },
-          "cover_file_id": {
+          "cover_image_id": {
             "oneOf": [
               {
                 "type": "null"
               },
               {
                 "$ref": "#/components/schemas/i64",
-                "description": "Identifier of the file holding the film's artwork, when set."
+                "description": "Identifier of the image holding the film's artwork, when set."
               }
             ]
           },
@@ -1122,7 +1122,7 @@
               },
               {
                 "$ref": "#/components/schemas/Link",
-                "description": "Link to the playlist's cover file, when the playlist stores artwork."
+                "description": "Link to the playlist's cover image, when the playlist stores artwork."
               }
             ]
           },
@@ -1209,14 +1209,14 @@
             "$ref": "#/components/schemas/PlaylistLinks",
             "description": "Links to the playlist and its track alias."
           },
-          "cover_file_id": {
+          "cover_image_id": {
             "oneOf": [
               {
                 "type": "null"
               },
               {
                 "$ref": "#/components/schemas/i64",
-                "description": "Identifier of the file holding the playlist's artwork, when set."
+                "description": "Identifier of the image holding the playlist's artwork, when set."
               }
             ]
           },
@@ -1605,14 +1605,14 @@
             "$ref": "#/components/schemas/SeriesSeasonLinks",
             "description": "Links to the season, its show and its episode collection."
           },
-          "cover_file_id": {
+          "cover_image_id": {
             "oneOf": [
               {
                 "type": "null"
               },
               {
                 "$ref": "#/components/schemas/i64",
-                "description": "Identifier of the file holding the season's artwork, when set."
+                "description": "Identifier of the image holding the season's artwork, when set."
               }
             ]
           },
@@ -1693,7 +1693,7 @@
               },
               {
                 "$ref": "#/components/schemas/Link",
-                "description": "Link to the show's cover file, when the show stores artwork."
+                "description": "Link to the show's cover image, when the show stores artwork."
               }
             ]
           },
@@ -1779,14 +1779,14 @@
             "description": "Country of origin of the show.",
             "type": "string"
           },
-          "cover_file_id": {
+          "cover_image_id": {
             "oneOf": [
               {
                 "type": "null"
               },
               {
                 "$ref": "#/components/schemas/i64",
-                "description": "Identifier of the file holding the show's artwork, when set."
+                "description": "Identifier of the image holding the show's artwork, when set."
               }
             ]
           },
@@ -1843,7 +1843,7 @@
               },
               {
                 "$ref": "#/components/schemas/Link",
-                "description": "Link to the season's cover file, when the season stores artwork."
+                "description": "Link to the season's cover image, when the season stores artwork."
               }
             ]
           },
@@ -1874,14 +1874,14 @@
             "$ref": "#/components/schemas/SeriesLinks",
             "description": "Links to the show."
           },
-          "cover_file_id": {
+          "cover_image_id": {
             "oneOf": [
               {
                 "type": "null"
               },
               {
                 "$ref": "#/components/schemas/i64",
-                "description": "Identifier of the file holding the show's artwork, when set."
+                "description": "Identifier of the image holding the show's artwork, when set."
               }
             ]
           },

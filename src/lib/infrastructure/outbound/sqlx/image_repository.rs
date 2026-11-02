@@ -9,8 +9,11 @@ use crate::domain::port::error::RepositoryError;
 use crate::domain::port::image_repository::ImageFilter;
 use crate::domain::port::image_repository::ImageRepository;
 
+use super::error_mapping::stored_data_invalid;
 use super::model::image::Image as SqlxImage;
 use super::model::image::Orientation as SqlxOrientation;
+use super::model::scope::parse_scope;
+use super::model::scope::scope_token;
 use super::query_filter::push_filter;
 
 /// Repository persisting images, backed by a `SQLite` transaction.
@@ -30,8 +33,8 @@ impl<'transaction> SqlxImageRepository<'transaction> {
 impl ImageRepository for SqlxImageRepository<'_> {
     async fn create(&mut self, image: Image) -> Result<Image, RepositoryError> {
         let row = sqlx::query_as::<_, SqlxImage>(
-            "INSERT INTO image (name, width_px, height_px, orientation, created_at, file_id)
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+            "INSERT INTO image (name, width_px, height_px, orientation, created_at, file_id, scope)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
             RETURNING
                 image_id,
                 name,
@@ -39,7 +42,8 @@ impl ImageRepository for SqlxImageRepository<'_> {
                 height_px,
                 orientation,
                 created_at,
-                file_id",
+                file_id,
+                scope",
         )
         .bind(image.name())
         .bind(image.width_px())
@@ -47,6 +51,7 @@ impl ImageRepository for SqlxImageRepository<'_> {
         .bind(sqlx_orientation(image.orientation()))
         .bind(image.created_at())
         .bind(image.file_id())
+        .bind(image.scope().map(scope_token))
         .fetch_one(&mut **self.transaction)
         .await?;
 
@@ -70,7 +75,8 @@ impl ImageRepository for SqlxImageRepository<'_> {
                 height_px,
                 orientation,
                 created_at,
-                file_id
+                file_id,
+                scope
             FROM image
             WHERE image_id = ?",
         )
@@ -90,7 +96,8 @@ impl ImageRepository for SqlxImageRepository<'_> {
                 height_px,
                 orientation,
                 created_at,
-                file_id
+                file_id,
+                scope
             FROM image",
         );
         let mut first = true;
@@ -138,6 +145,11 @@ fn domain_image(row: SqlxImage) -> Result<Image, RepositoryError> {
         SqlxOrientation::Portrait => Orientation::Portrait,
         SqlxOrientation::Square => Orientation::Square,
     };
+    let scope = row
+        .scope
+        .as_deref()
+        .map(|value| parse_scope(value).ok_or_else(|| stored_data_invalid("image_scope")))
+        .transpose()?;
 
     Image::try_new(
         row.image_id,
@@ -147,6 +159,7 @@ fn domain_image(row: SqlxImage) -> Result<Image, RepositoryError> {
         orientation,
         row.created_at,
         row.file_id,
+        scope,
     )
     .map_err(|_| RepositoryError::DataIntegrityViolation)
 }
@@ -163,6 +176,7 @@ mod tests {
 
     use crate::domain::model::image::Image;
     use crate::domain::model::image::Orientation;
+    use crate::domain::model::scope::Scope;
     use crate::domain::port::error::RepositoryError;
     use crate::domain::port::image_repository::ImageFilter;
     use crate::domain::port::image_repository::ImageRepository as _;
@@ -237,6 +251,7 @@ mod tests {
             orientation,
             NaiveDate::from_ymd_opt(2026, 10, 6).ok_or("invalid fixture date")?,
             file_id,
+            None,
         )?)
     }
 
@@ -263,6 +278,34 @@ mod tests {
         assert_eq!(persisted.orientation(), Orientation::Landscape);
         assert_eq!(persisted.file_id(), 10);
         assert_eq!(found, Some(persisted));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn create_round_trips_a_stored_scope() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let mut transaction = begin_transaction().await?;
+        seed_user(&mut transaction, 1).await?;
+        seed_file(&mut transaction, 10, 1, "files/photo.png", "image/png").await?;
+        let pending = Image::try_new(
+            0,
+            "photo.png".to_owned(),
+            640,
+            480,
+            Orientation::Landscape,
+            NaiveDate::from_ymd_opt(2026, 10, 6).ok_or("invalid fixture date")?,
+            10,
+            Some(Scope::Library),
+        )?;
+
+        // Act
+        let mut repository = SqlxImageRepository::new(&mut transaction);
+        let persisted = repository.create(pending).await?;
+        let found = repository.get(persisted.image_id()).await?;
+
+        // Assert
+        assert_eq!(persisted.scope(), Some(Scope::Library));
+        assert_eq!(found.and_then(|image| image.scope()), Some(Scope::Library));
         Ok(())
     }
 

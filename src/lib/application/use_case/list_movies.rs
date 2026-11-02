@@ -106,7 +106,7 @@ where
                             movie.country_of_origin().to_owned(),
                             movie.release_date(),
                             movie.genre_ids().to_vec(),
-                            movie.cover_file_id(),
+                            movie.cover_image_id(),
                             VideoSummary::from(movie.video()),
                         )
                     })
@@ -244,13 +244,13 @@ mod tests {
             sample_video(1, 1)?,
         )?;
         assert_eq!(
-            covered.cover_file_id(),
+            covered.cover_image_id(),
             Some(19),
             "a film built with artwork must report the identifier"
         );
         let uncovered = sample_movie(2)?;
         assert_eq!(
-            uncovered.cover_file_id(),
+            uncovered.cover_image_id(),
             None,
             "a film built without artwork must report none"
         );
@@ -272,14 +272,14 @@ mod tests {
             response
                 .movies()
                 .first()
-                .and_then(ListMoviesItem::cover_file_id),
+                .and_then(ListMoviesItem::cover_image_id),
             Some(19)
         );
         assert_eq!(
             response
                 .movies()
                 .get(1)
-                .and_then(ListMoviesItem::cover_file_id),
+                .and_then(ListMoviesItem::cover_image_id),
             None
         );
         Ok(())

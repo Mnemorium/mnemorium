@@ -16,6 +16,7 @@ use crate::domain::port::series_repository::SeriesFilter;
 use crate::domain::port::series_repository::SeriesRepository;
 
 use super::error_mapping::stored_data_invalid;
+use super::model::scope::parse_scope;
 use super::model::series::SeriesRow;
 use super::model::video::parse_scan_type;
 use super::query_filter::push_filter;
@@ -54,7 +55,7 @@ impl SeriesRepository for SqlxSeriesRepository<'_> {
                 series.plot,
                 series.country_of_origin,
                 series.first_air_date,
-                series.cover_file_id,
+                series.cover_image_id,
                 COALESCE((
                     SELECT GROUP_CONCAT(genre_id, ',')
                     FROM (
@@ -67,7 +68,7 @@ impl SeriesRepository for SqlxSeriesRepository<'_> {
                 season.season_id,
                 season.season_index,
                 season.name AS season_name,
-                season.cover_file_id AS season_cover_file_id,
+                season.cover_image_id AS season_cover_image_id,
                 episode.episode_index,
                 episode.name AS episode_name,
                 episode.plot AS episode_plot,
@@ -80,7 +81,8 @@ impl SeriesRepository for SqlxSeriesRepository<'_> {
                 video.height,
                 video.color_id,
                 video.scan_type,
-                video.file_id
+                video.file_id,
+                video.scope AS video_scope
             FROM series
             LEFT JOIN season ON season.series_id = series.series_id
             LEFT JOIN episode ON episode.season_id = season.season_id
@@ -131,7 +133,7 @@ impl SeriesRepository for SqlxSeriesRepository<'_> {
                     season_id,
                     SeasonIndex::new(season_index),
                     row.season_name.clone(),
-                    row.season_cover_file_id,
+                    row.season_cover_image_id,
                     Vec::new(),
                 ));
             }
@@ -146,6 +148,11 @@ impl SeriesRepository for SqlxSeriesRepository<'_> {
                 .ok_or_else(|| stored_data_invalid("missing_scan_type"))?;
             let scan_type = parse_scan_type(&scan_type_raw)
                 .ok_or_else(|| stored_data_invalid("unknown_scan_type"))?;
+            let scope = row
+                .video_scope
+                .as_deref()
+                .map(|value| parse_scope(value).ok_or_else(|| stored_data_invalid("unknown_scope")))
+                .transpose()?;
             let video = Video::try_new(
                 row.video_id
                     .ok_or_else(|| stored_data_invalid("missing_video_id"))?,
@@ -166,6 +173,7 @@ impl SeriesRepository for SqlxSeriesRepository<'_> {
                 scan_type,
                 row.file_id
                     .ok_or_else(|| stored_data_invalid("missing_file_id"))?,
+                scope,
             )
             .map_err(|_| stored_data_invalid("invalid_video"))?;
             let episode = Episode::try_new(
@@ -196,8 +204,8 @@ impl SeriesRepository for SqlxSeriesRepository<'_> {
                 .remove(&series_id)
                 .unwrap_or_default()
                 .into_iter()
-                .map(|(_, index, name, cover_file_id, episodes)| {
-                    Season::new(index, name, cover_file_id, episodes)
+                .map(|(_, index, name, cover_image_id, episodes)| {
+                    Season::new(index, name, cover_image_id, episodes)
                 })
                 .collect();
             result.push(
@@ -212,7 +220,7 @@ impl SeriesRepository for SqlxSeriesRepository<'_> {
                         .filter(|genre| !genre.is_empty())
                         .map(str::to_owned)
                         .collect(),
-                    row.cover_file_id,
+                    row.cover_image_id,
                     series_seasons,
                 )
                 .map_err(|_| stored_data_invalid("invalid_series"))?,
@@ -333,6 +341,24 @@ mod tests {
         )
         .bind(video_id)
         .bind(width)
+        .bind(file_id)
+        .execute(&mut **transaction)
+        .await?;
+        Ok(())
+    }
+
+    /// Seed an image row of `image_id` on `file_id`, in a square orientation.
+    async fn seed_image(
+        transaction: &mut Transaction<'static, Sqlite>,
+        image_id: i64,
+        file_id: i64,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            "INSERT INTO image (image_id, name, width_px, height_px, orientation, created_at, file_id)
+             VALUES (?1, ?2, 10, 10, 'SQUARE', '2026-10-06', ?3)",
+        )
+        .bind(image_id)
+        .bind(format!("{image_id}.png"))
         .bind(file_id)
         .execute(&mut **transaction)
         .await?;
@@ -559,13 +585,14 @@ mod tests {
         .bind(format!("{:064x}", 12i64))
         .execute(&mut *transaction)
         .await?;
+        seed_image(&mut transaction, 12, 12).await?;
         seed_series(&mut transaction, 1, "Twin Peaks").await?;
         seed_season(&mut transaction, 40, 1, 1, None).await?;
         seed_season(&mut transaction, 41, 1, 2, None).await?;
-        sqlx::query("UPDATE series SET cover_file_id = 12 WHERE series_id = 1")
+        sqlx::query("UPDATE series SET cover_image_id = 12 WHERE series_id = 1")
             .execute(&mut *transaction)
             .await?;
-        sqlx::query("UPDATE season SET cover_file_id = 12 WHERE season_id = 40")
+        sqlx::query("UPDATE season SET cover_image_id = 12 WHERE season_id = 40")
             .execute(&mut *transaction)
             .await?;
         let mut repository = SqlxSeriesRepository::new(&mut transaction);
@@ -575,18 +602,18 @@ mod tests {
 
         // Assert
         let show = series.first().ok_or("the show must be found")?;
-        assert_eq!(show.cover_file_id(), Some(12));
+        assert_eq!(show.cover_image_id(), Some(12));
         let first_season = show
             .seasons()
             .first()
             .ok_or("the first season must be found")?;
-        assert_eq!(first_season.cover_file_id(), Some(12));
+        assert_eq!(first_season.cover_image_id(), Some(12));
         let second_season = show
             .seasons()
             .get(1)
             .ok_or("the second season must be found")?;
         assert_eq!(
-            second_season.cover_file_id(),
+            second_season.cover_image_id(),
             None,
             "a season must not inherit its show's cover"
         );

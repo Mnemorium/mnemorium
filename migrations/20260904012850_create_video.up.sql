@@ -7,6 +7,7 @@ CREATE TABLE video (
     height INTEGER NOT NULL,
     color_id TEXT NOT NULL,
     scan_type VARCHAR(20) NOT NULL,
+    scope VARCHAR(20),
     file_id INTEGER NOT NULL,
     CONSTRAINT pk_video_video_id PRIMARY KEY (video_id),
     CONSTRAINT uq_video_file_id UNIQUE (file_id),
@@ -20,5 +21,6 @@ CREATE TABLE video (
     CONSTRAINT chk_video_height CHECK (height > 0),
     CONSTRAINT chk_video_scan_type CHECK (
         scan_type IN ('PROGRESSIVE', 'INTERLACED', 'MBAFF', 'PAFF')
-    )
+    ),
+    CONSTRAINT chk_video_scope CHECK (scope IN ('LIBRARY', 'USER'))
 );

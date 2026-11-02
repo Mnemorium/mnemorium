@@ -1,2 +1,0 @@
-DROP TRIGGER tg_season_cover_is_image_update;
-DROP TRIGGER tg_season_cover_is_image_insert;

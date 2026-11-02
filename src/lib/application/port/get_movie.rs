@@ -45,8 +45,8 @@ impl GetMovieCommand {
 pub struct GetMovieResponse {
     /// Country of origin of the film.
     country_of_origin: String,
-    /// Identifier of the file holding the film's artwork, when set.
-    cover_file_id: Option<NumericID>,
+    /// Identifier of the image holding the film's artwork, when set.
+    cover_image_id: Option<NumericID>,
     /// Genres of the film, ordered by genre identifier.
     genre_ids: Vec<String>,
     /// Unique identifier of the film.
@@ -68,10 +68,10 @@ impl GetMovieResponse {
         &self.country_of_origin
     }
 
-    /// Return the identifier of the file holding the film's artwork, if any.
+    /// Return the identifier of the image holding the film's artwork, if any.
     #[must_use]
-    pub fn cover_file_id(&self) -> Option<NumericID> {
-        self.cover_file_id
+    pub fn cover_image_id(&self) -> Option<NumericID> {
+        self.cover_image_id
     }
 
     /// Return the genres of the film, ordered by genre identifier.
@@ -105,12 +105,12 @@ impl GetMovieResponse {
         country_of_origin: String,
         release_date: NaiveDate,
         genre_ids: Vec<String>,
-        cover_file_id: Option<NumericID>,
+        cover_image_id: Option<NumericID>,
         video: VideoSummary,
     ) -> Self {
         Self {
             country_of_origin,
-            cover_file_id,
+            cover_image_id,
             genre_ids,
             id,
             name,
