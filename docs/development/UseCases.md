@@ -467,7 +467,7 @@ Allow an authenticated user to browse the galleries and items they may see.
 
 ##### Description
 
-Allow an authenticated user to append one of their images to a gallery they may contribute to.
+Allow an authenticated user to append an image to a gallery they may contribute to.
 
 ##### Primary actor
 
@@ -492,7 +492,7 @@ Allow an authenticated user to append one of their images to a gallery they may 
 1. The caller submits a request to add an image to a gallery.
 2. The system verifies the caller may contribute to the gallery.
 3. The system resolves the image and its backing file.
-4. The system verifies the caller owns the backing file, or is the Root Admin.
+4. The system verifies the caller may use the backing file.
 5. The system verifies the image is not already in a gallery.
 6. The system appends the item at the next order position.
 7. The system returns the created item.
@@ -504,7 +504,8 @@ Allow an authenticated user to append one of their images to a gallery they may 
   gallery.
 - 2b. No gallery matches the requested identifier; the system reports it as not found.
 - 3a. No image matches the requested identifier; the system rejects the request.
-- 4a. The backing file belongs to another user and the caller is not the Root Admin; the system rejects the request.
+- 4a. The caller may not use the backing file; the system rejects the request. A Standard User uses only the files it
+  owns, while an Admin and the Root Admin use every file.
 - 5a. The image already belongs to a gallery; the system rejects the request.
 
 ##### Post condition(s)
@@ -519,7 +520,7 @@ Allow an authenticated user to append one of their images to a gallery they may 
 ##### Description
 
 Allow an authenticated user to remove an image from a gallery, permanently deleting the item, its medium, and — when the
-caller owns the file — the backing file.
+caller may use the file — the backing file.
 
 ##### Primary actor
 
@@ -544,7 +545,7 @@ caller owns the file — the backing file.
 1. The caller submits a removal request.
 2. The system verifies the caller may remove items of the gallery.
 3. The system locates the image's item within the gallery.
-4. The system deletes the item and its image record, and the backing file when the caller owns it.
+4. The system deletes the item and its image record, and the backing file when the caller may use it.
 5. The system confirms the removal.
 
 ##### Alternative flow
@@ -557,7 +558,7 @@ caller owns the file — the backing file.
 ##### Post condition(s)
 
 - The item and its image record no longer exist.
-- The backing file's record and stored content no longer exist when the caller owned the file.
+- The backing file's record and stored content no longer exist when the caller may use the file.
 
 ---
 
@@ -609,7 +610,7 @@ Allow the owner or the Root Admin to delete a gallery together with its items, t
 
 ##### Description
 
-Allow an authenticated user to append one of their videos to a gallery they may contribute to.
+Allow an authenticated user to append a video to a gallery they may contribute to.
 
 ##### Primary actor
 
@@ -634,7 +635,7 @@ Allow an authenticated user to append one of their videos to a gallery they may 
 1. The caller submits a request to add a video to a gallery.
 2. The system verifies the caller may contribute to the gallery.
 3. The system resolves the video and its backing file.
-4. The system verifies the caller owns the backing file, or is the Root Admin.
+4. The system verifies the caller may use the backing file.
 5. The system verifies the video is not already in a gallery.
 6. The system appends the item at the next order position.
 7. The system returns the created item.
@@ -646,7 +647,8 @@ Allow an authenticated user to append one of their videos to a gallery they may 
   gallery.
 - 2b. No gallery matches the requested identifier; the system reports it as not found.
 - 3a. No video matches the requested identifier; the system rejects the request.
-- 4a. The video belongs to another user and the caller is not the Root Admin; the system rejects the request.
+- 4a. The caller may not use the backing file; the system rejects the request. A Standard User uses only the files it
+  owns, while an Admin and the Root Admin use every file.
 - 5a. The video already belongs to a gallery; the system rejects the request.
 
 ##### Post condition(s)
@@ -661,7 +663,7 @@ Allow an authenticated user to append one of their videos to a gallery they may 
 ##### Description
 
 Allow an authenticated user to remove a video from a gallery, permanently deleting the item, its medium, and — when the
-caller owns the file — the backing file.
+caller may use the file — the backing file.
 
 ##### Primary actor
 
@@ -686,7 +688,7 @@ caller owns the file — the backing file.
 1. The caller submits a removal request.
 2. The system verifies the caller may remove items of the gallery.
 3. The system locates the video's item within the gallery.
-4. The system deletes the item and its video record, and the backing file when the caller owns it.
+4. The system deletes the item and its video record, and the backing file when the caller may use it.
 5. The system confirms the removal.
 
 ##### Alternative flow
@@ -699,7 +701,7 @@ caller owns the file — the backing file.
 ##### Post condition(s)
 
 - The item and its video record no longer exist.
-- The backing file's record and stored content no longer exist when the caller owned the file.
+- The backing file's record and stored content no longer exist when the caller may use the file.
 
 ### Music
 

@@ -1,4 +1,5 @@
 pub mod artwork;
+pub mod asset;
 pub mod audio;
 pub mod configuration;
 pub mod credential;

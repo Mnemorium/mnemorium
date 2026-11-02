@@ -1,4 +1,5 @@
 pub mod add_gallery_item;
+pub mod asset_access;
 pub mod begin_upload;
 pub mod complete_upload;
 pub mod create_gallery;
@@ -10,9 +11,12 @@ pub mod ensure_storage_directories;
 pub mod get_album;
 pub mod get_album_medium;
 pub mod get_album_track;
+pub mod get_asset_content;
 pub mod get_current_user;
+pub mod get_file;
 pub mod get_gallery;
 pub mod get_gallery_item;
+pub mod get_image;
 pub mod get_movie;
 pub mod get_permission;
 pub mod get_playlist;

@@ -304,6 +304,21 @@ impl FileStorage for FileSystemStorage {
         }
     }
 
+    fn read(
+        &self,
+        path: &Path,
+    ) -> impl Future<Output = Result<Option<Vec<u8>>, StorageError>> + Send {
+        let owned_path = path.to_path_buf();
+
+        async move {
+            match fs::read(&owned_path).await {
+                Ok(bytes) => Ok(Some(bytes)),
+                Err(err) if err.kind() == ErrorKind::NotFound => Ok(None),
+                Err(err) => Err(Self::map_io_error(err, "read")),
+            }
+        }
+    }
+
     fn restore(
         &self,
         final_path: &Path,
@@ -493,6 +508,39 @@ mod tests {
 
         // Act
         let result = storage.integrity_hash(&path).await;
+
+        // Assert
+        assert!(result?.is_none());
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn read_returns_the_whole_stored_content() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let tmp = tempdir()?;
+        let storage = FileSystemStorage::new();
+        let path = tmp.path().join("covers").join("12.png");
+        let covers = tmp.path().join("covers");
+        storage.create_directory(&covers).await?;
+        fs::write(&path, b"PNG").await?;
+
+        // Act
+        let content = storage.read(&path).await?;
+
+        // Assert
+        assert_eq!(content.as_deref(), Some(b"PNG".as_slice()));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn read_missing_file_returns_none() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let tmp = tempdir()?;
+        let storage = FileSystemStorage::new();
+        let path = tmp.path().join("covers").join("12.png");
+
+        // Act
+        let result = storage.read(&path).await;
 
         // Assert
         assert!(result?.is_none());

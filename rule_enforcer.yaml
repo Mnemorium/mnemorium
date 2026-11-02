@@ -113,6 +113,9 @@ rules:
     non_hal_bodies:
       - HealthResponse
       - LoginResponse
+      # The bytes of an asset content response are binary, not a
+      # representation: the stored media type is served whole.
+      - Vec
   API-033:
     # The root keys a HAL representation's business data must not be nested
     # under. `_embedded` is HAL's own nesting key (`API-035` governs when an

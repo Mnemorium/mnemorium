@@ -5215,8 +5215,10 @@ check_api_030() {
 				;;
 			esac
 		done
+		# A redirect endpoint's success is `303 See Other`, so it is the success
+		# row API-030 requires; every other endpoint answers a 2xx.
 		if ! printf '%s\n' "$declared" |
-			grep -qE ' (OK|CREATED|ACCEPTED|NO_CONTENT|PARTIAL_CONTENT|20[0-9]) '; then
+			grep -qE ' (OK|CREATED|ACCEPTED|NO_CONTENT|PARTIAL_CONTENT|SEE_OTHER|20[0-9]) '; then
 			printf 'error: %s: %s: responses(...) declares no success (2xx) row\n' \
 				"$id" "$file" >&2
 			result=1

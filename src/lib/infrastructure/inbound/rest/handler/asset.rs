@@ -1,28 +1,53 @@
+pub mod get_file;
+pub mod get_file_content;
+pub mod get_image;
+pub mod get_image_content;
+pub mod get_image_file;
 pub mod get_upload;
 pub mod post_upload;
 pub mod post_upload_complete;
 pub mod put_upload_chunk;
 
 use axum::Router;
+use axum::body::Body;
 use axum::extract::DefaultBodyLimit;
+use axum::http::HeaderValue;
+use axum::http::StatusCode;
+use axum::http::header;
 use axum::middleware;
+use axum::response::IntoResponse as _;
+use axum::response::Response;
 use axum::routing::get;
 use axum::routing::post;
 use axum::routing::put;
+use chrono::NaiveDate;
 use chrono::NaiveDateTime;
 use serde::Deserialize;
 use serde::Serialize;
+use tracing::warn;
 use utoipa::ToSchema;
 
 use crate::domain::alias::NumericID;
+use crate::infrastructure::inbound::rest::api_error::ApiError;
 use crate::infrastructure::inbound::rest::app_state::AppState;
 use crate::infrastructure::inbound::rest::hal::Link;
+use crate::infrastructure::inbound::rest::handler::asset::get_file::get_file;
+use crate::infrastructure::inbound::rest::handler::asset::get_file_content::get_file_content;
+use crate::infrastructure::inbound::rest::handler::asset::get_image::get_image;
+use crate::infrastructure::inbound::rest::handler::asset::get_image_content::get_image_content;
+use crate::infrastructure::inbound::rest::handler::asset::get_image_file::get_image_file;
 use crate::infrastructure::inbound::rest::handler::asset::get_upload::get_upload;
 use crate::infrastructure::inbound::rest::handler::asset::post_upload::post_upload;
 use crate::infrastructure::inbound::rest::handler::asset::post_upload_complete::post_upload_complete;
 use crate::infrastructure::inbound::rest::handler::asset::put_upload_chunk::put_upload_chunk;
 use crate::infrastructure::inbound::rest::middleware::auth::authenticate;
 use crate::infrastructure::outbound::jwt::token_provider::JwtTokenProvider;
+
+/// Date and time format of the asset representations.
+const TIMESTAMP_FORMAT: &str = "%Y-%m-%dT%H:%M:%S";
+
+/// Date format of the asset representations.
+const DATE_FORMAT: &str = "%Y-%m-%d";
 
 /// HAL links exposed by an upload-session representation.
 ///
@@ -111,6 +136,59 @@ pub(crate) fn upload_self_href(upload_id: NumericID) -> String {
     format!("/api/v1/asset/upload/{upload_id}")
 }
 
+/// Canonical URI reference of the stored file identified by `file_id`.
+#[must_use]
+pub(crate) fn asset_file_href(file_id: NumericID) -> String {
+    format!("/api/v1/asset/file/{file_id}")
+}
+
+/// Canonical URI reference of the typed image identified by `image_id`.
+#[must_use]
+pub(crate) fn asset_image_href(image_id: NumericID) -> String {
+    format!("/api/v1/asset/image/{image_id}")
+}
+
+/// Render `value` with the representation's date format.
+fn format_date(value: NaiveDate) -> String {
+    value.format(DATE_FORMAT).to_string()
+}
+
+/// Parse an asset identifier from a path segment.
+///
+/// The malformed value and the parser detail never reach the log (`OBS-003`);
+/// only the classification and its declared fields do (`OBS-006`).
+pub(crate) fn parse_asset_id(
+    value: &str,
+    field: &'static str,
+    message: &'static str,
+) -> Result<NumericID, ApiError> {
+    value.parse::<NumericID>().map_err(|_error| {
+        warn!(
+            target: "security",
+            event = "input_validation_failed",
+            field = field,
+            reason = "invalid_identifier",
+            "rejected a malformed asset identifier"
+        );
+        ApiError::BadRequest(message.to_owned())
+    })
+}
+
+/// Build the response carrying an authorized asset's bytes.
+///
+/// The body is served whole with the stored media type; a later change can add
+/// bounded streaming (`design.md`, "Content is a sub-resource").
+pub(crate) fn asset_content_response(mime_type_id: &str, bytes: Vec<u8>) -> Response {
+    let content_type = HeaderValue::from_str(mime_type_id)
+        .unwrap_or_else(|_error| HeaderValue::from_static("application/octet-stream"));
+    let mut response = StatusCode::OK.into_response();
+    response
+        .headers_mut()
+        .insert(header::CONTENT_TYPE, content_type);
+    *response.body_mut() = Body::from(bytes);
+    response
+}
+
 /// Routes of the asset bounded context.
 ///
 /// Every route requires an authenticated caller.
@@ -136,7 +214,16 @@ pub fn asset_routes(state: &AppState) -> Router {
         )
         .with_state(state.clone());
 
+    let files: Router<AppState> = Router::new()
+        .route("/file/{file_id}", get(get_file))
+        .route("/file/{file_id}/content", get(get_file_content))
+        .route("/image/{image_id}", get(get_image))
+        .route("/image/{image_id}/file", get(get_image_file))
+        .route("/image/{image_id}/content", get(get_image_content))
+        .with_state(state.clone());
+
     upload
+        .merge(files)
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
             authenticate::<JwtTokenProvider>,

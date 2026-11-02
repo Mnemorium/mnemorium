@@ -601,14 +601,22 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn add_gallery_item_non_root_admin_cannot_add_other_users_media()
-    -> Result<(), Box<dyn Error>> {
-        // Arrange
+    async fn add_gallery_item_admin_adds_other_users_media() -> Result<(), Box<dyn Error>> {
+        // Arrange: `file.use` grants an Admin `ALL`, so an Admin may reference
+        // another caller's file (a Standard user may not).
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 1, Role::Admin)?;
         let mut galleries = MockGalleryRepository::new();
         expect_gallery(&mut galleries, gallery(3, Some(4), "Public", true));
-        galleries.expect_add_item().times(0);
+        expect_unassigned(&mut galleries);
+        galleries
+            .expect_next_item_index()
+            .times(1)
+            .returning(|_| Box::pin(async { Ok(0) }));
+        galleries.expect_add_item().times(1).return_once(|_| {
+            Box::pin(async { persisted_item(1, 3, GalleryItemMedia::Image(7), 0) })
+        });
+        expect_saved_gallery(&mut galleries);
         let mut images = MockImageRepository::new();
         expect_image(&mut images, 100, image(7, 100, "sunset.png")?);
         let mut files = MockFileRepository::new();
@@ -617,17 +625,17 @@ mod tests {
         let use_case: UseCase = AddGalleryItem::new(Arc::clone(&harness.factory));
 
         // Act
-        let result = use_case
+        let response = use_case
             .execute(AddGalleryItemCommand::new(
                 1,
                 3,
                 GalleryItemMedia::Image(100),
             ))
-            .await;
+            .await?;
 
         // Assert
-        assert!(matches!(result, Err(AddGalleryItemError::NotOwnedMedia)));
-        assert!(harness.rolled_back.load(Ordering::SeqCst));
+        assert_eq!(response.gallery_item_id(), 1);
+        assert!(harness.committed.load(Ordering::SeqCst));
         Ok(())
     }
 

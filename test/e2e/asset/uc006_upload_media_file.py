@@ -11,7 +11,7 @@ import hashlib
 from collections.abc import Callable
 
 import requests
-from conftest import png, video
+from conftest import ASSET_FILE_PATH, png, video
 
 _API_PREFIX = "/api/v1"
 _UPLOAD_PATH = f"{_API_PREFIX}/asset/upload"
@@ -61,6 +61,13 @@ def _upload_and_complete(
     )
 
 
+def _finalized_file_id(body: dict) -> int:
+    """Return the file identifier a completed upload links in `_links.file`."""
+    href = body["_links"]["file"]["href"]
+    assert href.startswith(f"{ASSET_FILE_PATH}/"), f"complete did not link the file: {href}"
+    return int(href.removeprefix(f"{ASSET_FILE_PATH}/"))
+
+
 def test_uc006_upload_image_completion(
     server_url: str,
     standard_user_token: str,
@@ -76,7 +83,7 @@ def test_uc006_upload_image_completion(
     assert response.status_code == 200, f"complete failed: {response.status_code} {response.text}"
     assert response.headers.get("Content-Type", "").startswith("application/hal+json")
     body = response.json()
-    assert isinstance(body["file_id"], int) and body["file_id"] > 0
+    assert _finalized_file_id(body) > 0
     assert body["is_finished"] is True
     assert body["_links"]["self"]["href"].startswith(f"{_UPLOAD_PATH}/")
 
@@ -113,5 +120,5 @@ def test_uc006_upload_video_completion(
 
     assert response.status_code == 200, f"complete failed: {response.status_code} {response.text}"
     body = response.json()
-    assert isinstance(body["file_id"], int) and body["file_id"] > 0
+    assert _finalized_file_id(body) > 0
     assert body["is_finished"] is True

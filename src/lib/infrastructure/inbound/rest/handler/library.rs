@@ -88,6 +88,7 @@ use crate::infrastructure::inbound::rest::api_error::ApiError;
 use crate::infrastructure::inbound::rest::app_state::AppState;
 use crate::infrastructure::inbound::rest::hal::Link;
 use crate::infrastructure::inbound::rest::hal::SelfLinks;
+use crate::infrastructure::inbound::rest::handler::asset::asset_image_href;
 use crate::infrastructure::inbound::rest::handler::library::delete_gallery::delete_gallery;
 use crate::infrastructure::inbound::rest::handler::library::delete_gallery_item::delete_gallery_item;
 use crate::infrastructure::inbound::rest::handler::library::delete_playlist::delete_playlist;
@@ -1792,15 +1793,6 @@ pub(crate) fn gallery_item_self_href(gallery_id: NumericID, item_id: NumericID) 
     format!("/api/v1/library/gallery/{gallery_id}/item/{item_id}")
 }
 
-/// Build the Asset image href of the image identified by `image_id`.
-///
-/// TODO(image-link): the Asset image route is not served yet; revisit this
-/// helper when `/api/v1/asset/image/{image_id}` lands.
-#[must_use]
-fn asset_image_href(image_id: NumericID) -> String {
-    format!("/api/v1/asset/image/{image_id}")
-}
-
 /// Parse a gallery identifier from a path segment.
 pub(crate) fn parse_gallery_id(value: &str) -> Result<NumericID, ApiError> {
     value.parse::<NumericID>().map_err(|_| {
@@ -2176,7 +2168,6 @@ mod tests {
     use serde_json::json;
     use tower::ServiceExt as _;
 
-    use super::asset_image_href;
     use super::library_routes;
     use crate::application::port::create_gallery::CreateGalleryResponse;
     use crate::application::port::create_gallery::CreateGalleryUseCase;
@@ -2211,6 +2202,7 @@ mod tests {
     use crate::application::port::video_summary::VideoSummary;
     use crate::domain::port::token_provider::TokenProvider as _;
     use crate::infrastructure::inbound::rest::app_state::AppState;
+    use crate::infrastructure::inbound::rest::handler::asset::asset_image_href;
     use crate::infrastructure::outbound::jwt::token_provider::JwtTokenProvider;
     use crate::test_helpers::TEST_JWT_SECRET;
     use crate::test_helpers::app_state_with_library;

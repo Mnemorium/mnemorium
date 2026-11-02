@@ -1,8 +1,8 @@
 # Permissions
 
 This guide describes how Mnemorium decides whether a caller may perform an action. It covers the two axes of authority,
-the action catalog, the five scopes, how a decision is resolved, the Root Admin and upload rules, what a denial looks
-like, and how the Root Admin administers another user's permissions over the API.
+the action catalog, the five scopes, how a decision is resolved, derived actions such as `file.read`, the Root Admin and
+upload rules, what a denial looks like, and how the Root Admin administers another user's permissions over the API.
 
 ## The two axes
 
@@ -31,8 +31,7 @@ Every authorizable operation has exactly one action name, and the catalog is fix
 | `playlist.read`     | MusicPlaylist             | `PUBLIC_OR_OWNED` | `PUBLIC_OR_OWNED` | All        | yes          |
 | `playlist.moderate` | MusicPlaylist             | `PUBLIC_OR_OWNED` | `PUBLIC_OR_OWNED` | All        | yes          |
 | `playlist.manage`   | MusicPlaylist             | `OWNED`           | `OWNED`           | All        | yes          |
-| `file.read`         | File                      | `OWNED`           | `OWNED`           | All        | yes          |
-| `file.use`          | File                      | `OWNED`           | `OWNED`           | All        | yes          |
+| `file.use`          | File                      | `OWNED`           | `ALL`             | All        | yes          |
 | `upload.read`       | Upload                    | `OWNED`           | `OWNED`           | `OWNED`    | no           |
 | `upload.write`      | Upload                    | `OWNED`           | `OWNED`           | `OWNED`    | no           |
 | `user.read`         | User, Global              | `NONE`            | `ALL`             | All        | yes          |
@@ -47,6 +46,29 @@ The table is the default matrix. `Root Admin` is not a preset: it is a short-cir
 
 A `LISTED` scope names top-level resources only. A season, episode, medium or track is authorized through its series or
 album, so `library.read` and `library.manage` never name a season or a track.
+
+## Derived actions
+
+`file.read` is derived: it has no scope, no role preset and no override, and it never appears in the configurable
+matrix. Reading an asset delegates to the read action of the resource that owns it:
+
+| Asset                               | Decided by      | Resource                               |
+| ----------------------------------- | --------------- | -------------------------------------- |
+| Catalogue artwork (`LIBRARY` scope) | `library.read`  | Global                                 |
+| A gallery item (`USER` scope)       | `gallery.read`  | The gallery holding the item           |
+| A playlist cover (`USER` scope)     | `playlist.read` | The playlist holding the cover         |
+| An asset no resource references     | —               | Its file owner and the Root Admin only |
+
+Catalogue artwork is shared and public, so a `LISTED` library scope still reaches it while `NONE` or `OWNED` hides it. A
+`USER` asset is owned by exactly one referrer, so a caller that cannot read the gallery or playlist cannot read its
+artwork either, even by naming the identifier of the image directly: the read answers `404 Not Found`, indistinguishable
+from an unknown asset. Only the Root Admin short-circuits the delegation; an Admin sees an asset exactly where its
+`library.read`, `gallery.read` and `playlist.read` allow. An asset with no referrer is readable only by the caller who
+owns its file and by the Root Admin.
+
+Because `file.read` cannot be granted, an override naming it is refused with `422`. `file.use` remains the write action
+over stored files: `OWNED` for a Standard user and `ALL` for an Admin, so an Admin may reference, modify or delete
+another caller's file.
 
 ## Scopes
 
@@ -105,7 +127,8 @@ A denial is either concealed or revealed.
 | The token names a deleted account                      | `401 Unauthorized` |
 | The caller lacks an administration action              | `403 Forbidden`    |
 
-Read actions (`library.read`, `gallery.read`, `playlist.read`, `file.read`) and the upload actions always conceal.
+Read actions (`library.read`, `gallery.read`, `playlist.read`) and the upload actions always conceal. An asset read
+conceals through the action that delegates it (`file.read` is derived and never names a configurable scope).
 `library.manage`, `gallery.moderate`, `gallery.manage`, `playlist.moderate` and `playlist.manage` conceal exactly when
 the caller cannot read the resource, so an invisible album answers `404` and a readable one it may not rewrite answers
 `403`. Administration actions and `file.use` reveal.

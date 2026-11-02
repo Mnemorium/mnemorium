@@ -242,6 +242,14 @@ impl MusicPlaylistRepository for SqlxMusicPlaylistRepository<'_> {
                 id,
             );
         }
+        if let Some(cover_image_id) = filter.cover_image_id {
+            push_filter(
+                &mut first,
+                &mut builder,
+                "music_playlist.cover_image_id = ",
+                cover_image_id,
+            );
+        }
         if let Some(is_public) = filter.is_public {
             push_filter(
                 &mut first,
@@ -725,6 +733,41 @@ mod tests {
             .get(1)
             .ok_or("the uncovered playlist must be found")?;
         assert_eq!(uncovered.cover_image_id(), None);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn search_filters_by_cover_image() -> Result<(), Box<dyn Error>> {
+        // Arrange: two covered playlists, each with its own artwork.
+        let mut transaction = begin_transaction().await?;
+        seed_user(&mut transaction, 1).await?;
+        seed_image(&mut transaction, 12, 1).await?;
+        seed_image(&mut transaction, 13, 1).await?;
+        seed_playlist(&mut transaction, 7, "First", 1, false).await?;
+        seed_playlist(&mut transaction, 8, "Second", 1, false).await?;
+        sqlx::query("UPDATE music_playlist SET cover_image_id = 12 WHERE music_playlist_id = 7")
+            .execute(&mut *transaction)
+            .await?;
+        sqlx::query("UPDATE music_playlist SET cover_image_id = 13 WHERE music_playlist_id = 8")
+            .execute(&mut *transaction)
+            .await?;
+        let mut repository = SqlxMusicPlaylistRepository::new(&mut transaction);
+
+        // Act
+        let playlists = repository
+            .search(&MusicPlaylistFilter {
+                cover_image_id: Some(12),
+                ..MusicPlaylistFilter::default()
+            })
+            .await?;
+
+        // Assert: the referrer of the image is the playlist it covers.
+        let found = playlists
+            .first()
+            .ok_or("the covered playlist must be found")?;
+        assert_eq!(playlists.len(), 1);
+        assert_eq!(found.id(), 7);
+        assert_eq!(found.cover_image_id(), Some(12));
         Ok(())
     }
 

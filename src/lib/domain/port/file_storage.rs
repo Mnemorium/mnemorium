@@ -104,6 +104,16 @@ pub trait FileStorage: Send + Sync {
         final_path: &Path,
     ) -> impl Future<Output = Result<Option<PromotedFile>, StorageError>> + Send;
 
+    /// Read the whole content of the file at `path`.
+    ///
+    /// A file that does not exist at `path` is a valid outcome, reported as
+    /// `Ok(None)`. The content is served whole; a later change can add bounded
+    /// streaming.
+    fn read(
+        &self,
+        path: &Path,
+    ) -> impl Future<Output = Result<Option<Vec<u8>>, StorageError>> + Send;
+
     /// Move the file at `final_path` back to `staged`.
     ///
     /// Compensates a completion that failed after `promote`, so the upload can

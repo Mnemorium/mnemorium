@@ -5,11 +5,14 @@
 //! is application orchestration and stays in the application layer; emitting
 //! the `authz_failed` event and mapping the denial belong to the use case.
 
+use crate::domain::model::asset::AssetContext;
+use crate::domain::model::file::File;
 use crate::domain::model::permission::Action;
 use crate::domain::model::permission::Permission;
 use crate::domain::model::permission::Protected;
 use crate::domain::model::permission::ResourceRef;
 use crate::domain::model::permission::RootAccess;
+use crate::domain::model::permission::Scope;
 use crate::domain::model::user::User;
 
 /// The rendering of a denial to the caller.
@@ -84,14 +87,7 @@ impl Authorization {
         {
             return false;
         }
-        let scope = permissions
-            .iter()
-            .find(|permission| permission.user_id() == caller.id() && permission.action() == action)
-            .map_or_else(
-                || action.role_scope(caller.role()),
-                |permission| permission.scope().clone(),
-            );
-        scope.covers(caller.id(), resource)
+        Self::effective_scope(caller, permissions, action).covers(caller.id(), resource)
     }
 
     /// Decide whether `caller` may perform `action` on `resource`.
@@ -116,6 +112,91 @@ impl Authorization {
                 .is_some_and(|read| !Self::allows(caller, permissions, read, resource));
         Decision::Deny(Denial { action, conceal })
     }
+
+    /// Decide whether `caller` may read the asset owned by the resource named
+    /// by `context`.
+    ///
+    /// `referrer` is the aggregate `context` names: the gallery or the
+    /// playlist that owns the asset. Shared catalogue art has no single owner,
+    /// so `Global` is passed for [`AssetContext::Library`].
+    ///
+    /// The decision is the owning resource's read action, never `file.read`:
+    /// `file.read` is derived and its scope comes from the owner.
+    #[must_use]
+    pub fn decide_asset<P: Protected + ?Sized>(
+        caller: &User,
+        permissions: &[Permission],
+        context: AssetContext,
+        referrer: &P,
+    ) -> Decision {
+        match context {
+            AssetContext::Library => {
+                // Catalogue art is shared and public, so a `LISTED` scope
+                // still reaches it: `LISTED` narrows the catalogue metadata,
+                // not the artwork (`design.md`, "`Global` for library art").
+                // Only a caller shut out of the library entirely is denied.
+                if caller.is_root_admin()
+                    || !matches!(
+                        Self::effective_scope(caller, permissions, Action::LibraryRead),
+                        Scope::None | Scope::Owned
+                    )
+                {
+                    return Decision::Allow;
+                }
+                Decision::Deny(Denial {
+                    action: Action::LibraryRead,
+                    conceal: true,
+                })
+            }
+            AssetContext::Gallery(reference) => {
+                debug_assert_eq!(
+                    referrer.resource_ref(),
+                    Some(reference),
+                    "the referrer must be the gallery the context names"
+                );
+                Self::decide(caller, permissions, Action::GalleryRead, referrer)
+            }
+            AssetContext::Playlist(reference) => {
+                debug_assert_eq!(
+                    referrer.resource_ref(),
+                    Some(reference),
+                    "the referrer must be the playlist the context names"
+                );
+                Self::decide(caller, permissions, Action::PlaylistRead, referrer)
+            }
+        }
+    }
+
+    /// Decide whether `caller` may read an asset with no owning resource.
+    ///
+    /// An asset the library does not own and no gallery or playlist references
+    /// is visible only to the caller who owns its file and to the Root Admin.
+    /// Every other caller sees the concealed `404 Not Found` of a missing
+    /// asset.
+    #[must_use]
+    pub fn decide_orphan_asset(caller: &User, file: &File) -> Decision {
+        if caller.is_root_admin() || file.owner_id() == Some(caller.id()) {
+            return Decision::Allow;
+        }
+        Decision::Deny(Denial {
+            action: Action::FileRead,
+            conceal: true,
+        })
+    }
+
+    /// Return the scope `action` resolves to for `caller`.
+    ///
+    /// The effective scope is the caller's override for `action`, else the
+    /// caller's role preset.
+    fn effective_scope(caller: &User, permissions: &[Permission], action: Action) -> Scope {
+        permissions
+            .iter()
+            .find(|permission| permission.user_id() == caller.id() && permission.action() == action)
+            .map_or_else(
+                || action.role_scope(caller.role()),
+                |permission| permission.scope().clone(),
+            )
+    }
 }
 
 #[cfg(test)]
@@ -123,9 +204,12 @@ mod tests {
     use std::collections::BTreeSet;
     use std::error::Error;
 
+    use chrono::NaiveDate;
     use chrono::NaiveDateTime;
 
     use crate::domain::alias::NumericID;
+    use crate::domain::model::asset::AssetContext;
+    use crate::domain::model::file::File;
     use crate::domain::model::gallery::Gallery;
     use crate::domain::model::integrity_hash::IntegrityHash;
     use crate::domain::model::music_playlist::MusicPlaylist;
@@ -133,6 +217,7 @@ mod tests {
     use crate::domain::model::permission::Action;
     use crate::domain::model::permission::Global;
     use crate::domain::model::permission::Permission;
+    use crate::domain::model::permission::PermissionError;
     use crate::domain::model::permission::ResourceKind;
     use crate::domain::model::permission::ResourceRef;
     use crate::domain::model::permission::Scope;
@@ -177,6 +262,21 @@ mod tests {
         )
     }
 
+    fn file(id: NumericID, owner_id: NumericID) -> Result<File, Box<dyn Error>> {
+        Ok(File::try_new(
+            id,
+            format!("/files/{id}.png"),
+            owner_id,
+            false,
+            "image/png".to_owned(),
+            NaiveDate::default(),
+            10,
+            NaiveDateTime::default(),
+            None,
+            None,
+        )?)
+    }
+
     fn upload(id: NumericID, owner_id: NumericID) -> Result<Upload, Box<dyn Error>> {
         Ok(Upload::try_new(
             id,
@@ -218,16 +318,30 @@ mod tests {
             "every action must round-trip through its stored name"
         );
         assert!(
-            ACTIONS.iter().all(|action| action
-                .role_scope(Role::Standard)
-                .is_supported_by(action.supported_scopes())),
+            ACTIONS
+                .iter()
+                .filter(|action| !action.is_derived())
+                .all(|action| action
+                    .role_scope(Role::Standard)
+                    .is_supported_by(action.supported_scopes())),
             "every Standard preset must be a supported scope"
         );
         assert!(
-            ACTIONS.iter().all(|action| action
-                .role_scope(Role::Admin)
-                .is_supported_by(action.supported_scopes())),
+            ACTIONS
+                .iter()
+                .filter(|action| !action.is_derived())
+                .all(|action| action
+                    .role_scope(Role::Admin)
+                    .is_supported_by(action.supported_scopes())),
             "every Admin preset must be a supported scope"
+        );
+        assert!(
+            ACTIONS
+                .iter()
+                .filter(|action| action.is_derived())
+                .all(|action| action.resource_kinds().is_empty()
+                    && action.supported_scopes().is_empty()),
+            "a derived action must carry no scope and no resource kind"
         );
         assert!(
             ACTIONS
@@ -627,6 +741,137 @@ mod tests {
         // Assert
         assert!(named_decision.is_allowed());
         assert!(matches!(other_decision, Decision::Deny(denial) if !denial.conceals()));
+        Ok(())
+    }
+
+    #[test]
+    fn file_read_is_derived_and_cannot_be_overridden() {
+        // Act & Assert
+        assert!(Action::FileRead.is_derived());
+        assert!(!Action::FileRead.is_configurable());
+        assert_eq!(Action::FileRead.role_scope(Role::Standard), Scope::None);
+        assert!(Action::FileRead.resource_kinds().is_empty());
+        assert!(
+            matches!(
+                Permission::try_new(9, Action::FileRead, Scope::Owned),
+                Err(PermissionError::NotConfigurable)
+            ),
+            "a permission override must not be able to name a derived action"
+        );
+    }
+
+    #[test]
+    fn a_listed_file_scope_cannot_be_granted() {
+        // Act
+        let result = Permission::try_new(
+            9,
+            Action::FileRead,
+            Scope::Listed(vec![ResourceRef::new(ResourceKind::File, 4)]),
+        );
+
+        // Assert
+        assert!(matches!(result, Err(PermissionError::NotConfigurable)));
+    }
+
+    #[test]
+    fn file_use_preset_is_owned_for_standard_and_all_for_admin() {
+        // Act & Assert
+        assert_eq!(Action::FileUse.role_scope(Role::Standard), Scope::Owned);
+        assert_eq!(Action::FileUse.role_scope(Role::Admin), Scope::All);
+    }
+
+    #[test]
+    fn library_art_follows_library_read() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let caller = user(9, Role::Standard)?;
+        let listed = [override_scope(
+            9,
+            Action::LibraryRead,
+            Scope::Listed(vec![ResourceRef::new(ResourceKind::MusicAlbum, 7)]),
+        )?];
+        let hidden = [override_scope(9, Action::LibraryRead, Scope::None)?];
+
+        // Act
+        let default_decision =
+            Authorization::decide_asset(&caller, &[], AssetContext::Library, &Global);
+        let listed_decision =
+            Authorization::decide_asset(&caller, &listed, AssetContext::Library, &Global);
+        let hidden_decision =
+            Authorization::decide_asset(&caller, &hidden, AssetContext::Library, &Global);
+
+        // Assert
+        assert!(default_decision.is_allowed());
+        assert!(
+            listed_decision.is_allowed(),
+            "shared art stays readable to a caller whose catalogue scope is LISTED"
+        );
+        assert!(matches!(hidden_decision, Decision::Deny(denial) if denial.conceals()));
+        Ok(())
+    }
+
+    #[test]
+    fn a_private_gallery_asset_follows_gallery_read() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let owner = user(3, Role::Standard)?;
+        let other = user(9, Role::Standard)?;
+        let admin = user(7, Role::Admin)?;
+        let root = user(0, Role::Admin)?;
+        let private = gallery(2, Some(3), false);
+        let context = AssetContext::gallery(2);
+
+        // Act
+        let owner_decision = Authorization::decide_asset(&owner, &[], context, &private);
+        let other_decision = Authorization::decide_asset(&other, &[], context, &private);
+        let admin_decision = Authorization::decide_asset(&admin, &[], context, &private);
+        let root_decision = Authorization::decide_asset(&root, &[], context, &private);
+
+        // Assert
+        assert!(owner_decision.is_allowed());
+        assert!(matches!(other_decision, Decision::Deny(denial) if denial.conceals()));
+        assert!(
+            !admin_decision.is_allowed(),
+            "only the Root Admin short-circuits the delegation"
+        );
+        assert!(root_decision.is_allowed());
+        Ok(())
+    }
+
+    #[test]
+    fn a_playlist_cover_follows_playlist_read() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let owner = user(3, Role::Standard)?;
+        let other = user(9, Role::Standard)?;
+        let private = playlist(2, 3, false);
+        let context = AssetContext::playlist(2);
+
+        // Act
+        let owner_decision = Authorization::decide_asset(&owner, &[], context, &private);
+        let other_decision = Authorization::decide_asset(&other, &[], context, &private);
+
+        // Assert
+        assert!(owner_decision.is_allowed());
+        assert!(matches!(other_decision, Decision::Deny(denial) if denial.conceals()));
+        Ok(())
+    }
+
+    #[test]
+    fn an_orphan_asset_is_readable_only_by_its_file_owner_and_the_root_admin()
+    -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let owner = user(3, Role::Standard)?;
+        let other = user(9, Role::Standard)?;
+        let root = user(0, Role::Admin)?;
+        let asset = file(4, 3)?;
+
+        // Act
+        let owner_decision = Authorization::decide_orphan_asset(&owner, &asset);
+        let other_decision = Authorization::decide_orphan_asset(&other, &asset);
+        let root_decision = Authorization::decide_orphan_asset(&root, &asset);
+
+        // Assert
+        assert!(owner_decision.is_allowed());
+        assert!(matches!(other_decision, Decision::Deny(denial) if denial.conceals()));
+        assert!(root_decision.is_allowed());
         Ok(())
     }
 }

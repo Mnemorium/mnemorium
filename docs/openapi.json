@@ -259,6 +259,94 @@
         ],
         "type": "object"
       },
+      "FileLinks": {
+        "description": "HAL links exposed by a stored-file representation.\n\nThe `self` link addresses the file; `owner` names the account that owns it,\nand `image` names the typed image the file backs when an image row exists\n(`API-032`, `API-034`, `API-037`).",
+        "properties": {
+          "image": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/Link",
+                "description": "Link to the typed image backed by the file, when one exists."
+              }
+            ]
+          },
+          "owner": {
+            "$ref": "#/components/schemas/Link",
+            "description": "Link to the account owning the file."
+          },
+          "self": {
+            "$ref": "#/components/schemas/Link",
+            "description": "Link to the stored file itself."
+          }
+        },
+        "required": [
+          "owner",
+          "self"
+        ],
+        "type": "object"
+      },
+      "FileResponse": {
+        "description": "Representation of a stored file.",
+        "properties": {
+          "_links": {
+            "$ref": "#/components/schemas/FileLinks",
+            "description": "Links to the file and the resources related to it."
+          },
+          "id": {
+            "$ref": "#/components/schemas/i64",
+            "description": "Unique identifier of the stored file."
+          },
+          "is_public": {
+            "description": "Whether the file is marked public.",
+            "type": "boolean"
+          },
+          "mime_type": {
+            "description": "Media type of the file.",
+            "example": "image/png",
+            "type": "string"
+          },
+          "modified_at": {
+            "description": "Instant at which the content was last modified, as\n`YYYY-MM-DDTHH:MM:SS`.",
+            "example": "2026-01-01T12:00:00",
+            "type": "string"
+          },
+          "origin": {
+            "description": "Origin of the file's bytes.",
+            "example": "UPLOADED",
+            "type": "string"
+          },
+          "path": {
+            "description": "Path of the file relative to the library root.",
+            "example": "12_cover.png",
+            "type": "string"
+          },
+          "size_bytes": {
+            "description": "Size of the file content, in bytes.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "uploaded_at": {
+            "description": "Date at which the file was uploaded, as `YYYY-MM-DD`.",
+            "example": "2026-01-01",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "is_public",
+          "_links",
+          "mime_type",
+          "modified_at",
+          "origin",
+          "path",
+          "size_bytes",
+          "uploaded_at"
+        ],
+        "type": "object"
+      },
       "GalleryItemDetailResponse": {
         "description": "Detailed item of a gallery, returned by the item endpoints.",
         "properties": {
@@ -602,6 +690,76 @@
         ],
         "type": "object"
       },
+      "ImageLinks": {
+        "description": "HAL links exposed by a typed-image representation.\n\nThe `self` link addresses the image and `file` names the stored file it\nbacks (`API-032`, `API-034`, `API-037`).",
+        "properties": {
+          "file": {
+            "$ref": "#/components/schemas/Link",
+            "description": "Link to the stored file backing the image."
+          },
+          "self": {
+            "$ref": "#/components/schemas/Link",
+            "description": "Link to the image resource itself."
+          }
+        },
+        "required": [
+          "file",
+          "self"
+        ],
+        "type": "object"
+      },
+      "ImageResponse": {
+        "description": "Representation of a typed image.",
+        "properties": {
+          "_links": {
+            "$ref": "#/components/schemas/ImageLinks",
+            "description": "Links to the image and its backing file."
+          },
+          "created_at": {
+            "description": "Date at which the image was created, as `YYYY-MM-DD`.",
+            "example": "2026-01-01",
+            "type": "string"
+          },
+          "file_id": {
+            "$ref": "#/components/schemas/i64",
+            "description": "Identifier of the stored file backing the image."
+          },
+          "height_px": {
+            "description": "Height of the image, in pixels.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "id": {
+            "$ref": "#/components/schemas/i64",
+            "description": "Unique identifier of the image."
+          },
+          "name": {
+            "description": "Name of the image.",
+            "example": "cover.png",
+            "type": "string"
+          },
+          "orientation": {
+            "$ref": "#/components/schemas/Orientation",
+            "description": "Orientation of the image."
+          },
+          "width_px": {
+            "description": "Width of the image, in pixels.",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "created_at",
+          "file_id",
+          "height_px",
+          "id",
+          "_links",
+          "name",
+          "orientation",
+          "width_px"
+        ],
+        "type": "object"
+      },
       "Link": {
         "description": "A single HAL link.",
         "properties": {
@@ -868,6 +1026,15 @@
           "video"
         ],
         "type": "object"
+      },
+      "Orientation": {
+        "description": "Orientation of an image.",
+        "enum": [
+          "LANDSCAPE",
+          "PORTRAIT",
+          "SQUARE"
+        ],
+        "type": "string"
       },
       "PatchCredentialRequest": {
         "description": "Payload to change the password behind a credential.",
@@ -1397,12 +1564,8 @@
         "description": "File finalized by a successful completion.",
         "properties": {
           "_links": {
-            "$ref": "#/components/schemas/SelfLinks",
-            "description": "Link to the completed upload session."
-          },
-          "file_id": {
-            "$ref": "#/components/schemas/i64",
-            "description": "Unique identifier of the stored file."
+            "$ref": "#/components/schemas/UploadCompleteLinks",
+            "description": "Links to the completed upload session and the finalized file."
           },
           "is_finished": {
             "description": "Whether the upload session has been finished.",
@@ -1410,7 +1573,6 @@
           }
         },
         "required": [
-          "file_id",
           "is_finished",
           "_links"
         ],
@@ -2006,6 +2168,24 @@
         ],
         "type": "object"
       },
+      "UploadCompleteLinks": {
+        "description": "HAL links exposed by a completed upload.\n\nThe `self` link addresses the upload session and `file` the file the\ncompletion finalized, so a client follows `upload -> file -> image` without\nholding a raw identifier (`API-034`, `API-037`).",
+        "properties": {
+          "file": {
+            "$ref": "#/components/schemas/Link",
+            "description": "Link to the file finalized by the completion."
+          },
+          "self": {
+            "$ref": "#/components/schemas/Link",
+            "description": "Link to the completed upload session."
+          }
+        },
+        "required": [
+          "file",
+          "self"
+        ],
+        "type": "object"
+      },
       "UploadSessionLinks": {
         "description": "HAL links exposed by an upload-session representation.\n\nThe `self` link addresses the session itself; the templated `chunk` link\nlets clients discover where to store a chunk instead of building the URL\nfrom the identifiers (`API-037`); the `complete` link lets clients discover\nhow to finish the session.",
         "properties": {
@@ -2163,6 +2343,407 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/asset/file/{file_id}": {
+      "get": {
+        "description": "Any authenticated caller may read a file it is allowed to read: a catalogue\nasset follows `library.read`, a gallery asset its gallery and a playlist\ncover its playlist. An unknown file and an unreadable file are one outcome,\n`404 Not Found` (`API-044`).",
+        "operationId": "get_file",
+        "parameters": [
+          {
+            "description": "Identifier of the file to fetch",
+            "in": "path",
+            "name": "file_id",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/i64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FileResponse"
+                }
+              }
+            },
+            "description": "File found"
+          },
+          "400": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Invalid file identifier"
+          },
+          "401": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid credentials"
+          },
+          "404": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unknown or unreadable file"
+          },
+          "500": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unexpected error"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ],
+        "summary": "Fetch a stored file",
+        "tags": [
+          "asset"
+        ]
+      }
+    },
+    "/asset/file/{file_id}/content": {
+      "get": {
+        "description": "The file is authorized before any byte is read, so an unreadable file is\n`404 Not Found` with no content, indistinguishable from an unknown one\n(`API-044`).",
+        "operationId": "get_file_content",
+        "parameters": [
+          {
+            "description": "Identifier of the file whose content is read",
+            "in": "path",
+            "name": "file_id",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/i64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "items": {
+                    "format": "int32",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Stored bytes of the file"
+          },
+          "400": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Invalid file identifier"
+          },
+          "401": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid credentials"
+          },
+          "404": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unknown or unreadable file"
+          },
+          "500": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unexpected error"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ],
+        "summary": "Read the content of a stored file",
+        "tags": [
+          "asset"
+        ]
+      }
+    },
+    "/asset/image/{image_id}": {
+      "get": {
+        "description": "The image follows the read rule of the resource that owns its file. An\nunknown image and an unreadable image are one outcome, `404 Not Found`\n(`API-044`).",
+        "operationId": "get_image",
+        "parameters": [
+          {
+            "description": "Identifier of the image to fetch",
+            "in": "path",
+            "name": "image_id",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/i64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImageResponse"
+                }
+              }
+            },
+            "description": "Image found"
+          },
+          "400": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Invalid image identifier"
+          },
+          "401": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid credentials"
+          },
+          "404": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unknown or unreadable image"
+          },
+          "500": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unexpected error"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ],
+        "summary": "Fetch a typed image",
+        "tags": [
+          "asset"
+        ]
+      }
+    },
+    "/asset/image/{image_id}/content": {
+      "get": {
+        "description": "The image is authorized through the resource that owns it before any byte is\nread; an unreadable image is `404 Not Found` with no content (`API-044`).",
+        "operationId": "get_image_content",
+        "parameters": [
+          {
+            "description": "Identifier of the image whose content is read",
+            "in": "path",
+            "name": "image_id",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/i64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "items": {
+                    "format": "int32",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Stored bytes of the image"
+          },
+          "400": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Invalid image identifier"
+          },
+          "401": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid credentials"
+          },
+          "404": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unknown or unreadable image"
+          },
+          "500": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unexpected error"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ],
+        "summary": "Read the content of a typed image",
+        "tags": [
+          "asset"
+        ]
+      }
+    },
+    "/asset/image/{image_id}/file": {
+      "get": {
+        "description": "The alias authorizes exactly like the image representation and then answers\n`303 See Other`, so the client continues under the canonical file resource\n(`design.md`, \"One file resource, typed views over it\").",
+        "operationId": "get_image_file",
+        "parameters": [
+          {
+            "description": "Identifier of the image whose file is addressed",
+            "in": "path",
+            "name": "image_id",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/i64"
+            }
+          }
+        ],
+        "responses": {
+          "303": {
+            "description": "Redirect to the stored file resource",
+            "headers": {
+              "Location": {
+                "description": "Canonical URI of the stored file",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Invalid image identifier"
+          },
+          "401": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid credentials"
+          },
+          "404": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unknown or unreadable image"
+          },
+          "500": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unexpected error"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ],
+        "summary": "Redirect an image to its stored file",
+        "tags": [
+          "asset"
+        ]
+      }
+    },
     "/asset/upload": {
       "post": {
         "description": "Validates the declared content type, file name, size and integrity hash,\ncreates the upload session and its staging file, and returns the session\nidentifier, the fixed chunk size and the expiry instant.",

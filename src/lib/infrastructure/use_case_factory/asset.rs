@@ -3,10 +3,16 @@ use std::sync::Arc;
 use crate::application::port::asset_use_case_factory::AssetUseCaseFactory;
 use crate::application::port::begin_upload::BeginUploadUseCase;
 use crate::application::port::complete_upload::CompleteUploadUseCase;
+use crate::application::port::get_asset_content::GetAssetContentUseCase;
+use crate::application::port::get_file::GetFileUseCase;
+use crate::application::port::get_image::GetImageUseCase;
 use crate::application::port::get_upload::GetUploadUseCase;
 use crate::application::port::write_upload_chunk::WriteUploadChunkUseCase;
 use crate::application::use_case::begin_upload::BeginUpload;
 use crate::application::use_case::complete_upload::CompleteUpload;
+use crate::application::use_case::get_asset_content::GetAssetContent;
+use crate::application::use_case::get_file::GetFile;
+use crate::application::use_case::get_image::GetImage;
 use crate::application::use_case::get_upload::GetUpload;
 use crate::application::use_case::write_upload_chunk::WriteUploadChunk;
 use crate::domain::model::configuration::Configuration;
@@ -73,6 +79,21 @@ impl AssetUseCaseFactory for RuntimeAssetUseCaseFactory {
             ))),
             live.asset().upload().expiry_seconds(),
         ))
+    }
+
+    fn get_asset_content(&self) -> Arc<dyn GetAssetContentUseCase> {
+        Arc::new(GetAssetContent::new(
+            Arc::clone(&self.unit_of_work_factory),
+            Self::file_storage(),
+        ))
+    }
+
+    fn get_file(&self) -> Arc<dyn GetFileUseCase> {
+        Arc::new(GetFile::new(Arc::clone(&self.unit_of_work_factory)))
+    }
+
+    fn get_image(&self) -> Arc<dyn GetImageUseCase> {
+        Arc::new(GetImage::new(Arc::clone(&self.unit_of_work_factory)))
     }
 
     fn get_upload(&self) -> Arc<dyn GetUploadUseCase> {
