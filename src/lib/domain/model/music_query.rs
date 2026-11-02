@@ -20,6 +20,16 @@ pub enum MusicKind {
 }
 
 impl MusicKind {
+    /// Render the kind as its wire name (`album`, `release`, `recording`).
+    #[must_use]
+    pub fn as_wire(self) -> &'static str {
+        match self {
+            Self::Album => "album",
+            Self::Recording => "recording",
+            Self::Release => "release",
+        }
+    }
+
     /// Parse the kind a query or a route names (`album`, `release`,
     /// `recording`).
     ///

@@ -1,6 +1,6 @@
 use axum::extract::Path;
 use axum::extract::State;
-use axum::response::Json;
+use axum::response::Response;
 use serde::Serialize;
 use tracing::warn;
 use utoipa::ToSchema;
@@ -17,6 +17,8 @@ use crate::domain::model::music_query::MusicKind;
 use crate::infrastructure::inbound::rest::api_error::ApiError;
 use crate::infrastructure::inbound::rest::api_error::ErrorBody;
 use crate::infrastructure::inbound::rest::app_state::AppState;
+use crate::infrastructure::inbound::rest::hal::SelfLinks;
+use crate::infrastructure::inbound::rest::hal::hal_json;
 use crate::infrastructure::inbound::rest::handler::library::ArtistCreditResponse;
 use crate::infrastructure::inbound::rest::handler::library::MusicMediumResponse;
 use crate::infrastructure::inbound::rest::handler::library::MusicReferenceResponse;
@@ -169,23 +171,28 @@ impl From<&MusicMetadata> for MusicMetadataResponse {
 ///
 /// `available` tells a configured provider apart from no provider at all, so a
 /// client does not read an unconfigured server as a provider that could not
-/// resolve the reference. Artwork is absent: this surface publishes candidate
+/// resolve the reference. The `self` link addresses the resolve view the
+/// representation reports. Artwork is absent: this surface publishes candidate
 /// metadata, and collecting group artwork is a separate capability.
 #[derive(Debug, Serialize, ToSchema)]
 #[non_exhaustive]
 pub struct MusicMetadataDocumentResponse {
     /// Whether a music metadata provider is configured.
     pub available: bool,
+    /// Link to the resolve view the representation reports.
+    #[serde(rename = "_links")]
+    pub links: SelfLinks,
     /// The resolved document, absent when no provider is configured.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub metadata: Option<MusicMetadataResponse>,
 }
 
 impl MusicMetadataDocumentResponse {
-    /// Build the representation of a resolved document.
+    /// Build the representation of a resolved document over `href`.
     #[must_use]
-    pub fn new(metadata: &MusicMetadata) -> Self {
+    pub fn new(href: &str, metadata: &MusicMetadata) -> Self {
         Self {
+            links: SelfLinks::new(href),
             available: true,
             metadata: Some(MusicMetadataResponse::from(metadata)),
         }
@@ -193,8 +200,9 @@ impl MusicMetadataDocumentResponse {
 
     /// Build the representation of a surface with no configured provider.
     #[must_use]
-    pub fn unavailable() -> Self {
+    pub fn unavailable(href: &str) -> Self {
         Self {
+            links: SelfLinks::new(href),
             available: false,
             metadata: None,
         }
@@ -222,7 +230,7 @@ impl MusicMetadataDocumentResponse {
         (
             status = OK,
             body = MusicMetadataDocumentResponse,
-            content_type = "application/json",
+            content_type = "application/hal+json",
             description = "The provider-independent metadata document"
         ),
         (
@@ -259,7 +267,7 @@ pub async fn get_music_identify_metadata(
     Path((provider_value, kind_value, reference_value)): Path<(String, String, String)>,
     caller: AuthenticatedUser,
     State(state): State<AppState>,
-) -> Result<Json<MusicMetadataDocumentResponse>, ApiError> {
+) -> Result<Response, ApiError> {
     let provider = ProviderId::parse(&provider_value)
         .filter(|provider| provider.serves_music())
         .ok_or_else(|| {
@@ -273,6 +281,11 @@ pub async fn get_music_identify_metadata(
             ApiError::NotFound("the music metadata provider is not configured".to_owned())
         })?;
     let kind = MusicKind::parse(&kind_value).ok_or_else(|| ApiError::reject_enum("kind"))?;
+    let href = format!(
+        "/api/v1/library/music/identify/{}/{}/{reference_value}",
+        provider.as_str(),
+        kind.as_wire()
+    );
     let reference = ExternalRef::new(provider, reference_value);
     let target = match kind {
         MusicKind::Album => MusicTarget::Album(reference),
@@ -286,14 +299,15 @@ pub async fn get_music_identify_metadata(
         .execute(ResolveMusicMetadataCommand::new(caller.user_id(), target))
         .await;
     match result {
-        Ok(Some(response)) => Ok(Json(MusicMetadataDocumentResponse::new(
+        Ok(Some(response)) => Ok(hal_json(MusicMetadataDocumentResponse::new(
+            &href,
             response.metadata(),
         ))),
         Ok(None) => Err(ApiError::NotFound(
             "the music metadata provider does not know the reference".to_owned(),
         )),
         Err(ResolveMusicMetadataError::Unavailable) => {
-            Ok(Json(MusicMetadataDocumentResponse::unavailable()))
+            Ok(hal_json(MusicMetadataDocumentResponse::unavailable(&href)))
         }
         Err(error) => Err(ApiError::from(error)),
     }
@@ -415,10 +429,15 @@ mod tests {
 
         // Assert
         assert_eq!(status, StatusCode::OK);
-        assert_eq!(content_type.as_deref(), Some("application/json"));
+        assert_eq!(content_type.as_deref(), Some("application/hal+json"));
         assert_eq!(
             payload,
             json!({
+                "_links": {
+                    "self": {
+                        "href": format!("/api/v1/library/music/identify/musicbrainz/album/{REFERENCE}")
+                    }
+                },
                 "available": true,
                 "metadata": {
                     "kind": "album",
@@ -457,7 +476,17 @@ mod tests {
 
         // Assert
         assert_eq!(status, StatusCode::OK);
-        assert_eq!(payload, json!({ "available": false }));
+        assert_eq!(
+            payload,
+            json!({
+                "_links": {
+                    "self": {
+                        "href": format!("/api/v1/library/music/identify/musicbrainz/album/{REFERENCE}")
+                    }
+                },
+                "available": false
+            })
+        );
         Ok(())
     }
 

@@ -113,11 +113,6 @@ rules:
     non_hal_bodies:
       - HealthResponse
       - LoginResponse
-      # Music identification answers with what an external provider reports,
-      # not with an addressable catalogue resource, so the two documents are
-      # probes and carry no `_links.self`.
-      - MusicCandidateListResponse
-      - MusicMetadataDocumentResponse
       # The bytes of an asset content response are binary, not a
       # representation: the stored media type is served whole.
       - Vec

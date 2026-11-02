@@ -1050,8 +1050,12 @@
         "type": "object"
       },
       "MusicCandidateListResponse": {
-        "description": "Candidates the configured provider reported, in its order.\n\n`available` tells a configured provider apart from no provider at all: an\nempty `items` list is a search that ran and found nothing, while\n`available: false` is a surface the server cannot offer.",
+        "description": "Candidates the configured provider reported, in its order.\n\n`available` tells a configured provider apart from no provider at all: an\nempty `items` list is a search that ran and found nothing, while\n`available: false` is a surface the server cannot offer. The `self` link\naddresses the search view the representation reports.",
         "properties": {
+          "_links": {
+            "$ref": "#/components/schemas/SelfLinks",
+            "description": "Link to the search view the representation reports."
+          },
           "available": {
             "description": "Whether a music metadata provider is configured.",
             "type": "boolean"
@@ -1066,7 +1070,8 @@
         },
         "required": [
           "available",
-          "items"
+          "items",
+          "_links"
         ],
         "type": "object"
       },
@@ -1299,8 +1304,12 @@
         "type": "object"
       },
       "MusicMetadataDocumentResponse": {
-        "description": "The metadata document of one identified work, when one is available.\n\n`available` tells a configured provider apart from no provider at all, so a\nclient does not read an unconfigured server as a provider that could not\nresolve the reference. Artwork is absent: this surface publishes candidate\nmetadata, and collecting group artwork is a separate capability.",
+        "description": "The metadata document of one identified work, when one is available.\n\n`available` tells a configured provider apart from no provider at all, so a\nclient does not read an unconfigured server as a provider that could not\nresolve the reference. The `self` link addresses the resolve view the\nrepresentation reports. Artwork is absent: this surface publishes candidate\nmetadata, and collecting group artwork is a separate capability.",
         "properties": {
+          "_links": {
+            "$ref": "#/components/schemas/SelfLinks",
+            "description": "Link to the resolve view the representation reports."
+          },
           "available": {
             "description": "Whether a music metadata provider is configured.",
             "type": "boolean"
@@ -1318,7 +1327,8 @@
           }
         },
         "required": [
-          "available"
+          "available",
+          "_links"
         ],
         "type": "object"
       },
@@ -5583,7 +5593,7 @@
         "responses": {
           "200": {
             "content": {
-              "application/json": {
+              "application/hal+json": {
                 "schema": {
                   "$ref": "#/components/schemas/MusicCandidateListResponse"
                 }
@@ -5689,7 +5699,7 @@
         "responses": {
           "200": {
             "content": {
-              "application/json": {
+              "application/hal+json": {
                 "schema": {
                   "$ref": "#/components/schemas/MusicMetadataDocumentResponse"
                 }

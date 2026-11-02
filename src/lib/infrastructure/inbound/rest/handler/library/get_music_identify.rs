@@ -1,7 +1,7 @@
 use axum::extract::Query;
 use axum::extract::State;
 use axum::extract::rejection::QueryRejection;
-use axum::response::Json;
+use axum::response::Response;
 use serde::Deserialize;
 use serde::Serialize;
 use tracing::warn;
@@ -16,6 +16,8 @@ use crate::domain::model::music_query::MusicQuery;
 use crate::infrastructure::inbound::rest::api_error::ApiError;
 use crate::infrastructure::inbound::rest::api_error::ErrorBody;
 use crate::infrastructure::inbound::rest::app_state::AppState;
+use crate::infrastructure::inbound::rest::hal::SelfLinks;
+use crate::infrastructure::inbound::rest::hal::hal_json;
 use crate::infrastructure::inbound::rest::handler::library::MusicMediumResponse;
 use crate::infrastructure::inbound::rest::handler::library::MusicReferenceResponse;
 use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
@@ -135,7 +137,8 @@ impl From<&MusicCandidate> for MusicCandidateResponse {
 ///
 /// `available` tells a configured provider apart from no provider at all: an
 /// empty `items` list is a search that ran and found nothing, while
-/// `available: false` is a surface the server cannot offer.
+/// `available: false` is a surface the server cannot offer. The `self` link
+/// addresses the search view the representation reports.
 #[derive(Debug, Serialize, ToSchema)]
 #[non_exhaustive]
 pub struct MusicCandidateListResponse {
@@ -143,13 +146,17 @@ pub struct MusicCandidateListResponse {
     pub available: bool,
     /// Candidates the provider reported, in its order.
     pub items: Vec<MusicCandidateResponse>,
+    /// Link to the search view the representation reports.
+    #[serde(rename = "_links")]
+    pub links: SelfLinks,
 }
 
 impl MusicCandidateListResponse {
-    /// Build the representation of a completed search.
+    /// Build the representation of a completed search over `href`.
     #[must_use]
-    pub fn new(candidates: &[MusicCandidate]) -> Self {
+    pub fn new(href: &str, candidates: &[MusicCandidate]) -> Self {
         Self {
+            links: SelfLinks::new(href),
             available: true,
             items: candidates
                 .iter()
@@ -160,8 +167,9 @@ impl MusicCandidateListResponse {
 
     /// Build the representation of a surface with no configured provider.
     #[must_use]
-    pub fn unavailable() -> Self {
+    pub fn unavailable(href: &str) -> Self {
         Self {
+            links: SelfLinks::new(href),
             available: false,
             items: Vec::new(),
         }
@@ -184,7 +192,7 @@ impl MusicCandidateListResponse {
         (
             status = OK,
             body = MusicCandidateListResponse,
-            content_type = "application/json",
+            content_type = "application/hal+json",
             description = "Candidates the configured provider reported, in its order"
         ),
         (
@@ -227,7 +235,7 @@ pub async fn get_music_identify(
     raw_query: Result<Query<IdentifyMusicQuery>, QueryRejection>,
     caller: AuthenticatedUser,
     State(state): State<AppState>,
-) -> Result<Json<MusicCandidateListResponse>, ApiError> {
+) -> Result<Response, ApiError> {
     let Query(query) = raw_query.map_err(ApiError::from)?;
     let kind = MusicKind::parse(&query.kind).ok_or_else(|| ApiError::reject_enum("kind"))?;
     let music_query =
@@ -241,6 +249,9 @@ pub async fn get_music_identify(
             );
             ApiError::UnprocessableEntity("the title must not be empty".to_owned())
         })?;
+    // The representation is the answer to the search view, so its `self` link
+    // addresses the surface rather than repeating the caller's filters.
+    let href = "/api/v1/library/music/identify";
 
     let result = state
         .library_use_case_factory()
@@ -248,8 +259,13 @@ pub async fn get_music_identify(
         .execute(IdentifyMusicCommand::new(caller.user_id(), music_query))
         .await;
     match result {
-        Ok(response) => Ok(Json(MusicCandidateListResponse::new(response.candidates()))),
-        Err(IdentifyMusicError::Unavailable) => Ok(Json(MusicCandidateListResponse::unavailable())),
+        Ok(response) => Ok(hal_json(MusicCandidateListResponse::new(
+            href,
+            response.candidates(),
+        ))),
+        Err(IdentifyMusicError::Unavailable) => {
+            Ok(hal_json(MusicCandidateListResponse::unavailable(href)))
+        }
         Err(error) => Err(ApiError::from(error)),
     }
 }
@@ -364,10 +380,15 @@ mod tests {
 
         // Assert
         assert_eq!(status, StatusCode::OK);
-        assert_eq!(content_type.as_deref(), Some("application/json"));
+        assert_eq!(content_type.as_deref(), Some("application/hal+json"));
         assert_eq!(
             payload,
             json!({
+                "_links": {
+                    "self": {
+                        "href": "/api/v1/library/music/identify"
+                    }
+                },
                 "available": true,
                 "items": [{
                     "kind": "album",
@@ -428,7 +449,15 @@ mod tests {
         assert_eq!(status, StatusCode::OK);
         assert_eq!(
             payload,
-            json!({ "available": false, "items": [] }),
+            json!({
+                "_links": {
+                    "self": {
+                        "href": "/api/v1/library/music/identify"
+                    }
+                },
+                "available": false,
+                "items": []
+            }),
             "unavailable must be distinct from a search that found nothing"
         );
         Ok(())
