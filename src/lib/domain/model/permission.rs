@@ -397,13 +397,28 @@ impl Action {
         ACTIONS.into_iter().find(|action| action.as_wire() == value)
     }
 
+    /// Return whether the action is derived rather than decided directly.
+    ///
+    /// A derived action has no scope, no override and no resource kind: the
+    /// decision always delegates to the action of the resource that owns the
+    /// asset. [`Self::FileRead`] is derived from the resource owning the file
+    /// (`library.read`, `gallery.read` or `playlist.read`).
+    #[must_use]
+    pub fn is_derived(self) -> bool {
+        matches!(self, Self::FileRead)
+    }
+
     /// Return whether a caller may override the action's scope.
+    ///
+    /// A derived action is never configurable: its scope comes from the
+    /// resource that owns the asset, never from a per-user override.
     #[must_use]
     pub fn is_configurable(self) -> bool {
-        !matches!(
-            self,
-            Self::PermissionManage | Self::UploadRead | Self::UploadWrite
-        )
+        !self.is_derived()
+            && !matches!(
+                self,
+                Self::PermissionManage | Self::UploadRead | Self::UploadWrite
+            )
     }
 
     /// Return the read action guarding `self`, if any.
@@ -439,11 +454,14 @@ impl Action {
                 ResourceKind::Series,
                 ResourceKind::MusicAlbum,
             ],
+            // A derived action has no resource kind: the owning resource's
+            // read action decides it instead.
             Self::CredentialPatch
+            | Self::FileRead
             | Self::PermissionManage
             | Self::UserCreate
             | Self::UserCreateAdmin => &[],
-            Self::FileRead | Self::FileUse => &[ResourceKind::File],
+            Self::FileUse => &[ResourceKind::File],
             Self::GalleryManage | Self::GalleryModerate | Self::GalleryRead => {
                 &[ResourceKind::Gallery]
             }
@@ -464,16 +482,23 @@ impl Action {
             | Self::GalleryRead
             | Self::PlaylistModerate
             | Self::PlaylistRead => Scope::PublicOrOwned,
+            // A derived action has no role preset: the owning resource's read
+            // action decides it instead.
             Self::CredentialPatch
+            | Self::FileRead
             | Self::PermissionManage
             | Self::UserCreateAdmin
             | Self::UserRoleChange => Scope::None,
-            Self::FileRead
-            | Self::FileUse
-            | Self::GalleryManage
-            | Self::PlaylistManage
-            | Self::UploadRead
-            | Self::UploadWrite => Scope::Owned,
+            Self::FileUse => {
+                if role == Role::Admin {
+                    Scope::All
+                } else {
+                    Scope::Owned
+                }
+            }
+            Self::GalleryManage | Self::PlaylistManage | Self::UploadRead | Self::UploadWrite => {
+                Scope::Owned
+            }
             Self::LibraryManage | Self::UserCreate | Self::UserRead | Self::UserUpdate => {
                 if role == Role::Admin {
                     Scope::All
@@ -515,6 +540,7 @@ impl Action {
         match self {
             Self::UploadRead | Self::UploadWrite => &OWNER_SCOPES,
             Self::LibraryManage => &LIBRARY_MANAGE_SCOPES,
+            Self::FileRead => &[],
             Self::CredentialPatch
             | Self::PermissionManage
             | Self::UserCreate
@@ -523,7 +549,6 @@ impl Action {
             | Self::UserRoleChange
             | Self::UserUpdate => &GLOBAL_SCOPES,
             Self::LibraryRead
-            | Self::FileRead
             | Self::FileUse
             | Self::GalleryManage
             | Self::GalleryModerate

@@ -247,11 +247,18 @@ mod tests {
         // Assert
         assert_eq!(response.user_id(), 5);
         assert_eq!(response.role(), Role::Standard);
-        assert_eq!(response.defaults().len(), 16);
+        assert_eq!(response.defaults().len(), 15);
         assert!(response.overrides().is_empty());
         assert_default(&response, Action::GalleryRead, &Scope::PublicOrOwned);
         assert_default(&response, Action::LibraryManage, &Scope::None);
         assert_default(&response, Action::UserCreate, &Scope::None);
+        assert!(
+            response
+                .defaults()
+                .iter()
+                .all(|preset| preset.action() != Action::FileRead),
+            "a derived action has no configurable default"
+        );
         assert!(harness.committed.load(Ordering::SeqCst));
         Ok(())
     }

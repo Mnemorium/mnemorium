@@ -322,7 +322,14 @@ mod tests {
         let response = use_case.execute(command).await?;
 
         // Assert
-        assert_eq!(response.defaults().len(), 16);
+        assert_eq!(response.defaults().len(), 15);
+        assert!(
+            response
+                .defaults()
+                .iter()
+                .all(|preset| preset.action() != Action::FileRead),
+            "a derived action has no configurable default"
+        );
         assert!(response.overrides().iter().any(|permission| {
             permission.action() == Action::GalleryRead && permission.scope() == &Scope::All
         }));

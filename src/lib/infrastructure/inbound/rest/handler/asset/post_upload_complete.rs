@@ -5,6 +5,7 @@ use axum::http::HeaderValue;
 use axum::http::header;
 use axum::response::IntoResponse as _;
 use axum::response::Response;
+use serde::Deserialize;
 use serde::Serialize;
 use utoipa::ToSchema;
 
@@ -16,34 +17,55 @@ use crate::infrastructure::inbound::rest::api_error::ApiError;
 use crate::infrastructure::inbound::rest::api_error::ErrorBody;
 use crate::infrastructure::inbound::rest::app_state::AppState;
 use crate::infrastructure::inbound::rest::hal::HAL_CONTENT_TYPE;
-use crate::infrastructure::inbound::rest::hal::SelfLinks;
+use crate::infrastructure::inbound::rest::hal::Link;
+use crate::infrastructure::inbound::rest::handler::asset::asset_file_href;
 use crate::infrastructure::inbound::rest::handler::asset::upload_self_href;
 use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
+
+/// HAL links exposed by a completed upload.
+///
+/// The `self` link addresses the upload session and `file` the file the
+/// completion finalized, so a client follows `upload -> file -> image` without
+/// holding a raw identifier (`API-034`, `API-037`).
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[non_exhaustive]
+pub struct UploadCompleteLinks {
+    /// Link to the file finalized by the completion.
+    pub file: Link,
+    /// Link to the completed upload session.
+    #[serde(rename = "self")]
+    pub self_link: Link,
+}
+
+impl UploadCompleteLinks {
+    /// Build the links of the upload session identified by `upload_id`.
+    #[must_use]
+    pub fn for_upload(upload_id: NumericID, file_id: NumericID) -> Self {
+        Self {
+            file: Link::new(&asset_file_href(file_id)),
+            self_link: Link::new(&upload_self_href(upload_id)),
+        }
+    }
+}
 
 /// File finalized by a successful completion.
 #[derive(Debug, Serialize, ToSchema)]
 #[non_exhaustive]
 pub struct PostUploadCompleteResponse {
-    /// Unique identifier of the stored file.
-    pub file_id: NumericID,
     /// Whether the upload session has been finished.
     pub is_finished: bool,
-    /// Link to the completed upload session.
+    /// Links to the completed upload session and the finalized file.
     #[serde(rename = "_links")]
-    pub links: SelfLinks,
+    pub links: UploadCompleteLinks,
 }
-
-// TODO(file-link): add a `file` link to this response, and to the upload-session
-// responses, once a file endpoint exists to address the stored file.
 
 impl PostUploadCompleteResponse {
     /// Map the completed upload onto its HTTP representation.
     #[must_use]
     pub fn new(upload_id: NumericID, response: &CompleteUploadResponseData) -> Self {
         Self {
-            file_id: response.file_id(),
             is_finished: response.is_finished(),
-            links: SelfLinks::new(&upload_self_href(upload_id)),
+            links: UploadCompleteLinks::for_upload(upload_id, response.file_id()),
         }
     }
 }
@@ -233,7 +255,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn post_upload_complete_valid_request_returns_file_id() -> Result<(), Box<dyn Error>> {
+    async fn post_upload_complete_valid_request_links_the_file() -> Result<(), Box<dyn Error>> {
         // Arrange
         let expected_command = CompleteUploadCommand::new(7, 3);
         let mut use_case = MockCompleteUploadUseCase::new();
@@ -260,9 +282,11 @@ mod tests {
         assert_eq!(
             payload,
             json!({
-                "file_id": 11i64,
                 "is_finished": true,
-                "_links": { "self": { "href": "/api/v1/asset/upload/7" } },
+                "_links": {
+                    "file": { "href": "/api/v1/asset/file/11" },
+                    "self": { "href": "/api/v1/asset/upload/7" },
+                },
             })
         );
         Ok(())

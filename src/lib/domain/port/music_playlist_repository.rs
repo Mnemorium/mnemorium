@@ -10,6 +10,8 @@ use crate::domain::port::error::RepositoryError;
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct MusicPlaylistFilter {
+    /// Filter on the identifier of the image holding the playlist's artwork.
+    pub cover_image_id: Option<NumericID>,
     /// Filter on the playlist identifier.
     pub id: Option<NumericID>,
     /// Filter on whether the playlist is public.
