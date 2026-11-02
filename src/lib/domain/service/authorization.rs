@@ -561,4 +561,72 @@ mod tests {
         assert!(album_decision.is_allowed());
         Ok(())
     }
+
+    #[test]
+    fn library_manage_preset_is_admin_only() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let album = sample_album(7, Vec::new())?;
+        let standard = user(9, Role::Standard)?;
+        let admin = user(4, Role::Admin)?;
+        let root = user(0, Role::Admin)?;
+
+        // Act
+        let standard_decision =
+            Authorization::decide(&standard, &[], Action::LibraryManage, &album);
+        let admin_decision = Authorization::decide(&admin, &[], Action::LibraryManage, &album);
+        let root_decision = Authorization::decide(&root, &[], Action::LibraryManage, &album);
+
+        // Assert
+        assert_eq!(
+            Action::LibraryManage.role_scope(Role::Standard),
+            Scope::None
+        );
+        assert_eq!(Action::LibraryManage.role_scope(Role::Admin), Scope::All);
+        assert!(!standard_decision.is_allowed());
+        assert!(admin_decision.is_allowed());
+        assert!(root_decision.is_allowed());
+        Ok(())
+    }
+
+    #[test]
+    fn library_manage_denial_reveals_a_readable_item_and_conceals_an_unreadable_one()
+    -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let caller = user(9, Role::Standard)?;
+        let album = sample_album(7, Vec::new())?;
+        let hidden = [override_scope(9, Action::LibraryRead, Scope::None)?];
+
+        // Act
+        let readable = Authorization::decide(&caller, &[], Action::LibraryManage, &album);
+        let unreadable = Authorization::decide(&caller, &hidden, Action::LibraryManage, &album);
+
+        // Assert
+        assert!(matches!(readable, Decision::Deny(denial) if !denial.conceals()));
+        assert!(matches!(unreadable, Decision::Deny(denial) if denial.conceals()));
+        Ok(())
+    }
+
+    #[test]
+    fn library_manage_listed_scope_covers_exactly_the_named_album() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let caller = user(9, Role::Admin)?;
+        let named = sample_album(7, Vec::new())?;
+        let other = sample_album(8, Vec::new())?;
+        let permissions = [override_scope(
+            9,
+            Action::LibraryManage,
+            Scope::Listed(vec![ResourceRef::new(ResourceKind::MusicAlbum, 7)]),
+        )?];
+
+        // Act
+        let named_decision =
+            Authorization::decide(&caller, &permissions, Action::LibraryManage, &named);
+        let other_decision =
+            Authorization::decide(&caller, &permissions, Action::LibraryManage, &other);
+
+        // Assert
+        assert!(named_decision.is_allowed());
+        assert!(matches!(other_decision, Decision::Deny(denial) if !denial.conceals()));
+        Ok(())
+    }
 }

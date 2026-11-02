@@ -4,6 +4,7 @@ from collections.abc import Callable
 import requests
 from conftest import SECRET_PASSWORD
 
+_LIBRARY_MANAGE = "library.manage"
 _LIBRARY_READ = "library.read"
 _GALLERY_READ = "gallery.read"
 _PLAYLIST_READ = "playlist.read"
@@ -48,6 +49,7 @@ def test_uc024_permission_round_trip(
         assert body["role"] == _STANDARD
         assert body["_links"]["self"]["href"] == f"/api/v1/user/{user_id}/permission"
         assert _default(body, _GALLERY_READ)["scope"] == "PUBLIC_OR_OWNED"
+        assert _default(body, _LIBRARY_MANAGE)["scope"] == "NONE"
         assert _override(body, _GALLERY_READ) is None
 
         replaced = put_permission(
@@ -68,6 +70,24 @@ def test_uc024_permission_round_trip(
         assert _override(after.json(), _GALLERY_READ) is None
     finally:
         _reset(put_permission, root_admin_token, user_id)
+
+
+def test_uc024_library_manage_rejects_an_owner_scope(
+    root_admin_token: str,
+    standard_user_token: str,
+    me: Callable[[str], requests.Response],
+    put_permission: Callable[[str, int, list[dict]], requests.Response],
+    assert_error_body: Callable[[requests.Response, int], None],
+) -> None:
+    user_id = _user_id(me, standard_user_token)
+
+    for scope in ("OWNED", "PUBLIC_OR_OWNED"):
+        refused = put_permission(
+            root_admin_token,
+            user_id,
+            [{"action": _LIBRARY_MANAGE, "scope": scope, "resources": []}],
+        )
+        assert_error_body(refused, 422)
 
 
 def test_uc024_non_root_cannot_administer_permissions(
