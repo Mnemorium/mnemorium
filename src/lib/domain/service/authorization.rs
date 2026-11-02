@@ -167,6 +167,31 @@ impl Authorization {
         }
     }
 
+    /// Decide whether `caller` may read a library surface that addresses no
+    /// single aggregate.
+    ///
+    /// Music identification reads the provider rather than the catalogue, so
+    /// there is no album to scope the decision to. The rule is the one shared
+    /// catalogue artwork follows: a caller the library is closed to entirely
+    /// (`NONE` or `OWNED`) is denied, and every other scope — including
+    /// `LISTED` — reaches the surface. The denial stays concealed because it
+    /// guards a read.
+    #[must_use]
+    pub fn decide_library_surface(caller: &User, permissions: &[Permission]) -> Decision {
+        if caller.is_root_admin()
+            || !matches!(
+                Self::effective_scope(caller, permissions, Action::LibraryRead),
+                Scope::None | Scope::Owned
+            )
+        {
+            return Decision::Allow;
+        }
+        Decision::Deny(Denial {
+            action: Action::LibraryRead,
+            conceal: true,
+        })
+    }
+
     /// Decide whether `caller` may read an asset with no owning resource.
     ///
     /// An asset the library does not own and no gallery or playlist references
@@ -673,6 +698,47 @@ mod tests {
         assert!(!movie_decision.is_allowed());
         assert!(!series_decision.is_allowed());
         assert!(album_decision.is_allowed());
+        Ok(())
+    }
+
+    #[test]
+    fn library_surface_denies_only_a_caller_closed_out_of_the_library() -> Result<(), Box<dyn Error>>
+    {
+        // Arrange: the role preset and a listed override both reach the
+        // resource-less surface; an explicit NONE closes the library.
+        let caller = user(9, Role::Standard)?;
+        let listed = [override_scope(
+            9,
+            Action::LibraryRead,
+            Scope::Listed(vec![ResourceRef::new(ResourceKind::MusicAlbum, 7)]),
+        )?];
+        let closed = [override_scope(9, Action::LibraryRead, Scope::None)?];
+
+        // Act
+        let preset_decision = Authorization::decide_library_surface(&caller, &[]);
+        let listed_decision = Authorization::decide_library_surface(&caller, &listed);
+        let closed_decision = Authorization::decide_library_surface(&caller, &closed);
+
+        // Assert
+        assert!(preset_decision.is_allowed());
+        assert!(listed_decision.is_allowed());
+        assert!(matches!(
+            closed_decision,
+            Decision::Deny(denial) if denial.conceals()
+        ));
+        Ok(())
+    }
+
+    #[test]
+    fn library_surface_allows_the_root_admin_without_an_override() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let root = user(0, Role::Admin)?;
+
+        // Act
+        let decision = Authorization::decide_library_surface(&root, &[]);
+
+        // Assert
+        assert!(decision.is_allowed());
         Ok(())
     }
 

@@ -15,8 +15,8 @@ use crate::domain::model::music_query::MusicKind;
 pub enum MusicCandidate {
     /// The abstract album, independent of any one edition.
     Album {
-        /// Artist the provider reports, when it reports one.
-        artist: Option<String>,
+        /// Group the provider reports, when it reports one.
+        group: Option<String>,
         /// Opaque reference the provider issued for the album.
         reference: ExternalRef,
         /// Title the provider reports.
@@ -26,8 +26,8 @@ pub enum MusicCandidate {
     },
     /// One performance, independent of the release it appears on.
     Recording {
-        /// Artist the provider reports, when it reports one.
-        artist: Option<String>,
+        /// Group the provider reports, when it reports one.
+        group: Option<String>,
         /// Opaque reference the provider issued for the recording.
         reference: ExternalRef,
         /// Title the provider reports.
@@ -40,8 +40,8 @@ pub enum MusicCandidate {
         /// Reference to the album the release belongs to, when the provider
         /// reports one.
         album: Option<ExternalRef>,
-        /// Artist the provider reports, when it reports one.
-        artist: Option<String>,
+        /// Group the provider reports, when it reports one.
+        group: Option<String>,
         /// Mediums of the release, in the provider's order.
         mediums: Vec<MediumSummary>,
         /// Opaque reference the provider issued for the release.
@@ -70,17 +70,17 @@ impl MusicCandidate {
         }
     }
 
-    /// Return the artist the provider reports, when it reports one.
+    /// Return the group the provider reports, when it reports one.
     #[must_use]
     #[expect(
         clippy::pattern_type_mismatch,
         reason = "the arms read fields out of a non-Copy enum matched by reference"
     )]
-    pub fn artist(&self) -> Option<&str> {
+    pub fn group(&self) -> Option<&str> {
         match self {
-            Self::Album { artist, .. }
-            | Self::Recording { artist, .. }
-            | Self::Release { artist, .. } => artist.as_deref(),
+            Self::Album { group, .. }
+            | Self::Recording { group, .. }
+            | Self::Release { group, .. } => group.as_deref(),
         }
     }
 

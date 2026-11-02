@@ -17,6 +17,7 @@ use crate::application::port::get_playlist_track::GetPlaylistTrackUseCase;
 use crate::application::port::get_series::GetSeriesUseCase;
 use crate::application::port::get_series_episode::GetSeriesEpisodeUseCase;
 use crate::application::port::get_series_season::GetSeriesSeasonUseCase;
+use crate::application::port::identify_music::IdentifyMusicUseCase;
 use crate::application::port::identify_video::IdentifyVideoUseCase;
 use crate::application::port::ingest_media::IngestMediaUseCase;
 use crate::application::port::list_album_tracks::ListAlbumTracksUseCase;
@@ -28,6 +29,7 @@ use crate::application::port::list_series::ListSeriesUseCase;
 use crate::application::port::list_series_episodes::ListSeriesEpisodesUseCase;
 use crate::application::port::remove_playlist_track::RemovePlaylistTrackUseCase;
 use crate::application::port::reorder_playlist_tracks::ReorderPlaylistTracksUseCase;
+use crate::application::port::resolve_music_metadata::ResolveMusicMetadataUseCase;
 use crate::application::port::update_playlist::UpdatePlaylistUseCase;
 
 /// Builds the use cases of the Library bounded context on demand.
@@ -87,6 +89,9 @@ pub trait LibraryUseCaseFactory: Send + Sync {
     /// Build the use case fetching one season of a show.
     fn get_series_season(&self) -> Arc<dyn GetSeriesSeasonUseCase>;
 
+    /// Build the internal use case identifying music from a query.
+    fn identify_music(&self) -> Arc<dyn IdentifyMusicUseCase>;
+
     /// Build the internal use case identifying a video from its name.
     fn identify_video(&self) -> Arc<dyn IdentifyVideoUseCase>;
 
@@ -120,6 +125,9 @@ pub trait LibraryUseCaseFactory: Send + Sync {
 
     /// Build the use case reordering the tracks of a playlist.
     fn reorder_playlist_tracks(&self) -> Arc<dyn ReorderPlaylistTracksUseCase>;
+
+    /// Build the internal use case resolving one music target's metadata.
+    fn resolve_music_metadata(&self) -> Arc<dyn ResolveMusicMetadataUseCase>;
 
     /// Build the use case updating a playlist.
     fn update_playlist(&self) -> Arc<dyn UpdatePlaylistUseCase>;

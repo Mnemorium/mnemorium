@@ -13,6 +13,8 @@ pub mod get_gallery_item_list;
 pub mod get_gallery_list;
 pub mod get_movie;
 pub mod get_movie_list;
+pub mod get_music_identify;
+pub mod get_music_identify_metadata;
 pub mod get_playlist;
 pub mod get_playlist_list;
 pub mod get_playlist_track;
@@ -61,6 +63,7 @@ use crate::application::port::get_series_episode::GetSeriesEpisodeError;
 use crate::application::port::get_series_episode::GetSeriesEpisodeResponse;
 use crate::application::port::get_series_season::GetSeriesSeasonError;
 use crate::application::port::get_series_season::GetSeriesSeasonResponse;
+use crate::application::port::identify_music::IdentifyMusicError;
 use crate::application::port::list_album_tracks::ListAlbumTracksError;
 use crate::application::port::list_album_tracks::ListAlbumTracksItem;
 use crate::application::port::list_albums::ListAlbumsError;
@@ -76,11 +79,16 @@ use crate::application::port::list_series_episodes::ListSeriesEpisodesError;
 use crate::application::port::list_series_episodes::ListSeriesEpisodesItem;
 use crate::application::port::remove_playlist_track::RemovePlaylistTrackError;
 use crate::application::port::reorder_playlist_tracks::ReorderPlaylistTracksError;
+use crate::application::port::resolve_music_metadata::ResolveMusicMetadataError;
 use crate::application::port::update_playlist::UpdatePlaylistError;
 use crate::application::port::video_summary::VideoSummary;
 use crate::domain::alias::NumericID;
 use crate::domain::model::gallery_item::GalleryItemMedia;
+use crate::domain::model::media_candidate::ExternalRef;
 use crate::domain::model::music_album::ProductionType;
+use crate::domain::model::music_metadata::ArtistCredit;
+use crate::domain::model::music_metadata::MediumFormat;
+use crate::domain::model::music_metadata::MediumSummary;
 use crate::domain::model::music_playlist::MusicPlaylist;
 use crate::domain::model::music_recording::MusicRecording;
 use crate::domain::model::video::ScanType;
@@ -106,6 +114,8 @@ use crate::infrastructure::inbound::rest::handler::library::get_gallery_list::ge
 use crate::infrastructure::inbound::rest::handler::library::get_movie::get_movie;
 use crate::infrastructure::inbound::rest::handler::library::get_movie_list::ListMoviesQuery;
 use crate::infrastructure::inbound::rest::handler::library::get_movie_list::get_movie_list;
+use crate::infrastructure::inbound::rest::handler::library::get_music_identify::get_music_identify;
+use crate::infrastructure::inbound::rest::handler::library::get_music_identify_metadata::get_music_identify_metadata;
 use crate::infrastructure::inbound::rest::handler::library::get_playlist::get_playlist;
 use crate::infrastructure::inbound::rest::handler::library::get_playlist_list::ListPlaylistsQuery;
 use crate::infrastructure::inbound::rest::handler::library::get_playlist_list::get_playlist_list;
@@ -749,6 +759,83 @@ impl From<GetAlbumTrackResponse> for TrackResponse {
             medium_index: response.medium_index(),
             name: response.name().map(str::to_owned),
             recording_id: response.recording_id(),
+        }
+    }
+}
+
+/// One name a provider credits for an album, a release or a recording.
+#[derive(Debug, Serialize, ToSchema)]
+#[non_exhaustive]
+pub struct ArtistCreditResponse {
+    /// Phrase the provider places after the name, when it reports one.
+    pub join_phrase: Option<String>,
+    /// Name the provider credits.
+    pub name: String,
+}
+
+impl ArtistCreditResponse {
+    /// Build the representation of an artist credit.
+    #[must_use]
+    pub fn new(credit: &ArtistCredit) -> Self {
+        Self {
+            join_phrase: credit.join_phrase().map(str::to_owned),
+            name: credit.name().to_owned(),
+        }
+    }
+}
+
+/// Opaque reference to one item at a metadata provider.
+///
+/// The reference is provider-tagged: an identifier one provider issued means
+/// nothing to another, so every reference names the provider that owns it.
+#[derive(Debug, Serialize, ToSchema)]
+#[non_exhaustive]
+pub struct MusicReferenceResponse {
+    /// Identifier the provider issued.
+    pub id: String,
+    /// Provider that issued the identifier (`musicbrainz`).
+    pub provider: String,
+}
+
+impl MusicReferenceResponse {
+    /// Build the representation of an external reference.
+    #[must_use]
+    pub fn new(reference: &ExternalRef) -> Self {
+        Self {
+            id: reference.id().to_owned(),
+            provider: reference.provider().as_str().to_owned(),
+        }
+    }
+}
+
+/// One medium of an identified release.
+#[derive(Debug, Serialize, ToSchema)]
+#[non_exhaustive]
+pub struct MusicMediumResponse {
+    /// Format the provider reports (`CD`, or the provider's own name for it).
+    pub format: String,
+    /// Album-scoped position of the medium, starting at one.
+    pub index: u32,
+    /// Number of tracks the medium carries.
+    pub track_count: u32,
+}
+
+impl MusicMediumResponse {
+    /// Build the representation of a medium summary.
+    #[must_use]
+    #[expect(
+        clippy::pattern_type_mismatch,
+        reason = "the arms borrow the format out of a non-Copy enum matched by reference"
+    )]
+    pub fn new(medium: &MediumSummary) -> Self {
+        let format = match medium.format() {
+            MediumFormat::Cd => "CD".to_owned(),
+            MediumFormat::Other(name) => name.clone(),
+        };
+        Self {
+            format,
+            index: medium.index(),
+            track_count: medium.track_count(),
         }
     }
 }
@@ -1700,6 +1787,37 @@ impl From<GetAlbumTrackError> for ApiError {
     }
 }
 
+/// Map a music identification error to its API error.
+impl From<IdentifyMusicError> for ApiError {
+    fn from(err: IdentifyMusicError) -> Self {
+        match err {
+            IdentifyMusicError::NoSuchCaller => Self::Unauthorized(err.to_string()),
+            IdentifyMusicError::NotPermitted => Self::NotFound(err.to_string()),
+            // The handler reports an unconfigured provider as an unavailable
+            // document before the conversion, so reaching this arm is a fault.
+            IdentifyMusicError::Unavailable | IdentifyMusicError::Unknown(_) => {
+                Self::InternalServerError
+            }
+        }
+    }
+}
+
+/// Map a music metadata resolution error to its API error.
+impl From<ResolveMusicMetadataError> for ApiError {
+    fn from(err: ResolveMusicMetadataError) -> Self {
+        match err {
+            ResolveMusicMetadataError::NoSuchCaller => Self::Unauthorized(err.to_string()),
+            ResolveMusicMetadataError::NotPermitted
+            | ResolveMusicMetadataError::UnknownProvider => Self::NotFound(err.to_string()),
+            // The handler reports an unconfigured provider as an unavailable
+            // document before the conversion, so reaching this arm is a fault.
+            ResolveMusicMetadataError::Unavailable | ResolveMusicMetadataError::Unknown(_) => {
+                Self::InternalServerError
+            }
+        }
+    }
+}
+
 /// Map a list-films error to its API error.
 impl From<ListMoviesError> for ApiError {
     fn from(err: ListMoviesError) -> Self {
@@ -2099,6 +2217,13 @@ pub fn library_routes(state: &AppState) -> Router {
         .route("/movie", get(get_movie_list))
         .route("/movie/{movie_id}", get(get_movie));
 
+    let identify: Router<AppState> = Router::new()
+        .route("/music/identify", get(get_music_identify))
+        .route(
+            "/music/identify/{provider}/{kind}/{reference}",
+            get(get_music_identify_metadata),
+        );
+
     let series: Router<AppState> = Router::new()
         .route("/series", get(get_series_list))
         .route("/series/{series_id}", get(get_series))
@@ -2137,6 +2262,7 @@ pub fn library_routes(state: &AppState) -> Router {
 
     gallery
         .merge(album)
+        .merge(identify)
         .merge(movie)
         .merge(playlist)
         .merge(series)
