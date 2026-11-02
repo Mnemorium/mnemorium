@@ -13,6 +13,7 @@ use crate::domain::model::gallery_item::GalleryItem;
 use crate::domain::model::gallery_item::GalleryItemMedia;
 use crate::domain::model::permission::Action;
 use crate::domain::port::asset_unit_of_work::AssetUnitOfWork;
+use crate::domain::port::error::RepositoryError;
 use crate::domain::port::file_repository::FileFilter;
 use crate::domain::port::file_repository::FileRepository as _;
 use crate::domain::port::gallery_repository::GalleryFilter;
@@ -225,7 +226,13 @@ where
                     .galleries()
                     .add_item(item)
                     .await
-                    .map_err(|error| AddGalleryItemError::Unknown(error.into()))?;
+                    .map_err(|error| {
+                        if matches!(error, RepositoryError::Conflict) {
+                            AddGalleryItemError::ScopeConflict
+                        } else {
+                            AddGalleryItemError::Unknown(error.into())
+                        }
+                    })?;
 
                 gallery.touch(now);
                 unit_of_work
@@ -320,6 +327,7 @@ mod tests {
             Orientation::Landscape,
             NaiveDate::from_ymd_opt(2026, 1, 1).unwrap_or_default(),
             file_id,
+            None,
         )?)
     }
 
@@ -529,6 +537,7 @@ mod tests {
             "yuv420p".to_owned(),
             ScanType::Progressive,
             200,
+            None,
         )?;
         let mut videos = MockVideoRepository::new();
         expect_video(&mut videos, 200, stored_video);
@@ -895,6 +904,45 @@ mod tests {
 
         // Assert
         assert!(matches!(result, Err(AddGalleryItemError::NoSuchCaller)));
+        assert!(harness.rolled_back.load(Ordering::SeqCst));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn add_gallery_item_scope_conflict_returns_conflict() -> Result<(), Box<dyn Error>> {
+        // Arrange: the repository guard rejects the item because the medium's
+        // scope does not admit a gallery.
+        let mut users = MockUserRepository::new();
+        expect_caller(&mut users, 4, Role::Standard)?;
+        let mut galleries = MockGalleryRepository::new();
+        expect_gallery(&mut galleries, gallery(3, Some(4), "Mine", false));
+        expect_unassigned(&mut galleries);
+        galleries
+            .expect_next_item_index()
+            .times(1)
+            .returning(|_| Box::pin(async { Ok(3) }));
+        galleries
+            .expect_add_item()
+            .times(1)
+            .returning(|_| Box::pin(async { Err(RepositoryError::Conflict) }));
+        let mut images = MockImageRepository::new();
+        expect_image(&mut images, 100, image(7, 100, "sunset.png")?);
+        let mut files = MockFileRepository::new();
+        expect_file(&mut files, 100, file(100, 4, "files/sunset.png")?);
+        let harness = harness_with(users, galleries, images, MockVideoRepository::new(), files);
+        let use_case: UseCase = AddGalleryItem::new(Arc::clone(&harness.factory));
+
+        // Act
+        let result = use_case
+            .execute(AddGalleryItemCommand::new(
+                4,
+                3,
+                GalleryItemMedia::Image(100),
+            ))
+            .await;
+
+        // Assert
+        assert!(matches!(result, Err(AddGalleryItemError::ScopeConflict)));
         assert!(harness.rolled_back.load(Ordering::SeqCst));
         Ok(())
     }

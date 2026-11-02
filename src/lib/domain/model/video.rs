@@ -1,4 +1,5 @@
 use crate::domain::alias::NumericID;
+use crate::domain::model::scope::Scope;
 
 /// Error returned when initialising a `Video`.
 #[derive(Debug, thiserror::Error)]
@@ -59,6 +60,8 @@ pub struct Video {
     height: i64,
     /// Scan type of the video.
     scan_type: ScanType,
+    /// Scope fixed by the first attachment, when set.
+    scope: Option<Scope>,
     /// Unique identifier of the video.
     video_id: NumericID,
     /// Width of the video, in pixels.
@@ -108,6 +111,12 @@ impl Video {
         self.scan_type
     }
 
+    /// Return the scope fixed by the first attachment, if any.
+    #[must_use]
+    pub fn scope(&self) -> Option<Scope> {
+        self.scope
+    }
+
     /// Initialise a new `Video`, validating `duration_ms`, `frame_count`,
     /// `width` and `height`.
     ///
@@ -132,6 +141,7 @@ impl Video {
         color_id: String,
         scan_type: ScanType,
         file_id: NumericID,
+        scope: Option<Scope>,
     ) -> Result<Self, VideoError> {
         if !duration_ms.is_finite() || duration_ms < 0.0f64 {
             return Err(VideoError::InvalidDurationMs);
@@ -153,6 +163,7 @@ impl Video {
             frame_count,
             height,
             scan_type,
+            scope,
             video_id,
             width,
         })

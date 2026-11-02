@@ -60,7 +60,7 @@ override may narrow the set.
 - **WHEN** the system returns an album in a listing
 - **THEN** the representation carries the album's identifier, name, release date, production type, genres, total track
   count, its cover and its mediums
-- **AND** the cover is the identifier of the file holding the album's artwork, or `null` when the album stores none
+- **AND** the cover is the identifier of the image holding the album's artwork, or `null` when the album stores none
 - **AND** each medium carries its album-scoped index, its type, its track count, and links to the medium and its track
   collection
 - **AND** the album's total track count is the sum of its mediums' track counts
@@ -95,7 +95,7 @@ The system SHALL return one music album through `GET /api/v1/library/music/album
 - **WHEN** the system returns one album
 - **THEN** the representation carries the album's identifier, name, release date, production type, genres, total track
   count, its cover and its mediums
-- **AND** the cover is the identifier of the file holding the album's artwork, or `null` when the album stores none
+- **AND** the cover is the identifier of the image holding the album's artwork, or `null` when the album stores none
 - **AND** each medium carries its album-scoped index, its type, its track count, and links to the medium and its track
   collection
 - **AND** the album's total track count is the sum of its mediums' track counts

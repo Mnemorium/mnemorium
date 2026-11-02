@@ -63,8 +63,8 @@ impl ListSeriesCommand {
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct ListSeriesItem {
-    /// Identifier of the file holding the show's artwork, when set.
-    cover_file_id: Option<NumericID>,
+    /// Identifier of the image holding the show's artwork, when set.
+    cover_image_id: Option<NumericID>,
     /// Unique identifier of the show.
     id: NumericID,
     /// Name of the show.
@@ -72,10 +72,10 @@ pub struct ListSeriesItem {
 }
 
 impl ListSeriesItem {
-    /// Return the identifier of the file holding the show's artwork, if any.
+    /// Return the identifier of the image holding the show's artwork, if any.
     #[must_use]
-    pub fn cover_file_id(&self) -> Option<NumericID> {
-        self.cover_file_id
+    pub fn cover_image_id(&self) -> Option<NumericID> {
+        self.cover_image_id
     }
 
     /// Return the unique identifier of the show.
@@ -92,9 +92,9 @@ impl ListSeriesItem {
 
     /// Create a new listed show.
     #[must_use]
-    pub fn new(id: NumericID, name: String, cover_file_id: Option<NumericID>) -> Self {
+    pub fn new(id: NumericID, name: String, cover_image_id: Option<NumericID>) -> Self {
         Self {
-            cover_file_id,
+            cover_image_id,
             id,
             name,
         }

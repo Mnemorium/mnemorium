@@ -1,6 +1,7 @@
 use chrono::NaiveDate;
 
 use crate::domain::alias::NumericID;
+use crate::domain::model::scope::Scope;
 
 /// Error returned when initialising an `Image`.
 #[derive(Debug, thiserror::Error)]
@@ -54,6 +55,8 @@ pub struct Image {
     name: String,
     /// Orientation of the image.
     orientation: Orientation,
+    /// Scope fixed by the first attachment, when set.
+    scope: Option<Scope>,
     /// Width of the image, in pixels.
     width_px: i64,
 }
@@ -95,6 +98,12 @@ impl Image {
         self.orientation
     }
 
+    /// Return the scope fixed by the first attachment, if any.
+    #[must_use]
+    pub fn scope(&self) -> Option<Scope> {
+        self.scope
+    }
+
     /// Initialise a new `Image`, validating `name`, `width_px` and `height_px`.
     ///
     /// # Errors
@@ -102,6 +111,10 @@ impl Image {
     /// Returns [`ImageError::InvalidName`] when `name` is empty,
     /// [`ImageError::InvalidWidthPx`] when `width_px` is not positive, and
     /// [`ImageError::InvalidHeightPx`] when `height_px` is not positive.
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "try_new mirrors every image column"
+    )]
     pub fn try_new(
         image_id: NumericID,
         name: String,
@@ -110,6 +123,7 @@ impl Image {
         orientation: Orientation,
         created_at: NaiveDate,
         file_id: NumericID,
+        scope: Option<Scope>,
     ) -> Result<Self, ImageError> {
         if name.is_empty() {
             return Err(ImageError::InvalidName);
@@ -127,6 +141,7 @@ impl Image {
             image_id,
             name,
             orientation,
+            scope,
             width_px,
         })
     }

@@ -26,8 +26,8 @@ pub enum SeriesError {
 pub struct Series {
     /// Country of origin of the show.
     country_of_origin: String,
-    /// Identifier of the file holding the show's artwork, when set.
-    cover_file_id: Option<NumericID>,
+    /// Identifier of the image holding the show's artwork, when set.
+    cover_image_id: Option<NumericID>,
     /// Date of the first airing of the show.
     first_air_date: NaiveDate,
     /// Identifiers of the genres the show is associated with.
@@ -49,10 +49,10 @@ impl Series {
         &self.country_of_origin
     }
 
-    /// Return the identifier of the file holding the show's artwork, if any.
+    /// Return the identifier of the image holding the show's artwork, if any.
     #[must_use]
-    pub fn cover_file_id(&self) -> Option<NumericID> {
-        self.cover_file_id
+    pub fn cover_image_id(&self) -> Option<NumericID> {
+        self.cover_image_id
     }
 
     /// Return the date of the first airing.
@@ -108,7 +108,7 @@ impl Series {
         country_of_origin: String,
         first_air_date: NaiveDate,
         genre_ids: Vec<String>,
-        cover_file_id: Option<NumericID>,
+        cover_image_id: Option<NumericID>,
         seasons: Vec<Season>,
     ) -> Result<Self, SeriesError> {
         if name.is_empty() {
@@ -119,7 +119,7 @@ impl Series {
         }
         Ok(Self {
             country_of_origin,
-            cover_file_id,
+            cover_image_id,
             first_air_date,
             genre_ids,
             id,

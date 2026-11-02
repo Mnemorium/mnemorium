@@ -183,7 +183,7 @@ mod tests {
                 "_links": {
                     "self": { "href": "/api/v1/library/movie/7" }
                 },
-                "cover_file_id": null,
+                "cover_image_id": null,
                 "id": 7i64,
                 "name": "Movie 7",
                 "plot": "A plot",
@@ -230,7 +230,7 @@ mod tests {
 
         // Assert
         assert_eq!(status, StatusCode::OK);
-        assert_eq!(payload.get("cover_file_id"), Some(&json!(19i64)));
+        assert_eq!(payload.get("cover_image_id"), Some(&json!(19i64)));
         assert_eq!(
             payload.pointer("/_links/cover/href"),
             Some(&json!("/api/v1/asset/image/19")),

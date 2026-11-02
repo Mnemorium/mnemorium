@@ -8,6 +8,7 @@ pub mod movie;
 pub mod music_album;
 pub mod music_playlist;
 pub mod permission;
+pub mod scope;
 pub mod series;
 pub mod upload;
 pub mod user;

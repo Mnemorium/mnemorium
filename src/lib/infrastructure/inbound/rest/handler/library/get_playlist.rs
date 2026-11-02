@@ -199,7 +199,7 @@ mod tests {
                     "self": { "href": "/api/v1/library/music/playlist/3" },
                     "tracks": { "href": "/api/v1/library/music/playlist/3/track" }
                 },
-                "cover_file_id": null,
+                "cover_image_id": null,
                 "id": 3i64,
                 "name": "Mix",
                 "owner_id": 4i64,
@@ -248,7 +248,7 @@ mod tests {
 
         // Assert
         assert_eq!(status, StatusCode::OK);
-        assert_eq!(payload.get("cover_file_id"), Some(&json!(19i64)));
+        assert_eq!(payload.get("cover_image_id"), Some(&json!(19i64)));
         assert_eq!(
             payload.pointer("/_links/cover/href"),
             Some(&json!("/api/v1/asset/image/19"))

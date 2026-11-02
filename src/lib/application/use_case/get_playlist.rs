@@ -309,7 +309,7 @@ mod tests {
             Vec::new(),
         );
         assert_eq!(
-            covered.cover_file_id(),
+            covered.cover_image_id(),
             Some(19),
             "a playlist built with artwork must report the identifier"
         );
@@ -322,7 +322,7 @@ mod tests {
         let response = use_case.execute(GetPlaylistCommand::new(4, 3)).await?;
 
         // Assert
-        assert_eq!(response.playlist().cover_file_id(), Some(19));
+        assert_eq!(response.playlist().cover_image_id(), Some(19));
         Ok(())
     }
 

@@ -233,7 +233,7 @@ mod tests {
                     "_links": {
                         "self": { "href": "/api/v1/library/music/album/7" }
                     },
-                    "cover_file_id": null,
+                    "cover_image_id": null,
                     "id": 7i64,
                     "name": "Kind of Blue",
                     "release_date": "1959-08-17",

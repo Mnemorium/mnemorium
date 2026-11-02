@@ -109,7 +109,7 @@ where
                             season.index().value(),
                             season.name().map(str::to_owned),
                             season.episodes().len(),
-                            season.cover_file_id(),
+                            season.cover_image_id(),
                         )
                     })
                     .collect();
@@ -121,7 +121,7 @@ where
                     shown.country_of_origin().to_owned(),
                     shown.first_air_date(),
                     shown.genre_ids().to_vec(),
-                    shown.cover_file_id(),
+                    shown.cover_image_id(),
                     seasons,
                 ))
             }
@@ -256,17 +256,17 @@ mod tests {
             vec![covered_season, uncovered_season],
         )?;
         assert_eq!(
-            shown.cover_file_id(),
+            shown.cover_image_id(),
             Some(19),
             "a show built with artwork must report the identifier"
         );
         assert_eq!(
-            shown.seasons().first().and_then(Season::cover_file_id),
+            shown.seasons().first().and_then(Season::cover_image_id),
             Some(20),
             "a season built with artwork must report the identifier"
         );
         assert_eq!(
-            shown.seasons().get(1).and_then(Season::cover_file_id),
+            shown.seasons().get(1).and_then(Season::cover_image_id),
             None,
             "a season built without artwork must report none"
         );
@@ -282,19 +282,19 @@ mod tests {
         let response = use_case.execute(GetSeriesCommand::new(1, 3)).await?;
 
         // Assert
-        assert_eq!(response.cover_file_id(), Some(19));
+        assert_eq!(response.cover_image_id(), Some(19));
         assert_eq!(
             response
                 .seasons()
                 .first()
-                .and_then(GetSeriesSeasonItem::cover_file_id),
+                .and_then(GetSeriesSeasonItem::cover_image_id),
             Some(20)
         );
         assert_eq!(
             response
                 .seasons()
                 .get(1)
-                .and_then(GetSeriesSeasonItem::cover_file_id),
+                .and_then(GetSeriesSeasonItem::cover_image_id),
             None,
             "a season must not inherit its show's cover"
         );

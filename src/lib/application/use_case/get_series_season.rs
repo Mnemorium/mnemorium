@@ -116,7 +116,7 @@ where
                     season.index().value(),
                     season.name().map(str::to_owned),
                     season.episodes().len(),
-                    season.cover_file_id(),
+                    season.cover_image_id(),
                 ))
             }
             .await;
@@ -225,7 +225,7 @@ mod tests {
         expect_caller(&mut users, 1)?;
         let season = Season::new(SeasonIndex::new(1), None, Some(20), Vec::new());
         assert_eq!(
-            season.cover_file_id(),
+            season.cover_image_id(),
             Some(20),
             "a season built with artwork must report the identifier"
         );
@@ -253,7 +253,7 @@ mod tests {
             .await?;
 
         // Assert
-        assert_eq!(response.cover_file_id(), Some(20));
+        assert_eq!(response.cover_image_id(), Some(20));
         Ok(())
     }
 

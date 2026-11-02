@@ -811,6 +811,7 @@ mod tests {
             Orientation::Square,
             NaiveDate::from_ymd_opt(2026, 10, 16).ok_or("invalid fixture date")?,
             100,
+            None,
         )?;
         images.expect_search().times(1).return_once(move |_| {
             let value = referencing.clone();
@@ -889,6 +890,7 @@ mod tests {
             "YCbCr".to_owned(),
             ScanType::Progressive,
             100,
+            None,
         )?;
         videos.expect_search().times(1).return_once(move |_| {
             let value = referencing.clone();

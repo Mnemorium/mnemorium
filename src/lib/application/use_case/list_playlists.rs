@@ -110,7 +110,7 @@ where
                             playlist.created_at(),
                             playlist.last_modified_at(),
                             playlist.tracks().len(),
-                            playlist.cover_file_id(),
+                            playlist.cover_image_id(),
                         )
                     })
                     .collect();
@@ -298,13 +298,13 @@ mod tests {
             Vec::new(),
         );
         assert_eq!(
-            covered.cover_file_id(),
+            covered.cover_image_id(),
             Some(19),
             "a playlist built with artwork must report the identifier"
         );
         let uncovered = playlist(2, 4, "Plain", true, 0)?;
         assert_eq!(
-            uncovered.cover_file_id(),
+            uncovered.cover_image_id(),
             None,
             "a playlist built without artwork must report none"
         );
@@ -326,14 +326,14 @@ mod tests {
             response
                 .playlists()
                 .first()
-                .and_then(ListPlaylistsItem::cover_file_id),
+                .and_then(ListPlaylistsItem::cover_image_id),
             Some(19)
         );
         assert_eq!(
             response
                 .playlists()
                 .get(1)
-                .and_then(ListPlaylistsItem::cover_file_id),
+                .and_then(ListPlaylistsItem::cover_image_id),
             None
         );
         Ok(())

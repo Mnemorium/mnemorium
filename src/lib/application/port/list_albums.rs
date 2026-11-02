@@ -110,8 +110,8 @@ impl ListAlbumsMediumItem {
 pub struct ListAlbumsItem {
     /// Unique identifier of the album.
     album_id: NumericID,
-    /// Identifier of the file holding the album's artwork, when set.
-    cover_file_id: Option<NumericID>,
+    /// Identifier of the image holding the album's artwork, when set.
+    cover_image_id: Option<NumericID>,
     /// Genres of the album, ordered by genre identifier.
     genres: Vec<String>,
     /// Mediums of the album, ordered by medium index.
@@ -133,10 +133,10 @@ impl ListAlbumsItem {
         self.album_id
     }
 
-    /// Return the identifier of the file holding the album's artwork, if any.
+    /// Return the identifier of the image holding the album's artwork, if any.
     #[must_use]
-    pub fn cover_file_id(&self) -> Option<NumericID> {
-        self.cover_file_id
+    pub fn cover_image_id(&self) -> Option<NumericID> {
+        self.cover_image_id
     }
 
     /// Return the genres of the album, ordered by genre identifier.
@@ -170,12 +170,12 @@ impl ListAlbumsItem {
         production_type: Option<ProductionType>,
         genres: Vec<String>,
         track_count: usize,
-        cover_file_id: Option<NumericID>,
+        cover_image_id: Option<NumericID>,
         mediums: Vec<ListAlbumsMediumItem>,
     ) -> Self {
         Self {
             album_id,
-            cover_file_id,
+            cover_image_id,
             genres,
             mediums,
             name,

@@ -26,8 +26,8 @@ pub enum MovieError {
 pub struct Movie {
     /// Country of origin of the film.
     country_of_origin: String,
-    /// Identifier of the file holding the film's artwork, when set.
-    cover_file_id: Option<NumericID>,
+    /// Identifier of the image holding the film's artwork, when set.
+    cover_image_id: Option<NumericID>,
     /// Identifiers of the genres the film is associated with.
     genre_ids: Vec<String>,
     /// Unique identifier of the film.
@@ -49,10 +49,10 @@ impl Movie {
         &self.country_of_origin
     }
 
-    /// Return the identifier of the file holding the film's artwork, if any.
+    /// Return the identifier of the image holding the film's artwork, if any.
     #[must_use]
-    pub fn cover_file_id(&self) -> Option<NumericID> {
-        self.cover_file_id
+    pub fn cover_image_id(&self) -> Option<NumericID> {
+        self.cover_image_id
     }
 
     /// Return the identifiers of the genres the film is associated with.
@@ -102,7 +102,7 @@ impl Movie {
         country_of_origin: String,
         release_date: NaiveDate,
         genre_ids: Vec<String>,
-        cover_file_id: Option<NumericID>,
+        cover_image_id: Option<NumericID>,
         video: Video,
     ) -> Result<Self, MovieError> {
         if name.is_empty() {
@@ -113,7 +113,7 @@ impl Movie {
         }
         Ok(Self {
             country_of_origin,
-            cover_file_id,
+            cover_image_id,
             genre_ids,
             id,
             name,

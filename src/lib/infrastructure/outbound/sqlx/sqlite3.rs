@@ -931,133 +931,237 @@ mod tests {
         Ok(())
     }
 
-    /// Insert one film, show, season, album and playlist, each naming
-    /// `cover_file_id` as its cover, in dependency order.
-    async fn seed_covered_owners(pool: &SqlitePool, cover_file_id: i64) -> Result<(), sqlx::Error> {
+    /// Insert one film, show, season and album, each naming `cover_image_id`
+    /// as its cover, in dependency order.
+    async fn seed_covered_owners(
+        pool: &SqlitePool,
+        cover_image_id: i64,
+    ) -> Result<(), sqlx::Error> {
         sqlx::query(
             "INSERT INTO movie (
-                movie_id, name, plot, country_of_origin, release_date, video_id, cover_file_id
+                movie_id, name, plot, country_of_origin, release_date, video_id, cover_image_id
              )
              VALUES (1, 'Film', 'A plot', 'US', '1990-04-08', 1, ?1)",
         )
-        .bind(cover_file_id)
+        .bind(cover_image_id)
         .execute(pool)
         .await?;
         sqlx::query(
             "INSERT INTO series (
-                series_id, name, plot, country_of_origin, first_air_date, cover_file_id
+                series_id, name, plot, country_of_origin, first_air_date, cover_image_id
              )
              VALUES (1, 'Show', 'A plot', 'US', '1990-04-08', ?1)",
         )
-        .bind(cover_file_id)
+        .bind(cover_image_id)
         .execute(pool)
         .await?;
         sqlx::query(
-            "INSERT INTO season (season_id, series_id, season_index, cover_file_id)
+            "INSERT INTO season (season_id, series_id, season_index, cover_image_id)
              VALUES (40, 1, 1, ?1)",
         )
-        .bind(cover_file_id)
+        .bind(cover_image_id)
         .execute(pool)
         .await?;
         sqlx::query(
-            "INSERT INTO music_album (music_album_id, name, release_date, cover_file_id)
+            "INSERT INTO music_album (music_album_id, name, release_date, cover_image_id)
              VALUES (1, 'Album', '1990-04-08', ?1)",
         )
-        .bind(cover_file_id)
+        .bind(cover_image_id)
+        .execute(pool)
+        .await?;
+        Ok(())
+    }
+
+    /// Add the seeded image to a private gallery owned by the seeded user.
+    async fn seed_gallery_image(pool: &SqlitePool, image_id: i64) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            "INSERT INTO gallery (
+                gallery_id, name, created_at, last_modified_at, is_public, user_id
+             )
+             VALUES (2, 'gallery 2', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 0, 1)",
+        )
         .execute(pool)
         .await?;
         sqlx::query(
-            "INSERT INTO music_playlist (music_playlist_id, name, user_id, cover_file_id)
-             VALUES (1, 'Mix', 1, ?1)",
+            "INSERT INTO gallery_item (gallery_item_id, gallery_id, image_id, item_index)
+             VALUES (1, 2, ?1, 0)",
         )
-        .bind(cover_file_id)
+        .bind(image_id)
         .execute(pool)
         .await?;
         Ok(())
     }
 
     #[tokio::test]
-    async fn cover_trigger_rejects_a_non_image_on_every_owner() -> Result<(), Box<dyn Error>> {
-        // Arrange: file 2 is a video, so it cannot back a cover.
-        let pool = in_memory_pool().await?;
-        seed_media(&pool).await?;
-
-        // Act
-        let result = seed_covered_owners(&pool, 2)
-            .await
-            .map_err(RepositoryError::from);
-
-        // Assert
-        assert!(
-            matches!(result, Err(RepositoryError::Conflict)),
-            "a non-image cover must be rejected as a conflict"
-        );
-        assert_eq!(
-            [
-                sqlx::query_scalar::<_, i64>("SELECT count(*) FROM movie")
-                    .fetch_one(&pool)
-                    .await?,
-                sqlx::query_scalar::<_, i64>("SELECT count(*) FROM series")
-                    .fetch_one(&pool)
-                    .await?,
-                sqlx::query_scalar::<_, i64>("SELECT count(*) FROM season")
-                    .fetch_one(&pool)
-                    .await?,
-                sqlx::query_scalar::<_, i64>("SELECT count(*) FROM music_album")
-                    .fetch_one(&pool)
-                    .await?,
-                sqlx::query_scalar::<_, i64>("SELECT count(*) FROM music_playlist")
-                    .fetch_one(&pool)
-                    .await?,
-            ]
-            .into_iter()
-            .sum::<i64>(),
-            0,
-            "a rejected cover must store nothing"
-        );
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn cover_trigger_accepts_an_image_on_every_owner() -> Result<(), Box<dyn Error>> {
-        // Arrange: file 1 is a PNG.
+    async fn library_cover_accepts_a_library_image_on_every_owner() -> Result<(), Box<dyn Error>> {
+        // Arrange: image 1 starts unattached.
         let pool = in_memory_pool().await?;
         seed_media(&pool).await?;
 
         // Act
         seed_covered_owners(&pool, 1).await?;
 
-        // Assert: every owner stores the image file as its cover.
+        // Assert: every owner stores the image as its cover and the first
+        // attachment marked it LIBRARY.
         let covers: Vec<Option<i64>> = vec![
-            sqlx::query_scalar("SELECT cover_file_id FROM movie")
+            sqlx::query_scalar("SELECT cover_image_id FROM movie")
                 .fetch_one(&pool)
                 .await?,
-            sqlx::query_scalar("SELECT cover_file_id FROM series")
+            sqlx::query_scalar("SELECT cover_image_id FROM series")
                 .fetch_one(&pool)
                 .await?,
-            sqlx::query_scalar("SELECT cover_file_id FROM season")
+            sqlx::query_scalar("SELECT cover_image_id FROM season")
                 .fetch_one(&pool)
                 .await?,
-            sqlx::query_scalar("SELECT cover_file_id FROM music_album")
-                .fetch_one(&pool)
-                .await?,
-            sqlx::query_scalar("SELECT cover_file_id FROM music_playlist")
+            sqlx::query_scalar("SELECT cover_image_id FROM music_album")
                 .fetch_one(&pool)
                 .await?,
         ];
+        let scope: Option<String> =
+            sqlx::query_scalar("SELECT scope FROM image WHERE image_id = 1")
+                .fetch_one(&pool)
+                .await?;
         assert_eq!(
             covers,
-            vec![Some(1); 5],
-            "every owner must store the image file as its cover"
+            vec![Some(1); 4],
+            "every library owner must store the image as its cover"
+        );
+        assert_eq!(scope.as_deref(), Some("LIBRARY"));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn cover_rejects_a_missing_image() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let pool = in_memory_pool().await?;
+        seed_media(&pool).await?;
+
+        // Act: image 99 does not exist.
+        let result = sqlx::query(
+            "INSERT INTO movie (
+                movie_id, name, plot, country_of_origin, release_date, video_id, cover_image_id
+             )
+             VALUES (1, 'Film', 'A plot', 'US', '1990-04-08', 1, 99)",
+        )
+        .execute(&pool)
+        .await
+        .map_err(RepositoryError::from);
+
+        // Assert: the foreign key refuses the dangling reference.
+        assert!(matches!(
+            result,
+            Err(RepositoryError::DataIntegrityViolation)
+        ));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn library_cover_rejects_a_user_image() -> Result<(), Box<dyn Error>> {
+        // Arrange: a gallery item owns image 1, so it is USER.
+        let pool = in_memory_pool().await?;
+        seed_media(&pool).await?;
+
+        // Act
+        seed_gallery_image(&pool, 1).await?;
+        let result = sqlx::query(
+            "INSERT INTO movie (
+                movie_id, name, plot, country_of_origin, release_date, video_id, cover_image_id
+             )
+             VALUES (1, 'Film', 'A plot', 'US', '1990-04-08', 1, 1)",
+        )
+        .execute(&pool)
+        .await
+        .map_err(RepositoryError::from);
+
+        // Assert
+        assert!(
+            matches!(result, Err(RepositoryError::Conflict)),
+            "a library cover must reject a USER image as a conflict"
+        );
+        let stored: i64 = sqlx::query_scalar("SELECT count(*) FROM movie")
+            .fetch_one(&pool)
+            .await?;
+        assert_eq!(stored, 0, "a rejected cover must store nothing");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn gallery_rejects_a_library_image() -> Result<(), Box<dyn Error>> {
+        // Arrange: image 1 is a library cover, so it is LIBRARY.
+        let pool = in_memory_pool().await?;
+        seed_media(&pool).await?;
+        seed_covered_owners(&pool, 1).await?;
+
+        // Act
+        let result = seed_gallery_image(&pool, 1)
+            .await
+            .map_err(RepositoryError::from);
+
+        // Assert
+        assert!(
+            matches!(result, Err(RepositoryError::Conflict)),
+            "gallery media must reject a LIBRARY image as a conflict"
         );
         Ok(())
     }
 
     #[tokio::test]
-    async fn cover_trigger_rejects_a_non_image_on_update() -> Result<(), Box<dyn Error>> {
-        // Arrange: a film without artwork, and a video file to cover it with.
+    async fn playlist_cover_rejects_a_library_image() -> Result<(), Box<dyn Error>> {
+        // Arrange: image 1 is a library cover, so it is LIBRARY.
         let pool = in_memory_pool().await?;
         seed_media(&pool).await?;
+        seed_covered_owners(&pool, 1).await?;
+
+        // Act
+        let result = sqlx::query(
+            "INSERT INTO music_playlist (music_playlist_id, name, user_id, cover_image_id)
+             VALUES (1, 'Mix', 1, 1)",
+        )
+        .execute(&pool)
+        .await
+        .map_err(RepositoryError::from);
+
+        // Assert
+        assert!(
+            matches!(result, Err(RepositoryError::Conflict)),
+            "a playlist cover must reject a LIBRARY image as a conflict"
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn gallery_rejects_a_library_video() -> Result<(), Box<dyn Error>> {
+        // Arrange: video 1 is marked LIBRARY, which gallery media may not use.
+        let pool = in_memory_pool().await?;
+        seed_media(&pool).await?;
+        seed_gallery(&pool, 1).await?;
+        sqlx::query("UPDATE video SET scope = 'LIBRARY' WHERE video_id = 1")
+            .execute(&pool)
+            .await?;
+
+        // Act
+        let result = sqlx::query(
+            "INSERT INTO gallery_item (gallery_item_id, gallery_id, video_id, item_index)
+             VALUES (1, 1, 1, 0)",
+        )
+        .execute(&pool)
+        .await
+        .map_err(RepositoryError::from);
+
+        // Assert
+        assert!(
+            matches!(result, Err(RepositoryError::Conflict)),
+            "gallery media must reject a LIBRARY video as a conflict"
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn cover_update_rejects_a_user_image() -> Result<(), Box<dyn Error>> {
+        // Arrange: a film without artwork, and image 1 used as gallery media.
+        let pool = in_memory_pool().await?;
+        seed_media(&pool).await?;
+        seed_gallery_image(&pool, 1).await?;
         sqlx::query(
             "INSERT INTO movie (
                 movie_id, name, plot, country_of_origin, release_date, video_id
@@ -1068,7 +1172,7 @@ mod tests {
         .await?;
 
         // Act
-        let result = sqlx::query("UPDATE movie SET cover_file_id = 2 WHERE movie_id = 1")
+        let result = sqlx::query("UPDATE movie SET cover_image_id = 1 WHERE movie_id = 1")
             .execute(&pool)
             .await
             .map_err(RepositoryError::from);
@@ -1076,12 +1180,145 @@ mod tests {
         // Assert
         assert!(
             matches!(result, Err(RepositoryError::Conflict)),
-            "an update to a non-image cover must be rejected as a conflict"
+            "an update to a USER image cover must be rejected as a conflict"
         );
-        let stored: Option<i64> = sqlx::query_scalar("SELECT cover_file_id FROM movie")
+        let stored: Option<i64> = sqlx::query_scalar("SELECT cover_image_id FROM movie")
             .fetch_one(&pool)
             .await?;
         assert_eq!(stored, None, "the rejected update must store nothing");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn library_cover_is_shared_by_two_albums() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let pool = in_memory_pool().await?;
+        seed_media(&pool).await?;
+
+        // Act
+        sqlx::query(
+            "INSERT INTO music_album (music_album_id, name, release_date, cover_image_id)
+             VALUES (1, 'First', '1990-04-08', 1)",
+        )
+        .execute(&pool)
+        .await?;
+        sqlx::query(
+            "INSERT INTO music_album (music_album_id, name, release_date, cover_image_id)
+             VALUES (2, 'Second', '1990-04-08', 1)",
+        )
+        .execute(&pool)
+        .await?;
+
+        // Assert
+        let covers: Vec<Option<i64>> =
+            sqlx::query_scalar("SELECT cover_image_id FROM music_album ORDER BY music_album_id")
+                .fetch_all(&pool)
+                .await?;
+        assert_eq!(
+            covers,
+            vec![Some(1), Some(1)],
+            "a LIBRARY image may back several covers"
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn second_playlist_cover_for_a_user_image_is_rejected() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let pool = in_memory_pool().await?;
+        seed_media(&pool).await?;
+        sqlx::query(
+            "INSERT INTO music_playlist (music_playlist_id, name, user_id, cover_image_id)
+             VALUES (1, 'Mix one', 1, 1)",
+        )
+        .execute(&pool)
+        .await?;
+
+        // Act
+        let result = sqlx::query(
+            "INSERT INTO music_playlist (music_playlist_id, name, user_id, cover_image_id)
+             VALUES (2, 'Mix two', 1, 1)",
+        )
+        .execute(&pool)
+        .await
+        .map_err(RepositoryError::from);
+
+        // Assert
+        assert!(
+            matches!(result, Err(RepositoryError::AlreadyExist)),
+            "a USER image must not back two playlist covers"
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn playlist_and_gallery_cannot_share_a_user_image() -> Result<(), Box<dyn Error>> {
+        // Arrange: a playlist cover owns image 1.
+        let pool = in_memory_pool().await?;
+        seed_media(&pool).await?;
+        sqlx::query(
+            "INSERT INTO music_playlist (music_playlist_id, name, user_id, cover_image_id)
+             VALUES (1, 'Mix', 1, 1)",
+        )
+        .execute(&pool)
+        .await?;
+
+        // Act
+        let result = seed_gallery_image(&pool, 1)
+            .await
+            .map_err(RepositoryError::from);
+
+        // Assert
+        assert!(
+            matches!(result, Err(RepositoryError::Conflict)),
+            "a USER image must not have two referrers"
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn asset_scope_rejects_an_unknown_value() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let pool = in_memory_pool().await?;
+        seed_media(&pool).await?;
+
+        // Act
+        let result = sqlx::query("UPDATE image SET scope = 'GALLERY' WHERE image_id = 1")
+            .execute(&pool)
+            .await
+            .map_err(RepositoryError::from);
+
+        // Assert
+        assert!(matches!(
+            result,
+            Err(RepositoryError::DataIntegrityViolation)
+        ));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn asset_scope_is_immutable_once_set() -> Result<(), Box<dyn Error>> {
+        // Arrange: the first attachment marks image 1 USER.
+        let pool = in_memory_pool().await?;
+        seed_media(&pool).await?;
+        seed_gallery_image(&pool, 1).await?;
+
+        // Act
+        let result = sqlx::query("UPDATE image SET scope = 'LIBRARY' WHERE image_id = 1")
+            .execute(&pool)
+            .await
+            .map_err(RepositoryError::from);
+
+        // Assert
+        assert!(
+            matches!(result, Err(RepositoryError::Conflict)),
+            "an asset scope must not change once set"
+        );
+        let scope: Option<String> =
+            sqlx::query_scalar("SELECT scope FROM image WHERE image_id = 1")
+                .fetch_one(&pool)
+                .await?;
+        assert_eq!(scope.as_deref(), Some("USER"));
         Ok(())
     }
 

@@ -151,7 +151,7 @@ mod tests {
 
         // Assert
         assert_eq!(status, StatusCode::OK);
-        assert_eq!(payload.get("cover_file_id"), Some(&json!(19i64)));
+        assert_eq!(payload.get("cover_image_id"), Some(&json!(19i64)));
         assert_eq!(
             payload.pointer("/_links/cover/href"),
             Some(&json!("/api/v1/asset/image/19")),

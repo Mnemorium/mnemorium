@@ -23,6 +23,7 @@ pub mod music_query;
 pub mod music_recording;
 pub mod partial_configuration;
 pub mod permission;
+pub mod scope;
 pub mod season;
 pub mod series;
 pub mod upload;
