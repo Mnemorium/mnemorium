@@ -45,7 +45,7 @@ pub struct ListAlbumsQuery {
 #[utoipa::path(
     get,
     operation_id = "list_albums",
-    path = "/library/music/album",
+    path = "/music/album",
     tag = "library",
     params(ListAlbumsQuery),
     responses(
@@ -412,7 +412,9 @@ mod tests {
             .body(Body::empty())?;
 
         // Act
-        let response: Response = library_routes(&state).oneshot(request).await?;
+        let response: Response = axum::Router::from(library_routes(&state))
+            .oneshot(request)
+            .await?;
 
         // Assert
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED);

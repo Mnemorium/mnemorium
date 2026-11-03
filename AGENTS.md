@@ -30,7 +30,6 @@ first.
 | Coverage  | `cargo llvm-cov --lib --fail-under-functions 80 --fail-under-regions 80 --fail-under-lines 80` (gate ≥ 80%)                          |
 | E2E       | `script/e2e.sh` (builds and runs the container; `NO_BUILD=1` reuses the image)                                                       |
 | Lint      | `cargo clippy --all-targets --all-features -- -D warnings`; `cargo fmt --all -- --check`                                             |
-| OpenAPI   | `cargo run --bin openapi_gen` (writes `docs/openapi.json`)                                                           |
 | All rules | `script/rule_enforcer.sh check` (every registered rule; CI and the pre-commit hook run this)                                         |
 | One rule  | `script/rule_enforcer.sh check STY-RUST-001` (IDs from `script/rule_enforcer.sh list`; a bare ID works too)                          |
 | Full gate | `devenv test` (all pre-commit hooks)                                                                                                 |
@@ -102,8 +101,9 @@ boundary.
 - Respect the hexagonal dependency direction: `domain` ← `application` ←
   `infrastructure`. Nothing points outward; the domain must not import
   infrastructure.
-- Any Rust change that affects the API must regenerate and commit
-  `docs/openapi.json`.
+- Any Rust change that affects the API must keep the handler's
+  `#[utoipa::path(...)]` declaration and the context route registration in step;
+  the served specification is generated from them.
 - Migrations are mutable until release — see
   `docs/development/TechnicalDesign.md` § 4 (Persistence), `PERS-014`.
 - Read `rule/*.yml` and `rule_enforcer.yaml` with the read, grep, or glob tools,

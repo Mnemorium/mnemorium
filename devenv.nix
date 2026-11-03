@@ -129,15 +129,6 @@
     };
     # === toml
     taplo.enable = true;
-    # === openapi
-    openapi = {
-      enable = true;
-      name = "Regenerate and stage OpenAPI spec";
-      entry = "bash -c 'cargo run --bin openapi_gen && git add -- docs/openapi.json'";
-      language = "system";
-      pass_filenames = false;
-      files = "(\\.rs$|(^|/)Cargo\\.(toml|lock)$|^docs/openapi\\.json$)";
-    };
 
     bundle-licenses = {
       enable = true;
@@ -245,11 +236,6 @@
 
   # Build Commands
 
-  tasks."build:openapi-gen" = {
-    exec = "cargo build --bin openapi_gen";
-    description = "Build the OpenAPI generator";
-  };
-
   tasks."build:server" = {
     exec = "cargo build --bin server";
     description = "Build the server";
@@ -258,12 +244,6 @@
   tasks."build:all" = {
     exec = "cargo build";
     description = "Build everything";
-  };
-
-  tasks."docs:openapi-gen" = {
-    exec = "cargo run --bin openapi_gen";
-    after = [ "build:openapi-gen" ];
-    description = "Generate the OpenAPI specification to docs/openapi.json";
   };
 
   tasks."docs:html-coverage" = {
@@ -383,7 +363,6 @@
 
   processes = {
     docs.exec = "mkdocs serve --dev-addr 0.0.0.0:8000";
-    openapi-spec.exec = "npx --yes @redocly/cli@2.57.0 preview -d docs --port 8001";
   };
 
 }

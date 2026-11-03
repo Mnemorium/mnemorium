@@ -40,7 +40,7 @@ impl From<ReplacePermissionError> for ApiError {
 #[utoipa::path(
     put,
     operation_id = "put_permission",
-    path = "/user/{user_id}/permission",
+    path = "/{user_id}/permission",
     tag = "identity",
     request_body = PermissionRequest,
     params(

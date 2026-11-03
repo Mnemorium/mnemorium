@@ -98,7 +98,8 @@ so never renumber, reuse, or invent one.
 
 Read alongside the rulebook: `docs/development/UseCases.md` for the catalog,
 `docs/development/Glossary.md` for the domain language, and
-`docs/openapi.json` for the current generated specification.
+`src/lib/infrastructure/inbound/rest.rs` for the specification the server
+assembles.
 
 # Where handlers are declared
 
@@ -114,11 +115,12 @@ one:
    where the route is registered and protection is applied.
 3. **Route table** — `handler.rs::setup_routes`, which nests each context under
    `/api/v1`.
-4. **OpenAPI aggregation** — `rest.rs::ApiDoc`: the `__path_<handler>` in
-   `paths(...)`, the payload schemas in `components(schemas(...))`, and the
-   context's `tags(...)`.
-5. **Generated spec** — `docs/openapi.json`, regenerated with
-   `cargo run --bin openapi_gen` (never hand-edited).
+4. **OpenAPI aggregation** — `rest.rs::openapi`: the context router's
+   `routes!(...)` registration supplies each handler's path item and schemas,
+   and `ApiDoc` carries the document-scoped members (`info`, `servers`,
+   `tags`, `modifiers`).
+5. **Served spec** — `rest.rs::openapi`, mounted at `/doc` by `setup_routes`
+   under the `api-docs` feature; it is generated, never hand-edited.
 
 The aggregation also carries document-scoped members that do not change when an
 endpoint is added — notably `modifiers(&SecurityAddon)`, which registers the

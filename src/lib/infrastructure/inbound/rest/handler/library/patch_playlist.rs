@@ -50,7 +50,7 @@ pub struct PatchPlaylistRequest {
 #[utoipa::path(
     patch,
     operation_id = "patch_playlist",
-    path = "/library/music/playlist/{playlist_id}",
+    path = "/music/playlist/{playlist_id}",
     tag = "library",
     params(
         ("playlist_id" = NumericID, Path, description = "Identifier of the playlist"),

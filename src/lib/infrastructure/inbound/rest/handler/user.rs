@@ -3,13 +3,12 @@ pub mod get_user;
 pub mod get_user_list;
 pub mod patch_user;
 
-use axum::Router;
 use axum::middleware;
-use axum::routing::get;
-use axum::routing::patch;
 use serde::Serialize;
 use tracing::warn;
 use utoipa::ToSchema;
+use utoipa_axum::router::OpenApiRouter;
+use utoipa_axum::routes;
 
 use crate::application::port::get_user::GetUserResponse as GetUserResponseData;
 use crate::domain::alias::NumericID;
@@ -17,12 +16,8 @@ use crate::domain::model::user::Role;
 use crate::infrastructure::inbound::rest::api_error::ApiError;
 use crate::infrastructure::inbound::rest::app_state::AppState;
 use crate::infrastructure::inbound::rest::hal::SelfLinks;
-use crate::infrastructure::inbound::rest::handler::identity::get_permission::get_permission;
-use crate::infrastructure::inbound::rest::handler::identity::put_permission::put_permission;
-use crate::infrastructure::inbound::rest::handler::user::get_me::get_me;
-use crate::infrastructure::inbound::rest::handler::user::get_user::get_user;
-use crate::infrastructure::inbound::rest::handler::user::get_user_list::get_user_list;
-use crate::infrastructure::inbound::rest::handler::user::patch_user::patch_user;
+use crate::infrastructure::inbound::rest::handler::identity::get_permission;
+use crate::infrastructure::inbound::rest::handler::identity::put_permission;
 use crate::infrastructure::inbound::rest::middleware::auth::authenticate;
 use crate::infrastructure::outbound::jwt::token_provider::JwtTokenProvider;
 
@@ -83,25 +78,26 @@ pub(crate) fn parse_user_id(value: &str) -> Result<NumericID, ApiError> {
     })
 }
 
+/// Register the routes of the User bounded context.
+///
+/// The handlers carry their own paths, so this only groups them; protection is
+/// applied by [`user_routes`].
+pub(crate) fn user_router() -> OpenApiRouter<AppState> {
+    OpenApiRouter::new()
+        .routes(routes!(get_me::get_me))
+        .routes(routes!(get_user::get_user, patch_user::patch_user))
+        .routes(routes!(get_user_list::get_user_list))
+        .routes(routes!(
+            get_permission::get_permission,
+            put_permission::put_permission
+        ))
+}
+
 /// Routes of the user bounded context.
 ///
 /// Every route requires an authenticated caller.
-pub fn user_routes(state: &AppState) -> Router {
-    let me: Router<AppState> = Router::new().route("/me", get(get_me));
-
-    let by_id: Router<AppState> = Router::new().route("/{id}", get(get_user));
-
-    let patch_by_id: Router<AppState> = Router::new().route("/{id}", patch(patch_user));
-
-    let list_users: Router<AppState> = Router::new().route("/", get(get_user_list));
-
-    let permission: Router<AppState> =
-        Router::new().route("/{id}/permission", get(get_permission).put(put_permission));
-
-    me.merge(by_id)
-        .merge(patch_by_id)
-        .merge(list_users)
-        .merge(permission)
+pub fn user_routes(state: &AppState) -> OpenApiRouter<()> {
+    user_router()
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
             authenticate::<JwtTokenProvider>,

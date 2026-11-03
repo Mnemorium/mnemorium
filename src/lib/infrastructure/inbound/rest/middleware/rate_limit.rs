@@ -4,7 +4,6 @@ use std::net::IpAddr;
 use std::net::SocketAddr;
 use std::sync::Arc;
 
-use axum::Router;
 use axum::extract::ConnectInfo;
 use axum::http::HeaderMap;
 use axum::http::Request;
@@ -17,6 +16,7 @@ use tower_governor::key_extractor::KeyExtractor;
 use tower_governor::key_extractor::PeerIpKeyExtractor;
 use tracing::error;
 use tracing::warn;
+use utoipa_axum::router::OpenApiRouter;
 
 use crate::domain::model::configuration::ClientIpHeader;
 use crate::domain::model::configuration::RateLimit;
@@ -161,14 +161,15 @@ impl RateLimitCleanup {
 /// concrete types stay private to this module.
 pub struct LoginRateLimiter {
     /// The wired governor layer, erased behind `apply`.
-    apply: Box<dyn Fn(Router<AppState>) -> Router<AppState> + Send + Sync>,
+    apply: Box<dyn Fn(OpenApiRouter<AppState>) -> OpenApiRouter<AppState> + Send + Sync>,
     /// Periodic upkeep the composition root drives.
     cleanup: RateLimitCleanup,
 }
 
 impl LoginRateLimiter {
     /// Apply the limiter to the `login` sub-router.
-    pub fn apply(&self, router: Router<AppState>) -> Router<AppState> {
+    #[must_use]
+    pub fn apply(&self, router: OpenApiRouter<AppState>) -> OpenApiRouter<AppState> {
         (self.apply)(router)
     }
 

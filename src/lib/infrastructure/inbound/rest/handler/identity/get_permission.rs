@@ -33,7 +33,7 @@ impl From<GetPermissionError> for ApiError {
 #[utoipa::path(
     get,
     operation_id = "get_permission",
-    path = "/user/{user_id}/permission",
+    path = "/{user_id}/permission",
     tag = "identity",
     params(
         ("user_id" = NumericID, Path, description = "Identifier of the user whose permissions are read"),

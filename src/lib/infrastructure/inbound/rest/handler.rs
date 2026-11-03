@@ -10,17 +10,22 @@ pub mod library;
 pub mod user;
 
 use axum::middleware;
-use axum::routing::get;
+use utoipa_axum::router::OpenApiRouter;
+use utoipa_axum::routes;
+
+#[cfg(feature = "api-docs")]
+use utoipa_scalar::Servable as _;
 
 use crate::infrastructure::inbound::rest::app_state::AppState;
 use crate::infrastructure::inbound::rest::handler::asset::asset_routes;
-use crate::infrastructure::inbound::rest::handler::get_health::get_health;
 use crate::infrastructure::inbound::rest::handler::identity::identity_routes;
 use crate::infrastructure::inbound::rest::handler::library::library_routes;
 use crate::infrastructure::inbound::rest::handler::user::user_routes;
 use crate::infrastructure::inbound::rest::middleware::hal_errors::hal_errors;
 use crate::infrastructure::inbound::rest::middleware::rate_limit::LoginRateLimiter;
 use crate::infrastructure::inbound::rest::middleware::trace::tracing;
+#[cfg(feature = "api-docs")]
+use crate::infrastructure::inbound::rest::openapi;
 
 /// Build the application router.
 ///
@@ -33,18 +38,40 @@ use crate::infrastructure::inbound::rest::middleware::trace::tracing;
 ///
 /// The `limiter` is the process-lifetime login rate limiter the composition
 /// root built; it is applied to the `login` route here.
+///
+/// Every route is registered through `utoipa-axum`, so the axum route and the
+/// `OpenAPI` path item come from the handler's `#[utoipa::path]` declaration and
+/// cannot drift. [`crate::infrastructure::inbound::rest::openapi`] assembles
+/// the document from the same registration.
+///
+/// With the `api-docs` feature the interactive documentation is mounted at
+/// `/doc`, outside the `/api/v1` API base; it serves the document
+/// `rest::openapi` assembles.
 pub fn setup_routes(state: &AppState, limiter: &LoginRateLimiter) -> axum::Router {
-    let v1 = axum::Router::new()
-        .nest("/asset", asset_routes(state))
-        .nest("/identity", identity_routes(state, limiter))
-        .nest("/library", library_routes(state))
-        .nest("/user", user_routes(state));
+    #[cfg_attr(
+        not(feature = "api-docs"),
+        expect(unused_mut, reason = "the documentation route is feature-gated")
+    )]
+    let mut api: OpenApiRouter<()> = OpenApiRouter::new()
+        .routes(routes!(get_health::get_health))
+        .nest(
+            "/api/v1",
+            OpenApiRouter::new()
+                .nest("/asset", asset_routes(state))
+                .nest("/identity", identity_routes(state, limiter))
+                .nest("/library", library_routes(state))
+                .nest("/user", user_routes(state)),
+        );
 
-    axum::Router::new()
-        .route("/health", get(get_health))
-        .nest("/api/v1", v1)
-        .layer(middleware::from_fn(tracing))
+    #[cfg(feature = "api-docs")]
+    {
+        let documentation: axum::Router = utoipa_scalar::Scalar::with_url("/doc", openapi()).into();
+        api = api.merge(OpenApiRouter::from(documentation));
+    }
+
+    api.layer(middleware::from_fn(tracing))
         .layer(middleware::from_fn(hal_errors))
+        .into()
 }
 
 #[cfg(test)]
@@ -315,6 +342,44 @@ mod tests {
             )
             .await?,
             "too many requests"
+        );
+        Ok(())
+    }
+
+    #[cfg(feature = "api-docs")]
+    #[tokio::test]
+    async fn documentation_is_mounted_at_the_root_doc_path() -> Result<(), Box<dyn Error>> {
+        // Act
+        let response = plain_router()?
+            .oneshot(request("GET", "/doc", None)?)
+            .await?;
+
+        // Assert: the reference sits outside the `/api/v1` API base.
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response
+                .headers()
+                .get(header::CONTENT_TYPE)
+                .and_then(|value| value.to_str().ok()),
+            Some("text/html; charset=utf-8"),
+            "the reference must be served as HTML"
+        );
+        Ok(())
+    }
+
+    #[cfg(feature = "api-docs")]
+    #[tokio::test]
+    async fn documentation_is_not_nested_under_the_api_base() -> Result<(), Box<dyn Error>> {
+        // Act
+        let response = plain_router()?
+            .oneshot(request("GET", "/api/v1/doc", None)?)
+            .await?;
+
+        // Assert
+        assert_eq!(
+            response.status(),
+            StatusCode::NOT_FOUND,
+            "the reference must not be reachable under `/api/v1`"
         );
         Ok(())
     }

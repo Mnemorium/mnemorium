@@ -2482,7 +2482,7 @@ check_doc_007() {
 		# HTTP method and route: a method before a path, or a bare route path.
 		'(^|[^[:alnum:]_])(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS|TRACE|CONNECT)[[:space:]]+/'
 		'(^|[^[:alnum:]_])/api/'
-		# Response status: the codes docs/openapi.json declares.
+		# Response status: the codes the handler declarations publish.
 		'(^|[^[:alnum:]_])(200|201|204|400|401|403|404|405|409|410|413|415|422|429|500)([^[:alnum:]_]|$)'
 		'(^|[^[:alnum:]_])[45][xX]{2}([^[:alnum:]_]|$)'
 		'(^|[^[:alnum:]_])status[[:space:]]+code([^[:alnum:]_]|$)'
@@ -2519,7 +2519,7 @@ check_doc_007() {
 
 		for pattern in "${deny_patterns[@]}"; do
 			if [[ $text =~ $pattern ]]; then
-				printf 'error: %s: %s:%s: UC-%s names a wire or implementation detail ("%s") in a narrative field; that detail belongs to the API section and docs/openapi.json (DOC-007)\n' \
+				printf 'error: %s: %s:%s: UC-%s names a wire or implementation detail ("%s") in a narrative field; that detail belongs to the API section (DOC-007)\n' \
 					"$id" "$catalog" "$line" "$seq" "${BASH_REMATCH[0]}" >&2
 				result=1
 			fi
@@ -4677,7 +4677,7 @@ check_test_050() {
 # check_api_001 — every REST handler is annotated with `#[utoipa::path(...)]` (API-001).
 check_api_001() { need_dir "API-001" "src/lib/infrastructure/inbound/rest/handler" && scan_short API-001 "src/lib/infrastructure/inbound/rest/handler"; }
 
-# check_api_002 — the specification's path items, tags and reusable schemas are aggregated in one struct deriving `utoipa::OpenApi` (TechnicalDesign.md § API, API-002). api-002 extracts that struct and its `#[openapi(...)]` attribute; the clause and uniqueness decisions happen here because an ast-grep rule cannot assert three sub-blocks inside one attribute, nor count declarations.
+# check_api_002 — the document-scoped members are aggregated in one struct deriving `utoipa::OpenApi`, while `utoipa-axum` collects each registered route's path item and schemas (TechnicalDesign.md § API, API-002). api-002 extracts that struct and its `#[openapi(...)]` attribute; the clause and uniqueness decisions happen here because an ast-grep rule cannot assert sub-blocks inside one attribute, nor count declarations.
 check_api_002() {
 	local id="API-002"
 	local surface="src"
@@ -4693,7 +4693,7 @@ check_api_002() {
 		jq -c 'select(.metaVariables.single.AGGREGATOR != null)')"
 	aggregator_count="$(printf '%s\n' "$aggregators" | grep -c .)"
 	if [ "$aggregator_count" -eq 0 ]; then
-		printf 'error: %s: no struct derives utoipa::OpenApi to aggregate the path items, tags and reusable schemas\n' \
+		printf 'error: %s: no struct derives utoipa::OpenApi to aggregate the document-scoped members\n' \
 			"$id" >&2
 		return 1
 	fi
@@ -4723,9 +4723,16 @@ check_api_002() {
 			result=1
 			continue
 		fi
-		for clause in 'paths(' 'components(schemas(' 'tags('; do
+		for clause in 'tags(' 'modifiers('; do
 			if [[ $text != *"$clause"* ]]; then
 				printf 'error: %s: %s: #[openapi(...)] aggregates no %s clause\n' \
+					"$id" "$file" "$clause" >&2
+				result=1
+			fi
+		done
+		for clause in 'paths(' 'components(schemas('; do
+			if [[ $text == *"$clause"* ]]; then
+				printf 'error: %s: %s: #[openapi(...)] must not declare %s; utoipa-axum collects the path items and schemas from the registered routes\n' \
 					"$id" "$file" "$clause" >&2
 				result=1
 			fi

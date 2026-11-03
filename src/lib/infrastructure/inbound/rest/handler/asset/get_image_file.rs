@@ -22,7 +22,7 @@ use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 #[utoipa::path(
     get,
     operation_id = "get_image_file",
-    path = "/asset/image/{image_id}/file",
+    path = "/image/{image_id}/file",
     tag = "asset",
     params(
         ("image_id" = NumericID, Path, description = "Identifier of the image whose file is addressed"),

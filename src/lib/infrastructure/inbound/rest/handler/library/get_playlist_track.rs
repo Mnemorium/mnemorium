@@ -21,7 +21,7 @@ use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 #[utoipa::path(
     get,
     operation_id = "get_playlist_track",
-    path = "/library/music/playlist/{playlist_id}/track/{track_index}",
+    path = "/music/playlist/{playlist_id}/track/{track_index}",
     tag = "library",
     params(
         ("playlist_id" = NumericID, Path, description = "Identifier of the playlist the track belongs to"),

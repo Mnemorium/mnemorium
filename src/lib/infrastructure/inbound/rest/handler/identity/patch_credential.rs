@@ -51,7 +51,7 @@ impl From<PatchCredentialError> for ApiError {
 #[utoipa::path(
     patch,
     operation_id = "patch_credential",
-    path = "/identity/credential/{id}",
+    path = "/credential/{id}",
     tag = "identity",
     request_body = PatchCredentialRequest,
     params(

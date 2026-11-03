@@ -4,10 +4,9 @@ pub mod post_login;
 pub mod post_register;
 pub mod put_permission;
 
-use axum::Router;
 use axum::middleware;
-use axum::routing::patch;
-use axum::routing::post;
+use utoipa_axum::router::OpenApiRouter;
+use utoipa_axum::routes;
 
 use serde::Deserialize;
 use serde::Serialize;
@@ -24,9 +23,6 @@ use crate::domain::model::user::Role;
 use crate::infrastructure::inbound::rest::api_error::ApiError;
 use crate::infrastructure::inbound::rest::app_state::AppState;
 use crate::infrastructure::inbound::rest::hal::SelfLinks;
-use crate::infrastructure::inbound::rest::handler::identity::patch_credential::patch_credential;
-use crate::infrastructure::inbound::rest::handler::identity::post_login::post_login;
-use crate::infrastructure::inbound::rest::handler::identity::post_register::post_register;
 use crate::infrastructure::inbound::rest::middleware::auth::authenticate;
 use crate::infrastructure::inbound::rest::middleware::rate_limit::LoginRateLimiter;
 use crate::infrastructure::outbound::jwt::token_provider::JwtTokenProvider;
@@ -172,28 +168,37 @@ fn grant_response(action: Action, scope: &Scope) -> PermissionGrantResponse {
     }
 }
 
+/// Register the protected routes of the identity bounded context.
+///
+/// The handlers carry their own paths, so this only groups them; protection is
+/// applied by [`identity_routes`].
+pub(crate) fn identity_protected_router() -> OpenApiRouter<AppState> {
+    OpenApiRouter::new()
+        .routes(routes!(post_register::post_register))
+        .routes(routes!(patch_credential::patch_credential))
+}
+
+/// Register the public routes of the identity bounded context.
+///
+/// The handlers carry their own paths, so this only groups them; the login rate
+/// limit is applied by [`identity_routes`].
+pub(crate) fn identity_public_router() -> OpenApiRouter<AppState> {
+    OpenApiRouter::new().routes(routes!(post_login::post_login))
+}
+
 /// Routes of the identity bounded context.
 ///
 /// `login` is public; `register` and the credential password change require an
 /// authenticated caller. The public `login` route is rate limited per client
 /// address by the `limiter` the composition root built; the other routes are
 /// not.
-pub fn identity_routes(state: &AppState, limiter: &LoginRateLimiter) -> Router {
-    let register: Router<AppState> = Router::new().route("/register", post(post_register));
+pub fn identity_routes(state: &AppState, limiter: &LoginRateLimiter) -> OpenApiRouter<()> {
+    let protected = identity_protected_router().route_layer(middleware::from_fn_with_state(
+        state.clone(),
+        authenticate::<JwtTokenProvider>,
+    ));
 
-    let patch_credential: Router<AppState> =
-        Router::new().route("/credential/{id}", patch(patch_credential));
-
-    let login: Router<AppState> = Router::new().route("/login", post(post_login));
-
-    let rate_limited_login = limiter.apply(login);
-
-    register
-        .merge(patch_credential)
-        .route_layer(middleware::from_fn_with_state(
-            state.clone(),
-            authenticate::<JwtTokenProvider>,
-        ))
-        .merge(rate_limited_login)
+    protected
+        .merge(limiter.apply(identity_public_router()))
         .with_state(state.clone())
 }

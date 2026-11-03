@@ -1145,7 +1145,7 @@ are documented inline, at the source, with `#[utoipa::path(...)]` macros.
 | ID        | Section                   | Rule                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | More info                                   |
 | --------- | ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------- |
 | `API-001` | OpenAPI generation        | Annotate each handler in `src/lib/infrastructure/inbound/rest/handler` with `#[utoipa::path(...)]`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | [§ OpenAPI generation](#openapi-generation) |
-| `API-002` | OpenAPI generation        | Aggregate path items, tags and reusable schemas in a struct deriving `utoipa::OpenApi`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | [§ OpenAPI generation](#openapi-generation) |
+| `API-002` | OpenAPI generation        | Aggregate the document-scoped members in a struct deriving `utoipa::OpenApi`, and let `utoipa-axum` collect each registered route's path item and schemas.                                                                                                                                                                                                                                                                                                                                                                                                                                                 | [§ OpenAPI generation](#openapi-generation) |
 | `API-004` | Endpoint handler contract | Declare `operation_id`, a unique operation identifier.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | [§ 1](#1-endpoint-handler-example)          |
 | `API-005` | Endpoint handler contract | Declare the HTTP method (`get`/`post`/`put`/`patch`/`delete`).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | [§ 1](#1-endpoint-handler-example)          |
 | `API-006` | Endpoint handler contract | Declare `path`, the route of the endpoint.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | [§ 1](#1-endpoint-handler-example)          |
@@ -1196,17 +1196,25 @@ are documented inline, at the source, with `#[utoipa::path(...)]` macros.
 A complete declaration:
 
 ```rust
-use utoipa::OpenApi;
+use utoipa_axum::router::OpenApiRouter;
+use utoipa_axum::routes;
 
+/// Document-scoped members of the Notes HTTP API.
 #[derive(utoipa::OpenApi)]
 #[openapi(
-    paths(create_note, get_note, list_notes),
-    components(schemas(CreateNoteRequest, CreateNoteResponse, GetNoteResponse, ListNotesResponse, ErrorBody)),
     tags(
         (name = "notes", description = "Note bounded context")
     )
 )]
 struct ApiDoc;
+
+/// Register the context's routes. Each handler carries its path and its path
+/// item, so `utoipa-axum` derives the axum route and the specification from one
+/// declaration.
+fn note_routes() -> OpenApiRouter<AppState> {
+    OpenApiRouter::new()
+        .routes(routes!(create_note, get_note, list_notes))
+}
 
 /// Create a note.
 ///
@@ -1649,57 +1657,61 @@ as new codes are introduced; completeness is not required.
 
 Each handler function in `src/lib/infrastructure/inbound/rest/handler` is annotated with a `#[utoipa::path(...)]` macro;
 the macro produces one OpenAPI _path item_ for the endpoint and must respect the endpoint handler contract in the table
-above. A dedicated struct derives `utoipa::OpenApi` and aggregates all the path items, their tags and the reusable
-schemas:
+above. The declaration also carries the handler's path, so the context route module registers the handler once with
+`utoipa-axum` and gets both the axum route and the path item from it:
+
+```rust
+pub(crate) fn library_router() -> OpenApiRouter<AppState> {
+    OpenApiRouter::new()
+        .routes(routes!(get_album_list::get_album_list))
+        .routes(routes!(get_album::get_album))
+        // [...]
+}
+```
+
+A struct deriving `utoipa::OpenApi` carries only the document-scoped members — `info`, `servers`, `tags` and
+`modifiers`. It declares no paths and no schemas, because `utoipa-axum` collects them from the registered routes:
 
 ```rust
 #[derive(utoipa::OpenApi)]
 #[openapi(
-    paths(create_note, get_note, list_notes),
-    components(schemas(CreateNoteRequest, CreateNoteResponse, GetNoteResponse, ListNotesResponse, ErrorBody)),
+    info(
+        title = "Mnemorium API",
+        version = env!("CARGO_PKG_VERSION"),
+        description = "HTTP API of the Mnemorium service"
+    ),
+    servers(
+        (url = "http://0.0.0.0:4080/api/v1", description = "Local development server")
+    ),
     tags(
         (name = "notes", description = "Note bounded context")
-    )
+    ),
+    modifiers(&SecurityAddon)
 )]
-struct ApiDoc;
+pub struct ApiDoc;
 ```
 
-`src/bin/openapi_gen.rs` consumes that derive and renders the specification to `docs/openapi.json`, so the spec always
-stays in sync with the source:
+Drawn from `src/lib/infrastructure/inbound/rest.rs`, `openapi` seeds an `OpenApiRouter` with that document, registers
+the health route, nests each context under its own prefix and splits off the specification. The paths stay relative to
+the `/api/v1` base the document's `servers` entry declares, so the runtime router adds that prefix and the document does
+not:
 
 ```rust
-use std::fs;
-use std::path::Path;
-
-use anyhow::Result;
-
-use mnemorium::infrastructure::inbound::rest::ApiDoc;
-use utoipa::OpenApi as _;
-
-fn main() -> Result<()> {
-    let value = serde_json::to_value(ApiDoc::openapi())?;
-    let mut spec = serde_json::to_string_pretty(&value)?;
-    // [...]
-    spec.push('\n');
-
-    let output_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("docs");
-    let output_path = output_dir.join("openapi.json");
-
-    fs::create_dir_all(&output_dir)?;
-    fs::write(&output_path, spec)?;
-    // [...]
-
-    Ok(())
+#[must_use]
+pub fn openapi() -> OpenApi {
+    let (_, openapi) = OpenApiRouter::with_openapi(ApiDoc::openapi())
+        .routes(routes!(get_health::get_health))
+        .nest("/library", library_router())
+        // [...]
+        .split_for_parts();
+    openapi
 }
 ```
 
-Run it with `cargo run --bin openapi_gen`. The resulting `docs/openapi.json` is committed.
-
-The running server can also expose the specification and an interactive Swagger UI through `utoipa-swagger-ui`, so the
-API surface is browsable while the service is up.
-
-`openapi.json` sits at the documentation root, so `mkdocs build` copies it into the published site as the static asset
-`/openapi.json`; clients fetch the specification directly.
+The server assembles the document at startup from the same registration, so the reference it serves cannot drift from
+the routes. With the `api-docs` feature `setup_routes` mounts an interactive reference through `utoipa-scalar` at
+`/doc`, outside the `/api/v1` base; the feature is off by default, so a default build serves no reference UI. There is
+no generated artifact to commit — the served document is the published specification.
 
 ---
 
@@ -2790,7 +2802,9 @@ Source: `Cargo.toml`.
 | [tracing](https://crates.io/crates/tracing)                       | Application-level tracing for Rust.                                             | 0.1.44  | MIT               |
 | [tracing-appender](https://crates.io/crates/tracing-appender)     | File appenders and non-blocking writers for `tracing`.                          | 0.2.5   | MIT               |
 | [tracing-subscriber](https://crates.io/crates/tracing-subscriber) | Composing and implementing `tracing` subscribers.                               | 0.3.23  | MIT               |
-| [utoipa](https://crates.io/crates/utoipa)                         | Compile-time generated OpenAPI documentation for Rust.                          | 5.5.0   | MIT OR Apache-2.0 |
+| [utoipa](https://crates.io/crates/utoipa)                         | Compile-time generated OpenAPI documentation for Rust.                          | 6.0.0   | MIT OR Apache-2.0 |
+| [utoipa-axum](https://crates.io/crates/utoipa-axum)               | Registers axum routes and collects their OpenAPI path items and schemas.        | 0.3.0   | MIT OR Apache-2.0 |
+| [utoipa-scalar](https://crates.io/crates/utoipa-scalar)           | Serves the interactive Scalar API reference; optional, enabled by `api-docs`.   | 0.4.0   | MIT OR Apache-2.0 |
 | [yaml_serde](https://crates.io/crates/yaml_serde)                 | YAML serialization and deserialization; the maintained fork of `serde_yaml`.    | 0.10.7  | MIT OR Apache-2.0 |
 
 ---
@@ -2949,66 +2963,65 @@ The set is **closed and exhaustive** over the tracked paths: every path is owned
 longest-prefix match, and every scope owns at least one path. Adding or removing a scope edits this table and the
 `scopes:` block of `.github/workflows/ci.yml` in the same change.
 
-| Group   | Scope            | Path                                      | Description                     |
-| ------- | ---------------- | ----------------------------------------- | ------------------------------- |
-| Code    | `domain`         | `src/lib/domain.rs`                       | Domain module root              |
-| Code    | `domain`         | `src/lib/domain/**`                       | Domain layer                    |
-| Code    | `application`    | `src/lib/application.rs`                  | Application module root         |
-| Code    | `application`    | `src/lib/application/**`                  | Application layer               |
-| Code    | `application`    | `src/lib/lib.rs`                          | Crate root and test helpers     |
-| Code    | `infrastructure` | `src/lib/infrastructure.rs`               | Infrastructure module root      |
-| Code    | `infrastructure` | `src/lib/infrastructure/**`               | Infrastructure layer            |
-| Code    | `api`            | `src/lib/infrastructure/inbound/rest.rs`  | REST module root                |
-| Code    | `api`            | `src/lib/infrastructure/inbound/rest/**`  | REST adapter                    |
-| Code    | `persistence`    | `migrations/**`                           | Migrations                      |
-| Code    | `persistence`    | `src/lib/infrastructure/outbound/sqlx.rs` | SQLx module root                |
-| Code    | `persistence`    | `src/lib/infrastructure/outbound/sqlx/**` | SQLx SQLite layer               |
-| Code    | `server`         | `src/bin/**`                              | Server binaries                 |
-| Tests   | `test-e2e`       | `test/**`                                 | Tests                           |
-| Tests   | `test-config`    | `test/configuration/**`                   | Configuration tests             |
-| Docs    | `user`           | `README.md`                               | Repository README               |
-| Docs    | `user`           | `docs/index.md`                           | Documentation home page         |
-| Docs    | `user`           | `docs/Permissions.md`                     | Permissions guide               |
-| Docs    | `user`           | `docs/assets/**`                          | Documentation theme assets      |
-| Docs    | `user`           | `docs/openapi.json`                       | Published OpenAPI specification |
-| Docs    | `user`           | `mkdocs.yml`                              | MkDocs site configuration       |
-| Docs    | `development`    | `docs/development/**`                     | Development documentation       |
-| Repo    | `repo`           | `LICENSE`                                 | License                         |
-| Repo    | `repo`           | `THIRD_PARTY_NOTICES.txt`                 | Third-party notices             |
-| Repo    | `repo`           | `about.toml`                              | cargo-about configuration       |
-| Repo    | `repo`           | `about.hbs`                               | cargo-about notices template    |
-| Tooling | `config`         | `Cargo.toml`                              | Rust manifest                   |
-| Tooling | `config`         | `Cargo.lock`                              | Rust lockfile                   |
-| Tooling | `config`         | `.betterleaks.toml`                       | Secret-scan configuration       |
-| Tooling | `config`         | `.gitignore`                              | Git ignore rules                |
-| Tooling | `config`         | `.ls-lint.yml`                            | Naming linter configuration     |
-| Tooling | `config`         | `.markdownlint-cli2.jsonc`                | Markdown lint configuration     |
-| Tooling | `config`         | `.prettierrc`                             | Prettier configuration          |
-| Tooling | `config`         | `.prettierignore`                         | Prettier ignore rules           |
-| Tooling | `config`         | `.releaserc.json`                         | semantic-release configuration  |
-| Tooling | `config`         | `.sqlfluff`                               | SQL linter configuration        |
-| Tooling | `config`         | `.taplo.toml`                             | TOML linter configuration       |
-| Tooling | `config`         | `.yamllint`                               | YAML linter configuration       |
-| Tooling | `config`         | `clippy.toml`                             | Clippy configuration            |
-| Tooling | `config`         | `deny.toml`                               | cargo-deny configuration        |
-| Tooling | `config`         | `pytest.ini`                              | pytest configuration            |
-| Tooling | `config`         | `requirements.txt`                        | Python dependencies             |
-| Tooling | `config`         | `ruff.toml`                               | Ruff configuration              |
-| Tooling | `config`         | `rule_enforcer.yaml`                      | Rule enforcer configuration     |
-| Tooling | `config`         | `rule/**`                                 | ast-grep rule definitions       |
-| Tooling | `config`         | `sgconfig.yaml`                           | ast-grep project configuration  |
-| Tooling | `agent`          | `.opencode/**`                            | opencode configuration          |
-| Tooling | `agent`          | `.agents/**`                              | Agent skills                    |
-| Tooling | `agent`          | `AGENTS.md`                               | Repository router               |
-| Tooling | `agent`          | `opencode.json`                           | opencode project configuration  |
-| Tooling | `agent`          | `skills-lock.json`                        | Skill lockfile                  |
-| Tooling | `github`         | `.github/**`                              | GitHub workflows and assets     |
-| Tooling | `devenv`         | `devenv.nix`                              | devenv environment              |
-| Tooling | `devenv`         | `devenv.yaml`                             | devenv inputs                   |
-| Tooling | `devenv`         | `devenv.lock`                             | devenv lockfile                 |
-| Tooling | `devops`         | `Dockerfile`                              | Container build                 |
-| Tooling | `devops`         | `.dockerignore`                           | Build-context ignore rules      |
-| Tooling | `devops`         | `script/**`                               | Repository scripts              |
+| Group   | Scope            | Path                                      | Description                    |
+| ------- | ---------------- | ----------------------------------------- | ------------------------------ |
+| Code    | `domain`         | `src/lib/domain.rs`                       | Domain module root             |
+| Code    | `domain`         | `src/lib/domain/**`                       | Domain layer                   |
+| Code    | `application`    | `src/lib/application.rs`                  | Application module root        |
+| Code    | `application`    | `src/lib/application/**`                  | Application layer              |
+| Code    | `application`    | `src/lib/lib.rs`                          | Crate root and test helpers    |
+| Code    | `infrastructure` | `src/lib/infrastructure.rs`               | Infrastructure module root     |
+| Code    | `infrastructure` | `src/lib/infrastructure/**`               | Infrastructure layer           |
+| Code    | `api`            | `src/lib/infrastructure/inbound/rest.rs`  | REST module root               |
+| Code    | `api`            | `src/lib/infrastructure/inbound/rest/**`  | REST adapter                   |
+| Code    | `persistence`    | `migrations/**`                           | Migrations                     |
+| Code    | `persistence`    | `src/lib/infrastructure/outbound/sqlx.rs` | SQLx module root               |
+| Code    | `persistence`    | `src/lib/infrastructure/outbound/sqlx/**` | SQLx SQLite layer              |
+| Code    | `server`         | `src/bin/**`                              | Server binaries                |
+| Tests   | `test-e2e`       | `test/**`                                 | Tests                          |
+| Tests   | `test-config`    | `test/configuration/**`                   | Configuration tests            |
+| Docs    | `user`           | `README.md`                               | Repository README              |
+| Docs    | `user`           | `docs/index.md`                           | Documentation home page        |
+| Docs    | `user`           | `docs/Permissions.md`                     | Permissions guide              |
+| Docs    | `user`           | `docs/assets/**`                          | Documentation theme assets     |
+| Docs    | `user`           | `mkdocs.yml`                              | MkDocs site configuration      |
+| Docs    | `development`    | `docs/development/**`                     | Development documentation      |
+| Repo    | `repo`           | `LICENSE`                                 | License                        |
+| Repo    | `repo`           | `THIRD_PARTY_NOTICES.txt`                 | Third-party notices            |
+| Repo    | `repo`           | `about.toml`                              | cargo-about configuration      |
+| Repo    | `repo`           | `about.hbs`                               | cargo-about notices template   |
+| Tooling | `config`         | `Cargo.toml`                              | Rust manifest                  |
+| Tooling | `config`         | `Cargo.lock`                              | Rust lockfile                  |
+| Tooling | `config`         | `.betterleaks.toml`                       | Secret-scan configuration      |
+| Tooling | `config`         | `.gitignore`                              | Git ignore rules               |
+| Tooling | `config`         | `.ls-lint.yml`                            | Naming linter configuration    |
+| Tooling | `config`         | `.markdownlint-cli2.jsonc`                | Markdown lint configuration    |
+| Tooling | `config`         | `.prettierrc`                             | Prettier configuration         |
+| Tooling | `config`         | `.prettierignore`                         | Prettier ignore rules          |
+| Tooling | `config`         | `.releaserc.json`                         | semantic-release configuration |
+| Tooling | `config`         | `.sqlfluff`                               | SQL linter configuration       |
+| Tooling | `config`         | `.taplo.toml`                             | TOML linter configuration      |
+| Tooling | `config`         | `.yamllint`                               | YAML linter configuration      |
+| Tooling | `config`         | `clippy.toml`                             | Clippy configuration           |
+| Tooling | `config`         | `deny.toml`                               | cargo-deny configuration       |
+| Tooling | `config`         | `pytest.ini`                              | pytest configuration           |
+| Tooling | `config`         | `requirements.txt`                        | Python dependencies            |
+| Tooling | `config`         | `ruff.toml`                               | Ruff configuration             |
+| Tooling | `config`         | `rule_enforcer.yaml`                      | Rule enforcer configuration    |
+| Tooling | `config`         | `rule/**`                                 | ast-grep rule definitions      |
+| Tooling | `config`         | `sgconfig.yaml`                           | ast-grep project configuration |
+| Tooling | `agent`          | `.opencode/**`                            | opencode configuration         |
+| Tooling | `agent`          | `.agents/**`                              | Agent skills                   |
+| Tooling | `agent`          | `AGENTS.md`                               | Repository router              |
+| Tooling | `agent`          | `opencode.json`                           | opencode project configuration |
+| Tooling | `agent`          | `skills-lock.json`                        | Skill lockfile                 |
+| Tooling | `github`         | `.github/**`                              | GitHub workflows and assets    |
+| Tooling | `devenv`         | `devenv.nix`                              | devenv environment             |
+| Tooling | `devenv`         | `devenv.yaml`                             | devenv inputs                  |
+| Tooling | `devenv`         | `devenv.lock`                             | devenv lockfile                |
+| Tooling | `devops`         | `Dockerfile`                              | Container build                |
+| Tooling | `devops`         | `.dockerignore`                           | Build-context ignore rules     |
+| Tooling | `devops`         | `script/**`                               | Repository scripts             |
 
 Two things are exempt because the release tooling generates them and they bypass the pull-request gate: a bot commit
 (semantic-release, `github-actions[bot]`) and the generated `CHANGELOG.md`. Neither carries a scope.
@@ -3035,7 +3048,7 @@ can verify it and a reviewer can catch it going stale.
 | `DOC-001` | Code examples         | An example that restates production code names the source path it is drawn from, is updated in the same change as that code, and may elide omitted regions with a `// [...]` marker.                                                                                                                                                                                                                                                                                                                                                                                            | [§ 1](#1-code-examples)            |
 | `DOC-002` | Domain model diagrams | A domain model diagram that the documentation publishes represents the domain's real-world concepts — conceptual classes, typed attributes, and named associations with multiplicity — and never software methods, database tables or other implementation detail.                                                                                                                                                                                                                                                                                                              | [§ 2](#2-domain-model-diagrams)    |
 | `DOC-003` | Citations             | Documentation (`docs/`, the root Markdown) and production source (`src/`) cite only paths the repository tracks; they never name the local, untracked `.artifacts/` scratch directory, which a reader cannot resolve.                                                                                                                                                                                                                                                                                                                                                           | [§ 3](#3-citations)                |
-| `DOC-004` | Published route       | A route the documentation publishes names a path the generated specification declares in `docs/openapi.json`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | [§ 4](#4-published-routes)         |
+| `DOC-004` | Published route       | A route the documentation publishes names a path the handler declarations publish in the specification the server serves.                                                                                                                                                                                                                                                                                                                                                                                                                                                       | [§ 4](#4-published-routes)         |
 | `DOC-005` | Business use cases    | Every business use case entry in [UseCases.md](UseCases.md) is a `UC-<seq> - <Name>` heading — `###`, or `####` inside a sub-package — filed under the package section that owns it, carries the § 5 field headings in the documented order one heading level below the entry, carries none of the removed headings (`Application use case(s)`, `Business rules`, `Secondary actor (optional)`, `Bounded context(s)`), names one capability without joining alternatives with `and` or `or`, and the catalog holds each of `UC-001` … `UC-0NN` exactly once.                    | [§ 5](#5-business-use-case-format) |
 | `DOC-006` | Code examples         | An example that illustrates the § 3 (API) endpoint-handler contract rather than restating a cited source file has no source to cite, but is kept in step with § 3: when a rule it illustrates changes, the example changes with it.                                                                                                                                                                                                                                                                                                                                             | [§ 1](#1-code-examples)            |
 | `DOC-007` | Business use cases    | A business use case entry states intent and outcome in business terms: in every field — `Trigger` included — it names no HTTP method, route, status code, representation media type, representation mechanic, request or response field, query parameter, event payload field, storage or transaction mechanism, concurrency race, or implementation-layer term; the wire contract belongs to the [API section](#api) and the generated specification.                                                                                                                          | [§ 5](#5-business-use-case-format) |
@@ -3156,11 +3169,11 @@ When a citation's target has been removed, replace it with the artifact the code
 
 ### 4. Published routes
 
-`docs/openapi.json` is generated from the handler annotations (`cargo run --bin openapi_gen`) and committed, so it is
-the machine-checked contract of the HTTP surface ([`API-001`](#openapi-generation)). A route the documentation publishes
-— the § Response-codes examples and the `_links.self` examples in § 2.5 — is written as `METHOD /api/v1/...` and names a
-path the specification declares, with the `/api/v1` base removed: `GET /api/v1/user/{id}` corresponds to the spec path
-`/user/{id}`, and `/health` is declared as itself.
+The specification is assembled from the handler annotations when the server starts ([`API-001`](#openapi-generation)),
+so it is the machine-checked contract of the HTTP surface. A route the documentation publishes — the § Response-codes
+examples and the `_links.self` examples in § 2.5 — is written as `METHOD /api/v1/...` and names a path the specification
+declares, with the `/api/v1` base removed: `GET /api/v1/user/{id}` corresponds to the spec path `/user/{id}`, and
+`/health` is declared as itself.
 
 No check asserts this correspondence yet ([`DOC-004`](#4-published-routes)); the rule is validated by review. A route
 example is updated in the same change that moves the endpoint.
@@ -3291,9 +3304,9 @@ The vocabulary a narrative field excludes (`DOC-007`):
 
 | Excluded                                                                     | Lives in                                                           |
 | ---------------------------------------------------------------------------- | ------------------------------------------------------------------ |
-| HTTP method, route, status code, header                                      | [§ 3 (API)](#api), `docs/openapi.json` (`DOC-004`)                 |
-| Representation media type (`application/hal+json`), mechanics, links         | [§ 3 (API)](#api), `docs/openapi.json`                             |
-| Request or response field, query parameter, payload, request body, JSON      | [§ 3 (API)](#api), `docs/openapi.json`                             |
+| HTTP method, route, status code, header                                      | [§ 3 (API)](#api) (`DOC-004`)                                      |
+| Representation media type (`application/hal+json`), mechanics, links         | [§ 3 (API)](#api)                                                  |
+| Request or response field, query parameter, payload, request body, JSON      | [§ 3 (API)](#api)                                                  |
 | Datastore, table, row, column, schema, cascade, transaction, migration, byte | [§ 4 (Persistence)](#persistence)                                  |
 | Server, client, endpoint, handler, adapter, repository, cache, thread, race  | [§ 2 (Architecture)](#architecture), [§ 1](#code-style-guidelines) |
 
@@ -3312,8 +3325,8 @@ not write `last_modified_at`, `track_index`, `recording_id`, `is_public`, `add_t
 | `schema cascade`              | removed together with its track placements          |
 | `add_track: { recording_id }` | a request to add a recording                        |
 
-An entry names no route in any field, `Trigger` included; routes live in [§ 3 (API)](#api) and `docs/openapi.json`
-(`DOC-004`). `script/rule_enforcer.sh` enforces the narrative vocabulary over every field of every entry
+An entry names no route in any field, `Trigger` included; routes live in [§ 3 (API)](#api) and the specification the
+server serves (`DOC-004`). `script/rule_enforcer.sh` enforces the narrative vocabulary over every field of every entry
 (`check_doc_007`): it reports an inline code span, a denylisted technical term, a method-and-path pair or a bare route
 path.
 

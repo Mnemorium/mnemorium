@@ -102,7 +102,7 @@ impl From<UpdateUserError> for ApiError {
 #[utoipa::path(
     patch,
     operation_id = "update_user",
-    path = "/user/{id}",
+    path = "/{id}",
     tag = "user",
     request_body = PatchUserRequest,
     params(

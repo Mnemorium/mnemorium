@@ -101,7 +101,7 @@ impl From<ListUsersError> for ApiError {
 #[utoipa::path(
     get,
     operation_id = "list_users",
-    path = "/user",
+    path = "",
     tag = "user",
     params(ListUsersQuery),
     responses(

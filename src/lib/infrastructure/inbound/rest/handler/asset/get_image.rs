@@ -107,7 +107,7 @@ impl From<GetImageError> for ApiError {
 #[utoipa::path(
     get,
     operation_id = "get_image",
-    path = "/asset/image/{image_id}",
+    path = "/image/{image_id}",
     tag = "asset",
     params(
         ("image_id" = NumericID, Path, description = "Identifier of the image to fetch"),

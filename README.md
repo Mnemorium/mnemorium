@@ -183,7 +183,8 @@ default password is revealed only by the start that creates the account; change 
 
 TODO: add a realistic end-to-end usage example.
 
-The API is served under `/api/v1`. The OpenAPI specification is generated to [`docs/openapi.json`](docs/openapi.json).
+The API is served under `/api/v1`. With the `api-docs` feature the server also serves an interactive OpenAPI reference
+at `/doc`.
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
@@ -199,7 +200,6 @@ Enter the environment first: `devenv shell`.
 | Coverage  | `cargo llvm-cov --lib` (gate ≥ 80% lines/regions/functions)                              |
 | E2E       | `script/e2e.sh` (builds and runs the container; `NO_BUILD=1` reuses the image)           |
 | Lint      | `cargo clippy --all-targets --all-features -- -D warnings`; `cargo fmt --all -- --check` |
-| OpenAPI   | `cargo run --bin openapi_gen` (writes `docs/openapi.json`)                               |
 | Full gate | `devenv test` (all pre-commit hooks)                                                     |
 
 The module and layer map lives in [Overview](docs/development/Overview.md). That document also defines the branch, PR

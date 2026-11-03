@@ -30,15 +30,15 @@ pub mod post_gallery_item;
 pub mod post_playlist;
 pub mod put_playlist_track;
 
-use axum::Router;
 use axum::middleware;
-use axum::routing::get;
 use chrono::NaiveDate;
 use chrono::NaiveDateTime;
 use serde::Deserialize;
 use serde::Serialize;
 use tracing::warn;
 use utoipa::ToSchema;
+use utoipa_axum::router::OpenApiRouter;
+use utoipa_axum::routes;
 
 use crate::application::port::add_gallery_item::AddGalleryItemResponse;
 use crate::application::port::create_gallery::CreateGalleryResponse;
@@ -97,41 +97,10 @@ use crate::infrastructure::inbound::rest::app_state::AppState;
 use crate::infrastructure::inbound::rest::hal::Link;
 use crate::infrastructure::inbound::rest::hal::SelfLinks;
 use crate::infrastructure::inbound::rest::handler::asset::asset_image_href;
-use crate::infrastructure::inbound::rest::handler::library::delete_gallery::delete_gallery;
-use crate::infrastructure::inbound::rest::handler::library::delete_gallery_item::delete_gallery_item;
-use crate::infrastructure::inbound::rest::handler::library::delete_playlist::delete_playlist;
-use crate::infrastructure::inbound::rest::handler::library::delete_playlist_track::delete_playlist_track;
-use crate::infrastructure::inbound::rest::handler::library::get_album::get_album;
 use crate::infrastructure::inbound::rest::handler::library::get_album_list::ListAlbumsQuery;
-use crate::infrastructure::inbound::rest::handler::library::get_album_list::get_album_list;
-use crate::infrastructure::inbound::rest::handler::library::get_album_medium::get_album_medium;
-use crate::infrastructure::inbound::rest::handler::library::get_album_track::get_album_track;
-use crate::infrastructure::inbound::rest::handler::library::get_album_track_list::get_album_track_list;
-use crate::infrastructure::inbound::rest::handler::library::get_gallery::get_gallery;
-use crate::infrastructure::inbound::rest::handler::library::get_gallery_item::get_gallery_item;
-use crate::infrastructure::inbound::rest::handler::library::get_gallery_item_list::get_gallery_item_list;
-use crate::infrastructure::inbound::rest::handler::library::get_gallery_list::get_gallery_list;
-use crate::infrastructure::inbound::rest::handler::library::get_movie::get_movie;
 use crate::infrastructure::inbound::rest::handler::library::get_movie_list::ListMoviesQuery;
-use crate::infrastructure::inbound::rest::handler::library::get_movie_list::get_movie_list;
-use crate::infrastructure::inbound::rest::handler::library::get_music_identify::get_music_identify;
-use crate::infrastructure::inbound::rest::handler::library::get_music_identify_metadata::get_music_identify_metadata;
-use crate::infrastructure::inbound::rest::handler::library::get_playlist::get_playlist;
 use crate::infrastructure::inbound::rest::handler::library::get_playlist_list::ListPlaylistsQuery;
-use crate::infrastructure::inbound::rest::handler::library::get_playlist_list::get_playlist_list;
-use crate::infrastructure::inbound::rest::handler::library::get_playlist_track::get_playlist_track;
-use crate::infrastructure::inbound::rest::handler::library::get_playlist_track_list::get_playlist_track_list;
-use crate::infrastructure::inbound::rest::handler::library::get_series::get_series;
-use crate::infrastructure::inbound::rest::handler::library::get_series_episode::get_series_episode;
-use crate::infrastructure::inbound::rest::handler::library::get_series_episode_list::get_series_episode_list;
 use crate::infrastructure::inbound::rest::handler::library::get_series_list::ListSeriesQuery;
-use crate::infrastructure::inbound::rest::handler::library::get_series_list::get_series_list;
-use crate::infrastructure::inbound::rest::handler::library::get_series_season::get_series_season;
-use crate::infrastructure::inbound::rest::handler::library::patch_playlist::patch_playlist;
-use crate::infrastructure::inbound::rest::handler::library::post_gallery::post_gallery;
-use crate::infrastructure::inbound::rest::handler::library::post_gallery_item::post_gallery_item;
-use crate::infrastructure::inbound::rest::handler::library::post_playlist::post_playlist;
-use crate::infrastructure::inbound::rest::handler::library::put_playlist_track::put_playlist_track;
 use crate::infrastructure::inbound::rest::middleware::auth::authenticate;
 use crate::infrastructure::outbound::jwt::token_provider::JwtTokenProvider;
 
@@ -2181,91 +2150,68 @@ fn format_timestamp(value: NaiveDateTime) -> String {
     value.format(TIMESTAMP_FORMAT).to_string()
 }
 
+/// Register the routes of the Library bounded context.
+///
+/// The handlers carry their own paths, so this only groups them; protection is
+/// applied by [`library_routes`].
+pub(crate) fn library_router() -> OpenApiRouter<AppState> {
+    OpenApiRouter::new()
+        .routes(routes!(get_album_list::get_album_list))
+        .routes(routes!(get_album::get_album))
+        .routes(routes!(get_album_medium::get_album_medium))
+        .routes(routes!(get_album_track_list::get_album_track_list))
+        .routes(routes!(get_album_track::get_album_track))
+        .routes(routes!(
+            get_gallery_list::get_gallery_list,
+            post_gallery::post_gallery
+        ))
+        .routes(routes!(
+            get_gallery::get_gallery,
+            delete_gallery::delete_gallery
+        ))
+        .routes(routes!(
+            get_gallery_item_list::get_gallery_item_list,
+            post_gallery_item::post_gallery_item
+        ))
+        .routes(routes!(
+            get_gallery_item::get_gallery_item,
+            delete_gallery_item::delete_gallery_item
+        ))
+        .routes(routes!(get_movie_list::get_movie_list))
+        .routes(routes!(get_movie::get_movie))
+        .routes(routes!(get_music_identify::get_music_identify))
+        .routes(routes!(
+            get_music_identify_metadata::get_music_identify_metadata
+        ))
+        .routes(routes!(get_series_list::get_series_list))
+        .routes(routes!(get_series::get_series))
+        .routes(routes!(get_series_season::get_series_season))
+        .routes(routes!(get_series_episode_list::get_series_episode_list))
+        .routes(routes!(get_series_episode::get_series_episode))
+        .routes(routes!(
+            get_playlist_list::get_playlist_list,
+            post_playlist::post_playlist
+        ))
+        .routes(routes!(
+            get_playlist::get_playlist,
+            patch_playlist::patch_playlist,
+            delete_playlist::delete_playlist
+        ))
+        .routes(routes!(
+            get_playlist_track_list::get_playlist_track_list,
+            put_playlist_track::put_playlist_track
+        ))
+        .routes(routes!(
+            get_playlist_track::get_playlist_track,
+            delete_playlist_track::delete_playlist_track
+        ))
+}
+
 /// Routes of the Library bounded context.
 ///
 /// Every route requires an authenticated caller.
-pub fn library_routes(state: &AppState) -> Router {
-    let album: Router<AppState> = Router::new()
-        .route("/music/album", get(get_album_list))
-        .route("/music/album/{album_id}", get(get_album))
-        .route(
-            "/music/album/{album_id}/medium/{medium_index}",
-            get(get_album_medium),
-        )
-        .route(
-            "/music/album/{album_id}/medium/{medium_index}/track",
-            get(get_album_track_list),
-        )
-        .route(
-            "/music/album/{album_id}/medium/{medium_index}/track/{track_index}",
-            get(get_album_track),
-        );
-
-    let gallery: Router<AppState> = Router::new()
-        .route("/gallery", get(get_gallery_list).post(post_gallery))
-        .route("/gallery/{id}", get(get_gallery).delete(delete_gallery))
-        .route(
-            "/gallery/{id}/item",
-            get(get_gallery_item_list).post(post_gallery_item),
-        )
-        .route(
-            "/gallery/{id}/item/{item_id}",
-            get(get_gallery_item).delete(delete_gallery_item),
-        );
-
-    let movie: Router<AppState> = Router::new()
-        .route("/movie", get(get_movie_list))
-        .route("/movie/{movie_id}", get(get_movie));
-
-    let identify: Router<AppState> = Router::new()
-        .route("/music/identify", get(get_music_identify))
-        .route(
-            "/music/identify/{provider}/{kind}/{reference}",
-            get(get_music_identify_metadata),
-        );
-
-    let series: Router<AppState> = Router::new()
-        .route("/series", get(get_series_list))
-        .route("/series/{series_id}", get(get_series))
-        .route(
-            "/series/{series_id}/season/{season_index}",
-            get(get_series_season),
-        )
-        .route(
-            "/series/{series_id}/season/{season_index}/episode",
-            get(get_series_episode_list),
-        )
-        .route(
-            "/series/{series_id}/season/{season_index}/episode/{episode_index}",
-            get(get_series_episode),
-        );
-
-    let playlist: Router<AppState> = Router::new()
-        .route(
-            "/music/playlist",
-            get(get_playlist_list).post(post_playlist),
-        )
-        .route(
-            "/music/playlist/{playlist_id}",
-            get(get_playlist)
-                .patch(patch_playlist)
-                .delete(delete_playlist),
-        )
-        .route(
-            "/music/playlist/{playlist_id}/track",
-            get(get_playlist_track_list).put(put_playlist_track),
-        )
-        .route(
-            "/music/playlist/{playlist_id}/track/{track_index}",
-            get(get_playlist_track).delete(delete_playlist_track),
-        );
-
-    gallery
-        .merge(album)
-        .merge(identify)
-        .merge(movie)
-        .merge(playlist)
-        .merge(series)
+pub fn library_routes(state: &AppState) -> OpenApiRouter<()> {
+    library_router()
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
             authenticate::<JwtTokenProvider>,
@@ -2386,7 +2332,9 @@ mod tests {
             .body(Body::empty())?;
 
         // Act
-        let response: Response = library_routes(&state).oneshot(request).await?;
+        let response: Response = axum::Router::from(library_routes(&state))
+            .oneshot(request)
+            .await?;
 
         // Assert
         assert_eq!(response.status(), StatusCode::OK);
@@ -2423,7 +2371,9 @@ mod tests {
             .body(Body::from(json!({ "name": "Holidays" }).to_string()))?;
 
         // Act
-        let response: Response = library_routes(&state).oneshot(request).await?;
+        let response: Response = axum::Router::from(library_routes(&state))
+            .oneshot(request)
+            .await?;
 
         // Assert
         assert_eq!(response.status(), StatusCode::CREATED);
@@ -2451,7 +2401,9 @@ mod tests {
             .body(Body::empty())?;
 
         // Act
-        let response: Response = library_routes(&state).oneshot(request).await?;
+        let response: Response = axum::Router::from(library_routes(&state))
+            .oneshot(request)
+            .await?;
 
         // Assert
         assert_eq!(response.status(), StatusCode::NO_CONTENT);
@@ -2465,7 +2417,9 @@ mod tests {
             .uri(uri)
             .header(header::AUTHORIZATION, format!("Bearer {}", bearer().await?))
             .body(Body::empty())?;
-        Ok(library_routes(state).oneshot(request).await?)
+        Ok(axum::Router::from(library_routes(state))
+            .oneshot(request)
+            .await?)
     }
 
     #[tokio::test]

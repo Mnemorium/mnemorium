@@ -20,7 +20,7 @@ use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 #[utoipa::path(
     get,
     operation_id = "get_movie",
-    path = "/library/movie/{movie_id}",
+    path = "/movie/{movie_id}",
     tag = "library",
     params(
         ("movie_id" = NumericID, Path, description = "Identifier of the film to fetch"),
@@ -319,7 +319,9 @@ mod tests {
             .body(Body::empty())?;
 
         // Act
-        let response: Response = library_routes(&state).oneshot(request).await?;
+        let response: Response = axum::Router::from(library_routes(&state))
+            .oneshot(request)
+            .await?;
 
         // Assert
         assert_eq!(

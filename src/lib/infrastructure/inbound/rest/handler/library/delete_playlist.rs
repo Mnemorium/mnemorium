@@ -21,7 +21,7 @@ use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 #[utoipa::path(
     delete,
     operation_id = "delete_playlist",
-    path = "/library/music/playlist/{playlist_id}",
+    path = "/music/playlist/{playlist_id}",
     tag = "library",
     params(
         ("playlist_id" = NumericID, Path, description = "Identifier of the playlist"),
