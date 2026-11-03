@@ -41,7 +41,7 @@ impl From<GetUploadError> for ApiError {
 #[utoipa::path(
     get,
     operation_id = "get_upload",
-    path = "/asset/upload/{upload_id}",
+    path = "/upload/{upload_id}",
     tag = "asset",
     params(
         ("upload_id" = NumericID, Path, description = "Identifier of the upload session"),

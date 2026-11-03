@@ -23,7 +23,7 @@ use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 #[utoipa::path(
     get,
     operation_id = "list_series_episodes",
-    path = "/library/series/{series_id}/season/{season_index}/episode",
+    path = "/series/{series_id}/season/{season_index}/episode",
     tag = "library",
     params(
         ("series_id" = NumericID, Path, description = "Identifier of the show holding the season"),
@@ -324,7 +324,9 @@ mod tests {
             .body(Body::empty())?;
 
         // Act
-        let response: Response = library_routes(&state).oneshot(request).await?;
+        let response: Response = axum::Router::from(library_routes(&state))
+            .oneshot(request)
+            .await?;
 
         // Assert
         assert_eq!(

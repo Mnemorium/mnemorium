@@ -45,7 +45,7 @@ pub struct ListSeriesQuery {
 #[utoipa::path(
     get,
     operation_id = "list_series",
-    path = "/library/series",
+    path = "/series",
     tag = "library",
     params(ListSeriesQuery),
     responses(
@@ -404,7 +404,9 @@ mod tests {
             .body(Body::empty())?;
 
         // Act
-        let response: Response = library_routes(&state).oneshot(request).await?;
+        let response: Response = axum::Router::from(library_routes(&state))
+            .oneshot(request)
+            .await?;
 
         // Assert
         assert_eq!(

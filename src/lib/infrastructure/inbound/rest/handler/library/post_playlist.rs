@@ -35,7 +35,7 @@ pub struct PostPlaylistRequest {
 #[utoipa::path(
     post,
     operation_id = "post_playlist",
-    path = "/library/music/playlist",
+    path = "/music/playlist",
     tag = "library",
     request_body = PostPlaylistRequest,
     responses(

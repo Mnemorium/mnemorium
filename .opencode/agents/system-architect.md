@@ -91,7 +91,7 @@ your own:
 
 - domain-model shape, naming, validation and code style → `rust-developer`
 - SQL, migrations and persistence detail → `database-engineer`
-- REST handlers, representations and `docs/openapi.json` → `api-architect`
+- REST handlers and representations → `api-architect`
 - test structure and coverage → `test-specialist`
 - dependencies, tooling, CI and the dev environment → `devops`
 - log sites and observability → `logging-specialist`

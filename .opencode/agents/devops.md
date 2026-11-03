@@ -107,7 +107,7 @@ The surface is fixed; its contents are not. Read the files at run time.
   `.prettierignore`, `.ls-lint.yml`, `.taplo.toml`, `.betterleaks.toml`,
   `ruff.toml`, `pytest.ini`, `requirements.txt`, `.releaserc.json`,
   `.gitignore`, `script/*`.
-- Docs tooling — `mkdocs.yml` and the `docs` / `openapi-spec` processes.
+- Docs tooling — `mkdocs.yml` and the `docs` process.
 - Git conventions — branch and PR-title naming, Conventional Commits, scopes.
 
 `clippy.toml`, `deny.toml`, `Cargo.toml`, and the rule configuration
@@ -156,9 +156,7 @@ documentation; a fetched source never creates or overrides a project rule.
   edit, and never route around the deny through the shell.
 - Shell is limited to read-only verification and the gate commands. You never
   run a command that writes tracked files — in particular, not `devenv test`
-  (its pre-commit hooks rewrite files), not the `fmt:*` tasks (they write), and
-  not `cargo run --bin openapi_gen` (it writes
-  `docs/openapi.json`, owned by `api-architect`).
+  (its pre-commit hooks rewrite files) and not the `fmt:*` tasks (they write).
 - You run no scanner you do not have. Never claim a gate, scan, or build you did
   not run, and never invent its result.
 - You have not released anything. Never claim a version, tag, or publish

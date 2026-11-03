@@ -23,7 +23,7 @@ use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 #[utoipa::path(
     get,
     operation_id = "get_album_track_list",
-    path = "/library/music/album/{album_id}/medium/{medium_index}/track",
+    path = "/music/album/{album_id}/medium/{medium_index}/track",
     tag = "library",
     params(
         ("album_id" = NumericID, Path, description = "Identifier of the album whose medium's tracks are listed"),
@@ -265,7 +265,9 @@ mod tests {
             .body(Body::empty())?;
 
         // Act
-        let response: Response = library_routes(&state).oneshot(request).await?;
+        let response: Response = axum::Router::from(library_routes(&state))
+            .oneshot(request)
+            .await?;
 
         // Assert
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED);

@@ -32,7 +32,7 @@ pub struct ReorderPlaylistTracksRequest {
 #[utoipa::path(
     put,
     operation_id = "put_playlist_track",
-    path = "/library/music/playlist/{playlist_id}/track",
+    path = "/music/playlist/{playlist_id}/track",
     tag = "library",
     params(
         ("playlist_id" = NumericID, Path, description = "Identifier of the playlist"),

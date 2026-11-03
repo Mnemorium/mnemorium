@@ -76,7 +76,7 @@ impl From<WriteUploadChunkError> for ApiError {
 #[utoipa::path(
     put,
     operation_id = "put_upload_chunk",
-    path = "/asset/upload/{upload_id}/chunk/{chunk_number}",
+    path = "/upload/{upload_id}/chunk/{chunk_number}",
     tag = "asset",
     request_body(
         content_type = "application/octet-stream",

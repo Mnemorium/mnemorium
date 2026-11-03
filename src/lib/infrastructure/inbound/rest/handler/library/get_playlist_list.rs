@@ -50,7 +50,7 @@ pub struct ListPlaylistsQuery {
 #[utoipa::path(
     get,
     operation_id = "list_playlists",
-    path = "/library/music/playlist",
+    path = "/music/playlist",
     tag = "library",
     params(ListPlaylistsQuery),
     responses(

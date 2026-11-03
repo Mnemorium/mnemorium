@@ -157,7 +157,7 @@ paths the diff adds or changes.
 | `test-specialist`     | always (tests)                                                                                   |
 | `security-specialist` | always (security)                                                                                |
 | `database-engineer`   | `migrations/**`, `**/*.sql`, `src/lib/infrastructure/outbound/sqlx/**`                           |
-| `api-architect`       | `src/lib/infrastructure/inbound/rest/**`, `docs/openapi.json`                                    |
+| `api-architect`       | `src/lib/infrastructure/inbound/rest/**`                                                        |
 | `system-architect`    | a change that adds or moves a bounded context or its context view, changes the layer map or the hexagonal dependency direction, or touches `src/bin/**` or `src/lib/domain/port/**` |
 | `logging-specialist`  | a changed `**/*.rs` file that adds or changes a `tracing` macro, `src/lib/infrastructure/logging.rs`, or the `OBS-*` rules in `docs/development/TechnicalDesign.md` |
 | `technical-writer`    | `docs/**`, `**/*.md`, `mkdocs.yml`, `.opencode/**`, `AGENTS.md`                                  |

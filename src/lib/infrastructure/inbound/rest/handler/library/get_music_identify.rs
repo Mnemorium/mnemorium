@@ -185,7 +185,7 @@ impl MusicCandidateListResponse {
 #[utoipa::path(
     get,
     operation_id = "identify_music",
-    path = "/library/music/identify",
+    path = "/music/identify",
     tag = "library",
     params(IdentifyMusicQuery),
     responses(
@@ -518,7 +518,9 @@ mod tests {
             .body(Body::empty())?;
 
         // Act
-        let response: Response = library_routes(&state).oneshot(request).await?;
+        let response: Response = axum::Router::from(library_routes(&state))
+            .oneshot(request)
+            .await?;
 
         // Assert
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
