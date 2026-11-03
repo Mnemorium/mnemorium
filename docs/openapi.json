@@ -169,6 +169,26 @@
         ],
         "type": "object"
       },
+      "ArtistCreditResponse": {
+        "description": "One name a provider credits for an album, a release or a recording.",
+        "properties": {
+          "join_phrase": {
+            "description": "Phrase the provider places after the name, when it reports one.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "description": "Name the provider credits.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
       "EpisodeListResponse": {
         "description": "Episodes of one season.",
         "properties": {
@@ -1026,6 +1046,461 @@
           "plot",
           "release_date",
           "video"
+        ],
+        "type": "object"
+      },
+      "MusicCandidateListResponse": {
+        "description": "Candidates the configured provider reported, in its order.\n\n`available` tells a configured provider apart from no provider at all: an\nempty `items` list is a search that ran and found nothing, while\n`available: false` is a surface the server cannot offer. The `self` link\naddresses the search view the representation reports.",
+        "properties": {
+          "_links": {
+            "$ref": "#/components/schemas/SelfLinks",
+            "description": "Link to the search view the representation reports."
+          },
+          "available": {
+            "description": "Whether a music metadata provider is configured.",
+            "type": "boolean"
+          },
+          "items": {
+            "description": "Candidates the provider reported, in its order.",
+            "items": {
+              "$ref": "#/components/schemas/MusicCandidateResponse"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "available",
+          "items",
+          "_links"
+        ],
+        "type": "object"
+      },
+      "MusicCandidateResponse": {
+        "description": "One candidate the provider reported, shaped by the kind of work it denotes.",
+        "oneOf": [
+          {
+            "description": "The abstract album, independent of any one edition.",
+            "properties": {
+              "group": {
+                "description": "Group the provider reports, when it reports one.",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "kind": {
+                "enum": [
+                  "album"
+                ],
+                "type": "string"
+              },
+              "reference": {
+                "$ref": "#/components/schemas/MusicReferenceResponse",
+                "description": "Opaque reference the provider issued for the album."
+              },
+              "title": {
+                "description": "Title the provider reports.",
+                "type": "string"
+              },
+              "year": {
+                "description": "Release or first-release year, when the provider reports one.",
+                "format": "int32",
+                "minimum": 0,
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "reference",
+              "title",
+              "kind"
+            ],
+            "type": "object"
+          },
+          {
+            "description": "One performance, independent of the release it appears on.",
+            "properties": {
+              "group": {
+                "description": "Group the provider reports, when it reports one.",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "kind": {
+                "enum": [
+                  "recording"
+                ],
+                "type": "string"
+              },
+              "reference": {
+                "$ref": "#/components/schemas/MusicReferenceResponse",
+                "description": "Opaque reference the provider issued for the recording."
+              },
+              "title": {
+                "description": "Title the provider reports.",
+                "type": "string"
+              },
+              "year": {
+                "description": "Release or first-release year, when the provider reports one.",
+                "format": "int32",
+                "minimum": 0,
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "reference",
+              "title",
+              "kind"
+            ],
+            "type": "object"
+          },
+          {
+            "description": "One edition of an album.",
+            "properties": {
+              "album": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/MusicReferenceResponse",
+                    "description": "Reference to the album the release belongs to, when reported."
+                  }
+                ]
+              },
+              "group": {
+                "description": "Group the provider reports, when it reports one.",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "kind": {
+                "enum": [
+                  "release"
+                ],
+                "type": "string"
+              },
+              "mediums": {
+                "description": "Mediums of the release, in the provider's order.",
+                "items": {
+                  "$ref": "#/components/schemas/MusicMediumResponse"
+                },
+                "type": "array"
+              },
+              "reference": {
+                "$ref": "#/components/schemas/MusicReferenceResponse",
+                "description": "Opaque reference the provider issued for the release."
+              },
+              "status": {
+                "description": "Status the provider reports, when it reports a mappable one.",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "title": {
+                "description": "Title the provider reports.",
+                "type": "string"
+              },
+              "year": {
+                "description": "Release year, when the provider reports one.",
+                "format": "int32",
+                "minimum": 0,
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "mediums",
+              "reference",
+              "title",
+              "kind"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "MusicEditionResponse": {
+        "description": "One edition of an album, as identification reports it.",
+        "properties": {
+          "country": {
+            "description": "Country of release as an uppercase ISO 3166-1 alpha-2 code, when known.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "mediums": {
+            "description": "Mediums of the edition, in the provider's order.",
+            "items": {
+              "$ref": "#/components/schemas/MusicMediumResponse"
+            },
+            "type": "array"
+          },
+          "reference": {
+            "$ref": "#/components/schemas/MusicReferenceResponse",
+            "description": "Opaque reference the provider issued for the edition."
+          },
+          "release_date": {
+            "description": "Date of release, in `YYYY-MM-DD` form, when the provider reports one.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "description": "Status the provider reports, when it reports a mappable one.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "title": {
+            "description": "Title the provider reports for the edition.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "mediums",
+          "reference",
+          "title"
+        ],
+        "type": "object"
+      },
+      "MusicMediumResponse": {
+        "description": "One medium of an identified release.",
+        "properties": {
+          "format": {
+            "description": "Format the provider reports (`CD`, or the provider's own name for it).",
+            "type": "string"
+          },
+          "index": {
+            "description": "Album-scoped position of the medium, starting at one.",
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "track_count": {
+            "description": "Number of tracks the medium carries.",
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "format",
+          "index",
+          "track_count"
+        ],
+        "type": "object"
+      },
+      "MusicMetadataDocumentResponse": {
+        "description": "The metadata document of one identified work, when one is available.\n\n`available` tells a configured provider apart from no provider at all, so a\nclient does not read an unconfigured server as a provider that could not\nresolve the reference. The `self` link addresses the resolve view the\nrepresentation reports. Artwork is absent: this surface publishes candidate\nmetadata, and collecting group artwork is a separate capability.",
+        "properties": {
+          "_links": {
+            "$ref": "#/components/schemas/SelfLinks",
+            "description": "Link to the resolve view the representation reports."
+          },
+          "available": {
+            "description": "Whether a music metadata provider is configured.",
+            "type": "boolean"
+          },
+          "metadata": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/MusicMetadataResponse",
+                "description": "The resolved document, absent when no provider is configured."
+              }
+            ]
+          }
+        },
+        "required": [
+          "available",
+          "_links"
+        ],
+        "type": "object"
+      },
+      "MusicMetadataResponse": {
+        "description": "The provider-independent metadata document of an identified work.",
+        "oneOf": [
+          {
+            "description": "One album and the editions the provider lists for it.",
+            "properties": {
+              "artist_credits": {
+                "description": "Names the provider credits.",
+                "items": {
+                  "$ref": "#/components/schemas/ArtistCreditResponse"
+                },
+                "type": "array"
+              },
+              "editions": {
+                "description": "Editions the provider lists, ordered by the edition rule.",
+                "items": {
+                  "$ref": "#/components/schemas/MusicEditionResponse"
+                },
+                "type": "array"
+              },
+              "first_release_date": {
+                "description": "Date of first release, in `YYYY-MM-DD` form, when known.",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "genres": {
+                "description": "Genres from the provider's curated vocabulary.",
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "kind": {
+                "enum": [
+                  "album"
+                ],
+                "type": "string"
+              },
+              "production_type": {
+                "description": "Production type from the catalogue's list, when it maps.",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "title": {
+                "description": "Title the provider reports.",
+                "type": "string"
+              }
+            },
+            "required": [
+              "artist_credits",
+              "editions",
+              "genres",
+              "title",
+              "kind"
+            ],
+            "type": "object"
+          },
+          {
+            "description": "One recording, independent of any release.",
+            "properties": {
+              "artist_credits": {
+                "description": "Names the provider credits.",
+                "items": {
+                  "$ref": "#/components/schemas/ArtistCreditResponse"
+                },
+                "type": "array"
+              },
+              "genres": {
+                "description": "Genres from the provider's curated vocabulary.",
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "isrcs": {
+                "description": "ISRC codes the provider reports.",
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "kind": {
+                "enum": [
+                  "recording"
+                ],
+                "type": "string"
+              },
+              "title": {
+                "description": "Title the provider reports.",
+                "type": "string"
+              }
+            },
+            "required": [
+              "artist_credits",
+              "genres",
+              "isrcs",
+              "title",
+              "kind"
+            ],
+            "type": "object"
+          },
+          {
+            "description": "One edition of an album.",
+            "properties": {
+              "album": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/MusicReferenceResponse",
+                    "description": "Reference to the album the release belongs to, when reported."
+                  }
+                ]
+              },
+              "artist_credits": {
+                "description": "Names the provider credits.",
+                "items": {
+                  "$ref": "#/components/schemas/ArtistCreditResponse"
+                },
+                "type": "array"
+              },
+              "edition": {
+                "$ref": "#/components/schemas/MusicEditionResponse",
+                "description": "The edition itself: title, date, country, status and mediums."
+              },
+              "genres": {
+                "description": "Genres from the provider's curated vocabulary.",
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "kind": {
+                "enum": [
+                  "release"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "artist_credits",
+              "edition",
+              "genres",
+              "kind"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "MusicReferenceResponse": {
+        "description": "Opaque reference to one item at a metadata provider.\n\nThe reference is provider-tagged: an identifier one provider issued means\nnothing to another, so every reference names the provider that owns it.",
+        "properties": {
+          "id": {
+            "description": "Identifier the provider issued.",
+            "type": "string"
+          },
+          "provider": {
+            "description": "Provider that issued the identifier (`musicbrainz`).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "provider"
         ],
         "type": "object"
       },
@@ -5066,6 +5541,219 @@
           }
         ],
         "summary": "Fetch a music track",
+        "tags": [
+          "library"
+        ]
+      }
+    },
+    "/library/music/identify": {
+      "get": {
+        "description": "The route is a read of the provider, not of the catalogue: it is guarded by\n`library.read`, returns the provider's candidates in its order and never\nranks them. With no provider configured it answers an `available: false`\ndocument, which a client tells apart from a search that found nothing.",
+        "operationId": "identify_music",
+        "parameters": [
+          {
+            "description": "Group the caller knows, when any.",
+            "in": "query",
+            "name": "group",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Kind of work to search for: `album`, `release` or `recording`.",
+            "in": "query",
+            "name": "kind",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Title to search for; never empty.",
+            "in": "query",
+            "name": "title",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Release or first-release year, when the caller knows one.",
+            "in": "query",
+            "name": "year",
+            "required": false,
+            "schema": {
+              "format": "int32",
+              "minimum": 0,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MusicCandidateListResponse"
+                }
+              }
+            },
+            "description": "Candidates the configured provider reported, in its order"
+          },
+          "400": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Malformed query string"
+          },
+          "401": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid credentials"
+          },
+          "404": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The caller may not read the library"
+          },
+          "422": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The kind is not one of album, release or recording, or the title is empty"
+          },
+          "500": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unexpected error"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ],
+        "summary": "Search the configured music metadata provider",
+        "tags": [
+          "library"
+        ]
+      }
+    },
+    "/library/music/identify/{provider}/{kind}/{reference}": {
+      "get": {
+        "description": "The reference names the provider that issued it and the kind of work it\ndenotes; a provider the server does not serve answers `404 Not Found`. The\nroute is a read of the provider, not of the catalogue, and is guarded by\n`library.read`. With no provider configured it answers an\n`available: false` document.",
+        "operationId": "resolve_music_metadata",
+        "parameters": [
+          {
+            "description": "Provider that issued the reference",
+            "in": "path",
+            "name": "provider",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Kind of work: album, release or recording",
+            "in": "path",
+            "name": "kind",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Identifier the provider issued",
+            "in": "path",
+            "name": "reference",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MusicMetadataDocumentResponse"
+                }
+              }
+            },
+            "description": "The provider-independent metadata document"
+          },
+          "401": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid credentials"
+          },
+          "404": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The provider is not configured, the caller may not read the library, or the provider does not know the reference"
+          },
+          "422": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The kind is not one of album, release or recording"
+          },
+          "500": {
+            "content": {
+              "application/hal+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unexpected error"
+          }
+        },
+        "security": [
+          {
+            "bearer_auth": []
+          }
+        ],
+        "summary": "Resolve a music provider reference into its metadata",
         "tags": [
           "library"
         ]

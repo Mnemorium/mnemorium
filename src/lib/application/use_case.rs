@@ -46,6 +46,7 @@ pub mod register_user;
 pub mod remove_playlist_track;
 pub mod reorder_playlist_tracks;
 pub mod replace_permission;
+pub mod resolve_music_metadata;
 pub mod update_playlist;
 pub mod update_user;
 pub(crate) mod upload_layout;

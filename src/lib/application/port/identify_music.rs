@@ -1,6 +1,7 @@
 use std::future::Future;
 use std::pin::Pin;
 
+use crate::domain::alias::NumericID;
 use crate::domain::model::music_candidate::MusicCandidate;
 use crate::domain::model::music_query::MusicQuery;
 
@@ -8,15 +9,23 @@ use crate::domain::model::music_query::MusicQuery;
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct IdentifyMusicCommand {
+    /// Caller on whose behalf the search runs.
+    caller_id: NumericID,
     /// The query the caller wants searched.
     query: MusicQuery,
 }
 
 impl IdentifyMusicCommand {
+    /// Return the caller the search runs for.
+    #[must_use]
+    pub fn caller_id(&self) -> NumericID {
+        self.caller_id
+    }
+
     /// Create a new command.
     #[must_use]
-    pub fn new(query: MusicQuery) -> Self {
-        Self { query }
+    pub fn new(caller_id: NumericID, query: MusicQuery) -> Self {
+        Self { caller_id, query }
     }
 
     /// Return the query to search.
@@ -56,6 +65,12 @@ impl IdentifyMusicResponse {
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum IdentifyMusicError {
+    /// The caller does not exist.
+    #[error("the caller does not exist")]
+    NoSuchCaller,
+    /// The caller may not read the library, so identification is concealed.
+    #[error("music identification is not available")]
+    NotPermitted,
     /// No music metadata provider is configured, so identification cannot run.
     #[error("no music metadata provider is configured")]
     Unavailable,
@@ -66,8 +81,8 @@ pub enum IdentifyMusicError {
 
 /// Use case turning a music query into the candidates of a configured provider.
 ///
-/// It is internal: it has no HTTP entry point, persists nothing and ranks
-/// nothing. A future ingest, manual or background trigger is its caller.
+/// It searches once, returns the provider's candidates in the provider's order
+/// and never ranks, persists or logs them. It is guarded by `library.read`.
 #[cfg_attr(test, mockall::automock)]
 pub trait IdentifyMusicUseCase: Send + Sync {
     /// Search the configured provider for the command's query and return its

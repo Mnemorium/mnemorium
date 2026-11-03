@@ -296,9 +296,6 @@ struct RecordingLookupPayload {
     /// Artist credits the service reports.
     #[serde(default)]
     artist_credit: Vec<ArtistCreditPayload>,
-    /// Date of first release, as the service spells it.
-    #[serde(default)]
-    first_release_date: Option<String>,
     /// Genres from the service's curated vocabulary.
     #[serde(default)]
     genres: Vec<GenrePayload>,
@@ -618,7 +615,6 @@ impl MusicMetadataProvider for MusicBrainzMetadataProvider {
                 };
                 Ok(Some(MusicMetadata::Recording {
                     artist_credits: credits(&payload.artist_credit),
-                    first_release_date: date(payload.first_release_date.as_deref()),
                     genres: genres(&payload.genres),
                     isrcs: payload
                         .isrcs
@@ -629,6 +625,10 @@ impl MusicMetadataProvider for MusicBrainzMetadataProvider {
                 }))
             }
         }
+    }
+
+    fn provider(&self) -> ProviderId {
+        ProviderId::MusicBrainz
     }
 
     async fn search(
@@ -642,13 +642,13 @@ impl MusicMetadataProvider for MusicBrainzMetadataProvider {
             MusicKind::Recording => ("/recording", "recording", "firstreleasedate"),
         };
         let mut search = quoted_field(field, query.title());
-        if let Some(artist) = query
-            .artist()
+        if let Some(group) = query
+            .group()
             .map(str::trim)
             .filter(|value| !value.is_empty())
         {
             search.push_str(" AND ");
-            search.push_str(&quoted_field("artist", artist));
+            search.push_str(&quoted_field("artist", group));
         }
         if let Some(year_value) = query.year() {
             search.push_str(" AND ");
@@ -667,7 +667,7 @@ impl MusicMetadataProvider for MusicBrainzMetadataProvider {
                 .release_groups
                 .into_iter()
                 .map(|hit| MusicCandidate::Album {
-                    artist: first_artist(&hit.artist_credit),
+                    group: first_artist(&hit.artist_credit),
                     reference: ExternalRef::new(ProviderId::MusicBrainz, hit.id),
                     title: hit.title,
                     year: year(hit.first_release_date.as_deref()),
@@ -680,7 +680,7 @@ impl MusicMetadataProvider for MusicBrainzMetadataProvider {
                     album: hit
                         .release_group
                         .map(|group| ExternalRef::new(ProviderId::MusicBrainz, group.id)),
-                    artist: first_artist(&hit.artist_credit),
+                    group: first_artist(&hit.artist_credit),
                     mediums: mediums(&hit.medium_list),
                     reference: ExternalRef::new(ProviderId::MusicBrainz, hit.id),
                     status: hit.status.as_deref().and_then(ReleaseStatus::from_name),
@@ -692,7 +692,7 @@ impl MusicMetadataProvider for MusicBrainzMetadataProvider {
                 .recordings
                 .into_iter()
                 .map(|hit| MusicCandidate::Recording {
-                    artist: first_artist(&hit.artist_credit),
+                    group: first_artist(&hit.artist_credit),
                     reference: ExternalRef::new(ProviderId::MusicBrainz, hit.id),
                     title: hit.title,
                     year: year(hit.first_release_date.as_deref()),
@@ -1139,7 +1139,7 @@ mod tests {
         let candidate = first(&candidates)?;
         assert_eq!(candidate.kind(), MusicKind::Album);
         assert_eq!(candidate.title(), "Kind of Blue");
-        assert_eq!(candidate.artist(), Some("Miles Davis"));
+        assert_eq!(candidate.group(), Some("Miles Davis"));
         assert_eq!(candidate.year(), Some(1959));
         assert_eq!(candidate.reference().provider(), ProviderId::MusicBrainz);
         assert_eq!(candidate.reference().id(), ALBUM_ID);
@@ -1207,14 +1207,14 @@ mod tests {
         let candidate = first(&candidates)?;
         assert_eq!(candidate.kind(), MusicKind::Recording);
         assert_eq!(candidate.title(), "So What");
-        assert_eq!(candidate.artist(), Some("Miles Davis"));
+        assert_eq!(candidate.group(), Some("Miles Davis"));
         assert_eq!(candidate.year(), Some(1959));
         assert_eq!(candidate.reference().id(), RECORDING_ID);
         Ok(())
     }
 
     #[tokio::test]
-    async fn musicbrainz_search_leaves_an_unreported_artist_absent() -> Result<(), Box<dyn Error>> {
+    async fn musicbrainz_search_leaves_an_unreported_group_absent() -> Result<(), Box<dyn Error>> {
         // Arrange
         let server = MockServer::start().await;
         mount_json(&server, "/release-group", SEARCH_WITHOUT_ARTIST).await;
@@ -1227,7 +1227,7 @@ mod tests {
 
         // Assert
         let candidate = first(&candidates)?;
-        assert_eq!(candidate.artist(), None, "an absent artist stays absent");
+        assert_eq!(candidate.group(), None, "an absent group stays absent");
         assert_eq!(candidate.year(), None, "an absent date stays absent");
         Ok(())
     }
@@ -1373,7 +1373,6 @@ mod tests {
         // Assert
         let Some(MusicMetadata::Recording {
             artist_credits,
-            first_release_date,
             genres: mapped_genres,
             isrcs,
             title,
@@ -1382,10 +1381,6 @@ mod tests {
             return Err("the recording lookup must return recording metadata".into());
         };
         assert_eq!(title, "So What");
-        assert_eq!(
-            first_release_date,
-            Some(NaiveDate::from_ymd_opt(1959, 8, 17).ok_or("the date must exist")?)
-        );
         assert_eq!(
             artist_credits.first().map(ArtistCredit::name),
             Some("Miles Davis")
@@ -2021,6 +2016,96 @@ mod tests {
                     )
                 })
         });
+        Ok(())
+    }
+
+    /// Build the target of `kind` from `reference`.
+    fn target(kind: MusicKind, reference: ExternalRef) -> MusicTarget {
+        match kind {
+            MusicKind::Album => MusicTarget::Album(reference),
+            MusicKind::Recording => MusicTarget::Recording(reference),
+            MusicKind::Release => MusicTarget::Release(reference),
+        }
+    }
+
+    /// Return the kind of work a resolved document reports.
+    #[expect(
+        clippy::pattern_type_mismatch,
+        reason = "the arms borrow the metadata out of a non-Copy enum matched by reference"
+    )]
+    fn metadata_kind(metadata: &MusicMetadata) -> MusicKind {
+        match metadata {
+            MusicMetadata::Album { .. } => MusicKind::Album,
+            MusicMetadata::Recording { .. } => MusicKind::Recording,
+            MusicMetadata::Release { .. } => MusicKind::Release,
+        }
+    }
+
+    #[rstest]
+    #[case(
+        MusicKind::Album,
+        "/release-group",
+        "/release-group/{id}",
+        ALBUM_ID,
+        SEARCH_RELEASE_GROUP,
+        RELEASE_GROUP
+    )]
+    #[case(
+        MusicKind::Release,
+        "/release",
+        "/release/{id}",
+        CD_RELEASE_ID,
+        SEARCH_RELEASE,
+        RELEASE
+    )]
+    #[case(
+        MusicKind::Recording,
+        "/recording",
+        "/recording/{id}",
+        RECORDING_ID,
+        SEARCH_RECORDING,
+        RECORDING
+    )]
+    #[tokio::test]
+    async fn musicbrainz_search_then_lookup_resolves_the_returned_reference(
+        #[case] kind: MusicKind,
+        #[case] search_path: &str,
+        #[case] lookup_path: &str,
+        #[case] lookup_id: &str,
+        #[case] search_fixture: &str,
+        #[case] lookup_fixture: &str,
+    ) -> Result<(), Box<dyn Error>> {
+        // Arrange: the search lists one candidate per kind, and the lookup
+        // answers the reference that candidate carries.
+        let server = MockServer::start().await;
+        mount_json(&server, search_path, search_fixture).await;
+        mount_json(
+            &server,
+            &lookup_path.replace("{id}", lookup_id),
+            lookup_fixture,
+        )
+        .await;
+        let provider = provider(&server);
+
+        // Act: search, then resolve the returned reference it names.
+        let candidates = provider.search(&query(kind, "Kind of Blue")?).await?;
+        let reference = candidates
+            .iter()
+            .find(|candidate| candidate.reference().id() == lookup_id)
+            .map(|candidate| candidate.reference().clone())
+            .ok_or("the search must report the fixture's reference")?;
+        let target = target(kind, reference);
+        let resolved = provider.lookup(&target).await?;
+
+        // Assert
+        let Some(document) = resolved else {
+            return Err("the returned reference must resolve to a document".into());
+        };
+        assert_eq!(
+            metadata_kind(&document),
+            kind,
+            "the document must keep the shape the reference names"
+        );
         Ok(())
     }
 }

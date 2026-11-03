@@ -19,6 +19,7 @@ use crate::application::port::get_playlist_track::GetPlaylistTrackUseCase;
 use crate::application::port::get_series::GetSeriesUseCase;
 use crate::application::port::get_series_episode::GetSeriesEpisodeUseCase;
 use crate::application::port::get_series_season::GetSeriesSeasonUseCase;
+use crate::application::port::identify_music::IdentifyMusicUseCase;
 use crate::application::port::identify_video::IdentifyVideoUseCase;
 use crate::application::port::ingest_media::IngestMediaUseCase;
 use crate::application::port::library_use_case_factory::LibraryUseCaseFactory;
@@ -31,6 +32,7 @@ use crate::application::port::list_series::ListSeriesUseCase;
 use crate::application::port::list_series_episodes::ListSeriesEpisodesUseCase;
 use crate::application::port::remove_playlist_track::RemovePlaylistTrackUseCase;
 use crate::application::port::reorder_playlist_tracks::ReorderPlaylistTracksUseCase;
+use crate::application::port::resolve_music_metadata::ResolveMusicMetadataUseCase;
 use crate::application::port::update_playlist::UpdatePlaylistUseCase;
 use crate::application::use_case::add_gallery_item::AddGalleryItem;
 use crate::application::use_case::create_gallery::CreateGallery;
@@ -49,6 +51,7 @@ use crate::application::use_case::get_playlist_track::GetPlaylistTrack;
 use crate::application::use_case::get_series::GetSeries;
 use crate::application::use_case::get_series_episode::GetSeriesEpisode;
 use crate::application::use_case::get_series_season::GetSeriesSeason;
+use crate::application::use_case::identify_music::IdentifyMusic;
 use crate::application::use_case::identify_video::IdentifyVideo;
 use crate::application::use_case::ingest_media::IngestMedia;
 use crate::application::use_case::list_album_tracks::ListAlbumTracks;
@@ -60,6 +63,7 @@ use crate::application::use_case::list_series::ListSeries;
 use crate::application::use_case::list_series_episodes::ListSeriesEpisodes;
 use crate::application::use_case::remove_playlist_track::RemovePlaylistTrack;
 use crate::application::use_case::reorder_playlist_tracks::ReorderPlaylistTracks;
+use crate::application::use_case::resolve_music_metadata::ResolveMusicMetadata;
 use crate::application::use_case::update_playlist::UpdatePlaylist;
 use crate::application::use_case::upload_layout::media_root;
 use crate::domain::model::configuration::Configuration;
@@ -68,6 +72,7 @@ use crate::infrastructure::outbound::file_system::media_source::LocalMediaSource
 use crate::infrastructure::outbound::infer::content_type_sniffer::InferContentTypeSniffer;
 use crate::infrastructure::outbound::media_probe::LocalMediaProbe;
 use crate::infrastructure::outbound::metadata::configured_links;
+use crate::infrastructure::outbound::metadata::configured_music_provider;
 use crate::infrastructure::outbound::metadata::failover::FailoverVideoMetadataProvider;
 use crate::infrastructure::outbound::sqlx::unit_of_work::SqlxUnitOfWorkFactory;
 
@@ -184,6 +189,17 @@ impl LibraryUseCaseFactory for RuntimeLibraryUseCaseFactory {
         Arc::new(GetSeriesSeason::new(Arc::clone(&self.unit_of_work_factory)))
     }
 
+    fn identify_music(&self) -> Arc<dyn IdentifyMusicUseCase> {
+        // The provider is configuration-derived, so the accessor rebuilds it from
+        // the immutable configuration on every call (STY-RUST-062).
+        let provider = configured_music_provider(self.configuration.library().metadata().music())
+            .map(Arc::new);
+        Arc::new(IdentifyMusic::new(
+            Arc::clone(&self.unit_of_work_factory),
+            provider,
+        ))
+    }
+
     fn identify_video(&self) -> Arc<dyn IdentifyVideoUseCase> {
         // The chain is configuration-derived, so the accessor rebuilds it from
         // the immutable configuration on every call (STY-RUST-062).
@@ -247,6 +263,17 @@ impl LibraryUseCaseFactory for RuntimeLibraryUseCaseFactory {
         Arc::new(ReorderPlaylistTracks::new(Arc::clone(
             &self.unit_of_work_factory,
         )))
+    }
+
+    fn resolve_music_metadata(&self) -> Arc<dyn ResolveMusicMetadataUseCase> {
+        // The provider is configuration-derived, so the accessor rebuilds it from
+        // the immutable configuration on every call (STY-RUST-062).
+        let provider = configured_music_provider(self.configuration.library().metadata().music())
+            .map(Arc::new);
+        Arc::new(ResolveMusicMetadata::new(
+            Arc::clone(&self.unit_of_work_factory),
+            provider,
+        ))
     }
 
     fn update_playlist(&self) -> Arc<dyn UpdatePlaylistUseCase> {

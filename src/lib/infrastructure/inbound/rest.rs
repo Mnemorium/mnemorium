@@ -34,6 +34,8 @@ use handler::library::get_gallery_item_list::__path_get_gallery_item_list;
 use handler::library::get_gallery_list::__path_get_gallery_list;
 use handler::library::get_movie::__path_get_movie;
 use handler::library::get_movie_list::__path_get_movie_list;
+use handler::library::get_music_identify::__path_get_music_identify;
+use handler::library::get_music_identify_metadata::__path_get_music_identify_metadata;
 use handler::library::get_playlist::__path_get_playlist;
 use handler::library::get_playlist_list::__path_get_playlist_list;
 use handler::library::get_playlist_track::__path_get_playlist_track;
@@ -83,6 +85,7 @@ use crate::infrastructure::inbound::rest::handler::library::AlbumLinks;
 use crate::infrastructure::inbound::rest::handler::library::AlbumListLinks;
 use crate::infrastructure::inbound::rest::handler::library::AlbumListResponse;
 use crate::infrastructure::inbound::rest::handler::library::AlbumResponse;
+use crate::infrastructure::inbound::rest::handler::library::ArtistCreditResponse;
 use crate::infrastructure::inbound::rest::handler::library::EpisodeListResponse;
 use crate::infrastructure::inbound::rest::handler::library::EpisodeResponse;
 use crate::infrastructure::inbound::rest::handler::library::GalleryItemDetailResponse;
@@ -96,6 +99,8 @@ use crate::infrastructure::inbound::rest::handler::library::MovieLinks;
 use crate::infrastructure::inbound::rest::handler::library::MovieListLinks;
 use crate::infrastructure::inbound::rest::handler::library::MovieListResponse;
 use crate::infrastructure::inbound::rest::handler::library::MovieResponse;
+use crate::infrastructure::inbound::rest::handler::library::MusicMediumResponse;
+use crate::infrastructure::inbound::rest::handler::library::MusicReferenceResponse;
 use crate::infrastructure::inbound::rest::handler::library::PlaylistLinks;
 use crate::infrastructure::inbound::rest::handler::library::PlaylistListLinks;
 use crate::infrastructure::inbound::rest::handler::library::PlaylistListResponse;
@@ -116,6 +121,11 @@ use crate::infrastructure::inbound::rest::handler::library::TrackResponse;
 use crate::infrastructure::inbound::rest::handler::library::VideoResponse;
 use crate::infrastructure::inbound::rest::handler::library::get_gallery_list::GalleryListLinks;
 use crate::infrastructure::inbound::rest::handler::library::get_gallery_list::GalleryListResponse;
+use crate::infrastructure::inbound::rest::handler::library::get_music_identify::MusicCandidateListResponse;
+use crate::infrastructure::inbound::rest::handler::library::get_music_identify::MusicCandidateResponse;
+use crate::infrastructure::inbound::rest::handler::library::get_music_identify_metadata::MusicEditionResponse;
+use crate::infrastructure::inbound::rest::handler::library::get_music_identify_metadata::MusicMetadataDocumentResponse;
+use crate::infrastructure::inbound::rest::handler::library::get_music_identify_metadata::MusicMetadataResponse;
 use crate::infrastructure::inbound::rest::handler::library::patch_playlist::PatchPlaylistRequest;
 use crate::infrastructure::inbound::rest::handler::library::post_gallery::PostGalleryRequest;
 use crate::infrastructure::inbound::rest::handler::library::post_gallery_item::PostGalleryItemRequest;
@@ -158,8 +168,8 @@ impl utoipa::Modify for SecurityAddon {
     servers(
         (url = "http://0.0.0.0:4080/api/v1", description = "Local development server")
     ),
-    paths(get_health, get_upload, patch_credential, post_login, post_register, post_upload, post_upload_complete, put_upload_chunk, get_file, get_file_content, get_image, get_image_content, get_image_file, get_me, get_permission, get_user, get_user_list, patch_user, put_permission, delete_gallery, delete_gallery_item, delete_playlist, delete_playlist_track, get_album, get_album_list, get_album_medium, get_album_track, get_album_track_list, get_gallery, get_gallery_item, get_gallery_item_list, get_gallery_list, get_movie, get_movie_list, get_playlist, get_playlist_list, get_playlist_track, get_playlist_track_list, get_series, get_series_episode, get_series_episode_list, get_series_list, get_series_season, patch_playlist, post_gallery, post_gallery_item, post_playlist, put_playlist_track),
-    components(schemas(AlbumLinks, AlbumListLinks, AlbumListResponse, AlbumResponse, EpisodeListResponse, EpisodeResponse, ErrorBody, FileLinks, FileResponse, GalleryItemDetailResponse, GalleryItemResponse, GalleryItemType, GalleryLinks, GalleryListLinks, GalleryListResponse, GalleryResponse, GetMeResponse, GetUserListResponse, GetUserResponse, ImageLinks, ImageResponse, Link, LoginRequest, LoginResponse, MediumLinks, MediumResponse, MovieLinks, MovieListLinks, MovieListResponse, MovieResponse, PatchCredentialRequest, PatchPlaylistRequest, PatchUserRequest, PatchUserResponse, PermissionGrantResponse, PermissionOverrideRequest, PermissionRequest, PermissionResource, PermissionResponse, PlaylistLinks, PlaylistListLinks, PlaylistListResponse, PlaylistResponse, PlaylistTrackLinks, PlaylistTrackResponse, PostGalleryItemRequest, PostGalleryRequest, PostPlaylistRequest, PostUploadCompleteResponse, PostUploadRequest, PostUploadResponse, PutUploadChunkRequest, RegisterRequest, RegisterResponse, ReorderPlaylistTracksRequest, Role, ScanType, SeasonResponse, SelfLinks, SeriesEpisodeLinks, SeriesLinks, SeriesListLinks, SeriesListResponse, SeriesResponse, SeriesSeasonLinks, SeriesSummaryResponse, TrackLinks, TrackListResponse, TrackResponse, UploadCompleteLinks, UploadSessionLinks, UploadSessionResponse, UserListLinks, VideoResponse)),
+    paths(get_health, get_upload, patch_credential, post_login, post_register, post_upload, post_upload_complete, put_upload_chunk, get_file, get_file_content, get_image, get_image_content, get_image_file, get_me, get_permission, get_user, get_user_list, patch_user, put_permission, delete_gallery, delete_gallery_item, delete_playlist, delete_playlist_track, get_album, get_album_list, get_album_medium, get_album_track, get_album_track_list, get_gallery, get_gallery_item, get_gallery_item_list, get_gallery_list, get_movie, get_movie_list, get_music_identify, get_music_identify_metadata, get_playlist, get_playlist_list, get_playlist_track, get_playlist_track_list, get_series, get_series_episode, get_series_episode_list, get_series_list, get_series_season, patch_playlist, post_gallery, post_gallery_item, post_playlist, put_playlist_track),
+    components(schemas(AlbumLinks, AlbumListLinks, AlbumListResponse, AlbumResponse, ArtistCreditResponse, EpisodeListResponse, EpisodeResponse, ErrorBody, FileLinks, FileResponse, GalleryItemDetailResponse, GalleryItemResponse, GalleryItemType, GalleryLinks, GalleryListLinks, GalleryListResponse, GalleryResponse, GetMeResponse, GetUserListResponse, GetUserResponse, ImageLinks, ImageResponse, Link, LoginRequest, LoginResponse, MediumLinks, MediumResponse, MovieLinks, MovieListLinks, MovieListResponse, MovieResponse, MusicCandidateListResponse, MusicCandidateResponse, MusicEditionResponse, MusicMediumResponse, MusicMetadataDocumentResponse, MusicMetadataResponse, MusicReferenceResponse, PatchCredentialRequest, PatchPlaylistRequest, PatchUserRequest, PatchUserResponse, PermissionGrantResponse, PermissionOverrideRequest, PermissionRequest, PermissionResource, PermissionResponse, PlaylistLinks, PlaylistListLinks, PlaylistListResponse, PlaylistResponse, PlaylistTrackLinks, PlaylistTrackResponse, PostGalleryItemRequest, PostGalleryRequest, PostPlaylistRequest, PostUploadCompleteResponse, PostUploadRequest, PostUploadResponse, PutUploadChunkRequest, RegisterRequest, RegisterResponse, ReorderPlaylistTracksRequest, Role, ScanType, SeasonResponse, SelfLinks, SeriesEpisodeLinks, SeriesLinks, SeriesListLinks, SeriesListResponse, SeriesResponse, SeriesSeasonLinks, SeriesSummaryResponse, TrackLinks, TrackListResponse, TrackResponse, UploadCompleteLinks, UploadSessionLinks, UploadSessionResponse, UserListLinks, VideoResponse)),
     tags(
         (name = "system", description = "System-level endpoints"),
         (name = "asset", description = "Asset bounded context"),

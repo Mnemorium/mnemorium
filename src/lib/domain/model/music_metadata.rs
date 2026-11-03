@@ -126,6 +126,22 @@ pub enum ReleaseStatus {
 }
 
 impl ReleaseStatus {
+    /// Render the status as its wire name (`PSEUDO_RELEASE`).
+    ///
+    /// The names round-trip through [`ReleaseStatus::from_name`], which folds
+    /// case and treats underscores as spaces.
+    #[must_use]
+    pub fn as_wire(self) -> &'static str {
+        match self {
+            Self::Bootleg => "BOOTLEG",
+            Self::Cancelled => "CANCELLED",
+            Self::Official => "OFFICIAL",
+            Self::Promotion => "PROMOTION",
+            Self::PseudoRelease => "PSEUDO_RELEASE",
+            Self::Withdrawn => "WITHDRAWN",
+        }
+    }
+
     /// Map a provider's status name onto the catalogue's list.
     ///
     /// Normalization folds case, trims, and treats spaces, hyphens and
@@ -272,8 +288,6 @@ pub enum MusicMetadata {
     Recording {
         /// Names the provider credits.
         artist_credits: Vec<ArtistCredit>,
-        /// Date of first release, when the provider reports a complete one.
-        first_release_date: Option<NaiveDate>,
         /// Genres from the provider's curated vocabulary.
         genres: Vec<String>,
         /// ISRC codes the provider reports.

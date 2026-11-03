@@ -19,15 +19,43 @@ pub enum MusicKind {
     Release,
 }
 
+impl MusicKind {
+    /// Render the kind as its wire name (`album`, `release`, `recording`).
+    #[must_use]
+    pub fn as_wire(self) -> &'static str {
+        match self {
+            Self::Album => "album",
+            Self::Recording => "recording",
+            Self::Release => "release",
+        }
+    }
+
+    /// Parse the kind a query or a route names (`album`, `release`,
+    /// `recording`).
+    ///
+    /// Returns `None` when `value` is not a member of the discrete list, so the
+    /// inbound handler can classify the rejection as `enum_validation_failed`
+    /// (`OBS-006`).
+    #[must_use]
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "album" => Some(Self::Album),
+            "recording" => Some(Self::Recording),
+            "release" => Some(Self::Release),
+            _ => None,
+        }
+    }
+}
+
 /// One music query, for an album, a release or a recording.
 ///
-/// A query carries only evidence the caller has: an artist and a year are
+/// A query carries only evidence the caller has: a group and a year are
 /// absent when the caller does not know them, and a title is never empty.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct MusicQuery {
-    /// Artist the caller knows, when any.
-    artist: Option<String>,
+    /// Group the caller knows, when any.
+    group: Option<String>,
     /// Kind of work the query searches for.
     kind: MusicKind,
     /// Title to search for; never empty.
@@ -37,10 +65,10 @@ pub struct MusicQuery {
 }
 
 impl MusicQuery {
-    /// Return the artist the caller knows, when any.
+    /// Return the group the caller knows, when any.
     #[must_use]
-    pub fn artist(&self) -> Option<&str> {
-        self.artist.as_deref()
+    pub fn group(&self) -> Option<&str> {
+        self.group.as_deref()
     }
 
     /// Return the kind of work the query searches for.
@@ -63,14 +91,14 @@ impl MusicQuery {
     pub fn try_new(
         kind: MusicKind,
         title: String,
-        artist: Option<String>,
+        group: Option<String>,
         year: Option<u32>,
     ) -> Result<Self, MusicQueryError> {
         if title.is_empty() {
             return Err(MusicQueryError::InvalidTitle);
         }
         Ok(Self {
-            artist,
+            group,
             kind,
             title,
             year,

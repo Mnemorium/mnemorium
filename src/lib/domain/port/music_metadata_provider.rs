@@ -1,5 +1,6 @@
 use std::future::Future;
 
+use crate::domain::model::media_candidate::ProviderId;
 use crate::domain::model::music_candidate::MusicCandidate;
 use crate::domain::model::music_candidate::MusicTarget;
 use crate::domain::model::music_metadata::MusicMetadata;
@@ -32,6 +33,13 @@ pub trait MusicMetadataProvider: Send + Sync {
         &self,
         target: &MusicTarget,
     ) -> impl Future<Output = Result<Option<MusicMetadata>, ExternalServiceError>> + Send;
+
+    /// Return the provider this adapter answers for.
+    ///
+    /// A reference means nothing to the provider that did not issue it, so the
+    /// use case compares this identity with the provider a route requested
+    /// before it looks the reference up.
+    fn provider(&self) -> ProviderId;
 
     /// Search `query` and return the candidates in the provider's order.
     ///

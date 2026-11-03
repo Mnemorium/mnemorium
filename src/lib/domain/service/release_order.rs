@@ -184,7 +184,7 @@ mod tests {
             .collect();
         MusicCandidate::Release {
             album: None,
-            artist: None,
+            group: None,
             mediums,
             reference: ExternalRef::new(ProviderId::MusicBrainz, id.to_owned()),
             status: None,
@@ -196,7 +196,7 @@ mod tests {
     /// Build an album candidate.
     fn album(id: &str) -> MusicCandidate {
         MusicCandidate::Album {
-            artist: None,
+            group: None,
             reference: ExternalRef::new(ProviderId::MusicBrainz, id.to_owned()),
             title: format!("Album {id}"),
             year: None,
@@ -206,7 +206,7 @@ mod tests {
     /// Build a recording candidate.
     fn recording(id: &str) -> MusicCandidate {
         MusicCandidate::Recording {
-            artist: None,
+            group: None,
             reference: ExternalRef::new(ProviderId::MusicBrainz, id.to_owned()),
             title: format!("Recording {id}"),
             year: None,
