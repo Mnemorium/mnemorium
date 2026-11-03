@@ -1,3 +1,9 @@
+## [0.32.0](https://github.com/Mnemorium/mnemorium/compare/v0.31.1...v0.32.0) (2026-11-03)
+
+### Features
+
+* **api:** add the music group resource ([#388](https://github.com/Mnemorium/mnemorium/issues/388)) ([001b6f2](https://github.com/Mnemorium/mnemorium/commit/001b6f2ccc0e172b26c8300a2663b57f9dbcf689))
+
 ## [0.31.1](https://github.com/Mnemorium/mnemorium/compare/v0.31.0...v0.31.1) (2026-11-03)
 
 ### Performance Improvements
