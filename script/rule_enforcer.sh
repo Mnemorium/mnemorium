@@ -2,6 +2,13 @@
 set -u -o pipefail
 
 # Verify the numbered rules declared in TechnicalDesign.md.
+#
+# The scanner contract: a check never invokes ast-grep itself. It extracts
+# through `scan_short <ID> <root> [--globs ...]` or `scan_json <ID> <root>
+# [--globs ...]`, which share one batched `ast-grep scan` per distinct argument
+# tuple (the root plus its globs) and slice the stream by rule id. So a new
+# check adds a rule file and a registry line, not a scanner process. SQL rules
+# share `sql_lint <code>...`, which lints the migrations once for every code.
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 readonly SCRIPT_DIR
@@ -14,6 +21,13 @@ readonly SGCONFIG="sgconfig.yaml"
 
 # Verbose mode: set by `-v`/`--verbose` with `check`; lists every check, pass or fail, instead of only the failures.
 VERBOSE=0
+
+# The whole configuration document as compact JSON, loaded once (see load_config); empty when the file is absent or empty.
+CONFIG_JSON=""
+
+# The batch workspace (`check` only) and the ast-grep `--filter` alternation shared by every batch.
+ENFORCER_TMP=""
+BATCH_FILTER=""
 
 # --- Registry ---------------------------------------------------------------
 #
@@ -290,6 +304,19 @@ require_yq() {
 	command -v yq >/dev/null 2>&1
 }
 
+# load_config — read the whole configuration once into CONFIG_JSON; this is the only yq call.
+load_config() {
+	CONFIG_JSON=""
+	[ -f "$CONFIG" ] && [ -s "$CONFIG" ] || return 0
+	if ! require_yq; then
+		die_code 2 "required tool not found: yq (run inside the dev shell: devenv shell)"
+	fi
+	CONFIG_JSON="$(yq -c '.' "$CONFIG")" || {
+		CONFIG_JSON=""
+		die_code 2 "malformed config: $CONFIG"
+	}
+}
+
 # rule_config <id> — print the rule's block from rule_enforcer.yaml as compact JSON, or `{}` when the file, the `rules:` map or the block is absent.
 rule_config() {
 	local id="${1:-}"
@@ -298,44 +325,33 @@ rule_config() {
 		return 2
 	fi
 
-	if [ ! -f "$CONFIG" ] || [ ! -s "$CONFIG" ]; then
+	if [ -z "$CONFIG_JSON" ]; then
 		printf '{}\n'
 		return 0
 	fi
 
-	if ! require_yq; then
-		printf 'error: %s: yq not found on PATH (run inside the dev shell: devenv shell)\n' "$id" >&2
-		return 2
-	fi
-
 	local block
-	block="$(yq -c ".rules[\"$id\"] // {}" "$CONFIG")" || return 2
+	block="$(jq -c --arg id "$id" '.rules[$id] // {}' <<<"$CONFIG_JSON")" || return 2
 	[ -n "$block" ] || block='{}'
 	printf '%s\n' "$block"
 }
 
 # validate_config — hard-fail on a malformed file; a missing or empty file is valid (all blocks are then `{}`).
+# load_config performs the one parse; this publishes the same document to every check.
 validate_config() {
-	[ -f "$CONFIG" ] || return 0
-	[ -s "$CONFIG" ] || return 0
-	if ! require_yq; then
-		die_code 2 "required tool not found: yq (run inside the dev shell: devenv shell)"
-	fi
-	if ! yq '.' "$CONFIG" >/dev/null 2>&1; then
-		die_code 2 "malformed config: $CONFIG"
-	fi
+	load_config
 }
 
 # warn_unknown_config_rules — a `rules:` key absent from the rulebook is a warning, not a failure: the config may lead the registry during development.
 warn_unknown_config_rules() {
-	[ -f "$CONFIG" ] && [ -s "$CONFIG" ] || return 0
+	[ -n "$CONFIG_JSON" ] || return 0
 	local key
 	while IFS= read -r key; do
 		[ -n "$key" ] || continue
 		if [ -z "${RULE_TEXT[$key]+set}" ]; then
 			printf 'warning: config references unknown rule id: %s\n' "$key" >&2
 		fi
-	done < <(yq -r '.rules // {} | keys[]' "$CONFIG" 2>/dev/null)
+	done < <(jq -r '.rules // {} | keys[]' <<<"$CONFIG_JSON" 2>/dev/null)
 }
 
 # --- Helpers -----------------------------------------------------------------
@@ -355,8 +371,155 @@ need_file() {
 	return 1
 }
 
-# scan_short — run one rule in short report mode; print ast-grep's output on failure.
+# scan_short — print the rule's short report on violation; shares the batched ast-grep pass.
 scan_short() {
+	local id="$1"
+	shift
+	local key="$*" dir short_file severity
+	dir="$(scan_dir "$key")"
+	short_file="$dir/${id,,}.short"
+	if ! batch_done "$dir"; then
+		batch_build "$key" "$@"
+	fi
+	if [ -f "$dir/.failed" ]; then
+		scan_short_raw "$id" "$@"
+		return
+	fi
+	if [ ! -f "$short_file" ]; then
+		severity="$(<"$dir/${id,,}.sev")"
+		if [ -s "$dir/${id,,}.jsonl" ] && [ "$severity" = "error" ]; then
+			jq -r '"\(.file):\(.range.start.line + 1):\(.range.start.column + 1): error[\(.ruleId)]: \(.message // "" | gsub("\\s+"; " "))"' \
+				"$dir/${id,,}.jsonl" >"$short_file"
+		else
+			: >"$short_file"
+		fi
+	fi
+	if [ -s "$short_file" ]; then
+		printf '%s\n' "$(<"$short_file")"
+		return 1
+	fi
+	return 0
+}
+
+# scan_json — print the rule's JSON match stream; print the tool error and fail on a scan error.
+scan_json() {
+	local id="$1"
+	shift
+	local key="$*" dir severity
+	dir="$(scan_dir "$key")"
+	if ! batch_done "$dir"; then
+		batch_build "$key" "$@"
+	fi
+	if [ -f "$dir/.failed" ]; then
+		scan_json_raw "$id" "$@"
+		return
+	fi
+	if [ -s "$dir/${id,,}.jsonl" ]; then
+		severity="$(<"$dir/${id,,}.sev")"
+		if [ "$severity" = "error" ]; then
+			printf '%s\n' "$(<"$dir/${id,,}.jsonl")" >&2
+			return 1
+		fi
+		printf '%s' "$(<"$dir/${id,,}.jsonl")"
+		return 0
+	fi
+	return 0
+}
+
+# scan_short_filtered <id> <exclude-regex> <root> <exclusion-glob>... — a scan_short whose output
+# drops the lines an `--globs !<file>` exclusion would have hidden. This lets the check share the
+# root's batch instead of paying for a second near-identical scan. The exclusion globs are replayed
+# when the batch fails and the per-rule fallback runs.
+scan_short_filtered() {
+	local id="$1"
+	local exclude="$2"
+	local root="$3"
+	shift 3
+	local output dir
+	local -a fallback=()
+	local glob
+	for glob in "$@"; do
+		fallback+=(--globs "$glob")
+	done
+	dir="$(scan_dir "$root")"
+	if ! batch_done "$dir"; then
+		batch_build "$root" "$root"
+	fi
+	if [ -f "$dir/.failed" ]; then
+		if output="$(scan_short_raw "$id" "${fallback[@]}" "$root")"; then
+			return 0
+		fi
+	else
+		if output="$(scan_short "$id" "$root")"; then
+			return 0
+		fi
+	fi
+	output="$(printf '%s\n' "$output" | grep -vE -- "$exclude" || true)"
+	[ -n "$output" ] || return 0
+	printf '%s\n' "$output"
+	return 1
+}
+
+# scan_dir <key> — the deterministic slice directory for one ast-grep argument tuple.
+scan_dir() {
+	local key="$1"
+	printf '%s/batch/%s' "$ENFORCER_TMP" "${key//[^[:alnum:]]/_}"
+}
+
+# batch_done <dir> — the slices for this directory are built, or the build already failed.
+batch_done() {
+	[ -f "$1/.done" ] || [ -f "$1/.failed" ]
+}
+
+# batch_build <key> <args...> — one ast-grep pass over the argument tuple, split by rule id into
+# `<id>.jsonl` (the raw matches, one per line) and `<id>.sev` (the match severity). The first
+# caller builds under `flock`; the rest wait and then read. A failed pass leaves `.failed`, so
+# every caller falls back to the per-rule command it used before batching.
+batch_build() {
+	local key="$1"
+	shift
+	local dir scan_rc split_rc
+	dir="$(scan_dir "$key")"
+	mkdir -p "$dir"
+	(
+		flock 9 || exit 0
+		if batch_done "$dir"; then
+			exit 0
+		fi
+		ast-grep scan --config "$SGCONFIG" --filter "$BATCH_FILTER" --json=stream "$@" \
+			>"$dir/.stream" 2>"$dir/.err"
+		scan_rc=$?
+		split_rc=1
+		if [ "$scan_rc" -le 1 ]; then
+			# jq reads the parsed record ids; `paste` puts each raw line back beside its id,
+			# so the JSON is never re-serialised. ast-grep exits 1 when error-severity
+			# diagnostics are found, which is a successful scan.
+			if jq -r '[.ruleId, .severity] | @tsv' "$dir/.stream" >"$dir/.ids"; then
+				if paste -d'\t' "$dir/.ids" "$dir/.stream" |
+					awk -F'\t' -v dir="$dir" '
+						{
+							id = $1
+							print $3 >> (dir "/" id ".jsonl")
+							if (!(id in seen)) { print $2 > (dir "/" id ".sev"); seen[id] = 1 }
+						}
+					'; then
+					split_rc=0
+				fi
+			fi
+		fi
+		rm -f "$dir/.stream" "$dir/.ids"
+		if [ "$scan_rc" -le 1 ] && [ "$split_rc" -eq 0 ]; then
+			: >"$dir/.done"
+		else
+			rm -f "$dir"/*.jsonl "$dir"/*.sev
+			printf '%s\n' "$scan_rc" >"$dir/.failed"
+		fi
+		exit 0
+	) 9>"$dir/.lock"
+}
+
+# scan_short_raw — the per-rule fallback: one rule in short report mode; print ast-grep's output on failure.
+scan_short_raw() {
 	local id="$1"
 	shift
 	local output
@@ -368,8 +531,8 @@ scan_short() {
 	return 1
 }
 
-# scan_json — print the rule's JSON match stream; print the tool error and fail on a scan error.
-scan_json() {
+# scan_json_raw — the per-rule fallback: print the rule's JSON match stream; print the tool error and fail on a scan error.
+scan_json_raw() {
 	local id="$1"
 	shift
 	local output
@@ -714,7 +877,7 @@ check_sty_rust_012() {
 	return "$result"
 }
 
-check_sty_rust_067() { scan_short STY-RUST-067 --globs '!src/bin/server.rs' src; }
+check_sty_rust_067() { scan_short_filtered STY-RUST-067 '^src/bin/server\.rs:' src '!src/bin/server.rs'; }
 
 check_sty_rust_024() { scan_short STY-RUST-024 src; }
 
@@ -787,15 +950,15 @@ check_sty_rust_030() { scan_short STY-RUST-030 src; }
 
 check_sty_rust_032() { scan_short STY-RUST-032 src; }
 
-check_sty_rust_033() { scan_short STY-RUST-033 --globs 'src/lib/application/use_case/**/*.rs' src; }
+check_sty_rust_033() { scan_short STY-RUST-033 src/lib/application/use_case; }
 
-check_sty_rust_034() { scan_short STY-RUST-034 --globs 'src/lib/application/use_case/**/*.rs' src; }
+check_sty_rust_034() { scan_short STY-RUST-034 src/lib/application/use_case; }
 
-check_sty_rust_035() { scan_short STY-RUST-035 --globs 'src/**/*.rs' src; }
+check_sty_rust_035() { scan_short STY-RUST-035 src; }
 
 check_sty_rust_036() { scan_short STY-RUST-036 src; }
 
-check_sty_rust_038() { scan_short STY-RUST-038 --globs '!src/lib/infrastructure/**' --globs '!src/lib/infrastructure.rs' --globs '!src/bin/server.rs' src; }
+check_sty_rust_038() { scan_short_filtered STY-RUST-038 '^(src/lib/infrastructure/|src/lib/infrastructure\.rs:|src/bin/server\.rs:)' src '!src/lib/infrastructure/**' '!src/lib/infrastructure.rs' '!src/bin/server.rs'; }
 
 check_sty_rust_039() {
 	local id="STY-RUST-039"
@@ -2762,36 +2925,59 @@ check_doc_008() {
 	return "$result"
 }
 
+# sql_lint <code>... — lint the migrations once for every SQL rule and print the violations of the named codes.
+# CP02, RF04 and RF06 are parse-bound: one lint pass costs what one rule costs, so the rules share it.
+sql_lint() {
+	local -a codes=("$@")
+	local dir rc output
+	dir="$(scan_dir "sql-lint")"
+	mkdir -p "$dir"
+	(
+		flock 9 || exit 0
+		if [ -f "$dir/.done" ]; then
+			exit 0
+		fi
+		sqlfluff lint --config .sqlfluff --rules CP02,RF04,RF06 --nocolor --format json \
+			migrations >"$dir/out.json" 2>"$dir/err"
+		printf '%s\n' "$?" >"$dir/rc"
+		: >"$dir/.done"
+		exit 0
+	) 9>"$dir/.lock"
+
+	rc="$(<"$dir/rc")"
+	if [ "$rc" -gt 1 ]; then
+		cat "$dir/err" >&2
+		return 2
+	fi
+	output="$(jq -r --args '
+		.[] | .filepath as $file |
+		.violations[] |
+		select(.code as $code | $ARGS.positional | index($code)) |
+		"\($file):\(.start_line_no):\(.start_line_pos): \(.code): \(.description)"
+	' "${codes[@]}" <"$dir/out.json")" || return 2
+	[ -n "$output" ] || return 0
+	printf '%s\n' "$output"
+	return 1
+}
+
 check_sty_sql_001() {
 	local config=".sqlfluff"
 	local migrations_dir="migrations"
-	local output
 
 	need_file "STY-SQL-001" "$config" || return 1
 	need_dir "STY-SQL-001" "$migrations_dir" || return 1
 
 	# sqlfluff already performs this check: CP02 holds every unquoted identifier to the `.sqlfluff` `capitalisation_policy = lower` (snake_case), and RF06 flags a quoted identifier whose quotes are unnecessary.
-	if output="$(sqlfluff lint --config "$config" --rules CP02,RF06 \
-		--nocolor "$migrations_dir" 2>&1)"; then
-		return 0
-	fi
-	printf '%s\n' "$output"
-	return 1
+	sql_lint CP02 RF06
 }
 
 check_sty_sql_003() {
 	local migrations_dir="migrations"
-	local output
 
 	need_dir "STY-SQL-003" "$migrations_dir" || return 1
 
 	# sqlfluff's RF04 (`references.keywords`) is the SQLite dialect's implementation of the rule: an unreserved keyword used as a name (date, key) is reported as RF04, while a reserved keyword (order, group, select) cannot be an unquoted identifier at all and surfaces as an unparsable PRS section.
-	if output="$(sqlfluff lint --dialect sqlite --rules RF04 --nocolor \
-		"$migrations_dir" 2>&1)"; then
-		return 0
-	fi
-	printf '%s\n' "$output"
-	return 1
+	sql_lint RF04
 }
 
 check_sty_sql_004() {
@@ -3750,6 +3936,7 @@ check_obs_006() {
 	local id="OBS-006"
 	local matches file line b64 text level event expected exp_level exp_fields
 	local entry body fields sites=0
+	local -a field_names=() expected_field_names=()
 	local -A catalog=()
 	local -A seen=()
 	local -a findings=()
@@ -3796,33 +3983,37 @@ check_obs_006() {
 		text="$(printf '%s' "$b64" | base64 -d)"
 		sites=$((sites + 1))
 
-		level="$(printf '%s' "${text%%!*}" | tr -d '[:space:]')"
-		event="$(printf '%s\n' "$text" |
-			grep -oE 'event[[:space:]]*=[[:space:]]*"[A-Za-z0-9_]+"' | head -n 1 |
-			sed -E 's/.*"([A-Za-z0-9_]+)"/\1/')"
+		level="${text%%!*}"
+		level="${level//[[:space:]]/}"
+		event=""
+		if [[ $text =~ event[[:space:]]*=[[:space:]]*\"([A-Za-z0-9_]+)\" ]]; then
+			event="${BASH_REMATCH[1]}"
+		fi
 
 		# A field is a named entry in the macro body: `<name> = <expr>` or the shorthand `<name>`.
-		body="$(printf '%s' "$text" |
-			sed -E 's/^[^(]*\(//; s/\)[[:space:]]*$//' |
-			sed -E 's/target[[:space:]]*:[[:space:]]*"security"[[:space:]]*,?//g' |
-			sed -E 's/event[[:space:]]*=[[:space:]]*"[A-Za-z0-9_]+"[[:space:]]*,?//g' |
-			sed -E 's/"[^"]*"[[:space:]]*$//' |
-			tr ',' '\n')"
-		fields=""
+		body="${text#*(}"
+		body="${body%)*}"
+		body="$(printf '%s' "$body" | sed -E \
+			-e 's/target[[:space:]]*:[[:space:]]*"security"[[:space:]]*,?//g' \
+			-e 's/event[[:space:]]*=[[:space:]]*"[A-Za-z0-9_]+"[[:space:]]*,?//g' \
+			-e 's/"[^"]*"[[:space:]]*$//' \
+			-e 's/,/\n/g')"
+		field_names=()
 		while IFS= read -r entry; do
-			entry="$(printf '%s' "$entry" | sed -E 's/^[[:space:]]+|[[:space:]]+$//g')"
+			entry="${entry#"${entry%%[![:space:]]*}"}"
+			entry="${entry%"${entry##*[![:space:]]}"}"
 			[ -n "$entry" ] || continue
 			case "$entry" in
 			'"'*) continue ;;
 			esac
 			if [[ $entry =~ ^([a-z_][a-z0-9_]*)[[:space:]]*= ]]; then
-				fields="$fields ${BASH_REMATCH[1]}"
+				field_names+=("${BASH_REMATCH[1]}")
 			elif [[ $entry =~ ^([a-z_][a-z0-9_]*)$ ]]; then
-				fields="$fields $entry"
+				field_names+=("$entry")
 			fi
 		done <<<"$body"
-		# shellcheck disable=SC2086  # word-split the space-joined field list
-		fields="$(printf '%s\n' $fields | LC_ALL=C sort -u | paste -sd' ' -)"
+		mapfile -t field_names < <(printf '%s\n' "${field_names[@]}" | LC_ALL=C sort -u)
+		fields="${field_names[*]}"
 
 		if [ -z "${catalog[$event]+set}" ]; then
 			findings+=("$id: $file:$line: emitted event $event is not in the catalog")
@@ -3831,8 +4022,9 @@ check_obs_006() {
 		seen["$event"]=1
 		expected="${catalog[$event]}"
 		exp_level="${expected%%|*}"
-		# shellcheck disable=SC2086  # word-split the space-joined field list
-		exp_fields="$(printf '%s\n' ${expected#*|} | LC_ALL=C sort -u | paste -sd' ' -)"
+		read -ra expected_field_names <<<"${expected#*|}"
+		mapfile -t field_names < <(printf '%s\n' "${expected_field_names[@]}" | LC_ALL=C sort -u)
+		exp_fields="${field_names[*]}"
 		if [ "$level" != "$exp_level" ]; then
 			findings+=("$id: $file:$line: $event must be emitted at $exp_level, not $level")
 		fi
@@ -4082,28 +4274,29 @@ check_test_024() {
 check_test_025() {
 	local id="TEST-025"
 	local service_dir="src/lib/domain/service"
-	local matches file name variant enum_count=0 result=0
-	local -A test_ids=()
+	local matches file variant test_line enum_count=0 result=0
+	local -A test_body=()
 
 	need_dir "$id" "$service_dir" || return 1
 
-	# test-025 extracts each domain service's error-enum variants — the business rules the service enforces — and the identifiers its own `#[cfg(test)]` module names.
+	# test-025 extracts each domain service's error-enum variants — the business rules the service enforces. The test module's text is read here because an ast-grep rule cannot read a region of the file it matched in.
 	matches="$(scan_json "$id" "$service_dir")" || return 1
 	require_matches "$id" "domain service from $service_dir" "$matches" || return 1
 
-	# The identifiers the service's own test module names, keyed by file.
-	while IFS=$'\t' read -r file name; do
-		[ -n "$name" ] || continue
-		test_ids["${file}:${name}"]=1
-	done < <(printf '%s\n' "$matches" |
-		jq -r 'select(.metaVariables.single.IDENT != null) | [.file, .metaVariables.single.IDENT.text] | @tsv')
-
-	# Each error variant is one business rule; it must be named in the service's own test module.
+	# Each error variant is one business rule; it must be named in the service's own `#[cfg(test)]` module.
 	while IFS=$'\t' read -r file variant; do
 		[ -n "$variant" ] || continue
 		variant="${variant%%[!A-Za-z0-9_]*}"
 		enum_count=$((enum_count + 1))
-		if [ -z "${test_ids["${file}:${variant}"]+set}" ]; then
+		if [ -z "${test_body[$file]+set}" ]; then
+			test_line="$(grep -nE '^[[:space:]]*#\[cfg\(test\)\]' -- "$file" | tail -n 1 | cut -d: -f1)"
+			if [ -n "$test_line" ]; then
+				test_body["$file"]="$(tail -n +"$test_line" -- "$file")"
+			else
+				test_body["$file"]=""
+			fi
+		fi
+		if ! grep -qwF -- "$variant" <<<"${test_body[$file]}"; then
 			printf 'error: %s: %s: business rule %s is not covered by the service test module; assert the error it encodes\n' \
 				"$id" "$file" "$variant" >&2
 			result=1
@@ -4642,7 +4835,7 @@ check_test_046() {
 }
 
 # check_test_047 — an endpoint test does not assert behaviour owned by middleware (TEST-047): authentication, body-size limits, the HAL error envelope, or cross-origin handling.
-check_test_047() { need_dir "TEST-047" "src/lib/infrastructure/inbound/rest/handler" && scan_short TEST-047 --globs 'src/lib/infrastructure/inbound/rest/handler/**/*.rs' src; }
+check_test_047() { need_dir "TEST-047" "src/lib/infrastructure/inbound/rest/handler" && scan_short TEST-047 "src/lib/infrastructure/inbound/rest/handler"; }
 
 # check_test_050 — a golden file or a test media file the E2E suite consumes is stored under test/e2e/fixture/ (TEST-050).
 check_test_050() {
@@ -5821,6 +6014,58 @@ check_arch_005() { need_dir "ARCH-005" "src/lib/domain/model" && scan_short ARCH
 # SELECTED — the registry entries a `check` invocation selected, in argument order; empty means every registered check (filled by select_rules).
 SELECTED=()
 
+# build_batch_filter — the anchored alternation of the rule ids this invocation may request:
+# the selected ids when the CLI names rules, otherwise every registered id. Anchor both ends so
+# an id never selects a prefix of another.
+build_batch_filter() {
+	local entry
+	local -a ids=()
+	if [ "${#SELECTED[@]}" -gt 0 ]; then
+		for entry in "${SELECTED[@]}"; do
+			ids+=("${entry%%:*}")
+		done
+	else
+		for entry in "${RULES[@]}"; do
+			ids+=("${entry%%:*}")
+		done
+	fi
+	local IFS='|'
+	BATCH_FILTER="^(${ids[*],,})$"
+}
+
+# cleanup_scan_env — remove the per-invocation batch workspace.
+cleanup_scan_env() {
+	if [ -n "$ENFORCER_TMP" ] && [ -d "$ENFORCER_TMP" ]; then
+		rm -rf -- "$ENFORCER_TMP"
+	fi
+}
+
+# init_scan_env — create the batch workspace and the filter shared by every batched scan.
+init_scan_env() {
+	ENFORCER_TMP="$(mktemp -d "${TMPDIR:-/tmp}/rule-enforcer.XXXXXX")" ||
+		die "cannot create a temporary workspace"
+	trap cleanup_scan_env EXIT
+	trap 'exit 130' INT
+	trap 'exit 143' TERM
+	build_batch_filter
+}
+
+# validate_rule_files — load every rule once, before any check runs, so a malformed rule/<id>.yml
+# is reported once instead of by every check that shares its batch. ast-grep exits 1 for
+# error-severity diagnostics and 3 when the filter selects no rule; both mean the files parsed.
+validate_rule_files() {
+	local probe output status
+	probe="$ENFORCER_TMP/probe.rs"
+	printf 'fn main() {}\n' >"$probe"
+	output="$(ast-grep scan --config "$SGCONFIG" --filter "$BATCH_FILTER" --json=stream "$probe" 2>&1)"
+	status=$?
+	if [ "$status" -eq 0 ] || [ "$status" -eq 1 ] || [ "$status" -eq 3 ]; then
+		return 0
+	fi
+	printf '%s\n' "$output" >&2
+	die_code 2 "malformed ast-grep rule under rule/"
+}
+
 # validate_registry — every entry names a known rule and a defined function, and no ID is registered twice.
 validate_registry() {
 	local entry id fn
@@ -5865,25 +6110,47 @@ select_rules() {
 	done
 }
 
-# run_checks — run every registered check, or every selected one, print each failure as `FAIL <ID> (<Section>) — <Rule>` with the check's output indented below, then a tally.
+# run_checks — run every registered check, or every selected one, in receipt order through a bounded
+# pool, then replay the results in registry order: each failure as `FAIL <ID> (<Section>) — <Rule>`
+# with the check's output indented below, then a tally.
 run_checks() {
-	local entry id fn out rc failed=0 total=0
+	local entry id fn rc failed=0 total=0 max running=0 outdir
 	local -a entries=("${RULES[@]}")
 
 	if [ "${#SELECTED[@]}" -gt 0 ]; then
 		entries=("${SELECTED[@]}")
 	fi
 
+	max="${RULE_ENFORCER_JOBS:-}"
+	if ! [[ $max =~ ^[1-9][0-9]*$ ]]; then
+		max="$(nproc 2>/dev/null || printf '4')"
+	fi
+	[ "$max" -gt 8 ] && max=8
+
+	outdir="$ENFORCER_TMP/out"
+	mkdir -p "$outdir"
+
 	for entry in "${entries[@]}"; do
 		id="${entry%%:*}"
 		fn="${entry#*:}"
 		total=$((total + 1))
 
-		if out="$("$fn" 2>&1)"; then
-			rc=0
-		else
-			rc=$?
-		fi
+		while [ "$running" -ge "$max" ]; do
+			wait -n || true
+			running=$((running - 1))
+		done
+		(
+			"$fn" >"$outdir/$id" 2>&1
+			printf '%s\n' "$?" >"$outdir/$id.rc"
+		) &
+		running=$((running + 1))
+	done
+	wait
+
+	for entry in "${entries[@]}"; do
+		id="${entry%%:*}"
+		rc="$(<"$outdir/$id.rc")"
+		rc="${rc:-1}"
 
 		if [ "$rc" -eq 0 ] && [ "$VERBOSE" -eq 1 ]; then
 			printf 'ok   %s (%s)\n' "$id" "${RULE_SECTION[$id]}"
@@ -5892,8 +6159,8 @@ run_checks() {
 		if [ "$rc" -ne 0 ]; then
 			failed=$((failed + 1))
 			printf 'FAIL %s (%s) — %s\n' "$id" "${RULE_SECTION[$id]}" "${RULE_TEXT[$id]}"
-			if [ -n "$out" ]; then
-				printf '%s\n' "$out" | sed 's/^/    /'
+			if [ -s "$outdir/$id" ]; then
+				sed 's/^/    /' "$outdir/$id"
 			fi
 		fi
 	done
@@ -5974,6 +6241,8 @@ main() {
 		if [ "${#ids[@]}" -gt 0 ]; then
 			select_rules "${ids[@]}"
 		fi
+		init_scan_env
+		validate_rule_files
 		run_checks
 		;;
 	uncovered)
