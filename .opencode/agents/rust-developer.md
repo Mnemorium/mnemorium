@@ -171,8 +171,8 @@ Read the governing material at run time; never work from memory.
     `random/`, `config/`, and `logging`.
   - `src/lib/infrastructure/use_case_factory/` — the per-context factories.
   - `migrations/` — the SQLite schema, seeds, and triggers.
-  - `docs/development/` — the rulebook, `Overview.md`, `UseCases.md`,
-    `Glossary.md`, and the generated `docs/openapi.json`.
+  - `docs/development/` — the rulebook, `Overview.md`, `UseCases.md`, and
+    `Glossary.md`.
 
 # Tool Interface Rules
 

@@ -102,7 +102,7 @@ impl From<BeginUploadError> for ApiError {
 #[utoipa::path(
     post,
     operation_id = "post_upload",
-    path = "/asset/upload",
+    path = "/upload",
     tag = "asset",
     request_body(
         content_type = "application/json",

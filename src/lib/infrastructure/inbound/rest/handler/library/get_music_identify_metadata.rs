@@ -219,7 +219,7 @@ impl MusicMetadataDocumentResponse {
 #[utoipa::path(
     get,
     operation_id = "resolve_music_metadata",
-    path = "/library/music/identify/{provider}/{kind}/{reference}",
+    path = "/music/identify/{provider}/{kind}/{reference}",
     tag = "library",
     params(
         ("provider" = String, Path, description = "Provider that issued the reference"),
@@ -564,7 +564,9 @@ mod tests {
             .body(Body::empty())?;
 
         // Act
-        let response: Response = library_routes(&state).oneshot(request).await?;
+        let response: Response = axum::Router::from(library_routes(&state))
+            .oneshot(request)
+            .await?;
 
         // Assert
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED);

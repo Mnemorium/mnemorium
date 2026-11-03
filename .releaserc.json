@@ -30,7 +30,6 @@
             {
                 "assets": [
                     "CHANGELOG.md",
-                    "docs/openapi.json",
                     "Cargo.toml",
                     "Cargo.lock",
                     "THIRD_PARTY_NOTICES.txt"

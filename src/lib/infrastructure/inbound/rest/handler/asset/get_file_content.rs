@@ -32,7 +32,7 @@ impl From<GetAssetContentError> for ApiError {
 #[utoipa::path(
     get,
     operation_id = "get_file_content",
-    path = "/asset/file/{file_id}/content",
+    path = "/file/{file_id}/content",
     tag = "asset",
     params(
         ("file_id" = NumericID, Path, description = "Identifier of the file whose content is read"),

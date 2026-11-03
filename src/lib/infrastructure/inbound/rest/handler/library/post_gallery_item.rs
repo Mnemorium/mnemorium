@@ -77,7 +77,7 @@ impl From<AddGalleryItemError> for ApiError {
 #[utoipa::path(
     post,
     operation_id = "post_gallery_item",
-    path = "/library/gallery/{id}/item",
+    path = "/gallery/{id}/item",
     tag = "library",
     request_body = PostGalleryItemRequest,
     params(

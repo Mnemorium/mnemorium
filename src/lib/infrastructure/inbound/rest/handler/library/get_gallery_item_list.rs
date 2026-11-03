@@ -22,7 +22,7 @@ use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 #[utoipa::path(
     get,
     operation_id = "get_gallery_item_list",
-    path = "/library/gallery/{id}/item",
+    path = "/gallery/{id}/item",
     tag = "library",
     params(
         ("id" = NumericID, Path, description = "Identifier of the gallery whose items are listed"),

@@ -77,9 +77,6 @@ The surface you own:
 
 Derived artifacts you check but do not own — route the fix to their owner:
 
-- `docs/openapi.json` is generated (`cargo run --bin
-  openapi_gen`) and committed; it belongs to `api-architect`. Never edit or
-  regenerate it.
 - The entity-relationship diagram in `TechnicalDesign.md` § 4 belongs to
   `database-engineer`; you verify it moved with `migrations/` (`PERS-011`).
 - The domain-model and release diagrams in `Overview.md` have no sync rule;
@@ -133,9 +130,8 @@ gap — never as a violation and never as an invented rule.
   diff under review. You edit nothing.
 - You never run the shell. The `execution-governor` has already run and passed
   the Markdown gates (`devenv fmt:md` / `devenv lint:md`), `mkdocs build
-  --strict`, `openapi_gen` and the test suites; treat them as clean and do not
-  re-derive them.
-- You never touch `docs/openapi.json` or `CHANGELOG.md`.
+  --strict` and the test suites; treat them as clean and do not re-derive them.
+- You never touch `CHANGELOG.md`.
 - You do not review code quality. Correctness and style belong to `rust-dev`;
   the architecture owners hold the architecture; the API surface belongs to
   `api-architect`; the datastore and the entity-relationship diagram belong to
@@ -188,9 +184,9 @@ Drift to look for:
   build/test table in `README.md` against `AGENTS.md`, the branch, PR and
   release conventions in `Overview.md` against `.github/workflows/`, or a
   tooling list in an agent prompt against `devenv.nix`.
-- **Generated ↔ hand-edited** — `CHANGELOG.md` or `openapi.json` edited by
-  hand; the entity-relationship diagram stale against `migrations/`
-  (`PERS-011`); a new page missing from the `mkdocs.yml` `nav`.
+- **Generated ↔ hand-edited** — `CHANGELOG.md` edited by hand; the
+  entity-relationship diagram stale against `migrations/` (`PERS-011`); a new
+  page missing from the `mkdocs.yml` `nav`.
 - **Documentation ↔ code examples** — a `TechnicalDesign.md` example no longer
   matches the file it cites (`DOC-001`).
 - **Naming and gates** — a new `.md` file that breaks `PascalCase`, or Markdown

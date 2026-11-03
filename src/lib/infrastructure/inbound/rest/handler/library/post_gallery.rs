@@ -50,7 +50,7 @@ impl From<CreateGalleryError> for ApiError {
 #[utoipa::path(
     post,
     operation_id = "post_gallery",
-    path = "/library/gallery",
+    path = "/gallery",
     tag = "library",
     request_body = PostGalleryRequest,
     responses(

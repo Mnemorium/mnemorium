@@ -32,7 +32,7 @@ impl From<GetUserError> for ApiError {
 #[utoipa::path(
     get,
     operation_id = "get_user",
-    path = "/user/{id}",
+    path = "/{id}",
     tag = "user",
     params(
         ("id" = NumericID, Path, description = "Identifier of the user to fetch"),

@@ -121,7 +121,7 @@ impl From<GetFileError> for ApiError {
 #[utoipa::path(
     get,
     operation_id = "get_file",
-    path = "/asset/file/{file_id}",
+    path = "/file/{file_id}",
     tag = "asset",
     params(
         ("file_id" = NumericID, Path, description = "Identifier of the file to fetch"),

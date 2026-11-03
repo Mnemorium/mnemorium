@@ -173,7 +173,7 @@ fn page_href(query: &ListGalleriesQuery, limit: usize, offset: usize) -> String 
 #[utoipa::path(
     get,
     operation_id = "list_galleries",
-    path = "/library/gallery",
+    path = "/gallery",
     tag = "library",
     params(ListGalleriesQuery),
     responses(

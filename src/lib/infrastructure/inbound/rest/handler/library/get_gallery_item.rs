@@ -35,7 +35,7 @@ impl From<GetGalleryItemError> for ApiError {
 #[utoipa::path(
     get,
     operation_id = "get_gallery_item",
-    path = "/library/gallery/{id}/item/{item_id}",
+    path = "/gallery/{id}/item/{item_id}",
     tag = "library",
     params(
         ("id" = NumericID, Path, description = "Identifier of the gallery the item belongs to"),

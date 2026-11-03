@@ -98,7 +98,7 @@ impl From<CompleteUploadError> for ApiError {
 #[utoipa::path(
     post,
     operation_id = "post_upload_complete",
-    path = "/asset/upload/{upload_id}/complete",
+    path = "/upload/{upload_id}/complete",
     tag = "asset",
     params(
         ("upload_id" = NumericID, Path, description = "Identifier of the upload session"),

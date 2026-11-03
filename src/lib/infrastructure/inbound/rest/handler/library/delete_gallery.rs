@@ -35,7 +35,7 @@ impl From<DeleteGalleryError> for ApiError {
 #[utoipa::path(
     delete,
     operation_id = "delete_gallery",
-    path = "/library/gallery/{id}",
+    path = "/gallery/{id}",
     tag = "library",
     params(
         ("id" = NumericID, Path, description = "Identifier of the gallery to delete"),

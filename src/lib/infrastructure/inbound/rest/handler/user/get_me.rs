@@ -63,7 +63,7 @@ impl From<GetCurrentUserError> for ApiError {
 #[utoipa::path(
     get,
     operation_id = "get_me",
-    path = "/user/me",
+    path = "/me",
     tag = "user",
     responses(
         (status = OK, body = GetMeResponse, content_type = "application/hal+json", description = "Current user"),

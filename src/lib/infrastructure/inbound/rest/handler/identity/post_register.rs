@@ -110,7 +110,7 @@ impl From<RegisterUserError> for ApiError {
 #[utoipa::path(
     post,
     operation_id = "post_register",
-    path = "/identity/register",
+    path = "/register",
     tag = "identity",
     request_body = RegisterRequest,
     responses(

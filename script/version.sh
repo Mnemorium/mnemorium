@@ -3,7 +3,6 @@ set -u -o pipefail
 
 readonly CARGO_TOML="Cargo.toml"
 readonly REST_RS="src/lib/infrastructure/inbound/rest.rs"
-readonly OPENAPI_JSON="docs/openapi.json"
 readonly CARGO_VERSION_ENV='version = env!("CARGO_PKG_VERSION")'
 readonly SEMVER_REGEX='^[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.]+)?$'
 
@@ -12,14 +11,14 @@ usage() {
 	echo "  script/version.sh set <version>"
 	echo "  script/version.sh check [expected]"
 	echo ""
-	echo "  set    Update the version in Cargo.toml and openapi.json"
-	echo "  check  Verify Cargo.toml and openapi.json agree; with an argument,"
-	echo "         verify they equal it"
+	echo "  set    Update the version in Cargo.toml"
+	echo "  check  Verify Cargo.toml carries a version; with an argument,"
+	echo "         verify it equals it"
 	echo ""
 	echo "Examples:"
 	echo "  script/version.sh set 0.2.0"
-	echo "  script/version.sh check          # Cargo.toml and openapi.json agree"
-	echo "  script/version.sh check v0.2.0   # and equal the tag"
+	echo "  script/version.sh check          # Cargo.toml carries a version"
+	echo "  script/version.sh check v0.2.0   # and equals the tag"
 }
 
 die() {
@@ -40,30 +39,10 @@ cargo_version() {
 	echo "$line"
 }
 
-openapi_version() {
-	local line
-	line=$(
-		sed -n '/^  "info": {/,/^  },/p' "$OPENAPI_JSON" |
-			grep -m1 '"version"' |
-			sed -E 's/.*"version"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/'
-	)
-	if [ -z "$line" ]; then
-		die "could not find info.version in $OPENAPI_JSON"
-	fi
-	echo "$line"
-}
-
 assert_rest_uses_cargo_version() {
 	if ! grep -Fq "$CARGO_VERSION_ENV" "$REST_RS"; then
-		die "$REST_RS must declare '$CARGO_VERSION_ENV' so the spec version comes from $CARGO_TOML"
+		die "$REST_RS must declare '$CARGO_VERSION_ENV' so the served specification reports the version in $CARGO_TOML"
 	fi
-}
-
-update_openapi_version() {
-	local version="$1"
-	sed -i '/^  "info": {/,/^  },/ s/^\([[:space:]]*"version": \)\("[^"]*"\)/\1"'"$version"'"/' "$OPENAPI_JSON" ||
-		die "failed to update info.version in $OPENAPI_JSON"
-	echo "updated info.version in $OPENAPI_JSON to $version"
 }
 
 cmd_set() {
@@ -87,18 +66,16 @@ cmd_set() {
 		echo "version set to ${version} in $CARGO_TOML"
 	fi
 
-	update_openapi_version "$version"
-
-	if [ "$(openapi_version)" != "$version" ]; then
-		die "$OPENAPI_JSON reports $(openapi_version) but expected $version"
+	if [ "$(cargo_version)" != "$version" ]; then
+		die "$CARGO_TOML reports $(cargo_version) but expected $version"
 	fi
 
-	echo "done: $CARGO_TOML and $OPENAPI_JSON are at $version"
+	echo "done: $CARGO_TOML is at $version"
 }
 
 cmd_check() {
 	local expected="${1:-}"
-	local cargo_v openapi_v
+	local cargo_v
 
 	cargo_v=$(cargo_version 2>/dev/null) || cargo_v=""
 	if [ -z "$cargo_v" ]; then
@@ -107,18 +84,6 @@ cmd_check() {
 
 	assert_rest_uses_cargo_version
 
-	openapi_v=$(openapi_version 2>/dev/null) || openapi_v=""
-	if [ -z "$openapi_v" ]; then
-		die "could not read info.version from $OPENAPI_JSON"
-	fi
-
-	if [ "$cargo_v" != "$openapi_v" ]; then
-		echo "error: version mismatch" >&2
-		echo "  $CARGO_TOML:   $cargo_v" >&2
-		echo "  $OPENAPI_JSON: $openapi_v" >&2
-		exit 1
-	fi
-
 	if [ -n "$expected" ]; then
 		expected="${expected#v}"
 		if ! is_semver "$expected"; then
@@ -126,9 +91,8 @@ cmd_check() {
 		fi
 		if [ "$cargo_v" != "$expected" ]; then
 			echo "error: version mismatch with expected value" >&2
-			echo "  expected:      $expected" >&2
-			echo "  $CARGO_TOML:   $cargo_v" >&2
-			echo "  $OPENAPI_JSON: $openapi_v" >&2
+			echo "  expected:    $expected" >&2
+			echo "  $CARGO_TOML: $cargo_v" >&2
 			exit 1
 		fi
 	fi

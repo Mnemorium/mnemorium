@@ -8,7 +8,6 @@ pub mod post_upload;
 pub mod post_upload_complete;
 pub mod put_upload_chunk;
 
-use axum::Router;
 use axum::body::Body;
 use axum::extract::DefaultBodyLimit;
 use axum::http::HeaderValue;
@@ -17,29 +16,20 @@ use axum::http::header;
 use axum::middleware;
 use axum::response::IntoResponse as _;
 use axum::response::Response;
-use axum::routing::get;
-use axum::routing::post;
-use axum::routing::put;
 use chrono::NaiveDate;
 use chrono::NaiveDateTime;
 use serde::Deserialize;
 use serde::Serialize;
 use tracing::warn;
 use utoipa::ToSchema;
+use utoipa_axum::router::OpenApiRouter;
+use utoipa_axum::router::UtoipaMethodRouterExt as _;
+use utoipa_axum::routes;
 
 use crate::domain::alias::NumericID;
 use crate::infrastructure::inbound::rest::api_error::ApiError;
 use crate::infrastructure::inbound::rest::app_state::AppState;
 use crate::infrastructure::inbound::rest::hal::Link;
-use crate::infrastructure::inbound::rest::handler::asset::get_file::get_file;
-use crate::infrastructure::inbound::rest::handler::asset::get_file_content::get_file_content;
-use crate::infrastructure::inbound::rest::handler::asset::get_image::get_image;
-use crate::infrastructure::inbound::rest::handler::asset::get_image_content::get_image_content;
-use crate::infrastructure::inbound::rest::handler::asset::get_image_file::get_image_file;
-use crate::infrastructure::inbound::rest::handler::asset::get_upload::get_upload;
-use crate::infrastructure::inbound::rest::handler::asset::post_upload::post_upload;
-use crate::infrastructure::inbound::rest::handler::asset::post_upload_complete::post_upload_complete;
-use crate::infrastructure::inbound::rest::handler::asset::put_upload_chunk::put_upload_chunk;
 use crate::infrastructure::inbound::rest::middleware::auth::authenticate;
 use crate::infrastructure::outbound::jwt::token_provider::JwtTokenProvider;
 
@@ -189,10 +179,37 @@ pub(crate) fn asset_content_response(mime_type_id: &str, bytes: Vec<u8>) -> Resp
     response
 }
 
+/// Register the routes of the Asset bounded context.
+///
+/// The handlers carry their own paths, so this only groups them. The
+/// state-dependent chunk body limit is passed in because the `OpenAPI` document
+/// does not need it (`None`).
+pub(crate) fn asset_router(chunk_body_limit: Option<usize>) -> OpenApiRouter<AppState> {
+    let chunk = chunk_body_limit.map_or_else(
+        || OpenApiRouter::new().routes(routes!(put_upload_chunk::put_upload_chunk)),
+        |limit| {
+            OpenApiRouter::new().routes(
+                routes!(put_upload_chunk::put_upload_chunk).layer(DefaultBodyLimit::max(limit)),
+            )
+        },
+    );
+
+    OpenApiRouter::new()
+        .routes(routes!(post_upload::post_upload))
+        .routes(routes!(post_upload_complete::post_upload_complete))
+        .routes(routes!(get_upload::get_upload))
+        .merge(chunk)
+        .routes(routes!(get_file::get_file))
+        .routes(routes!(get_file_content::get_file_content))
+        .routes(routes!(get_image::get_image))
+        .routes(routes!(get_image_file::get_image_file))
+        .routes(routes!(get_image_content::get_image_content))
+}
+
 /// Routes of the asset bounded context.
 ///
 /// Every route requires an authenticated caller.
-pub fn asset_routes(state: &AppState) -> Router {
+pub fn asset_routes(state: &AppState) -> OpenApiRouter<()> {
     // The chunk endpoint receives a full chunk (up to `chunk_size_bytes`), which
     // exceeds axum's 2 MiB default request body limit, so that route's limit is
     // raised to the configured chunk size; every other route keeps the default.
@@ -204,26 +221,7 @@ pub fn asset_routes(state: &AppState) -> Router {
         usize::try_from(state.configuration().asset().upload().chunk_size_bytes())
             .unwrap_or(usize::MAX);
 
-    let upload: Router<AppState> = Router::new()
-        .route("/upload", post(post_upload))
-        .route("/upload/{upload_id}/complete", post(post_upload_complete))
-        .route("/upload/{upload_id}", get(get_upload))
-        .route(
-            "/upload/{upload_id}/chunk/{chunk_number}",
-            put(put_upload_chunk).layer(DefaultBodyLimit::max(chunk_body_limit)),
-        )
-        .with_state(state.clone());
-
-    let files: Router<AppState> = Router::new()
-        .route("/file/{file_id}", get(get_file))
-        .route("/file/{file_id}/content", get(get_file_content))
-        .route("/image/{image_id}", get(get_image))
-        .route("/image/{image_id}/file", get(get_image_file))
-        .route("/image/{image_id}/content", get(get_image_content))
-        .with_state(state.clone());
-
-    upload
-        .merge(files)
+    asset_router(Some(chunk_body_limit))
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
             authenticate::<JwtTokenProvider>,
@@ -270,7 +268,7 @@ mod tests {
             .return_once(move || Arc::new(complete_upload) as Arc<dyn CompleteUploadUseCase>);
 
         let state = app_state_with_asset(Arc::new(factory))?;
-        Ok(asset_routes(&state))
+        Ok(asset_routes(&state).into())
     }
 
     /// Mint a bearer token the test token provider accepts.

@@ -93,7 +93,7 @@ impl From<LoginUserError> for ApiError {
 #[utoipa::path(
     post,
     operation_id = "post_login",
-    path = "/identity/login",
+    path = "/login",
     tag = "identity",
     request_body = LoginRequest,
     responses(
