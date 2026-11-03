@@ -3681,15 +3681,18 @@ check_test_052() {
 			printf 'error: %s: %s: the adapter declares no test-only program seam (a constructor taking the program)\n' \
 				"$id" "$file" >&2
 			result=1
-		elif ! printf '%s\n' "$test_text" | grep -qE "\b${seam}\("; then
+		elif ! grep -qE "\b${seam}\(" <<<"$test_text"; then
 			printf 'error: %s: %s: the test module never drives the program seam %s\n' \
 				"$id" "$file" "$seam" >&2
 			result=1
 		fi
 
 		# Clause 3 — a stub executable: the tests write an executable script.
-		if ! printf '%s\n' "$test_text" | grep -qE 'set_mode\(0o' ||
-			! printf '%s\n' "$test_text" | grep -qF '#!/bin/sh'; then
+		# The probes read `test_text` through a here-string, not a pipe: `grep -q`
+		# exits on its first match, and a piped writer would then die of SIGPIPE
+		# under `set -o pipefail`, turning a match into a failure.
+		if ! grep -qE 'set_mode\(0o' <<<"$test_text" ||
+			! grep -qF '#!/bin/sh' <<<"$test_text"; then
 			printf 'error: %s: %s: the test module does not write an executable stub (needs a #!/bin/sh script and set_mode)\n' \
 				"$id" "$file" >&2
 			result=1
@@ -3714,13 +3717,13 @@ check_test_052() {
 			sed "s/^${error_type}:://" | sort -u)
 
 		for variant in "${!production_variants[@]}"; do
-			if ! printf '%s\n' "$test_text" | grep -qF "${error_type}::${variant}"; then
+			if ! grep -qF "${error_type}::${variant}" <<<"$test_text"; then
 				printf 'error: %s: %s: child outcome %s::%s is returned but not asserted by the test module\n' \
 					"$id" "$file" "$error_type" "$variant" >&2
 				result=1
 			fi
 		done
-		if ! printf '%s\n' "$test_text" | grep -qE '\.ok_or\(|Ok\(Some\('; then
+		if ! grep -qE '\.ok_or\(|Ok\(Some\(' <<<"$test_text"; then
 			printf 'error: %s: %s: the test module asserts no successful child outcome\n' \
 				"$id" "$file" >&2
 			result=1
