@@ -48,8 +48,10 @@ work from memory.
   line in its `RULES=( "ID:function" ... )` registry. Adding a check never edits
   the runner.
 - An ast-grep rule lives at `rule/<lowercase-id>.yml`, registered by
-  `sgconfig.yaml` (`ruleDirs: [rule]`); a check runs it with
-  `ast-grep scan --config sgconfig.yaml --filter <lowercase-id>`.
+  `sgconfig.yaml` (`ruleDirs: [rule]`); a check extracts it through the
+  harness's `scan_short`/`scan_json` helper (`scan_short <UPPER-ID> <root>
+  [--globs ...]`), which batches one `ast-grep scan` per argument tuple. A check
+  never invokes `ast-grep` itself.
 - Per-check data lives in `rule_enforcer.yaml` under `rules.<UPPER-ID>`, read by
   `rule_config <UPPER-ID>`.
 - The ID must have a row in the rulebook; `validate_registry` rejects any other.
