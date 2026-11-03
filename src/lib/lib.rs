@@ -76,6 +76,8 @@ mod test_helpers {
     use crate::domain::port::movie_repository::MovieRepository;
     use crate::domain::port::music_album_repository::MockMusicAlbumRepository;
     use crate::domain::port::music_album_repository::MusicAlbumRepository;
+    use crate::domain::port::music_group_repository::MockMusicGroupRepository;
+    use crate::domain::port::music_group_repository::MusicGroupRepository;
     use crate::domain::port::music_playlist_repository::MockMusicPlaylistRepository;
     use crate::domain::port::music_playlist_repository::MusicPlaylistRepository;
     use crate::domain::port::permission_repository::MockPermissionRepository;
@@ -151,6 +153,8 @@ mod test_helpers {
         pub movies: MockMovieRepository,
         /// Music album repository.
         pub music_albums: MockMusicAlbumRepository,
+        /// Music group repository.
+        pub music_groups: MockMusicGroupRepository,
         /// Music playlist repository.
         pub music_playlists: MockMusicPlaylistRepository,
         /// Permission repository.
@@ -181,6 +185,7 @@ mod test_helpers {
                 mime_types: MockMimeTypeRepository::new(),
                 movies: MockMovieRepository::new(),
                 music_albums: MockMusicAlbumRepository::new(),
+                music_groups: MockMusicGroupRepository::new(),
                 music_playlists: MockMusicPlaylistRepository::new(),
                 permissions: MockPermissionRepository::new(),
                 rolled_back: Arc::new(AtomicBool::new(false)),
@@ -227,6 +232,10 @@ mod test_helpers {
 
         fn music_albums(&mut self) -> impl MusicAlbumRepository + '_ {
             &mut self.music_albums
+        }
+
+        fn music_groups(&mut self) -> impl MusicGroupRepository + '_ {
+            &mut self.music_groups
         }
 
         fn music_playlists(&mut self) -> impl MusicPlaylistRepository + '_ {

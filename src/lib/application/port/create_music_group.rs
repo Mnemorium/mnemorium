@@ -1,0 +1,122 @@
+use std::future::Future;
+use std::pin::Pin;
+
+use crate::domain::alias::NumericID;
+use crate::domain::model::music_group::MusicGroup;
+
+/// Command to create a music group.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct CreateMusicGroupCommand {
+    /// Identifier of the authenticated caller.
+    caller_id: NumericID,
+    /// Identifier of the image holding the group's artwork, when set.
+    cover_image_id: Option<NumericID>,
+    /// Stage name of the group.
+    name: String,
+}
+
+impl CreateMusicGroupCommand {
+    /// Return the identifier of the authenticated caller.
+    #[must_use]
+    pub fn caller_id(&self) -> NumericID {
+        self.caller_id
+    }
+
+    /// Return the identifier of the image holding the group's artwork, if any.
+    #[must_use]
+    pub fn cover_image_id(&self) -> Option<NumericID> {
+        self.cover_image_id
+    }
+
+    /// Return the stage name of the group.
+    #[must_use]
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    /// Create a new create-group command.
+    #[must_use]
+    pub fn new(caller_id: NumericID, name: String, cover_image_id: Option<NumericID>) -> Self {
+        Self {
+            caller_id,
+            cover_image_id,
+            name,
+        }
+    }
+}
+
+/// Response of a successful group creation: the stored group.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct CreateMusicGroupResponse {
+    /// The group that was stored.
+    group: MusicGroup,
+}
+
+impl CreateMusicGroupResponse {
+    /// Return the group that was stored.
+    #[must_use]
+    pub fn group(&self) -> &MusicGroup {
+        &self.group
+    }
+
+    /// Create a new created-group response.
+    #[must_use]
+    pub fn new(group: MusicGroup) -> Self {
+        Self { group }
+    }
+}
+
+/// Error returned when creating a music group.
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
+pub enum CreateMusicGroupError {
+    /// The caller may not manage the library catalogue.
+    #[error("the caller may not manage the library")]
+    Forbidden,
+    /// The cover image belongs to a user, not to the library.
+    #[error("the cover image is not a library image")]
+    InvalidCover,
+    /// The name is empty or made only of whitespace.
+    #[error("the name must not be empty")]
+    InvalidName,
+    /// Another group already carries the name.
+    #[error("a music group with this name already exists")]
+    NameAlreadyExists,
+    /// The name is longer than the name policy allows.
+    #[error("the name is too long")]
+    NameTooLong,
+    /// The authenticated caller does not exist anymore.
+    #[error("the authenticated user does not exist")]
+    NoSuchCaller,
+    /// An unexpected or unmapped error occurred.
+    #[error("an unknown error occurred: {0}")]
+    Unknown(#[source] anyhow::Error),
+}
+
+/// Use case for creating a music group.
+#[cfg_attr(test, mockall::automock)]
+pub trait CreateMusicGroupUseCase: Send + Sync {
+    /// Create a group from the command.
+    ///
+    /// The future is returned erased (`dyn`, not `impl Future`), boxed and
+    /// pinned. `dyn` erases the concrete future type, which is what makes this
+    /// method object-safe so the use case can be stored as
+    /// `Arc<dyn CreateMusicGroupUseCase>`. `Box` keeps the future on the heap at
+    /// a stable address. `Pin` encodes the guarantee that the future is not
+    /// moved once it has started executing: `async` state machines may hold
+    /// self-referential references across `await` points, and `Future::poll`
+    /// takes `Pin<&mut Self>` precisely because moving a polled future would
+    /// invalidate those references.
+    fn execute<'future>(
+        &'future self,
+        command: CreateMusicGroupCommand,
+    ) -> Pin<
+        Box<
+            dyn Future<Output = Result<CreateMusicGroupResponse, CreateMusicGroupError>>
+                + Send
+                + 'future,
+        >,
+    >;
+}

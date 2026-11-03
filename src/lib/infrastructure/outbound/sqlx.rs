@@ -8,6 +8,7 @@ pub mod mime_type_repository;
 pub mod model;
 pub mod movie_repository;
 pub mod music_album_repository;
+pub mod music_group_repository;
 pub mod music_playlist_repository;
 pub mod permission_repository;
 pub mod query_filter;

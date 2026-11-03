@@ -141,6 +141,7 @@ mod tests {
     fn album() -> GetAlbumResponse {
         GetAlbumResponse::new(
             7,
+            0,
             "Kind of Blue".to_owned(),
             Some(album_release_date()),
             Some(ProductionType::Studio),
@@ -171,6 +172,7 @@ mod tests {
             payload,
             json!({
                 "_links": {
+                    "group": { "href": "/api/v1/library/music/group/0" },
                     "self": { "href": "/api/v1/library/music/album/7" }
                 },
                 "cover_image_id": null,
@@ -200,6 +202,7 @@ mod tests {
         // Arrange: the album's cover is file 19.
         let response = GetAlbumResponse::new(
             7,
+            0,
             "Kind of Blue".to_owned(),
             Some(album_release_date()),
             None,
@@ -223,6 +226,43 @@ mod tests {
         assert_eq!(
             payload.pointer("/_links/cover/href"),
             Some(&json!("/api/v1/asset/image/19"))
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn get_album_exposes_the_group_link() -> Result<(), Box<dyn Error>> {
+        // Arrange: the album belongs to group 4.
+        let response = GetAlbumResponse::new(
+            7,
+            4,
+            "Kind of Blue".to_owned(),
+            Some(album_release_date()),
+            None,
+            Vec::new(),
+            0,
+            None,
+            Vec::new(),
+        );
+        let mut use_case = MockGetAlbumUseCase::new();
+        use_case.expect_execute().times(1).return_once(move |_| {
+            let copy = response.clone();
+            Box::pin(async move { Ok(copy) })
+        });
+
+        // Act
+        let (status, _, payload) = into_parts(send(use_case, 1, "7").await?).await?;
+
+        // Assert
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(
+            payload.pointer("/_links/group/href"),
+            Some(&json!("/api/v1/library/music/group/4")),
+            "the album representation must link the group it belongs to"
+        );
+        assert!(
+            payload.get("group_id").is_none(),
+            "the album names its group by link, not by a bare identifier"
         );
         Ok(())
     }

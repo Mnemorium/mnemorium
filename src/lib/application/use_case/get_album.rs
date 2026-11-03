@@ -116,6 +116,7 @@ where
 
                 Ok(GetAlbumResponse::new(
                     album.id(),
+                    album.music_group_id(),
                     album.name().to_owned(),
                     album.release_date(),
                     album.production_type(),

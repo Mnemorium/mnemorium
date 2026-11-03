@@ -93,6 +93,8 @@ pub struct GetAlbumResponse {
     genres: Vec<String>,
     /// Mediums of the album, ordered by medium index.
     mediums: Vec<GetAlbumMediumItem>,
+    /// Identifier of the music group the album belongs to.
+    music_group_id: NumericID,
     /// Name of the album.
     name: String,
     /// Production type of the album, when set.
@@ -128,6 +130,12 @@ impl GetAlbumResponse {
         &self.mediums
     }
 
+    /// Return the identifier of the music group the album belongs to.
+    #[must_use]
+    pub fn music_group_id(&self) -> NumericID {
+        self.music_group_id
+    }
+
     /// Return the name of the album.
     #[must_use]
     pub fn name(&self) -> &str {
@@ -142,6 +150,7 @@ impl GetAlbumResponse {
     )]
     pub fn new(
         album_id: NumericID,
+        music_group_id: NumericID,
         name: String,
         release_date: Option<NaiveDate>,
         production_type: Option<ProductionType>,
@@ -155,6 +164,7 @@ impl GetAlbumResponse {
             cover_image_id,
             genres,
             mediums,
+            music_group_id,
             name,
             production_type,
             release_date,

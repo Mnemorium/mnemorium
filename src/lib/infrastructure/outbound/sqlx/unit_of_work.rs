@@ -14,6 +14,7 @@ use crate::domain::port::library_unit_of_work::LibraryUnitOfWork;
 use crate::domain::port::mime_type_repository::MimeTypeRepository;
 use crate::domain::port::movie_repository::MovieRepository;
 use crate::domain::port::music_album_repository::MusicAlbumRepository;
+use crate::domain::port::music_group_repository::MusicGroupRepository;
 use crate::domain::port::music_playlist_repository::MusicPlaylistRepository;
 use crate::domain::port::permission_repository::PermissionRepository;
 use crate::domain::port::series_repository::SeriesRepository;
@@ -31,6 +32,7 @@ use crate::infrastructure::outbound::sqlx::image_repository::SqlxImageRepository
 use crate::infrastructure::outbound::sqlx::mime_type_repository::SqlxMimeTypeRepository;
 use crate::infrastructure::outbound::sqlx::movie_repository::SqlxMovieRepository;
 use crate::infrastructure::outbound::sqlx::music_album_repository::SqlxMusicAlbumRepository;
+use crate::infrastructure::outbound::sqlx::music_group_repository::SqlxMusicGroupRepository;
 use crate::infrastructure::outbound::sqlx::music_playlist_repository::SqlxMusicPlaylistRepository;
 use crate::infrastructure::outbound::sqlx::permission_repository::SqlxPermissionRepository;
 use crate::infrastructure::outbound::sqlx::series_repository::SqlxSeriesRepository;
@@ -100,6 +102,10 @@ impl LibraryUnitOfWork for SqlxUnitOfWork {
 
     fn music_albums(&mut self) -> impl MusicAlbumRepository + '_ {
         SqlxMusicAlbumRepository::new(self.transaction())
+    }
+
+    fn music_groups(&mut self) -> impl MusicGroupRepository + '_ {
+        SqlxMusicGroupRepository::new(self.transaction())
     }
 
     fn music_playlists(&mut self) -> impl MusicPlaylistRepository + '_ {
