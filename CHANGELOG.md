@@ -1,3 +1,9 @@
+## [0.31.0](https://github.com/Mnemorium/mnemorium/compare/v0.30.0...v0.31.0) (2026-11-03)
+
+### Features
+
+* **api:** expose music identification over the HTTP API ([#383](https://github.com/Mnemorium/mnemorium/issues/383)) ([5b3a530](https://github.com/Mnemorium/mnemorium/commit/5b3a530f555ebbc994f6feecf45f2aa4be726a50))
+
 ## [0.30.0](https://github.com/Mnemorium/mnemorium/compare/v0.29.0...v0.30.0) (2026-11-02)
 
 ### Features
