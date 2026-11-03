@@ -1,3 +1,9 @@
+## [0.31.1](https://github.com/Mnemorium/mnemorium/compare/v0.31.0...v0.31.1) (2026-11-03)
+
+### Performance Improvements
+
+* **devops:** batch scanner work and run rule checks in parallel ([#387](https://github.com/Mnemorium/mnemorium/issues/387)) ([67336a0](https://github.com/Mnemorium/mnemorium/commit/67336a0095a35f8a1b4615d9974d7ab056d36321))
+
 ## [0.31.0](https://github.com/Mnemorium/mnemorium/compare/v0.30.0...v0.31.0) (2026-11-03)
 
 ### Features
