@@ -13,6 +13,8 @@ pub mod get_gallery_item_list;
 pub mod get_gallery_list;
 pub mod get_movie;
 pub mod get_movie_list;
+pub mod get_music_group;
+pub mod get_music_group_list;
 pub mod get_music_identify;
 pub mod get_music_identify_metadata;
 pub mod get_playlist;
@@ -24,9 +26,11 @@ pub mod get_series_episode;
 pub mod get_series_episode_list;
 pub mod get_series_list;
 pub mod get_series_season;
+pub mod patch_music_group;
 pub mod patch_playlist;
 pub mod post_gallery;
 pub mod post_gallery_item;
+pub mod post_music_group;
 pub mod post_playlist;
 pub mod put_playlist_track;
 
@@ -42,6 +46,7 @@ use utoipa_axum::routes;
 
 use crate::application::port::add_gallery_item::AddGalleryItemResponse;
 use crate::application::port::create_gallery::CreateGalleryResponse;
+use crate::application::port::create_music_group::CreateMusicGroupError;
 use crate::application::port::create_playlist::CreatePlaylistError;
 use crate::application::port::delete_playlist::DeletePlaylistError;
 use crate::application::port::get_album::GetAlbumError;
@@ -55,6 +60,8 @@ use crate::application::port::get_gallery::GetGalleryResponse as GetGalleryRespo
 use crate::application::port::get_gallery_item::GetGalleryItemResponse;
 use crate::application::port::get_movie::GetMovieError;
 use crate::application::port::get_movie::GetMovieResponse as GetMovieResponseData;
+use crate::application::port::get_music_group::GetMusicGroupError;
+use crate::application::port::get_music_group::GetMusicGroupResponse as GetMusicGroupResponseData;
 use crate::application::port::get_playlist::GetPlaylistError;
 use crate::application::port::get_playlist_track::GetPlaylistTrackError;
 use crate::application::port::get_series::GetSeriesError;
@@ -71,6 +78,8 @@ use crate::application::port::list_albums::ListAlbumsItem;
 use crate::application::port::list_galleries::ListGalleriesItem;
 use crate::application::port::list_movies::ListMoviesError;
 use crate::application::port::list_movies::ListMoviesItem;
+use crate::application::port::list_music_groups::ListMusicGroupsError;
+use crate::application::port::list_music_groups::ListMusicGroupsItem;
 use crate::application::port::list_playlists::ListPlaylistsError;
 use crate::application::port::list_playlists::ListPlaylistsItem;
 use crate::application::port::list_series::ListSeriesError;
@@ -80,6 +89,7 @@ use crate::application::port::list_series_episodes::ListSeriesEpisodesItem;
 use crate::application::port::remove_playlist_track::RemovePlaylistTrackError;
 use crate::application::port::reorder_playlist_tracks::ReorderPlaylistTracksError;
 use crate::application::port::resolve_music_metadata::ResolveMusicMetadataError;
+use crate::application::port::update_music_group::UpdateMusicGroupError;
 use crate::application::port::update_playlist::UpdatePlaylistError;
 use crate::application::port::video_summary::VideoSummary;
 use crate::domain::alias::NumericID;
@@ -99,6 +109,7 @@ use crate::infrastructure::inbound::rest::hal::SelfLinks;
 use crate::infrastructure::inbound::rest::handler::asset::asset_image_href;
 use crate::infrastructure::inbound::rest::handler::library::get_album_list::ListAlbumsQuery;
 use crate::infrastructure::inbound::rest::handler::library::get_movie_list::ListMoviesQuery;
+use crate::infrastructure::inbound::rest::handler::library::get_music_group_list::ListMusicGroupsQuery;
 use crate::infrastructure::inbound::rest::handler::library::get_playlist_list::ListPlaylistsQuery;
 use crate::infrastructure::inbound::rest::handler::library::get_series_list::ListSeriesQuery;
 use crate::infrastructure::inbound::rest::middleware::auth::authenticate;
@@ -380,13 +391,16 @@ impl From<GetGalleryResponseData> for GalleryResponse {
 ///
 /// The `self` link addresses the album; the album's mediums are embedded in the
 /// representation and each medium carries its own links (`API-037`). A cover is
-/// exposed as the `cover` link when the album stores artwork.
+/// exposed as the `cover` link when the album stores artwork, and the group the
+/// album belongs to is exposed as the `group` link.
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 #[non_exhaustive]
 pub struct AlbumLinks {
     /// Link to the album's cover image, when the album stores artwork.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cover: Option<Link>,
+    /// Link to the music group the album belongs to.
+    pub group: Link,
     /// Link to the album resource itself.
     #[serde(rename = "self")]
     pub self_link: Link,
@@ -395,9 +409,14 @@ pub struct AlbumLinks {
 impl AlbumLinks {
     /// Build the links of the album identified by `album_id`.
     #[must_use]
-    pub fn for_album(album_id: NumericID, cover_image_id: Option<NumericID>) -> Self {
+    pub fn for_album(
+        album_id: NumericID,
+        cover_image_id: Option<NumericID>,
+        music_group_id: NumericID,
+    ) -> Self {
         Self {
             cover: cover_image_id.map(|image_id| Link::new(&asset_image_href(image_id))),
+            group: Link::new(&format!("/api/v1/library/music/group/{music_group_id}")),
             self_link: Link::new(&format!("/api/v1/library/music/album/{album_id}")),
         }
     }
@@ -577,7 +596,11 @@ impl From<&ListAlbumsItem> for AlbumResponse {
             cover_image_id: item.cover_image_id(),
             genres: item.genres().to_vec(),
             id: item.album_id(),
-            links: AlbumLinks::for_album(item.album_id(), item.cover_image_id()),
+            links: AlbumLinks::for_album(
+                item.album_id(),
+                item.cover_image_id(),
+                item.music_group_id(),
+            ),
             mediums: item
                 .mediums()
                 .iter()
@@ -607,7 +630,11 @@ impl From<&GetAlbumResponseData> for AlbumResponse {
             cover_image_id: response.cover_image_id(),
             genres: response.genres().to_vec(),
             id: response.album_id(),
-            links: AlbumLinks::for_album(response.album_id(), response.cover_image_id()),
+            links: AlbumLinks::for_album(
+                response.album_id(),
+                response.cover_image_id(),
+                response.music_group_id(),
+            ),
             mediums: response
                 .mediums()
                 .iter()
@@ -629,6 +656,141 @@ impl From<&GetAlbumResponseData> for AlbumResponse {
             track_count: response.track_count(),
         }
     }
+}
+
+/// HAL links exposed by a music group representation.
+///
+/// The `self` link addresses the group and the `cover` link its artwork, when
+/// the group stores one (`API-034`, `API-037`).
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[non_exhaustive]
+pub struct MusicGroupLinks {
+    /// Link to the group's cover image, when the group stores artwork.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cover: Option<Link>,
+    /// Link to the group resource itself.
+    #[serde(rename = "self")]
+    pub self_link: Link,
+}
+
+impl MusicGroupLinks {
+    /// Build the links of the group identified by `group_id`.
+    #[must_use]
+    pub fn for_group(group_id: NumericID, cover_image_id: Option<NumericID>) -> Self {
+        Self {
+            cover: cover_image_id.map(|image_id| Link::new(&asset_image_href(image_id))),
+            self_link: Link::new(&format!("/api/v1/library/music/group/{group_id}")),
+        }
+    }
+}
+
+/// A music group representation.
+#[derive(Debug, Serialize, ToSchema)]
+#[non_exhaustive]
+pub struct MusicGroupResponse {
+    /// Identifier of the image holding the group's artwork, when set.
+    pub cover_image_id: Option<NumericID>,
+    /// Unique identifier of the group.
+    pub id: NumericID,
+    /// Links to the group and its cover.
+    #[serde(rename = "_links")]
+    pub links: MusicGroupLinks,
+    /// Stage name of the group.
+    pub name: String,
+}
+
+impl MusicGroupResponse {
+    /// Assemble a group representation from its parts.
+    #[must_use]
+    pub fn new(group_id: NumericID, name: String, cover_image_id: Option<NumericID>) -> Self {
+        Self {
+            cover_image_id,
+            id: group_id,
+            links: MusicGroupLinks::for_group(group_id, cover_image_id),
+            name,
+        }
+    }
+}
+
+impl From<&ListMusicGroupsItem> for MusicGroupResponse {
+    fn from(item: &ListMusicGroupsItem) -> Self {
+        Self::new(
+            item.group_id(),
+            item.name().to_owned(),
+            item.cover_image_id(),
+        )
+    }
+}
+
+impl From<&GetMusicGroupResponseData> for MusicGroupResponse {
+    fn from(response: &GetMusicGroupResponseData) -> Self {
+        Self::new(
+            response.group_id(),
+            response.name().to_owned(),
+            response.cover_image_id(),
+        )
+    }
+}
+
+/// HAL links exposed by a music group collection representation.
+///
+/// The `self` link addresses the collection view the representation is about,
+/// `next` and `prev` navigate that same view when another page exists, and the
+/// templated `search` link exposes the collection filters (`API-037`,
+/// `API-042`). The active filter and the page size are carried into every link
+/// so a filtered or paginated listing stays navigable.
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[non_exhaustive]
+pub struct MusicGroupListLinks {
+    /// Link to the next page, when one exists.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub next: Option<Link>,
+    /// Link to the previous page, when one exists.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prev: Option<Link>,
+    /// Templated link exposing the collection's search filters.
+    pub search: Link,
+    /// Link to the collection itself.
+    #[serde(rename = "self")]
+    pub self_link: Link,
+}
+
+impl MusicGroupListLinks {
+    /// Build the links of a music group collection page.
+    ///
+    /// `query` carries the active filter, `limit` and `offset` are the
+    /// effective page, `returned` is the number of groups in the page and
+    /// `total` the number of matching groups before pagination.
+    #[must_use]
+    pub fn for_page(
+        query: &ListMusicGroupsQuery,
+        limit: usize,
+        offset: usize,
+        returned: usize,
+        total: usize,
+    ) -> Self {
+        let next = (offset.saturating_add(returned) < total)
+            .then(|| Link::new(&group_page_href(query, limit, offset.saturating_add(limit))));
+        let prev = (offset > 0)
+            .then(|| Link::new(&group_page_href(query, limit, offset.saturating_sub(limit))));
+        Self {
+            next,
+            prev,
+            search: Link::templated("/api/v1/library/music/group{?name,limit,offset}"),
+            self_link: Link::new(&group_page_href(query, limit, offset)),
+        }
+    }
+}
+
+/// Music groups matching the requested filters.
+#[derive(Debug, Serialize, ToSchema)]
+#[non_exhaustive]
+pub struct MusicGroupListResponse {
+    /// The groups of the returned page.
+    pub items: Vec<MusicGroupResponse>,
+    /// Navigation links of the collection.
+    #[serde(rename = "_links")]
+    pub links: MusicGroupListLinks,
 }
 
 /// HAL links exposed by a music track representation.
@@ -1717,6 +1879,62 @@ impl From<GetAlbumError> for ApiError {
     }
 }
 
+/// Map a create-music-group error to its API error.
+impl From<CreateMusicGroupError> for ApiError {
+    fn from(err: CreateMusicGroupError) -> Self {
+        match err {
+            CreateMusicGroupError::Forbidden => Self::Forbidden(err.to_string()),
+            CreateMusicGroupError::InvalidCover | CreateMusicGroupError::NameAlreadyExists => {
+                Self::Conflict(err.to_string())
+            }
+            CreateMusicGroupError::InvalidName | CreateMusicGroupError::NameTooLong => {
+                Self::UnprocessableEntity(err.to_string())
+            }
+            CreateMusicGroupError::NoSuchCaller => Self::Unauthorized(err.to_string()),
+            CreateMusicGroupError::Unknown(_) => Self::InternalServerError,
+        }
+    }
+}
+
+/// Map a fetch-music-group error to its API error.
+impl From<GetMusicGroupError> for ApiError {
+    fn from(err: GetMusicGroupError) -> Self {
+        match err {
+            GetMusicGroupError::NoSuchGroup => Self::NotFound(err.to_string()),
+            GetMusicGroupError::NoSuchCaller => Self::Unauthorized(err.to_string()),
+            GetMusicGroupError::Unknown(_) => Self::InternalServerError,
+        }
+    }
+}
+
+/// Map a list-music-groups error to its API error.
+impl From<ListMusicGroupsError> for ApiError {
+    fn from(err: ListMusicGroupsError) -> Self {
+        match err {
+            ListMusicGroupsError::NoSuchCaller => Self::Unauthorized(err.to_string()),
+            ListMusicGroupsError::Unknown(_) => Self::InternalServerError,
+        }
+    }
+}
+
+/// Map an update-music-group error to its API error.
+impl From<UpdateMusicGroupError> for ApiError {
+    fn from(err: UpdateMusicGroupError) -> Self {
+        match err {
+            UpdateMusicGroupError::Conflict
+            | UpdateMusicGroupError::InvalidCover
+            | UpdateMusicGroupError::NameAlreadyExists => Self::Conflict(err.to_string()),
+            UpdateMusicGroupError::Forbidden => Self::Forbidden(err.to_string()),
+            UpdateMusicGroupError::InvalidName | UpdateMusicGroupError::NameTooLong => {
+                Self::UnprocessableEntity(err.to_string())
+            }
+            UpdateMusicGroupError::NoSuchCaller => Self::Unauthorized(err.to_string()),
+            UpdateMusicGroupError::NoSuchGroup => Self::NotFound(err.to_string()),
+            UpdateMusicGroupError::Unknown(_) => Self::InternalServerError,
+        }
+    }
+}
+
 /// Map a fetch-album-medium error to its API error.
 impl From<GetAlbumMediumError> for ApiError {
     fn from(err: GetAlbumMediumError) -> Self {
@@ -1988,6 +2206,19 @@ fn album_page_href(query: &ListAlbumsQuery, limit: usize, offset: usize) -> Stri
     href
 }
 
+/// Build the href of the music group collection view at `limit`/`offset`,
+/// preserving the active filter so a filtered page keeps its navigation
+/// (`API-037`).
+fn group_page_href(query: &ListMusicGroupsQuery, limit: usize, offset: usize) -> String {
+    let mut href = String::from("/api/v1/library/music/group?");
+    push_name_filter(&mut href, query.name.as_deref());
+    href.push_str("limit=");
+    href.push_str(&limit.to_string());
+    href.push_str("&offset=");
+    href.push_str(&offset.to_string());
+    href
+}
+
 /// Build the href of the film collection view at `limit`/`offset`, preserving
 /// the active filter so a filtered page keeps its navigation (`API-037`).
 fn movie_page_href(query: &ListMoviesQuery, limit: usize, offset: usize) -> String {
@@ -2056,6 +2287,23 @@ pub(crate) fn parse_album_id(value: &str) -> Result<NumericID, ApiError> {
             "rejected a malformed music album identifier"
         );
         ApiError::BadRequest("invalid music album identifier".to_owned())
+    })
+}
+
+/// Parse a music group identifier from a path segment.
+pub(crate) fn parse_group_id(value: &str) -> Result<NumericID, ApiError> {
+    value.parse::<NumericID>().map_err(|_| {
+        // The malformed value and the parser detail never reach the log
+        // (`OBS-003`); only the classification and its declared fields do
+        // (`OBS-006`).
+        warn!(
+            target: "security",
+            event = "input_validation_failed",
+            field = "group_id",
+            reason = "invalid_identifier",
+            "rejected a malformed music group identifier"
+        );
+        ApiError::BadRequest("invalid music group identifier".to_owned())
     })
 }
 
@@ -2161,6 +2409,14 @@ pub(crate) fn library_router() -> OpenApiRouter<AppState> {
         .routes(routes!(get_album_medium::get_album_medium))
         .routes(routes!(get_album_track_list::get_album_track_list))
         .routes(routes!(get_album_track::get_album_track))
+        .routes(routes!(
+            get_music_group_list::get_music_group_list,
+            post_music_group::post_music_group
+        ))
+        .routes(routes!(
+            get_music_group::get_music_group,
+            patch_music_group::patch_music_group
+        ))
         .routes(routes!(
             get_gallery_list::get_gallery_list,
             post_gallery::post_gallery

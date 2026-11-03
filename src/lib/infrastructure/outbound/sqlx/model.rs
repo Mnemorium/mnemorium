@@ -6,6 +6,7 @@ pub mod gallery_item;
 pub mod image;
 pub mod movie;
 pub mod music_album;
+pub mod music_group;
 pub mod music_playlist;
 pub mod permission;
 pub mod scope;

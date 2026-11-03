@@ -114,6 +114,7 @@ where
                             mediums.iter().map(ListAlbumsMediumItem::track_count).sum();
                         ListAlbumsItem::new(
                             album.id(),
+                            album.music_group_id(),
                             album.name().to_owned(),
                             album.release_date(),
                             album.production_type(),
@@ -295,6 +296,7 @@ mod tests {
             response.albums().first(),
             Some(&ListAlbumsItem::new(
                 1,
+                0,
                 "Album 1".to_owned(),
                 Some(album_release_date()),
                 Some(ProductionType::Studio),

@@ -4,6 +4,7 @@ use tokio::sync::Semaphore;
 
 use crate::application::port::add_gallery_item::AddGalleryItemUseCase;
 use crate::application::port::create_gallery::CreateGalleryUseCase;
+use crate::application::port::create_music_group::CreateMusicGroupUseCase;
 use crate::application::port::create_playlist::CreatePlaylistUseCase;
 use crate::application::port::delete_gallery::DeleteGalleryUseCase;
 use crate::application::port::delete_gallery_item::DeleteGalleryItemUseCase;
@@ -14,6 +15,7 @@ use crate::application::port::get_album_track::GetAlbumTrackUseCase;
 use crate::application::port::get_gallery::GetGalleryUseCase;
 use crate::application::port::get_gallery_item::GetGalleryItemUseCase;
 use crate::application::port::get_movie::GetMovieUseCase;
+use crate::application::port::get_music_group::GetMusicGroupUseCase;
 use crate::application::port::get_playlist::GetPlaylistUseCase;
 use crate::application::port::get_playlist_track::GetPlaylistTrackUseCase;
 use crate::application::port::get_series::GetSeriesUseCase;
@@ -27,15 +29,18 @@ use crate::application::port::list_album_tracks::ListAlbumTracksUseCase;
 use crate::application::port::list_albums::ListAlbumsUseCase;
 use crate::application::port::list_galleries::ListGalleriesUseCase;
 use crate::application::port::list_movies::ListMoviesUseCase;
+use crate::application::port::list_music_groups::ListMusicGroupsUseCase;
 use crate::application::port::list_playlists::ListPlaylistsUseCase;
 use crate::application::port::list_series::ListSeriesUseCase;
 use crate::application::port::list_series_episodes::ListSeriesEpisodesUseCase;
 use crate::application::port::remove_playlist_track::RemovePlaylistTrackUseCase;
 use crate::application::port::reorder_playlist_tracks::ReorderPlaylistTracksUseCase;
 use crate::application::port::resolve_music_metadata::ResolveMusicMetadataUseCase;
+use crate::application::port::update_music_group::UpdateMusicGroupUseCase;
 use crate::application::port::update_playlist::UpdatePlaylistUseCase;
 use crate::application::use_case::add_gallery_item::AddGalleryItem;
 use crate::application::use_case::create_gallery::CreateGallery;
+use crate::application::use_case::create_music_group::CreateMusicGroup;
 use crate::application::use_case::create_playlist::CreatePlaylist;
 use crate::application::use_case::delete_gallery::DeleteGallery;
 use crate::application::use_case::delete_gallery_item::DeleteGalleryItem;
@@ -46,6 +51,7 @@ use crate::application::use_case::get_album_track::GetAlbumTrack;
 use crate::application::use_case::get_gallery::GetGallery;
 use crate::application::use_case::get_gallery_item::GetGalleryItem;
 use crate::application::use_case::get_movie::GetMovie;
+use crate::application::use_case::get_music_group::GetMusicGroup;
 use crate::application::use_case::get_playlist::GetPlaylist;
 use crate::application::use_case::get_playlist_track::GetPlaylistTrack;
 use crate::application::use_case::get_series::GetSeries;
@@ -58,12 +64,14 @@ use crate::application::use_case::list_album_tracks::ListAlbumTracks;
 use crate::application::use_case::list_albums::ListAlbums;
 use crate::application::use_case::list_galleries::ListGalleries;
 use crate::application::use_case::list_movies::ListMovies;
+use crate::application::use_case::list_music_groups::ListMusicGroups;
 use crate::application::use_case::list_playlists::ListPlaylists;
 use crate::application::use_case::list_series::ListSeries;
 use crate::application::use_case::list_series_episodes::ListSeriesEpisodes;
 use crate::application::use_case::remove_playlist_track::RemovePlaylistTrack;
 use crate::application::use_case::reorder_playlist_tracks::ReorderPlaylistTracks;
 use crate::application::use_case::resolve_music_metadata::ResolveMusicMetadata;
+use crate::application::use_case::update_music_group::UpdateMusicGroup;
 use crate::application::use_case::update_playlist::UpdatePlaylist;
 use crate::application::use_case::upload_layout::media_root;
 use crate::domain::model::configuration::Configuration;
@@ -117,6 +125,12 @@ impl LibraryUseCaseFactory for RuntimeLibraryUseCaseFactory {
         Arc::new(CreateGallery::new(Arc::clone(&self.unit_of_work_factory)))
     }
 
+    fn create_music_group(&self) -> Arc<dyn CreateMusicGroupUseCase> {
+        Arc::new(CreateMusicGroup::new(Arc::clone(
+            &self.unit_of_work_factory,
+        )))
+    }
+
     fn create_playlist(&self) -> Arc<dyn CreatePlaylistUseCase> {
         Arc::new(CreatePlaylist::new(Arc::clone(&self.unit_of_work_factory)))
     }
@@ -163,6 +177,10 @@ impl LibraryUseCaseFactory for RuntimeLibraryUseCaseFactory {
 
     fn get_movie(&self) -> Arc<dyn GetMovieUseCase> {
         Arc::new(GetMovie::new(Arc::clone(&self.unit_of_work_factory)))
+    }
+
+    fn get_music_group(&self) -> Arc<dyn GetMusicGroupUseCase> {
+        Arc::new(GetMusicGroup::new(Arc::clone(&self.unit_of_work_factory)))
     }
 
     fn get_playlist(&self) -> Arc<dyn GetPlaylistUseCase> {
@@ -239,6 +257,10 @@ impl LibraryUseCaseFactory for RuntimeLibraryUseCaseFactory {
         Arc::new(ListMovies::new(Arc::clone(&self.unit_of_work_factory)))
     }
 
+    fn list_music_groups(&self) -> Arc<dyn ListMusicGroupsUseCase> {
+        Arc::new(ListMusicGroups::new(Arc::clone(&self.unit_of_work_factory)))
+    }
+
     fn list_playlists(&self) -> Arc<dyn ListPlaylistsUseCase> {
         Arc::new(ListPlaylists::new(Arc::clone(&self.unit_of_work_factory)))
     }
@@ -274,6 +296,12 @@ impl LibraryUseCaseFactory for RuntimeLibraryUseCaseFactory {
             Arc::clone(&self.unit_of_work_factory),
             provider,
         ))
+    }
+
+    fn update_music_group(&self) -> Arc<dyn UpdateMusicGroupUseCase> {
+        Arc::new(UpdateMusicGroup::new(Arc::clone(
+            &self.unit_of_work_factory,
+        )))
     }
 
     fn update_playlist(&self) -> Arc<dyn UpdatePlaylistUseCase> {

@@ -190,6 +190,7 @@ mod tests {
     fn album_item() -> ListAlbumsItem {
         ListAlbumsItem::new(
             7,
+            0,
             "Kind of Blue".to_owned(),
             Some(album_release_date()),
             Some(ProductionType::Studio),
@@ -231,6 +232,7 @@ mod tests {
                 },
                 "items": [{
                     "_links": {
+                        "group": { "href": "/api/v1/library/music/group/0" },
                         "self": { "href": "/api/v1/library/music/album/7" }
                     },
                     "cover_image_id": null,

@@ -1,0 +1,377 @@
+use std::future::Future;
+use std::pin::Pin;
+use std::sync::Arc;
+
+use crate::application::port::list_music_groups::ListMusicGroupsCommand;
+use crate::application::port::list_music_groups::ListMusicGroupsError;
+use crate::application::port::list_music_groups::ListMusicGroupsItem;
+use crate::application::port::list_music_groups::ListMusicGroupsResponse;
+use crate::application::port::list_music_groups::ListMusicGroupsUseCase;
+use crate::domain::model::permission::Action;
+use crate::domain::port::identity_unit_of_work::IdentityUnitOfWork;
+use crate::domain::port::library_unit_of_work::LibraryUnitOfWork;
+use crate::domain::port::music_group_repository::MusicGroupFilter;
+use crate::domain::port::music_group_repository::MusicGroupRepository as _;
+use crate::domain::port::permission_repository::PermissionFilter;
+use crate::domain::port::permission_repository::PermissionRepository as _;
+use crate::domain::port::unit_of_work::UnitOfWork as _;
+use crate::domain::port::unit_of_work::UnitOfWorkFactory;
+use crate::domain::port::user_repository::UserFilter;
+use crate::domain::port::user_repository::UserRepository as _;
+use crate::domain::port::user_unit_of_work::UserUnitOfWork;
+use crate::domain::service::authorization::Authorization;
+
+/// Use case implementation for listing the music groups the caller may see.
+pub struct ListMusicGroups<F> {
+    /// Factory opening the unit of work wrapping the read.
+    unit_of_work_factory: Arc<F>,
+}
+
+impl<F: UnitOfWorkFactory> ListMusicGroups<F> {
+    /// Create a new use case.
+    #[must_use]
+    pub fn new(unit_of_work_factory: Arc<F>) -> Self {
+        Self {
+            unit_of_work_factory,
+        }
+    }
+}
+
+impl<F> ListMusicGroupsUseCase for ListMusicGroups<F>
+where
+    F: UnitOfWorkFactory,
+    F::Uow: IdentityUnitOfWork + LibraryUnitOfWork + UserUnitOfWork,
+{
+    fn execute<'future>(
+        &'future self,
+        command: ListMusicGroupsCommand,
+    ) -> Pin<
+        Box<
+            dyn Future<Output = Result<ListMusicGroupsResponse, ListMusicGroupsError>>
+                + Send
+                + 'future,
+        >,
+    > {
+        let unit_of_work_factory = Arc::clone(&self.unit_of_work_factory);
+
+        Box::pin(async move {
+            let mut unit_of_work = unit_of_work_factory
+                .begin()
+                .await
+                .map_err(|error| ListMusicGroupsError::Unknown(error.into()))?;
+
+            let result = async {
+                let caller = unit_of_work
+                    .users()
+                    .search(&UserFilter {
+                        id: Some(command.caller_id()),
+                        ..UserFilter::default()
+                    })
+                    .await
+                    .map_err(|error| ListMusicGroupsError::Unknown(error.into()))?
+                    .into_iter()
+                    .next()
+                    .ok_or(ListMusicGroupsError::NoSuchCaller)?;
+
+                let permissions = unit_of_work
+                    .permissions()
+                    .search(&PermissionFilter {
+                        user_id: Some(caller.id()),
+                        ..PermissionFilter::default()
+                    })
+                    .await
+                    .map_err(|error| ListMusicGroupsError::Unknown(error.into()))?;
+
+                let mut groups = unit_of_work
+                    .music_groups()
+                    .search(&MusicGroupFilter {
+                        stage_name: command.name().map(str::to_owned),
+                        ..MusicGroupFilter::default()
+                    })
+                    .await
+                    .map_err(|error| ListMusicGroupsError::Unknown(error.into()))?;
+
+                groups.retain(|group| {
+                    Authorization::decide(&caller, &permissions, Action::LibraryRead, group)
+                        .is_allowed()
+                });
+
+                let total = groups.len();
+                let offset = command.offset().unwrap_or(0);
+                let page = groups
+                    .into_iter()
+                    .skip(offset)
+                    .take(command.limit().unwrap_or(usize::MAX))
+                    .map(|group| {
+                        ListMusicGroupsItem::new(
+                            group.id(),
+                            group.stage_name().to_owned(),
+                            group.cover_image_id(),
+                        )
+                    })
+                    .collect();
+
+                Ok(ListMusicGroupsResponse::new(page, total))
+            }
+            .await;
+
+            match result {
+                Ok(value) => {
+                    unit_of_work
+                        .commit()
+                        .await
+                        .map_err(|error| ListMusicGroupsError::Unknown(error.into()))?;
+                    Ok(value)
+                }
+                Err(error) => {
+                    // The unit-of-work adapter owns the rollback-failure log (OBS-002).
+                    let _rollback = unit_of_work.rollback().await;
+                    Err(error)
+                }
+            }
+        })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::error::Error;
+    use std::sync::Arc;
+    use std::sync::atomic::Ordering;
+
+    use crate::application::port::list_music_groups::ListMusicGroupsCommand;
+    use crate::application::port::list_music_groups::ListMusicGroupsError;
+    use crate::application::port::list_music_groups::ListMusicGroupsItem;
+    use crate::application::port::list_music_groups::ListMusicGroupsResponse;
+    use crate::application::port::list_music_groups::ListMusicGroupsUseCase as _;
+    use crate::domain::alias::NumericID;
+    use crate::domain::model::music_group::MusicGroup;
+    use crate::domain::model::permission::Action;
+    use crate::domain::model::permission::Permission;
+    use crate::domain::model::permission::Scope;
+    use crate::domain::port::error::RepositoryError;
+    use crate::domain::port::music_group_repository::MockMusicGroupRepository;
+    use crate::domain::port::permission_repository::MockPermissionRepository;
+    use crate::domain::port::user_repository::MockUserRepository;
+    use crate::test_helpers::GalleryFactoryHarness;
+    use crate::test_helpers::TestFactory;
+    use crate::test_helpers::TestUnitOfWork;
+    use crate::test_helpers::expect_caller;
+    use crate::test_helpers::expect_permissions;
+    use crate::test_helpers::no_permissions;
+
+    use super::ListMusicGroups;
+
+    /// The use case under test, bound to the mocked unit-of-work factory.
+    type UseCase = ListMusicGroups<TestFactory>;
+
+    /// Build a group named `name` with an optional cover.
+    fn group(
+        id: NumericID,
+        name: &str,
+        cover_image_id: Option<NumericID>,
+    ) -> Result<MusicGroup, Box<dyn Error>> {
+        Ok(MusicGroup::try_new(id, name.to_owned(), cover_image_id)?)
+    }
+
+    /// Build a Library test harness around the given mocks.
+    fn harness_with(
+        users: MockUserRepository,
+        groups: MockMusicGroupRepository,
+    ) -> GalleryFactoryHarness {
+        let unit_of_work = TestUnitOfWork {
+            music_groups: groups,
+            permissions: no_permissions(),
+            users,
+            ..TestUnitOfWork::default()
+        };
+        GalleryFactoryHarness::new(unit_of_work)
+    }
+
+    #[tokio::test]
+    async fn list_music_groups_returns_the_page() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let mut users = MockUserRepository::new();
+        expect_caller(&mut users, 1)?;
+        let mut groups = MockMusicGroupRepository::new();
+        let first = group(1, "The Group", Some(19))?;
+        let second = group(2, "Another Group", None)?;
+        groups
+            .expect_search()
+            .times(1)
+            .withf(|filter| filter.stage_name.is_none())
+            .return_once(move |_| {
+                let found = vec![first.clone(), second.clone()];
+                Box::pin(async move { Ok(found) })
+            });
+        let harness = harness_with(users, groups);
+        let use_case: UseCase = ListMusicGroups::new(Arc::clone(&harness.factory));
+
+        // Act
+        let response = use_case
+            .execute(ListMusicGroupsCommand::new(1, None, None, None))
+            .await?;
+
+        // Assert
+        assert_eq!(
+            response,
+            ListMusicGroupsResponse::new(
+                vec![
+                    ListMusicGroupsItem::new(1, "The Group".to_owned(), Some(19)),
+                    ListMusicGroupsItem::new(2, "Another Group".to_owned(), None),
+                ],
+                2,
+            )
+        );
+        assert!(harness.committed.load(Ordering::SeqCst));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn list_music_groups_forwards_the_filter_and_paginates() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let mut users = MockUserRepository::new();
+        expect_caller(&mut users, 1)?;
+        let mut groups = MockMusicGroupRepository::new();
+        let first = group(1, "Group 1", None)?;
+        let second = group(2, "Group 2", None)?;
+        let third = group(3, "Group 3", None)?;
+        groups
+            .expect_search()
+            .times(1)
+            .withf(|filter| filter.stage_name.as_deref() == Some("Group"))
+            .return_once(move |_| {
+                let found = vec![first.clone(), second.clone(), third.clone()];
+                Box::pin(async move { Ok(found) })
+            });
+        let harness = harness_with(users, groups);
+        let use_case: UseCase = ListMusicGroups::new(Arc::clone(&harness.factory));
+
+        // Act
+        let response = use_case
+            .execute(ListMusicGroupsCommand::new(
+                1,
+                Some("Group".to_owned()),
+                Some(1),
+                Some(1),
+            ))
+            .await?;
+
+        // Assert
+        assert_eq!(response.total(), 3);
+        assert_eq!(
+            response.groups().first().map(ListMusicGroupsItem::group_id),
+            Some(2)
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn list_music_groups_none_override_returns_an_empty_page() -> Result<(), Box<dyn Error>> {
+        // Arrange: the caller is shut out of the library entirely.
+        let mut users = MockUserRepository::new();
+        expect_caller(&mut users, 1)?;
+        let mut groups = MockMusicGroupRepository::new();
+        let hidden = group(1, "The Group", None)?;
+        groups.expect_search().times(1).return_once(move |_| {
+            let found = vec![hidden.clone()];
+            Box::pin(async move { Ok(found) })
+        });
+        let mut permissions = MockPermissionRepository::new();
+        expect_permissions(
+            &mut permissions,
+            1,
+            vec![Permission::try_new(1, Action::LibraryRead, Scope::None)?],
+        );
+        let unit_of_work = TestUnitOfWork {
+            music_groups: groups,
+            permissions,
+            users,
+            ..TestUnitOfWork::default()
+        };
+        let harness = GalleryFactoryHarness::new(unit_of_work);
+        let use_case: UseCase = ListMusicGroups::new(Arc::clone(&harness.factory));
+
+        // Act
+        let response = use_case
+            .execute(ListMusicGroupsCommand::new(1, None, None, None))
+            .await?;
+
+        // Assert
+        assert_eq!(response.total(), 0);
+        assert!(response.groups().is_empty());
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn list_music_groups_unknown_caller_returns_no_such_caller() -> Result<(), Box<dyn Error>>
+    {
+        // Arrange
+        let mut users = MockUserRepository::new();
+        users
+            .expect_search()
+            .times(1)
+            .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+        let harness = harness_with(users, MockMusicGroupRepository::new());
+        let use_case: UseCase = ListMusicGroups::new(Arc::clone(&harness.factory));
+
+        // Act
+        let result = use_case
+            .execute(ListMusicGroupsCommand::new(999, None, None, None))
+            .await;
+
+        // Assert
+        assert!(matches!(result, Err(ListMusicGroupsError::NoSuchCaller)));
+        assert!(harness.rolled_back.load(Ordering::SeqCst));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn list_music_groups_repository_failure_returns_unknown() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let mut users = MockUserRepository::new();
+        expect_caller(&mut users, 1)?;
+        let mut groups = MockMusicGroupRepository::new();
+        groups
+            .expect_search()
+            .times(1)
+            .returning(|_| Box::pin(async { Err(RepositoryError::OperationFailed) }));
+        let harness = harness_with(users, groups);
+        let use_case: UseCase = ListMusicGroups::new(Arc::clone(&harness.factory));
+
+        // Act
+        let result = use_case
+            .execute(ListMusicGroupsCommand::new(1, None, None, None))
+            .await;
+
+        // Assert
+        assert!(matches!(result, Err(ListMusicGroupsError::Unknown(_))));
+        assert!(harness.rolled_back.load(Ordering::SeqCst));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn list_music_groups_commit_failure_returns_unknown() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let mut users = MockUserRepository::new();
+        expect_caller(&mut users, 1)?;
+        let mut groups = MockMusicGroupRepository::new();
+        groups
+            .expect_search()
+            .times(1)
+            .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+        let harness = harness_with(users, groups);
+        harness.commit_fails.store(true, Ordering::SeqCst);
+        let use_case: UseCase = ListMusicGroups::new(Arc::clone(&harness.factory));
+
+        // Act
+        let result = use_case
+            .execute(ListMusicGroupsCommand::new(1, None, None, None))
+            .await;
+
+        // Assert
+        assert!(matches!(result, Err(ListMusicGroupsError::Unknown(_))));
+        assert!(harness.committed.load(Ordering::SeqCst));
+        Ok(())
+    }
+}
