@@ -1,3 +1,9 @@
+## [0.33.0](https://github.com/Mnemorium/mnemorium/compare/v0.32.0...v0.33.0) (2026-11-04)
+
+### Features
+
+* **api:** write music album, medium and track metadata ([#391](https://github.com/Mnemorium/mnemorium/issues/391)) ([42886e7](https://github.com/Mnemorium/mnemorium/commit/42886e79b67c7b02b354a9182d7ff65fe06a63ee))
+
 ## [0.32.0](https://github.com/Mnemorium/mnemorium/compare/v0.31.1...v0.32.0) (2026-11-03)
 
 ### Features
