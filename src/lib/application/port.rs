@@ -4,10 +4,12 @@
 )]
 
 pub mod add_gallery_item;
+pub mod apply_music_album;
 pub mod asset_use_case_factory;
 pub mod begin_upload;
 pub mod complete_upload;
 pub mod create_gallery;
+pub mod create_music_album;
 pub mod create_music_group;
 pub mod create_playlist;
 pub mod delete_gallery;
@@ -52,12 +54,16 @@ pub mod load_configuration;
 pub mod load_state;
 pub mod login_user;
 pub mod media_change_source;
+pub mod patch_album_track;
 pub mod patch_credential;
+pub mod put_album_medium;
+pub mod put_album_track;
 pub mod register_user;
 pub mod remove_playlist_track;
 pub mod reorder_playlist_tracks;
 pub mod replace_permission;
 pub mod resolve_music_metadata;
+pub mod update_music_album;
 pub mod update_music_group;
 pub mod update_playlist;
 pub mod update_user;

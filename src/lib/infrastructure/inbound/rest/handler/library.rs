@@ -26,12 +26,18 @@ pub mod get_series_episode;
 pub mod get_series_episode_list;
 pub mod get_series_list;
 pub mod get_series_season;
+pub mod patch_album;
+pub mod patch_album_track;
 pub mod patch_music_group;
 pub mod patch_playlist;
+pub mod post_album;
+pub mod post_album_apply;
 pub mod post_gallery;
 pub mod post_gallery_item;
 pub mod post_music_group;
 pub mod post_playlist;
+pub mod put_album_medium;
+pub mod put_album_track;
 pub mod put_playlist_track;
 
 use axum::middleware;
@@ -44,8 +50,11 @@ use utoipa::ToSchema;
 use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
 
+use crate::application::field_update::FieldUpdate;
 use crate::application::port::add_gallery_item::AddGalleryItemResponse;
+use crate::application::port::apply_music_album::ApplyMusicAlbumError;
 use crate::application::port::create_gallery::CreateGalleryResponse;
+use crate::application::port::create_music_album::CreateMusicAlbumError;
 use crate::application::port::create_music_group::CreateMusicGroupError;
 use crate::application::port::create_playlist::CreatePlaylistError;
 use crate::application::port::delete_playlist::DeletePlaylistError;
@@ -86,15 +95,20 @@ use crate::application::port::list_series::ListSeriesError;
 use crate::application::port::list_series::ListSeriesItem;
 use crate::application::port::list_series_episodes::ListSeriesEpisodesError;
 use crate::application::port::list_series_episodes::ListSeriesEpisodesItem;
+use crate::application::port::patch_album_track::PatchAlbumTrackError;
+use crate::application::port::put_album_medium::PutAlbumMediumError;
+use crate::application::port::put_album_track::PutAlbumTrackError;
 use crate::application::port::remove_playlist_track::RemovePlaylistTrackError;
 use crate::application::port::reorder_playlist_tracks::ReorderPlaylistTracksError;
 use crate::application::port::resolve_music_metadata::ResolveMusicMetadataError;
+use crate::application::port::update_music_album::UpdateMusicAlbumError;
 use crate::application::port::update_music_group::UpdateMusicGroupError;
 use crate::application::port::update_playlist::UpdatePlaylistError;
 use crate::application::port::video_summary::VideoSummary;
 use crate::domain::alias::NumericID;
 use crate::domain::model::gallery_item::GalleryItemMedia;
 use crate::domain::model::media_candidate::ExternalRef;
+use crate::domain::model::music_album::MusicAlbum;
 use crate::domain::model::music_album::ProductionType;
 use crate::domain::model::music_metadata::ArtistCredit;
 use crate::domain::model::music_metadata::MediumFormat;
@@ -126,7 +140,7 @@ pub(crate) const MAX_LIMIT: usize = 100;
 const TIMESTAMP_FORMAT: &str = "%Y-%m-%dT%H:%M:%S";
 
 /// Date format of the release dates the album and track representations carry.
-const DATE_FORMAT: &str = "%Y-%m-%d";
+pub(crate) const DATE_FORMAT: &str = "%Y-%m-%d";
 
 /// HAL links exposed by a gallery representation.
 ///
@@ -655,6 +669,90 @@ impl From<&GetAlbumResponseData> for AlbumResponse {
             release_date: response.release_date().map(format_date),
             track_count: response.track_count(),
         }
+    }
+}
+
+impl From<&MusicAlbum> for AlbumResponse {
+    fn from(album: &MusicAlbum) -> Self {
+        let track_count = album
+            .mediums()
+            .iter()
+            .map(|medium| medium.tracks().len())
+            .sum();
+        Self {
+            cover_image_id: album.cover_image_id(),
+            genres: album.genre_ids().to_vec(),
+            id: album.id(),
+            links: AlbumLinks::for_album(
+                album.id(),
+                album.cover_image_id(),
+                album.music_group_id(),
+            ),
+            mediums: album
+                .mediums()
+                .iter()
+                .map(|medium| {
+                    MediumResponse::new(
+                        album.id(),
+                        medium.index().index(),
+                        medium.index().as_wire().to_owned(),
+                        medium.tracks().len(),
+                    )
+                })
+                .collect(),
+            name: album.name().to_owned(),
+            production_type: album
+                .production_type()
+                .map(ProductionType::as_wire)
+                .map(str::to_owned),
+            release_date: album.release_date().map(format_date),
+            track_count,
+        }
+    }
+}
+
+impl MediumResponse {
+    /// Build the representation of the medium at `medium_index` of `album`.
+    #[must_use]
+    pub fn from_album(album: &MusicAlbum, medium_index: u8) -> Option<Self> {
+        album
+            .mediums()
+            .iter()
+            .find(|medium| medium.index().index() == medium_index)
+            .map(|medium| {
+                Self::new(
+                    album.id(),
+                    medium_index,
+                    medium.index().as_wire().to_owned(),
+                    medium.tracks().len(),
+                )
+            })
+    }
+}
+
+impl TrackResponse {
+    /// Build the representation of the track at `(medium_index, track_index)`
+    /// of `album`.
+    #[must_use]
+    pub fn from_album(album: &MusicAlbum, medium_index: u8, track_index: u8) -> Option<Self> {
+        let medium = album
+            .mediums()
+            .iter()
+            .find(|medium| medium.index().index() == medium_index)?;
+        let recording = medium
+            .tracks()
+            .iter()
+            .find(|track| track.index().medium_index() == Some(track_index))?;
+        Some(Self {
+            album_id: album.id(),
+            file_id: recording.file_id(),
+            id: track_index,
+            isrc_code: recording.isrc_code().map(str::to_owned),
+            links: TrackLinks::for_track(album.id(), medium_index, track_index),
+            medium_index,
+            name: recording.name().map(str::to_owned),
+            recording_id: recording.id(),
+        })
     }
 }
 
@@ -1879,6 +1977,114 @@ impl From<GetAlbumError> for ApiError {
     }
 }
 
+/// Map a create-album error to its API error.
+impl From<CreateMusicAlbumError> for ApiError {
+    fn from(err: CreateMusicAlbumError) -> Self {
+        match err {
+            CreateMusicAlbumError::Conflict => Self::Conflict(err.to_string()),
+            CreateMusicAlbumError::Forbidden => Self::Forbidden(err.to_string()),
+            CreateMusicAlbumError::InvalidGenre
+            | CreateMusicAlbumError::InvalidName
+            | CreateMusicAlbumError::NameTooLong
+            | CreateMusicAlbumError::NoSuchGroup => Self::UnprocessableEntity(err.to_string()),
+            CreateMusicAlbumError::NoSuchCaller => Self::Unauthorized(err.to_string()),
+            CreateMusicAlbumError::Unknown(_) => Self::InternalServerError,
+        }
+    }
+}
+
+/// Map an update-album error to its API error.
+impl From<UpdateMusicAlbumError> for ApiError {
+    fn from(err: UpdateMusicAlbumError) -> Self {
+        match err {
+            UpdateMusicAlbumError::Conflict => Self::Conflict(err.to_string()),
+            UpdateMusicAlbumError::Forbidden => Self::Forbidden(err.to_string()),
+            UpdateMusicAlbumError::InvalidGenre
+            | UpdateMusicAlbumError::InvalidName
+            | UpdateMusicAlbumError::NameTooLong
+            | UpdateMusicAlbumError::NoSuchGroup => Self::UnprocessableEntity(err.to_string()),
+            UpdateMusicAlbumError::NoSuchAlbum => Self::NotFound(err.to_string()),
+            UpdateMusicAlbumError::NoSuchCaller => Self::Unauthorized(err.to_string()),
+            UpdateMusicAlbumError::Unknown(_) => Self::InternalServerError,
+        }
+    }
+}
+
+/// Map a put-medium error to its API error.
+impl From<PutAlbumMediumError> for ApiError {
+    fn from(err: PutAlbumMediumError) -> Self {
+        match err {
+            PutAlbumMediumError::Conflict => Self::Conflict(err.to_string()),
+            PutAlbumMediumError::DefaultAlbum | PutAlbumMediumError::InvalidMediumType => {
+                Self::UnprocessableEntity(err.to_string())
+            }
+            PutAlbumMediumError::Forbidden => Self::Forbidden(err.to_string()),
+            PutAlbumMediumError::NoSuchAlbum => Self::NotFound(err.to_string()),
+            PutAlbumMediumError::NoSuchCaller => Self::Unauthorized(err.to_string()),
+            PutAlbumMediumError::Unknown(_) => Self::InternalServerError,
+        }
+    }
+}
+
+/// Map a put-track error to its API error.
+impl From<PutAlbumTrackError> for ApiError {
+    fn from(err: PutAlbumTrackError) -> Self {
+        match err {
+            PutAlbumTrackError::Conflict => Self::Conflict(err.to_string()),
+            PutAlbumTrackError::DefaultAlbum | PutAlbumTrackError::NoSuchRecording => {
+                Self::UnprocessableEntity(err.to_string())
+            }
+            PutAlbumTrackError::Forbidden => Self::Forbidden(err.to_string()),
+            PutAlbumTrackError::NoSuchAlbum | PutAlbumTrackError::NoSuchMedium => {
+                Self::NotFound(err.to_string())
+            }
+            PutAlbumTrackError::NoSuchCaller => Self::Unauthorized(err.to_string()),
+            PutAlbumTrackError::Unknown(_) => Self::InternalServerError,
+        }
+    }
+}
+
+/// Map a patch-track error to its API error.
+impl From<PatchAlbumTrackError> for ApiError {
+    fn from(err: PatchAlbumTrackError) -> Self {
+        match err {
+            PatchAlbumTrackError::Conflict | PatchAlbumTrackError::IsrcAlreadyExists => {
+                Self::Conflict(err.to_string())
+            }
+            PatchAlbumTrackError::DefaultAlbum
+            | PatchAlbumTrackError::InvalidIsrc
+            | PatchAlbumTrackError::InvalidName => Self::UnprocessableEntity(err.to_string()),
+            PatchAlbumTrackError::Forbidden => Self::Forbidden(err.to_string()),
+            PatchAlbumTrackError::NoSuchAlbum
+            | PatchAlbumTrackError::NoSuchMedium
+            | PatchAlbumTrackError::NoSuchTrack => Self::NotFound(err.to_string()),
+            PatchAlbumTrackError::NoSuchCaller => Self::Unauthorized(err.to_string()),
+            PatchAlbumTrackError::Unknown(_) => Self::InternalServerError,
+        }
+    }
+}
+
+/// Map an apply-album error to its API error.
+impl From<ApplyMusicAlbumError> for ApiError {
+    fn from(err: ApplyMusicAlbumError) -> Self {
+        match err {
+            ApplyMusicAlbumError::Conflict => Self::Conflict(err.to_string()),
+            ApplyMusicAlbumError::DefaultAlbum
+            | ApplyMusicAlbumError::InvalidPlacement
+            | ApplyMusicAlbumError::InvalidReference
+            | ApplyMusicAlbumError::UnknownProvider => Self::UnprocessableEntity(err.to_string()),
+            ApplyMusicAlbumError::Forbidden => Self::Forbidden(err.to_string()),
+            ApplyMusicAlbumError::NoSuchAlbum | ApplyMusicAlbumError::UnknownReference => {
+                Self::NotFound(err.to_string())
+            }
+            ApplyMusicAlbumError::NoSuchCaller => Self::Unauthorized(err.to_string()),
+            ApplyMusicAlbumError::ProviderUnavailable
+            | ApplyMusicAlbumError::ProviderFailure
+            | ApplyMusicAlbumError::Unknown(_) => Self::InternalServerError,
+        }
+    }
+}
+
 /// Map a create-music-group error to its API error.
 impl From<CreateMusicGroupError> for ApiError {
     fn from(err: CreateMusicGroupError) -> Self {
@@ -2357,6 +2563,55 @@ pub(crate) fn parse_index(
     })
 }
 
+/// Parse a `u8` music index from a path segment, reporting a value outside the
+/// 8-bit range as unprocessable rather than malformed.
+///
+/// The write routes admit an index the domain models as `u8`, so a syntactically
+/// valid index above the range is a well-formed request the server cannot
+/// process (`422`), while a non-numeric segment stays a malformed path (`400`).
+pub(crate) fn parse_write_index(
+    value: &str,
+    field: &'static str,
+    message: &'static str,
+) -> Result<u8, ApiError> {
+    let parsed = value.parse::<u32>().map_err(|_| {
+        warn!(
+            target: "security",
+            event = "input_validation_failed",
+            field = field,
+            reason = "invalid_index",
+            "rejected a malformed music index"
+        );
+        ApiError::BadRequest(message.to_owned())
+    })?;
+    u8::try_from(parsed).map_err(|_| {
+        warn!(
+            target: "security",
+            event = "input_validation_failed",
+            field = field,
+            reason = "index_out_of_range",
+            "rejected an out-of-range music index"
+        );
+        ApiError::UnprocessableEntity(message.to_owned())
+    })
+}
+
+/// Deserialize a field that distinguishes an absent value from `null`.
+///
+/// The field's `default` covers absence; this maps a body value to `Set` and an
+/// explicit `null` to `Clear`, so a `Clear` reaches the use case only when the
+/// client sent `null`.
+pub(crate) fn deserialize_field_update<'de, D, T>(
+    deserializer: D,
+) -> Result<FieldUpdate<T>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: serde::Deserialize<'de>,
+{
+    Option::<T>::deserialize(deserializer)
+        .map(|value| value.map_or(FieldUpdate::Clear, FieldUpdate::Set))
+}
+
 /// Parse a playlist identifier from a path segment.
 pub(crate) fn parse_playlist_id(value: &str) -> Result<NumericID, ApiError> {
     value.parse::<NumericID>().map_err(|_| {
@@ -2404,11 +2659,22 @@ fn format_timestamp(value: NaiveDateTime) -> String {
 /// applied by [`library_routes`].
 pub(crate) fn library_router() -> OpenApiRouter<AppState> {
     OpenApiRouter::new()
-        .routes(routes!(get_album_list::get_album_list))
-        .routes(routes!(get_album::get_album))
-        .routes(routes!(get_album_medium::get_album_medium))
+        .routes(routes!(
+            get_album_list::get_album_list,
+            post_album::post_album
+        ))
+        .routes(routes!(get_album::get_album, patch_album::patch_album))
+        .routes(routes!(
+            get_album_medium::get_album_medium,
+            put_album_medium::put_album_medium
+        ))
         .routes(routes!(get_album_track_list::get_album_track_list))
-        .routes(routes!(get_album_track::get_album_track))
+        .routes(routes!(
+            get_album_track::get_album_track,
+            put_album_track::put_album_track,
+            patch_album_track::patch_album_track
+        ))
+        .routes(routes!(post_album_apply::post_album_apply))
         .routes(routes!(
             get_music_group_list::get_music_group_list,
             post_music_group::post_music_group

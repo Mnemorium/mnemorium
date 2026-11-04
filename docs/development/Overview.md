@@ -72,6 +72,7 @@ document describes the source layout those rules constrain.
 | `src/bin/server.rs`                                             | Server entrypoint and graceful shutdown                                                                                           |
 | `src/lib`                                                       |                                                                                                                                   |
 | `src/lib/application`                                           | App Layer                                                                                                                         |
+| `src/lib/application/field_update.rs`                           | Tri-state field a partial-update command leaves alone, clears or replaces                                                         |
 | `src/lib/application/port`                                      | Application use-case interfaces (one application use case per file)                                                               |
 | `src/lib/application/port/identify_music.rs`                    | Internal identify-music use-case port, with no HTTP surface                                                                       |
 | `src/lib/application/port/identify_video.rs`                    | Internal identify-video use-case port, with no HTTP surface                                                                       |

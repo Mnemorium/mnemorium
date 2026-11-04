@@ -1,7 +1,9 @@
 use std::sync::Arc;
 
 use crate::application::port::add_gallery_item::AddGalleryItemUseCase;
+use crate::application::port::apply_music_album::ApplyMusicAlbumUseCase;
 use crate::application::port::create_gallery::CreateGalleryUseCase;
+use crate::application::port::create_music_album::CreateMusicAlbumUseCase;
 use crate::application::port::create_music_group::CreateMusicGroupUseCase;
 use crate::application::port::create_playlist::CreatePlaylistUseCase;
 use crate::application::port::delete_gallery::DeleteGalleryUseCase;
@@ -30,9 +32,13 @@ use crate::application::port::list_music_groups::ListMusicGroupsUseCase;
 use crate::application::port::list_playlists::ListPlaylistsUseCase;
 use crate::application::port::list_series::ListSeriesUseCase;
 use crate::application::port::list_series_episodes::ListSeriesEpisodesUseCase;
+use crate::application::port::patch_album_track::PatchAlbumTrackUseCase;
+use crate::application::port::put_album_medium::PutAlbumMediumUseCase;
+use crate::application::port::put_album_track::PutAlbumTrackUseCase;
 use crate::application::port::remove_playlist_track::RemovePlaylistTrackUseCase;
 use crate::application::port::reorder_playlist_tracks::ReorderPlaylistTracksUseCase;
 use crate::application::port::resolve_music_metadata::ResolveMusicMetadataUseCase;
+use crate::application::port::update_music_album::UpdateMusicAlbumUseCase;
 use crate::application::port::update_music_group::UpdateMusicGroupUseCase;
 use crate::application::port::update_playlist::UpdatePlaylistUseCase;
 
@@ -45,8 +51,14 @@ pub trait LibraryUseCaseFactory: Send + Sync {
     /// Build the use case adding one of the caller's media to a gallery.
     fn add_gallery_item(&self) -> Arc<dyn AddGalleryItemUseCase>;
 
+    /// Build the use case applying external metadata to a music album.
+    fn apply_music_album(&self) -> Arc<dyn ApplyMusicAlbumUseCase>;
+
     /// Build the use case creating a gallery.
     fn create_gallery(&self) -> Arc<dyn CreateGalleryUseCase>;
+
+    /// Build the use case creating a music album.
+    fn create_music_album(&self) -> Arc<dyn CreateMusicAlbumUseCase>;
 
     /// Build the use case creating a music group.
     fn create_music_group(&self) -> Arc<dyn CreateMusicGroupUseCase>;
@@ -133,6 +145,15 @@ pub trait LibraryUseCaseFactory: Send + Sync {
     /// Build the use case listing the episodes of a season.
     fn list_series_episodes(&self) -> Arc<dyn ListSeriesEpisodesUseCase>;
 
+    /// Build the use case editing the shared recording behind a track.
+    fn patch_album_track(&self) -> Arc<dyn PatchAlbumTrackUseCase>;
+
+    /// Build the use case creating or retyping a music medium.
+    fn put_album_medium(&self) -> Arc<dyn PutAlbumMediumUseCase>;
+
+    /// Build the use case placing a recording at a medium track address.
+    fn put_album_track(&self) -> Arc<dyn PutAlbumTrackUseCase>;
+
     /// Build the use case removing one track of a playlist.
     fn remove_playlist_track(&self) -> Arc<dyn RemovePlaylistTrackUseCase>;
 
@@ -141,6 +162,9 @@ pub trait LibraryUseCaseFactory: Send + Sync {
 
     /// Build the internal use case resolving one music target's metadata.
     fn resolve_music_metadata(&self) -> Arc<dyn ResolveMusicMetadataUseCase>;
+
+    /// Build the use case updating a music album.
+    fn update_music_album(&self) -> Arc<dyn UpdateMusicAlbumUseCase>;
 
     /// Build the use case updating a music group.
     fn update_music_group(&self) -> Arc<dyn UpdateMusicGroupUseCase>;

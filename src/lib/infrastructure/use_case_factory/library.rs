@@ -3,7 +3,9 @@ use std::sync::Arc;
 use tokio::sync::Semaphore;
 
 use crate::application::port::add_gallery_item::AddGalleryItemUseCase;
+use crate::application::port::apply_music_album::ApplyMusicAlbumUseCase;
 use crate::application::port::create_gallery::CreateGalleryUseCase;
+use crate::application::port::create_music_album::CreateMusicAlbumUseCase;
 use crate::application::port::create_music_group::CreateMusicGroupUseCase;
 use crate::application::port::create_playlist::CreatePlaylistUseCase;
 use crate::application::port::delete_gallery::DeleteGalleryUseCase;
@@ -33,13 +35,19 @@ use crate::application::port::list_music_groups::ListMusicGroupsUseCase;
 use crate::application::port::list_playlists::ListPlaylistsUseCase;
 use crate::application::port::list_series::ListSeriesUseCase;
 use crate::application::port::list_series_episodes::ListSeriesEpisodesUseCase;
+use crate::application::port::patch_album_track::PatchAlbumTrackUseCase;
+use crate::application::port::put_album_medium::PutAlbumMediumUseCase;
+use crate::application::port::put_album_track::PutAlbumTrackUseCase;
 use crate::application::port::remove_playlist_track::RemovePlaylistTrackUseCase;
 use crate::application::port::reorder_playlist_tracks::ReorderPlaylistTracksUseCase;
 use crate::application::port::resolve_music_metadata::ResolveMusicMetadataUseCase;
+use crate::application::port::update_music_album::UpdateMusicAlbumUseCase;
 use crate::application::port::update_music_group::UpdateMusicGroupUseCase;
 use crate::application::port::update_playlist::UpdatePlaylistUseCase;
 use crate::application::use_case::add_gallery_item::AddGalleryItem;
+use crate::application::use_case::apply_music_album::ApplyMusicAlbum;
 use crate::application::use_case::create_gallery::CreateGallery;
+use crate::application::use_case::create_music_album::CreateMusicAlbum;
 use crate::application::use_case::create_music_group::CreateMusicGroup;
 use crate::application::use_case::create_playlist::CreatePlaylist;
 use crate::application::use_case::delete_gallery::DeleteGallery;
@@ -68,9 +76,13 @@ use crate::application::use_case::list_music_groups::ListMusicGroups;
 use crate::application::use_case::list_playlists::ListPlaylists;
 use crate::application::use_case::list_series::ListSeries;
 use crate::application::use_case::list_series_episodes::ListSeriesEpisodes;
+use crate::application::use_case::patch_album_track::PatchAlbumTrack;
+use crate::application::use_case::put_album_medium::PutAlbumMedium;
+use crate::application::use_case::put_album_track::PutAlbumTrack;
 use crate::application::use_case::remove_playlist_track::RemovePlaylistTrack;
 use crate::application::use_case::reorder_playlist_tracks::ReorderPlaylistTracks;
 use crate::application::use_case::resolve_music_metadata::ResolveMusicMetadata;
+use crate::application::use_case::update_music_album::UpdateMusicAlbum;
 use crate::application::use_case::update_music_group::UpdateMusicGroup;
 use crate::application::use_case::update_playlist::UpdatePlaylist;
 use crate::application::use_case::upload_layout::media_root;
@@ -121,8 +133,25 @@ impl LibraryUseCaseFactory for RuntimeLibraryUseCaseFactory {
         Arc::new(AddGalleryItem::new(Arc::clone(&self.unit_of_work_factory)))
     }
 
+    fn apply_music_album(&self) -> Arc<dyn ApplyMusicAlbumUseCase> {
+        // The provider is configuration-derived, so the accessor rebuilds it from
+        // the immutable configuration on every call (STY-RUST-062).
+        let provider = configured_music_provider(self.configuration.library().metadata().music())
+            .map(Arc::new);
+        Arc::new(ApplyMusicAlbum::new(
+            Arc::clone(&self.unit_of_work_factory),
+            provider,
+        ))
+    }
+
     fn create_gallery(&self) -> Arc<dyn CreateGalleryUseCase> {
         Arc::new(CreateGallery::new(Arc::clone(&self.unit_of_work_factory)))
+    }
+
+    fn create_music_album(&self) -> Arc<dyn CreateMusicAlbumUseCase> {
+        Arc::new(CreateMusicAlbum::new(Arc::clone(
+            &self.unit_of_work_factory,
+        )))
     }
 
     fn create_music_group(&self) -> Arc<dyn CreateMusicGroupUseCase> {
@@ -275,6 +304,18 @@ impl LibraryUseCaseFactory for RuntimeLibraryUseCaseFactory {
         )))
     }
 
+    fn patch_album_track(&self) -> Arc<dyn PatchAlbumTrackUseCase> {
+        Arc::new(PatchAlbumTrack::new(Arc::clone(&self.unit_of_work_factory)))
+    }
+
+    fn put_album_medium(&self) -> Arc<dyn PutAlbumMediumUseCase> {
+        Arc::new(PutAlbumMedium::new(Arc::clone(&self.unit_of_work_factory)))
+    }
+
+    fn put_album_track(&self) -> Arc<dyn PutAlbumTrackUseCase> {
+        Arc::new(PutAlbumTrack::new(Arc::clone(&self.unit_of_work_factory)))
+    }
+
     fn remove_playlist_track(&self) -> Arc<dyn RemovePlaylistTrackUseCase> {
         Arc::new(RemovePlaylistTrack::new(Arc::clone(
             &self.unit_of_work_factory,
@@ -296,6 +337,12 @@ impl LibraryUseCaseFactory for RuntimeLibraryUseCaseFactory {
             Arc::clone(&self.unit_of_work_factory),
             provider,
         ))
+    }
+
+    fn update_music_album(&self) -> Arc<dyn UpdateMusicAlbumUseCase> {
+        Arc::new(UpdateMusicAlbum::new(Arc::clone(
+            &self.unit_of_work_factory,
+        )))
     }
 
     fn update_music_group(&self) -> Arc<dyn UpdateMusicGroupUseCase> {
