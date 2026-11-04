@@ -661,7 +661,7 @@ check_sty_rust_005() { scan_short STY-RUST-005 src; }
 check_sty_rust_006() {
 	local id="STY-RUST-006"
 	local handler_dir="src/lib/infrastructure/inbound/rest/handler"
-	local matches declared file fn base result=0
+	local matches declared file fn base matched result=0
 
 	need_dir "$id" "$handler_dir" || return 1
 
@@ -669,11 +669,17 @@ check_sty_rust_006() {
 	matches="$(scan_json "$id" "$handler_dir")" || return 1
 	require_matches "$id" "handler from $handler_dir" "$matches" || return 1
 
+	# The extracted files are read once into a variable, and the per-file check
+	# reads them through a here-string: `grep -q` exits on its first match, and a
+	# piped writer would then die of SIGPIPE under `set -o pipefail`, turning a
+	# match into a failure once the match stream outgrows the pipe buffer.
+	matched="$(printf '%s\n' "$matches" | jq -r '.file')"
+
 	# Every file that declares an endpoint must yield a handler.
 	declared="$(grep -rl '#\[utoipa::path' "$handler_dir" | sort -u)"
 	while IFS= read -r file; do
 		[ -n "$file" ] || continue
-		if ! printf '%s\n' "$matches" | jq -r '.file' | grep -qxF "$file"; then
+		if ! grep -qxF "$file" <<<"$matched"; then
 			printf 'error: %s: %s declares an endpoint but no handler was extracted\n' "$id" "$file" >&2
 			result=1
 		fi

@@ -167,6 +167,28 @@ impl Authorization {
         }
     }
 
+    /// Decide whether `caller` may manage a library surface that addresses no
+    /// single aggregate.
+    ///
+    /// Creating an album names no stored resource, so a `LISTED` scope cannot
+    /// cover it: only `ALL` (or the Root Admin short-circuit) reaches the
+    /// surface. The denial is revealed because it guards a write.
+    #[must_use]
+    pub fn decide_library_manage_surface(caller: &User, permissions: &[Permission]) -> Decision {
+        if caller.is_root_admin()
+            || matches!(
+                Self::effective_scope(caller, permissions, Action::LibraryManage),
+                Scope::All
+            )
+        {
+            return Decision::Allow;
+        }
+        Decision::Deny(Denial {
+            action: Action::LibraryManage,
+            conceal: false,
+        })
+    }
+
     /// Decide whether `caller` may read a library surface that addresses no
     /// single aggregate.
     ///

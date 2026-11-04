@@ -30,6 +30,10 @@ CREATE UNIQUE INDEX uq_music_track_medium_track_index
 ON music_track (music_medium_id, track_index)
 WHERE music_medium_id IS NOT NULL;
 
+CREATE UNIQUE INDEX uq_music_track_medium_recording
+ON music_track (music_recording_id)
+WHERE music_medium_id IS NOT NULL;
+
 CREATE UNIQUE INDEX uq_music_track_playlist_track_index
 ON music_track (music_playlist_id, track_index)
 WHERE music_playlist_id IS NOT NULL;
