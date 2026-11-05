@@ -6,7 +6,6 @@ use crate::application::port::get_series_episode::GetSeriesEpisodeCommand;
 use crate::application::port::get_series_episode::GetSeriesEpisodeError;
 use crate::application::port::get_series_episode::GetSeriesEpisodeResponse;
 use crate::application::port::get_series_episode::GetSeriesEpisodeUseCase;
-use crate::application::port::video_summary::VideoSummary;
 use crate::application::security_event;
 use crate::domain::model::permission::Action;
 use crate::domain::port::identity_unit_of_work::IdentityUnitOfWork;
@@ -125,7 +124,7 @@ where
                     episode.name().to_owned(),
                     episode.plot().to_owned(),
                     episode.air_date(),
-                    VideoSummary::from(episode.video()),
+                    episode.video().clone(),
                 ))
             }
             .await;
@@ -158,7 +157,6 @@ mod tests {
     use crate::application::port::get_series_episode::GetSeriesEpisodeError;
     use crate::application::port::get_series_episode::GetSeriesEpisodeResponse;
     use crate::application::port::get_series_episode::GetSeriesEpisodeUseCase as _;
-    use crate::application::port::video_summary::VideoSummary;
     use crate::domain::port::error::RepositoryError;
     use crate::domain::port::series_repository::MockSeriesRepository;
     use crate::domain::port::user_repository::MockUserRepository;
@@ -197,7 +195,7 @@ mod tests {
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 1)?;
         let episode = sample_episode(2, 12)?;
-        let expected_video = VideoSummary::from(episode.video());
+        let expected_video = episode.video().clone();
         let shown = sample_series(
             3,
             vec![sample_season(1, vec![sample_episode(1, 11)?, episode])],

@@ -145,7 +145,6 @@ use crate::application::port::resolve_music_metadata::ResolveMusicMetadataError;
 use crate::application::port::update_music_album::UpdateMusicAlbumError;
 use crate::application::port::update_music_group::UpdateMusicGroupError;
 use crate::application::port::update_playlist::UpdatePlaylistError;
-use crate::application::port::video_summary::VideoSummary;
 use crate::domain::alias::NumericID;
 use crate::domain::model::gallery_item::GalleryItemMedia;
 use crate::domain::model::media_candidate::ExternalRef;
@@ -157,6 +156,7 @@ use crate::domain::model::music_metadata::MediumSummary;
 use crate::domain::model::music_playlist::MusicPlaylist;
 use crate::domain::model::music_recording::MusicRecording;
 use crate::domain::model::video::ScanType;
+use crate::domain::model::video::Video;
 use crate::infrastructure::inbound::rest::api_error::ApiError;
 use crate::infrastructure::inbound::rest::app_state::AppState;
 use crate::infrastructure::inbound::rest::hal::Link;
@@ -1165,14 +1165,14 @@ pub(crate) struct VideoResponse {
     pub width: i64,
 }
 
-impl From<&VideoSummary> for VideoResponse {
-    fn from(video: &VideoSummary) -> Self {
+impl From<&Video> for VideoResponse {
+    fn from(video: &Video) -> Self {
         Self {
             codec: video.codec().to_owned(),
             duration_ms: video.duration_ms(),
             file_id: video.file_id(),
             height: video.height(),
-            id: video.id(),
+            id: video.video_id(),
             scan_type: video.scan_type(),
             width: video.width(),
         }
@@ -2836,7 +2836,6 @@ mod tests {
     use crate::application::port::list_series_episodes::ListSeriesEpisodesResponse;
     use crate::application::port::list_series_episodes::ListSeriesEpisodesUseCase;
     use crate::application::port::list_series_episodes::MockListSeriesEpisodesUseCase;
-    use crate::application::port::video_summary::VideoSummary;
     use crate::domain::port::token_provider::TokenProvider as _;
     use crate::infrastructure::inbound::rest::app_state::AppState;
     use crate::infrastructure::inbound::rest::handler::asset::asset_image_href;
@@ -3032,7 +3031,7 @@ mod tests {
             movie.release_date(),
             movie.genre_ids().to_vec(),
             None,
-            VideoSummary::from(movie.video()),
+            movie.video().clone(),
         );
         let mut use_case = MockGetMovieUseCase::new();
         use_case.expect_execute().times(1).return_once(move |_| {
@@ -3187,7 +3186,7 @@ mod tests {
             episode.name().to_owned(),
             episode.plot().to_owned(),
             episode.air_date(),
-            VideoSummary::from(episode.video()),
+            episode.video().clone(),
         );
         let mut use_case = MockGetSeriesEpisodeUseCase::new();
         use_case.expect_execute().times(1).return_once(move |_| {

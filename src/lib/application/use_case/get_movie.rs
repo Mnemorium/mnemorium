@@ -6,7 +6,6 @@ use crate::application::port::get_movie::GetMovieCommand;
 use crate::application::port::get_movie::GetMovieError;
 use crate::application::port::get_movie::GetMovieResponse;
 use crate::application::port::get_movie::GetMovieUseCase;
-use crate::application::port::video_summary::VideoSummary;
 use crate::application::security_event;
 use crate::domain::model::permission::Action;
 use crate::domain::port::identity_unit_of_work::IdentityUnitOfWork;
@@ -109,7 +108,7 @@ where
                     movie.release_date(),
                     movie.genre_ids().to_vec(),
                     movie.cover_image_id(),
-                    VideoSummary::from(movie.video()),
+                    movie.video().clone(),
                 ))
             }
             .await;
@@ -142,7 +141,6 @@ mod tests {
     use crate::application::port::get_movie::GetMovieError;
     use crate::application::port::get_movie::GetMovieResponse;
     use crate::application::port::get_movie::GetMovieUseCase as _;
-    use crate::application::port::video_summary::VideoSummary;
     use crate::domain::model::movie::Movie;
     use crate::domain::model::permission::Action;
     use crate::domain::model::permission::Permission;
@@ -186,7 +184,7 @@ mod tests {
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 1)?;
         let movie = sample_movie(7)?;
-        let expected_video = VideoSummary::from(movie.video());
+        let expected_video = movie.video().clone();
         let mut movies = MockMovieRepository::new();
         movies
             .expect_search()

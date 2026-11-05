@@ -8,25 +8,40 @@ pub(crate) mod handler;
 /// The authentication, tracing, rate-limit and HAL error layers.
 pub(crate) mod middleware;
 
+#[cfg(any(feature = "api-docs", test))]
 use utoipa::OpenApi as _;
+#[cfg(any(feature = "api-docs", test))]
 use utoipa::openapi::OpenApi;
+#[cfg(any(feature = "api-docs", test))]
 use utoipa::openapi::security::Http;
+#[cfg(any(feature = "api-docs", test))]
 use utoipa::openapi::security::HttpAuthScheme;
+#[cfg(any(feature = "api-docs", test))]
 use utoipa::openapi::security::SecurityScheme;
+#[cfg(any(feature = "api-docs", test))]
 use utoipa_axum::router::OpenApiRouter;
+#[cfg(any(feature = "api-docs", test))]
 use utoipa_axum::routes;
 
+#[cfg(any(feature = "api-docs", test))]
 use crate::infrastructure::inbound::rest::handler::asset::asset_router;
+#[cfg(any(feature = "api-docs", test))]
 use crate::infrastructure::inbound::rest::handler::get_health;
+#[cfg(any(feature = "api-docs", test))]
 use crate::infrastructure::inbound::rest::handler::identity::identity_protected_router;
+#[cfg(any(feature = "api-docs", test))]
 use crate::infrastructure::inbound::rest::handler::identity::identity_public_router;
+#[cfg(any(feature = "api-docs", test))]
 use crate::infrastructure::inbound::rest::handler::library::library_router;
+#[cfg(any(feature = "api-docs", test))]
 use crate::infrastructure::inbound::rest::handler::user::user_router;
 
 /// Add the `bearer_auth` security scheme referenced by the protected
 /// endpoints.
+#[cfg(any(feature = "api-docs", test))]
 struct SecurityAddon;
 
+#[cfg(any(feature = "api-docs", test))]
 impl utoipa::Modify for SecurityAddon {
     fn modify(&self, openapi: &mut OpenApi) {
         if let Some(components) = openapi.components.as_mut() {
@@ -63,6 +78,7 @@ impl utoipa::Modify for SecurityAddon {
     ),
     modifiers(&SecurityAddon)
 )]
+#[cfg(any(feature = "api-docs", test))]
 struct ApiDoc;
 
 /// Build the complete `OpenAPI` document of the Mnemorium HTTP API.
@@ -78,6 +94,7 @@ struct ApiDoc;
 /// router adds that prefix at runtime. With the `api-docs` feature
 /// [`handler::setup_routes`] mounts this document at `/doc`.
 #[must_use]
+#[cfg(any(feature = "api-docs", test))]
 pub(crate) fn openapi() -> OpenApi {
     let (_, openapi) = OpenApiRouter::with_openapi(ApiDoc::openapi())
         .routes(routes!(get_health::get_health))

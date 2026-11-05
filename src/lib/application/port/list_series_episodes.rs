@@ -3,8 +3,8 @@ use std::pin::Pin;
 
 use chrono::NaiveDate;
 
-use crate::application::port::video_summary::VideoSummary;
 use crate::domain::alias::NumericID;
+use crate::domain::model::video::Video;
 
 /// Command to list the episodes of one season.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -65,7 +65,7 @@ pub(crate) struct ListSeriesEpisodesItem {
     /// Identifier of the show holding the season.
     series_id: NumericID,
     /// Video backing the episode.
-    video: VideoSummary,
+    video: Video,
 }
 
 impl ListSeriesEpisodesItem {
@@ -96,7 +96,7 @@ impl ListSeriesEpisodesItem {
         name: String,
         plot: String,
         air_date: NaiveDate,
-        video: VideoSummary,
+        video: Video,
     ) -> Self {
         Self {
             air_date,
@@ -129,7 +129,7 @@ impl ListSeriesEpisodesItem {
 
     /// Return the video backing the episode.
     #[must_use]
-    pub(crate) fn video(&self) -> &VideoSummary {
+    pub(crate) fn video(&self) -> &Video {
         &self.video
     }
 }

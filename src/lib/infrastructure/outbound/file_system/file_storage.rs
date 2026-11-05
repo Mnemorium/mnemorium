@@ -621,7 +621,6 @@ mod tests {
         Ok(())
     }
 
-    #[cfg(target_os = "linux")]
     #[tokio::test]
     async fn promote_copies_across_filesystems() -> Result<(), Box<dyn Error>> {
         use std::os::unix::fs::MetadataExt as _;

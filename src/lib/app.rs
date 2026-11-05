@@ -225,7 +225,6 @@ pub async fn run() -> anyhow::Result<()> {
                     }
                 };
 
-                #[cfg(unix)]
                 let terminate = async {
                     match signal(SignalKind::terminate()) {
                         Ok(mut stream) => {

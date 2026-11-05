@@ -133,7 +133,5 @@ pub(crate) mod update_playlist;
 pub(crate) mod update_user;
 /// The user use-case factory port.
 pub(crate) mod user_use_case_factory;
-/// The video summary use-case port.
-pub(crate) mod video_summary;
 /// The write upload chunk use-case port.
 pub(crate) mod write_upload_chunk;

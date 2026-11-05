@@ -123,6 +123,7 @@ RULES=(
 	"STY-RUST-085:check_sty_rust_085"
 	"STY-RUST-086:check_sty_rust_086"
 	"STY-RUST-087:check_sty_rust_087"
+	"STY-RUST-088:check_sty_rust_088"
 	"DOC-003:check_doc_003"
 	"DOC-005:check_doc_005"
 	"DOC-007:check_doc_007"
@@ -2174,7 +2175,7 @@ check_sty_rust_085() {
 	matches="$(scan_json "$id" src)" || return 1
 	require_matches "$id" "production constant or static declaration" "$matches" || return 1
 
-	# The extractor reports every production declaration with its site; the path test happens here because an ast-grep rule cannot read the file system. A constant's visibility is STY-RUST-087's.
+	# The extractor reports every production declaration with its site; the path test happens here because an ast-grep rule cannot read the file system. A constant's visibility is STY-RUST-088's.
 	rows="$(printf '%s\n' "$matches" | jq -r '
 		(.metaVariables.single.NAME.text // .metaVariables.single.STATIC.text) as $name
 		| (if .metaVariables.single.STATIC then "static"
@@ -2392,6 +2393,8 @@ check_sty_rust_086() {
 
 	return "$result"
 }
+
+check_sty_rust_087() { scan_short STY-RUST-087 src; }
 
 check_doc_003() {
 	local id="DOC-003"
@@ -5980,10 +5983,10 @@ check_arch_001() {
 # check_arch_005 — a domain model never invokes a domain service (ARCH-005).
 check_arch_005() { need_dir "ARCH-005" "src/lib/domain/model" && scan_short ARCH-005 "src/lib/domain/model"; }
 
-# check_sty_rust_087 — a declaration is private, `pub(crate)` when another module
-# names it, and `pub` only at the crate entry point (STY-RUST-087).
-check_sty_rust_087() {
-	local id="STY-RUST-087"
+# check_sty_rust_088 — a declaration is private, `pub(crate)` when another module
+# names it, and `pub` only at the crate entry point (STY-RUST-088).
+check_sty_rust_088() {
+	local id="STY-RUST-088"
 	local matches index file line vis name key result=0
 	local -A files_of=()
 	local -A mentions=()
@@ -5998,7 +6001,7 @@ check_sty_rust_087() {
 	# declaring file does, so a type a wider signature in its own module exposes
 	# (the signature lower bound) stays legal while a declaration nothing names
 	# does not.
-	index="$(mktemp "${TMPDIR:-/tmp}/sty-rust-087.XXXXXX")" || return 1
+	index="$(mktemp "${TMPDIR:-/tmp}/sty-rust-088.XXXXXX")" || return 1
 	while IFS= read -r file; do
 		[ -n "$file" ] || continue
 		sed -E 's://.*::' "$file" |

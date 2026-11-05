@@ -165,7 +165,6 @@ mod tests {
     use crate::domain::port::media_source::MediaSource as _;
 
     /// Create a symbolic link, available only on a Unix test host.
-    #[cfg(unix)]
     fn unix_symlink(original: &Path, link: &Path) -> io::Result<()> {
         use std::os::unix::fs::symlink;
 
@@ -217,7 +216,6 @@ mod tests {
         Ok(())
     }
 
-    #[cfg(unix)]
     #[tokio::test]
     async fn walk_does_not_follow_a_symlink_outside_the_root() -> Result<(), Box<dyn Error>> {
         // Arrange: a real file outside the root, named from inside it.
@@ -256,14 +254,12 @@ mod tests {
         Ok(())
     }
 
-    #[cfg(unix)]
     #[tokio::test]
     async fn walk_skips_an_unreadable_nested_directory() -> Result<(), Box<dyn Error>> {
         // Act & Assert
         unreadable_nested_directory_is_skipped().await
     }
 
-    #[cfg(unix)]
     async fn unreadable_nested_directory_is_skipped() -> Result<(), Box<dyn Error>> {
         use std::os::unix::fs::PermissionsExt as _;
 
