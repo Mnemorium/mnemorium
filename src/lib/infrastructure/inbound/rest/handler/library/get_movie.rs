@@ -107,7 +107,6 @@ mod tests {
     use crate::application::port::get_movie::GetMovieUseCase;
     use crate::application::port::get_movie::MockGetMovieUseCase;
     use crate::application::port::library_use_case_factory::MockLibraryUseCaseFactory;
-    use crate::application::port::video_summary::VideoSummary;
     use crate::domain::alias::NumericID;
     use crate::infrastructure::inbound::rest::handler::library::library_routes;
     use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
@@ -156,7 +155,7 @@ mod tests {
             source.release_date(),
             source.genre_ids().to_vec(),
             None,
-            VideoSummary::from(source.video()),
+            source.video().clone(),
         );
         use_case
             .expect_execute()
@@ -218,7 +217,7 @@ mod tests {
             source.release_date(),
             source.genre_ids().to_vec(),
             Some(19),
-            VideoSummary::from(source.video()),
+            source.video().clone(),
         );
         use_case.expect_execute().times(1).return_once(move |_| {
             let copy = response.clone();

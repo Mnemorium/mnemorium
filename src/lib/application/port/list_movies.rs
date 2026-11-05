@@ -3,8 +3,8 @@ use std::pin::Pin;
 
 use chrono::NaiveDate;
 
-use crate::application::port::video_summary::VideoSummary;
 use crate::domain::alias::NumericID;
+use crate::domain::model::video::Video;
 
 /// Command to list the films the caller may see.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -81,7 +81,7 @@ pub struct ListMoviesItem {
     /// Date of the release of the film.
     release_date: NaiveDate,
     /// Video backing the film.
-    video: VideoSummary,
+    video: Video,
 }
 
 impl ListMoviesItem {
@@ -129,7 +129,7 @@ impl ListMoviesItem {
         release_date: NaiveDate,
         genre_ids: Vec<String>,
         cover_image_id: Option<NumericID>,
-        video: VideoSummary,
+        video: Video,
     ) -> Self {
         Self {
             country_of_origin,
@@ -157,7 +157,7 @@ impl ListMoviesItem {
 
     /// Return the video backing the film.
     #[must_use]
-    pub fn video(&self) -> &VideoSummary {
+    pub fn video(&self) -> &Video {
         &self.video
     }
 }

@@ -147,7 +147,6 @@ mod tests {
     use crate::application::port::list_movies::ListMoviesResponse;
     use crate::application::port::list_movies::ListMoviesUseCase;
     use crate::application::port::list_movies::MockListMoviesUseCase;
-    use crate::application::port::video_summary::VideoSummary;
     use crate::domain::alias::NumericID;
     use crate::infrastructure::inbound::rest::handler::library::library_routes;
     use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
@@ -194,7 +193,7 @@ mod tests {
             movie.release_date(),
             movie.genre_ids().to_vec(),
             None,
-            VideoSummary::from(movie.video()),
+            movie.video().clone(),
         ))
     }
 
@@ -272,7 +271,7 @@ mod tests {
             movie.release_date(),
             movie.genre_ids().to_vec(),
             Some(19),
-            VideoSummary::from(movie.video()),
+            movie.video().clone(),
         );
         let mut use_case = MockListMoviesUseCase::new();
         use_case.expect_execute().times(1).return_once(move |_| {
