@@ -221,7 +221,6 @@ async fn main() -> Result<(), anyhow::Error> {
                     }
                 };
 
-                #[cfg(unix)]
                 let terminate = async {
                     match signal(SignalKind::terminate()) {
                         Ok(mut stream) => {

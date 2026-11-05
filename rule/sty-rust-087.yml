@@ -1,0 +1,28 @@
+---
+id: sty-rust-087
+language: Rust
+severity: error
+message: >-
+  do not gate code on the host platform: the server targets Linux only, so this
+  predicate is a constant; write the code unconditionally
+rule:
+  any:
+    # A cfg/cfg_attr attribute (outer or inner) whose predicate, at any nesting
+    # depth, names a platform: `unix`, `windows` or any `target_*` key.
+    - all:
+        - any:
+            - kind: attribute_item
+            - kind: inner_attribute_item
+        - regex: '^#!?\[\s*cfg(_attr)?\b'
+        - has:
+            kind: identifier
+            regex: '^(unix|windows|target_[a-z_]+)$'
+            stopBy: end
+    # The same predicate as a `cfg!` macro invocation.
+    - all:
+        - kind: macro_invocation
+        - regex: '^cfg\s*!'
+        - has:
+            kind: identifier
+            regex: '^(unix|windows|target_[a-z_]+)$'
+            stopBy: end

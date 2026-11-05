@@ -122,6 +122,7 @@ RULES=(
 	"STY-RUST-083:check_sty_rust_083"
 	"STY-RUST-085:check_sty_rust_085"
 	"STY-RUST-086:check_sty_rust_086"
+	"STY-RUST-087:check_sty_rust_087"
 	"DOC-003:check_doc_003"
 	"DOC-005:check_doc_005"
 	"DOC-007:check_doc_007"
@@ -2437,6 +2438,8 @@ check_sty_rust_086() {
 
 	return "$result"
 }
+
+check_sty_rust_087() { scan_short STY-RUST-087 src; }
 
 check_doc_003() {
 	local id="DOC-003"

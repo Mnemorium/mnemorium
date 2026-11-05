@@ -171,14 +171,12 @@ mod tests {
         Ok(())
     }
 
-    #[cfg(unix)]
     #[tokio::test]
     async fn sniff_reports_nothing_for_an_unreadable_file() -> Result<(), Box<dyn Error>> {
         // Act & Assert
         unreadable_file_is_unknown_content().await
     }
 
-    #[cfg(unix)]
     async fn unreadable_file_is_unknown_content() -> Result<(), Box<dyn Error>> {
         use std::os::unix::fs::PermissionsExt as _;
 

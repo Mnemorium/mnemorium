@@ -696,7 +696,6 @@ mod tests {
     const STUB_TIMEOUT: Duration = Duration::from_secs(10);
 
     /// Write an executable `script` into `dir` and return its path.
-    #[cfg(unix)]
     fn stub(dir: &Path, name: &str, body: &str) -> Result<PathBuf, Box<dyn Error>> {
         use std::os::unix::fs::PermissionsExt as _;
 
@@ -780,7 +779,6 @@ mod tests {
         Ok(())
     }
 
-    #[cfg(unix)]
     #[tokio::test]
     async fn probe_video_maps_ffprobe_json() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -812,7 +810,6 @@ mod tests {
         Ok(())
     }
 
-    #[cfg(unix)]
     #[tokio::test]
     async fn probe_video_derives_frame_count_when_nb_frames_is_absent() -> Result<(), Box<dyn Error>>
     {
@@ -855,7 +852,6 @@ mod tests {
         Ok(())
     }
 
-    #[cfg(unix)]
     #[tokio::test]
     async fn probe_video_non_zero_exit_returns_unsupported_media() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -877,7 +873,6 @@ mod tests {
         Ok(())
     }
 
-    #[cfg(unix)]
     #[tokio::test]
     async fn probe_video_malformed_output_returns_operation_failed() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -899,7 +894,6 @@ mod tests {
         Ok(())
     }
 
-    #[cfg(unix)]
     #[tokio::test]
     async fn probe_video_no_video_stream_returns_unsupported_media() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -925,7 +919,6 @@ mod tests {
         Ok(())
     }
 
-    #[cfg(unix)]
     #[tokio::test]
     async fn probe_video_timeout_returns_timeout() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -968,7 +961,6 @@ mod tests {
         Ok(())
     }
 
-    #[cfg(unix)]
     #[tokio::test]
     async fn probe_video_passes_the_path_as_one_argument_without_a_shell()
     -> Result<(), Box<dyn Error>> {
@@ -1141,7 +1133,6 @@ mod tests {
     #[case::missing_frame_count(
         r#"{"streams":[{"codec_type":"video","codec_name":"h264","width":640,"height":480}]}"#
     )]
-    #[cfg(unix)]
     #[tokio::test]
     async fn probe_video_content_guard_returns_unsupported_media(
         #[case] document: &'static str,
@@ -1169,7 +1160,6 @@ mod tests {
         Ok(())
     }
 
-    #[cfg(unix)]
     #[tokio::test]
     async fn probe_video_uses_r_frame_rate_when_avg_is_unusable() -> Result<(), Box<dyn Error>> {
         // Arrange: `ffprobe` reports an unusable `0/0` average rate for a stream
@@ -1197,7 +1187,6 @@ mod tests {
         Ok(())
     }
 
-    #[cfg(unix)]
     #[tokio::test]
     async fn probe_video_oversized_output_returns_unsupported_media() -> Result<(), Box<dyn Error>>
     {
@@ -1230,7 +1219,6 @@ mod tests {
     #[rstest]
     #[case::srgb("rgb24", "sRGB")]
     #[case::unmapped("pal8", "YCbCr")]
-    #[cfg(unix)]
     #[tokio::test]
     async fn probe_video_maps_pixel_format(
         #[case] pix_fmt: &'static str,
@@ -1262,7 +1250,6 @@ mod tests {
         Ok(())
     }
 
-    #[cfg(unix)]
     #[tokio::test]
     async fn probe_audio_lossy_without_frame_size_leaves_block_size_absent()
     -> Result<(), Box<dyn Error>> {
@@ -1293,7 +1280,6 @@ mod tests {
         Ok(())
     }
 
-    #[cfg(unix)]
     #[tokio::test]
     async fn probe_audio_lossless_reports_both_measurements() -> Result<(), Box<dyn Error>> {
         // Arrange: FLAC reports a sample format and a frame size.
@@ -1320,7 +1306,6 @@ mod tests {
         Ok(())
     }
 
-    #[cfg(unix)]
     #[tokio::test]
     async fn probe_audio_undecodable_file_returns_unsupported_media() -> Result<(), Box<dyn Error>>
     {
