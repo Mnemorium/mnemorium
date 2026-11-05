@@ -354,6 +354,11 @@
     description = "Regenerate THIRD_PARTY_NOTICES.txt from the crate graph via cargo-about";
   };
 
+  tasks."deps:cargo-modules" = {
+    exec = "cargo install cargo-modules --locked";
+    description = "Install cargo modules util";
+  };
+
   # Scripts
 
   # Launch the Memorium server
