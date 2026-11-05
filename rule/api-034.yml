@@ -19,7 +19,10 @@ rule:
             kind: field_declaration_list
             inside:
               kind: struct_item
-              pattern: 'pub struct $REP { $$$FIELDS }'
+              any:
+                - pattern: 'pub struct $REP { $$$FIELDS }'
+                - pattern: 'pub(crate) struct $REP { $$$FIELDS }'
+                - pattern: 'struct $REP { $$$FIELDS }'
               stopBy: end
         - not:
             inside:
@@ -37,7 +40,10 @@ rule:
             kind: field_declaration_list
             inside:
               kind: struct_item
-              pattern: 'pub struct $STRUCT { $$$FIELDS }'
+              any:
+                - pattern: 'pub struct $STRUCT { $$$FIELDS }'
+                - pattern: 'pub(crate) struct $STRUCT { $$$FIELDS }'
+                - pattern: 'struct $STRUCT { $$$FIELDS }'
               stopBy: end
         - not:
             inside:

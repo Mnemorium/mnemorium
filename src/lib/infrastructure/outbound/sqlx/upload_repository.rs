@@ -16,7 +16,7 @@ use super::error_mapping::emit_catalogued_failure;
 use super::model::upload::Upload as SqlxUpload;
 
 /// Repository persisting uploads, backed by a `SQLite` transaction.
-pub struct SqlxUploadRepository<'transaction> {
+pub(crate) struct SqlxUploadRepository<'transaction> {
     /// Transaction the repository reads from and writes to.
     transaction: &'transaction mut Transaction<'static, Sqlite>,
 }
@@ -24,7 +24,7 @@ pub struct SqlxUploadRepository<'transaction> {
 impl<'transaction> SqlxUploadRepository<'transaction> {
     /// Create a new repository bound to `transaction`.
     #[must_use]
-    pub fn new(transaction: &'transaction mut Transaction<'static, Sqlite>) -> Self {
+    pub(crate) fn new(transaction: &'transaction mut Transaction<'static, Sqlite>) -> Self {
         Self { transaction }
     }
 }

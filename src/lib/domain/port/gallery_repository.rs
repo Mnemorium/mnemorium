@@ -10,7 +10,7 @@ use crate::domain::port::error::RepositoryError;
 /// an all-`None` filter returns every gallery.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct GalleryFilter {
+pub(crate) struct GalleryFilter {
     /// Filter on the gallery identifier.
     pub gallery_id: Option<NumericID>,
     /// Filter on whether the gallery is public.
@@ -25,7 +25,7 @@ pub struct GalleryFilter {
 /// optional; an all-`None` filter returns every item.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct GalleryItemFilter {
+pub(crate) struct GalleryItemFilter {
     /// Filter on the identifier of the owning gallery.
     pub gallery_id: Option<NumericID>,
     /// Filter on the item identifier.
@@ -36,7 +36,7 @@ pub struct GalleryItemFilter {
 
 /// Port for persisting and querying `Gallery` and its `GalleryItem`s.
 #[cfg_attr(test, mockall::automock)]
-pub trait GalleryRepository: Send + Sync {
+pub(crate) trait GalleryRepository: Send + Sync {
     /// Insert a new `item` into its gallery, returning the persisted item with
     /// its final identifier.
     ///
@@ -118,7 +118,7 @@ pub trait GalleryRepository: Send + Sync {
 /// [`GalleryItem`] aggregate does not hold.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct GalleryItemDetail {
+pub(crate) struct GalleryItemDetail {
     /// Identifier of the backing file.
     file_id: NumericID,
     /// The gallery item itself.
@@ -130,25 +130,25 @@ pub struct GalleryItemDetail {
 impl GalleryItemDetail {
     /// Return the identifier of the backing file.
     #[must_use]
-    pub fn file_id(&self) -> NumericID {
+    pub(crate) fn file_id(&self) -> NumericID {
         self.file_id
     }
 
     /// Return the gallery item.
     #[must_use]
-    pub fn item(&self) -> &GalleryItem {
+    pub(crate) fn item(&self) -> &GalleryItem {
         &self.item
     }
 
     /// Return the name of the item.
     #[must_use]
-    pub fn name(&self) -> &str {
+    pub(crate) fn name(&self) -> &str {
         &self.name
     }
 
     /// Create a new gallery-item detail.
     #[must_use]
-    pub fn new(item: GalleryItem, file_id: NumericID, name: String) -> Self {
+    pub(crate) fn new(item: GalleryItem, file_id: NumericID, name: String) -> Self {
         Self {
             file_id,
             item,

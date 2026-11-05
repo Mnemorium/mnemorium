@@ -26,7 +26,7 @@ use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 /// unchanged.
 #[derive(Debug, Deserialize, ToSchema)]
 #[non_exhaustive]
-pub struct PatchUserRequest {
+pub(crate) struct PatchUserRequest {
     /// New email address.
     #[schema(format = "email")]
     pub email: Option<String>,
@@ -45,7 +45,7 @@ pub struct PatchUserRequest {
 /// Updated user returned by a successful update.
 #[derive(Debug, Serialize, ToSchema)]
 #[non_exhaustive]
-pub struct PatchUserResponse {
+struct PatchUserResponse {
     /// Email address of the user, when one was provided.
     #[schema(format = "email")]
     pub email: Option<String>,
@@ -170,7 +170,7 @@ impl From<UpdateUserError> for ApiError {
     ),
     summary = "Update a user profile"
 )]
-pub async fn patch_user(
+pub(crate) async fn patch_user(
     State(state): State<AppState>,
     caller: AuthenticatedUser,
     Path(id): Path<String>,

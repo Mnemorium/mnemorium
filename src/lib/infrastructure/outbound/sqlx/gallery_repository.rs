@@ -19,7 +19,7 @@ use super::model::gallery_item::GalleryItemDetail as SqlxGalleryItemDetail;
 
 /// Repository persisting galleries and their items, backed by a `SQLite`
 /// transaction.
-pub struct SqlxGalleryRepository<'transaction> {
+pub(crate) struct SqlxGalleryRepository<'transaction> {
     /// Transaction the repository reads from and writes to.
     transaction: &'transaction mut Transaction<'static, Sqlite>,
 }
@@ -27,7 +27,7 @@ pub struct SqlxGalleryRepository<'transaction> {
 impl<'transaction> SqlxGalleryRepository<'transaction> {
     /// Create a new repository bound to `transaction`.
     #[must_use]
-    pub fn new(transaction: &'transaction mut Transaction<'static, Sqlite>) -> Self {
+    pub(crate) fn new(transaction: &'transaction mut Transaction<'static, Sqlite>) -> Self {
         Self { transaction }
     }
 }

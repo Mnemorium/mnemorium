@@ -10,7 +10,7 @@ use crate::domain::port::error::StorageError;
 /// Metadata of a file promoted into the media library.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct PromotedFile {
+pub(crate) struct PromotedFile {
     /// Instant at which the promoted content was last modified.
     pub modified_at: NaiveDateTime,
     /// Size of the promoted content, in bytes.
@@ -31,7 +31,7 @@ pub struct PromotedFile {
 /// the filesystem location it operates on. Composing those locations (the upload
 /// and file folders, the naming scheme) is the caller's responsibility.
 #[cfg_attr(test, mockall::automock)]
-pub trait FileStorage: Send + Sync {
+pub(crate) trait FileStorage: Send + Sync {
     /// Write `chunk` at `offset` bytes from the start of the file at `path`.
     ///
     /// Writing the same chunk at the same offset is idempotent. A file that does

@@ -38,7 +38,7 @@ const DEFAULT_STABILITY_TIMEOUT: Duration = Duration::from_secs(30);
 /// observed as created is held until its size and modification instant stop
 /// changing, because the kernel reports a creation long before the bytes are all
 /// there.
-pub struct MediaIngestRuntime<S> {
+struct MediaIngestRuntime<S> {
     /// Source delivering observed changes.
     changes: Arc<dyn MediaChangeSource>,
     /// Factory building the use case reconciling the library root.
@@ -114,7 +114,7 @@ where
 
     /// Create a runtime with the production stability windows.
     #[must_use]
-    pub fn new(
+    pub(crate) fn new(
         factory: Arc<dyn LibraryUseCaseFactory>,
         changes: Arc<dyn MediaChangeSource>,
         media_source: Arc<S>,
@@ -130,7 +130,7 @@ where
 
     /// Run the change observer until `shutdown` is signalled or the source
     /// cannot deliver any further change.
-    pub async fn observe(&self, mut shutdown: watch::Receiver<bool>) {
+    async fn observe(&self, mut shutdown: watch::Receiver<bool>) {
         loop {
             tokio::select! {
                 observed = self.changes.changes() => {
@@ -168,7 +168,7 @@ where
     ///
     /// Cancelling the future drops the in-flight unit of work, which rolls it
     /// back; nothing is committed for the interrupted file.
-    pub async fn scan(&self, mut shutdown: watch::Receiver<bool>) {
+    pub(crate) async fn scan(&self, mut shutdown: watch::Receiver<bool>) {
         let ingest = self.factory.ingest_media();
         tokio::select! {
             result = ingest.execute(IngestMediaCommand::new(IngestRequest::Scan)) => {
@@ -182,7 +182,7 @@ where
 
     /// Create a runtime with explicit stability windows.
     #[must_use]
-    pub fn with_windows(
+    fn with_windows(
         factory: Arc<dyn LibraryUseCaseFactory>,
         changes: Arc<dyn MediaChangeSource>,
         media_source: Arc<S>,
@@ -203,7 +203,7 @@ where
 ///
 /// The runner builds the filesystem adapters, warns once when the mount is
 /// absent, and spawns the scan and the observer on background tasks.
-pub struct MediaIngestRunner {
+pub(crate) struct MediaIngestRunner {
     /// Factory building the use case reconciling the library root.
     factory: Arc<dyn LibraryUseCaseFactory>,
     /// Whether the library root exists at startup.
@@ -213,7 +213,7 @@ pub struct MediaIngestRunner {
 impl MediaIngestRunner {
     /// Create a runner over the Library use-case factory.
     #[must_use]
-    pub fn new(factory: Arc<dyn LibraryUseCaseFactory>, media_root_present: bool) -> Self {
+    pub(crate) fn new(factory: Arc<dyn LibraryUseCaseFactory>, media_root_present: bool) -> Self {
         Self {
             factory,
             media_root_present,
@@ -222,7 +222,7 @@ impl MediaIngestRunner {
 
     /// Warn when the mount is absent, then start the scan and the observer.
     #[must_use]
-    pub fn start(self) -> MediaIngestTasks {
+    pub(crate) fn start(self) -> MediaIngestTasks {
         if !self.media_root_present {
             warn!(
                 media_root = MEDIA_ROOT,
@@ -262,7 +262,7 @@ impl MediaIngestRunner {
 }
 
 /// Handles of the spawned ingest tasks.
-pub struct MediaIngestTasks {
+pub(crate) struct MediaIngestTasks {
     /// Observer task, when the watch could be registered.
     observer: Mutex<Option<JoinHandle<()>>>,
     /// Startup scan task.
@@ -273,12 +273,12 @@ pub struct MediaIngestTasks {
 
 impl MediaIngestTasks {
     /// Signal both drivers to stop before axum is drained.
-    pub fn shutdown(&self) {
+    pub(crate) fn shutdown(&self) {
         let _sent = self.shutdown.send(true);
     }
 
     /// Drain both drivers after the listener stops.
-    pub async fn wait(&self) {
+    pub(crate) async fn wait(&self) {
         if let Some(scan) = self.scan.lock().await.take() {
             let _joined = scan.await;
         }

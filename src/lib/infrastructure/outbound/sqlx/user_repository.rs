@@ -13,7 +13,7 @@ use super::model::user::Role as SqlxRole;
 use super::model::user::User as SqlxUser;
 
 /// Repository persisting users, backed by a `SQLite` transaction.
-pub struct SqlxUserRepository<'transaction> {
+pub(crate) struct SqlxUserRepository<'transaction> {
     /// Transaction the repository reads from and writes to.
     transaction: &'transaction mut Transaction<'static, Sqlite>,
 }
@@ -21,7 +21,7 @@ pub struct SqlxUserRepository<'transaction> {
 impl<'transaction> SqlxUserRepository<'transaction> {
     /// Create a new repository bound to `transaction`.
     #[must_use]
-    pub fn new(transaction: &'transaction mut Transaction<'static, Sqlite>) -> Self {
+    pub(crate) fn new(transaction: &'transaction mut Transaction<'static, Sqlite>) -> Self {
         Self { transaction }
     }
 }

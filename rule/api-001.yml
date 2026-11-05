@@ -11,7 +11,7 @@ rule:
     # A handler is the endpoint function of its file: the top-level `pub async
     # fn` shape STY-RUST-006 recognises. A `pub(crate)`/`pub(super)` helper and
     # a helper inside a `#[cfg(test)]` module are not handlers.
-    - regex: '^pub async fn '
+    - regex: '^(pub(\(crate\))? )?async fn '
     - not:
         inside:
           kind: mod_item

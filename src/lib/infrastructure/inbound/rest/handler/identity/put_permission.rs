@@ -102,7 +102,7 @@ impl From<ReplacePermissionError> for ApiError {
     ),
     summary = "Replace a user's permission overrides"
 )]
-pub async fn put_permission(
+pub(crate) async fn put_permission(
     Path(user_id_value): Path<String>,
     State(state): State<AppState>,
     caller: AuthenticatedUser,

@@ -9,14 +9,14 @@ use crate::domain::port::error::ContentHasherError;
 /// algorithm-agnostic: the adapter chooses the algorithm the domain pins by
 /// digest length.
 #[cfg_attr(test, mockall::automock)]
-pub trait ContentHasher: Send + Sync {
+pub(crate) trait ContentHasher: Send + Sync {
     /// Start a new incremental hashing session.
     fn hasher(&self) -> Box<dyn ContentHasherSession>;
 }
 
 /// One incremental hashing session.
 #[cfg_attr(test, mockall::automock)]
-pub trait ContentHasherSession: Send + Sync {
+pub(crate) trait ContentHasherSession: Send + Sync {
     /// Consume the session, returning the digest of everything fed so far.
     ///
     /// # Errors
@@ -35,10 +35,6 @@ mod tests {
     use super::ContentHasherSession;
 
     /// Assert `T` implements `Send + Sync`.
-    #[expect(
-        clippy::single_call_fn,
-        reason = "a named bound assertion reads better than an inline bound"
-    )]
     fn assert_send_sync<T: Send + Sync + ?Sized>() {}
 
     #[test]

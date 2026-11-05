@@ -78,7 +78,7 @@ impl From<GetGalleryItemError> for ApiError {
     ),
     summary = "Fetch a gallery item"
 )]
-pub async fn get_gallery_item(
+pub(crate) async fn get_gallery_item(
     Path((gallery_id_value, item_id_value)): Path<(String, String)>,
     State(state): State<AppState>,
     caller: AuthenticatedUser,
@@ -131,10 +131,6 @@ mod tests {
     use crate::test_helpers::into_parts;
 
     /// A fixed instant the fixtures timestamp with.
-    #[expect(
-        clippy::single_call_fn,
-        reason = "the named instant keeps the test scenario readable instead of a bare date literal"
-    )]
     fn ts() -> NaiveDateTime {
         NaiveDate::from_ymd_opt(2026, 10, 6)
             .unwrap_or_default()

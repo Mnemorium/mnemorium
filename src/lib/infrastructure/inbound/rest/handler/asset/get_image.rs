@@ -27,7 +27,7 @@ use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 /// backs (`API-032`, `API-034`, `API-037`).
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 #[non_exhaustive]
-pub struct ImageLinks {
+struct ImageLinks {
     /// Link to the stored file backing the image.
     pub file: Link,
     /// Link to the image resource itself.
@@ -38,7 +38,7 @@ pub struct ImageLinks {
 impl ImageLinks {
     /// Build the links of the image identified by `image_id`.
     #[must_use]
-    pub fn for_image(image_id: NumericID, file_id: NumericID) -> Self {
+    fn for_image(image_id: NumericID, file_id: NumericID) -> Self {
         Self {
             file: Link::new(&asset_file_href(file_id)),
             self_link: Link::new(&asset_image_href(image_id)),
@@ -49,7 +49,7 @@ impl ImageLinks {
 /// Representation of a typed image.
 #[derive(Debug, Serialize, ToSchema)]
 #[non_exhaustive]
-pub struct ImageResponse {
+struct ImageResponse {
     /// Date at which the image was created, as `YYYY-MM-DD`.
     #[schema(example = json!("2026-01-01"))]
     pub created_at: String,
@@ -74,7 +74,7 @@ pub struct ImageResponse {
 impl ImageResponse {
     /// Map a fetched image onto its HTTP representation.
     #[must_use]
-    pub fn from_response(response: &GetImageResponseData) -> Self {
+    pub(crate) fn from_response(response: &GetImageResponseData) -> Self {
         Self {
             created_at: format_date(response.created_at()),
             file_id: response.file_id(),
@@ -149,7 +149,7 @@ impl From<GetImageError> for ApiError {
     ),
     summary = "Fetch a typed image"
 )]
-pub async fn get_image(
+pub(crate) async fn get_image(
     Path(image_id_value): Path<String>,
     State(state): State<AppState>,
     caller: AuthenticatedUser,

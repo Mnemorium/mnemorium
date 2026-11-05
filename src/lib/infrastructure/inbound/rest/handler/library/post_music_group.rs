@@ -20,7 +20,7 @@ use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 /// Payload to create a music group.
 #[derive(Debug, Deserialize, ToSchema)]
 #[non_exhaustive]
-pub struct PostMusicGroupRequest {
+pub(crate) struct PostMusicGroupRequest {
     /// Identifier of the image holding the group's artwork, when set.
     #[schema(example = 1)]
     pub cover_image_id: Option<NumericID>,
@@ -104,7 +104,7 @@ pub struct PostMusicGroupRequest {
     ),
     summary = "Create a music group"
 )]
-pub async fn post_music_group(
+pub(crate) async fn post_music_group(
     State(state): State<AppState>,
     caller: AuthenticatedUser,
     payload: Result<Json<PostMusicGroupRequest>, JsonRejection>,

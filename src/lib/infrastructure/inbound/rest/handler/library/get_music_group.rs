@@ -62,7 +62,7 @@ use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
     ),
     summary = "Fetch a music group"
 )]
-pub async fn get_music_group(
+pub(crate) async fn get_music_group(
     Path(group_id_value): Path<String>,
     State(state): State<AppState>,
     caller: AuthenticatedUser,

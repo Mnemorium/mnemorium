@@ -66,7 +66,7 @@ use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
     ),
     summary = "List the tracks of a music album medium"
 )]
-pub async fn get_album_track_list(
+pub(crate) async fn get_album_track_list(
     Path((album_id_value, medium_index_value)): Path<(String, String)>,
     State(state): State<AppState>,
     caller: AuthenticatedUser,

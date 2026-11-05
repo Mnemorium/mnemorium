@@ -36,7 +36,7 @@ use crate::domain::service::authorization::Authorization;
 use crate::domain::service::authorization::Decision;
 
 /// Use case implementation for deleting one item of a gallery.
-pub struct DeleteGalleryItem<F, S> {
+pub(crate) struct DeleteGalleryItem<F, S> {
     /// Storage adapter kept for the removal path. Byte deletion is disabled
     /// (`TODO(ingest)`), so the field is held but not read.
     _file_storage: Arc<S>,
@@ -47,7 +47,7 @@ pub struct DeleteGalleryItem<F, S> {
 impl<F: UnitOfWorkFactory, S: FileStorage> DeleteGalleryItem<F, S> {
     /// Create a new use case.
     #[must_use]
-    pub fn new(unit_of_work_factory: Arc<F>, file_storage: Arc<S>) -> Self {
+    pub(crate) fn new(unit_of_work_factory: Arc<F>, file_storage: Arc<S>) -> Self {
         Self {
             _file_storage: file_storage,
             unit_of_work_factory,

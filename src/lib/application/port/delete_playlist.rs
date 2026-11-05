@@ -6,7 +6,7 @@ use crate::domain::alias::NumericID;
 /// Command to delete a playlist.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct DeletePlaylistCommand {
+pub(crate) struct DeletePlaylistCommand {
     /// Identifier of the authenticated caller.
     caller_id: NumericID,
     /// Identifier of the playlist to delete.
@@ -16,13 +16,13 @@ pub struct DeletePlaylistCommand {
 impl DeletePlaylistCommand {
     /// Return the identifier of the authenticated caller.
     #[must_use]
-    pub fn caller_id(&self) -> NumericID {
+    pub(crate) fn caller_id(&self) -> NumericID {
         self.caller_id
     }
 
     /// Create a new delete-playlist command.
     #[must_use]
-    pub fn new(caller_id: NumericID, playlist_id: NumericID) -> Self {
+    pub(crate) fn new(caller_id: NumericID, playlist_id: NumericID) -> Self {
         Self {
             caller_id,
             playlist_id,
@@ -31,7 +31,7 @@ impl DeletePlaylistCommand {
 
     /// Return the identifier of the playlist to delete.
     #[must_use]
-    pub fn playlist_id(&self) -> NumericID {
+    pub(crate) fn playlist_id(&self) -> NumericID {
         self.playlist_id
     }
 }
@@ -39,7 +39,7 @@ impl DeletePlaylistCommand {
 /// Error returned when deleting a playlist.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
-pub enum DeletePlaylistError {
+pub(crate) enum DeletePlaylistError {
     /// The caller may read the playlist but does not own it.
     #[error("only the owner may delete a playlist")]
     Forbidden,
@@ -57,7 +57,7 @@ pub enum DeletePlaylistError {
 
 /// Use case for deleting a playlist.
 #[cfg_attr(test, mockall::automock)]
-pub trait DeletePlaylistUseCase: Send + Sync {
+pub(crate) trait DeletePlaylistUseCase: Send + Sync {
     /// Delete the requested playlist and its track placements.
     fn execute<'future>(
         &'future self,

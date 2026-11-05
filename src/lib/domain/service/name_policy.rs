@@ -1,10 +1,10 @@
 /// Maximum number of characters allowed in a resource name.
-pub const MAX_NAME_LENGTH: usize = 100;
+pub(crate) const MAX_NAME_LENGTH: usize = 100;
 
 /// Error returned when validating a name against the name policy.
 #[derive(Debug, PartialEq, Eq, thiserror::Error)]
 #[non_exhaustive]
-pub enum NamePolicyError {
+pub(crate) enum NamePolicyError {
     /// The name is empty or made only of whitespace.
     #[error("name must not be empty")]
     Empty,
@@ -16,7 +16,7 @@ pub enum NamePolicyError {
 /// Domain service enforcing the name policy shared by named Library resources.
 #[derive(Debug)]
 #[non_exhaustive]
-pub struct NamePolicy;
+pub(crate) struct NamePolicy;
 
 impl NamePolicy {
     /// Validate `name`, returning its trimmed form.
@@ -26,7 +26,7 @@ impl NamePolicy {
     /// Returns [`NamePolicyError::Empty`] when `name` is empty or made only of
     /// whitespace, and [`NamePolicyError::TooLong`] when it is longer than
     /// [`MAX_NAME_LENGTH`] characters after trimming.
-    pub fn validate(name: String) -> Result<String, NamePolicyError> {
+    pub(crate) fn validate(name: String) -> Result<String, NamePolicyError> {
         let trimmed = name.trim();
         if trimmed.is_empty() {
             return Err(NamePolicyError::Empty);

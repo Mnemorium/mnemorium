@@ -1,10 +1,10 @@
 /// Minimum number of characters a password must have.
-pub const PASSWORD_MIN_LENGTH: usize = 8;
+const PASSWORD_MIN_LENGTH: usize = 8;
 
 /// Error returned when validating a password against the password policy.
 #[derive(Debug, PartialEq, Eq, thiserror::Error)]
 #[non_exhaustive]
-pub enum PasswordPolicyError {
+pub(crate) enum PasswordPolicyError {
     /// The password does not contain at least one symbol.
     #[error("password must contain at least one symbol")]
     PasswordMissingSymbol,
@@ -16,7 +16,7 @@ pub enum PasswordPolicyError {
 /// Domain service enforcing the password policy.
 #[derive(Debug)]
 #[non_exhaustive]
-pub struct PasswordPolicy {
+pub(crate) struct PasswordPolicy {
     /// Minimum number of characters a password must have.
     min_length: usize,
     /// Whether a password must contain at least one symbol.
@@ -26,7 +26,7 @@ pub struct PasswordPolicy {
 impl PasswordPolicy {
     /// Create a new policy using the recommended default parameters.
     #[must_use]
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             min_length: PASSWORD_MIN_LENGTH,
             require_symbol: true,
@@ -41,7 +41,7 @@ impl PasswordPolicy {
     /// shorter than the minimum length, and
     /// [`PasswordPolicyError::PasswordMissingSymbol`] when `password` contains
     /// no non-alphanumeric character.
-    pub fn validate(&self, password: &str) -> Result<(), PasswordPolicyError> {
+    pub(crate) fn validate(&self, password: &str) -> Result<(), PasswordPolicyError> {
         if password.chars().count() < self.min_length {
             return Err(PasswordPolicyError::PasswordTooShort);
         }

@@ -6,7 +6,7 @@ use crate::domain::alias::NumericID;
 /// Command to delete a gallery and its items.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct DeleteGalleryCommand {
+pub(crate) struct DeleteGalleryCommand {
     /// Identifier of the authenticated caller.
     caller_id: NumericID,
     /// Identifier of the gallery to delete.
@@ -16,19 +16,19 @@ pub struct DeleteGalleryCommand {
 impl DeleteGalleryCommand {
     /// Return the identifier of the authenticated caller.
     #[must_use]
-    pub fn caller_id(&self) -> NumericID {
+    pub(crate) fn caller_id(&self) -> NumericID {
         self.caller_id
     }
 
     /// Return the identifier of the gallery to delete.
     #[must_use]
-    pub fn gallery_id(&self) -> NumericID {
+    pub(crate) fn gallery_id(&self) -> NumericID {
         self.gallery_id
     }
 
     /// Create a new delete-gallery command.
     #[must_use]
-    pub fn new(caller_id: NumericID, gallery_id: NumericID) -> Self {
+    pub(crate) fn new(caller_id: NumericID, gallery_id: NumericID) -> Self {
         Self {
             caller_id,
             gallery_id,
@@ -39,7 +39,7 @@ impl DeleteGalleryCommand {
 /// Error returned when deleting a gallery.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
-pub enum DeleteGalleryError {
+pub(crate) enum DeleteGalleryError {
     /// The system gallery can never be deleted.
     #[error("the default gallery cannot be deleted")]
     DefaultGallery,
@@ -59,7 +59,7 @@ pub enum DeleteGalleryError {
 
 /// Use case for deleting a gallery and its items.
 #[cfg_attr(test, mockall::automock)]
-pub trait DeleteGalleryUseCase: Send + Sync {
+pub(crate) trait DeleteGalleryUseCase: Send + Sync {
     /// Delete the requested gallery and its items.
     ///
     /// The future is returned erased (`dyn`, not `impl Future`), boxed and

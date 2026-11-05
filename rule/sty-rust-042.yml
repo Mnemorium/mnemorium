@@ -11,12 +11,12 @@ rule:
   all:
     - kind: trait_item
     # The factory is the offending node: it must be preceded by UnitOfWork.
-    - regex: '^pub trait UnitOfWorkFactory\b'
+    - regex: '^(pub(\(crate\))? )?trait UnitOfWorkFactory\b'
     # `follows` is the sibling relation; `stopBy: end` skips doc comments and
     # other intervening siblings. A body-carrying trait is not matched by a bare
     # `pattern`, so the name is matched with a regex anchored at the item start.
     - not:
         follows:
           kind: trait_item
-          regex: '^pub trait UnitOfWork\b'
+          regex: '^(pub(\(crate\))? )?trait UnitOfWork\b'
           stopBy: end

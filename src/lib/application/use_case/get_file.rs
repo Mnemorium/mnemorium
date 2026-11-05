@@ -19,7 +19,7 @@ use crate::domain::port::unit_of_work::UnitOfWorkFactory;
 use crate::domain::port::user_unit_of_work::UserUnitOfWork;
 
 /// Use case implementation for fetching one stored file.
-pub struct GetFile<F> {
+pub(crate) struct GetFile<F> {
     /// Factory opening the unit of work wrapping the read.
     unit_of_work_factory: Arc<F>,
 }
@@ -27,7 +27,7 @@ pub struct GetFile<F> {
 impl<F: UnitOfWorkFactory> GetFile<F> {
     /// Create a new use case.
     #[must_use]
-    pub fn new(unit_of_work_factory: Arc<F>) -> Self {
+    pub(crate) fn new(unit_of_work_factory: Arc<F>) -> Self {
         Self {
             unit_of_work_factory,
         }

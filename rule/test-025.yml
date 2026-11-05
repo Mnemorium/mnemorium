@@ -10,5 +10,5 @@ rule:
     - pattern: $VARIANT
     - inside:
         kind: enum_item
-        regex: '^pub enum \w+Error\b'
+        regex: '^(pub(\(crate\))? )?enum \w+Error\b'
         stopBy: end

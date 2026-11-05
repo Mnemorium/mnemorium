@@ -27,7 +27,7 @@ use crate::domain::port::user_repository::UserRepository as _;
 use crate::domain::port::user_unit_of_work::UserUnitOfWork;
 
 /// Use case implementation for beginning an upload session.
-pub struct BeginUpload<F, S> {
+pub(crate) struct BeginUpload<F, S> {
     /// Fixed size of every chunk except the last, in bytes.
     chunk_size: u64,
     /// Lifetime of an upload session, in seconds.
@@ -43,7 +43,7 @@ pub struct BeginUpload<F, S> {
 impl<F: UnitOfWorkFactory, S: FileStorage> BeginUpload<F, S> {
     /// Create a new use case.
     #[must_use]
-    pub fn new(
+    pub(crate) fn new(
         unit_of_work_factory: Arc<F>,
         file_storage: Arc<S>,
         chunk_size: u64,
@@ -400,10 +400,6 @@ mod tests {
             .returning(move |_| Box::pin(async move { Ok(exists) }));
     }
 
-    #[expect(
-        clippy::single_call_fn,
-        reason = "the test fixture mirrors the persisted aggregate"
-    )]
     fn stored_upload(command: &BeginUploadCommand) -> Result<Upload, RepositoryError> {
         use crate::domain::model::upload::ChunkBitmap;
 

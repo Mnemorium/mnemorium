@@ -4,7 +4,7 @@ use std::pin::Pin;
 /// Command to authenticate a user.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct LoginUserCommand {
+pub(crate) struct LoginUserCommand {
     /// Password of the user to authenticate.
     password: String,
     /// Username of the user to authenticate.
@@ -14,19 +14,19 @@ pub struct LoginUserCommand {
 impl LoginUserCommand {
     /// Create a new authentication command.
     #[must_use]
-    pub fn new(username: String, password: String) -> Self {
+    pub(crate) fn new(username: String, password: String) -> Self {
         Self { password, username }
     }
 
     /// Return the password.
     #[must_use]
-    pub fn password(&self) -> &str {
+    pub(crate) fn password(&self) -> &str {
         &self.password
     }
 
     /// Return the username.
     #[must_use]
-    pub fn username(&self) -> &str {
+    pub(crate) fn username(&self) -> &str {
         &self.username
     }
 }
@@ -34,7 +34,7 @@ impl LoginUserCommand {
 /// Response of a successful authentication.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct LoginUserResponse {
+pub(crate) struct LoginUserResponse {
     /// Token to present in the `Authorization` header of subsequent requests.
     access_token: String,
     /// Lifetime of the token, in seconds.
@@ -44,19 +44,19 @@ pub struct LoginUserResponse {
 impl LoginUserResponse {
     /// Return the token to present in the `Authorization` header.
     #[must_use]
-    pub fn access_token(&self) -> &str {
+    pub(crate) fn access_token(&self) -> &str {
         &self.access_token
     }
 
     /// Return the lifetime of the token, in seconds.
     #[must_use]
-    pub fn expires_in(&self) -> u64 {
+    pub(crate) fn expires_in(&self) -> u64 {
         self.expires_in
     }
 
     /// Create a new authentication response.
     #[must_use]
-    pub fn new(access_token: String, expires_in: u64) -> Self {
+    pub(crate) fn new(access_token: String, expires_in: u64) -> Self {
         Self {
             access_token,
             expires_in,
@@ -67,7 +67,7 @@ impl LoginUserResponse {
 /// Error returned when authenticating a user.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
-pub enum LoginUserError {
+pub(crate) enum LoginUserError {
     /// The password does not satisfy the stored hash of the user.
     #[error("the password does not match the stored hash")]
     InvalidPassword,
@@ -81,7 +81,7 @@ pub enum LoginUserError {
 
 /// Use case for authenticating a user.
 #[cfg_attr(test, mockall::automock)]
-pub trait LoginUserUseCase: Send + Sync {
+pub(crate) trait LoginUserUseCase: Send + Sync {
     /// Authenticate a user and issue a token.
     ///
     /// The future is returned erased (`dyn`, not `impl Future`), boxed and

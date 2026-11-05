@@ -47,7 +47,7 @@ use crate::application::port::update_playlist::UpdatePlaylistUseCase;
 /// The inbound layer depends on this port instead of a pre-built use case, so
 /// that every request gets a use case bound to the current dependencies.
 #[cfg_attr(test, mockall::automock)]
-pub trait LibraryUseCaseFactory: Send + Sync {
+pub(crate) trait LibraryUseCaseFactory: Send + Sync {
     /// Build the use case adding one of the caller's media to a gallery.
     fn add_gallery_item(&self) -> Arc<dyn AddGalleryItemUseCase>;
 
@@ -115,6 +115,10 @@ pub trait LibraryUseCaseFactory: Send + Sync {
     fn identify_music(&self) -> Arc<dyn IdentifyMusicUseCase>;
 
     /// Build the internal use case identifying a video from its name.
+    #[expect(
+        dead_code,
+        reason = "part of the type's declared contract; no caller exercises it yet"
+    )]
     fn identify_video(&self) -> Arc<dyn IdentifyVideoUseCase>;
 
     /// Build the use case reconciling the library root with the registered

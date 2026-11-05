@@ -23,7 +23,7 @@ use crate::domain::port::user_unit_of_work::UserUnitOfWork;
 use crate::domain::service::authorization::Authorization;
 
 /// Use case implementation for listing the films the caller may see.
-pub struct ListMovies<F> {
+pub(crate) struct ListMovies<F> {
     /// Factory opening the unit of work wrapping the read.
     unit_of_work_factory: Arc<F>,
 }
@@ -31,7 +31,7 @@ pub struct ListMovies<F> {
 impl<F: UnitOfWorkFactory> ListMovies<F> {
     /// Create a new use case.
     #[must_use]
-    pub fn new(unit_of_work_factory: Arc<F>) -> Self {
+    pub(crate) fn new(unit_of_work_factory: Arc<F>) -> Self {
         Self {
             unit_of_work_factory,
         }

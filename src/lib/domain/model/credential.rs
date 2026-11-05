@@ -7,19 +7,23 @@ use crate::domain::alias::NumericID;
 /// Error returned when initialising or updating a `Credential`.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
-pub enum CredentialError {
+pub(crate) enum CredentialError {
     /// The password hash is empty.
     #[error("password hash must not be empty")]
     PasswordHashEmpty,
     /// An unexpected or unmapped error occurred.
     #[error("an unknown error occurred: {0}")]
+    #[expect(
+        dead_code,
+        reason = "the error enum keeps the catch-all variant the rulebook's error shape declares; no caller constructs it yet"
+    )]
     Unknown(#[source] anyhow::Error),
 }
 
 /// A credential, holding the password hash used for authentication.
 #[derive(Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct Credential {
+pub(crate) struct Credential {
     /// Unique identifier of the credential.
     id: NumericID,
     /// Password hash, in an algorithm-agnostic format.
@@ -31,13 +35,13 @@ pub struct Credential {
 impl Credential {
     /// Return the unique identifier.
     #[must_use]
-    pub fn id(&self) -> NumericID {
+    pub(crate) fn id(&self) -> NumericID {
         self.id
     }
 
     /// Return the password hash.
     #[must_use]
-    pub fn password_hash(&self) -> &str {
+    pub(crate) fn password_hash(&self) -> &str {
         &self.password_hash
     }
 
@@ -48,7 +52,11 @@ impl Credential {
     ///
     /// Returns [`CredentialError::PasswordHashEmpty`] when `password_hash` is
     /// empty.
-    pub fn set_password_hash(&mut self, password_hash: String) -> Result<(), CredentialError> {
+    #[expect(
+        dead_code,
+        reason = "part of the type's declared contract; no caller exercises it yet"
+    )]
+    fn set_password_hash(&mut self, password_hash: String) -> Result<(), CredentialError> {
         self.password_hash = Self::validate_password_hash(password_hash)?;
         Ok(())
     }
@@ -59,7 +67,7 @@ impl Credential {
     ///
     /// Returns [`CredentialError::PasswordHashEmpty`] when `password_hash` is
     /// empty.
-    pub fn try_new(
+    pub(crate) fn try_new(
         id: NumericID,
         password_hash: String,
         updated_at: NaiveDateTime,
@@ -74,7 +82,7 @@ impl Credential {
 
     /// Return the date and time of the last update of the password hash.
     #[must_use]
-    pub fn updated_at(&self) -> NaiveDateTime {
+    pub(crate) fn updated_at(&self) -> NaiveDateTime {
         self.updated_at
     }
 

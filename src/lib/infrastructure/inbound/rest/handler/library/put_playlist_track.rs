@@ -19,7 +19,7 @@ use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 /// Payload to reorder the tracks of a playlist.
 #[derive(Debug, Deserialize, ToSchema)]
 #[non_exhaustive]
-pub struct ReorderPlaylistTracksRequest {
+pub(crate) struct ReorderPlaylistTracksRequest {
     /// Complete permutation of the playlist's current zero-based track indices.
     pub order: Vec<u32>,
 }
@@ -93,7 +93,7 @@ pub struct ReorderPlaylistTracksRequest {
     ),
     summary = "Reorder the tracks of a music playlist"
 )]
-pub async fn put_playlist_track(
+pub(crate) async fn put_playlist_track(
     Path(playlist_id_value): Path<String>,
     State(state): State<AppState>,
     caller: AuthenticatedUser,
@@ -115,10 +115,6 @@ pub async fn put_playlist_track(
 
 #[cfg(test)]
 mod tests {
-    #![expect(
-        clippy::single_call_fn,
-        reason = "named fixtures keep the tests readable"
-    )]
 
     use std::error::Error;
     use std::sync::Arc;

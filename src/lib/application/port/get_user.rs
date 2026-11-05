@@ -7,7 +7,7 @@ use crate::domain::model::user::Role;
 /// Command to fetch an account by its identifier.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct GetUserCommand {
+pub(crate) struct GetUserCommand {
     /// Identifier of the authenticated caller.
     caller_id: NumericID,
     /// Identifier of the account to fetch.
@@ -17,19 +17,19 @@ pub struct GetUserCommand {
 impl GetUserCommand {
     /// Return the identifier of the authenticated caller.
     #[must_use]
-    pub fn caller_id(&self) -> NumericID {
+    pub(crate) fn caller_id(&self) -> NumericID {
         self.caller_id
     }
 
     /// Create a new fetch-user command.
     #[must_use]
-    pub fn new(caller_id: NumericID, user_id: NumericID) -> Self {
+    pub(crate) fn new(caller_id: NumericID, user_id: NumericID) -> Self {
         Self { caller_id, user_id }
     }
 
     /// Return the identifier of the account to fetch.
     #[must_use]
-    pub fn user_id(&self) -> NumericID {
+    pub(crate) fn user_id(&self) -> NumericID {
         self.user_id
     }
 }
@@ -37,7 +37,7 @@ impl GetUserCommand {
 /// Response of a successful fetch-user lookup.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct GetUserResponse {
+pub(crate) struct GetUserResponse {
     /// Email address of the caller, when set.
     email: Option<String>,
     /// Unique identifier of the caller.
@@ -51,19 +51,19 @@ pub struct GetUserResponse {
 impl GetUserResponse {
     /// Return the email address, if any.
     #[must_use]
-    pub fn email(&self) -> Option<&str> {
+    pub(crate) fn email(&self) -> Option<&str> {
         self.email.as_deref()
     }
 
     /// Return the unique identifier of the caller.
     #[must_use]
-    pub fn id(&self) -> NumericID {
+    pub(crate) fn id(&self) -> NumericID {
         self.id
     }
 
     /// Create a new fetch-user response.
     #[must_use]
-    pub fn new(id: NumericID, username: String, email: Option<String>, role: Role) -> Self {
+    pub(crate) fn new(id: NumericID, username: String, email: Option<String>, role: Role) -> Self {
         Self {
             email,
             id,
@@ -74,13 +74,13 @@ impl GetUserResponse {
 
     /// Return the role of the caller.
     #[must_use]
-    pub fn role(&self) -> Role {
+    pub(crate) fn role(&self) -> Role {
         self.role
     }
 
     /// Return the username of the caller.
     #[must_use]
-    pub fn username(&self) -> &str {
+    pub(crate) fn username(&self) -> &str {
         &self.username
     }
 }
@@ -88,7 +88,7 @@ impl GetUserResponse {
 /// Error returned when fetching a user by identifier.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
-pub enum GetUserError {
+pub(crate) enum GetUserError {
     /// The authenticated caller does not exist anymore.
     #[error("the authenticated user does not exist")]
     NoSuchCaller,
@@ -105,7 +105,7 @@ pub enum GetUserError {
 
 /// Use case for fetching a user by identifier.
 #[cfg_attr(test, mockall::automock)]
-pub trait GetUserUseCase: Send + Sync {
+pub(crate) trait GetUserUseCase: Send + Sync {
     /// Fetch the account of the requested user.
     ///
     /// The future is returned erased (`dyn`, not `impl Future`), boxed and

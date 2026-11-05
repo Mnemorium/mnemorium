@@ -13,7 +13,7 @@ use crate::application::port::write_upload_chunk::WriteUploadChunkUseCase;
 /// The inbound layer depends on this port instead of a pre-built use case, so
 /// that every request gets a use case bound to the current configuration.
 #[cfg_attr(test, mockall::automock)]
-pub trait AssetUseCaseFactory: Send + Sync {
+pub(crate) trait AssetUseCaseFactory: Send + Sync {
     /// Build the use case beginning an upload session.
     fn begin_upload(&self) -> Arc<dyn BeginUploadUseCase>;
 

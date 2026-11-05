@@ -74,7 +74,7 @@ impl From<GetAssetContentError> for ApiError {
     ),
     summary = "Read the content of a stored file"
 )]
-pub async fn get_file_content(
+pub(crate) async fn get_file_content(
     Path(file_id_value): Path<String>,
     State(state): State<AppState>,
     caller: AuthenticatedUser,

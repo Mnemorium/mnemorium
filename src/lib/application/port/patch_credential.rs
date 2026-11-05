@@ -6,7 +6,7 @@ use crate::domain::alias::NumericID;
 /// Command to change the password behind a credential.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct PatchCredentialCommand {
+pub(crate) struct PatchCredentialCommand {
     /// Identifier of the authenticated caller requesting the change.
     caller_id: NumericID,
     /// Identifier of the credential whose password is changed.
@@ -18,19 +18,19 @@ pub struct PatchCredentialCommand {
 impl PatchCredentialCommand {
     /// Return the identifier of the authenticated caller.
     #[must_use]
-    pub fn caller_id(&self) -> NumericID {
+    pub(crate) fn caller_id(&self) -> NumericID {
         self.caller_id
     }
 
     /// Return the identifier of the credential whose password is changed.
     #[must_use]
-    pub fn credential_id(&self) -> NumericID {
+    pub(crate) fn credential_id(&self) -> NumericID {
         self.credential_id
     }
 
     /// Create a new change-password command.
     #[must_use]
-    pub fn new(caller_id: NumericID, credential_id: NumericID, password: String) -> Self {
+    pub(crate) fn new(caller_id: NumericID, credential_id: NumericID, password: String) -> Self {
         Self {
             caller_id,
             credential_id,
@@ -40,7 +40,7 @@ impl PatchCredentialCommand {
 
     /// Return the new password.
     #[must_use]
-    pub fn password(&self) -> &str {
+    pub(crate) fn password(&self) -> &str {
         &self.password
     }
 }
@@ -48,7 +48,7 @@ impl PatchCredentialCommand {
 /// Error returned when changing the password behind a credential.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
-pub enum PatchCredentialError {
+pub(crate) enum PatchCredentialError {
     /// The caller is not the Root Admin.
     #[error("only the Root Admin may change a credential password")]
     Forbidden,
@@ -68,7 +68,7 @@ pub enum PatchCredentialError {
 
 /// Use case for changing the password behind a credential.
 #[cfg_attr(test, mockall::automock)]
-pub trait PatchCredentialUseCase: Send + Sync {
+pub(crate) trait PatchCredentialUseCase: Send + Sync {
     /// Change the password behind a credential.
     ///
     /// The future is returned erased (`dyn`, not `impl Future`), boxed and

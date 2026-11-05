@@ -8,7 +8,7 @@ use crate::domain::alias::NumericID;
 /// Command to list the galleries the caller may see.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct ListGalleriesCommand {
+pub(crate) struct ListGalleriesCommand {
     /// Identifier of the authenticated caller.
     caller_id: NumericID,
     /// Only return galleries whose public flag matches this value, when set.
@@ -26,31 +26,31 @@ pub struct ListGalleriesCommand {
 impl ListGalleriesCommand {
     /// Return the identifier of the authenticated caller.
     #[must_use]
-    pub fn caller_id(&self) -> NumericID {
+    pub(crate) fn caller_id(&self) -> NumericID {
         self.caller_id
     }
 
     /// Return the public-flag filter, if any.
     #[must_use]
-    pub fn is_public(&self) -> Option<bool> {
+    pub(crate) fn is_public(&self) -> Option<bool> {
         self.is_public
     }
 
     /// Return the maximum number of galleries to return, if any.
     #[must_use]
-    pub fn limit(&self) -> Option<usize> {
+    pub(crate) fn limit(&self) -> Option<usize> {
         self.limit
     }
 
     /// Return the name filter, if any.
     #[must_use]
-    pub fn name(&self) -> Option<&str> {
+    pub(crate) fn name(&self) -> Option<&str> {
         self.name.as_deref()
     }
 
     /// Create a new list-galleries command.
     #[must_use]
-    pub fn new(
+    pub(crate) fn new(
         caller_id: NumericID,
         name: Option<String>,
         is_public: Option<bool>,
@@ -70,13 +70,13 @@ impl ListGalleriesCommand {
 
     /// Return the number of matching galleries to skip, if any.
     #[must_use]
-    pub fn offset(&self) -> Option<usize> {
+    pub(crate) fn offset(&self) -> Option<usize> {
         self.offset
     }
 
     /// Return the owner filter, if any.
     #[must_use]
-    pub fn owner_id(&self) -> Option<NumericID> {
+    pub(crate) fn owner_id(&self) -> Option<NumericID> {
         self.owner_id
     }
 }
@@ -84,7 +84,7 @@ impl ListGalleriesCommand {
 /// One gallery of a successful listing.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct ListGalleriesItem {
+pub(crate) struct ListGalleriesItem {
     /// Date and time at which the gallery was created.
     created_at: NaiveDateTime,
     /// Unique identifier of the gallery.
@@ -104,43 +104,43 @@ pub struct ListGalleriesItem {
 impl ListGalleriesItem {
     /// Return the date and time at which the gallery was created.
     #[must_use]
-    pub fn created_at(&self) -> NaiveDateTime {
+    pub(crate) fn created_at(&self) -> NaiveDateTime {
         self.created_at
     }
 
     /// Return the unique identifier of the gallery.
     #[must_use]
-    pub fn gallery_id(&self) -> NumericID {
+    pub(crate) fn gallery_id(&self) -> NumericID {
         self.gallery_id
     }
 
     /// Return whether the gallery is public.
     #[must_use]
-    pub fn is_public(&self) -> bool {
+    pub(crate) fn is_public(&self) -> bool {
         self.is_public
     }
 
     /// Return the number of items the gallery contains.
     #[must_use]
-    pub fn item_count(&self) -> usize {
+    pub(crate) fn item_count(&self) -> usize {
         self.item_count
     }
 
     /// Return the date and time of the last modification of the gallery.
     #[must_use]
-    pub fn last_modified_at(&self) -> NaiveDateTime {
+    pub(crate) fn last_modified_at(&self) -> NaiveDateTime {
         self.last_modified_at
     }
 
     /// Return the name of the gallery.
     #[must_use]
-    pub fn name(&self) -> &str {
+    pub(crate) fn name(&self) -> &str {
         &self.name
     }
 
     /// Create a new listed gallery.
     #[must_use]
-    pub fn new(
+    pub(crate) fn new(
         gallery_id: NumericID,
         user_id: Option<NumericID>,
         name: String,
@@ -162,7 +162,7 @@ impl ListGalleriesItem {
 
     /// Return the identifier of the owning user, if any.
     #[must_use]
-    pub fn user_id(&self) -> Option<NumericID> {
+    pub(crate) fn user_id(&self) -> Option<NumericID> {
         self.user_id
     }
 }
@@ -170,7 +170,7 @@ impl ListGalleriesItem {
 /// Response of a successful gallery listing: one page of galleries.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct ListGalleriesResponse {
+pub(crate) struct ListGalleriesResponse {
     /// Galleries of the returned page.
     galleries: Vec<ListGalleriesItem>,
     /// Total number of galleries the caller may see, before pagination.
@@ -180,19 +180,19 @@ pub struct ListGalleriesResponse {
 impl ListGalleriesResponse {
     /// Return the galleries of the returned page.
     #[must_use]
-    pub fn galleries(&self) -> &[ListGalleriesItem] {
+    pub(crate) fn galleries(&self) -> &[ListGalleriesItem] {
         &self.galleries
     }
 
     /// Create a new list-galleries response.
     #[must_use]
-    pub fn new(galleries: Vec<ListGalleriesItem>, total: usize) -> Self {
+    pub(crate) fn new(galleries: Vec<ListGalleriesItem>, total: usize) -> Self {
         Self { galleries, total }
     }
 
     /// Return the total number of galleries, before pagination.
     #[must_use]
-    pub fn total(&self) -> usize {
+    pub(crate) fn total(&self) -> usize {
         self.total
     }
 }
@@ -200,7 +200,7 @@ impl ListGalleriesResponse {
 /// Error returned when listing galleries.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
-pub enum ListGalleriesError {
+pub(crate) enum ListGalleriesError {
     /// The authenticated caller does not exist anymore.
     #[error("the authenticated user does not exist")]
     NoSuchCaller,
@@ -211,7 +211,7 @@ pub enum ListGalleriesError {
 
 /// Use case for listing the galleries the caller may see.
 #[cfg_attr(test, mockall::automock)]
-pub trait ListGalleriesUseCase: Send + Sync {
+pub(crate) trait ListGalleriesUseCase: Send + Sync {
     /// List the galleries visible to the authenticated caller.
     ///
     /// The future is returned erased (`dyn`, not `impl Future`), boxed and

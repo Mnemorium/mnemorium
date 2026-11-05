@@ -14,12 +14,12 @@ use crate::domain::port::content_type_sniffer::ContentTypeSniffer;
 use crate::domain::port::error::ContentTypeSnifferError;
 
 /// Content-type sniffer backed by `infer`'s magic-number signatures.
-pub struct InferContentTypeSniffer;
+pub(crate) struct InferContentTypeSniffer;
 
 impl InferContentTypeSniffer {
     /// Create a new sniffer.
     #[must_use]
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self
     }
 }

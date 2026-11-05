@@ -24,7 +24,7 @@ use crate::domain::service::authorization::Authorization;
 use crate::domain::service::authorization::Decision;
 
 /// Use case implementation for placing a recording at a medium track address.
-pub struct PutAlbumTrack<F> {
+pub(crate) struct PutAlbumTrack<F> {
     /// Factory opening the unit of work wrapping the write.
     unit_of_work_factory: Arc<F>,
 }
@@ -32,7 +32,7 @@ pub struct PutAlbumTrack<F> {
 impl<F: UnitOfWorkFactory> PutAlbumTrack<F> {
     /// Create a new use case.
     #[must_use]
-    pub fn new(unit_of_work_factory: Arc<F>) -> Self {
+    pub(crate) fn new(unit_of_work_factory: Arc<F>) -> Self {
         Self {
             unit_of_work_factory,
         }

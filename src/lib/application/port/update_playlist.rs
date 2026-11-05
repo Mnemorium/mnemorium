@@ -7,7 +7,7 @@ use crate::domain::model::music_playlist::MusicPlaylist;
 /// Command to update a playlist's metadata and/or append a recording.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct UpdatePlaylistCommand {
+pub(crate) struct UpdatePlaylistCommand {
     /// Identifier of the recording to append, when requested.
     add_track: Option<NumericID>,
     /// Identifier of the authenticated caller.
@@ -23,31 +23,31 @@ pub struct UpdatePlaylistCommand {
 impl UpdatePlaylistCommand {
     /// Return the identifier of the recording to append, if any.
     #[must_use]
-    pub fn add_track(&self) -> Option<NumericID> {
+    pub(crate) fn add_track(&self) -> Option<NumericID> {
         self.add_track
     }
 
     /// Return the identifier of the authenticated caller.
     #[must_use]
-    pub fn caller_id(&self) -> NumericID {
+    pub(crate) fn caller_id(&self) -> NumericID {
         self.caller_id
     }
 
     /// Return the new visibility, if requested.
     #[must_use]
-    pub fn is_public(&self) -> Option<bool> {
+    pub(crate) fn is_public(&self) -> Option<bool> {
         self.is_public
     }
 
     /// Return the new name, if requested.
     #[must_use]
-    pub fn name(&self) -> Option<&str> {
+    pub(crate) fn name(&self) -> Option<&str> {
         self.name.as_deref()
     }
 
     /// Create a new update-playlist command.
     #[must_use]
-    pub fn new(
+    pub(crate) fn new(
         caller_id: NumericID,
         playlist_id: NumericID,
         name: Option<String>,
@@ -65,7 +65,7 @@ impl UpdatePlaylistCommand {
 
     /// Return the identifier of the playlist to update.
     #[must_use]
-    pub fn playlist_id(&self) -> NumericID {
+    pub(crate) fn playlist_id(&self) -> NumericID {
         self.playlist_id
     }
 }
@@ -73,7 +73,7 @@ impl UpdatePlaylistCommand {
 /// Response of a successful playlist update.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct UpdatePlaylistResponse {
+pub(crate) struct UpdatePlaylistResponse {
     /// The updated playlist.
     playlist: MusicPlaylist,
 }
@@ -81,13 +81,13 @@ pub struct UpdatePlaylistResponse {
 impl UpdatePlaylistResponse {
     /// Create a new update-playlist response.
     #[must_use]
-    pub fn new(playlist: MusicPlaylist) -> Self {
+    pub(crate) fn new(playlist: MusicPlaylist) -> Self {
         Self { playlist }
     }
 
     /// Return the updated playlist.
     #[must_use]
-    pub fn playlist(&self) -> &MusicPlaylist {
+    pub(crate) fn playlist(&self) -> &MusicPlaylist {
         &self.playlist
     }
 }
@@ -95,7 +95,7 @@ impl UpdatePlaylistResponse {
 /// Error returned when updating a playlist.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
-pub enum UpdatePlaylistError {
+pub(crate) enum UpdatePlaylistError {
     /// A concurrent change conflicts with the requested one.
     #[error("the playlist update conflicts with its current state")]
     Conflict,
@@ -131,7 +131,7 @@ pub enum UpdatePlaylistError {
 
 /// Use case for updating a playlist.
 #[cfg_attr(test, mockall::automock)]
-pub trait UpdatePlaylistUseCase: Send + Sync {
+pub(crate) trait UpdatePlaylistUseCase: Send + Sync {
     /// Apply the requested metadata and/or track change.
     fn execute<'future>(
         &'future self,

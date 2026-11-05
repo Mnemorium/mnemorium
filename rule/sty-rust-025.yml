@@ -10,7 +10,10 @@ files:
 rule:
   all:
     - kind: enum_item
-    - pattern: pub enum $ENUM { $$$VARIANTS }
+    - any:
+        - pattern: pub enum $ENUM { $$$VARIANTS }
+        - pattern: pub(crate) enum $ENUM { $$$VARIANTS }
+        - pattern: enum $ENUM { $$$VARIANTS }
     - follows:
         kind: attribute_item
         regex: 'sqlx\(rename_all = "UPPERCASE"\)'

@@ -25,7 +25,7 @@ use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 /// Payload initializing an upload session.
 #[derive(Debug, Deserialize, ToSchema)]
 #[non_exhaustive]
-pub struct PostUploadRequest {
+pub(crate) struct PostUploadRequest {
     /// Declared media type of the file content.
     #[schema(example = json!("video/mp4"))]
     pub content_type: String,
@@ -49,7 +49,7 @@ pub struct PostUploadRequest {
 /// Upload session created by a successful initialization.
 #[derive(Debug, Serialize, ToSchema)]
 #[non_exhaustive]
-pub struct PostUploadResponse {
+struct PostUploadResponse {
     /// Fixed size of every chunk except the last, in bytes.
     pub chunk_size: u64,
     /// Date and time at which the upload session expires, as
@@ -169,7 +169,7 @@ impl From<BeginUploadError> for ApiError {
     ),
     summary = "Initialize an upload session"
 )]
-pub async fn post_upload(
+pub(crate) async fn post_upload(
     State(state): State<AppState>,
     caller: AuthenticatedUser,
     payload: Result<Json<PostUploadRequest>, JsonRejection>,

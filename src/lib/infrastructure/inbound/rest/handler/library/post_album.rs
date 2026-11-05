@@ -24,7 +24,7 @@ use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 /// Payload to create a music album.
 #[derive(Debug, Deserialize, ToSchema)]
 #[non_exhaustive]
-pub struct PostAlbumRequest {
+pub(crate) struct PostAlbumRequest {
     /// Identifier of the image holding the album's artwork, when set.
     #[schema(example = 1)]
     pub cover_image_id: Option<NumericID>,
@@ -124,7 +124,7 @@ pub struct PostAlbumRequest {
     ),
     summary = "Create a music album"
 )]
-pub async fn post_album(
+pub(crate) async fn post_album(
     State(state): State<AppState>,
     caller: AuthenticatedUser,
     payload: Result<Json<PostAlbumRequest>, JsonRejection>,

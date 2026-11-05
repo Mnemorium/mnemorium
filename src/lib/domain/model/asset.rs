@@ -11,7 +11,7 @@ use crate::domain::model::permission::ResourceRef;
 /// asset is exactly as readable as the resource it belongs to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
-pub enum AssetContext {
+pub(crate) enum AssetContext {
     /// Media of one gallery, authorized through `gallery.read`.
     Gallery(ResourceRef),
     /// Shared catalogue art, authorized through `library.read`.
@@ -23,19 +23,23 @@ pub enum AssetContext {
 impl AssetContext {
     /// Return the gallery context naming `gallery_id`.
     #[must_use]
-    pub fn gallery(gallery_id: NumericID) -> Self {
+    pub(crate) fn gallery(gallery_id: NumericID) -> Self {
         Self::Gallery(ResourceRef::new(ResourceKind::Gallery, gallery_id))
     }
 
     /// Return the playlist context naming `playlist_id`.
     #[must_use]
-    pub fn playlist(playlist_id: NumericID) -> Self {
+    pub(crate) fn playlist(playlist_id: NumericID) -> Self {
         Self::Playlist(ResourceRef::new(ResourceKind::MusicPlaylist, playlist_id))
     }
 
     /// Return the reference the context names, absent for shared catalogue art.
     #[must_use]
-    pub fn resource_ref(self) -> Option<ResourceRef> {
+    #[expect(
+        dead_code,
+        reason = "part of the type's declared contract; no caller exercises it yet"
+    )]
+    pub(crate) fn resource_ref(self) -> Option<ResourceRef> {
         match self {
             Self::Library => None,
             Self::Gallery(reference) | Self::Playlist(reference) => Some(reference),

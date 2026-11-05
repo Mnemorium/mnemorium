@@ -16,7 +16,10 @@ rule:
             kind: field_declaration_list
             inside:
               kind: struct_item
-              pattern: 'pub struct AppState { $$$FIELDS }'
+              any:
+                - pattern: 'pub struct AppState { $$$FIELDS }'
+                - pattern: 'pub(crate) struct AppState { $$$FIELDS }'
+                - pattern: 'struct AppState { $$$FIELDS }'
               stopBy: end
     # The composition root binds the LoadConfiguration use case before running it.
     - all:

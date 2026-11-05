@@ -11,7 +11,7 @@ use crate::domain::port::error::ContentTypeSnifferError;
 
 /// Port for determining a file's media type from its content.
 #[cfg_attr(test, mockall::automock)]
-pub trait ContentTypeSniffer: Send + Sync {
+pub(crate) trait ContentTypeSniffer: Send + Sync {
     /// Return the media type of the content stored at `path`.
     ///
     /// The type is identified from the content, never from the file name or

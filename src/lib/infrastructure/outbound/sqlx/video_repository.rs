@@ -17,7 +17,7 @@ use super::model::video::Video as SqlxVideo;
 use super::query_filter::push_filter;
 
 /// Repository persisting videos, backed by a `SQLite` transaction.
-pub struct SqlxVideoRepository<'transaction> {
+pub(crate) struct SqlxVideoRepository<'transaction> {
     /// Transaction the repository reads from and writes to.
     transaction: &'transaction mut Transaction<'static, Sqlite>,
 }
@@ -25,7 +25,7 @@ pub struct SqlxVideoRepository<'transaction> {
 impl<'transaction> SqlxVideoRepository<'transaction> {
     /// Create a new repository bound to `transaction`.
     #[must_use]
-    pub fn new(transaction: &'transaction mut Transaction<'static, Sqlite>) -> Self {
+    pub(crate) fn new(transaction: &'transaction mut Transaction<'static, Sqlite>) -> Self {
         Self { transaction }
     }
 }

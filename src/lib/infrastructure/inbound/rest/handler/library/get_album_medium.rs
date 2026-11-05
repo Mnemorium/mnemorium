@@ -64,7 +64,7 @@ use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
     ),
     summary = "Fetch a music medium"
 )]
-pub async fn get_album_medium(
+pub(crate) async fn get_album_medium(
     Path((album_id_value, medium_index_value)): Path<(String, String)>,
     State(state): State<AppState>,
     caller: AuthenticatedUser,

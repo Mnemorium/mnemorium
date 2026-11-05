@@ -104,7 +104,7 @@ enum Probed {
 /// of work, so the file is never committed without its media row (`ARCH-003`,
 /// `STY-RUST-040`). A file whose mime type is another family completes without a
 /// media row.
-pub struct CompleteUpload<F, S, P> {
+pub(crate) struct CompleteUpload<F, S, P> {
     /// Lifetime of an upload session, in seconds.
     expiry_seconds: u64,
     /// Storage adapter promoting the staged file.
@@ -118,7 +118,7 @@ pub struct CompleteUpload<F, S, P> {
 impl<F: UnitOfWorkFactory, S: FileStorage, P: MediaProbe> CompleteUpload<F, S, P> {
     /// Create a new use case.
     #[must_use]
-    pub fn new(
+    pub(crate) fn new(
         unit_of_work_factory: Arc<F>,
         file_storage: Arc<S>,
         media_probe: Arc<P>,

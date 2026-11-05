@@ -1,0 +1,26 @@
+---
+id: sty-rust-087
+language: Rust
+severity: hint
+message: >-
+  extract every item that carries a visibility modifier, for STY-RUST-087
+files:
+  - src/**/*.rs
+rule:
+  all:
+    - any:
+        - kind: function_item
+        - kind: struct_item
+        - kind: enum_item
+        - kind: trait_item
+        - kind: type_item
+        - kind: const_item
+        - kind: static_item
+        - kind: mod_item
+        - kind: union_item
+    - has:
+        kind: visibility_modifier
+        pattern: $VIS
+    - has:
+        field: name
+        pattern: $NAME

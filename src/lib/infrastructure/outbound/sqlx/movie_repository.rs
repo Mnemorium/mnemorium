@@ -16,7 +16,7 @@ use super::query_filter::push_filter;
 
 /// Repository querying films and the videos that back them, backed by a
 /// `SQLite` transaction.
-pub struct SqlxMovieRepository<'transaction> {
+pub(crate) struct SqlxMovieRepository<'transaction> {
     /// Transaction the repository reads from.
     transaction: &'transaction mut Transaction<'static, Sqlite>,
 }
@@ -24,7 +24,7 @@ pub struct SqlxMovieRepository<'transaction> {
 impl<'transaction> SqlxMovieRepository<'transaction> {
     /// Create a new repository bound to `transaction`.
     #[must_use]
-    pub fn new(transaction: &'transaction mut Transaction<'static, Sqlite>) -> Self {
+    pub(crate) fn new(transaction: &'transaction mut Transaction<'static, Sqlite>) -> Self {
         Self { transaction }
     }
 }

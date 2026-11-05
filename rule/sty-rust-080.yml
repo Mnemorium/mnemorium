@@ -18,12 +18,18 @@ rule:
             kind: field_declaration_list
             inside:
               kind: struct_item
-              pattern: 'pub struct $FILTER { $$$FIELDS }'
+              any:
+                - pattern: 'pub struct $FILTER { $$$FIELDS }'
+                - pattern: 'pub(crate) struct $FILTER { $$$FIELDS }'
+                - pattern: 'struct $FILTER { $$$FIELDS }'
               stopBy: end
     # A public accessor of an aggregate: capture the impl target and the method
     # name. Every aggregate getter takes `&self`.
     - all:
-        - pattern: 'pub fn $METHOD(&self) -> $RET { $$$BODY }'
+        - any:
+            - pattern: 'pub fn $METHOD(&self) -> $RET { $$$BODY }'
+            - pattern: 'pub(crate) fn $METHOD(&self) -> $RET { $$$BODY }'
+            - pattern: 'fn $METHOD(&self) -> $RET { $$$BODY }'
         - inside:
             kind: impl_item
             has:

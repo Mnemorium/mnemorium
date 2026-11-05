@@ -22,7 +22,7 @@ struct Claims {
 }
 
 /// JWT token provider, signing and verifying with `HS256`.
-pub struct JwtTokenProvider {
+pub(crate) struct JwtTokenProvider {
     /// Shared signing secret.
     secret: String,
     /// Lifetime of the token, in seconds.
@@ -32,7 +32,7 @@ pub struct JwtTokenProvider {
 impl JwtTokenProvider {
     /// Create a new provider.
     #[must_use]
-    pub fn new(secret: String, ttl: u64) -> Self {
+    pub(crate) fn new(secret: String, ttl: u64) -> Self {
         Self { secret, ttl }
     }
 }

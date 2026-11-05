@@ -26,7 +26,7 @@ use crate::domain::port::secret_generator::SecretGenerator;
 /// and the composing logic in `execute`. The environment layer's rule is the
 /// state's own — it verifies a persisted state instead of overriding it, and an
 /// absent file is either creation or a hard failure, never "defaults".
-pub struct LoadState<S, G, D> {
+pub(crate) struct LoadState<S, G, D> {
     /// Store holding the persisted state.
     instance_state_store: Arc<S>,
     /// Generator producing random secrets when no seed is supplied.
@@ -65,7 +65,7 @@ where
 
     /// Create a new use case.
     #[must_use]
-    pub fn new(
+    pub(crate) fn new(
         instance_state_store: Arc<S>,
         secret_generator: Arc<G>,
         seed_source: Arc<D>,

@@ -1,3 +1,8 @@
+#![allow(
+    dead_code,
+    reason = "the configuration value objects keep the provider accessors, setters and mutators their contract declares; several have no caller yet"
+)]
+
 use std::fmt::Debug;
 use std::fmt::Formatter;
 use std::fmt::Result as FmtResult;
@@ -7,55 +12,55 @@ use std::str::FromStr as _;
 use crate::domain::model::media_candidate::ProviderId;
 
 /// Default size of every chunk except the last, in bytes.
-pub const DEFAULT_CHUNK_SIZE_BYTES: u64 = 5_242_880;
+pub(crate) const DEFAULT_CHUNK_SIZE_BYTES: u64 = 5_242_880;
 
 /// Default lifetime of an upload session, in seconds.
-pub const DEFAULT_EXPIRY_SECONDS: u64 = 86_400;
+const DEFAULT_EXPIRY_SECONDS: u64 = 86_400;
 
 /// Default maximum size of a single uploaded file, in bytes (100 GiB).
-pub const DEFAULT_MAX_FILE_SIZE_BYTES: u64 = 107_374_182_400;
+const DEFAULT_MAX_FILE_SIZE_BYTES: u64 = 107_374_182_400;
 
 /// Reserved target carrying security events; a verbosity directive must never
 /// target it, or it could suppress a catalog event (`OBS-007`).
-pub const SECURITY_TARGET: &str = "security";
+const SECURITY_TARGET: &str = "security";
 
 /// Default verbosity filter applied to the `tracing` instrumentation.
-pub const DEFAULT_LOG_LEVEL: &str = "debug,sqlx=warn";
+const DEFAULT_LOG_LEVEL: &str = "debug,sqlx=warn";
 
 /// Default value for [`Logging::ansi`].
-pub const DEFAULT_LOG_ANSI: bool = false;
+const DEFAULT_LOG_ANSI: bool = false;
 
 /// Default value for [`Logging::max_files`].
-pub const DEFAULT_LOG_MAX_FILES: u32 = 7;
+const DEFAULT_LOG_MAX_FILES: u32 = 7;
 
 /// Default value for [`Logging::rotation`].
-pub const DEFAULT_LOG_ROTATION: Rotation = Rotation::Daily;
+const DEFAULT_LOG_ROTATION: Rotation = Rotation::Daily;
 
 /// Default value for [`Jwt::ttl`], in seconds.
-pub const DEFAULT_JWT_TTL_SECONDS: u64 = 3600;
+const DEFAULT_JWT_TTL_SECONDS: u64 = 3600;
 
 /// Default value for [`Sqlite3::max_connections`].
 ///
 /// Fixed rather than derived from the host: the value must be deterministic so
 /// the domain performs no OS probe, and `SQLite` serializes writers regardless.
-pub const DEFAULT_SQLITE3_MAX_CONNECTIONS: u32 = 8;
+const DEFAULT_SQLITE3_MAX_CONNECTIONS: u32 = 8;
 
 /// Default number of requests a [`RateLimit`] burst admits.
-pub const DEFAULT_BURST: u32 = 5;
+const DEFAULT_BURST: u32 = 5;
 
 /// Default header carrying the client address, used when no proxy is trusted.
-pub const DEFAULT_CLIENT_IP_HEADER: ClientIpHeader = ClientIpHeader::XForwardedFor;
+const DEFAULT_CLIENT_IP_HEADER: ClientIpHeader = ClientIpHeader::XForwardedFor;
 
 /// Default value for [`RateLimit::period_seconds`].
-pub const DEFAULT_PERIOD_SECONDS: u64 = 12;
+const DEFAULT_PERIOD_SECONDS: u64 = 12;
 
 /// Separator between addresses in the [`RateLimit::trusted_proxies`] list.
-pub const TRUSTED_PROXIES_SEPARATOR: char = ',';
+const TRUSTED_PROXIES_SEPARATOR: char = ',';
 
 /// Error returned when initialising or updating an asset value object.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
-pub enum AssetError {
+pub(crate) enum AssetError {
     /// The chunk size is zero.
     #[error("asset upload chunk_size_bytes must be greater than zero")]
     ChunkSizeZero,
@@ -77,7 +82,7 @@ pub enum AssetError {
 /// rebuild it, so no layer can bypass the validation.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 #[non_exhaustive]
-pub struct AssetUpload {
+pub(crate) struct AssetUpload {
     /// Size of every chunk except the last, in bytes.
     chunk_size_bytes: u64,
     /// Lifetime of an upload session, in seconds.
@@ -89,19 +94,19 @@ pub struct AssetUpload {
 impl AssetUpload {
     /// Return the size of every chunk except the last, in bytes.
     #[must_use]
-    pub fn chunk_size_bytes(&self) -> u64 {
+    pub(crate) fn chunk_size_bytes(&self) -> u64 {
         self.chunk_size_bytes
     }
 
     /// Return the lifetime of an upload session, in seconds.
     #[must_use]
-    pub fn expiry_seconds(&self) -> u64 {
+    pub(crate) fn expiry_seconds(&self) -> u64 {
         self.expiry_seconds
     }
 
     /// Return the maximum size of a single uploaded file, in bytes.
     #[must_use]
-    pub fn max_file_size_bytes(&self) -> u64 {
+    pub(crate) fn max_file_size_bytes(&self) -> u64 {
         self.max_file_size_bytes
     }
 
@@ -110,7 +115,7 @@ impl AssetUpload {
     /// # Errors
     ///
     /// Returns [`AssetError::ChunkSizeZero`] when `chunk_size_bytes` is zero.
-    pub fn set_chunk_size_bytes(&mut self, chunk_size_bytes: u64) -> Result<(), AssetError> {
+    fn set_chunk_size_bytes(&mut self, chunk_size_bytes: u64) -> Result<(), AssetError> {
         self.chunk_size_bytes = Self::validate_chunk_size_bytes(chunk_size_bytes)?;
         Ok(())
     }
@@ -120,7 +125,7 @@ impl AssetUpload {
     /// # Errors
     ///
     /// Returns [`AssetError::ExpiryZero`] when `expiry_seconds` is zero.
-    pub fn set_expiry_seconds(&mut self, expiry_seconds: u64) -> Result<(), AssetError> {
+    fn set_expiry_seconds(&mut self, expiry_seconds: u64) -> Result<(), AssetError> {
         self.expiry_seconds = Self::validate_expiry_seconds(expiry_seconds)?;
         Ok(())
     }
@@ -132,7 +137,7 @@ impl AssetUpload {
     /// Returns [`AssetError::MaxFileSizeZero`] when `max_file_size_bytes` is
     /// zero, and [`AssetError::MaxFileSizeTooLarge`] when it exceeds
     /// [`i64::MAX`].
-    pub fn set_max_file_size_bytes(&mut self, max_file_size_bytes: u64) -> Result<(), AssetError> {
+    fn set_max_file_size_bytes(&mut self, max_file_size_bytes: u64) -> Result<(), AssetError> {
         self.max_file_size_bytes = Self::validate_max_file_size_bytes(max_file_size_bytes)?;
         Ok(())
     }
@@ -145,7 +150,7 @@ impl AssetUpload {
     /// [`AssetError::ExpiryZero`] when `expiry_seconds` is zero,
     /// [`AssetError::MaxFileSizeZero`] when `max_file_size_bytes` is zero, and
     /// [`AssetError::MaxFileSizeTooLarge`] when it exceeds [`i64::MAX`].
-    pub fn try_new(
+    pub(crate) fn try_new(
         chunk_size_bytes: u64,
         expiry_seconds: u64,
         max_file_size_bytes: u64,
@@ -215,7 +220,7 @@ impl Default for AssetUpload {
 /// Asset-related settings.
 #[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize)]
 #[non_exhaustive]
-pub struct Asset {
+pub(crate) struct Asset {
     /// Upload settings.
     upload: AssetUpload,
 }
@@ -223,21 +228,25 @@ pub struct Asset {
 impl Asset {
     /// Initialise a new `Asset`.
     #[must_use]
-    pub fn new(upload: AssetUpload) -> Self {
+    pub(crate) fn new(upload: AssetUpload) -> Self {
         Self { upload }
     }
 
     /// Return the upload settings.
     #[must_use]
-    pub fn upload(&self) -> &AssetUpload {
+    pub(crate) fn upload(&self) -> &AssetUpload {
         &self.upload
     }
 }
 
 /// Error returned when initialising or updating a `Logging` value object.
+#[expect(
+    clippy::enum_variant_names,
+    reason = "each variant names the logging setting it rejects, so the shared `Level` prefix is the subject"
+)]
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
-pub enum LoggingError {
+pub(crate) enum LoggingError {
     /// The verbosity filter disables logging as a whole (`off`/`none`).
     #[error("logging level must not disable logging")]
     LevelDisablesLogging,
@@ -253,7 +262,7 @@ pub enum LoggingError {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
 #[serde(rename_all = "UPPERCASE")]
 #[non_exhaustive]
-pub enum Rotation {
+pub(crate) enum Rotation {
     /// Rotate the log file once a day.
     Daily,
     /// Rotate the log file once an hour.
@@ -271,7 +280,7 @@ pub enum Rotation {
 /// and rebuild it, so no layer can bypass the validation.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 #[non_exhaustive]
-pub struct Logging {
+pub(crate) struct Logging {
     /// Whether to colour the standard-output sink with ANSI escape codes.
     ansi: bool,
     /// Verbosity filter applied to the `tracing` instrumentation.
@@ -297,26 +306,26 @@ impl Logging {
     /// Return whether to colour the standard-output sink with ANSI escape
     /// codes.
     #[must_use]
-    pub fn ansi(&self) -> bool {
+    pub(crate) fn ansi(&self) -> bool {
         self.ansi
     }
 
     /// Return the verbosity filter applied to the `tracing` instrumentation.
     #[must_use]
-    pub fn level(&self) -> &str {
+    pub(crate) fn level(&self) -> &str {
         &self.level
     }
 
     /// Return the maximum number of rotated log files to keep; `0` keeps every
     /// file.
     #[must_use]
-    pub fn max_files(&self) -> u32 {
+    pub(crate) fn max_files(&self) -> u32 {
         self.max_files
     }
 
     /// Return the rotation period of the file sink.
     #[must_use]
-    pub fn rotation(&self) -> Rotation {
+    pub(crate) fn rotation(&self) -> Rotation {
         self.rotation
     }
 
@@ -333,7 +342,7 @@ impl Logging {
     /// [`LoggingError::LevelDisablesLogging`] when `level` is a bare `off` or
     /// `none`, and [`LoggingError::LevelTargetsSecurity`] when a directive
     /// targets the reserved `security` target.
-    pub fn try_new(
+    pub(crate) fn try_new(
         ansi: bool,
         level: String,
         max_files: u32,
@@ -364,7 +373,7 @@ impl Logging {
 /// Error returned when initialising or updating a `Sqlite3` value object.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
-pub enum Sqlite3Error {
+pub(crate) enum Sqlite3Error {
     /// The maximum number of connections is zero.
     #[error("sqlite3 max_connections must be greater than zero")]
     InvalidMaxConnections,
@@ -377,7 +386,7 @@ pub enum Sqlite3Error {
 /// it, so no layer can bypass the validation.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 #[non_exhaustive]
-pub struct Sqlite3 {
+pub(crate) struct Sqlite3 {
     /// Maximum number of connections to the database.
     max_connections: u32,
 }
@@ -385,7 +394,7 @@ pub struct Sqlite3 {
 impl Sqlite3 {
     /// Return the maximum number of connections to the database.
     #[must_use]
-    pub fn max_connections(&self) -> u32 {
+    pub(crate) fn max_connections(&self) -> u32 {
         self.max_connections
     }
 
@@ -395,7 +404,7 @@ impl Sqlite3 {
     ///
     /// Returns [`Sqlite3Error::InvalidMaxConnections`] when `max_connections`
     /// is zero.
-    pub fn set_max_connections(&mut self, max_connections: u32) -> Result<(), Sqlite3Error> {
+    fn set_max_connections(&mut self, max_connections: u32) -> Result<(), Sqlite3Error> {
         self.max_connections = Self::validate_max_connections(max_connections)?;
         Ok(())
     }
@@ -406,7 +415,7 @@ impl Sqlite3 {
     ///
     /// Returns [`Sqlite3Error::InvalidMaxConnections`] when `max_connections`
     /// is zero.
-    pub fn try_new(max_connections: u32) -> Result<Self, Sqlite3Error> {
+    pub(crate) fn try_new(max_connections: u32) -> Result<Self, Sqlite3Error> {
         let validated_max_connections = Self::validate_max_connections(max_connections)?;
         Ok(Self {
             max_connections: validated_max_connections,
@@ -438,7 +447,7 @@ impl Default for Sqlite3 {
 /// Persistence-related settings.
 #[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize)]
 #[non_exhaustive]
-pub struct Persistence {
+pub(crate) struct Persistence {
     /// `SQLite3` datastore settings.
     sqlite3: Sqlite3,
 }
@@ -446,19 +455,19 @@ pub struct Persistence {
 impl Persistence {
     /// Initialise a new `Persistence`.
     #[must_use]
-    pub fn new(sqlite3: Sqlite3) -> Self {
+    pub(crate) fn new(sqlite3: Sqlite3) -> Self {
         Self { sqlite3 }
     }
 
     /// Return the `SQLite3` datastore settings.
     #[must_use]
-    pub fn sqlite3(&self) -> &Sqlite3 {
+    pub(crate) fn sqlite3(&self) -> &Sqlite3 {
         &self.sqlite3
     }
 
     /// Return a mutable reference to the `SQLite3` datastore settings.
     #[must_use]
-    pub fn sqlite3_mut(&mut self) -> &mut Sqlite3 {
+    fn sqlite3_mut(&mut self) -> &mut Sqlite3 {
         &mut self.sqlite3
     }
 }
@@ -466,7 +475,7 @@ impl Persistence {
 /// Error returned when initialising or updating a `Jwt` value object.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
-pub enum JwtError {
+pub(crate) enum JwtError {
     /// The token lifetime is zero.
     #[error("jwt ttl must be greater than zero")]
     InvalidTtl,
@@ -479,7 +488,7 @@ pub enum JwtError {
 /// it, so no layer can bypass the validation.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 #[non_exhaustive]
-pub struct Jwt {
+pub(crate) struct Jwt {
     /// Lifetime of a token, in seconds.
     ttl: u64,
 }
@@ -498,7 +507,7 @@ impl Jwt {
     /// # Errors
     ///
     /// Returns [`JwtError::InvalidTtl`] when `ttl` is zero.
-    pub fn set_ttl(&mut self, ttl: u64) -> Result<(), JwtError> {
+    fn set_ttl(&mut self, ttl: u64) -> Result<(), JwtError> {
         self.ttl = Self::validate_ttl(ttl)?;
         Ok(())
     }
@@ -508,14 +517,14 @@ impl Jwt {
     /// # Errors
     ///
     /// Returns [`JwtError::InvalidTtl`] when `ttl` is zero.
-    pub fn try_new(ttl: u64) -> Result<Self, JwtError> {
+    pub(crate) fn try_new(ttl: u64) -> Result<Self, JwtError> {
         let validated_ttl = Self::validate_ttl(ttl)?;
         Ok(Self { ttl: validated_ttl })
     }
 
     /// Return the lifetime of a token, in seconds.
     #[must_use]
-    pub fn ttl(&self) -> u64 {
+    pub(crate) fn ttl(&self) -> u64 {
         self.ttl
     }
 
@@ -533,9 +542,13 @@ impl Jwt {
 }
 
 /// Error returned when initialising or updating a `RateLimit` value object.
+#[expect(
+    clippy::enum_variant_names,
+    reason = "each variant names the rate-limit setting it rejects, so the shared `Invalid` prefix is the subject"
+)]
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
-pub enum RateLimitError {
+pub(crate) enum RateLimitError {
     /// The burst size is zero.
     #[error("rate limit burst size must be greater than zero")]
     InvalidBurstSize,
@@ -558,7 +571,7 @@ pub enum RateLimitError {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
 #[serde(rename_all = "kebab-case")]
 #[non_exhaustive]
-pub enum ClientIpHeader {
+pub(crate) enum ClientIpHeader {
     /// The RFC 7239 `Forwarded` header (`for=` element).
     Forwarded,
     /// The `X-Forwarded-For` header.
@@ -570,7 +583,11 @@ pub enum ClientIpHeader {
 impl ClientIpHeader {
     /// Return the header name as it appears on the wire.
     #[must_use]
-    pub fn as_str(&self) -> &'static str {
+    #[expect(
+        clippy::trivially_copy_pass_by_ref,
+        reason = "STY-RUST-019 fixes the getter receiver as `&self`"
+    )]
+    pub(crate) fn as_str(&self) -> &'static str {
         match *self {
             Self::Forwarded => "forwarded",
             Self::XForwardedFor => "x-forwarded-for",
@@ -584,7 +601,7 @@ impl ClientIpHeader {
     ///
     /// Returns [`RateLimitError::InvalidClientIpHeader`] when `value` is not one
     /// of the supported header names.
-    pub fn parse(value: &str) -> Result<Self, RateLimitError> {
+    pub(crate) fn parse(value: &str) -> Result<Self, RateLimitError> {
         match value.trim().to_ascii_lowercase().as_str() {
             "forwarded" => Ok(Self::Forwarded),
             "x-forwarded-for" => Ok(Self::XForwardedFor),
@@ -604,7 +621,7 @@ impl ClientIpHeader {
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 #[serde(into = "RateLimitConfig")]
 #[non_exhaustive]
-pub struct RateLimit {
+pub(crate) struct RateLimit {
     /// Number of requests a client address may spend before throttling.
     burst_size: u32,
     /// Header the trusted proxy overwrites with the client address.
@@ -665,19 +682,19 @@ impl RateLimit {
     /// Return the number of requests a client address may spend before
     /// throttling.
     #[must_use]
-    pub fn burst_size(&self) -> u32 {
+    pub(crate) fn burst_size(&self) -> u32 {
         self.burst_size
     }
 
     /// Return the header the trusted proxy overwrites with the client address.
     #[must_use]
-    pub fn client_ip_header(&self) -> ClientIpHeader {
+    pub(crate) fn client_ip_header(&self) -> ClientIpHeader {
         self.client_ip_header
     }
 
     /// Return the seconds after which one element of the quota is replenished.
     #[must_use]
-    pub fn period_seconds(&self) -> u64 {
+    pub(crate) fn period_seconds(&self) -> u64 {
         self.period_seconds
     }
 
@@ -687,13 +704,13 @@ impl RateLimit {
     /// # Errors
     ///
     /// Returns [`RateLimitError::InvalidBurstSize`] when `burst_size` is zero.
-    pub fn set_burst_size(&mut self, burst_size: u32) -> Result<(), RateLimitError> {
+    fn set_burst_size(&mut self, burst_size: u32) -> Result<(), RateLimitError> {
         self.burst_size = Self::validate_burst_size(burst_size)?;
         Ok(())
     }
 
     /// Update the header the trusted proxy overwrites with the client address.
-    pub fn set_client_ip_header(&mut self, client_ip_header: ClientIpHeader) {
+    fn set_client_ip_header(&mut self, client_ip_header: ClientIpHeader) {
         self.client_ip_header = client_ip_header;
     }
 
@@ -703,26 +720,26 @@ impl RateLimit {
     ///
     /// Returns [`RateLimitError::InvalidPeriodSeconds`] when `period_seconds`
     /// is zero.
-    pub fn set_period_seconds(&mut self, period_seconds: u64) -> Result<(), RateLimitError> {
+    fn set_period_seconds(&mut self, period_seconds: u64) -> Result<(), RateLimitError> {
         self.period_seconds = Self::validate_period_seconds(period_seconds)?;
         Ok(())
     }
 
     /// Update the addresses of the trusted reverse proxies.
-    pub fn set_trusted_proxies(&mut self, trusted_proxies: Vec<IpAddr>) {
+    fn set_trusted_proxies(&mut self, trusted_proxies: Vec<IpAddr>) {
         self.trusted_proxies = trusted_proxies;
     }
 
     /// Return the addresses of the trusted reverse proxies.
     #[must_use]
-    pub fn trusted_proxies(&self) -> &[IpAddr] {
+    pub(crate) fn trusted_proxies(&self) -> &[IpAddr] {
         &self.trusted_proxies
     }
 
     /// Return the trusted proxies rendered as the persisted comma-separated
     /// list.
     #[must_use]
-    pub fn trusted_proxies_value(&self) -> String {
+    fn trusted_proxies_value(&self) -> String {
         self.trusted_proxies
             .iter()
             .map(ToString::to_string)
@@ -738,7 +755,7 @@ impl RateLimit {
     /// Returns [`RateLimitError::InvalidBurstSize`] when `burst_size` is zero,
     /// and [`RateLimitError::InvalidPeriodSeconds`] when `period_seconds` is
     /// zero.
-    pub fn try_new(
+    pub(crate) fn try_new(
         burst_size: u32,
         client_ip_header: ClientIpHeader,
         period_seconds: u64,
@@ -783,7 +800,7 @@ impl RateLimit {
 /// Error returned when initialising or updating a `Security` value object.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
-pub enum SecurityError {
+pub(crate) enum SecurityError {
     /// The `JWT` settings are invalid.
     #[error("invalid jwt configuration")]
     InvalidJwt(#[from] JwtError),
@@ -796,7 +813,7 @@ pub enum SecurityError {
 /// value and rebuild it, so no layer can bypass the validation.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 #[non_exhaustive]
-pub struct Security {
+pub(crate) struct Security {
     /// `JWT` settings.
     jwt: Jwt,
     /// Whether the Root Admin default password is still logged to standard
@@ -819,26 +836,26 @@ impl Default for Security {
 impl Security {
     /// Return the `JWT` settings.
     #[must_use]
-    pub fn jwt(&self) -> &Jwt {
+    pub(crate) fn jwt(&self) -> &Jwt {
         &self.jwt
     }
 
     /// Return a mutable reference to the `JWT` settings.
     #[must_use]
-    pub fn jwt_mut(&mut self) -> &mut Jwt {
+    fn jwt_mut(&mut self) -> &mut Jwt {
         &mut self.jwt
     }
 
     /// Return whether the Root Admin default password is still logged to
     /// standard output on runtime start.
     #[must_use]
-    pub fn log_root_admin_password(&self) -> bool {
+    pub(crate) fn log_root_admin_password(&self) -> bool {
         self.log_root_admin_password
     }
 
     /// Initialise a new `Security`.
     #[must_use]
-    pub fn new(jwt: Jwt, log_root_admin_password: bool) -> Self {
+    pub(crate) fn new(jwt: Jwt, log_root_admin_password: bool) -> Self {
         Self {
             jwt,
             log_root_admin_password,
@@ -848,18 +865,18 @@ impl Security {
 
     /// Return the login rate-limiting settings.
     #[must_use]
-    pub fn rate_limit(&self) -> &RateLimit {
+    pub(crate) fn rate_limit(&self) -> &RateLimit {
         &self.rate_limit
     }
 
     /// Update whether the Root Admin default password is logged to standard
     /// output on runtime start.
-    pub fn set_log_root_admin_password(&mut self, log_root_admin_password: bool) {
+    fn set_log_root_admin_password(&mut self, log_root_admin_password: bool) {
         self.log_root_admin_password = log_root_admin_password;
     }
 
     /// Update the login rate-limiting settings.
-    pub fn set_rate_limit(&mut self, rate_limit: RateLimit) {
+    fn set_rate_limit(&mut self, rate_limit: RateLimit) {
         self.rate_limit = rate_limit;
     }
 
@@ -869,7 +886,11 @@ impl Security {
     ///
     /// Returns [`SecurityError::InvalidJwt`] when the `JWT` settings are
     /// invalid.
-    pub fn try_new(
+    #[expect(
+        clippy::unnecessary_wraps,
+        reason = "STY-RUST-018 keeps the fallible constructor named `try_new`; `Security` mirrors its sibling configuration value objects and the JWT validation it reports stays fallible at the call site"
+    )]
+    pub(crate) fn try_new(
         jwt: Jwt,
         log_root_admin_password: bool,
         rate_limit: RateLimit,
@@ -888,7 +909,7 @@ impl Security {
 /// (`OBS-004`).
 #[derive(Debug, PartialEq, Eq, thiserror::Error)]
 #[non_exhaustive]
-pub enum VideoProvidersError {
+pub(crate) enum VideoProvidersError {
     /// A listed provider has an empty API key.
     #[error("library.metadata.video.providers api_key must not be empty")]
     ApiKeyEmpty,
@@ -918,24 +939,24 @@ pub enum VideoProvidersError {
 #[derive(Clone, PartialEq, Eq, serde::Deserialize)]
 #[serde(transparent)]
 #[non_exhaustive]
-pub struct ApiKey(String);
+pub(crate) struct ApiKey(String);
 
 impl ApiKey {
     /// Return the key value for the adapter that builds a request.
     #[must_use]
-    pub fn expose(&self) -> &str {
+    pub(crate) fn expose(&self) -> &str {
         &self.0
     }
 
     /// Return whether the key is empty.
     #[must_use]
-    pub fn is_empty(&self) -> bool {
+    pub(crate) fn is_empty(&self) -> bool {
         self.0.is_empty()
     }
 
     /// Create a new API key.
     #[must_use]
-    pub fn new(value: String) -> Self {
+    pub(crate) fn new(value: String) -> Self {
         Self(value)
     }
 }
@@ -950,7 +971,7 @@ impl Debug for ApiKey {
 /// One configured video metadata provider.
 #[derive(Clone, PartialEq, Eq, serde::Serialize)]
 #[non_exhaustive]
-pub struct VideoProvider {
+pub(crate) struct VideoProvider {
     /// API key the adapter presents to the provider; never serialized.
     #[serde(skip_serializing)]
     api_key: ApiKey,
@@ -963,19 +984,19 @@ pub struct VideoProvider {
 impl VideoProvider {
     /// Return the provider's API key.
     #[must_use]
-    pub fn api_key(&self) -> &ApiKey {
+    pub(crate) fn api_key(&self) -> &ApiKey {
         &self.api_key
     }
 
     /// Return the position of the provider in the failover order.
     #[must_use]
-    pub fn index(&self) -> u32 {
+    pub(crate) fn index(&self) -> u32 {
         self.index
     }
 
     /// Return the provider the entry configures.
     #[must_use]
-    pub fn name(&self) -> ProviderId {
+    pub(crate) fn name(&self) -> ProviderId {
         self.name
     }
 
@@ -986,7 +1007,11 @@ impl VideoProvider {
     /// Returns [`VideoProvidersError::UnknownProvider`] when `name` is not a
     /// supported provider, [`VideoProvidersError::InvalidIndex`] when `index` is
     /// zero, and [`VideoProvidersError::ApiKeyEmpty`] when `api_key` is empty.
-    pub fn try_new(name: &str, index: u32, api_key: String) -> Result<Self, VideoProvidersError> {
+    pub(crate) fn try_new(
+        name: &str,
+        index: u32,
+        api_key: String,
+    ) -> Result<Self, VideoProvidersError> {
         let provider = ProviderId::parse(name).ok_or(VideoProvidersError::UnknownProvider)?;
         if provider.serves_music() {
             return Err(VideoProvidersError::UnsupportedProvider);
@@ -1023,7 +1048,7 @@ impl Debug for VideoProvider {
 /// empty list is valid and means identification is unavailable.
 #[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize)]
 #[non_exhaustive]
-pub struct VideoProviders {
+pub(crate) struct VideoProviders {
     /// Configured providers, ordered by their index.
     providers: Vec<VideoProvider>,
 }
@@ -1031,7 +1056,7 @@ pub struct VideoProviders {
 impl VideoProviders {
     /// Return the configured providers, ordered by their index.
     #[must_use]
-    pub fn providers(&self) -> &[VideoProvider] {
+    pub(crate) fn providers(&self) -> &[VideoProvider] {
         &self.providers
     }
 
@@ -1043,7 +1068,7 @@ impl VideoProviders {
     /// Returns [`VideoProvidersError::DuplicateProvider`] when two entries share
     /// a provider name, and [`VideoProvidersError::DuplicateIndex`] when two
     /// entries share an index.
-    pub fn try_new(providers: Vec<VideoProvider>) -> Result<Self, VideoProvidersError> {
+    pub(crate) fn try_new(providers: Vec<VideoProvider>) -> Result<Self, VideoProvidersError> {
         let mut indices: Vec<u32> = Vec::with_capacity(providers.len());
         let mut names: Vec<ProviderId> = Vec::with_capacity(providers.len());
         for provider in &providers {
@@ -1067,7 +1092,7 @@ impl VideoProviders {
 /// The message names the setting and never a value (`OBS-004`).
 #[derive(Debug, PartialEq, Eq, thiserror::Error)]
 #[non_exhaustive]
-pub enum MusicProvidersError {
+pub(crate) enum MusicProvidersError {
     /// Two entries share an index.
     #[error("library.metadata.music.providers index must be unique")]
     DuplicateIndex,
@@ -1091,7 +1116,7 @@ pub enum MusicProvidersError {
 /// name: there is no credential field to leave empty or redact.
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
 #[non_exhaustive]
-pub struct MusicProvider {
+pub(crate) struct MusicProvider {
     /// Position of the provider in the resolution order; positive and unique.
     index: u32,
     /// Provider the entry configures.
@@ -1101,13 +1126,13 @@ pub struct MusicProvider {
 impl MusicProvider {
     /// Return the position of the provider in the resolution order.
     #[must_use]
-    pub fn index(&self) -> u32 {
+    pub(crate) fn index(&self) -> u32 {
         self.index
     }
 
     /// Return the provider the entry configures.
     #[must_use]
-    pub fn name(&self) -> ProviderId {
+    pub(crate) fn name(&self) -> ProviderId {
         self.name
     }
 
@@ -1119,7 +1144,7 @@ impl MusicProvider {
     /// supported provider, [`MusicProvidersError::UnsupportedProvider`] when it
     /// is a provider that serves video rather than music, and
     /// [`MusicProvidersError::InvalidIndex`] when `index` is zero.
-    pub fn try_new(name: &str, index: u32) -> Result<Self, MusicProvidersError> {
+    pub(crate) fn try_new(name: &str, index: u32) -> Result<Self, MusicProvidersError> {
         let provider = ProviderId::parse(name).ok_or(MusicProvidersError::UnknownProvider)?;
         if !provider.serves_music() {
             return Err(MusicProvidersError::UnsupportedProvider);
@@ -1140,7 +1165,7 @@ impl MusicProvider {
 /// empty list is valid and means music identification is unavailable.
 #[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize)]
 #[non_exhaustive]
-pub struct MusicProviders {
+pub(crate) struct MusicProviders {
     /// Configured providers, ordered by their index.
     providers: Vec<MusicProvider>,
 }
@@ -1148,7 +1173,7 @@ pub struct MusicProviders {
 impl MusicProviders {
     /// Return the configured providers, ordered by their index.
     #[must_use]
-    pub fn providers(&self) -> &[MusicProvider] {
+    pub(crate) fn providers(&self) -> &[MusicProvider] {
         &self.providers
     }
 
@@ -1160,7 +1185,7 @@ impl MusicProviders {
     /// Returns [`MusicProvidersError::DuplicateProvider`] when two entries share
     /// a provider name, and [`MusicProvidersError::DuplicateIndex`] when two
     /// entries share an index.
-    pub fn try_new(providers: Vec<MusicProvider>) -> Result<Self, MusicProvidersError> {
+    pub(crate) fn try_new(providers: Vec<MusicProvider>) -> Result<Self, MusicProvidersError> {
         let mut indices: Vec<u32> = Vec::with_capacity(providers.len());
         let mut names: Vec<ProviderId> = Vec::with_capacity(providers.len());
         for provider in &providers {
@@ -1182,7 +1207,7 @@ impl MusicProviders {
 /// Metadata settings of the Library bounded context.
 #[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize)]
 #[non_exhaustive]
-pub struct LibraryMetadata {
+pub(crate) struct LibraryMetadata {
     /// Music metadata settings.
     music: MusicProviders,
     /// Video metadata settings.
@@ -1192,19 +1217,19 @@ pub struct LibraryMetadata {
 impl LibraryMetadata {
     /// Return the music metadata settings.
     #[must_use]
-    pub fn music(&self) -> &MusicProviders {
+    pub(crate) fn music(&self) -> &MusicProviders {
         &self.music
     }
 
     /// Initialise a new `LibraryMetadata`.
     #[must_use]
-    pub fn new(music: MusicProviders, video: VideoProviders) -> Self {
+    pub(crate) fn new(music: MusicProviders, video: VideoProviders) -> Self {
         Self { music, video }
     }
 
     /// Return the video metadata settings.
     #[must_use]
-    pub fn video(&self) -> &VideoProviders {
+    pub(crate) fn video(&self) -> &VideoProviders {
         &self.video
     }
 }
@@ -1212,7 +1237,7 @@ impl LibraryMetadata {
 /// Library-related settings.
 #[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize)]
 #[non_exhaustive]
-pub struct Library {
+pub(crate) struct Library {
     /// Metadata settings.
     metadata: LibraryMetadata,
 }
@@ -1220,13 +1245,13 @@ pub struct Library {
 impl Library {
     /// Return the metadata settings.
     #[must_use]
-    pub fn metadata(&self) -> &LibraryMetadata {
+    pub(crate) fn metadata(&self) -> &LibraryMetadata {
         &self.metadata
     }
 
     /// Initialise a new `Library`.
     #[must_use]
-    pub fn new(metadata: LibraryMetadata) -> Self {
+    pub(crate) fn new(metadata: LibraryMetadata) -> Self {
         Self { metadata }
     }
 }
@@ -1234,7 +1259,7 @@ impl Library {
 /// The application configuration.
 #[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize)]
 #[non_exhaustive]
-pub struct Configuration {
+pub(crate) struct Configuration {
     /// Asset-related settings.
     asset: Asset,
     /// Library-related settings.
@@ -1250,25 +1275,25 @@ pub struct Configuration {
 impl Configuration {
     /// Return the asset-related settings.
     #[must_use]
-    pub fn asset(&self) -> &Asset {
+    pub(crate) fn asset(&self) -> &Asset {
         &self.asset
     }
 
     /// Return the library-related settings.
     #[must_use]
-    pub fn library(&self) -> &Library {
+    pub(crate) fn library(&self) -> &Library {
         &self.library
     }
 
     /// Return the logging-related settings.
     #[must_use]
-    pub fn logging(&self) -> &Logging {
+    pub(crate) fn logging(&self) -> &Logging {
         &self.logging
     }
 
     /// Initialise a new `Configuration`.
     #[must_use]
-    pub fn new(
+    pub(crate) fn new(
         persistence: Persistence,
         security: Security,
         logging: Logging,
@@ -1286,25 +1311,25 @@ impl Configuration {
 
     /// Return the persistence-related settings.
     #[must_use]
-    pub fn persistence(&self) -> &Persistence {
+    pub(crate) fn persistence(&self) -> &Persistence {
         &self.persistence
     }
 
     /// Return a mutable reference to the persistence-related settings.
     #[must_use]
-    pub fn persistence_mut(&mut self) -> &mut Persistence {
+    fn persistence_mut(&mut self) -> &mut Persistence {
         &mut self.persistence
     }
 
     /// Return the security-related settings.
     #[must_use]
-    pub fn security(&self) -> &Security {
+    pub(crate) fn security(&self) -> &Security {
         &self.security
     }
 
     /// Return a mutable reference to the security-related settings.
     #[must_use]
-    pub fn security_mut(&mut self) -> &mut Security {
+    fn security_mut(&mut self) -> &mut Security {
         &mut self.security
     }
 }
@@ -1315,7 +1340,7 @@ impl Configuration {
 ///
 /// Returns [`RateLimitError::InvalidTrustedProxy`] when a non-empty entry is
 /// not a valid IP address.
-pub fn parse_trusted_proxies(value: &str) -> Result<Vec<IpAddr>, RateLimitError> {
+pub(crate) fn parse_trusted_proxies(value: &str) -> Result<Vec<IpAddr>, RateLimitError> {
     value
         .split(TRUSTED_PROXIES_SEPARATOR)
         .map(str::trim)

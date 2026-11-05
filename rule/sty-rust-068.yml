@@ -10,11 +10,17 @@ rule:
     # The single application state struct.
     - all:
         - kind: struct_item
-        - pattern: 'pub struct AppState { $$$FIELDS }'
+        - any:
+            - pattern: 'pub struct AppState { $$$FIELDS }'
+            - pattern: 'pub(crate) struct AppState { $$$FIELDS }'
+            - pattern: 'struct AppState { $$$FIELDS }'
     # A getter: a public method on AppState borrowing self.
     - all:
         - kind: function_item
-        - pattern: 'pub fn $GETTER(&self) -> $RET { $$$BODY }'
+        - any:
+            - pattern: 'pub fn $GETTER(&self) -> $RET { $$$BODY }'
+            - pattern: 'pub(crate) fn $GETTER(&self) -> $RET { $$$BODY }'
+            - pattern: 'fn $GETTER(&self) -> $RET { $$$BODY }'
         - inside:
             kind: impl_item
             pattern: 'impl AppState { $$$IMPL_BODY }'

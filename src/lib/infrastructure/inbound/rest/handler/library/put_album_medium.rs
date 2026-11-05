@@ -23,7 +23,7 @@ use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 /// Payload to create or retype a music medium.
 #[derive(Debug, Deserialize, ToSchema)]
 #[non_exhaustive]
-pub struct PutAlbumMediumRequest {
+pub(crate) struct PutAlbumMediumRequest {
     /// Medium type (`CD` or `DIGITAL`).
     #[schema(example = "CD")]
     #[serde(rename = "type")]
@@ -121,7 +121,7 @@ pub struct PutAlbumMediumRequest {
     ),
     summary = "Create or retype a music medium"
 )]
-pub async fn put_album_medium(
+pub(crate) async fn put_album_medium(
     Path((album_id_value, medium_index_value)): Path<(String, String)>,
     State(state): State<AppState>,
     caller: AuthenticatedUser,

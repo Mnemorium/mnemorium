@@ -22,7 +22,7 @@ use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 /// Reference to the provider work an apply resolves.
 #[derive(Debug, Deserialize, ToSchema)]
 #[non_exhaustive]
-pub struct ApplyReferenceRequest {
+pub(crate) struct ApplyReferenceRequest {
     /// Identifier the provider issued.
     #[schema(example = "75b3b57b-5f6f-3c1f-9b7e-9b2f0a2b4b6e")]
     pub id: String,
@@ -34,7 +34,7 @@ pub struct ApplyReferenceRequest {
 /// One recording the apply places at a destination address.
 #[derive(Debug, Deserialize, ToSchema)]
 #[non_exhaustive]
-pub struct ApplyPlacementRequest {
+pub(crate) struct ApplyPlacementRequest {
     /// Album-scoped index of the destination medium.
     #[schema(example = 1)]
     pub medium_index: u8,
@@ -49,7 +49,7 @@ pub struct ApplyPlacementRequest {
 /// Payload to apply external metadata to a music album.
 #[derive(Debug, Deserialize, ToSchema)]
 #[non_exhaustive]
-pub struct ApplyAlbumRequest {
+pub(crate) struct ApplyAlbumRequest {
     /// Recordings to move into the applied structure; omit to leave every
     /// placement unchanged.
     pub placements: Option<Vec<ApplyPlacementRequest>>,
@@ -138,7 +138,7 @@ pub struct ApplyAlbumRequest {
     ),
     summary = "Apply external metadata to a music album"
 )]
-pub async fn post_album_apply(
+pub(crate) async fn post_album_apply(
     Path(album_id_value): Path<String>,
     State(state): State<AppState>,
     caller: AuthenticatedUser,

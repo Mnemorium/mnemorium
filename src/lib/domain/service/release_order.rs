@@ -20,7 +20,7 @@ use crate::domain::model::music_metadata::ReleaseStatus;
 /// on as parameters and holds no I/O.
 #[derive(Debug)]
 #[non_exhaustive]
-pub struct ReleaseOrder;
+pub(crate) struct ReleaseOrder;
 
 impl ReleaseOrder {
     /// Compare two editions by the selection tie-breaks.
@@ -30,7 +30,14 @@ impl ReleaseOrder {
     /// rest. The comparison chooses among the editions of one album; it does not
     /// reorder the list [`ReleaseOrder::order_editions`] returns.
     #[must_use]
-    pub fn compare_editions(left: &Edition, right: &Edition) -> Ordering {
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "the security-event catalog declares this constructor; no caller emits the event yet"
+        )
+    )]
+    fn compare_editions(left: &Edition, right: &Edition) -> Ordering {
         let left_official = left.status().is_some_and(ReleaseStatus::is_official);
         let right_official = right.status().is_some_and(ReleaseStatus::is_official);
         (!left_official)
@@ -50,7 +57,14 @@ impl ReleaseOrder {
     /// and the provider's relative order, and the release candidates keep theirs
     /// inside each bucket.
     #[must_use]
-    pub fn order_candidates(candidates: Vec<MusicCandidate>) -> Vec<MusicCandidate> {
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "the security-event catalog declares this constructor; no caller emits the event yet"
+        )
+    )]
+    fn order_candidates(candidates: Vec<MusicCandidate>) -> Vec<MusicCandidate> {
         let mut slots: Vec<Option<MusicCandidate>> = candidates.into_iter().map(Some).collect();
         let mut release_positions: Vec<usize> = Vec::new();
         let mut releases: Vec<MusicCandidate> = Vec::new();
@@ -82,7 +96,7 @@ impl ReleaseOrder {
     /// The partition is stable: the provider's relative order survives inside
     /// each bucket, so the returned list adds no ranking of its own.
     #[must_use]
-    pub fn order_editions(editions: Vec<Edition>) -> Vec<Edition> {
+    pub(crate) fn order_editions(editions: Vec<Edition>) -> Vec<Edition> {
         let (compact_discs, others): (Vec<Edition>, Vec<Edition>) = editions
             .into_iter()
             .partition(|edition| all_compact_discs(edition.mediums()));

@@ -1,3 +1,8 @@
+#![allow(
+    dead_code,
+    reason = "the upload aggregate keeps the lifecycle methods and error variants its contract declares; the chunk bookkeeping has no caller yet"
+)]
+
 use chrono::NaiveDateTime;
 
 use crate::domain::alias::NumericID;
@@ -13,12 +18,12 @@ use crate::domain::model::permission::ResourceRef;
 /// Bounds the number of `upload_chunk` rows, and the in-memory chunk bitmap
 /// reconstructed from them, to 8 MiB (`MAX_TOTAL_CHUNKS / 8`) regardless of
 /// configuration, as a backstop against an unbounded allocation.
-pub const MAX_TOTAL_CHUNKS: usize = 67_108_864;
+pub(crate) const MAX_TOTAL_CHUNKS: usize = 67_108_864;
 
 /// Error returned when initialising or updating a `ChunkBitmap`.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
-pub enum ChunkBitmapError {
+pub(crate) enum ChunkBitmapError {
     /// The chunk number is outside the bitmap range.
     #[error("chunk number must be lower than the total number of chunks")]
     ChunkNumberOutOfRange,
@@ -36,7 +41,7 @@ pub enum ChunkBitmapError {
 /// Bit `n` of the underlying bytes (least-significant bit first) is set when
 /// chunk `n` has been received.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ChunkBitmap {
+pub(crate) struct ChunkBitmap {
     /// Raw bitmap bytes.
     bytes: Vec<u8>,
     /// Number of chunks the bitmap tracks.
@@ -46,7 +51,7 @@ pub struct ChunkBitmap {
 impl ChunkBitmap {
     /// Return the raw bitmap bytes.
     #[must_use]
-    pub fn as_bytes(&self) -> &[u8] {
+    pub(crate) fn as_bytes(&self) -> &[u8] {
         &self.bytes
     }
 
@@ -79,7 +84,10 @@ impl ChunkBitmap {
     /// Returns [`ChunkBitmapError::InvalidLength`] when `bytes` is shorter than
     /// the representation of `total_chunks` chunks, and
     /// [`ChunkBitmapError::TotalChunksZero`] when `total_chunks` is zero.
-    pub fn from_bytes(bytes: Vec<u8>, total_chunks: usize) -> Result<Self, ChunkBitmapError> {
+    pub(crate) fn from_bytes(
+        bytes: Vec<u8>,
+        total_chunks: usize,
+    ) -> Result<Self, ChunkBitmapError> {
         if total_chunks == 0 {
             return Err(ChunkBitmapError::TotalChunksZero);
         }
@@ -94,7 +102,7 @@ impl ChunkBitmap {
 
     /// Return whether every tracked chunk has been received.
     #[must_use]
-    pub fn is_complete(&self) -> bool {
+    fn is_complete(&self) -> bool {
         (0..self.total_chunks).all(|chunk_number| self.is_received(chunk_number).unwrap_or(false))
     }
 
@@ -104,7 +112,7 @@ impl ChunkBitmap {
     ///
     /// Returns [`ChunkBitmapError::ChunkNumberOutOfRange`] when `chunk_number`
     /// is not lower than [`ChunkBitmap::total_chunks`].
-    pub fn is_received(&self, chunk_number: usize) -> Result<bool, ChunkBitmapError> {
+    pub(crate) fn is_received(&self, chunk_number: usize) -> Result<bool, ChunkBitmapError> {
         let (byte_index, mask) = self.bit_position(chunk_number)?;
         Ok(self
             .bytes
@@ -118,7 +126,7 @@ impl ChunkBitmap {
     ///
     /// Returns [`ChunkBitmapError::ChunkNumberOutOfRange`] when `chunk_number`
     /// is not lower than [`ChunkBitmap::total_chunks`].
-    pub fn mark_received(&mut self, chunk_number: usize) -> Result<(), ChunkBitmapError> {
+    pub(crate) fn mark_received(&mut self, chunk_number: usize) -> Result<(), ChunkBitmapError> {
         let (byte_index, mask) = self.bit_position(chunk_number)?;
         if let Some(byte) = self.bytes.get_mut(byte_index) {
             *byte |= mask;
@@ -128,7 +136,7 @@ impl ChunkBitmap {
 
     /// Return the number of chunks the bitmap tracks.
     #[must_use]
-    pub fn total_chunks(&self) -> usize {
+    pub(crate) fn total_chunks(&self) -> usize {
         self.total_chunks
     }
 
@@ -139,7 +147,7 @@ impl ChunkBitmap {
     ///
     /// Returns [`ChunkBitmapError::TotalChunksZero`] when `total_chunks` is
     /// zero.
-    pub fn try_new(total_chunks: usize) -> Result<Self, ChunkBitmapError> {
+    pub(crate) fn try_new(total_chunks: usize) -> Result<Self, ChunkBitmapError> {
         if total_chunks == 0 {
             return Err(ChunkBitmapError::TotalChunksZero);
         }
@@ -153,7 +161,7 @@ impl ChunkBitmap {
 /// Error returned when initialising or updating an `Upload`.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
-pub enum UploadError {
+pub(crate) enum UploadError {
     /// The chunk number is outside the upload range.
     #[error("chunk number must be lower than the total number of chunks")]
     ChunkNumberOutOfRange,
@@ -185,7 +193,7 @@ pub enum UploadError {
     clippy::struct_field_names,
     reason = "`upload_id` is the primary key name mandated by the SQL section and the domain field naming"
 )]
-pub struct Upload {
+pub(crate) struct Upload {
     /// Bitmap of the chunks received so far.
     chunk_bitmap: ChunkBitmap,
     /// Size of every chunk except the last, in bytes.
@@ -212,54 +220,54 @@ impl Upload {
     /// Return whether the upload can be finished, i.e. every chunk has been
     /// received.
     #[must_use]
-    pub fn can_finish(&self) -> bool {
+    pub(crate) fn can_finish(&self) -> bool {
         self.chunk_bitmap.is_complete()
     }
 
     /// Return the raw bitmap of the received chunks.
     #[must_use]
-    pub fn chunk_bitmap(&self) -> &ChunkBitmap {
+    pub(crate) fn chunk_bitmap(&self) -> &ChunkBitmap {
         &self.chunk_bitmap
     }
 
     /// Return the size of every chunk except the last, in bytes.
     #[must_use]
-    pub fn chunk_size(&self) -> u64 {
+    pub(crate) fn chunk_size(&self) -> u64 {
         self.chunk_size
     }
 
     /// Return the date and time at which the upload was created.
     #[must_use]
-    pub fn created_at(&self) -> NaiveDateTime {
+    pub(crate) fn created_at(&self) -> NaiveDateTime {
         self.created_at
     }
 
     /// Return the original name of the file being uploaded.
     #[must_use]
-    pub fn file_name(&self) -> &str {
+    pub(crate) fn file_name(&self) -> &str {
         &self.file_name
     }
 
     /// Return the total size of the file being uploaded, in bytes.
     #[must_use]
-    pub fn file_size(&self) -> u64 {
+    pub(crate) fn file_size(&self) -> u64 {
         self.file_size
     }
 
     /// Mark the upload as finished.
-    pub fn finish(&mut self) {
+    pub(crate) fn finish(&mut self) {
         self.is_finished = true;
     }
 
     /// Return the integrity hash of the complete file.
     #[must_use]
-    pub fn integrity_hash(&self) -> &IntegrityHash<DIGEST_HEX_LENGTH> {
+    pub(crate) fn integrity_hash(&self) -> &IntegrityHash<DIGEST_HEX_LENGTH> {
         &self.integrity_hash
     }
 
     /// Return whether the upload has been finished.
     #[must_use]
-    pub fn is_finished(&self) -> bool {
+    pub(crate) fn is_finished(&self) -> bool {
         self.is_finished
     }
 
@@ -269,7 +277,7 @@ impl Upload {
     ///
     /// Returns [`UploadError::ChunkNumberOutOfRange`] when `chunk_number` is
     /// not lower than [`Upload::total_chunks`].
-    pub fn mark_chunk_received(&mut self, chunk_number: usize) -> Result<(), UploadError> {
+    fn mark_chunk_received(&mut self, chunk_number: usize) -> Result<(), UploadError> {
         self.chunk_bitmap
             .mark_received(chunk_number)
             .map_err(|error| match error {
@@ -282,7 +290,7 @@ impl Upload {
 
     /// Return the identifier of the mime type of the file being uploaded.
     #[must_use]
-    pub fn mime_type_id(&self) -> &str {
+    pub(crate) fn mime_type_id(&self) -> &str {
         &self.mime_type_id
     }
 
@@ -291,7 +299,7 @@ impl Upload {
     /// The file size is always greater than zero and the chunk size always
     /// positive, so the result is at least one.
     #[must_use]
-    pub fn total_chunks(&self) -> usize {
+    pub(crate) fn total_chunks(&self) -> usize {
         let total = self.file_size.div_ceil(self.chunk_size);
         usize::try_from(total).unwrap_or(usize::MAX)
     }
@@ -308,7 +316,7 @@ impl Upload {
         clippy::too_many_arguments,
         reason = "a persisted aggregate needs every column; the constructor mirrors the row"
     )]
-    pub fn try_new(
+    pub(crate) fn try_new(
         upload_id: NumericID,
         user_id: NumericID,
         file_name: String,
@@ -349,13 +357,13 @@ impl Upload {
 
     /// Return the unique identifier of the upload.
     #[must_use]
-    pub fn upload_id(&self) -> NumericID {
+    pub(crate) fn upload_id(&self) -> NumericID {
         self.upload_id
     }
 
     /// Return the identifier of the user owning the upload.
     #[must_use]
-    pub fn user_id(&self) -> NumericID {
+    pub(crate) fn user_id(&self) -> NumericID {
         self.user_id
     }
 }

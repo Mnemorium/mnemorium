@@ -28,7 +28,7 @@ use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 #[derive(Debug, Deserialize, IntoParams)]
 #[into_params(parameter_in = Query)]
 #[non_exhaustive]
-pub struct ListGalleriesQuery {
+pub(crate) struct ListGalleriesQuery {
     /// Only return galleries whose public flag matches this value.
     pub is_public: Option<bool>,
     /// Maximum number of galleries to return, between 1 and 100.
@@ -52,7 +52,7 @@ pub struct ListGalleriesQuery {
 /// so a filtered or paginated listing stays navigable.
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 #[non_exhaustive]
-pub struct GalleryListLinks {
+struct GalleryListLinks {
     /// Link to the next page, when one exists.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub next: Option<Link>,
@@ -75,7 +75,7 @@ impl GalleryListLinks {
     /// exposed when the page ends before `total`; `prev` is exposed when the
     /// page does not start at the first gallery.
     #[must_use]
-    pub fn for_page(
+    pub(crate) fn for_page(
         query: &ListGalleriesQuery,
         limit: usize,
         offset: usize,
@@ -100,7 +100,7 @@ impl GalleryListLinks {
 /// Galleries matching the requested filters.
 #[derive(Debug, Serialize, ToSchema)]
 #[non_exhaustive]
-pub struct GalleryListResponse {
+struct GalleryListResponse {
     /// The galleries of the returned page.
     pub items: Vec<GalleryResponse>,
     /// Navigation links of the collection.
@@ -213,7 +213,7 @@ fn page_href(query: &ListGalleriesQuery, limit: usize, offset: usize) -> String 
     ),
     summary = "List galleries"
 )]
-pub async fn get_gallery_list(
+pub(crate) async fn get_gallery_list(
     raw_query: Result<Query<ListGalleriesQuery>, QueryRejection>,
     caller: AuthenticatedUser,
     State(state): State<AppState>,
@@ -330,10 +330,6 @@ mod tests {
     }
 
     /// Make the mocked use case fail with `error`.
-    #[expect(
-        clippy::single_call_fn,
-        reason = "the data-driven error table drives the mock through a named helper"
-    )]
     fn expect_error(use_case: &mut MockListGalleriesUseCase, error: ListGalleriesError) {
         use_case
             .expect_execute()

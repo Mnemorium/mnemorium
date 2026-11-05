@@ -15,7 +15,10 @@ rule:
         $DIRECTIVE.trim().starts_with(SECURITY_TARGET))
     # The reserved target's name is pinned to `security`.
     - pattern: 'const SECURITY_TARGET: &str = $SECURITY_VALUE;'
-    - pattern: 'pub const SECURITY_TARGET: &str = $SECURITY_VALUE;'
+    - any:
+        - pattern: 'pub const SECURITY_TARGET: &str = $SECURITY_VALUE;'
+        - pattern: 'pub(crate) const SECURITY_TARGET: &str = $SECURITY_VALUE;'
+        - pattern: 'const SECURITY_TARGET: &str = $SECURITY_VALUE;'
     # The floor constant pins the reserved target's lowest catalogued level.
     - pattern: 'const SECURITY_FLOOR: &str = $FLOOR_VALUE;'
     # `logging::setup` appends the floor to the filter's directives.

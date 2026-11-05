@@ -63,7 +63,7 @@ use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
     ),
     summary = "Fetch a music playlist"
 )]
-pub async fn get_playlist(
+pub(crate) async fn get_playlist(
     Path(playlist_id_value): Path<String>,
     State(state): State<AppState>,
     caller: AuthenticatedUser,
@@ -79,10 +79,6 @@ pub async fn get_playlist(
 
 #[cfg(test)]
 mod tests {
-    #![expect(
-        clippy::single_call_fn,
-        reason = "named fixtures keep the tests readable"
-    )]
 
     use std::error::Error;
     use std::sync::Arc;

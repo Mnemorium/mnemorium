@@ -4,7 +4,7 @@ use crate::domain::alias::NumericID;
 
 /// Data model for the `gallery` table.
 #[derive(Debug, Clone, sqlx::FromRow)]
-pub struct Gallery {
+pub(crate) struct Gallery {
     /// Date and time at which the gallery was created.
     pub created_at: NaiveDateTime,
     /// Unique identifier of the gallery.

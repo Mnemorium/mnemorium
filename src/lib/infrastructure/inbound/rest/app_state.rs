@@ -18,7 +18,7 @@ use crate::infrastructure::outbound::jwt::token_provider::JwtTokenProvider;
 /// one from the identity and the configured lifetime, so the auth middleware
 /// validates with the same secret and TTL the Identity use cases issue with.
 #[derive(Clone)]
-pub struct AppState {
+pub(crate) struct AppState {
     /// Factory building the Asset use cases.
     asset_use_case_factory: Arc<dyn AssetUseCaseFactory>,
     /// Immutable application configuration.
@@ -36,37 +36,44 @@ pub struct AppState {
 impl AppState {
     /// Return the factory building the Asset use cases.
     #[must_use]
-    pub fn asset_use_case_factory(&self) -> Arc<dyn AssetUseCaseFactory> {
+    pub(crate) fn asset_use_case_factory(&self) -> Arc<dyn AssetUseCaseFactory> {
         Arc::clone(&self.asset_use_case_factory)
     }
 
     /// Return the immutable application configuration.
     #[must_use]
-    pub fn configuration(&self) -> Arc<Configuration> {
+    pub(crate) fn configuration(&self) -> Arc<Configuration> {
         Arc::clone(&self.configuration)
     }
 
     /// Return the factory building the Identity use cases.
     #[must_use]
-    pub fn identity_use_case_factory(&self) -> Arc<dyn IdentityUseCaseFactory> {
+    pub(crate) fn identity_use_case_factory(&self) -> Arc<dyn IdentityUseCaseFactory> {
         Arc::clone(&self.identity_use_case_factory)
     }
 
     /// Return the immutable instance identity.
     #[must_use]
-    pub fn instance_state(&self) -> Arc<InstanceState> {
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "part of the type's declared contract; no caller exercises it yet"
+        )
+    )]
+    pub(crate) fn instance_state(&self) -> Arc<InstanceState> {
         Arc::clone(&self.instance_state)
     }
 
     /// Return the factory building the Library use cases.
     #[must_use]
-    pub fn library_use_case_factory(&self) -> Arc<dyn LibraryUseCaseFactory> {
+    pub(crate) fn library_use_case_factory(&self) -> Arc<dyn LibraryUseCaseFactory> {
         Arc::clone(&self.library_use_case_factory)
     }
 
     /// Create a new application state.
     #[must_use]
-    pub fn new(
+    pub(crate) fn new(
         asset_use_case_factory: Arc<dyn AssetUseCaseFactory>,
         configuration: Arc<Configuration>,
         identity_use_case_factory: Arc<dyn IdentityUseCaseFactory>,
@@ -86,7 +93,7 @@ impl AppState {
 
     /// Return the factory building the User use cases.
     #[must_use]
-    pub fn user_use_case_factory(&self) -> Arc<dyn UserUseCaseFactory> {
+    pub(crate) fn user_use_case_factory(&self) -> Arc<dyn UserUseCaseFactory> {
         Arc::clone(&self.user_use_case_factory)
     }
 }

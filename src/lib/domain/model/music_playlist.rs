@@ -11,7 +11,7 @@ use crate::domain::model::permission::ResourceRef;
 /// Error returned when initialising or updating a `MusicPlaylist`.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
-pub enum MusicPlaylistError {
+pub(crate) enum MusicPlaylistError {
     /// The requested order is not a complete permutation of the playlist's
     /// current track indices.
     #[error("the requested order is not a valid permutation of the playlist tracks")]
@@ -21,12 +21,16 @@ pub enum MusicPlaylistError {
     RecordingAlreadyPresent,
     /// An unexpected or unmapped error occurred.
     #[error("an unknown error occurred: {0}")]
+    #[expect(
+        dead_code,
+        reason = "the error enum keeps the catch-all variant the rulebook's error shape declares; no caller constructs it yet"
+    )]
     Unknown(#[source] anyhow::Error),
 }
 
 /// A music playlist.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct MusicPlaylist {
+pub(crate) struct MusicPlaylist {
     /// Identifier of the image holding the playlist's artwork, when set.
     cover_image_id: Option<NumericID>,
     /// Date and time of the creation of the playlist.
@@ -48,13 +52,13 @@ pub struct MusicPlaylist {
 impl MusicPlaylist {
     /// Return the identifier of the image holding the playlist's artwork, if any.
     #[must_use]
-    pub fn cover_image_id(&self) -> Option<NumericID> {
+    pub(crate) fn cover_image_id(&self) -> Option<NumericID> {
         self.cover_image_id
     }
 
     /// Return the date and time of the creation of the playlist.
     #[must_use]
-    pub fn created_at(&self) -> NaiveDateTime {
+    pub(crate) fn created_at(&self) -> NaiveDateTime {
         self.created_at
     }
 
@@ -64,7 +68,7 @@ impl MusicPlaylist {
     ///
     /// Returns [`MusicPlaylistError::RecordingAlreadyPresent`] when one of the
     /// playlist's tracks references `recording_id`.
-    pub fn ensure_recording_absent(
+    pub(crate) fn ensure_recording_absent(
         &self,
         recording_id: NumericID,
     ) -> Result<(), MusicPlaylistError> {
@@ -76,31 +80,35 @@ impl MusicPlaylist {
 
     /// Return the unique identifier.
     #[must_use]
-    pub fn id(&self) -> NumericID {
+    pub(crate) fn id(&self) -> NumericID {
         self.id
     }
 
     /// Return whether `user_id` owns the playlist.
     #[must_use]
-    pub fn is_owned_by(&self, user_id: NumericID) -> bool {
+    #[expect(
+        dead_code,
+        reason = "part of the type's declared contract; no caller exercises it yet"
+    )]
+    pub(crate) fn is_owned_by(&self, user_id: NumericID) -> bool {
         self.user_id == user_id
     }
 
     /// Return whether the playlist is visible to every user.
     #[must_use]
-    pub fn is_public(&self) -> bool {
+    pub(crate) fn is_public(&self) -> bool {
         self.is_public
     }
 
     /// Return the date and time of the last modification of the playlist.
     #[must_use]
-    pub fn last_modified_at(&self) -> NaiveDateTime {
+    pub(crate) fn last_modified_at(&self) -> NaiveDateTime {
         self.last_modified_at
     }
 
     /// Return the name.
     #[must_use]
-    pub fn name(&self) -> &str {
+    pub(crate) fn name(&self) -> &str {
         &self.name
     }
 
@@ -113,7 +121,7 @@ impl MusicPlaylist {
         clippy::too_many_arguments,
         reason = "the constructor mirrors the playlist's fields one-to-one"
     )]
-    pub fn new(
+    pub(crate) fn new(
         id: NumericID,
         name: String,
         created_at: NaiveDateTime,
@@ -136,7 +144,7 @@ impl MusicPlaylist {
     }
 
     /// Update whether the playlist is visible to every user.
-    pub fn set_is_public(&mut self, is_public: bool) {
+    pub(crate) fn set_is_public(&mut self, is_public: bool) {
         self.is_public = is_public;
     }
 
@@ -144,24 +152,24 @@ impl MusicPlaylist {
     ///
     /// The caller validates the name with the domain name policy before
     /// invoking this method (`ARCH-005`).
-    pub fn set_name(&mut self, name: String) {
+    pub(crate) fn set_name(&mut self, name: String) {
         self.name = name;
     }
 
     /// Record a modification of the playlist at `last_modified_at`.
-    pub fn touch(&mut self, last_modified_at: NaiveDateTime) {
+    pub(crate) fn touch(&mut self, last_modified_at: NaiveDateTime) {
         self.last_modified_at = last_modified_at;
     }
 
     /// Return the tracks, in order.
     #[must_use]
-    pub fn tracks(&self) -> &[MusicRecording] {
+    pub(crate) fn tracks(&self) -> &[MusicRecording] {
         &self.tracks
     }
 
     /// Return the identifier of the user owning the playlist.
     #[must_use]
-    pub fn user_id(&self) -> NumericID {
+    pub(crate) fn user_id(&self) -> NumericID {
         self.user_id
     }
 
@@ -175,7 +183,7 @@ impl MusicPlaylist {
     ///
     /// Returns [`MusicPlaylistError::InvalidOrder`] when `order` omits a current
     /// index, repeats an index, or names an index the playlist does not hold.
-    pub fn validate_order(
+    pub(crate) fn validate_order(
         &self,
         order: &[u32],
     ) -> Result<Vec<(u32, NumericID)>, MusicPlaylistError> {

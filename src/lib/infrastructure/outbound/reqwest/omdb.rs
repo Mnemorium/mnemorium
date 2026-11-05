@@ -5,6 +5,10 @@
 //! authentication failure, the former absence. The key travels in the query
 //! string, so a failure is classified and logged by kind, never by the request
 //! address.
+#![allow(
+    dead_code,
+    reason = "the OMDb provider serves the internal video-identification path, which has no REST caller yet"
+)]
 
 use std::future::Future;
 use std::time::Duration;
@@ -104,7 +108,7 @@ struct SearchPayload {
 }
 
 /// Video metadata provider backed by the `OMDb` API.
-pub struct OmdbVideoMetadataProvider {
+pub(crate) struct OmdbVideoMetadataProvider {
     /// API key the request carries.
     api_key: String,
     /// Client downloading the artwork under the adapter's policy.
@@ -124,7 +128,7 @@ impl OmdbVideoMetadataProvider {
 
     /// Create a provider talking to the production endpoint.
     #[must_use]
-    pub fn new(api_key: String) -> Self {
+    pub(crate) fn new(api_key: String) -> Self {
         Self::with_base_url(api_key, DEFAULT_BASE_URL.to_owned(), REQUEST_TIMEOUT)
     }
 
@@ -147,7 +151,7 @@ impl OmdbVideoMetadataProvider {
 
     /// Create a provider talking to `base_url`, with the given timeout.
     #[must_use]
-    pub fn with_base_url(api_key: String, base_url: String, timeout: Duration) -> Self {
+    pub(crate) fn with_base_url(api_key: String, base_url: String, timeout: Duration) -> Self {
         let client = Client::builder()
             .timeout(timeout)
             .build()

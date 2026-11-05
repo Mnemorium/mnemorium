@@ -5,7 +5,7 @@ use utoipa::ToSchema;
 /// Service health status.
 #[derive(Debug, Serialize, ToSchema)]
 #[non_exhaustive]
-pub struct HealthResponse {
+pub(crate) struct HealthResponse {
     /// Service status.
     #[schema(example = json!("ok"))]
     pub status: String,
@@ -33,7 +33,7 @@ pub struct HealthResponse {
     security(()),
     summary = "Check service health"
 )]
-pub async fn get_health() -> Json<HealthResponse> {
+pub(crate) async fn get_health() -> Json<HealthResponse> {
     Json(HealthResponse {
         status: "ok".to_owned(),
     })

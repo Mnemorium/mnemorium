@@ -7,4 +7,7 @@ files:
   - src/lib/domain/port/unit_of_work.rs
 rule:
   kind: trait_item
-  pattern: pub trait $NAME
+  any:
+    - pattern: pub trait $NAME
+    - pattern: pub(crate) trait $NAME
+    - pattern: trait $NAME

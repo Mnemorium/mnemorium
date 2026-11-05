@@ -37,12 +37,12 @@ const CONFIG_FILE_MODE: u32 = 0o644;
 /// names. It does not merge: the load configuration use case merges the layer
 /// over the built-in defaults, and `yaml_serde` keeps `deny_unknown_fields`, so
 /// an unknown key still fails startup. No layer reads the datastore.
-pub struct FileConfigurationSource;
+pub(crate) struct FileConfigurationSource;
 
 impl FileConfigurationSource {
     /// Create a new source.
     #[must_use]
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self
     }
 }

@@ -87,7 +87,7 @@ impl From<DeleteGalleryError> for ApiError {
     ),
     summary = "Delete a gallery"
 )]
-pub async fn delete_gallery(
+pub(crate) async fn delete_gallery(
     State(state): State<AppState>,
     caller: AuthenticatedUser,
     Path(id): Path<String>,
@@ -154,10 +154,6 @@ mod tests {
     }
 
     /// Make the mocked use case fail with `error`.
-    #[expect(
-        clippy::single_call_fn,
-        reason = "the data-driven error table drives the mock through a named helper"
-    )]
     fn expect_error(use_case: &mut MockDeleteGalleryUseCase, error: DeleteGalleryError) {
         use_case
             .expect_execute()

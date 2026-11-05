@@ -7,7 +7,7 @@ use crate::domain::model::music_recording::MusicRecording;
 /// the adapter reports any other stored type as a data-integrity failure.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
-pub enum MediumIndex {
+pub(crate) enum MediumIndex {
     /// A compact disc at this album-scoped index.
     Cd(u8),
     /// A digital release at this album-scoped index.
@@ -17,7 +17,7 @@ pub enum MediumIndex {
 impl MediumIndex {
     /// Render the medium's stored type (`CD` or `DIGITAL`).
     #[must_use]
-    pub fn as_wire(self) -> &'static str {
+    pub(crate) fn as_wire(self) -> &'static str {
         match self {
             Self::Cd(_) => "CD",
             Self::Digital(_) => "DIGITAL",
@@ -30,7 +30,7 @@ impl MediumIndex {
     /// admits, so a stored value outside the modelled list is reported as a
     /// data-integrity failure rather than an absent medium.
     #[must_use]
-    pub fn from_wire(medium_type: &str, index: u8) -> Option<Self> {
+    pub(crate) fn from_wire(medium_type: &str, index: u8) -> Option<Self> {
         match medium_type {
             "CD" => Some(Self::Cd(index)),
             "DIGITAL" => Some(Self::Digital(index)),
@@ -40,7 +40,7 @@ impl MediumIndex {
 
     /// Return the album-scoped index of the medium.
     #[must_use]
-    pub fn index(self) -> u8 {
+    pub(crate) fn index(self) -> u8 {
         match self {
             Self::Cd(index) | Self::Digital(index) => index,
         }
@@ -49,7 +49,7 @@ impl MediumIndex {
 
 /// A medium within a music album.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct MusicMedium {
+pub(crate) struct MusicMedium {
     /// Album-scoped identity and type of the medium.
     index: MediumIndex,
     /// Recordings placed in the medium, in order.
@@ -59,19 +59,19 @@ pub struct MusicMedium {
 impl MusicMedium {
     /// Return the album-scoped identity and type of the medium.
     #[must_use]
-    pub fn index(&self) -> MediumIndex {
+    pub(crate) fn index(&self) -> MediumIndex {
         self.index
     }
 
     /// Initialise a new `MusicMedium`.
     #[must_use]
-    pub fn new(index: MediumIndex, tracks: Vec<MusicRecording>) -> Self {
+    pub(crate) fn new(index: MediumIndex, tracks: Vec<MusicRecording>) -> Self {
         Self { index, tracks }
     }
 
     /// Return the recordings placed in the medium, in order.
     #[must_use]
-    pub fn tracks(&self) -> &[MusicRecording] {
+    pub(crate) fn tracks(&self) -> &[MusicRecording] {
         &self.tracks
     }
 }

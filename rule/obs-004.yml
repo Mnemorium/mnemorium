@@ -9,7 +9,10 @@ rule:
   any:
     # A struct that derives `Debug`: its derived output prints every field.
     - all:
-        - pattern: 'pub struct $DERIVED { $$$DERIVED_FIELDS }'
+        - any:
+            - pattern: 'pub struct $DERIVED { $$$DERIVED_FIELDS }'
+            - pattern: 'pub(crate) struct $DERIVED { $$$DERIVED_FIELDS }'
+            - pattern: 'struct $DERIVED { $$$DERIVED_FIELDS }'
         - follows:
             kind: attribute_item
             regex: 'derive\([^)]*\bDebug\b'
@@ -17,7 +20,10 @@ rule:
               not:
                 kind: attribute_item
     # Every (other) struct declaration: proves the configured secret types exist.
-    - pattern: 'pub struct $DECL { $$$FIELDS }'
+    - any:
+        - pattern: 'pub struct $DECL { $$$FIELDS }'
+        - pattern: 'pub(crate) struct $DECL { $$$FIELDS }'
+        - pattern: 'struct $DECL { $$$FIELDS }'
     # A manual `impl Debug for T`: its body must redact the secret fields.
     - all:
         - kind: impl_item

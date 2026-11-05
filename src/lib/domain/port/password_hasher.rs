@@ -4,7 +4,7 @@ use crate::domain::port::error::PasswordHasherError;
 
 /// Port for hashing and verifying passwords.
 #[cfg_attr(test, mockall::automock)]
-pub trait PasswordHasher: Send + Sync {
+pub(crate) trait PasswordHasher: Send + Sync {
     /// Hash `password`, returning an algorithm-agnostic encoded hash.
     fn hash_password(
         &self,

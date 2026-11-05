@@ -29,5 +29,8 @@ rule:
             kind: field_declaration_list
             inside:
               kind: struct_item
-              pattern: 'pub struct $REP { $$$FIELDS }'
+              any:
+                - pattern: 'pub struct $REP { $$$FIELDS }'
+                - pattern: 'pub(crate) struct $REP { $$$FIELDS }'
+                - pattern: 'struct $REP { $$$FIELDS }'
               stopBy: end

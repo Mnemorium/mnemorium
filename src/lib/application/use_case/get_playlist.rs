@@ -23,7 +23,7 @@ use crate::domain::service::authorization::Authorization;
 use crate::domain::service::authorization::Decision;
 
 /// Use case implementation for fetching one playlist.
-pub struct GetPlaylist<F> {
+pub(crate) struct GetPlaylist<F> {
     /// Factory opening the unit of work wrapping the read.
     unit_of_work_factory: Arc<F>,
 }
@@ -31,7 +31,7 @@ pub struct GetPlaylist<F> {
 impl<F: UnitOfWorkFactory> GetPlaylist<F> {
     /// Create a new use case.
     #[must_use]
-    pub fn new(unit_of_work_factory: Arc<F>) -> Self {
+    pub(crate) fn new(unit_of_work_factory: Arc<F>) -> Self {
         Self {
             unit_of_work_factory,
         }
@@ -125,10 +125,6 @@ where
 
 #[cfg(test)]
 mod tests {
-    #![expect(
-        clippy::single_call_fn,
-        reason = "named fixtures keep the tests readable"
-    )]
 
     use std::error::Error;
     use std::sync::Arc;

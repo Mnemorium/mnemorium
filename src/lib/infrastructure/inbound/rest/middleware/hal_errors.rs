@@ -17,7 +17,7 @@ use crate::infrastructure::inbound::rest::api_error::error_response;
 /// original status is preserved; every original header except `Content-Type`
 /// and `Content-Length` is kept, so `Allow`, `Location` and `WWW-Authenticate`
 /// survive the rewrite.
-pub async fn hal_errors(request: Request, next: Next) -> Response {
+pub(crate) async fn hal_errors(request: Request, next: Next) -> Response {
     let path = request.uri().path().to_owned();
     let response = next.run(request).await;
     let status = response.status();

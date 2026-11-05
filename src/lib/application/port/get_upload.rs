@@ -8,7 +8,7 @@ use crate::domain::alias::NumericID;
 /// Command to fetch the state of an upload session.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct GetUploadCommand {
+pub(crate) struct GetUploadCommand {
     /// Identifier of the upload session.
     upload_id: NumericID,
     /// Identifier of the user owning the upload.
@@ -18,19 +18,19 @@ pub struct GetUploadCommand {
 impl GetUploadCommand {
     /// Create a new get-upload command.
     #[must_use]
-    pub fn new(upload_id: NumericID, user_id: NumericID) -> Self {
+    pub(crate) fn new(upload_id: NumericID, user_id: NumericID) -> Self {
         Self { upload_id, user_id }
     }
 
     /// Return the identifier of the upload session.
     #[must_use]
-    pub fn upload_id(&self) -> NumericID {
+    pub(crate) fn upload_id(&self) -> NumericID {
         self.upload_id
     }
 
     /// Return the identifier of the owning user.
     #[must_use]
-    pub fn user_id(&self) -> NumericID {
+    pub(crate) fn user_id(&self) -> NumericID {
         self.user_id
     }
 }
@@ -38,7 +38,7 @@ impl GetUploadCommand {
 /// Response describing the state of an upload session.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct GetUploadResponse {
+pub(crate) struct GetUploadResponse {
     /// One character per chunk, `1` when received and `0` otherwise.
     bitmap: String,
     /// Date and time at which the upload session expires.
@@ -54,31 +54,31 @@ pub struct GetUploadResponse {
 impl GetUploadResponse {
     /// Return the per-chunk received bitmap.
     #[must_use]
-    pub fn bitmap(&self) -> &str {
+    pub(crate) fn bitmap(&self) -> &str {
         &self.bitmap
     }
 
     /// Return the date and time at which the upload session expires.
     #[must_use]
-    pub fn expires_at(&self) -> NaiveDateTime {
+    pub(crate) fn expires_at(&self) -> NaiveDateTime {
         self.expires_at
     }
 
     /// Return the unique identifier of the finished file, if any.
     #[must_use]
-    pub fn file_id(&self) -> Option<NumericID> {
+    pub(crate) fn file_id(&self) -> Option<NumericID> {
         self.file_id
     }
 
     /// Return whether the upload session has been finished.
     #[must_use]
-    pub fn is_finished(&self) -> bool {
+    pub(crate) fn is_finished(&self) -> bool {
         self.is_finished
     }
 
     /// Create a new get-upload response.
     #[must_use]
-    pub fn new(
+    pub(crate) fn new(
         bitmap: String,
         total_chunks: usize,
         expires_at: NaiveDateTime,
@@ -96,7 +96,7 @@ impl GetUploadResponse {
 
     /// Return the total number of chunks the upload is split into.
     #[must_use]
-    pub fn total_chunks(&self) -> usize {
+    pub(crate) fn total_chunks(&self) -> usize {
         self.total_chunks
     }
 }
@@ -104,7 +104,7 @@ impl GetUploadResponse {
 /// Error returned when fetching the state of an upload session.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
-pub enum GetUploadError {
+pub(crate) enum GetUploadError {
     /// The authenticated caller does not exist anymore.
     #[error("the authenticated user does not exist")]
     NoSuchCaller,
@@ -119,7 +119,7 @@ pub enum GetUploadError {
 
 /// Use case for fetching the state of an upload session.
 #[cfg_attr(test, mockall::automock)]
-pub trait GetUploadUseCase: Send + Sync {
+pub(crate) trait GetUploadUseCase: Send + Sync {
     /// Fetch the state of an upload session.
     ///
     /// The future is returned erased (`dyn`, not `impl Future`), boxed and

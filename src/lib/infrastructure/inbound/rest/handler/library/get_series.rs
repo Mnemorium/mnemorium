@@ -62,7 +62,7 @@ use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
     ),
     summary = "Fetch a show"
 )]
-pub async fn get_series(
+pub(crate) async fn get_series(
     Path(series_id_value): Path<String>,
     State(state): State<AppState>,
     caller: AuthenticatedUser,

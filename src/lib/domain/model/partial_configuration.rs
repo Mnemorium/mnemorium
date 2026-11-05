@@ -18,7 +18,7 @@
 #[derive(Debug, Clone, Default, PartialEq, Eq, serde::Deserialize)]
 #[serde(default, deny_unknown_fields)]
 #[non_exhaustive]
-pub struct PartialConfiguration {
+pub(crate) struct PartialConfiguration {
     /// Asset-related settings named by the layer.
     pub asset: PartialAsset,
     /// Library-related settings named by the layer.
@@ -35,7 +35,7 @@ pub struct PartialConfiguration {
 #[derive(Debug, Clone, Default, PartialEq, Eq, serde::Deserialize)]
 #[serde(default, deny_unknown_fields)]
 #[non_exhaustive]
-pub struct PartialAsset {
+pub(crate) struct PartialAsset {
     /// Upload-related settings named by the layer.
     pub upload: PartialAssetUpload,
 }
@@ -44,7 +44,7 @@ pub struct PartialAsset {
 #[derive(Debug, Clone, Default, PartialEq, Eq, serde::Deserialize)]
 #[serde(default, deny_unknown_fields)]
 #[non_exhaustive]
-pub struct PartialAssetUpload {
+pub(crate) struct PartialAssetUpload {
     /// Size of every chunk except the last, in bytes.
     pub chunk_size_bytes: Option<u64>,
     /// Lifetime of an upload session, in seconds.
@@ -57,7 +57,7 @@ pub struct PartialAssetUpload {
 #[derive(Debug, Clone, Default, PartialEq, Eq, serde::Deserialize)]
 #[serde(default, deny_unknown_fields)]
 #[non_exhaustive]
-pub struct PartialLibrary {
+pub(crate) struct PartialLibrary {
     /// Metadata settings named by the layer.
     pub metadata: PartialLibraryMetadata,
 }
@@ -66,7 +66,7 @@ pub struct PartialLibrary {
 #[derive(Debug, Clone, Default, PartialEq, Eq, serde::Deserialize)]
 #[serde(default, deny_unknown_fields)]
 #[non_exhaustive]
-pub struct PartialLibraryMetadata {
+pub(crate) struct PartialLibraryMetadata {
     /// Music metadata settings named by the layer.
     pub music: PartialMusicProviders,
     /// Video metadata settings named by the layer.
@@ -77,7 +77,7 @@ pub struct PartialLibraryMetadata {
 #[derive(Debug, Clone, Default, PartialEq, Eq, serde::Deserialize)]
 #[serde(default, deny_unknown_fields)]
 #[non_exhaustive]
-pub struct PartialMusicProviders {
+pub(crate) struct PartialMusicProviders {
     /// Configured providers, when the layer names the list.
     pub providers: Option<Vec<PartialMusicProvider>>,
 }
@@ -90,7 +90,7 @@ pub struct PartialMusicProviders {
 #[derive(Debug, Clone, Default, PartialEq, Eq, serde::Deserialize)]
 #[serde(default, deny_unknown_fields)]
 #[non_exhaustive]
-pub struct PartialMusicProvider {
+pub(crate) struct PartialMusicProvider {
     /// Position in the resolution order, when the layer names one.
     pub index: Option<u32>,
     /// Provider name, when the layer names one.
@@ -101,7 +101,7 @@ pub struct PartialMusicProvider {
 #[derive(Debug, Clone, Default, PartialEq, Eq, serde::Deserialize)]
 #[serde(default, deny_unknown_fields)]
 #[non_exhaustive]
-pub struct PartialVideoMetadata {
+pub(crate) struct PartialVideoMetadata {
     /// Configured providers, when the layer names the list.
     pub providers: Option<Vec<PartialVideoProvider>>,
 }
@@ -113,7 +113,7 @@ pub struct PartialVideoMetadata {
 #[derive(Debug, Clone, Default, PartialEq, Eq, serde::Deserialize)]
 #[serde(default, deny_unknown_fields)]
 #[non_exhaustive]
-pub struct PartialVideoProvider {
+pub(crate) struct PartialVideoProvider {
     /// API key the adapter presents, when the layer names one.
     pub api_key: Option<String>,
     /// Position in the failover order, when the layer names one.
@@ -126,7 +126,7 @@ pub struct PartialVideoProvider {
 #[derive(Debug, Clone, Default, PartialEq, Eq, serde::Deserialize)]
 #[serde(default, deny_unknown_fields)]
 #[non_exhaustive]
-pub struct PartialLogging {
+pub(crate) struct PartialLogging {
     /// Whether to colour the standard-output sink with ANSI escape codes.
     pub ansi: Option<bool>,
     /// Verbosity filter applied to the `tracing` instrumentation.
@@ -141,7 +141,7 @@ pub struct PartialLogging {
 #[derive(Debug, Clone, Default, PartialEq, Eq, serde::Deserialize)]
 #[serde(default, deny_unknown_fields)]
 #[non_exhaustive]
-pub struct PartialPersistence {
+pub(crate) struct PartialPersistence {
     /// `SQLite3` datastore settings named by the layer.
     pub sqlite3: PartialSqlite3,
 }
@@ -150,7 +150,7 @@ pub struct PartialPersistence {
 #[derive(Debug, Clone, Default, PartialEq, Eq, serde::Deserialize)]
 #[serde(default, deny_unknown_fields)]
 #[non_exhaustive]
-pub struct PartialSqlite3 {
+pub(crate) struct PartialSqlite3 {
     /// Maximum number of connections to the database.
     pub max_connections: Option<u32>,
 }
@@ -159,7 +159,7 @@ pub struct PartialSqlite3 {
 #[derive(Debug, Clone, Default, PartialEq, Eq, serde::Deserialize)]
 #[serde(default, deny_unknown_fields)]
 #[non_exhaustive]
-pub struct PartialSecurity {
+pub(crate) struct PartialSecurity {
     /// `JWT` settings named by the layer.
     pub jwt: PartialJwt,
     /// Whether the Root Admin default password is logged on runtime start.
@@ -172,7 +172,7 @@ pub struct PartialSecurity {
 #[derive(Debug, Clone, Default, PartialEq, Eq, serde::Deserialize)]
 #[serde(default, deny_unknown_fields)]
 #[non_exhaustive]
-pub struct PartialJwt {
+pub(crate) struct PartialJwt {
     /// Lifetime of a token, in seconds.
     pub ttl: Option<u64>,
 }
@@ -181,7 +181,7 @@ pub struct PartialJwt {
 #[derive(Debug, Clone, Default, PartialEq, Eq, serde::Deserialize)]
 #[serde(default, deny_unknown_fields)]
 #[non_exhaustive]
-pub struct PartialRateLimit {
+pub(crate) struct PartialRateLimit {
     /// Number of requests a client address may spend before throttling.
     pub burst_size: Option<u32>,
     /// Header the trusted proxy overwrites with the client address.

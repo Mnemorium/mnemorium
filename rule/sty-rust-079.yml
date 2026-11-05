@@ -13,5 +13,8 @@ rule:
     - regex: '^fn create'
     - inside:
         kind: trait_item
-        pattern: 'pub trait $TRAIT: $$$BOUNDS { $$$BODY }'
+        any:
+          - pattern: 'pub trait $TRAIT: $$$BOUNDS { $$$BODY }'
+          - pattern: 'pub(crate) trait $TRAIT: $$$BOUNDS { $$$BODY }'
+          - pattern: 'trait $TRAIT: $$$BOUNDS { $$$BODY }'
         stopBy: end

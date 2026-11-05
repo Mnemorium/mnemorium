@@ -24,7 +24,7 @@ use crate::domain::service::username_policy::UsernamePolicy;
 use crate::domain::service::username_policy::UsernamePolicyError;
 
 /// Use case implementation for updating the profile of a user.
-pub struct UpdateUser<F> {
+pub(crate) struct UpdateUser<F> {
     /// Factory opening the unit of work wrapping the update.
     unit_of_work_factory: Arc<F>,
 }
@@ -32,7 +32,7 @@ pub struct UpdateUser<F> {
 impl<F: UnitOfWorkFactory> UpdateUser<F> {
     /// Create a new use case.
     #[must_use]
-    pub fn new(unit_of_work_factory: Arc<F>) -> Self {
+    pub(crate) fn new(unit_of_work_factory: Arc<F>) -> Self {
         Self {
             unit_of_work_factory,
         }

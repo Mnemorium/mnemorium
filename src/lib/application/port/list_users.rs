@@ -7,7 +7,7 @@ use crate::domain::model::user::Role;
 /// Command to list the users of the instance.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct ListUsersCommand {
+pub(crate) struct ListUsersCommand {
     /// Identifier of the authenticated caller.
     caller_id: NumericID,
     /// Only return users whose email matches this value, when set.
@@ -21,19 +21,19 @@ pub struct ListUsersCommand {
 impl ListUsersCommand {
     /// Return the identifier of the authenticated caller.
     #[must_use]
-    pub fn caller_id(&self) -> NumericID {
+    pub(crate) fn caller_id(&self) -> NumericID {
         self.caller_id
     }
 
     /// Return the email filter, if any.
     #[must_use]
-    pub fn email(&self) -> Option<&str> {
+    pub(crate) fn email(&self) -> Option<&str> {
         self.email.as_deref()
     }
 
     /// Create a new list-users command.
     #[must_use]
-    pub fn new(
+    pub(crate) fn new(
         caller_id: NumericID,
         email: Option<String>,
         role: Option<Role>,
@@ -49,13 +49,13 @@ impl ListUsersCommand {
 
     /// Return the role filter, if any.
     #[must_use]
-    pub fn role(&self) -> Option<Role> {
+    pub(crate) fn role(&self) -> Option<Role> {
         self.role
     }
 
     /// Return the username filter, if any.
     #[must_use]
-    pub fn username(&self) -> Option<&str> {
+    pub(crate) fn username(&self) -> Option<&str> {
         self.username.as_deref()
     }
 }
@@ -63,7 +63,7 @@ impl ListUsersCommand {
 /// Response of a successful user listing: the profile of one matching user.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct ListUsersResponse {
+pub(crate) struct ListUsersResponse {
     /// Email address of the user, when one was provided.
     email: Option<String>,
     /// Unique identifier of the user.
@@ -77,19 +77,19 @@ pub struct ListUsersResponse {
 impl ListUsersResponse {
     /// Return the email address, if any.
     #[must_use]
-    pub fn email(&self) -> Option<&str> {
+    pub(crate) fn email(&self) -> Option<&str> {
         self.email.as_deref()
     }
 
     /// Return the unique identifier of the user.
     #[must_use]
-    pub fn id(&self) -> NumericID {
+    pub(crate) fn id(&self) -> NumericID {
         self.id
     }
 
     /// Create a new list-users response.
     #[must_use]
-    pub fn new(id: NumericID, username: String, email: Option<String>, role: Role) -> Self {
+    pub(crate) fn new(id: NumericID, username: String, email: Option<String>, role: Role) -> Self {
         Self {
             email,
             id,
@@ -100,13 +100,13 @@ impl ListUsersResponse {
 
     /// Return the role of the user.
     #[must_use]
-    pub fn role(&self) -> Role {
+    pub(crate) fn role(&self) -> Role {
         self.role
     }
 
     /// Return the username of the user.
     #[must_use]
-    pub fn username(&self) -> &str {
+    pub(crate) fn username(&self) -> &str {
         &self.username
     }
 }
@@ -114,7 +114,7 @@ impl ListUsersResponse {
 /// Error returned when listing the users of the instance.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
-pub enum ListUsersError {
+pub(crate) enum ListUsersError {
     /// The authenticated caller does not exist anymore.
     #[error("the authenticated user does not exist")]
     NoSuchCaller,
@@ -128,7 +128,7 @@ pub enum ListUsersError {
 
 /// Use case for listing the users of the instance.
 #[cfg_attr(test, mockall::automock)]
-pub trait ListUsersUseCase: Send + Sync {
+pub(crate) trait ListUsersUseCase: Send + Sync {
     /// List the users matching the command's optional filters.
     ///
     /// The future is returned erased (`dyn`, not `impl Future`), boxed and

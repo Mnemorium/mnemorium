@@ -18,7 +18,7 @@ use crate::application::port::update_user::UpdateUserUseCase;
 /// The inbound layer depends on this port instead of a pre-built use case, so
 /// that every request gets a use case bound to the current dependencies.
 #[cfg_attr(test, mockall::automock)]
-pub trait UserUseCaseFactory: Send + Sync {
+pub(crate) trait UserUseCaseFactory: Send + Sync {
     /// Build the use case fetching the current user.
     fn get_current_user(&self) -> Arc<dyn GetCurrentUserUseCase>;
 

@@ -5,7 +5,7 @@ use crate::domain::alias::NumericID;
 /// Error returned when initialising a `GalleryItem`.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
-pub enum GalleryItemError {
+pub(crate) enum GalleryItemError {
     /// The item index is negative.
     #[error("gallery item index must not be negative")]
     InvalidIndex,
@@ -14,13 +14,17 @@ pub enum GalleryItemError {
     InvalidMedia,
     /// An unexpected or unmapped error occurred.
     #[error("an unknown error occurred: {0}")]
+    #[expect(
+        dead_code,
+        reason = "the error enum keeps the catch-all variant the rulebook's error shape declares; no caller constructs it yet"
+    )]
     Unknown(#[source] anyhow::Error),
 }
 
 /// The single medium a `GalleryItem` references.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
-pub enum GalleryItemMedia {
+pub(crate) enum GalleryItemMedia {
     /// The item references an image.
     Image(NumericID),
     /// The item references a video.
@@ -30,7 +34,7 @@ pub enum GalleryItemMedia {
 impl GalleryItemMedia {
     /// Return the identifier of the referenced medium.
     #[must_use]
-    pub fn media_id(&self) -> NumericID {
+    pub(crate) fn media_id(&self) -> NumericID {
         match *self {
             Self::Image(media_id) | Self::Video(media_id) => media_id,
         }
@@ -43,7 +47,7 @@ impl GalleryItemMedia {
     clippy::struct_field_names,
     reason = "`gallery_item_id` is the primary key name mandated by the SQL section and the domain field naming"
 )]
-pub struct GalleryItem {
+pub(crate) struct GalleryItem {
     /// Date and time at which the item was added.
     added_at: NaiveDateTime,
     /// Identifier of the gallery the item belongs to.
@@ -59,31 +63,31 @@ pub struct GalleryItem {
 impl GalleryItem {
     /// Return the date and time at which the item was added.
     #[must_use]
-    pub fn added_at(&self) -> NaiveDateTime {
+    pub(crate) fn added_at(&self) -> NaiveDateTime {
         self.added_at
     }
 
     /// Return the identifier of the gallery the item belongs to.
     #[must_use]
-    pub fn gallery_id(&self) -> NumericID {
+    pub(crate) fn gallery_id(&self) -> NumericID {
         self.gallery_id
     }
 
     /// Return the unique identifier of the item.
     #[must_use]
-    pub fn gallery_item_id(&self) -> NumericID {
+    pub(crate) fn gallery_item_id(&self) -> NumericID {
         self.gallery_item_id
     }
 
     /// Return the position of the item within its gallery.
     #[must_use]
-    pub fn item_index(&self) -> i64 {
+    pub(crate) fn item_index(&self) -> i64 {
         self.item_index
     }
 
     /// Return the medium the item references.
     #[must_use]
-    pub fn media(&self) -> GalleryItemMedia {
+    pub(crate) fn media(&self) -> GalleryItemMedia {
         self.media
     }
 
@@ -95,7 +99,7 @@ impl GalleryItem {
     /// Returns [`GalleryItemError::InvalidMedia`] when both or neither of
     /// `image_id` and `video_id` are set, and
     /// [`GalleryItemError::InvalidIndex`] when `item_index` is negative.
-    pub fn try_new(
+    pub(crate) fn try_new(
         gallery_item_id: NumericID,
         gallery_id: NumericID,
         image_id: Option<NumericID>,

@@ -18,12 +18,16 @@ use crate::infrastructure::inbound::rest::api_error::ApiError;
 
 /// Authenticated user identifier attached to a request.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct AuthenticatedUser(NumericID);
+pub(crate) struct AuthenticatedUser(NumericID);
 
 impl AuthenticatedUser {
     /// Return the authenticated user identifier.
     #[must_use]
-    pub fn user_id(&self) -> NumericID {
+    #[expect(
+        clippy::trivially_copy_pass_by_ref,
+        reason = "STY-RUST-019 fixes the getter receiver as `&self`"
+    )]
+    pub(crate) fn user_id(&self) -> NumericID {
         self.0
     }
 }
@@ -56,7 +60,7 @@ where
 
 /// Require a valid `Bearer` token and attach the authenticated user to the
 /// request.
-pub async fn authenticate<P>(
+pub(crate) async fn authenticate<P>(
     State(token_provider): State<Arc<P>>,
     mut request: Request,
     next: Next,

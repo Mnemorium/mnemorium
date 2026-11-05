@@ -30,7 +30,7 @@ use crate::domain::service::name_policy::NamePolicyError;
 const DEFAULT_GENRE: &str = "UNKNOWN";
 
 /// Use case implementation for creating a music album.
-pub struct CreateMusicAlbum<F> {
+pub(crate) struct CreateMusicAlbum<F> {
     /// Factory opening the unit of work wrapping the creation.
     unit_of_work_factory: Arc<F>,
 }
@@ -38,7 +38,7 @@ pub struct CreateMusicAlbum<F> {
 impl<F: UnitOfWorkFactory> CreateMusicAlbum<F> {
     /// Create a new use case.
     #[must_use]
-    pub fn new(unit_of_work_factory: Arc<F>) -> Self {
+    pub(crate) fn new(unit_of_work_factory: Arc<F>) -> Self {
         Self {
             unit_of_work_factory,
         }

@@ -11,7 +11,7 @@ use crate::domain::port::error::InstanceStateStoreError;
 /// the loser fail with [`InstanceStateStoreError::Conflict`] instead of
 /// silently replacing key material another process already persisted.
 #[cfg_attr(test, mockall::automock)]
-pub trait InstanceStateStore: Send + Sync {
+pub(crate) trait InstanceStateStore: Send + Sync {
     /// Load the persisted instance identity.
     ///
     /// # Errors

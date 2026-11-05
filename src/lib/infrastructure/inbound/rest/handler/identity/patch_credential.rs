@@ -19,7 +19,7 @@ use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 /// Payload to change the password behind a credential.
 #[derive(Debug, Deserialize, ToSchema)]
 #[non_exhaustive]
-pub struct PatchCredentialRequest {
+pub(crate) struct PatchCredentialRequest {
     /// New password; never returned by the API.
     ///
     /// Must be at least 8 characters long and contain at least one symbol
@@ -116,7 +116,7 @@ impl From<PatchCredentialError> for ApiError {
     ),
     summary = "Change the password behind a credential"
 )]
-pub async fn patch_credential(
+pub(crate) async fn patch_credential(
     State(state): State<AppState>,
     caller: AuthenticatedUser,
     credential_path: Result<Path<NumericID>, PathRejection>,

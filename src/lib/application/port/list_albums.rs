@@ -9,7 +9,7 @@ use crate::domain::model::music_album::ProductionType;
 /// Command to list the music albums the caller may see.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct ListAlbumsCommand {
+pub(crate) struct ListAlbumsCommand {
     /// Identifier of the authenticated caller.
     caller_id: NumericID,
     /// Maximum number of albums to return, when set.
@@ -23,25 +23,25 @@ pub struct ListAlbumsCommand {
 impl ListAlbumsCommand {
     /// Return the identifier of the authenticated caller.
     #[must_use]
-    pub fn caller_id(&self) -> NumericID {
+    pub(crate) fn caller_id(&self) -> NumericID {
         self.caller_id
     }
 
     /// Return the maximum number of albums to return, if any.
     #[must_use]
-    pub fn limit(&self) -> Option<usize> {
+    pub(crate) fn limit(&self) -> Option<usize> {
         self.limit
     }
 
     /// Return the name filter, if any.
     #[must_use]
-    pub fn name(&self) -> Option<&str> {
+    pub(crate) fn name(&self) -> Option<&str> {
         self.name.as_deref()
     }
 
     /// Create a new list-albums command.
     #[must_use]
-    pub fn new(
+    pub(crate) fn new(
         caller_id: NumericID,
         name: Option<String>,
         limit: Option<usize>,
@@ -57,7 +57,7 @@ impl ListAlbumsCommand {
 
     /// Return the number of matching albums to skip, if any.
     #[must_use]
-    pub fn offset(&self) -> Option<usize> {
+    pub(crate) fn offset(&self) -> Option<usize> {
         self.offset
     }
 }
@@ -65,7 +65,7 @@ impl ListAlbumsCommand {
 /// One medium of a listed album.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct ListAlbumsMediumItem {
+pub(crate) struct ListAlbumsMediumItem {
     /// Album-scoped index of the medium.
     medium_index: u8,
     /// Stored type of the medium (`CD`).
@@ -77,19 +77,19 @@ pub struct ListAlbumsMediumItem {
 impl ListAlbumsMediumItem {
     /// Return the album-scoped index of the medium.
     #[must_use]
-    pub fn medium_index(&self) -> u8 {
+    pub(crate) fn medium_index(&self) -> u8 {
         self.medium_index
     }
 
     /// Return the stored type of the medium.
     #[must_use]
-    pub fn medium_type(&self) -> &str {
+    pub(crate) fn medium_type(&self) -> &str {
         &self.medium_type
     }
 
     /// Create a new listed album medium.
     #[must_use]
-    pub fn new(medium_index: u8, medium_type: String, track_count: usize) -> Self {
+    pub(crate) fn new(medium_index: u8, medium_type: String, track_count: usize) -> Self {
         Self {
             medium_index,
             medium_type,
@@ -99,7 +99,7 @@ impl ListAlbumsMediumItem {
 
     /// Return the number of recordings the medium sequences.
     #[must_use]
-    pub fn track_count(&self) -> usize {
+    pub(crate) fn track_count(&self) -> usize {
         self.track_count
     }
 }
@@ -107,7 +107,7 @@ impl ListAlbumsMediumItem {
 /// One album of a successful listing.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct ListAlbumsItem {
+pub(crate) struct ListAlbumsItem {
     /// Unique identifier of the album.
     album_id: NumericID,
     /// Identifier of the image holding the album's artwork, when set.
@@ -131,37 +131,37 @@ pub struct ListAlbumsItem {
 impl ListAlbumsItem {
     /// Return the unique identifier of the album.
     #[must_use]
-    pub fn album_id(&self) -> NumericID {
+    pub(crate) fn album_id(&self) -> NumericID {
         self.album_id
     }
 
     /// Return the identifier of the image holding the album's artwork, if any.
     #[must_use]
-    pub fn cover_image_id(&self) -> Option<NumericID> {
+    pub(crate) fn cover_image_id(&self) -> Option<NumericID> {
         self.cover_image_id
     }
 
     /// Return the genres of the album, ordered by genre identifier.
     #[must_use]
-    pub fn genres(&self) -> &[String] {
+    pub(crate) fn genres(&self) -> &[String] {
         &self.genres
     }
 
     /// Return the mediums of the album, ordered by medium index.
     #[must_use]
-    pub fn mediums(&self) -> &[ListAlbumsMediumItem] {
+    pub(crate) fn mediums(&self) -> &[ListAlbumsMediumItem] {
         &self.mediums
     }
 
     /// Return the identifier of the music group the album belongs to.
     #[must_use]
-    pub fn music_group_id(&self) -> NumericID {
+    pub(crate) fn music_group_id(&self) -> NumericID {
         self.music_group_id
     }
 
     /// Return the name of the album.
     #[must_use]
-    pub fn name(&self) -> &str {
+    pub(crate) fn name(&self) -> &str {
         &self.name
     }
 
@@ -171,7 +171,7 @@ impl ListAlbumsItem {
         clippy::too_many_arguments,
         reason = "the constructor mirrors the item's fields one-to-one"
     )]
-    pub fn new(
+    pub(crate) fn new(
         album_id: NumericID,
         music_group_id: NumericID,
         name: String,
@@ -197,19 +197,19 @@ impl ListAlbumsItem {
 
     /// Return the production type, if any.
     #[must_use]
-    pub fn production_type(&self) -> Option<ProductionType> {
+    pub(crate) fn production_type(&self) -> Option<ProductionType> {
         self.production_type
     }
 
     /// Return the date of the release, when the provider reports one.
     #[must_use]
-    pub fn release_date(&self) -> Option<NaiveDate> {
+    pub(crate) fn release_date(&self) -> Option<NaiveDate> {
         self.release_date
     }
 
     /// Return the number of tracks the album contains.
     #[must_use]
-    pub fn track_count(&self) -> usize {
+    pub(crate) fn track_count(&self) -> usize {
         self.track_count
     }
 }
@@ -217,7 +217,7 @@ impl ListAlbumsItem {
 /// Response of a successful album listing: one page of albums.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct ListAlbumsResponse {
+pub(crate) struct ListAlbumsResponse {
     /// The albums of the returned page.
     albums: Vec<ListAlbumsItem>,
     /// Total number of albums the caller may see, before pagination.
@@ -227,19 +227,19 @@ pub struct ListAlbumsResponse {
 impl ListAlbumsResponse {
     /// Return the albums of the returned page.
     #[must_use]
-    pub fn albums(&self) -> &[ListAlbumsItem] {
+    pub(crate) fn albums(&self) -> &[ListAlbumsItem] {
         &self.albums
     }
 
     /// Create a new list-albums response.
     #[must_use]
-    pub fn new(albums: Vec<ListAlbumsItem>, total: usize) -> Self {
+    pub(crate) fn new(albums: Vec<ListAlbumsItem>, total: usize) -> Self {
         Self { albums, total }
     }
 
     /// Return the total number of albums, before pagination.
     #[must_use]
-    pub fn total(&self) -> usize {
+    pub(crate) fn total(&self) -> usize {
         self.total
     }
 }
@@ -247,7 +247,7 @@ impl ListAlbumsResponse {
 /// Error returned when listing music albums.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
-pub enum ListAlbumsError {
+pub(crate) enum ListAlbumsError {
     /// The authenticated caller does not exist anymore.
     #[error("the authenticated user does not exist")]
     NoSuchCaller,
@@ -258,7 +258,7 @@ pub enum ListAlbumsError {
 
 /// Use case for listing the music albums the caller may see.
 #[cfg_attr(test, mockall::automock)]
-pub trait ListAlbumsUseCase: Send + Sync {
+pub(crate) trait ListAlbumsUseCase: Send + Sync {
     /// List the music albums visible to the authenticated caller.
     ///
     /// The future is returned erased (`dyn`, not `impl Future`), boxed and

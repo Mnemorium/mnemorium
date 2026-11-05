@@ -9,7 +9,10 @@ rule:
   any:
     - all:
         - kind: struct_item
-        - pattern: 'pub struct $FACTORY { $$$BODY }'
+        - any:
+            - pattern: 'pub struct $FACTORY { $$$BODY }'
+            - pattern: 'pub(crate) struct $FACTORY { $$$BODY }'
+            - pattern: 'struct $FACTORY { $$$BODY }'
     - all:
         - kind: field_declaration
         - pattern: '$FIELD: $TYPE'
@@ -17,5 +20,8 @@ rule:
             kind: field_declaration_list
             inside:
               kind: struct_item
-              pattern: 'pub struct $FACTORY { $$$BODY }'
+              any:
+                - pattern: 'pub struct $FACTORY { $$$BODY }'
+                - pattern: 'pub(crate) struct $FACTORY { $$$BODY }'
+                - pattern: 'struct $FACTORY { $$$BODY }'
               stopBy: end

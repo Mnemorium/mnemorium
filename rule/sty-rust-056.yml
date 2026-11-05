@@ -6,8 +6,11 @@ message: declare the command object first in a use-case port file
 rule:
   all:
     - kind: struct_item
-    - pattern: pub struct $COMMAND
-    - regex: '^pub struct \w+Command\b'
+    - any:
+        - pattern: pub struct $COMMAND
+        - pattern: pub(crate) struct $COMMAND
+        - pattern: struct $COMMAND
+    - regex: '^(pub(\(crate\))? )?struct \w+Command\b'
     - follows:
         any:
           - kind: struct_item

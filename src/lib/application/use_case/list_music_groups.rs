@@ -22,7 +22,7 @@ use crate::domain::port::user_unit_of_work::UserUnitOfWork;
 use crate::domain::service::authorization::Authorization;
 
 /// Use case implementation for listing the music groups the caller may see.
-pub struct ListMusicGroups<F> {
+pub(crate) struct ListMusicGroups<F> {
     /// Factory opening the unit of work wrapping the read.
     unit_of_work_factory: Arc<F>,
 }
@@ -30,7 +30,7 @@ pub struct ListMusicGroups<F> {
 impl<F: UnitOfWorkFactory> ListMusicGroups<F> {
     /// Create a new use case.
     #[must_use]
-    pub fn new(unit_of_work_factory: Arc<F>) -> Self {
+    pub(crate) fn new(unit_of_work_factory: Arc<F>) -> Self {
         Self {
             unit_of_work_factory,
         }

@@ -9,7 +9,7 @@ use crate::domain::alias::NumericID;
 /// Command to list the films the caller may see.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct ListMoviesCommand {
+pub(crate) struct ListMoviesCommand {
     /// Identifier of the authenticated caller.
     caller_id: NumericID,
     /// Maximum number of films to return, when set.
@@ -23,25 +23,25 @@ pub struct ListMoviesCommand {
 impl ListMoviesCommand {
     /// Return the identifier of the authenticated caller.
     #[must_use]
-    pub fn caller_id(&self) -> NumericID {
+    pub(crate) fn caller_id(&self) -> NumericID {
         self.caller_id
     }
 
     /// Return the maximum number of films to return, if any.
     #[must_use]
-    pub fn limit(&self) -> Option<usize> {
+    pub(crate) fn limit(&self) -> Option<usize> {
         self.limit
     }
 
     /// Return the name filter, if any.
     #[must_use]
-    pub fn name(&self) -> Option<&str> {
+    pub(crate) fn name(&self) -> Option<&str> {
         self.name.as_deref()
     }
 
     /// Create a new list-films command.
     #[must_use]
-    pub fn new(
+    pub(crate) fn new(
         caller_id: NumericID,
         name: Option<String>,
         limit: Option<usize>,
@@ -57,7 +57,7 @@ impl ListMoviesCommand {
 
     /// Return the number of matching films to skip, if any.
     #[must_use]
-    pub fn offset(&self) -> Option<usize> {
+    pub(crate) fn offset(&self) -> Option<usize> {
         self.offset
     }
 }
@@ -65,7 +65,7 @@ impl ListMoviesCommand {
 /// One film of a successful listing.
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
-pub struct ListMoviesItem {
+pub(crate) struct ListMoviesItem {
     /// Country of origin of the film.
     country_of_origin: String,
     /// Identifier of the image holding the film's artwork, when set.
@@ -87,31 +87,31 @@ pub struct ListMoviesItem {
 impl ListMoviesItem {
     /// Return the country of origin of the film.
     #[must_use]
-    pub fn country_of_origin(&self) -> &str {
+    pub(crate) fn country_of_origin(&self) -> &str {
         &self.country_of_origin
     }
 
     /// Return the identifier of the image holding the film's artwork, if any.
     #[must_use]
-    pub fn cover_image_id(&self) -> Option<NumericID> {
+    pub(crate) fn cover_image_id(&self) -> Option<NumericID> {
         self.cover_image_id
     }
 
     /// Return the genres of the film, ordered by genre identifier.
     #[must_use]
-    pub fn genre_ids(&self) -> &[String] {
+    pub(crate) fn genre_ids(&self) -> &[String] {
         &self.genre_ids
     }
 
     /// Return the unique identifier of the film.
     #[must_use]
-    pub fn id(&self) -> NumericID {
+    pub(crate) fn id(&self) -> NumericID {
         self.id
     }
 
     /// Return the name of the film.
     #[must_use]
-    pub fn name(&self) -> &str {
+    pub(crate) fn name(&self) -> &str {
         &self.name
     }
 
@@ -121,7 +121,7 @@ impl ListMoviesItem {
         clippy::too_many_arguments,
         reason = "the constructor mirrors the item's fields one-to-one"
     )]
-    pub fn new(
+    pub(crate) fn new(
         id: NumericID,
         name: String,
         plot: String,
@@ -145,19 +145,19 @@ impl ListMoviesItem {
 
     /// Return the plot of the film.
     #[must_use]
-    pub fn plot(&self) -> &str {
+    pub(crate) fn plot(&self) -> &str {
         &self.plot
     }
 
     /// Return the date of the release of the film.
     #[must_use]
-    pub fn release_date(&self) -> NaiveDate {
+    pub(crate) fn release_date(&self) -> NaiveDate {
         self.release_date
     }
 
     /// Return the video backing the film.
     #[must_use]
-    pub fn video(&self) -> &VideoSummary {
+    pub(crate) fn video(&self) -> &VideoSummary {
         &self.video
     }
 }
@@ -165,7 +165,7 @@ impl ListMoviesItem {
 /// Response of a successful film listing: one page of films.
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
-pub struct ListMoviesResponse {
+pub(crate) struct ListMoviesResponse {
     /// The films of the returned page.
     movies: Vec<ListMoviesItem>,
     /// Total number of films, before pagination.
@@ -175,19 +175,19 @@ pub struct ListMoviesResponse {
 impl ListMoviesResponse {
     /// Return the films of the returned page.
     #[must_use]
-    pub fn movies(&self) -> &[ListMoviesItem] {
+    pub(crate) fn movies(&self) -> &[ListMoviesItem] {
         &self.movies
     }
 
     /// Create a new list-films response.
     #[must_use]
-    pub fn new(movies: Vec<ListMoviesItem>, total: usize) -> Self {
+    pub(crate) fn new(movies: Vec<ListMoviesItem>, total: usize) -> Self {
         Self { movies, total }
     }
 
     /// Return the total number of films, before pagination.
     #[must_use]
-    pub fn total(&self) -> usize {
+    pub(crate) fn total(&self) -> usize {
         self.total
     }
 }
@@ -195,7 +195,7 @@ impl ListMoviesResponse {
 /// Error returned when listing films.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
-pub enum ListMoviesError {
+pub(crate) enum ListMoviesError {
     /// The authenticated caller does not exist anymore.
     #[error("the authenticated user does not exist")]
     NoSuchCaller,
@@ -206,7 +206,7 @@ pub enum ListMoviesError {
 
 /// Use case for listing the films the caller may see.
 #[cfg_attr(test, mockall::automock)]
-pub trait ListMoviesUseCase: Send + Sync {
+pub(crate) trait ListMoviesUseCase: Send + Sync {
     /// List the films visible to the authenticated caller.
     ///
     /// The future is returned erased (`dyn`, not `impl Future`), boxed and

@@ -9,7 +9,7 @@ use crate::domain::alias::NumericID;
 /// Command to fetch one episode of a season.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct GetSeriesEpisodeCommand {
+pub(crate) struct GetSeriesEpisodeCommand {
     /// Identifier of the authenticated caller.
     caller_id: NumericID,
     /// Season-scoped index of the episode to fetch.
@@ -23,19 +23,19 @@ pub struct GetSeriesEpisodeCommand {
 impl GetSeriesEpisodeCommand {
     /// Return the identifier of the authenticated caller.
     #[must_use]
-    pub fn caller_id(&self) -> NumericID {
+    pub(crate) fn caller_id(&self) -> NumericID {
         self.caller_id
     }
 
     /// Return the season-scoped index of the episode to fetch.
     #[must_use]
-    pub fn episode_index(&self) -> u32 {
+    pub(crate) fn episode_index(&self) -> u32 {
         self.episode_index
     }
 
     /// Create a new fetch-episode command.
     #[must_use]
-    pub fn new(
+    pub(crate) fn new(
         caller_id: NumericID,
         series_id: NumericID,
         season_index: u32,
@@ -51,13 +51,13 @@ impl GetSeriesEpisodeCommand {
 
     /// Return the series-scoped index of the season holding the episode.
     #[must_use]
-    pub fn season_index(&self) -> u32 {
+    pub(crate) fn season_index(&self) -> u32 {
         self.season_index
     }
 
     /// Return the identifier of the show holding the season.
     #[must_use]
-    pub fn series_id(&self) -> NumericID {
+    pub(crate) fn series_id(&self) -> NumericID {
         self.series_id
     }
 }
@@ -65,7 +65,7 @@ impl GetSeriesEpisodeCommand {
 /// Response of a successful episode lookup: one episode.
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
-pub struct GetSeriesEpisodeResponse {
+pub(crate) struct GetSeriesEpisodeResponse {
     /// Date of the first airing of the episode.
     air_date: NaiveDate,
     /// Season-scoped index of the episode.
@@ -85,25 +85,25 @@ pub struct GetSeriesEpisodeResponse {
 impl GetSeriesEpisodeResponse {
     /// Return the date of the first airing of the episode.
     #[must_use]
-    pub fn air_date(&self) -> NaiveDate {
+    pub(crate) fn air_date(&self) -> NaiveDate {
         self.air_date
     }
 
     /// Return the season-scoped index of the episode.
     #[must_use]
-    pub fn id(&self) -> u32 {
+    pub(crate) fn id(&self) -> u32 {
         self.id
     }
 
     /// Return the name of the episode.
     #[must_use]
-    pub fn name(&self) -> &str {
+    pub(crate) fn name(&self) -> &str {
         &self.name
     }
 
     /// Create a new fetch-episode response.
     #[must_use]
-    pub fn new(
+    pub(crate) fn new(
         id: u32,
         series_id: NumericID,
         season_index: u32,
@@ -125,25 +125,25 @@ impl GetSeriesEpisodeResponse {
 
     /// Return the plot of the episode.
     #[must_use]
-    pub fn plot(&self) -> &str {
+    pub(crate) fn plot(&self) -> &str {
         &self.plot
     }
 
     /// Return the series-scoped index of the season holding the episode.
     #[must_use]
-    pub fn season_index(&self) -> u32 {
+    pub(crate) fn season_index(&self) -> u32 {
         self.season_index
     }
 
     /// Return the identifier of the show holding the season.
     #[must_use]
-    pub fn series_id(&self) -> NumericID {
+    pub(crate) fn series_id(&self) -> NumericID {
         self.series_id
     }
 
     /// Return the video backing the episode.
     #[must_use]
-    pub fn video(&self) -> &VideoSummary {
+    pub(crate) fn video(&self) -> &VideoSummary {
         &self.video
     }
 }
@@ -151,7 +151,7 @@ impl GetSeriesEpisodeResponse {
 /// Error returned when fetching one episode of a season.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
-pub enum GetSeriesEpisodeError {
+pub(crate) enum GetSeriesEpisodeError {
     /// The authenticated caller does not exist anymore.
     #[error("the authenticated user does not exist")]
     NoSuchCaller,
@@ -171,7 +171,7 @@ pub enum GetSeriesEpisodeError {
 
 /// Use case for fetching one episode of a season.
 #[cfg_attr(test, mockall::automock)]
-pub trait GetSeriesEpisodeUseCase: Send + Sync {
+pub(crate) trait GetSeriesEpisodeUseCase: Send + Sync {
     /// Fetch the requested episode, scoped to its show and season.
     ///
     /// The future is returned erased (`dyn`, not `impl Future`), boxed and

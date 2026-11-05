@@ -10,12 +10,18 @@ files:
 rule:
   all:
     - kind: struct_item
-    - pattern: pub struct $NAME
+    - any:
+        - pattern: pub struct $NAME
+        - pattern: pub(crate) struct $NAME
+        - pattern: struct $NAME
     - inside:
         kind: source_file
     - not:
-        regex: 'pub struct \w*Filter\b'
+        regex: '(pub(\(crate\))? )?struct \w*Filter\b'
     - precedes:
         kind: trait_item
-        pattern: 'pub trait $TRAIT: Send + Sync'
+        any:
+          - pattern: 'pub trait $TRAIT: Send + Sync'
+          - pattern: 'pub(crate) trait $TRAIT: Send + Sync'
+          - pattern: 'trait $TRAIT: Send + Sync'
         stopBy: end

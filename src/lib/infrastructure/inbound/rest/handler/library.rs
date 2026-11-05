@@ -1,44 +1,85 @@
-pub mod delete_gallery;
-pub mod delete_gallery_item;
-pub mod delete_playlist;
-pub mod delete_playlist_track;
-pub mod get_album;
-pub mod get_album_list;
-pub mod get_album_medium;
-pub mod get_album_track;
-pub mod get_album_track_list;
-pub mod get_gallery;
-pub mod get_gallery_item;
-pub mod get_gallery_item_list;
-pub mod get_gallery_list;
-pub mod get_movie;
-pub mod get_movie_list;
-pub mod get_music_group;
-pub mod get_music_group_list;
-pub mod get_music_identify;
-pub mod get_music_identify_metadata;
-pub mod get_playlist;
-pub mod get_playlist_list;
-pub mod get_playlist_track;
-pub mod get_playlist_track_list;
-pub mod get_series;
-pub mod get_series_episode;
-pub mod get_series_episode_list;
-pub mod get_series_list;
-pub mod get_series_season;
-pub mod patch_album;
-pub mod patch_album_track;
-pub mod patch_music_group;
-pub mod patch_playlist;
-pub mod post_album;
-pub mod post_album_apply;
-pub mod post_gallery;
-pub mod post_gallery_item;
-pub mod post_music_group;
-pub mod post_playlist;
-pub mod put_album_medium;
-pub mod put_album_track;
-pub mod put_playlist_track;
+/// The library context endpoints.
+pub(crate) mod delete_gallery;
+/// The library context endpoints.
+pub(crate) mod delete_gallery_item;
+/// The library context endpoints.
+pub(crate) mod delete_playlist;
+/// The library context endpoints.
+pub(crate) mod delete_playlist_track;
+/// The library context endpoints.
+pub(crate) mod get_album;
+/// The library context endpoints.
+pub(crate) mod get_album_list;
+/// The library context endpoints.
+pub(crate) mod get_album_medium;
+/// The library context endpoints.
+pub(crate) mod get_album_track;
+/// The library context endpoints.
+pub(crate) mod get_album_track_list;
+/// The library context endpoints.
+pub(crate) mod get_gallery;
+/// The library context endpoints.
+pub(crate) mod get_gallery_item;
+/// The library context endpoints.
+pub(crate) mod get_gallery_item_list;
+/// The library context endpoints.
+pub(crate) mod get_gallery_list;
+/// The library context endpoints.
+pub(crate) mod get_movie;
+/// The library context endpoints.
+pub(crate) mod get_movie_list;
+/// The library context endpoints.
+pub(crate) mod get_music_group;
+/// The library context endpoints.
+pub(crate) mod get_music_group_list;
+/// The library context endpoints.
+pub(crate) mod get_music_identify;
+/// The library context endpoints.
+pub(crate) mod get_music_identify_metadata;
+/// The library context endpoints.
+pub(crate) mod get_playlist;
+/// The library context endpoints.
+pub(crate) mod get_playlist_list;
+/// The library context endpoints.
+pub(crate) mod get_playlist_track;
+/// The library context endpoints.
+pub(crate) mod get_playlist_track_list;
+/// The library context endpoints.
+pub(crate) mod get_series;
+/// The library context endpoints.
+pub(crate) mod get_series_episode;
+/// The library context endpoints.
+pub(crate) mod get_series_episode_list;
+/// The library context endpoints.
+pub(crate) mod get_series_list;
+/// The library context endpoints.
+pub(crate) mod get_series_season;
+/// The library context endpoints.
+pub(crate) mod patch_album;
+/// The library context endpoints.
+pub(crate) mod patch_album_track;
+/// The library context endpoints.
+pub(crate) mod patch_music_group;
+/// The library context endpoints.
+pub(crate) mod patch_playlist;
+/// The library context endpoints.
+pub(crate) mod post_album;
+/// The library context endpoints.
+pub(crate) mod post_album_apply;
+/// The library context endpoints.
+pub(crate) mod post_gallery;
+/// The library context endpoints.
+pub(crate) mod post_gallery_item;
+/// The library context endpoints.
+pub(crate) mod post_music_group;
+/// The library context endpoints.
+pub(crate) mod post_playlist;
+/// The library context endpoints.
+pub(crate) mod put_album_medium;
+/// The library context endpoints.
+pub(crate) mod put_album_track;
+/// The library context endpoints.
+pub(crate) mod put_playlist_track;
 
 use axum::middleware;
 use chrono::NaiveDate;
@@ -148,7 +189,7 @@ pub(crate) const DATE_FORMAT: &str = "%Y-%m-%d";
 /// path where its items are served (`API-037`).
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 #[non_exhaustive]
-pub struct GalleryLinks {
+pub(crate) struct GalleryLinks {
     /// Link to the item collection of the gallery.
     pub items: Link,
     /// Link to the gallery resource itself.
@@ -159,7 +200,7 @@ pub struct GalleryLinks {
 impl GalleryLinks {
     /// Build the links of the gallery identified by `gallery_id`.
     #[must_use]
-    pub fn for_gallery(gallery_id: NumericID) -> Self {
+    fn for_gallery(gallery_id: NumericID) -> Self {
         Self {
             items: Link::new(&format!("/api/v1/library/gallery/{gallery_id}/item")),
             self_link: Link::new(&format!("/api/v1/library/gallery/{gallery_id}")),
@@ -171,7 +212,7 @@ impl GalleryLinks {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "lowercase")]
 #[non_exhaustive]
-pub enum GalleryItemType {
+pub(crate) enum GalleryItemType {
     /// The item references an image.
     Image,
     /// The item references a video.
@@ -186,7 +227,7 @@ impl GalleryItemType {
     /// (`OBS-006`). The names match the `serde(rename_all = "lowercase")`
     /// representation of [`GalleryItemType`].
     #[must_use]
-    pub fn from_wire(value: &str) -> Option<Self> {
+    pub(crate) fn from_wire(value: &str) -> Option<Self> {
         match value {
             "image" => Some(Self::Image),
             "video" => Some(Self::Video),
@@ -196,7 +237,7 @@ impl GalleryItemType {
 
     /// Build the medium reference of `media_id` for this kind.
     #[must_use]
-    pub fn media(self, media_id: NumericID) -> GalleryItemMedia {
+    pub(crate) fn media(self, media_id: NumericID) -> GalleryItemMedia {
         match self {
             Self::Image => GalleryItemMedia::Image(media_id),
             Self::Video => GalleryItemMedia::Video(media_id),
@@ -216,7 +257,7 @@ impl From<GalleryItemMedia> for GalleryItemType {
 /// One item of a gallery, without the metadata of its medium.
 #[derive(Debug, Serialize, ToSchema)]
 #[non_exhaustive]
-pub struct GalleryItemResponse {
+pub(crate) struct GalleryItemResponse {
     /// Date and time at which the item was added.
     pub added_at: String,
     /// Identifier of the backing file.
@@ -254,7 +295,7 @@ impl From<&GalleryItemSummary> for GalleryItemResponse {
 /// Detailed item of a gallery, returned by the item endpoints.
 #[derive(Debug, Serialize, ToSchema)]
 #[non_exhaustive]
-pub struct GalleryItemDetailResponse {
+pub(crate) struct GalleryItemDetailResponse {
     /// Date and time at which the item was added.
     pub added_at: String,
     /// Identifier of the backing file.
@@ -327,7 +368,7 @@ impl From<AddGalleryItemResponse> for GalleryItemDetailResponse {
 /// the size of the gallery.
 #[derive(Debug, Serialize, ToSchema)]
 #[non_exhaustive]
-pub struct GalleryResponse {
+pub(crate) struct GalleryResponse {
     /// Date and time at which the gallery was created.
     pub created_at: String,
     /// Unique identifier of the gallery.
@@ -409,7 +450,7 @@ impl From<GetGalleryResponseData> for GalleryResponse {
 /// album belongs to is exposed as the `group` link.
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 #[non_exhaustive]
-pub struct AlbumLinks {
+pub(crate) struct AlbumLinks {
     /// Link to the album's cover image, when the album stores artwork.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cover: Option<Link>,
@@ -423,7 +464,7 @@ pub struct AlbumLinks {
 impl AlbumLinks {
     /// Build the links of the album identified by `album_id`.
     #[must_use]
-    pub fn for_album(
+    fn for_album(
         album_id: NumericID,
         cover_image_id: Option<NumericID>,
         music_group_id: NumericID,
@@ -443,7 +484,7 @@ impl AlbumLinks {
 /// `API-037`).
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 #[non_exhaustive]
-pub struct MediumLinks {
+pub(crate) struct MediumLinks {
     /// Link to the album that holds the medium.
     pub album: Link,
     /// Link to the medium resource itself.
@@ -456,7 +497,7 @@ pub struct MediumLinks {
 impl MediumLinks {
     /// Build the links of the medium identified by its album and index.
     #[must_use]
-    pub fn for_medium(album_id: NumericID, medium_index: u8) -> Self {
+    fn for_medium(album_id: NumericID, medium_index: u8) -> Self {
         Self {
             album: Link::new(&format!("/api/v1/library/music/album/{album_id}")),
             self_link: Link::new(&format!(
@@ -472,7 +513,7 @@ impl MediumLinks {
 /// One medium of a music album.
 #[derive(Debug, Serialize, ToSchema)]
 #[non_exhaustive]
-pub struct MediumResponse {
+pub(crate) struct MediumResponse {
     /// Album-scoped index of the medium.
     pub index: u8,
     /// Links to the medium, its album and its track collection.
@@ -488,7 +529,7 @@ pub struct MediumResponse {
 impl MediumResponse {
     /// Assemble a medium representation from its parts.
     #[must_use]
-    pub fn new(
+    pub(crate) fn new(
         album_id: NumericID,
         medium_index: u8,
         medium_type: String,
@@ -523,7 +564,7 @@ impl From<GetAlbumMediumResponse> for MediumResponse {
 /// so a filtered or paginated listing stays navigable.
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 #[non_exhaustive]
-pub struct AlbumListLinks {
+pub(crate) struct AlbumListLinks {
     /// Link to the next page, when one exists.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub next: Option<Link>,
@@ -546,7 +587,7 @@ impl AlbumListLinks {
     /// exposed when the page ends before `total`; `prev` is exposed when the
     /// page does not start at the first album.
     #[must_use]
-    pub fn for_page(
+    pub(crate) fn for_page(
         query: &ListAlbumsQuery,
         limit: usize,
         offset: usize,
@@ -569,7 +610,7 @@ impl AlbumListLinks {
 /// Music albums matching the requested filters.
 #[derive(Debug, Serialize, ToSchema)]
 #[non_exhaustive]
-pub struct AlbumListResponse {
+pub(crate) struct AlbumListResponse {
     /// The albums of the returned page.
     pub items: Vec<AlbumResponse>,
     /// Navigation links of the collection.
@@ -580,7 +621,7 @@ pub struct AlbumListResponse {
 /// A music album representation.
 #[derive(Debug, Serialize, ToSchema)]
 #[non_exhaustive]
-pub struct AlbumResponse {
+pub(crate) struct AlbumResponse {
     /// Identifier of the image holding the album's artwork, when set.
     pub cover_image_id: Option<NumericID>,
     /// Genres of the album, ordered by genre identifier.
@@ -714,7 +755,7 @@ impl From<&MusicAlbum> for AlbumResponse {
 impl MediumResponse {
     /// Build the representation of the medium at `medium_index` of `album`.
     #[must_use]
-    pub fn from_album(album: &MusicAlbum, medium_index: u8) -> Option<Self> {
+    pub(crate) fn from_album(album: &MusicAlbum, medium_index: u8) -> Option<Self> {
         album
             .mediums()
             .iter()
@@ -734,7 +775,11 @@ impl TrackResponse {
     /// Build the representation of the track at `(medium_index, track_index)`
     /// of `album`.
     #[must_use]
-    pub fn from_album(album: &MusicAlbum, medium_index: u8, track_index: u8) -> Option<Self> {
+    pub(crate) fn from_album(
+        album: &MusicAlbum,
+        medium_index: u8,
+        track_index: u8,
+    ) -> Option<Self> {
         let medium = album
             .mediums()
             .iter()
@@ -762,7 +807,7 @@ impl TrackResponse {
 /// the group stores one (`API-034`, `API-037`).
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 #[non_exhaustive]
-pub struct MusicGroupLinks {
+pub(crate) struct MusicGroupLinks {
     /// Link to the group's cover image, when the group stores artwork.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cover: Option<Link>,
@@ -774,7 +819,7 @@ pub struct MusicGroupLinks {
 impl MusicGroupLinks {
     /// Build the links of the group identified by `group_id`.
     #[must_use]
-    pub fn for_group(group_id: NumericID, cover_image_id: Option<NumericID>) -> Self {
+    fn for_group(group_id: NumericID, cover_image_id: Option<NumericID>) -> Self {
         Self {
             cover: cover_image_id.map(|image_id| Link::new(&asset_image_href(image_id))),
             self_link: Link::new(&format!("/api/v1/library/music/group/{group_id}")),
@@ -785,7 +830,7 @@ impl MusicGroupLinks {
 /// A music group representation.
 #[derive(Debug, Serialize, ToSchema)]
 #[non_exhaustive]
-pub struct MusicGroupResponse {
+pub(crate) struct MusicGroupResponse {
     /// Identifier of the image holding the group's artwork, when set.
     pub cover_image_id: Option<NumericID>,
     /// Unique identifier of the group.
@@ -800,7 +845,11 @@ pub struct MusicGroupResponse {
 impl MusicGroupResponse {
     /// Assemble a group representation from its parts.
     #[must_use]
-    pub fn new(group_id: NumericID, name: String, cover_image_id: Option<NumericID>) -> Self {
+    pub(crate) fn new(
+        group_id: NumericID,
+        name: String,
+        cover_image_id: Option<NumericID>,
+    ) -> Self {
         Self {
             cover_image_id,
             id: group_id,
@@ -839,7 +888,7 @@ impl From<&GetMusicGroupResponseData> for MusicGroupResponse {
 /// so a filtered or paginated listing stays navigable.
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 #[non_exhaustive]
-pub struct MusicGroupListLinks {
+pub(crate) struct MusicGroupListLinks {
     /// Link to the next page, when one exists.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub next: Option<Link>,
@@ -860,7 +909,7 @@ impl MusicGroupListLinks {
     /// effective page, `returned` is the number of groups in the page and
     /// `total` the number of matching groups before pagination.
     #[must_use]
-    pub fn for_page(
+    pub(crate) fn for_page(
         query: &ListMusicGroupsQuery,
         limit: usize,
         offset: usize,
@@ -883,7 +932,7 @@ impl MusicGroupListLinks {
 /// Music groups matching the requested filters.
 #[derive(Debug, Serialize, ToSchema)]
 #[non_exhaustive]
-pub struct MusicGroupListResponse {
+pub(crate) struct MusicGroupListResponse {
     /// The groups of the returned page.
     pub items: Vec<MusicGroupResponse>,
     /// Navigation links of the collection.
@@ -898,7 +947,7 @@ pub struct MusicGroupListResponse {
 /// `API-037`).
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 #[non_exhaustive]
-pub struct TrackLinks {
+pub(crate) struct TrackLinks {
     /// Link to the album the track belongs to.
     pub album: Link,
     /// Link to the medium the track is placed in.
@@ -911,7 +960,7 @@ pub struct TrackLinks {
 impl TrackLinks {
     /// Build the links of a track identified by its album, medium and index.
     #[must_use]
-    pub fn for_track(album_id: NumericID, medium_index: u8, track_index: u8) -> Self {
+    fn for_track(album_id: NumericID, medium_index: u8, track_index: u8) -> Self {
         Self {
             album: Link::new(&format!("/api/v1/library/music/album/{album_id}")),
             medium: Link::new(&format!(
@@ -927,7 +976,7 @@ impl TrackLinks {
 /// Tracks of one music album.
 #[derive(Debug, Serialize, ToSchema)]
 #[non_exhaustive]
-pub struct TrackListResponse {
+pub(crate) struct TrackListResponse {
     /// The tracks of the album.
     pub items: Vec<TrackResponse>,
     /// Navigation links of the collection.
@@ -938,7 +987,7 @@ pub struct TrackListResponse {
 /// One music track of an album medium.
 #[derive(Debug, Serialize, ToSchema)]
 #[non_exhaustive]
-pub struct TrackResponse {
+pub(crate) struct TrackResponse {
     /// Identifier of the album the track belongs to.
     pub album_id: NumericID,
     /// Identifier of the backing file.
@@ -995,7 +1044,7 @@ impl From<GetAlbumTrackResponse> for TrackResponse {
 /// One name a provider credits for an album, a release or a recording.
 #[derive(Debug, Serialize, ToSchema)]
 #[non_exhaustive]
-pub struct ArtistCreditResponse {
+pub(crate) struct ArtistCreditResponse {
     /// Phrase the provider places after the name, when it reports one.
     pub join_phrase: Option<String>,
     /// Name the provider credits.
@@ -1005,7 +1054,7 @@ pub struct ArtistCreditResponse {
 impl ArtistCreditResponse {
     /// Build the representation of an artist credit.
     #[must_use]
-    pub fn new(credit: &ArtistCredit) -> Self {
+    pub(crate) fn new(credit: &ArtistCredit) -> Self {
         Self {
             join_phrase: credit.join_phrase().map(str::to_owned),
             name: credit.name().to_owned(),
@@ -1019,7 +1068,7 @@ impl ArtistCreditResponse {
 /// nothing to another, so every reference names the provider that owns it.
 #[derive(Debug, Serialize, ToSchema)]
 #[non_exhaustive]
-pub struct MusicReferenceResponse {
+pub(crate) struct MusicReferenceResponse {
     /// Identifier the provider issued.
     pub id: String,
     /// Provider that issued the identifier (`musicbrainz`).
@@ -1029,7 +1078,7 @@ pub struct MusicReferenceResponse {
 impl MusicReferenceResponse {
     /// Build the representation of an external reference.
     #[must_use]
-    pub fn new(reference: &ExternalRef) -> Self {
+    pub(crate) fn new(reference: &ExternalRef) -> Self {
         Self {
             id: reference.id().to_owned(),
             provider: reference.provider().as_str().to_owned(),
@@ -1040,7 +1089,7 @@ impl MusicReferenceResponse {
 /// One medium of an identified release.
 #[derive(Debug, Serialize, ToSchema)]
 #[non_exhaustive]
-pub struct MusicMediumResponse {
+pub(crate) struct MusicMediumResponse {
     /// Format the provider reports (`CD`, or the provider's own name for it).
     pub format: String,
     /// Album-scoped position of the medium, starting at one.
@@ -1056,7 +1105,7 @@ impl MusicMediumResponse {
         clippy::pattern_type_mismatch,
         reason = "the arms borrow the format out of a non-Copy enum matched by reference"
     )]
-    pub fn new(medium: &MediumSummary) -> Self {
+    pub(crate) fn new(medium: &MediumSummary) -> Self {
         let format = match medium.format() {
             MediumFormat::Cd => "CD".to_owned(),
             MediumFormat::Other(name) => name.clone(),
@@ -1076,7 +1125,7 @@ impl MusicMediumResponse {
 /// exposed as the `cover` link when the film stores artwork.
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 #[non_exhaustive]
-pub struct MovieLinks {
+pub(crate) struct MovieLinks {
     /// Link to the film's cover image, when the film stores artwork.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cover: Option<Link>,
@@ -1088,7 +1137,7 @@ pub struct MovieLinks {
 impl MovieLinks {
     /// Build the links of the film identified by `movie_id`.
     #[must_use]
-    pub fn for_movie(movie_id: NumericID, cover_image_id: Option<NumericID>) -> Self {
+    fn for_movie(movie_id: NumericID, cover_image_id: Option<NumericID>) -> Self {
         Self {
             cover: cover_image_id.map(|image_id| Link::new(&asset_image_href(image_id))),
             self_link: Link::new(&format!("/api/v1/library/movie/{movie_id}")),
@@ -1099,7 +1148,7 @@ impl MovieLinks {
 /// The video backing a film or an episode.
 #[derive(Debug, Serialize, ToSchema)]
 #[non_exhaustive]
-pub struct VideoResponse {
+pub(crate) struct VideoResponse {
     /// Codec of the video.
     pub codec: String,
     /// Duration of the video, in milliseconds.
@@ -1133,7 +1182,7 @@ impl From<&VideoSummary> for VideoResponse {
 /// A film representation.
 #[derive(Debug, Serialize, ToSchema)]
 #[non_exhaustive]
-pub struct MovieResponse {
+pub(crate) struct MovieResponse {
     /// Country of origin of the film.
     pub country_of_origin: String,
     /// Identifier of the image holding the film's artwork, when set.
@@ -1196,7 +1245,7 @@ impl From<&GetMovieResponseData> for MovieResponse {
 /// so a filtered or paginated listing stays navigable.
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 #[non_exhaustive]
-pub struct MovieListLinks {
+pub(crate) struct MovieListLinks {
     /// Link to the next page, when one exists.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub next: Option<Link>,
@@ -1217,7 +1266,7 @@ impl MovieListLinks {
     /// effective page, `returned` is the number of films in the page and
     /// `total` the number of matching films before pagination.
     #[must_use]
-    pub fn for_page(
+    pub(crate) fn for_page(
         query: &ListMoviesQuery,
         limit: usize,
         offset: usize,
@@ -1240,7 +1289,7 @@ impl MovieListLinks {
 /// Films matching the requested filters.
 #[derive(Debug, Serialize, ToSchema)]
 #[non_exhaustive]
-pub struct MovieListResponse {
+pub(crate) struct MovieListResponse {
     /// The films of the returned page.
     pub items: Vec<MovieResponse>,
     /// Navigation links of the collection.
@@ -1255,7 +1304,7 @@ pub struct MovieListResponse {
 /// link when the show stores artwork.
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 #[non_exhaustive]
-pub struct SeriesLinks {
+pub(crate) struct SeriesLinks {
     /// Link to the show's cover image, when the show stores artwork.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cover: Option<Link>,
@@ -1267,7 +1316,7 @@ pub struct SeriesLinks {
 impl SeriesLinks {
     /// Build the links of the show identified by `series_id`.
     #[must_use]
-    pub fn for_series(series_id: NumericID, cover_image_id: Option<NumericID>) -> Self {
+    fn for_series(series_id: NumericID, cover_image_id: Option<NumericID>) -> Self {
         Self {
             cover: cover_image_id.map(|image_id| Link::new(&asset_image_href(image_id))),
             self_link: Link::new(&format!("/api/v1/library/series/{series_id}")),
@@ -1283,7 +1332,7 @@ impl SeriesLinks {
 /// artwork.
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 #[non_exhaustive]
-pub struct SeriesSeasonLinks {
+pub(crate) struct SeriesSeasonLinks {
     /// Link to the season's cover image, when the season stores artwork.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cover: Option<Link>,
@@ -1299,7 +1348,7 @@ pub struct SeriesSeasonLinks {
 impl SeriesSeasonLinks {
     /// Build the links of a season identified by its show and index.
     #[must_use]
-    pub fn for_season(
+    fn for_season(
         series_id: NumericID,
         season_index: u32,
         cover_image_id: Option<NumericID>,
@@ -1324,7 +1373,7 @@ impl SeriesSeasonLinks {
 /// `API-037`).
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 #[non_exhaustive]
-pub struct SeriesEpisodeLinks {
+pub(crate) struct SeriesEpisodeLinks {
     /// Link to the season that sequences the episode.
     pub season: Link,
     /// Link to the episode resource itself.
@@ -1337,7 +1386,7 @@ pub struct SeriesEpisodeLinks {
 impl SeriesEpisodeLinks {
     /// Build the links of an episode identified by its show, season and index.
     #[must_use]
-    pub fn for_episode(series_id: NumericID, season_index: u32, episode_index: u32) -> Self {
+    fn for_episode(series_id: NumericID, season_index: u32, episode_index: u32) -> Self {
         Self {
             season: Link::new(&format!(
                 "/api/v1/library/series/{series_id}/season/{season_index}"
@@ -1353,7 +1402,7 @@ impl SeriesEpisodeLinks {
 /// One season of a show.
 #[derive(Debug, Serialize, ToSchema)]
 #[non_exhaustive]
-pub struct SeasonResponse {
+pub(crate) struct SeasonResponse {
     /// Identifier of the image holding the season's artwork, when set.
     pub cover_image_id: Option<NumericID>,
     /// Number of episodes the season holds.
@@ -1373,7 +1422,7 @@ pub struct SeasonResponse {
 impl SeasonResponse {
     /// Assemble a season representation from its parts.
     #[must_use]
-    pub fn new(
+    pub(crate) fn new(
         series_id: NumericID,
         index: u32,
         name: Option<String>,
@@ -1406,7 +1455,7 @@ impl From<&GetSeriesSeasonResponse> for SeasonResponse {
 /// A show representation: its metadata and season summaries.
 #[derive(Debug, Serialize, ToSchema)]
 #[non_exhaustive]
-pub struct SeriesResponse {
+pub(crate) struct SeriesResponse {
     /// Country of origin of the show.
     pub country_of_origin: String,
     /// Identifier of the image holding the show's artwork, when set.
@@ -1459,7 +1508,7 @@ impl From<&GetSeriesResponseData> for SeriesResponse {
 /// One show of a listing: its identifier, name and cover.
 #[derive(Debug, Serialize, ToSchema)]
 #[non_exhaustive]
-pub struct SeriesSummaryResponse {
+pub(crate) struct SeriesSummaryResponse {
     /// Identifier of the image holding the show's artwork, when set.
     pub cover_image_id: Option<NumericID>,
     /// Unique identifier of the show.
@@ -1490,7 +1539,7 @@ impl From<&ListSeriesItem> for SeriesSummaryResponse {
 /// `API-042`).
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 #[non_exhaustive]
-pub struct SeriesListLinks {
+pub(crate) struct SeriesListLinks {
     /// Link to the next page, when one exists.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub next: Option<Link>,
@@ -1507,7 +1556,7 @@ pub struct SeriesListLinks {
 impl SeriesListLinks {
     /// Build the links of a show collection page.
     #[must_use]
-    pub fn for_page(
+    pub(crate) fn for_page(
         query: &ListSeriesQuery,
         limit: usize,
         offset: usize,
@@ -1540,7 +1589,7 @@ impl SeriesListLinks {
 /// Shows matching the requested filters.
 #[derive(Debug, Serialize, ToSchema)]
 #[non_exhaustive]
-pub struct SeriesListResponse {
+pub(crate) struct SeriesListResponse {
     /// The shows of the returned page.
     pub items: Vec<SeriesSummaryResponse>,
     /// Navigation links of the collection.
@@ -1551,7 +1600,7 @@ pub struct SeriesListResponse {
 /// An episode representation.
 #[derive(Debug, Serialize, ToSchema)]
 #[non_exhaustive]
-pub struct EpisodeResponse {
+pub(crate) struct EpisodeResponse {
     /// Date of the first airing of the episode, in `YYYY-MM-DD` form.
     pub air_date: String,
     /// Season-scoped index of the episode.
@@ -1612,7 +1661,7 @@ impl From<&GetSeriesEpisodeResponse> for EpisodeResponse {
 /// Episodes of one season.
 #[derive(Debug, Serialize, ToSchema)]
 #[non_exhaustive]
-pub struct EpisodeListResponse {
+pub(crate) struct EpisodeListResponse {
     /// The episodes of the season, ordered by index.
     pub items: Vec<EpisodeResponse>,
     /// Navigation links of the collection.
@@ -1628,7 +1677,7 @@ pub struct EpisodeListResponse {
 /// playlist stores artwork.
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 #[non_exhaustive]
-pub struct PlaylistLinks {
+pub(crate) struct PlaylistLinks {
     /// Link to the playlist's cover image, when the playlist stores artwork.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cover: Option<Link>,
@@ -1642,7 +1691,7 @@ pub struct PlaylistLinks {
 impl PlaylistLinks {
     /// Build the links of the playlist identified by `playlist_id`.
     #[must_use]
-    pub fn for_playlist(playlist_id: NumericID, cover_image_id: Option<NumericID>) -> Self {
+    fn for_playlist(playlist_id: NumericID, cover_image_id: Option<NumericID>) -> Self {
         Self {
             cover: cover_image_id.map(|image_id| Link::new(&asset_image_href(image_id))),
             self_link: Link::new(&format!("/api/v1/library/music/playlist/{playlist_id}")),
@@ -1659,7 +1708,7 @@ impl PlaylistLinks {
 /// that sequences it (`API-034`, `API-037`).
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 #[non_exhaustive]
-pub struct PlaylistTrackLinks {
+pub(crate) struct PlaylistTrackLinks {
     /// Link to the playlist the track belongs to.
     pub playlist: Link,
     /// Link to the track resource itself.
@@ -1670,7 +1719,7 @@ pub struct PlaylistTrackLinks {
 impl PlaylistTrackLinks {
     /// Build the links of a track identified by its playlist and index.
     #[must_use]
-    pub fn for_track(playlist_id: NumericID, track_index: u32) -> Self {
+    fn for_track(playlist_id: NumericID, track_index: u32) -> Self {
         Self {
             playlist: Link::new(&format!("/api/v1/library/music/playlist/{playlist_id}")),
             self_link: Link::new(&format!(
@@ -1683,7 +1732,7 @@ impl PlaylistTrackLinks {
 /// One track of a music playlist.
 #[derive(Debug, Serialize, ToSchema)]
 #[non_exhaustive]
-pub struct PlaylistTrackResponse {
+pub(crate) struct PlaylistTrackResponse {
     /// Identifier of the backing file.
     pub file_id: NumericID,
     /// Zero-based index of the track within the playlist.
@@ -1702,7 +1751,7 @@ pub struct PlaylistTrackResponse {
 impl PlaylistTrackResponse {
     /// Assemble a track representation from its parts.
     #[must_use]
-    pub fn new(playlist_id: NumericID, track: &MusicRecording) -> Self {
+    pub(crate) fn new(playlist_id: NumericID, track: &MusicRecording) -> Self {
         let index = track.index().playlist_index().unwrap_or_default();
         Self {
             file_id: track.file_id(),
@@ -1718,7 +1767,7 @@ impl PlaylistTrackResponse {
 /// A music playlist representation.
 #[derive(Debug, Serialize, ToSchema)]
 #[non_exhaustive]
-pub struct PlaylistResponse {
+pub(crate) struct PlaylistResponse {
     /// Identifier of the image holding the playlist's artwork, when set.
     pub cover_image_id: Option<NumericID>,
     /// Date and time of the creation of the playlist.
@@ -1745,7 +1794,7 @@ pub struct PlaylistResponse {
 impl PlaylistResponse {
     /// Assemble a playlist representation from a listed playlist item.
     #[must_use]
-    pub fn from_listed(item: &ListPlaylistsItem) -> Self {
+    pub(crate) fn from_listed(item: &ListPlaylistsItem) -> Self {
         Self {
             cover_image_id: item.cover_image_id(),
             created_at: format_timestamp(item.created_at()),
@@ -1762,7 +1811,7 @@ impl PlaylistResponse {
 
     /// Assemble a playlist representation from a hydrated playlist.
     #[must_use]
-    pub fn new(playlist: &MusicPlaylist) -> Self {
+    pub(crate) fn new(playlist: &MusicPlaylist) -> Self {
         Self {
             cover_image_id: playlist.cover_image_id(),
             created_at: format_timestamp(playlist.created_at()),
@@ -1791,7 +1840,7 @@ impl PlaylistResponse {
 /// so a filtered or paginated listing stays navigable.
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 #[non_exhaustive]
-pub struct PlaylistListLinks {
+pub(crate) struct PlaylistListLinks {
     /// Link to the next page, when one exists.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub next: Option<Link>,
@@ -1808,7 +1857,7 @@ pub struct PlaylistListLinks {
 impl PlaylistListLinks {
     /// Build the links of a playlist collection page.
     #[must_use]
-    pub fn for_page(
+    pub(crate) fn for_page(
         query: &ListPlaylistsQuery,
         limit: usize,
         offset: usize,
@@ -1843,7 +1892,7 @@ impl PlaylistListLinks {
 /// Playlists matching the requested filters.
 #[derive(Debug, Serialize, ToSchema)]
 #[non_exhaustive]
-pub struct PlaylistListResponse {
+pub(crate) struct PlaylistListResponse {
     /// The playlists of the returned page.
     pub items: Vec<PlaylistResponse>,
     /// Navigation links of the collection.
@@ -2294,7 +2343,7 @@ impl From<GetSeriesEpisodeError> for ApiError {
 
 /// Canonical URI reference of the gallery item identified by `item_id`.
 #[must_use]
-pub(crate) fn gallery_item_self_href(gallery_id: NumericID, item_id: NumericID) -> String {
+fn gallery_item_self_href(gallery_id: NumericID, item_id: NumericID) -> String {
     format!("/api/v1/library/gallery/{gallery_id}/item/{item_id}")
 }
 
@@ -2732,7 +2781,7 @@ pub(crate) fn library_router() -> OpenApiRouter<AppState> {
 /// Routes of the Library bounded context.
 ///
 /// Every route requires an authenticated caller.
-pub fn library_routes(state: &AppState) -> OpenApiRouter<()> {
+pub(crate) fn library_routes(state: &AppState) -> OpenApiRouter<()> {
     library_router()
         .route_layer(middleware::from_fn_with_state(
             state.clone(),

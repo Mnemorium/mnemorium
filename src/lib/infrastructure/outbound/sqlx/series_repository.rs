@@ -23,7 +23,7 @@ use super::query_filter::push_filter;
 
 /// Repository querying shows, their seasons and their episodes, backed by a
 /// `SQLite` transaction.
-pub struct SqlxSeriesRepository<'transaction> {
+pub(crate) struct SqlxSeriesRepository<'transaction> {
     /// Transaction the repository reads from.
     transaction: &'transaction mut Transaction<'static, Sqlite>,
 }
@@ -31,7 +31,7 @@ pub struct SqlxSeriesRepository<'transaction> {
 impl<'transaction> SqlxSeriesRepository<'transaction> {
     /// Create a new repository bound to `transaction`.
     #[must_use]
-    pub fn new(transaction: &'transaction mut Transaction<'static, Sqlite>) -> Self {
+    pub(crate) fn new(transaction: &'transaction mut Transaction<'static, Sqlite>) -> Self {
         Self { transaction }
     }
 }

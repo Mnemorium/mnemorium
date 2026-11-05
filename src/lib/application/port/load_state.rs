@@ -10,24 +10,24 @@ use crate::domain::port::error::StateSeedSourceError;
 /// the container mounts `/app`, which already holds the datastore. The load
 /// state use case inspects it to tell a genuinely new instance from one whose
 /// state file was lost.
-pub const DATABASE_PATH: &str = "mnemorium.db";
+pub(crate) const DATABASE_PATH: &str = "mnemorium.db";
 
 /// Environment variable seeding the pepper at creation.
-pub const PEPPER_VARIABLE: &str = "MNEMORIUM_PEPPER";
+pub(crate) const PEPPER_VARIABLE: &str = "MNEMORIUM_PEPPER";
 
 /// Environment variable seeding the signing secret at creation.
-pub const JWT_SECRET_VARIABLE: &str = "MNEMORIUM_JWT_SECRET";
+pub(crate) const JWT_SECRET_VARIABLE: &str = "MNEMORIUM_JWT_SECRET";
 
 /// Length of each generated secret, in bytes.
-pub const SECRET_LENGTH: u32 = 32;
+pub(crate) const SECRET_LENGTH: u32 = 32;
 
 /// Path of the instance state file, relative to the working directory.
-pub const STATE_PATH: &str = "state.yaml";
+pub(crate) const STATE_PATH: &str = "state.yaml";
 
 /// Response of a successful state load.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct LoadStateResponse {
+pub(crate) struct LoadStateResponse {
     /// Whether this call created the instance state.
     created: bool,
     /// Whether this call generated the signing secret rather than seeding it.
@@ -41,7 +41,7 @@ pub struct LoadStateResponse {
 impl LoadStateResponse {
     /// Return whether this call created the instance state.
     #[must_use]
-    pub fn created(&self) -> bool {
+    pub(crate) fn created(&self) -> bool {
         self.created
     }
 
@@ -50,13 +50,13 @@ impl LoadStateResponse {
     /// A created state reports `true` for a secret the environment did not
     /// seed; reuse reports `false` for both, because nothing was generated.
     #[must_use]
-    pub fn jwt_secret_generated(&self) -> bool {
+    pub(crate) fn jwt_secret_generated(&self) -> bool {
         self.jwt_secret_generated
     }
 
     /// Create a new load response.
     #[must_use]
-    pub fn new(
+    pub(crate) fn new(
         state: InstanceState,
         created: bool,
         pepper_generated: bool,
@@ -75,13 +75,13 @@ impl LoadStateResponse {
     /// A created state reports `true` for a secret the environment did not
     /// seed; reuse reports `false` for both, because nothing was generated.
     #[must_use]
-    pub fn pepper_generated(&self) -> bool {
+    pub(crate) fn pepper_generated(&self) -> bool {
         self.pepper_generated
     }
 
     /// Return the effective instance state.
     #[must_use]
-    pub fn state(&self) -> &InstanceState {
+    pub(crate) fn state(&self) -> &InstanceState {
         &self.state
     }
 }
@@ -92,7 +92,7 @@ impl LoadStateResponse {
 /// never a secret value (`OBS-004`).
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
-pub enum LoadStateError {
+pub(crate) enum LoadStateError {
     /// The presence of the datastore file could not be decided.
     #[error(
         "whether the datastore already exists could not be determined; check that mnemorium.db is readable and restart the server: {0}"
@@ -148,7 +148,7 @@ pub enum LoadStateError {
 /// shape is checked by the use case, whose errors name the variable and never
 /// the value.
 #[cfg_attr(test, mockall::automock)]
-pub trait StateSeeds: Send + Sync {
+pub(crate) trait StateSeeds: Send + Sync {
     /// Return the signing secret supplied by the environment.
     fn jwt_secret(&self) -> Option<String>;
 
@@ -162,7 +162,7 @@ pub trait StateSeeds: Send + Sync {
 /// exists, the use case compares them with the persisted secrets and fails on a
 /// difference instead of overriding them.
 #[cfg_attr(test, mockall::automock)]
-pub trait StateSeedSource: Send + Sync {
+pub(crate) trait StateSeedSource: Send + Sync {
     /// Read the seeds from the environment.
     ///
     /// # Errors
@@ -176,7 +176,7 @@ pub trait StateSeedSource: Send + Sync {
 
 /// Use case for loading or creating the instance state.
 #[cfg_attr(test, mockall::automock)]
-pub trait LoadStateUseCase: Send + Sync {
+pub(crate) trait LoadStateUseCase: Send + Sync {
     /// Load the persisted state, or create it for a genuinely new instance.
     ///
     /// The future is returned erased (`dyn`, not `impl Future`), boxed and

@@ -14,7 +14,7 @@ use crate::domain::port::error::MediaSourceError;
 /// One file found under the library root.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct MediaEntry {
+pub(crate) struct MediaEntry {
     /// Instant at which the content was last modified.
     pub modified_at: NaiveDateTime,
     /// Path relative to the library root.
@@ -28,7 +28,7 @@ pub struct MediaEntry {
 /// The port exposes no write, move or delete operation: ingest must never
 /// change the content it examines.
 #[cfg_attr(test, mockall::automock)]
-pub trait MediaSource: Send + Sync {
+pub(crate) trait MediaSource: Send + Sync {
     /// Return the entry for the file at `relative_path`, or `Ok(None)` when no
     /// file exists there.
     ///

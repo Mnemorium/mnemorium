@@ -19,7 +19,7 @@ use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 /// Payload to create a playlist owned by the caller.
 #[derive(Debug, Deserialize, ToSchema)]
 #[non_exhaustive]
-pub struct PostPlaylistRequest {
+pub(crate) struct PostPlaylistRequest {
     /// Whether any authenticated user may read and moderate the playlist.
     #[serde(default)]
     pub is_public: bool,
@@ -96,7 +96,7 @@ pub struct PostPlaylistRequest {
     ),
     summary = "Create a music playlist"
 )]
-pub async fn post_playlist(
+pub(crate) async fn post_playlist(
     State(state): State<AppState>,
     caller: AuthenticatedUser,
     payload: Result<Json<PostPlaylistRequest>, JsonRejection>,
@@ -124,10 +124,6 @@ pub async fn post_playlist(
 
 #[cfg(test)]
 mod tests {
-    #![expect(
-        clippy::single_call_fn,
-        reason = "named fixtures keep the tests readable"
-    )]
 
     use std::error::Error;
     use std::sync::Arc;

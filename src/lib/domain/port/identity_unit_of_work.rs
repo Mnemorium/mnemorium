@@ -3,7 +3,7 @@ use crate::domain::port::permission_repository::PermissionRepository;
 use crate::domain::port::unit_of_work::UnitOfWork;
 
 /// Identity bounded-context view over a [`UnitOfWork`].
-pub trait IdentityUnitOfWork: UnitOfWork {
+pub(crate) trait IdentityUnitOfWork: UnitOfWork {
     /// Repository persisting credentials.
     fn credentials(&mut self) -> impl CredentialRepository + '_;
 

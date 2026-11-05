@@ -27,7 +27,7 @@ use crate::domain::service::authorization::Decision;
 /// candidates in the provider's order and never ranks, persists or logs them.
 /// It is guarded by `library.read`: the search addresses no catalogue resource,
 /// so a denial conceals the whole surface rather than one album.
-pub struct IdentifyMusic<F, P> {
+pub(crate) struct IdentifyMusic<F, P> {
     /// Configured provider, absent when music identification is unavailable.
     metadata_provider: Option<Arc<P>>,
     /// Factory opening the unit of work wrapping the caller load and the search.
@@ -37,7 +37,7 @@ pub struct IdentifyMusic<F, P> {
 impl<F: UnitOfWorkFactory, P: MusicMetadataProvider> IdentifyMusic<F, P> {
     /// Create a new use case.
     #[must_use]
-    pub fn new(unit_of_work_factory: Arc<F>, metadata_provider: Option<Arc<P>>) -> Self {
+    pub(crate) fn new(unit_of_work_factory: Arc<F>, metadata_provider: Option<Arc<P>>) -> Self {
         Self {
             metadata_provider,
             unit_of_work_factory,

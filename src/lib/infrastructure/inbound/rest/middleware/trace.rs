@@ -3,7 +3,9 @@ use axum::{body::Body, http::Request, middleware::Next, response::Response};
 use tracing::debug;
 use tracing::warn;
 
-pub async fn tracing(req: Request<Body>, next: Next) -> Response {
+/// Log each request and response at `debug`, recording the path but never the
+/// query string (`OBS-003`).
+pub(crate) async fn tracing(req: Request<Body>, next: Next) -> Response {
     let method = req.method().clone();
     // Log the path only (`OBS-003`): the query string is client-controlled and
     // may carry personal data or a token.

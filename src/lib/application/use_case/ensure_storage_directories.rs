@@ -11,7 +11,7 @@ use crate::application::use_case::upload_layout::uploads_path;
 use crate::domain::port::file_storage::FileStorage;
 
 /// Use case implementation for ensuring the storage folders exist.
-pub struct EnsureStorageDirectories<S> {
+pub(crate) struct EnsureStorageDirectories<S> {
     /// Storage adapter creating the folders.
     file_storage: Arc<S>,
 }
@@ -19,7 +19,7 @@ pub struct EnsureStorageDirectories<S> {
 impl<S: FileStorage> EnsureStorageDirectories<S> {
     /// Create a new use case.
     #[must_use]
-    pub fn new(file_storage: Arc<S>) -> Self {
+    pub(crate) fn new(file_storage: Arc<S>) -> Self {
         Self { file_storage }
     }
 }

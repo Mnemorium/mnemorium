@@ -7,7 +7,10 @@ message: >-
 rule:
   all:
     - kind: struct_item
-    - pattern: 'pub struct $NAME { $$$FIELDS }'
+    - any:
+        - pattern: 'pub struct $NAME { $$$FIELDS }'
+        - pattern: 'pub(crate) struct $NAME { $$$FIELDS }'
+        - pattern: 'struct $NAME { $$$FIELDS }'
     - any:
         - has:
             kind: attribute_item

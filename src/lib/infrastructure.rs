@@ -1,4 +1,8 @@
-pub mod inbound;
-pub mod logging;
-pub mod outbound;
-pub mod use_case_factory;
+/// The inbound adapters: the REST surface and the media-ingest runner.
+pub(crate) mod inbound;
+/// The tracing subscriber and its configuration.
+pub(crate) mod logging;
+/// The outbound adapters: datastore, file system, providers and generators.
+pub(crate) mod outbound;
+/// The runtime use-case factories the inbound adapters resolve through.
+pub(crate) mod use_case_factory;

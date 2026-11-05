@@ -25,7 +25,7 @@ use crate::domain::port::user_unit_of_work::UserUnitOfWork;
 const ROOT_ADMIN_USERNAME: &str = "root";
 
 /// Use case implementation for initializing the root admin.
-pub struct InitializeRootAdmin<F, H, G> {
+pub(crate) struct InitializeRootAdmin<F, H, G> {
     /// Generator producing random passwords.
     password_generator: Arc<G>,
     /// Hasher for user passwords.
@@ -37,7 +37,7 @@ pub struct InitializeRootAdmin<F, H, G> {
 impl<F: UnitOfWorkFactory, H: PasswordHasher, G: PasswordGenerator> InitializeRootAdmin<F, H, G> {
     /// Create a new use case.
     #[must_use]
-    pub fn new(
+    pub(crate) fn new(
         unit_of_work_factory: Arc<F>,
         password_hasher: Arc<H>,
         password_generator: Arc<G>,

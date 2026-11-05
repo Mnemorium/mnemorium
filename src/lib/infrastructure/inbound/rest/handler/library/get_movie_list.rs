@@ -25,7 +25,7 @@ use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 #[derive(Debug, Deserialize, IntoParams)]
 #[into_params(parameter_in = Query)]
 #[non_exhaustive]
-pub struct ListMoviesQuery {
+pub(crate) struct ListMoviesQuery {
     /// Maximum number of films to return, between 1 and 100.
     #[param(default = 20, minimum = 1, maximum = 100)]
     pub limit: Option<usize>,
@@ -85,7 +85,7 @@ pub struct ListMoviesQuery {
     ),
     summary = "List films"
 )]
-pub async fn get_movie_list(
+pub(crate) async fn get_movie_list(
     raw_query: Result<Query<ListMoviesQuery>, QueryRejection>,
     caller: AuthenticatedUser,
     State(state): State<AppState>,

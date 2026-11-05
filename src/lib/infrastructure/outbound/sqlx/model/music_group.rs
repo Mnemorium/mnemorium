@@ -2,7 +2,7 @@ use crate::domain::alias::NumericID;
 
 /// Row of the `music_group` table.
 #[derive(Debug, Clone, sqlx::FromRow)]
-pub struct MusicGroupRow {
+pub(crate) struct MusicGroupRow {
     /// Identifier of the image holding the group's artwork, when set.
     pub cover_image_id: Option<NumericID>,
     /// Unique identifier of the group.

@@ -6,7 +6,7 @@ use crate::domain::alias::NumericID;
 /// Command to delete one item of a gallery.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct DeleteGalleryItemCommand {
+pub(crate) struct DeleteGalleryItemCommand {
     /// Identifier of the authenticated caller.
     caller_id: NumericID,
     /// Identifier of the gallery the item belongs to.
@@ -18,25 +18,29 @@ pub struct DeleteGalleryItemCommand {
 impl DeleteGalleryItemCommand {
     /// Return the identifier of the authenticated caller.
     #[must_use]
-    pub fn caller_id(&self) -> NumericID {
+    pub(crate) fn caller_id(&self) -> NumericID {
         self.caller_id
     }
 
     /// Return the identifier of the gallery the item belongs to.
     #[must_use]
-    pub fn gallery_id(&self) -> NumericID {
+    pub(crate) fn gallery_id(&self) -> NumericID {
         self.gallery_id
     }
 
     /// Return the identifier of the item to delete.
     #[must_use]
-    pub fn gallery_item_id(&self) -> NumericID {
+    pub(crate) fn gallery_item_id(&self) -> NumericID {
         self.gallery_item_id
     }
 
     /// Create a new delete-gallery-item command.
     #[must_use]
-    pub fn new(caller_id: NumericID, gallery_id: NumericID, gallery_item_id: NumericID) -> Self {
+    pub(crate) fn new(
+        caller_id: NumericID,
+        gallery_id: NumericID,
+        gallery_item_id: NumericID,
+    ) -> Self {
         Self {
             caller_id,
             gallery_id,
@@ -48,7 +52,7 @@ impl DeleteGalleryItemCommand {
 /// Error returned when deleting one item of a gallery.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
-pub enum DeleteGalleryItemError {
+pub(crate) enum DeleteGalleryItemError {
     /// The caller is not allowed to delete items of the gallery.
     #[error("the caller is not allowed to delete items of this gallery")]
     Forbidden,
@@ -68,7 +72,7 @@ pub enum DeleteGalleryItemError {
 
 /// Use case for deleting one item of a gallery.
 #[cfg_attr(test, mockall::automock)]
-pub trait DeleteGalleryItemUseCase: Send + Sync {
+pub(crate) trait DeleteGalleryItemUseCase: Send + Sync {
     /// Delete the requested item of the gallery.
     ///
     /// The future is returned erased (`dyn`, not `impl Future`), boxed and

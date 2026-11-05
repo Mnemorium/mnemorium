@@ -5,12 +5,12 @@ use std::fmt::{Display, Formatter, Result as FmtResult};
 /// The constant is algorithm-neutral in the type it parameterizes
 /// ([`IntegrityHash`]) but fixes the width of the digest persisted for file
 /// content; the algorithm that produces it belongs to the outbound adapter.
-pub const DIGEST_HEX_LENGTH: usize = 64;
+pub(crate) const DIGEST_HEX_LENGTH: usize = 64;
 
 /// Error returned when initialising an [`IntegrityHash`].
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
-pub enum IntegrityHashError {
+pub(crate) enum IntegrityHashError {
     /// The value is not exactly `expected` characters long.
     #[error("the integrity hash must be exactly {expected} characters long")]
     InvalidLength {
@@ -28,7 +28,7 @@ pub enum IntegrityHashError {
 /// long. The type is parameterized by the digest length so a caller can pin the
 /// algorithm's output width without the name naming the algorithm.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct IntegrityHash<const LENGTH: usize> {
+pub(crate) struct IntegrityHash<const LENGTH: usize> {
     /// Lowercase hexadecimal digest.
     value: String,
 }
@@ -36,7 +36,7 @@ pub struct IntegrityHash<const LENGTH: usize> {
 impl<const LENGTH: usize> IntegrityHash<LENGTH> {
     /// Return the digest as a lowercase hexadecimal string.
     #[must_use]
-    pub fn as_str(&self) -> &str {
+    pub(crate) fn as_str(&self) -> &str {
         &self.value
     }
 
@@ -48,7 +48,7 @@ impl<const LENGTH: usize> IntegrityHash<LENGTH> {
     /// `LENGTH` bytes long, and [`IntegrityHashError::NonHexadecimal`] when it
     /// contains a character that is not an ASCII hexadecimal digit. A
     /// hexadecimal value is lowercased on success.
-    pub fn try_new(mut value: String) -> Result<Self, IntegrityHashError> {
+    pub(crate) fn try_new(mut value: String) -> Result<Self, IntegrityHashError> {
         if value.len() != LENGTH {
             return Err(IntegrityHashError::InvalidLength { expected: LENGTH });
         }

@@ -34,7 +34,7 @@ use crate::domain::service::username_policy::UsernamePolicy;
 use crate::domain::service::username_policy::UsernamePolicyError;
 
 /// Use case implementation for registering a new user.
-pub struct RegisterUser<F, P> {
+pub(crate) struct RegisterUser<F, P> {
     /// Hasher for user passwords.
     password_hasher: Arc<P>,
     /// Factory opening the unit of work wrapping the registration.
@@ -44,7 +44,7 @@ pub struct RegisterUser<F, P> {
 impl<F: UnitOfWorkFactory, P: PasswordHasher> RegisterUser<F, P> {
     /// Create a new use case.
     #[must_use]
-    pub fn new(unit_of_work_factory: Arc<F>, password_hasher: Arc<P>) -> Self {
+    pub(crate) fn new(unit_of_work_factory: Arc<F>, password_hasher: Arc<P>) -> Self {
         Self {
             password_hasher,
             unit_of_work_factory,

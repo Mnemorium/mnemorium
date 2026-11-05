@@ -8,7 +8,7 @@ use crate::domain::port::error::RepositoryError;
 /// all-`None` filter returns every film.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct MovieFilter {
+pub(crate) struct MovieFilter {
     /// Filter on the film identifier.
     pub id: Option<NumericID>,
     /// Filter on the film name.
@@ -17,7 +17,7 @@ pub struct MovieFilter {
 
 /// Port for querying `Movie` with the video that backs it.
 #[cfg_attr(test, mockall::automock)]
-pub trait MovieRepository: Send + Sync {
+pub(crate) trait MovieRepository: Send + Sync {
     /// Search the films matching `filter`, returned as `Vec<Movie>`.
     ///
     /// Each film carries its genres and the video that backs it, so the caller

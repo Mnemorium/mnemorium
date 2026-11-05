@@ -25,7 +25,7 @@ use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 #[derive(Debug, Deserialize, IntoParams)]
 #[into_params(parameter_in = Query)]
 #[non_exhaustive]
-pub struct ListMusicGroupsQuery {
+pub(crate) struct ListMusicGroupsQuery {
     /// Maximum number of groups to return, between 1 and 100.
     #[param(default = 20, minimum = 1, maximum = 100)]
     pub limit: Option<usize>,
@@ -84,7 +84,7 @@ pub struct ListMusicGroupsQuery {
     ),
     summary = "List music groups"
 )]
-pub async fn get_music_group_list(
+pub(crate) async fn get_music_group_list(
     raw_query: Result<Query<ListMusicGroupsQuery>, QueryRejection>,
     caller: AuthenticatedUser,
     State(state): State<AppState>,

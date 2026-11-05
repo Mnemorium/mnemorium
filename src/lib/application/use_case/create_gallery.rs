@@ -23,7 +23,7 @@ use crate::domain::service::name_policy::NamePolicy;
 use crate::domain::service::name_policy::NamePolicyError;
 
 /// Use case implementation for creating a gallery.
-pub struct CreateGallery<F> {
+pub(crate) struct CreateGallery<F> {
     /// Factory opening the unit of work wrapping the creation.
     unit_of_work_factory: Arc<F>,
 }
@@ -31,7 +31,7 @@ pub struct CreateGallery<F> {
 impl<F: UnitOfWorkFactory> CreateGallery<F> {
     /// Create a new use case.
     #[must_use]
-    pub fn new(unit_of_work_factory: Arc<F>) -> Self {
+    pub(crate) fn new(unit_of_work_factory: Arc<F>) -> Self {
         Self {
             unit_of_work_factory,
         }

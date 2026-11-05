@@ -64,7 +64,7 @@ use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
     ),
     summary = "List the items of a gallery"
 )]
-pub async fn get_gallery_item_list(
+pub(crate) async fn get_gallery_item_list(
     Path(id): Path<String>,
     State(state): State<AppState>,
     caller: AuthenticatedUser,

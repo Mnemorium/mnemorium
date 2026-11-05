@@ -6,7 +6,7 @@ use crate::domain::model::video::Video;
 /// representations expose.
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
-pub struct VideoSummary {
+pub(crate) struct VideoSummary {
     /// Codec of the video.
     codec: String,
     /// Duration of the video, in milliseconds.
@@ -26,43 +26,43 @@ pub struct VideoSummary {
 impl VideoSummary {
     /// Return the codec of the video.
     #[must_use]
-    pub fn codec(&self) -> &str {
+    pub(crate) fn codec(&self) -> &str {
         &self.codec
     }
 
     /// Return the duration of the video, in milliseconds.
     #[must_use]
-    pub fn duration_ms(&self) -> f64 {
+    pub(crate) fn duration_ms(&self) -> f64 {
         self.duration_ms
     }
 
     /// Return the identifier of the backing file.
     #[must_use]
-    pub fn file_id(&self) -> NumericID {
+    pub(crate) fn file_id(&self) -> NumericID {
         self.file_id
     }
 
     /// Return the height of the video, in pixels.
     #[must_use]
-    pub fn height(&self) -> i64 {
+    pub(crate) fn height(&self) -> i64 {
         self.height
     }
 
     /// Return the unique identifier of the video.
     #[must_use]
-    pub fn id(&self) -> NumericID {
+    pub(crate) fn id(&self) -> NumericID {
         self.id
     }
 
     /// Return the scan type of the video.
     #[must_use]
-    pub fn scan_type(&self) -> ScanType {
+    pub(crate) fn scan_type(&self) -> ScanType {
         self.scan_type
     }
 
     /// Return the width of the video, in pixels.
     #[must_use]
-    pub fn width(&self) -> i64 {
+    pub(crate) fn width(&self) -> i64 {
         self.width
     }
 }

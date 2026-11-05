@@ -66,7 +66,7 @@ use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
     ),
     summary = "Fetch a show season episode"
 )]
-pub async fn get_series_episode(
+pub(crate) async fn get_series_episode(
     Path((series_id_value, season_index_value, episode_index_value)): Path<(
         String,
         String,

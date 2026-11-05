@@ -20,7 +20,7 @@ use crate::domain::service::authorization::Authorization;
 use crate::domain::service::authorization::Decision;
 
 /// Use case implementation for fetching a user by identifier.
-pub struct GetUser<F> {
+pub(crate) struct GetUser<F> {
     /// Factory opening the unit of work wrapping the read.
     unit_of_work_factory: Arc<F>,
 }
@@ -28,7 +28,7 @@ pub struct GetUser<F> {
 impl<F: UnitOfWorkFactory> GetUser<F> {
     /// Create a new use case.
     #[must_use]
-    pub fn new(unit_of_work_factory: Arc<F>) -> Self {
+    pub(crate) fn new(unit_of_work_factory: Arc<F>) -> Self {
         Self {
             unit_of_work_factory,
         }

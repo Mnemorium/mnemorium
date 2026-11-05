@@ -9,7 +9,7 @@ use crate::domain::model::video::Video;
 /// Error returned when initialising a `Movie`.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
-pub enum MovieError {
+pub(crate) enum MovieError {
     /// A genre identifier is empty.
     #[error("a genre identifier must not be empty")]
     InvalidGenre,
@@ -18,12 +18,16 @@ pub enum MovieError {
     InvalidName,
     /// An unexpected or unmapped error occurred.
     #[error("an unknown error occurred: {0}")]
+    #[expect(
+        dead_code,
+        reason = "the error enum keeps the catch-all variant the rulebook's error shape declares; no caller constructs it yet"
+    )]
     Unknown(#[source] anyhow::Error),
 }
 
 /// A film the server holds.
 #[derive(Debug, Clone, PartialEq)]
-pub struct Movie {
+pub(crate) struct Movie {
     /// Country of origin of the film.
     country_of_origin: String,
     /// Identifier of the image holding the film's artwork, when set.
@@ -45,43 +49,43 @@ pub struct Movie {
 impl Movie {
     /// Return the country of origin of the film.
     #[must_use]
-    pub fn country_of_origin(&self) -> &str {
+    pub(crate) fn country_of_origin(&self) -> &str {
         &self.country_of_origin
     }
 
     /// Return the identifier of the image holding the film's artwork, if any.
     #[must_use]
-    pub fn cover_image_id(&self) -> Option<NumericID> {
+    pub(crate) fn cover_image_id(&self) -> Option<NumericID> {
         self.cover_image_id
     }
 
     /// Return the identifiers of the genres the film is associated with.
     #[must_use]
-    pub fn genre_ids(&self) -> &[String] {
+    pub(crate) fn genre_ids(&self) -> &[String] {
         &self.genre_ids
     }
 
     /// Return the unique identifier.
     #[must_use]
-    pub fn id(&self) -> NumericID {
+    pub(crate) fn id(&self) -> NumericID {
         self.id
     }
 
     /// Return the name.
     #[must_use]
-    pub fn name(&self) -> &str {
+    pub(crate) fn name(&self) -> &str {
         &self.name
     }
 
     /// Return the plot.
     #[must_use]
-    pub fn plot(&self) -> &str {
+    pub(crate) fn plot(&self) -> &str {
         &self.plot
     }
 
     /// Return the date of the release.
     #[must_use]
-    pub fn release_date(&self) -> NaiveDate {
+    pub(crate) fn release_date(&self) -> NaiveDate {
         self.release_date
     }
 
@@ -95,7 +99,7 @@ impl Movie {
         clippy::too_many_arguments,
         reason = "the constructor mirrors the film's fields one-to-one"
     )]
-    pub fn try_new(
+    pub(crate) fn try_new(
         id: NumericID,
         name: String,
         plot: String,
@@ -125,7 +129,7 @@ impl Movie {
 
     /// Return the video backing the film.
     #[must_use]
-    pub fn video(&self) -> &Video {
+    pub(crate) fn video(&self) -> &Video {
         &self.video
     }
 }

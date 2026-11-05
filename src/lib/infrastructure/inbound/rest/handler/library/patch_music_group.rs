@@ -21,7 +21,7 @@ use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 /// Every field is optional: an omitted field keeps its stored value.
 #[derive(Debug, Deserialize, ToSchema)]
 #[non_exhaustive]
-pub struct PatchMusicGroupRequest {
+pub(crate) struct PatchMusicGroupRequest {
     /// Replacement identifier of the image holding the group's artwork.
     #[schema(example = 1)]
     pub cover_image_id: Option<NumericID>,
@@ -112,7 +112,7 @@ pub struct PatchMusicGroupRequest {
     ),
     summary = "Update a music group"
 )]
-pub async fn patch_music_group(
+pub(crate) async fn patch_music_group(
     Path(group_id_value): Path<String>,
     State(state): State<AppState>,
     caller: AuthenticatedUser,

@@ -7,7 +7,7 @@ use crate::domain::model::user::Role;
 /// Command to fetch the authenticated caller's own account.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct GetCurrentUserCommand {
+pub(crate) struct GetCurrentUserCommand {
     /// Identifier of the authenticated caller.
     user_id: NumericID,
 }
@@ -15,13 +15,13 @@ pub struct GetCurrentUserCommand {
 impl GetCurrentUserCommand {
     /// Create a new current-user command.
     #[must_use]
-    pub fn new(user_id: NumericID) -> Self {
+    pub(crate) fn new(user_id: NumericID) -> Self {
         Self { user_id }
     }
 
     /// Return the identifier of the authenticated caller.
     #[must_use]
-    pub fn user_id(&self) -> NumericID {
+    pub(crate) fn user_id(&self) -> NumericID {
         self.user_id
     }
 }
@@ -29,7 +29,7 @@ impl GetCurrentUserCommand {
 /// Response of a successful current-user lookup.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct GetCurrentUserResponse {
+pub(crate) struct GetCurrentUserResponse {
     /// Email address of the caller, when set.
     email: Option<String>,
     /// Unique identifier of the caller.
@@ -43,19 +43,19 @@ pub struct GetCurrentUserResponse {
 impl GetCurrentUserResponse {
     /// Return the email address, if any.
     #[must_use]
-    pub fn email(&self) -> Option<&str> {
+    pub(crate) fn email(&self) -> Option<&str> {
         self.email.as_deref()
     }
 
     /// Return the unique identifier of the caller.
     #[must_use]
-    pub fn id(&self) -> NumericID {
+    pub(crate) fn id(&self) -> NumericID {
         self.id
     }
 
     /// Create a new current-user response.
     #[must_use]
-    pub fn new(id: NumericID, username: String, email: Option<String>, role: Role) -> Self {
+    pub(crate) fn new(id: NumericID, username: String, email: Option<String>, role: Role) -> Self {
         Self {
             email,
             id,
@@ -66,13 +66,13 @@ impl GetCurrentUserResponse {
 
     /// Return the role of the caller.
     #[must_use]
-    pub fn role(&self) -> Role {
+    pub(crate) fn role(&self) -> Role {
         self.role
     }
 
     /// Return the username of the caller.
     #[must_use]
-    pub fn username(&self) -> &str {
+    pub(crate) fn username(&self) -> &str {
         &self.username
     }
 }
@@ -80,7 +80,7 @@ impl GetCurrentUserResponse {
 /// Error returned when fetching the current user.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
-pub enum GetCurrentUserError {
+pub(crate) enum GetCurrentUserError {
     /// The authenticated caller does not exist anymore.
     #[error("the authenticated user does not exist")]
     NoSuchUser,
@@ -91,7 +91,7 @@ pub enum GetCurrentUserError {
 
 /// Use case for fetching the current user.
 #[cfg_attr(test, mockall::automock)]
-pub trait GetCurrentUserUseCase: Send + Sync {
+pub(crate) trait GetCurrentUserUseCase: Send + Sync {
     /// Fetch the account of the authenticated caller.
     ///
     /// The future is returned erased (`dyn`, not `impl Future`), boxed and

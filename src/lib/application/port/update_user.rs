@@ -9,7 +9,7 @@ use crate::domain::service::username_policy::MIN_USERNAME_LENGTH;
 /// Command to update the profile of an existing user.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct UpdateUserCommand {
+pub(crate) struct UpdateUserCommand {
     /// Identifier of the authenticated caller requesting the update.
     caller_id: NumericID,
     /// New email address, when provided; `None` leaves it unchanged.
@@ -25,19 +25,19 @@ pub struct UpdateUserCommand {
 impl UpdateUserCommand {
     /// Return the identifier of the authenticated caller.
     #[must_use]
-    pub fn caller_id(&self) -> NumericID {
+    pub(crate) fn caller_id(&self) -> NumericID {
         self.caller_id
     }
 
     /// Return the new email address, if any.
     #[must_use]
-    pub fn email(&self) -> Option<&str> {
+    pub(crate) fn email(&self) -> Option<&str> {
         self.email.as_deref()
     }
 
     /// Create a new update-user command.
     #[must_use]
-    pub fn new(
+    pub(crate) fn new(
         caller_id: NumericID,
         user_id: NumericID,
         username: Option<String>,
@@ -55,19 +55,19 @@ impl UpdateUserCommand {
 
     /// Return the new role, if any.
     #[must_use]
-    pub fn role(&self) -> Option<Role> {
+    pub(crate) fn role(&self) -> Option<Role> {
         self.role
     }
 
     /// Return the identifier of the user to update.
     #[must_use]
-    pub fn user_id(&self) -> NumericID {
+    pub(crate) fn user_id(&self) -> NumericID {
         self.user_id
     }
 
     /// Return the new username, if any.
     #[must_use]
-    pub fn username(&self) -> Option<&str> {
+    pub(crate) fn username(&self) -> Option<&str> {
         self.username.as_deref()
     }
 }
@@ -75,7 +75,7 @@ impl UpdateUserCommand {
 /// Response of a successful user update.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct UpdateUserResponse {
+pub(crate) struct UpdateUserResponse {
     /// Email address of the user, when one was provided.
     email: Option<String>,
     /// Unique identifier of the user.
@@ -89,19 +89,19 @@ pub struct UpdateUserResponse {
 impl UpdateUserResponse {
     /// Return the email address, if any.
     #[must_use]
-    pub fn email(&self) -> Option<&str> {
+    pub(crate) fn email(&self) -> Option<&str> {
         self.email.as_deref()
     }
 
     /// Return the unique identifier of the user.
     #[must_use]
-    pub fn id(&self) -> NumericID {
+    pub(crate) fn id(&self) -> NumericID {
         self.id
     }
 
     /// Create a new update-user response.
     #[must_use]
-    pub fn new(id: NumericID, username: String, email: Option<String>, role: Role) -> Self {
+    pub(crate) fn new(id: NumericID, username: String, email: Option<String>, role: Role) -> Self {
         Self {
             email,
             id,
@@ -112,13 +112,13 @@ impl UpdateUserResponse {
 
     /// Return the role of the user.
     #[must_use]
-    pub fn role(&self) -> Role {
+    pub(crate) fn role(&self) -> Role {
         self.role
     }
 
     /// Return the username of the user.
     #[must_use]
-    pub fn username(&self) -> &str {
+    pub(crate) fn username(&self) -> &str {
         &self.username
     }
 }
@@ -126,7 +126,7 @@ impl UpdateUserResponse {
 /// Error returned when updating the profile of a user.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
-pub enum UpdateUserError {
+pub(crate) enum UpdateUserError {
     /// A user with this email already exists.
     #[error("email is already taken")]
     EmailAlreadyExists,
@@ -166,7 +166,7 @@ pub enum UpdateUserError {
 
 /// Use case for updating the profile of a user.
 #[cfg_attr(test, mockall::automock)]
-pub trait UpdateUserUseCase: Send + Sync {
+pub(crate) trait UpdateUserUseCase: Send + Sync {
     /// Update the profile of the requested user.
     ///
     /// The future is returned erased (`dyn`, not `impl Future`), boxed and

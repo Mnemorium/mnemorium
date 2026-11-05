@@ -40,7 +40,7 @@ const SECURITY_FLOOR: &str = "security=debug";
 ///
 /// Returns an error when the verbosity directives are invalid or when the file
 /// appender cannot be created (`OBS-007`).
-pub fn setup(logging: &Logging) -> anyhow::Result<WorkerGuard> {
+pub(crate) fn setup(logging: &Logging) -> anyhow::Result<WorkerGuard> {
     let with_floor = format!("{},{SECURITY_FLOOR}", logging.level().trim());
     let filter = EnvFilter::try_new(with_floor).context("invalid logging level directives")?;
 

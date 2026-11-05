@@ -12,7 +12,7 @@ use crate::domain::alias::NumericID;
 /// recording. Indexes are read as `INTEGER` and converted by the repository so
 /// a value outside the domain range is reported as a data-integrity failure.
 #[derive(Debug, Clone, sqlx::FromRow)]
-pub struct MusicAlbumRow {
+pub(crate) struct MusicAlbumRow {
     /// Identifier of the audio backing the recording, when the medium
     /// sequences a recording.
     pub audio_id: Option<NumericID>,

@@ -1,2 +1,4 @@
-pub mod media_ingest;
-pub mod rest;
+/// The library scan and observer that drive media ingestion.
+pub(crate) mod media_ingest;
+/// The REST inbound adapter.
+pub(crate) mod rest;

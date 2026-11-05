@@ -10,7 +10,7 @@ use crate::domain::model::integrity_hash::IntegrityHash;
 /// Command to write one chunk of an upload session.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct WriteUploadChunkCommand {
+pub(crate) struct WriteUploadChunkCommand {
     /// Raw bytes of the chunk.
     chunk: Vec<u8>,
     /// Zero-based number of the chunk.
@@ -28,25 +28,25 @@ pub struct WriteUploadChunkCommand {
 impl WriteUploadChunkCommand {
     /// Return the raw bytes of the chunk.
     #[must_use]
-    pub fn chunk(&self) -> &[u8] {
+    pub(crate) fn chunk(&self) -> &[u8] {
         &self.chunk
     }
 
     /// Return the zero-based number of the chunk.
     #[must_use]
-    pub fn chunk_number(&self) -> u64 {
+    pub(crate) fn chunk_number(&self) -> u64 {
         self.chunk_number
     }
 
     /// Return the integrity hash of the chunk supplied by the client.
     #[must_use]
-    pub fn content_digest(&self) -> &IntegrityHash<DIGEST_HEX_LENGTH> {
+    pub(crate) fn content_digest(&self) -> &IntegrityHash<DIGEST_HEX_LENGTH> {
         &self.content_digest
     }
 
     /// Create a new write-upload-chunk command.
     #[must_use]
-    pub fn new(
+    pub(crate) fn new(
         upload_id: NumericID,
         chunk_number: u64,
         start: u64,
@@ -66,19 +66,19 @@ impl WriteUploadChunkCommand {
 
     /// Return the start offset of the chunk declared by the client.
     #[must_use]
-    pub fn start(&self) -> u64 {
+    pub(crate) fn start(&self) -> u64 {
         self.start
     }
 
     /// Return the identifier of the upload session.
     #[must_use]
-    pub fn upload_id(&self) -> NumericID {
+    pub(crate) fn upload_id(&self) -> NumericID {
         self.upload_id
     }
 
     /// Return the identifier of the owning user.
     #[must_use]
-    pub fn user_id(&self) -> NumericID {
+    pub(crate) fn user_id(&self) -> NumericID {
         self.user_id
     }
 }
@@ -86,7 +86,7 @@ impl WriteUploadChunkCommand {
 /// Response of a successfully written chunk.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct WriteUploadChunkResponse {
+pub(crate) struct WriteUploadChunkResponse {
     /// One character per chunk, `1` when received and `0` otherwise.
     bitmap: String,
     /// Date and time at which the upload session expires.
@@ -103,31 +103,31 @@ pub struct WriteUploadChunkResponse {
 impl WriteUploadChunkResponse {
     /// Return the per-chunk received bitmap.
     #[must_use]
-    pub fn bitmap(&self) -> &str {
+    pub(crate) fn bitmap(&self) -> &str {
         &self.bitmap
     }
 
     /// Return the date and time at which the upload session expires.
     #[must_use]
-    pub fn expires_at(&self) -> NaiveDateTime {
+    pub(crate) fn expires_at(&self) -> NaiveDateTime {
         self.expires_at
     }
 
     /// Return the unique identifier of the caller's file, if any.
     #[must_use]
-    pub fn file_id(&self) -> Option<NumericID> {
+    pub(crate) fn file_id(&self) -> Option<NumericID> {
         self.file_id
     }
 
     /// Return whether the upload session has been finished.
     #[must_use]
-    pub fn is_finished(&self) -> bool {
+    pub(crate) fn is_finished(&self) -> bool {
         self.is_finished
     }
 
     /// Create a new write-upload-chunk response.
     #[must_use]
-    pub fn new(
+    pub(crate) fn new(
         bitmap: String,
         expires_at: NaiveDateTime,
         file_id: Option<NumericID>,
@@ -145,7 +145,7 @@ impl WriteUploadChunkResponse {
 
     /// Return the total number of chunks the upload is split into.
     #[must_use]
-    pub fn total_chunks(&self) -> usize {
+    pub(crate) fn total_chunks(&self) -> usize {
         self.total_chunks
     }
 }
@@ -153,7 +153,7 @@ impl WriteUploadChunkResponse {
 /// Error returned when writing one chunk of an upload session.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
-pub enum WriteUploadChunkError {
+pub(crate) enum WriteUploadChunkError {
     /// The upload session has already been finished.
     #[error("the upload session has already been finished")]
     AlreadyFinished,
@@ -185,7 +185,7 @@ pub enum WriteUploadChunkError {
 
 /// Use case for writing one chunk of an upload session.
 #[cfg_attr(test, mockall::automock)]
-pub trait WriteUploadChunkUseCase: Send + Sync {
+pub(crate) trait WriteUploadChunkUseCase: Send + Sync {
     /// Write one chunk of an upload session.
     ///
     /// The future is returned erased (`dyn`, not `impl Future`), boxed and

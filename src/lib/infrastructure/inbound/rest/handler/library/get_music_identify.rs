@@ -26,7 +26,7 @@ use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 #[derive(Debug, Deserialize, IntoParams)]
 #[into_params(parameter_in = Query)]
 #[non_exhaustive]
-pub struct IdentifyMusicQuery {
+pub(crate) struct IdentifyMusicQuery {
     /// Group the caller knows, when any.
     pub group: Option<String>,
     /// Kind of work to search for: `album`, `release` or `recording`.
@@ -41,7 +41,7 @@ pub struct IdentifyMusicQuery {
 #[derive(Debug, Serialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "lowercase")]
 #[non_exhaustive]
-pub enum MusicCandidateResponse {
+enum MusicCandidateResponse {
     /// The abstract album, independent of any one edition.
     Album {
         /// Group the provider reports, when it reports one.
@@ -141,7 +141,7 @@ impl From<&MusicCandidate> for MusicCandidateResponse {
 /// addresses the search view the representation reports.
 #[derive(Debug, Serialize, ToSchema)]
 #[non_exhaustive]
-pub struct MusicCandidateListResponse {
+struct MusicCandidateListResponse {
     /// Whether a music metadata provider is configured.
     pub available: bool,
     /// Candidates the provider reported, in its order.
@@ -154,7 +154,7 @@ pub struct MusicCandidateListResponse {
 impl MusicCandidateListResponse {
     /// Build the representation of a completed search over `href`.
     #[must_use]
-    pub fn new(href: &str, candidates: &[MusicCandidate]) -> Self {
+    pub(crate) fn new(href: &str, candidates: &[MusicCandidate]) -> Self {
         Self {
             links: SelfLinks::new(href),
             available: true,
@@ -167,7 +167,7 @@ impl MusicCandidateListResponse {
 
     /// Build the representation of a surface with no configured provider.
     #[must_use]
-    pub fn unavailable(href: &str) -> Self {
+    pub(crate) fn unavailable(href: &str) -> Self {
         Self {
             links: SelfLinks::new(href),
             available: false,
@@ -231,7 +231,7 @@ impl MusicCandidateListResponse {
     ),
     summary = "Search the configured music metadata provider"
 )]
-pub async fn get_music_identify(
+pub(crate) async fn get_music_identify(
     raw_query: Result<Query<IdentifyMusicQuery>, QueryRejection>,
     caller: AuthenticatedUser,
     State(state): State<AppState>,

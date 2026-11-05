@@ -45,7 +45,7 @@ impl From<PasswordHashError> for PasswordHasherError {
 }
 
 /// Password hasher backed by the Argon2 algorithm.
-pub struct Argon2PasswordHasher {
+pub(crate) struct Argon2PasswordHasher {
     /// Site-wide secret mixed into every password hash as a pepper.
     pepper: Vec<u8>,
 }
@@ -66,7 +66,7 @@ impl Argon2PasswordHasher {
 
     /// Create a new hasher that mixes `pepper` into every password hash.
     #[must_use]
-    pub fn new(pepper: Vec<u8>) -> Self {
+    pub(crate) fn new(pepper: Vec<u8>) -> Self {
         Self { pepper }
     }
 }

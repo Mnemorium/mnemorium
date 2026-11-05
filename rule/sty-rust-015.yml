@@ -8,5 +8,8 @@ files:
 rule:
   all:
     - kind: enum_item
-    - pattern: pub enum $ERROR_ENUM
-    - regex: '^pub enum \w+Error\b'
+    - any:
+        - pattern: pub enum $ERROR_ENUM
+        - pattern: pub(crate) enum $ERROR_ENUM
+        - pattern: enum $ERROR_ENUM
+    - regex: '^(pub(\(crate\))? )?enum \w+Error\b'

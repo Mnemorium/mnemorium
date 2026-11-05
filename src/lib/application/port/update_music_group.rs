@@ -7,7 +7,7 @@ use crate::domain::model::music_group::MusicGroup;
 /// Command to update a music group.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct UpdateMusicGroupCommand {
+pub(crate) struct UpdateMusicGroupCommand {
     /// Identifier of the authenticated caller.
     caller_id: NumericID,
     /// Identifier of the image holding the group's artwork, when the request
@@ -22,31 +22,31 @@ pub struct UpdateMusicGroupCommand {
 impl UpdateMusicGroupCommand {
     /// Return the identifier of the authenticated caller.
     #[must_use]
-    pub fn caller_id(&self) -> NumericID {
+    pub(crate) fn caller_id(&self) -> NumericID {
         self.caller_id
     }
 
     /// Return the replacement cover image, if any.
     #[must_use]
-    pub fn cover_image_id(&self) -> Option<NumericID> {
+    pub(crate) fn cover_image_id(&self) -> Option<NumericID> {
         self.cover_image_id
     }
 
     /// Return the identifier of the group to update.
     #[must_use]
-    pub fn group_id(&self) -> NumericID {
+    pub(crate) fn group_id(&self) -> NumericID {
         self.group_id
     }
 
     /// Return the new stage name, if any.
     #[must_use]
-    pub fn name(&self) -> Option<&str> {
+    pub(crate) fn name(&self) -> Option<&str> {
         self.name.as_deref()
     }
 
     /// Create a new update-group command.
     #[must_use]
-    pub fn new(
+    pub(crate) fn new(
         caller_id: NumericID,
         group_id: NumericID,
         name: Option<String>,
@@ -64,7 +64,7 @@ impl UpdateMusicGroupCommand {
 /// Response of a successful group update: the stored group.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct UpdateMusicGroupResponse {
+pub(crate) struct UpdateMusicGroupResponse {
     /// The group that was stored.
     group: MusicGroup,
 }
@@ -72,13 +72,13 @@ pub struct UpdateMusicGroupResponse {
 impl UpdateMusicGroupResponse {
     /// Return the group that was stored.
     #[must_use]
-    pub fn group(&self) -> &MusicGroup {
+    pub(crate) fn group(&self) -> &MusicGroup {
         &self.group
     }
 
     /// Create a new updated-group response.
     #[must_use]
-    pub fn new(group: MusicGroup) -> Self {
+    pub(crate) fn new(group: MusicGroup) -> Self {
         Self { group }
     }
 }
@@ -86,7 +86,7 @@ impl UpdateMusicGroupResponse {
 /// Error returned when updating a music group.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
-pub enum UpdateMusicGroupError {
+pub(crate) enum UpdateMusicGroupError {
     /// The stored group refuses the update: the default group is protected, or
     /// the cover image belongs to a user.
     #[error("the music group cannot be updated")]
@@ -96,6 +96,10 @@ pub enum UpdateMusicGroupError {
     Forbidden,
     /// The cover image belongs to a user, not to the library.
     #[error("the cover image is not a library image")]
+    #[expect(
+        dead_code,
+        reason = "the error enum keeps the catch-all variant the rulebook's error shape declares; no caller constructs it yet"
+    )]
     InvalidCover,
     /// The name is empty or made only of whitespace.
     #[error("the name must not be empty")]
@@ -119,7 +123,7 @@ pub enum UpdateMusicGroupError {
 
 /// Use case for updating a music group.
 #[cfg_attr(test, mockall::automock)]
-pub trait UpdateMusicGroupUseCase: Send + Sync {
+pub(crate) trait UpdateMusicGroupUseCase: Send + Sync {
     /// Update the requested group.
     ///
     /// The future is returned erased (`dyn`, not `impl Future`), boxed and

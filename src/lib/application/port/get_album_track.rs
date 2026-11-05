@@ -6,7 +6,7 @@ use crate::domain::alias::NumericID;
 /// Command to fetch one track of one medium of a music album.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct GetAlbumTrackCommand {
+pub(crate) struct GetAlbumTrackCommand {
     /// Identifier of the album the track belongs to.
     album_id: NumericID,
     /// Identifier of the authenticated caller.
@@ -20,25 +20,25 @@ pub struct GetAlbumTrackCommand {
 impl GetAlbumTrackCommand {
     /// Return the identifier of the album the track belongs to.
     #[must_use]
-    pub fn album_id(&self) -> NumericID {
+    pub(crate) fn album_id(&self) -> NumericID {
         self.album_id
     }
 
     /// Return the identifier of the authenticated caller.
     #[must_use]
-    pub fn caller_id(&self) -> NumericID {
+    pub(crate) fn caller_id(&self) -> NumericID {
         self.caller_id
     }
 
     /// Return the album-scoped index of the medium the track is placed in.
     #[must_use]
-    pub fn medium_index(&self) -> u8 {
+    pub(crate) fn medium_index(&self) -> u8 {
         self.medium_index
     }
 
     /// Create a new fetch-album-track command.
     #[must_use]
-    pub fn new(
+    pub(crate) fn new(
         caller_id: NumericID,
         album_id: NumericID,
         medium_index: u8,
@@ -54,7 +54,7 @@ impl GetAlbumTrackCommand {
 
     /// Return the position of the track within its medium.
     #[must_use]
-    pub fn track_index(&self) -> u8 {
+    pub(crate) fn track_index(&self) -> u8 {
         self.track_index
     }
 }
@@ -62,7 +62,7 @@ impl GetAlbumTrackCommand {
 /// Response of a successful track lookup: one track of an album medium.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct GetAlbumTrackResponse {
+pub(crate) struct GetAlbumTrackResponse {
     /// Identifier of the album the track belongs to.
     album_id: NumericID,
     /// Identifier of the backing file.
@@ -82,37 +82,37 @@ pub struct GetAlbumTrackResponse {
 impl GetAlbumTrackResponse {
     /// Return the identifier of the album the track belongs to.
     #[must_use]
-    pub fn album_id(&self) -> NumericID {
+    pub(crate) fn album_id(&self) -> NumericID {
         self.album_id
     }
 
     /// Return the identifier of the backing file.
     #[must_use]
-    pub fn file_id(&self) -> NumericID {
+    pub(crate) fn file_id(&self) -> NumericID {
         self.file_id
     }
 
     /// Return the ISRC code of the recording, if any.
     #[must_use]
-    pub fn isrc_code(&self) -> Option<&str> {
+    pub(crate) fn isrc_code(&self) -> Option<&str> {
         self.isrc_code.as_deref()
     }
 
     /// Return the album-scoped index of the medium the track is placed in.
     #[must_use]
-    pub fn medium_index(&self) -> u8 {
+    pub(crate) fn medium_index(&self) -> u8 {
         self.medium_index
     }
 
     /// Return the name of the recording, if it has one.
     #[must_use]
-    pub fn name(&self) -> Option<&str> {
+    pub(crate) fn name(&self) -> Option<&str> {
         self.name.as_deref()
     }
 
     /// Create a new fetch-album-track response.
     #[must_use]
-    pub fn new(
+    pub(crate) fn new(
         album_id: NumericID,
         medium_index: u8,
         track_index: u8,
@@ -134,13 +134,13 @@ impl GetAlbumTrackResponse {
 
     /// Return the identifier of the shared recording the track places.
     #[must_use]
-    pub fn recording_id(&self) -> NumericID {
+    pub(crate) fn recording_id(&self) -> NumericID {
         self.recording_id
     }
 
     /// Return the position of the track within its medium.
     #[must_use]
-    pub fn track_index(&self) -> u8 {
+    pub(crate) fn track_index(&self) -> u8 {
         self.track_index
     }
 }
@@ -148,7 +148,7 @@ impl GetAlbumTrackResponse {
 /// Error returned when fetching one track of an album medium.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
-pub enum GetAlbumTrackError {
+pub(crate) enum GetAlbumTrackError {
     /// No album matches the requested identifier.
     #[error("a music album with this identifier does not exist")]
     NoSuchAlbum,
@@ -168,7 +168,7 @@ pub enum GetAlbumTrackError {
 
 /// Use case for fetching one track of a music album medium.
 #[cfg_attr(test, mockall::automock)]
-pub trait GetAlbumTrackUseCase: Send + Sync {
+pub(crate) trait GetAlbumTrackUseCase: Send + Sync {
     /// Fetch the requested track, scoped to its album and medium.
     ///
     /// The future is returned erased (`dyn`, not `impl Future`), boxed and

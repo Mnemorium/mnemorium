@@ -64,7 +64,7 @@ use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
     ),
     summary = "Fetch a show season"
 )]
-pub async fn get_series_season(
+pub(crate) async fn get_series_season(
     Path((series_id_value, season_index_value)): Path<(String, String)>,
     State(state): State<AppState>,
     caller: AuthenticatedUser,

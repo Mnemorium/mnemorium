@@ -103,7 +103,7 @@ use crate::infrastructure::outbound::sqlx::unit_of_work::SqlxUnitOfWorkFactory;
 /// fixed storage root the Asset use cases write to. The probe permit pool is a
 /// startup value the composition root captured; each accessor builds the probe
 /// adapter afresh from it and stores neither.
-pub struct RuntimeLibraryUseCaseFactory {
+pub(crate) struct RuntimeLibraryUseCaseFactory {
     /// Immutable configuration the metadata chain is resolved from.
     configuration: Arc<Configuration>,
     /// Permit pool bounding concurrent probes, shared with the upload path.
@@ -115,7 +115,7 @@ pub struct RuntimeLibraryUseCaseFactory {
 impl RuntimeLibraryUseCaseFactory {
     /// Create a new factory.
     #[must_use]
-    pub fn new(
+    pub(crate) fn new(
         unit_of_work_factory: Arc<SqlxUnitOfWorkFactory>,
         probe_permits: Arc<Semaphore>,
         configuration: Arc<Configuration>,

@@ -10,7 +10,7 @@ use crate::domain::model::integrity_hash::IntegrityHash;
 /// Command to begin a chunked upload session.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct BeginUploadCommand {
+pub(crate) struct BeginUploadCommand {
     /// Declared media type of the file content.
     content_type: String,
     /// Original name of the file being uploaded.
@@ -26,31 +26,31 @@ pub struct BeginUploadCommand {
 impl BeginUploadCommand {
     /// Return the declared media type.
     #[must_use]
-    pub fn content_type(&self) -> &str {
+    pub(crate) fn content_type(&self) -> &str {
         &self.content_type
     }
 
     /// Return the original file name.
     #[must_use]
-    pub fn file_name(&self) -> &str {
+    pub(crate) fn file_name(&self) -> &str {
         &self.file_name
     }
 
     /// Return the total file size, in bytes.
     #[must_use]
-    pub fn file_size(&self) -> u64 {
+    pub(crate) fn file_size(&self) -> u64 {
         self.file_size
     }
 
     /// Return the integrity hash supplied by the client.
     #[must_use]
-    pub fn integrity_hash(&self) -> &IntegrityHash<DIGEST_HEX_LENGTH> {
+    pub(crate) fn integrity_hash(&self) -> &IntegrityHash<DIGEST_HEX_LENGTH> {
         &self.integrity_hash
     }
 
     /// Create a new begin-upload command.
     #[must_use]
-    pub fn new(
+    pub(crate) fn new(
         file_name: String,
         file_size: u64,
         content_type: String,
@@ -68,7 +68,7 @@ impl BeginUploadCommand {
 
     /// Return the identifier of the owning user.
     #[must_use]
-    pub fn user_id(&self) -> NumericID {
+    pub(crate) fn user_id(&self) -> NumericID {
         self.user_id
     }
 }
@@ -76,7 +76,7 @@ impl BeginUploadCommand {
 /// Response of a successfully begun upload session.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct BeginUploadResponse {
+pub(crate) struct BeginUploadResponse {
     /// Fixed size of every chunk except the last, in bytes.
     chunk_size: u64,
     /// Date and time at which the upload session expires.
@@ -88,19 +88,19 @@ pub struct BeginUploadResponse {
 impl BeginUploadResponse {
     /// Return the fixed chunk size, in bytes.
     #[must_use]
-    pub fn chunk_size(&self) -> u64 {
+    pub(crate) fn chunk_size(&self) -> u64 {
         self.chunk_size
     }
 
     /// Return the date and time at which the upload session expires.
     #[must_use]
-    pub fn expires_at(&self) -> NaiveDateTime {
+    pub(crate) fn expires_at(&self) -> NaiveDateTime {
         self.expires_at
     }
 
     /// Create a new begin-upload response.
     #[must_use]
-    pub fn new(upload_id: NumericID, chunk_size: u64, expires_at: NaiveDateTime) -> Self {
+    pub(crate) fn new(upload_id: NumericID, chunk_size: u64, expires_at: NaiveDateTime) -> Self {
         Self {
             chunk_size,
             expires_at,
@@ -110,7 +110,7 @@ impl BeginUploadResponse {
 
     /// Return the unique identifier of the upload session.
     #[must_use]
-    pub fn upload_id(&self) -> NumericID {
+    pub(crate) fn upload_id(&self) -> NumericID {
         self.upload_id
     }
 }
@@ -118,7 +118,7 @@ impl BeginUploadResponse {
 /// Error returned when beginning an upload session.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
-pub enum BeginUploadError {
+pub(crate) enum BeginUploadError {
     /// The file size exceeds the maximum allowed size.
     #[error("the file size exceeds the maximum allowed size")]
     FileTooLarge,
@@ -141,7 +141,7 @@ pub enum BeginUploadError {
 
 /// Use case for beginning an upload session.
 #[cfg_attr(test, mockall::automock)]
-pub trait BeginUploadUseCase: Send + Sync {
+pub(crate) trait BeginUploadUseCase: Send + Sync {
     /// Begin a new chunked upload session.
     ///
     /// The future is returned erased (`dyn`, not `impl Future`), boxed and

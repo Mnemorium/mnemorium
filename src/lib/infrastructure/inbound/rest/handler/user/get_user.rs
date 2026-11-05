@@ -75,7 +75,7 @@ impl From<GetUserError> for ApiError {
     ),
     summary = "Fetch a user by identifier"
 )]
-pub async fn get_user(
+pub(crate) async fn get_user(
     Path(id): Path<String>,
     State(state): State<AppState>,
     caller: AuthenticatedUser,

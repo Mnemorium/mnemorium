@@ -13,7 +13,7 @@ use crate::domain::alias::NumericID;
 /// and converted by the repository so a value outside the domain range is
 /// reported as a data-integrity failure.
 #[derive(Debug, Clone, sqlx::FromRow)]
-pub struct SeriesRow {
+pub(crate) struct SeriesRow {
     /// Date of the first airing of the episode, when the season holds one.
     pub air_date: Option<NaiveDate>,
     /// Codec of the video, when the season holds an episode.

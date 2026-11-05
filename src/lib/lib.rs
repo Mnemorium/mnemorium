@@ -7,12 +7,15 @@
     allow(
         clippy::too_many_arguments,
         reason = "We are less strict about test code"
-    ),
-    allow(clippy::single_call_fn, reason = "We are less strict about test code")
+    )
 )]
-pub mod application;
-pub mod domain;
-pub mod infrastructure;
+pub mod app;
+/// The application layer: use-case ports and their implementations.
+pub(crate) mod application;
+/// The domain layer: models, ports and services.
+pub(crate) mod domain;
+/// The infrastructure layer: inbound and outbound adapters.
+pub(crate) mod infrastructure;
 
 /// Fixtures shared by the in-crate test modules.
 #[cfg(test)]
@@ -97,10 +100,11 @@ mod test_helpers {
     use crate::infrastructure::inbound::rest::app_state::AppState;
 
     /// Digest of the content the asset fixtures persist.
-    pub const DIGEST: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+    pub(crate) const DIGEST: &str =
+        "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 
     /// Size of every upload fixture chunk, in bytes.
-    pub const CHUNK_SIZE: u64 = 4;
+    pub(crate) const CHUNK_SIZE: u64 = 4;
 
     /// A password that satisfies the password policy.
     ///
@@ -108,18 +112,17 @@ mod test_helpers {
     /// authenticating, or provisioning a credential. Tests whose subject is
     /// password behaviour (policy validation, wrong-password rejection,
     /// change-password, hashing, verification) keep an explicit password.
-    pub const SECRET_PASSWORD: &str = "C0rrect!Horse";
+    pub(crate) const SECRET_PASSWORD: &str = "C0rrect!Horse";
 
     /// JWT secret the test `AppState` fixtures are built with.
     ///
     /// The auth middleware builds its token provider from the instance
     /// identity, so tests mint tokens with this value.
-    pub const TEST_JWT_SECRET: &str =
+    pub(crate) const TEST_JWT_SECRET: &str =
         "0000000000000000000000000000000000000000000000000000000000000000";
 
     /// Site pepper the test `AppState` fixtures are built with.
-    pub const TEST_PEPPER: &str =
-        "1111111111111111111111111111111111111111111111111111111111111111";
+    const TEST_PEPPER: &str = "1111111111111111111111111111111111111111111111111111111111111111";
 
     /// Fake unit of work wiring mocked repositories and recording its outcome.
     ///
@@ -132,7 +135,7 @@ mod test_helpers {
     /// test builds one from `..TestUnitOfWork::default()` and names only the
     /// repositories it stubs, so adding a repository to a context touches this
     /// fixture alone.
-    pub struct TestUnitOfWork {
+    pub(crate) struct TestUnitOfWork {
         /// Audio repository.
         pub audios: MockAudioRepository,
         /// Set to force `commit` to fail.
@@ -285,7 +288,7 @@ mod test_helpers {
 
     /// Fake factory handing out a queue of prepared [`TestUnitOfWork`]s, one per
     /// `begin` call, so retry loops can bind a unit of work per attempt.
-    pub struct TestUnitOfWorkFactory {
+    pub(crate) struct TestUnitOfWorkFactory {
         /// Popped from the front by each `begin` call.
         pub unit_of_works: UnitOfWorkQueue,
     }
@@ -293,7 +296,7 @@ mod test_helpers {
     impl TestUnitOfWorkFactory {
         /// Hand out `unit_of_work` on the first `begin` call.
         #[must_use]
-        pub fn new(unit_of_work: TestUow) -> Self {
+        pub(crate) fn new(unit_of_work: TestUow) -> Self {
             Self {
                 unit_of_works: Mutex::new(vec![unit_of_work]),
             }
@@ -332,13 +335,13 @@ mod test_helpers {
     }
 
     /// The mocked unit of work shared by every fixture.
-    pub type TestUow = TestUnitOfWork;
+    pub(crate) type TestUow = TestUnitOfWork;
 
     /// Factory whose unit of work is wired to the `mockall` repository mocks.
-    pub type TestFactory = TestUnitOfWorkFactory;
+    pub(crate) type TestFactory = TestUnitOfWorkFactory;
 
     /// The Asset fixture produced by [`AssetFactoryHarness::new`].
-    pub struct AssetFactoryHarness {
+    pub(crate) struct AssetFactoryHarness {
         /// Set to force `commit` to fail.
         pub commit_fails: Arc<AtomicBool>,
         /// Set when the unit of work is committed.
@@ -353,7 +356,7 @@ mod test_helpers {
         /// Wrap an Asset `unit_of_work` in a factory, sharing its
         /// transaction-lifecycle flags.
         #[must_use]
-        pub fn new(unit_of_work: TestUow) -> Self {
+        pub(crate) fn new(unit_of_work: TestUow) -> Self {
             let committed = Arc::clone(&unit_of_work.committed);
             let commit_fails = Arc::clone(&unit_of_work.commit_fails);
             let rolled_back = Arc::clone(&unit_of_work.rolled_back);
@@ -367,7 +370,7 @@ mod test_helpers {
     }
 
     /// The Library fixture produced by [`GalleryFactoryHarness::new`].
-    pub struct GalleryFactoryHarness {
+    pub(crate) struct GalleryFactoryHarness {
         /// Set to force `commit` to fail.
         pub commit_fails: Arc<AtomicBool>,
         /// Set when the unit of work is committed.
@@ -382,7 +385,7 @@ mod test_helpers {
         /// Wrap a Library `unit_of_work` in a factory, sharing its
         /// transaction-lifecycle flags.
         #[must_use]
-        pub fn new(unit_of_work: TestUow) -> Self {
+        pub(crate) fn new(unit_of_work: TestUow) -> Self {
             let committed = Arc::clone(&unit_of_work.committed);
             let commit_fails = Arc::clone(&unit_of_work.commit_fails);
             let rolled_back = Arc::clone(&unit_of_work.rolled_back);
@@ -400,7 +403,7 @@ mod test_helpers {
     /// # Errors
     ///
     /// Returns an error when the fixed identity cannot be built.
-    pub fn instance_state() -> Result<InstanceState, Box<dyn Error>> {
+    pub(crate) fn instance_state() -> Result<InstanceState, Box<dyn Error>> {
         Ok(InstanceState::try_new(
             0,
             TEST_PEPPER.to_owned(),
@@ -417,7 +420,7 @@ mod test_helpers {
     /// # Errors
     ///
     /// Returns an error when the fixed identity cannot be built.
-    pub fn app_state() -> Result<AppState, Box<dyn Error>> {
+    pub(crate) fn app_state() -> Result<AppState, Box<dyn Error>> {
         Ok(AppState::new(
             Arc::new(MockAssetUseCaseFactory::new()),
             Arc::new(Configuration::default()),
@@ -435,7 +438,7 @@ mod test_helpers {
     /// # Errors
     ///
     /// Returns an error when the fixed identity cannot be built.
-    pub fn app_state_with_identity(
+    pub(crate) fn app_state_with_identity(
         identity_use_case_factory: Arc<dyn IdentityUseCaseFactory>,
     ) -> Result<AppState, Box<dyn Error>> {
         Ok(AppState::new(
@@ -455,7 +458,7 @@ mod test_helpers {
     /// # Errors
     ///
     /// Returns an error when the fixed identity cannot be built.
-    pub fn app_state_with_user(
+    pub(crate) fn app_state_with_user(
         user_use_case_factory: Arc<dyn UserUseCaseFactory>,
     ) -> Result<AppState, Box<dyn Error>> {
         Ok(AppState::new(
@@ -475,7 +478,7 @@ mod test_helpers {
     /// # Errors
     ///
     /// Returns an error when the fixed identity cannot be built.
-    pub fn app_state_with_library(
+    pub(crate) fn app_state_with_library(
         library_use_case_factory: Arc<dyn LibraryUseCaseFactory>,
     ) -> Result<AppState, Box<dyn Error>> {
         Ok(AppState::new(
@@ -496,7 +499,7 @@ mod test_helpers {
     /// # Errors
     ///
     /// Returns an error when the fixed identity cannot be built.
-    pub fn app_state_with_asset(
+    pub(crate) fn app_state_with_asset(
         asset_use_case_factory: Arc<dyn AssetUseCaseFactory>,
     ) -> Result<AppState, Box<dyn Error>> {
         Ok(AppState::new(
@@ -515,7 +518,7 @@ mod test_helpers {
     /// the handler-owned message without depending on the HAL error envelope
     /// that the root middleware builds (`TEST-047`).
     #[must_use]
-    pub fn error_message_of(response: &Response) -> Option<String> {
+    pub(crate) fn error_message_of(response: &Response) -> Option<String> {
         response
             .extensions()
             .get::<ApiErrorMessage>()
@@ -524,13 +527,13 @@ mod test_helpers {
 
     /// The release date the album fixtures carry.
     #[must_use]
-    pub fn album_release_date() -> NaiveDate {
+    pub(crate) fn album_release_date() -> NaiveDate {
         NaiveDate::from_ymd_opt(1959, 8, 17).unwrap_or_default()
     }
 
     /// The date the video fixtures air or release on.
     #[must_use]
-    pub fn video_date() -> NaiveDate {
+    pub(crate) fn video_date() -> NaiveDate {
         NaiveDate::from_ymd_opt(1990, 4, 8).unwrap_or_default()
     }
 
@@ -539,7 +542,10 @@ mod test_helpers {
     /// # Errors
     ///
     /// Returns an error when the fixed video values violate the domain rules.
-    pub fn sample_video(video_id: NumericID, file_id: NumericID) -> Result<Video, Box<dyn Error>> {
+    pub(crate) fn sample_video(
+        video_id: NumericID,
+        file_id: NumericID,
+    ) -> Result<Video, Box<dyn Error>> {
         Ok(Video::try_new(
             video_id,
             1000.0,
@@ -559,7 +565,7 @@ mod test_helpers {
     /// # Errors
     ///
     /// Returns an error when the fixed film values violate the domain rules.
-    pub fn sample_movie(id: NumericID) -> Result<Movie, Box<dyn Error>> {
+    pub(crate) fn sample_movie(id: NumericID) -> Result<Movie, Box<dyn Error>> {
         Ok(Movie::try_new(
             id,
             format!("Movie {id}"),
@@ -577,7 +583,7 @@ mod test_helpers {
     /// # Errors
     ///
     /// Returns an error when the fixed album values violate the domain rules.
-    pub fn sample_album(
+    pub(crate) fn sample_album(
         id: NumericID,
         mediums: Vec<MusicMedium>,
     ) -> Result<MusicAlbum, Box<dyn Error>> {
@@ -599,7 +605,10 @@ mod test_helpers {
     /// # Errors
     ///
     /// Returns an error when the fixed show values violate the domain rules.
-    pub fn sample_series(id: NumericID, seasons: Vec<Season>) -> Result<Series, Box<dyn Error>> {
+    pub(crate) fn sample_series(
+        id: NumericID,
+        seasons: Vec<Season>,
+    ) -> Result<Series, Box<dyn Error>> {
         Ok(Series::try_new(
             id,
             format!("Series {id}"),
@@ -614,7 +623,7 @@ mod test_helpers {
 
     /// Build a season at `season_index` holding `episodes`.
     #[must_use]
-    pub fn sample_season(season_index: u32, episodes: Vec<Episode>) -> Season {
+    pub(crate) fn sample_season(season_index: u32, episodes: Vec<Episode>) -> Season {
         Season::new(SeasonIndex::new(season_index), None, None, episodes)
     }
 
@@ -623,7 +632,7 @@ mod test_helpers {
     /// # Errors
     ///
     /// Returns an error when the fixed episode values violate the domain rules.
-    pub fn sample_episode(
+    pub(crate) fn sample_episode(
         episode_index: u32,
         video_id: NumericID,
     ) -> Result<Episode, Box<dyn Error>> {
@@ -641,7 +650,7 @@ mod test_helpers {
     /// # Errors
     ///
     /// Returns an error when the fixed caller cannot be built.
-    pub fn expect_caller(
+    pub(crate) fn expect_caller(
         users: &mut MockUserRepository,
         caller_id: NumericID,
     ) -> Result<(), Box<dyn Error>> {
@@ -661,7 +670,7 @@ mod test_helpers {
     }
 
     /// Expect the permission load to find `overrides` for `caller_id`.
-    pub fn expect_permissions(
+    pub(crate) fn expect_permissions(
         permissions: &mut MockPermissionRepository,
         caller_id: NumericID,
         overrides: Vec<Permission>,
@@ -679,7 +688,7 @@ mod test_helpers {
     /// this repository: identifier `0` resolves to the Root Admin and any other
     /// identifier to a Standard user.
     #[must_use]
-    pub fn any_caller() -> MockUserRepository {
+    pub(crate) fn any_caller() -> MockUserRepository {
         let mut users = MockUserRepository::new();
         users.expect_search().returning(|filter| {
             let found = filter.id.and_then(|id| {
@@ -696,7 +705,7 @@ mod test_helpers {
     /// A use case whose test does not exercise a permission stubs the load
     /// with this repository instead of repeating the expectation.
     #[must_use]
-    pub fn no_permissions() -> MockPermissionRepository {
+    pub(crate) fn no_permissions() -> MockPermissionRepository {
         let mut permissions = MockPermissionRepository::new();
         permissions
             .expect_search()
@@ -710,7 +719,7 @@ mod test_helpers {
     /// # Errors
     ///
     /// Returns an error when the body cannot be read or is not JSON.
-    pub async fn into_parts(
+    pub(crate) async fn into_parts(
         response: Response,
     ) -> Result<(StatusCode, Option<String>, Value), Box<dyn Error>> {
         let status = response.status();
@@ -729,7 +738,7 @@ mod test_helpers {
     /// # Errors
     ///
     /// Returns an error when the body cannot be read or is not JSON.
-    pub async fn into_status_and_body(
+    pub(crate) async fn into_status_and_body(
         response: Response,
     ) -> Result<(StatusCode, Value), Box<dyn Error>> {
         let status = response.status();

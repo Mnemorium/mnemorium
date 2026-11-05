@@ -1,4 +1,8 @@
 //! Ordered failover chain over the configured metadata providers.
+#![allow(
+    dead_code,
+    reason = "the provider failover serves the internal video-identification path, which has no REST caller yet"
+)]
 
 use crate::application::security_event;
 use crate::domain::model::media_candidate::Candidate;
@@ -15,7 +19,7 @@ use crate::domain::port::video_metadata_provider::VideoMetadataProvider;
 /// search tries them in that order and returns the first non-empty result; a
 /// lookup is routed to the provider named by the reference and is never retried
 /// elsewhere. Each link is asked at most once per operation.
-pub struct FailoverVideoMetadataProvider<L> {
+pub(crate) struct FailoverVideoMetadataProvider<L> {
     /// Configured links, ordered by their index.
     links: Vec<(ProviderId, L)>,
 }
@@ -23,7 +27,7 @@ pub struct FailoverVideoMetadataProvider<L> {
 impl<L: VideoMetadataProvider> FailoverVideoMetadataProvider<L> {
     /// Create a chain over `links`, already ordered by index.
     #[must_use]
-    pub fn new(links: Vec<(ProviderId, L)>) -> Self {
+    pub(crate) fn new(links: Vec<(ProviderId, L)>) -> Self {
         Self { links }
     }
 }

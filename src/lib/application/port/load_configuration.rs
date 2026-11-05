@@ -6,7 +6,7 @@ use crate::domain::model::configuration::Configuration;
 /// Response of a successful configuration load.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct LoadConfigurationResponse {
+pub(crate) struct LoadConfigurationResponse {
     /// The setting paths the environment layer applied, sorted.
     ///
     /// The composition root logs them once, after the subscriber is installed,
@@ -25,25 +25,25 @@ pub struct LoadConfigurationResponse {
 impl LoadConfigurationResponse {
     /// Return the setting paths the environment layer applied.
     #[must_use]
-    pub fn applied(&self) -> &[&'static str] {
+    pub(crate) fn applied(&self) -> &[&'static str] {
         &self.applied
     }
 
     /// Return the loaded configuration.
     #[must_use]
-    pub fn configuration(&self) -> &Configuration {
+    pub(crate) fn configuration(&self) -> &Configuration {
         &self.configuration
     }
 
     /// Return whether this call generated the default configuration file.
     #[must_use]
-    pub fn file_created(&self) -> bool {
+    pub(crate) fn file_created(&self) -> bool {
         self.file_created
     }
 
     /// Create a new load response.
     #[must_use]
-    pub fn new(
+    pub(crate) fn new(
         configuration: Configuration,
         file_created: bool,
         applied: Vec<&'static str>,
@@ -59,7 +59,7 @@ impl LoadConfigurationResponse {
 /// Error returned when loading the configuration.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
-pub enum LoadConfigurationError {
+pub(crate) enum LoadConfigurationError {
     /// The merged configuration failed validation.
     #[error("the merged configuration is invalid: {0}")]
     InvalidConfiguration(#[source] anyhow::Error),
@@ -70,7 +70,7 @@ pub enum LoadConfigurationError {
 
 /// Use case for loading the application configuration.
 #[cfg_attr(test, mockall::automock)]
-pub trait LoadConfigurationUseCase: Send + Sync {
+pub(crate) trait LoadConfigurationUseCase: Send + Sync {
     /// Load the configuration.
     ///
     /// The configuration is resolved as defaults → configuration file →

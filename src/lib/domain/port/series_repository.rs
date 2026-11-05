@@ -8,7 +8,7 @@ use crate::domain::port::error::RepositoryError;
 /// all-`None` filter returns every show.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct SeriesFilter {
+pub(crate) struct SeriesFilter {
     /// Filter on the show identifier.
     pub id: Option<NumericID>,
     /// Filter on the show name.
@@ -18,7 +18,7 @@ pub struct SeriesFilter {
 /// Port for querying `Series` with its seasons, their episodes and the videos
 /// that back them.
 #[cfg_attr(test, mockall::automock)]
-pub trait SeriesRepository: Send + Sync {
+pub(crate) trait SeriesRepository: Send + Sync {
     /// Search the shows matching `filter`, returned as `Vec<Series>`.
     ///
     /// Each show carries its genres, its seasons and their episodes with the

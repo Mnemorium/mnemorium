@@ -9,7 +9,7 @@ use crate::domain::model::season::Season;
 /// Error returned when initialising a `Series`.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
-pub enum SeriesError {
+pub(crate) enum SeriesError {
     /// A genre identifier is empty.
     #[error("a genre identifier must not be empty")]
     InvalidGenre,
@@ -18,12 +18,16 @@ pub enum SeriesError {
     InvalidName,
     /// An unexpected or unmapped error occurred.
     #[error("an unknown error occurred: {0}")]
+    #[expect(
+        dead_code,
+        reason = "the error enum keeps the catch-all variant the rulebook's error shape declares; no caller constructs it yet"
+    )]
     Unknown(#[source] anyhow::Error),
 }
 
 /// A show the server holds, with its seasons.
 #[derive(Debug, Clone, PartialEq)]
-pub struct Series {
+pub(crate) struct Series {
     /// Country of origin of the show.
     country_of_origin: String,
     /// Identifier of the image holding the show's artwork, when set.
@@ -45,49 +49,49 @@ pub struct Series {
 impl Series {
     /// Return the country of origin of the show.
     #[must_use]
-    pub fn country_of_origin(&self) -> &str {
+    pub(crate) fn country_of_origin(&self) -> &str {
         &self.country_of_origin
     }
 
     /// Return the identifier of the image holding the show's artwork, if any.
     #[must_use]
-    pub fn cover_image_id(&self) -> Option<NumericID> {
+    pub(crate) fn cover_image_id(&self) -> Option<NumericID> {
         self.cover_image_id
     }
 
     /// Return the date of the first airing.
     #[must_use]
-    pub fn first_air_date(&self) -> NaiveDate {
+    pub(crate) fn first_air_date(&self) -> NaiveDate {
         self.first_air_date
     }
 
     /// Return the identifiers of the genres the show is associated with.
     #[must_use]
-    pub fn genre_ids(&self) -> &[String] {
+    pub(crate) fn genre_ids(&self) -> &[String] {
         &self.genre_ids
     }
 
     /// Return the unique identifier.
     #[must_use]
-    pub fn id(&self) -> NumericID {
+    pub(crate) fn id(&self) -> NumericID {
         self.id
     }
 
     /// Return the name.
     #[must_use]
-    pub fn name(&self) -> &str {
+    pub(crate) fn name(&self) -> &str {
         &self.name
     }
 
     /// Return the plot.
     #[must_use]
-    pub fn plot(&self) -> &str {
+    pub(crate) fn plot(&self) -> &str {
         &self.plot
     }
 
     /// Return the seasons, in order.
     #[must_use]
-    pub fn seasons(&self) -> &[Season] {
+    pub(crate) fn seasons(&self) -> &[Season] {
         &self.seasons
     }
 
@@ -101,7 +105,7 @@ impl Series {
         clippy::too_many_arguments,
         reason = "the constructor mirrors the show's fields one-to-one"
     )]
-    pub fn try_new(
+    pub(crate) fn try_new(
         id: NumericID,
         name: String,
         plot: String,

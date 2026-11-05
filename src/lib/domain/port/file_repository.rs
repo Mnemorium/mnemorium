@@ -8,7 +8,7 @@ use crate::domain::port::error::RepositoryError;
 /// all-`None` filter returns every file.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct FileFilter {
+pub(crate) struct FileFilter {
     /// Filter on the file identifier.
     pub id: Option<NumericID>,
     /// Filter on the integrity hash.
@@ -21,7 +21,7 @@ pub struct FileFilter {
 
 /// Port for persisting and querying `File`.
 #[cfg_attr(test, mockall::automock)]
-pub trait FileRepository: Send + Sync {
+pub(crate) trait FileRepository: Send + Sync {
     /// Insert a new `file`, returning the persisted file with its final
     /// identifier.
     ///

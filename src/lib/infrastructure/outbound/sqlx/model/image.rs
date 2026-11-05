@@ -7,7 +7,7 @@ use crate::domain::alias::NumericID;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, sqlx::Type)]
 #[sqlx(rename_all = "UPPERCASE")]
 #[non_exhaustive]
-pub enum Orientation {
+pub(crate) enum Orientation {
     /// The width is greater than the height.
     Landscape,
     /// The height is greater than the width.
@@ -18,7 +18,7 @@ pub enum Orientation {
 
 /// Data model for the `image` table.
 #[derive(Debug, Clone, sqlx::FromRow)]
-pub struct Image {
+pub(crate) struct Image {
     /// Date at which the image was created.
     pub created_at: NaiveDate,
     /// Identifier of the backing file.

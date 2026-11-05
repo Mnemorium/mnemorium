@@ -25,7 +25,7 @@ use crate::domain::service::authorization::Authorization;
 use crate::domain::service::authorization::Decision;
 
 /// Use case implementation for fetching one gallery and its items.
-pub struct GetGallery<F> {
+pub(crate) struct GetGallery<F> {
     /// Factory opening the unit of work wrapping the read.
     unit_of_work_factory: Arc<F>,
 }
@@ -33,7 +33,7 @@ pub struct GetGallery<F> {
 impl<F: UnitOfWorkFactory> GetGallery<F> {
     /// Create a new use case.
     #[must_use]
-    pub fn new(unit_of_work_factory: Arc<F>) -> Self {
+    pub(crate) fn new(unit_of_work_factory: Arc<F>) -> Self {
         Self {
             unit_of_work_factory,
         }

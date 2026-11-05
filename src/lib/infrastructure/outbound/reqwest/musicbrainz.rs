@@ -308,7 +308,7 @@ struct RecordingLookupPayload {
 }
 
 /// Music metadata provider backed by the `MusicBrainz` API.
-pub struct MusicBrainzMetadataProvider {
+pub(crate) struct MusicBrainzMetadataProvider {
     /// Base address of the service's API.
     api_base: String,
     /// Base address of the Cover Art Archive.
@@ -412,7 +412,7 @@ impl MusicBrainzMetadataProvider {
 
     /// Create a provider talking to the production endpoints.
     #[must_use]
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self::with_endpoints(
             DEFAULT_API_BASE_URL.to_owned(),
             DEFAULT_ARCHIVE_BASE_URL.to_owned(),
@@ -472,7 +472,7 @@ impl MusicBrainzMetadataProvider {
 
     /// Create a provider with every address and policy input as parameters.
     #[must_use]
-    pub fn with_endpoints(
+    pub(crate) fn with_endpoints(
         api_base: String,
         archive_base: String,
         timeout: Duration,

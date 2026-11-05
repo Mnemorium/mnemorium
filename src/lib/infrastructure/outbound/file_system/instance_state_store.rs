@@ -47,7 +47,7 @@ const STATE_FILE_MODE: u32 = 0o600;
 /// starting against the same fresh instance cannot each persist a different
 /// identity.
 #[derive(Debug)]
-pub struct FileInstanceStateStore {
+pub(crate) struct FileInstanceStateStore {
     /// Path of the identity document.
     path: PathBuf,
 }
@@ -80,7 +80,7 @@ impl FileInstanceStateStore {
 
     /// Create a new store persisting the identity at `path`.
     #[must_use]
-    pub fn new(path: PathBuf) -> Self {
+    pub(crate) fn new(path: PathBuf) -> Self {
         Self { path }
     }
 

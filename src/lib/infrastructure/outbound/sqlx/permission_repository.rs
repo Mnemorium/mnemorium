@@ -19,7 +19,7 @@ use super::query_filter::push_filter;
 
 /// Repository persisting permission overrides, backed by a `SQLite`
 /// transaction.
-pub struct SqlxPermissionRepository<'transaction> {
+pub(crate) struct SqlxPermissionRepository<'transaction> {
     /// Transaction the repository reads from and writes to.
     transaction: &'transaction mut Transaction<'static, Sqlite>,
 }
@@ -27,7 +27,7 @@ pub struct SqlxPermissionRepository<'transaction> {
 impl<'transaction> SqlxPermissionRepository<'transaction> {
     /// Create a new repository bound to `transaction`.
     #[must_use]
-    pub fn new(transaction: &'transaction mut Transaction<'static, Sqlite>) -> Self {
+    pub(crate) fn new(transaction: &'transaction mut Transaction<'static, Sqlite>) -> Self {
         Self { transaction }
     }
 }

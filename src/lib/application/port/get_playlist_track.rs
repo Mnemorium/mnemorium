@@ -7,7 +7,7 @@ use crate::domain::model::music_recording::MusicRecording;
 /// Command to fetch one track of a playlist.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct GetPlaylistTrackCommand {
+pub(crate) struct GetPlaylistTrackCommand {
     /// Identifier of the authenticated caller.
     caller_id: NumericID,
     /// Identifier of the playlist the track belongs to.
@@ -19,13 +19,13 @@ pub struct GetPlaylistTrackCommand {
 impl GetPlaylistTrackCommand {
     /// Return the identifier of the authenticated caller.
     #[must_use]
-    pub fn caller_id(&self) -> NumericID {
+    pub(crate) fn caller_id(&self) -> NumericID {
         self.caller_id
     }
 
     /// Create a new fetch-playlist-track command.
     #[must_use]
-    pub fn new(caller_id: NumericID, playlist_id: NumericID, track_index: u32) -> Self {
+    pub(crate) fn new(caller_id: NumericID, playlist_id: NumericID, track_index: u32) -> Self {
         Self {
             caller_id,
             playlist_id,
@@ -35,13 +35,13 @@ impl GetPlaylistTrackCommand {
 
     /// Return the identifier of the playlist the track belongs to.
     #[must_use]
-    pub fn playlist_id(&self) -> NumericID {
+    pub(crate) fn playlist_id(&self) -> NumericID {
         self.playlist_id
     }
 
     /// Return the zero-based index of the track within the playlist.
     #[must_use]
-    pub fn track_index(&self) -> u32 {
+    pub(crate) fn track_index(&self) -> u32 {
         self.track_index
     }
 }
@@ -49,7 +49,7 @@ impl GetPlaylistTrackCommand {
 /// Response of a successful playlist-track lookup.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct GetPlaylistTrackResponse {
+pub(crate) struct GetPlaylistTrackResponse {
     /// Identifier of the playlist the track belongs to.
     playlist_id: NumericID,
     /// The fetched track.
@@ -59,19 +59,19 @@ pub struct GetPlaylistTrackResponse {
 impl GetPlaylistTrackResponse {
     /// Create a new fetch-playlist-track response.
     #[must_use]
-    pub fn new(playlist_id: NumericID, track: MusicRecording) -> Self {
+    pub(crate) fn new(playlist_id: NumericID, track: MusicRecording) -> Self {
         Self { playlist_id, track }
     }
 
     /// Return the identifier of the playlist the track belongs to.
     #[must_use]
-    pub fn playlist_id(&self) -> NumericID {
+    pub(crate) fn playlist_id(&self) -> NumericID {
         self.playlist_id
     }
 
     /// Return the fetched track.
     #[must_use]
-    pub fn track(&self) -> &MusicRecording {
+    pub(crate) fn track(&self) -> &MusicRecording {
         &self.track
     }
 }
@@ -79,7 +79,7 @@ impl GetPlaylistTrackResponse {
 /// Error returned when fetching one track of a playlist.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
-pub enum GetPlaylistTrackError {
+pub(crate) enum GetPlaylistTrackError {
     /// The authenticated caller does not exist anymore.
     #[error("the authenticated user does not exist")]
     NoSuchCaller,
@@ -97,7 +97,7 @@ pub enum GetPlaylistTrackError {
 
 /// Use case for fetching one track of a playlist.
 #[cfg_attr(test, mockall::automock)]
-pub trait GetPlaylistTrackUseCase: Send + Sync {
+pub(crate) trait GetPlaylistTrackUseCase: Send + Sync {
     /// Fetch the requested track of the requested playlist.
     fn execute<'future>(
         &'future self,

@@ -25,7 +25,7 @@ use crate::domain::service::authorization::Authorization;
 use crate::domain::service::authorization::Decision;
 
 /// Use case implementation for listing the episodes of one season.
-pub struct ListSeriesEpisodes<F> {
+pub(crate) struct ListSeriesEpisodes<F> {
     /// Factory opening the unit of work wrapping the read.
     unit_of_work_factory: Arc<F>,
 }
@@ -33,7 +33,7 @@ pub struct ListSeriesEpisodes<F> {
 impl<F: UnitOfWorkFactory> ListSeriesEpisodes<F> {
     /// Create a new use case.
     #[must_use]
-    pub fn new(unit_of_work_factory: Arc<F>) -> Self {
+    pub(crate) fn new(unit_of_work_factory: Arc<F>) -> Self {
         Self {
             unit_of_work_factory,
         }

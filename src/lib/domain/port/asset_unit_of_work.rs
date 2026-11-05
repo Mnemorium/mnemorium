@@ -4,7 +4,7 @@ use crate::domain::port::unit_of_work::UnitOfWork;
 use crate::domain::port::upload_repository::UploadRepository;
 
 /// Asset bounded-context view over a [`UnitOfWork`].
-pub trait AssetUnitOfWork: UnitOfWork {
+pub(crate) trait AssetUnitOfWork: UnitOfWork {
     /// Repository persisting files.
     fn files(&mut self) -> impl FileRepository + '_;
 

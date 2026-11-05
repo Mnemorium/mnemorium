@@ -3,11 +3,16 @@
     reason = "Handler are declared in the OpenAPI spec"
 )]
 
-pub mod asset;
-pub mod get_health;
-pub mod identity;
-pub mod library;
-pub mod user;
+/// The Asset context endpoints.
+pub(crate) mod asset;
+/// The liveness endpoint.
+pub(crate) mod get_health;
+/// The Identity context endpoints.
+pub(crate) mod identity;
+/// The Library context endpoints.
+pub(crate) mod library;
+/// The User context endpoints.
+pub(crate) mod user;
 
 use axum::middleware;
 use utoipa_axum::router::OpenApiRouter;
@@ -29,7 +34,7 @@ use crate::infrastructure::inbound::rest::openapi;
 
 /// Build the application router.
 ///
-/// The composition root (`src/bin/server.rs`, `STY-RUST-067`) builds the
+/// The composition root (`src/lib/app.rs`, `STY-RUST-067`) builds the
 /// process-lifetime adapters and mounts only the router this function returns.
 /// `hal_errors` is applied **last** so it is the outermost layer. It therefore
 /// rewraps every `4xx`/`5xx` the server emits, including the routing fallback
@@ -47,7 +52,7 @@ use crate::infrastructure::inbound::rest::openapi;
 /// With the `api-docs` feature the interactive documentation is mounted at
 /// `/doc`, outside the `/api/v1` API base; it serves the document
 /// `rest::openapi` assembles.
-pub fn setup_routes(state: &AppState, limiter: &LoginRateLimiter) -> axum::Router {
+pub(crate) fn setup_routes(state: &AppState, limiter: &LoginRateLimiter) -> axum::Router {
     #[cfg_attr(
         not(feature = "api-docs"),
         expect(unused_mut, reason = "the documentation route is feature-gated")

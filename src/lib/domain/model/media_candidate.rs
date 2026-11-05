@@ -1,3 +1,8 @@
+#![allow(
+    dead_code,
+    reason = "the video media candidate belongs to the internal video-identification path, which has no REST caller yet"
+)]
+
 use crate::domain::model::media_query::VideoKind;
 
 /// Identifier of an external metadata provider.
@@ -8,7 +13,7 @@ use crate::domain::model::media_query::VideoKind;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
 #[serde(rename_all = "lowercase")]
 #[non_exhaustive]
-pub enum ProviderId {
+pub(crate) enum ProviderId {
     /// `MusicBrainz`, which serves music metadata.
     MusicBrainz,
     /// The Open Movie Database.
@@ -20,7 +25,7 @@ pub enum ProviderId {
 impl ProviderId {
     /// Return the provider name as the configuration declares it.
     #[must_use]
-    pub fn as_str(self) -> &'static str {
+    pub(crate) fn as_str(self) -> &'static str {
         match self {
             Self::MusicBrainz => "musicbrainz",
             Self::Omdb => "omdb",
@@ -33,7 +38,7 @@ impl ProviderId {
     /// The comparison is case-insensitive and ignores surrounding whitespace, so
     /// `TMDB` and ` tmdb ` both name the same provider.
     #[must_use]
-    pub fn parse(value: &str) -> Option<Self> {
+    pub(crate) fn parse(value: &str) -> Option<Self> {
         let normalized = value.trim().to_ascii_lowercase();
         match normalized.as_str() {
             "musicbrainz" => Some(Self::MusicBrainz),
@@ -49,7 +54,7 @@ impl ProviderId {
     /// configuration section admits only the providers it can use: the music
     /// section takes a music provider and the video section takes a video one.
     #[must_use]
-    pub fn serves_music(self) -> bool {
+    pub(crate) fn serves_music(self) -> bool {
         match self {
             Self::MusicBrainz => true,
             Self::Omdb | Self::Tmdb => false,
@@ -64,7 +69,7 @@ impl ProviderId {
 /// a selection back to the provider that produced it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct ExternalRef {
+pub(crate) struct ExternalRef {
     /// Identifier the provider issued for the item.
     id: String,
     /// Provider that issued the identifier.
@@ -74,19 +79,19 @@ pub struct ExternalRef {
 impl ExternalRef {
     /// Return the identifier the provider issued.
     #[must_use]
-    pub fn id(&self) -> &str {
+    pub(crate) fn id(&self) -> &str {
         &self.id
     }
 
     /// Create a new external reference.
     #[must_use]
-    pub fn new(provider: ProviderId, id: String) -> Self {
+    pub(crate) fn new(provider: ProviderId, id: String) -> Self {
         Self { id, provider }
     }
 
     /// Return the provider that issued the identifier.
     #[must_use]
-    pub fn provider(&self) -> ProviderId {
+    pub(crate) fn provider(&self) -> ProviderId {
         self.provider
     }
 }
@@ -99,7 +104,7 @@ impl ExternalRef {
 /// ranking of its own.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct Candidate {
+pub(crate) struct Candidate {
     /// Kind of work the candidate denotes.
     kind: VideoKind,
     /// Opaque reference the provider issued.
@@ -113,13 +118,18 @@ pub struct Candidate {
 impl Candidate {
     /// Return the kind of work the candidate denotes.
     #[must_use]
-    pub fn kind(&self) -> VideoKind {
+    pub(crate) fn kind(&self) -> VideoKind {
         self.kind
     }
 
     /// Create a new candidate.
     #[must_use]
-    pub fn new(reference: ExternalRef, kind: VideoKind, title: String, year: Option<u32>) -> Self {
+    pub(crate) fn new(
+        reference: ExternalRef,
+        kind: VideoKind,
+        title: String,
+        year: Option<u32>,
+    ) -> Self {
         Self {
             kind,
             reference,
@@ -130,19 +140,19 @@ impl Candidate {
 
     /// Return the opaque reference the provider issued.
     #[must_use]
-    pub fn reference(&self) -> &ExternalRef {
+    pub(crate) fn reference(&self) -> &ExternalRef {
         &self.reference
     }
 
     /// Return the title the provider reports.
     #[must_use]
-    pub fn title(&self) -> &str {
+    pub(crate) fn title(&self) -> &str {
         &self.title
     }
 
     /// Return the release or first-air year, when the provider reports one.
     #[must_use]
-    pub fn year(&self) -> Option<u32> {
+    pub(crate) fn year(&self) -> Option<u32> {
         self.year
     }
 }
@@ -154,7 +164,7 @@ impl Candidate {
 /// one request here rather than a full season tree.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub enum Target {
+pub(crate) enum Target {
     /// One episode of the show the reference names.
     Episode {
         /// Index of the episode within its season.
@@ -177,7 +187,7 @@ impl Target {
         clippy::pattern_type_mismatch,
         reason = "the arms borrow the reference out of a non-Copy enum matched by reference"
     )]
-    pub fn reference(&self) -> &ExternalRef {
+    pub(crate) fn reference(&self) -> &ExternalRef {
         match self {
             Self::Episode { reference, .. } | Self::Movie(reference) | Self::Series(reference) => {
                 reference

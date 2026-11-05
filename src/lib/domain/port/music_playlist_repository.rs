@@ -9,7 +9,7 @@ use crate::domain::port::error::RepositoryError;
 /// optional; an all-`None` filter returns every playlist.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct MusicPlaylistFilter {
+pub(crate) struct MusicPlaylistFilter {
     /// Filter on the identifier of the image holding the playlist's artwork.
     pub cover_image_id: Option<NumericID>,
     /// Filter on the playlist identifier.
@@ -25,7 +25,7 @@ pub struct MusicPlaylistFilter {
 /// Port for persisting and querying `MusicPlaylist` and the recordings it
 /// sequences.
 #[cfg_attr(test, mockall::automock)]
-pub trait MusicPlaylistRepository: Send + Sync {
+pub(crate) trait MusicPlaylistRepository: Send + Sync {
     /// Append `recording_id` to the playlist identified by `playlist_id` at the
     /// next index, returning the hydrated occurrence.
     ///

@@ -24,7 +24,7 @@ use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 /// Payload to add one of the caller's media to a gallery.
 #[derive(Debug, Deserialize, ToSchema)]
 #[non_exhaustive]
-pub struct PostGalleryItemRequest {
+pub(crate) struct PostGalleryItemRequest {
     /// Identifier of the backing file of the medium to add.
     ///
     /// The upload-completion response (`POST /asset/upload/{id}/complete`)
@@ -153,7 +153,7 @@ impl From<AddGalleryItemError> for ApiError {
     ),
     summary = "Add an item to a gallery"
 )]
-pub async fn post_gallery_item(
+pub(crate) async fn post_gallery_item(
     State(state): State<AppState>,
     caller: AuthenticatedUser,
     Path(id): Path<String>,
@@ -272,10 +272,6 @@ mod tests {
     }
 
     /// Make the mocked use case fail with `error`.
-    #[expect(
-        clippy::single_call_fn,
-        reason = "the data-driven error table drives the mock through a named helper"
-    )]
     fn expect_error(use_case: &mut MockAddGalleryItemUseCase, error: AddGalleryItemError) {
         use_case
             .expect_execute()

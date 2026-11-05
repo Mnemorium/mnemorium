@@ -1,8 +1,12 @@
-pub mod api_error;
-pub mod app_state;
-pub mod hal;
-pub mod handler;
-pub mod middleware;
+/// The transport error mapped onto an HTTP status.
+pub(crate) mod api_error;
+/// The single router state every handler extracts.
+pub(crate) mod app_state;
+pub(crate) mod hal;
+/// The route table and the per-context endpoint folders.
+pub(crate) mod handler;
+/// The authentication, tracing, rate-limit and HAL error layers.
+pub(crate) mod middleware;
 
 use utoipa::OpenApi as _;
 use utoipa::openapi::OpenApi;
@@ -59,7 +63,7 @@ impl utoipa::Modify for SecurityAddon {
     ),
     modifiers(&SecurityAddon)
 )]
-pub struct ApiDoc;
+struct ApiDoc;
 
 /// Build the complete `OpenAPI` document of the Mnemorium HTTP API.
 ///
@@ -74,7 +78,7 @@ pub struct ApiDoc;
 /// router adds that prefix at runtime. With the `api-docs` feature
 /// [`handler::setup_routes`] mounts this document at `/doc`.
 #[must_use]
-pub fn openapi() -> OpenApi {
+pub(crate) fn openapi() -> OpenApi {
     let (_, openapi) = OpenApiRouter::with_openapi(ApiDoc::openapi())
         .routes(routes!(get_health::get_health))
         // The chunk body limit is a runtime layer; the document only needs the

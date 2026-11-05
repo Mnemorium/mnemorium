@@ -11,7 +11,7 @@ use crate::domain::port::error::RepositoryError;
 /// an all-`None` filter returns every album.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct MusicAlbumFilter {
+pub(crate) struct MusicAlbumFilter {
     /// Filter on the album identifier.
     pub id: Option<NumericID>,
     /// Filter on the identifier of the music group the album belongs to.
@@ -23,7 +23,7 @@ pub struct MusicAlbumFilter {
 /// Port for querying and mutating `MusicAlbum` with the recordings its mediums
 /// sequence.
 #[cfg_attr(test, mockall::automock)]
-pub trait MusicAlbumRepository: Send + Sync {
+pub(crate) trait MusicAlbumRepository: Send + Sync {
     /// Insert a new `album` and its genre links, returning the stored album with
     /// the identifier it was assigned.
     ///

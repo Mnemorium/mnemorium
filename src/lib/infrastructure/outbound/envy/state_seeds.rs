@@ -23,7 +23,7 @@ const ENVIRONMENT_PREFIX: &str = "MNEMORIUM_";
 #[derive(Default, Clone, PartialEq, Eq, serde::Deserialize)]
 #[serde(default)]
 #[non_exhaustive]
-pub struct EnvStateSeeds {
+pub(crate) struct EnvStateSeeds {
     /// Signing secret supplied by the environment.
     jwt_secret: Option<String>,
     /// Pepper supplied by the environment.
@@ -42,7 +42,14 @@ impl Debug for EnvStateSeeds {
 impl EnvStateSeeds {
     /// Create a seed set from explicit values.
     #[must_use]
-    pub fn new(pepper: Option<String>, jwt_secret: Option<String>) -> Self {
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "the security-event catalog declares this constructor; no caller emits the event yet"
+        )
+    )]
+    pub(crate) fn new(pepper: Option<String>, jwt_secret: Option<String>) -> Self {
         Self { jwt_secret, pepper }
     }
 }
@@ -66,12 +73,12 @@ impl StateSeedsPort for EnvStateSeeds {
 /// name that is neither a seed nor an override is discarded: the server does
 /// not reject variables it does not know.
 #[derive(Debug, Default)]
-pub struct EnvStateSeedSource;
+pub(crate) struct EnvStateSeedSource;
 
 impl EnvStateSeedSource {
     /// Create a new adapter.
     #[must_use]
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self
     }
 
@@ -83,7 +90,7 @@ impl EnvStateSeedSource {
     /// # Errors
     ///
     /// Returns an error when `variables` cannot be mapped onto the seed fields.
-    pub fn read_from<I>(&self, variables: I) -> Result<EnvStateSeeds, StateSeedSourceError>
+    pub(crate) fn read_from<I>(variables: I) -> Result<EnvStateSeeds, StateSeedSourceError>
     where
         I: IntoIterator<Item = (String, String)>,
     {
@@ -97,10 +104,7 @@ impl StateSeedSource for EnvStateSeedSource {
     fn read(
         &self,
     ) -> impl Future<Output = Result<Box<dyn StateSeedsPort>, StateSeedSourceError>> + Send {
-        ready(
-            self.read_from(vars())
-                .map(|seeds| Box::new(seeds) as Box<dyn StateSeedsPort>),
-        )
+        ready(Self::read_from(vars()).map(|seeds| Box::new(seeds) as Box<dyn StateSeedsPort>))
     }
 }
 
@@ -120,12 +124,10 @@ mod tests {
 
     #[test]
     fn state_seeds_present_seed_is_read() -> Result<(), Box<dyn Error>> {
-        // Arrange
-        let adapter = EnvStateSeedSource::new();
         let pepper = "a".repeat(64);
 
         // Act
-        let seeds = adapter.read_from([variable("MNEMORIUM_PEPPER", pepper.as_str())])?;
+        let seeds = EnvStateSeedSource::read_from([variable("MNEMORIUM_PEPPER", pepper.as_str())])?;
 
         // Assert
         assert_eq!(
@@ -139,11 +141,8 @@ mod tests {
 
     #[test]
     fn state_seeds_absent_seeds_are_none() -> Result<(), Box<dyn Error>> {
-        // Arrange
-        let adapter = EnvStateSeedSource::new();
-
         // Act
-        let seeds = adapter.read_from(empty())?;
+        let seeds = EnvStateSeedSource::read_from(empty())?;
 
         // Assert
         assert_eq!(seeds.pepper(), None);
@@ -153,11 +152,8 @@ mod tests {
 
     #[test]
     fn state_seeds_unprefixed_variable_is_ignored() -> Result<(), Box<dyn Error>> {
-        // Arrange
-        let adapter = EnvStateSeedSource::new();
-
         // Act
-        let seeds = adapter.read_from([variable("PATH", "/usr/bin")])?;
+        let seeds = EnvStateSeedSource::read_from([variable("PATH", "/usr/bin")])?;
 
         // Assert
         assert_eq!(
@@ -171,12 +167,10 @@ mod tests {
 
     #[test]
     fn state_seeds_configuration_variable_is_discarded() -> Result<(), Box<dyn Error>> {
-        // Arrange
-        let adapter = EnvStateSeedSource::new();
         let jwt_secret = "b".repeat(64);
 
         // Act
-        let seeds = adapter.read_from([
+        let seeds = EnvStateSeedSource::read_from([
             variable("MNEMORIUM_LOGGING_LEVEL", "warn"),
             variable("MNEMORIUM_JWT_SECRET", &jwt_secret),
         ])?;

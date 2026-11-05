@@ -8,7 +8,7 @@ use crate::domain::port::error::RepositoryError;
 /// optional; an all-`None` filter returns every group.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct MusicGroupFilter {
+pub(crate) struct MusicGroupFilter {
     /// Filter on the group identifier.
     pub id: Option<NumericID>,
     /// Filter on the group stage name.
@@ -17,7 +17,7 @@ pub struct MusicGroupFilter {
 
 /// Port persisting the music groups an album belongs to.
 #[cfg_attr(test, mockall::automock)]
-pub trait MusicGroupRepository: Send + Sync {
+pub(crate) trait MusicGroupRepository: Send + Sync {
     /// Persist a new group and return it with the identifier it was assigned.
     ///
     /// The database enforces the unique stage name and the cover contract, so

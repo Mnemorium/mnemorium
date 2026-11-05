@@ -4,7 +4,7 @@ use crate::domain::port::error::RepositoryError;
 
 /// Port for querying mime types.
 #[cfg_attr(test, mockall::automock)]
-pub trait MimeTypeRepository: Send + Sync {
+pub(crate) trait MimeTypeRepository: Send + Sync {
     /// Return every supported mime type identifier.
     ///
     /// The seeded `mime_type` table is the supported set a content-type

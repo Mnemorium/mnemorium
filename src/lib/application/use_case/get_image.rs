@@ -16,7 +16,7 @@ use crate::domain::port::unit_of_work::UnitOfWorkFactory;
 use crate::domain::port::user_unit_of_work::UserUnitOfWork;
 
 /// Use case implementation for fetching one typed image.
-pub struct GetImage<F> {
+pub(crate) struct GetImage<F> {
     /// Factory opening the unit of work wrapping the read.
     unit_of_work_factory: Arc<F>,
 }
@@ -24,7 +24,7 @@ pub struct GetImage<F> {
 impl<F: UnitOfWorkFactory> GetImage<F> {
     /// Create a new use case.
     #[must_use]
-    pub fn new(unit_of_work_factory: Arc<F>) -> Self {
+    pub(crate) fn new(unit_of_work_factory: Arc<F>) -> Self {
         Self {
             unit_of_work_factory,
         }

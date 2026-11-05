@@ -10,7 +10,7 @@ use crate::domain::port::unit_of_work::UnitOfWork;
 use crate::domain::port::video_repository::VideoRepository;
 
 /// Library bounded-context view over a [`UnitOfWork`].
-pub trait LibraryUnitOfWork: UnitOfWork {
+pub(crate) trait LibraryUnitOfWork: UnitOfWork {
     /// Repository persisting audio rows.
     fn audios(&mut self) -> impl AudioRepository + '_;
 

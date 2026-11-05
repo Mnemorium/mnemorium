@@ -107,12 +107,12 @@ impl From<EnvConfiguration> for PartialConfiguration {
 /// configuration use case merges the result over the file layer, so the
 /// precedence never lives here.
 #[derive(Debug, Default)]
-pub struct EnvConfigurationSource;
+pub(crate) struct EnvConfigurationSource;
 
 impl EnvConfigurationSource {
     /// Create a new adapter.
     #[must_use]
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self
     }
 
@@ -125,8 +125,7 @@ impl EnvConfigurationSource {
     ///
     /// Returns an error when a prefixed variable does not hold a value its
     /// setting accepts.
-    pub fn read_from<I>(
-        &self,
+    pub(crate) fn read_from<I>(
         variables: I,
     ) -> Result<PartialConfiguration, ConfigurationSourceError>
     where
@@ -164,7 +163,7 @@ impl EnvironmentConfiguration for EnvConfigurationSource {
     fn load(
         &self,
     ) -> impl Future<Output = Result<PartialConfiguration, ConfigurationSourceError>> + Send {
-        ready(self.read_from(vars()))
+        ready(Self::read_from(vars()))
     }
 }
 
@@ -187,11 +186,8 @@ mod tests {
 
     #[test]
     fn environment_configuration_absent_set_names_no_setting() -> Result<(), Box<dyn Error>> {
-        // Arrange
-        let adapter = EnvConfigurationSource::new();
-
         // Act
-        let partial = adapter.read_from(empty())?;
+        let partial = EnvConfigurationSource::read_from(empty())?;
 
         // Assert
         assert_eq!(partial, PartialConfiguration::default());
@@ -273,13 +269,10 @@ mod tests {
 
     #[test]
     fn environment_configuration_badly_typed_value_names_the_variable() {
-        // Arrange
-        let adapter = EnvConfigurationSource::new();
-
         // Act
-        let error = adapter
-            .read_from([variable("MNEMORIUM_LOGGING_MAX_FILES", "many")])
-            .err();
+        let error =
+            EnvConfigurationSource::read_from([variable("MNEMORIUM_LOGGING_MAX_FILES", "many")])
+                .err();
 
         // Assert
         let message = error.as_ref().map(ToString::to_string).unwrap_or_default();
@@ -331,13 +324,12 @@ mod tests {
 
     #[test]
     fn environment_configuration_invalid_rotation_names_the_variable() {
-        // Arrange
-        let adapter = EnvConfigurationSource::new();
-
         // Act
-        let error = adapter
-            .read_from([variable("MNEMORIUM_LOGGING_ROTATION", "FORTNIGHTLY")])
-            .err();
+        let error = EnvConfigurationSource::read_from([variable(
+            "MNEMORIUM_LOGGING_ROTATION",
+            "FORTNIGHTLY",
+        )])
+        .err();
 
         // Assert
         let message = error.as_ref().map(ToString::to_string).unwrap_or_default();
@@ -355,6 +347,6 @@ mod tests {
     fn adapter(
         variables: impl IntoIterator<Item = (String, String)>,
     ) -> Result<PartialConfiguration, ConfigurationSourceError> {
-        EnvConfigurationSource::new().read_from(variables)
+        EnvConfigurationSource::read_from(variables)
     }
 }

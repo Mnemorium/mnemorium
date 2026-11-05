@@ -22,7 +22,7 @@ use crate::domain::service::authorization::Authorization;
 use crate::domain::service::authorization::Decision;
 
 /// Use case implementation for deleting a playlist.
-pub struct DeletePlaylist<F> {
+pub(crate) struct DeletePlaylist<F> {
     /// Factory opening the unit of work wrapping the deletion.
     unit_of_work_factory: Arc<F>,
 }
@@ -30,7 +30,7 @@ pub struct DeletePlaylist<F> {
 impl<F: UnitOfWorkFactory> DeletePlaylist<F> {
     /// Create a new use case.
     #[must_use]
-    pub fn new(unit_of_work_factory: Arc<F>) -> Self {
+    pub(crate) fn new(unit_of_work_factory: Arc<F>) -> Self {
         Self {
             unit_of_work_factory,
         }

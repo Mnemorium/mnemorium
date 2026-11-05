@@ -1,13 +1,13 @@
 /// Minimum number of characters allowed in a username.
-pub const MIN_USERNAME_LENGTH: usize = 4;
+pub(crate) const MIN_USERNAME_LENGTH: usize = 4;
 
 /// Maximum number of characters allowed in a username.
-pub const MAX_USERNAME_LENGTH: usize = 100;
+pub(crate) const MAX_USERNAME_LENGTH: usize = 100;
 
 /// Error returned when validating a username.
 #[derive(Debug, PartialEq, Eq, thiserror::Error)]
 #[non_exhaustive]
-pub enum UsernamePolicyError {
+pub(crate) enum UsernamePolicyError {
     /// The username contains an uppercase letter.
     #[error("username must not contain an uppercase letter")]
     ContainsUppercase,
@@ -29,7 +29,7 @@ pub enum UsernamePolicyError {
 /// submitted.
 #[derive(Debug)]
 #[non_exhaustive]
-pub struct UsernamePolicy;
+pub(crate) struct UsernamePolicy;
 
 impl UsernamePolicy {
     /// Validate `username` against the policy.
@@ -42,7 +42,7 @@ impl UsernamePolicy {
     /// [`UsernamePolicyError::ContainsUppercase`] when any character is
     /// uppercase, and [`UsernamePolicyError::SurroundingWhitespace`] when the
     /// value begins or ends with whitespace.
-    pub fn validate(username: &str) -> Result<(), UsernamePolicyError> {
+    pub(crate) fn validate(username: &str) -> Result<(), UsernamePolicyError> {
         let length = username.chars().count();
         if length < MIN_USERNAME_LENGTH {
             return Err(UsernamePolicyError::TooShort);

@@ -1,3 +1,8 @@
+#![allow(
+    dead_code,
+    reason = "the genre vocabulary belongs to the internal video-identification path, which has no REST caller yet"
+)]
+
 /// A category the shared genre vocabulary recognizes.
 ///
 /// The vocabulary is closed: an adapter maps every provider's spelling of an
@@ -5,7 +10,7 @@
 /// the canonical response never carries a genre outside this enum.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
-pub enum Genre {
+pub(crate) enum Genre {
     /// Action.
     Action,
     /// Adventure.
@@ -67,7 +72,7 @@ pub enum Genre {
 impl Genre {
     /// Return the canonical, uppercase identifier of the genre.
     #[must_use]
-    pub fn as_str(self) -> &'static str {
+    pub(crate) fn as_str(self) -> &'static str {
         match self {
             Self::Action => "ACTION",
             Self::Adventure => "ADVENTURE",
@@ -108,7 +113,7 @@ impl Genre {
     /// `science fiction` both resolve to [`Genre::ScienceFiction`]). A term the
     /// vocabulary does not contain is absent, never guessed.
     #[must_use]
-    pub fn from_name(name: &str) -> Option<Self> {
+    pub(crate) fn from_name(name: &str) -> Option<Self> {
         let folded = name.to_lowercase();
         let mut normalized = String::with_capacity(folded.len());
         let mut pending_space = false;

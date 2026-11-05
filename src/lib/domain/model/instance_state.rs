@@ -1,12 +1,12 @@
 use std::fmt::{Debug, Formatter, Result as FmtResult};
 
 /// Length of a hexadecimal-encoded secret, in characters.
-pub const SECRET_HEX_LENGTH: usize = 64;
+pub(crate) const SECRET_HEX_LENGTH: usize = 64;
 
 /// Error returned when initialising an [`InstanceState`] value object.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
-pub enum InstanceStateError {
+pub(crate) enum InstanceStateError {
     /// The token signing secret is not a 64-character hexadecimal string.
     #[error("jwt secret must be a {SECRET_HEX_LENGTH}-character hexadecimal string")]
     InvalidJwtSecret,
@@ -26,7 +26,7 @@ pub enum InstanceStateError {
 /// leaks into the domain.
 #[derive(Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct InstanceState {
+pub(crate) struct InstanceState {
     /// Instant the identity was established, as Unix seconds.
     created_at: i64,
     /// Token signing secret.
@@ -38,19 +38,19 @@ pub struct InstanceState {
 impl InstanceState {
     /// Return the instant the identity was established, as Unix seconds.
     #[must_use]
-    pub fn created_at(&self) -> i64 {
+    pub(crate) fn created_at(&self) -> i64 {
         self.created_at
     }
 
     /// Return the token signing secret.
     #[must_use]
-    pub fn jwt_secret(&self) -> &str {
+    pub(crate) fn jwt_secret(&self) -> &str {
         &self.jwt_secret
     }
 
     /// Return the site-wide secret mixed into password hashes.
     #[must_use]
-    pub fn pepper(&self) -> &str {
+    pub(crate) fn pepper(&self) -> &str {
         &self.pepper
     }
 
@@ -61,7 +61,7 @@ impl InstanceState {
     /// Returns [`InstanceStateError::InvalidPepper`] when `pepper` is not a
     /// [`SECRET_HEX_LENGTH`]-character hexadecimal string, and
     /// [`InstanceStateError::InvalidJwtSecret`] when `jwt_secret` is not.
-    pub fn try_new(
+    pub(crate) fn try_new(
         created_at: i64,
         pepper: String,
         jwt_secret: String,

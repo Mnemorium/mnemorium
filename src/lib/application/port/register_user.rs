@@ -9,7 +9,7 @@ use crate::domain::service::username_policy::MIN_USERNAME_LENGTH;
 /// Command to register a new user on behalf of an authenticated caller.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct RegisterUserCommand {
+pub(crate) struct RegisterUserCommand {
     /// Identifier of the authenticated caller requesting the registration.
     caller_id: NumericID,
     /// Email address of the user to register, when provided.
@@ -25,19 +25,19 @@ pub struct RegisterUserCommand {
 impl RegisterUserCommand {
     /// Return the identifier of the authenticated caller.
     #[must_use]
-    pub fn caller_id(&self) -> NumericID {
+    pub(crate) fn caller_id(&self) -> NumericID {
         self.caller_id
     }
 
     /// Return the email address, if any.
     #[must_use]
-    pub fn email(&self) -> Option<&str> {
+    pub(crate) fn email(&self) -> Option<&str> {
         self.email.as_deref()
     }
 
     /// Create a new registration command.
     #[must_use]
-    pub fn new(
+    pub(crate) fn new(
         caller_id: NumericID,
         username: String,
         email: Option<String>,
@@ -55,19 +55,19 @@ impl RegisterUserCommand {
 
     /// Return the password.
     #[must_use]
-    pub fn password(&self) -> &str {
+    pub(crate) fn password(&self) -> &str {
         &self.password
     }
 
     /// Return the role to grant.
     #[must_use]
-    pub fn role(&self) -> Role {
+    pub(crate) fn role(&self) -> Role {
         self.role
     }
 
     /// Return the username.
     #[must_use]
-    pub fn username(&self) -> &str {
+    pub(crate) fn username(&self) -> &str {
         &self.username
     }
 }
@@ -75,7 +75,7 @@ impl RegisterUserCommand {
 /// Response of a successful registration.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct RegisterUserResponse {
+pub(crate) struct RegisterUserResponse {
     /// Email address of the registered user, when one was provided.
     email: Option<String>,
     /// Unique identifier of the registered user.
@@ -89,19 +89,19 @@ pub struct RegisterUserResponse {
 impl RegisterUserResponse {
     /// Return the email address, if any.
     #[must_use]
-    pub fn email(&self) -> Option<&str> {
+    pub(crate) fn email(&self) -> Option<&str> {
         self.email.as_deref()
     }
 
     /// Return the unique identifier of the registered user.
     #[must_use]
-    pub fn id(&self) -> NumericID {
+    pub(crate) fn id(&self) -> NumericID {
         self.id
     }
 
     /// Create a new registration response.
     #[must_use]
-    pub fn new(id: NumericID, username: String, email: Option<String>, role: Role) -> Self {
+    pub(crate) fn new(id: NumericID, username: String, email: Option<String>, role: Role) -> Self {
         Self {
             email,
             id,
@@ -112,13 +112,13 @@ impl RegisterUserResponse {
 
     /// Return the role granted to the registered user.
     #[must_use]
-    pub fn role(&self) -> Role {
+    pub(crate) fn role(&self) -> Role {
         self.role
     }
 
     /// Return the username of the registered user.
     #[must_use]
-    pub fn username(&self) -> &str {
+    pub(crate) fn username(&self) -> &str {
         &self.username
     }
 }
@@ -126,7 +126,7 @@ impl RegisterUserResponse {
 /// Error returned when registering a new user.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
-pub enum RegisterUserError {
+pub(crate) enum RegisterUserError {
     /// A user with this email already exists.
     #[error("email is already taken")]
     EmailAlreadyExists,
@@ -160,7 +160,7 @@ pub enum RegisterUserError {
 
 /// Use case for registering a new user.
 #[cfg_attr(test, mockall::automock)]
-pub trait RegisterUserUseCase: Send + Sync {
+pub(crate) trait RegisterUserUseCase: Send + Sync {
     /// Register a new user.
     ///
     /// The future is returned erased (`dyn`, not `impl Future`), boxed and

@@ -23,7 +23,10 @@ const WAL_SIZE_LIMIT_BYTES: &str = "67108864";
 /// Returns an error when the database file cannot be created, when the
 /// connection to the database cannot be established, or when applying
 /// migrations fails.
-pub async fn init_db(db_file: &str, max_connections: u32) -> Result<SqlitePool, sqlx::Error> {
+pub(crate) async fn init_db(
+    db_file: &str,
+    max_connections: u32,
+) -> Result<SqlitePool, sqlx::Error> {
     if !Path::new(db_file).exists() {
         File::create(db_file)?;
         warn!("sqlite database file {db_file} did not exist; created it");

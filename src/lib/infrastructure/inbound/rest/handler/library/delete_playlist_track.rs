@@ -62,7 +62,7 @@ use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
     ),
     summary = "Remove one track of a music playlist"
 )]
-pub async fn delete_playlist_track(
+pub(crate) async fn delete_playlist_track(
     Path((playlist_id_value, track_index_value)): Path<(String, String)>,
     State(state): State<AppState>,
     caller: AuthenticatedUser,

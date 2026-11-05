@@ -29,7 +29,7 @@ use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 /// (`API-032`, `API-034`, `API-037`).
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 #[non_exhaustive]
-pub struct FileLinks {
+struct FileLinks {
     /// Link to the typed image backed by the file, when one exists.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub image: Option<Link>,
@@ -43,7 +43,7 @@ pub struct FileLinks {
 impl FileLinks {
     /// Build the links of the file identified by `file_id`.
     #[must_use]
-    pub fn for_file(file_id: NumericID, owner_id: NumericID, image_id: Option<NumericID>) -> Self {
+    fn for_file(file_id: NumericID, owner_id: NumericID, image_id: Option<NumericID>) -> Self {
         Self {
             image: image_id.map(|id| Link::new(&asset_image_href(id))),
             owner: Link::new(&user_self_href(owner_id)),
@@ -55,7 +55,7 @@ impl FileLinks {
 /// Representation of a stored file.
 #[derive(Debug, Serialize, ToSchema)]
 #[non_exhaustive]
-pub struct FileResponse {
+struct FileResponse {
     /// Unique identifier of the stored file.
     pub id: NumericID,
     /// Whether the file is marked public.
@@ -86,7 +86,7 @@ pub struct FileResponse {
 impl FileResponse {
     /// Map a fetched file onto its HTTP representation.
     #[must_use]
-    pub fn from_response(response: &GetFileResponseData) -> Self {
+    pub(crate) fn from_response(response: &GetFileResponseData) -> Self {
         Self {
             id: response.id(),
             is_public: response.is_public(),
@@ -163,7 +163,7 @@ impl From<GetFileError> for ApiError {
     ),
     summary = "Fetch a stored file"
 )]
-pub async fn get_file(
+pub(crate) async fn get_file(
     Path(file_id_value): Path<String>,
     State(state): State<AppState>,
     caller: AuthenticatedUser,

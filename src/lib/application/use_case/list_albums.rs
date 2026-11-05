@@ -23,7 +23,7 @@ use crate::domain::port::user_unit_of_work::UserUnitOfWork;
 use crate::domain::service::authorization::Authorization;
 
 /// Use case implementation for listing the music albums the caller may see.
-pub struct ListAlbums<F> {
+pub(crate) struct ListAlbums<F> {
     /// Factory opening the unit of work wrapping the read.
     unit_of_work_factory: Arc<F>,
 }
@@ -31,7 +31,7 @@ pub struct ListAlbums<F> {
 impl<F: UnitOfWorkFactory> ListAlbums<F> {
     /// Create a new use case.
     #[must_use]
-    pub fn new(unit_of_work_factory: Arc<F>) -> Self {
+    pub(crate) fn new(unit_of_work_factory: Arc<F>) -> Self {
         Self {
             unit_of_work_factory,
         }
@@ -184,10 +184,6 @@ mod tests {
     type UseCase = ListAlbums<TestFactory>;
 
     /// Build one `CD` medium sequencing one recording per index.
-    #[expect(
-        clippy::single_call_fn,
-        reason = "the medium fixture names the case it builds"
-    )]
     fn medium(medium_index: u8, track_count: u8) -> Result<MusicMedium, Box<dyn Error>> {
         let tracks = (0..track_count)
             .map(|index| {

@@ -1,7 +1,7 @@
 /// Error returned when initialising a `MusicQuery`.
 #[derive(Debug, PartialEq, Eq, thiserror::Error)]
 #[non_exhaustive]
-pub enum MusicQueryError {
+pub(crate) enum MusicQueryError {
     /// The query title is empty.
     #[error("a music query title must not be empty")]
     InvalidTitle,
@@ -10,7 +10,7 @@ pub enum MusicQueryError {
 /// Kind of music work a query may name.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
-pub enum MusicKind {
+pub(crate) enum MusicKind {
     /// The abstract album, independent of any one edition.
     Album,
     /// One performance, independent of the release it appears on.
@@ -22,7 +22,7 @@ pub enum MusicKind {
 impl MusicKind {
     /// Render the kind as its wire name (`album`, `release`, `recording`).
     #[must_use]
-    pub fn as_wire(self) -> &'static str {
+    pub(crate) fn as_wire(self) -> &'static str {
         match self {
             Self::Album => "album",
             Self::Recording => "recording",
@@ -37,7 +37,7 @@ impl MusicKind {
     /// inbound handler can classify the rejection as `enum_validation_failed`
     /// (`OBS-006`).
     #[must_use]
-    pub fn parse(value: &str) -> Option<Self> {
+    pub(crate) fn parse(value: &str) -> Option<Self> {
         match value {
             "album" => Some(Self::Album),
             "recording" => Some(Self::Recording),
@@ -53,7 +53,7 @@ impl MusicKind {
 /// absent when the caller does not know them, and a title is never empty.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct MusicQuery {
+pub(crate) struct MusicQuery {
     /// Group the caller knows, when any.
     group: Option<String>,
     /// Kind of work the query searches for.
@@ -67,19 +67,19 @@ pub struct MusicQuery {
 impl MusicQuery {
     /// Return the group the caller knows, when any.
     #[must_use]
-    pub fn group(&self) -> Option<&str> {
+    pub(crate) fn group(&self) -> Option<&str> {
         self.group.as_deref()
     }
 
     /// Return the kind of work the query searches for.
     #[must_use]
-    pub fn kind(&self) -> MusicKind {
+    pub(crate) fn kind(&self) -> MusicKind {
         self.kind
     }
 
     /// Return the title to search for.
     #[must_use]
-    pub fn title(&self) -> &str {
+    pub(crate) fn title(&self) -> &str {
         &self.title
     }
 
@@ -88,7 +88,7 @@ impl MusicQuery {
     /// # Errors
     ///
     /// Returns [`MusicQueryError::InvalidTitle`] when `title` is empty.
-    pub fn try_new(
+    pub(crate) fn try_new(
         kind: MusicKind,
         title: String,
         group: Option<String>,
@@ -107,7 +107,7 @@ impl MusicQuery {
 
     /// Return the release or first-release year, when the caller knows one.
     #[must_use]
-    pub fn year(&self) -> Option<u32> {
+    pub(crate) fn year(&self) -> Option<u32> {
         self.year
     }
 }

@@ -26,7 +26,7 @@ use crate::domain::service::authorization::Authorization;
 use crate::domain::service::authorization::Decision;
 
 /// Use case implementation for editing the shared recording behind a track.
-pub struct PatchAlbumTrack<F> {
+pub(crate) struct PatchAlbumTrack<F> {
     /// Factory opening the unit of work wrapping the write.
     unit_of_work_factory: Arc<F>,
 }
@@ -34,7 +34,7 @@ pub struct PatchAlbumTrack<F> {
 impl<F: UnitOfWorkFactory> PatchAlbumTrack<F> {
     /// Create a new use case.
     #[must_use]
-    pub fn new(unit_of_work_factory: Arc<F>) -> Self {
+    pub(crate) fn new(unit_of_work_factory: Arc<F>) -> Self {
         Self {
             unit_of_work_factory,
         }

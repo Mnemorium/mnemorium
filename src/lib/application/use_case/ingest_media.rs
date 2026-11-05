@@ -135,7 +135,7 @@ enum MediaRow {
 /// one skipped file instead of the whole scan. The scan and the change observer
 /// drive the same reconciliation, so the startup walk is the authority and the
 /// observer is an accelerator.
-pub struct IngestMedia<F, N, P, S> {
+pub(crate) struct IngestMedia<F, N, P, S> {
     /// Probe extracting the media metadata.
     media_probe: Arc<P>,
     /// Source discovering the files under the library root.
@@ -418,7 +418,7 @@ where
 
     /// Create a new use case.
     #[must_use]
-    pub fn new(
+    pub(crate) fn new(
         unit_of_work_factory: Arc<F>,
         media_source: Arc<S>,
         sniffer: Arc<N>,

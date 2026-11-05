@@ -6,7 +6,7 @@ use crate::domain::alias::NumericID;
 /// Command to list the shows the caller may see.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct ListSeriesCommand {
+pub(crate) struct ListSeriesCommand {
     /// Identifier of the authenticated caller.
     caller_id: NumericID,
     /// Maximum number of shows to return, when set.
@@ -20,25 +20,25 @@ pub struct ListSeriesCommand {
 impl ListSeriesCommand {
     /// Return the identifier of the authenticated caller.
     #[must_use]
-    pub fn caller_id(&self) -> NumericID {
+    pub(crate) fn caller_id(&self) -> NumericID {
         self.caller_id
     }
 
     /// Return the maximum number of shows to return, if any.
     #[must_use]
-    pub fn limit(&self) -> Option<usize> {
+    pub(crate) fn limit(&self) -> Option<usize> {
         self.limit
     }
 
     /// Return the name filter, if any.
     #[must_use]
-    pub fn name(&self) -> Option<&str> {
+    pub(crate) fn name(&self) -> Option<&str> {
         self.name.as_deref()
     }
 
     /// Create a new list-shows command.
     #[must_use]
-    pub fn new(
+    pub(crate) fn new(
         caller_id: NumericID,
         name: Option<String>,
         limit: Option<usize>,
@@ -54,7 +54,7 @@ impl ListSeriesCommand {
 
     /// Return the number of matching shows to skip, if any.
     #[must_use]
-    pub fn offset(&self) -> Option<usize> {
+    pub(crate) fn offset(&self) -> Option<usize> {
         self.offset
     }
 }
@@ -62,7 +62,7 @@ impl ListSeriesCommand {
 /// One show of a successful listing: its identifier, its name and its cover.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct ListSeriesItem {
+pub(crate) struct ListSeriesItem {
     /// Identifier of the image holding the show's artwork, when set.
     cover_image_id: Option<NumericID>,
     /// Unique identifier of the show.
@@ -74,25 +74,25 @@ pub struct ListSeriesItem {
 impl ListSeriesItem {
     /// Return the identifier of the image holding the show's artwork, if any.
     #[must_use]
-    pub fn cover_image_id(&self) -> Option<NumericID> {
+    pub(crate) fn cover_image_id(&self) -> Option<NumericID> {
         self.cover_image_id
     }
 
     /// Return the unique identifier of the show.
     #[must_use]
-    pub fn id(&self) -> NumericID {
+    pub(crate) fn id(&self) -> NumericID {
         self.id
     }
 
     /// Return the name of the show.
     #[must_use]
-    pub fn name(&self) -> &str {
+    pub(crate) fn name(&self) -> &str {
         &self.name
     }
 
     /// Create a new listed show.
     #[must_use]
-    pub fn new(id: NumericID, name: String, cover_image_id: Option<NumericID>) -> Self {
+    pub(crate) fn new(id: NumericID, name: String, cover_image_id: Option<NumericID>) -> Self {
         Self {
             cover_image_id,
             id,
@@ -104,7 +104,7 @@ impl ListSeriesItem {
 /// Response of a successful show listing: one page of shows.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct ListSeriesResponse {
+pub(crate) struct ListSeriesResponse {
     /// The shows of the returned page.
     series: Vec<ListSeriesItem>,
     /// Total number of shows, before pagination.
@@ -114,19 +114,19 @@ pub struct ListSeriesResponse {
 impl ListSeriesResponse {
     /// Create a new list-shows response.
     #[must_use]
-    pub fn new(series: Vec<ListSeriesItem>, total: usize) -> Self {
+    pub(crate) fn new(series: Vec<ListSeriesItem>, total: usize) -> Self {
         Self { series, total }
     }
 
     /// Return the shows of the returned page.
     #[must_use]
-    pub fn series(&self) -> &[ListSeriesItem] {
+    pub(crate) fn series(&self) -> &[ListSeriesItem] {
         &self.series
     }
 
     /// Return the total number of shows, before pagination.
     #[must_use]
-    pub fn total(&self) -> usize {
+    pub(crate) fn total(&self) -> usize {
         self.total
     }
 }
@@ -134,7 +134,7 @@ impl ListSeriesResponse {
 /// Error returned when listing shows.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
-pub enum ListSeriesError {
+pub(crate) enum ListSeriesError {
     /// The authenticated caller does not exist anymore.
     #[error("the authenticated user does not exist")]
     NoSuchCaller,
@@ -145,7 +145,7 @@ pub enum ListSeriesError {
 
 /// Use case for listing the shows the caller may see.
 #[cfg_attr(test, mockall::automock)]
-pub trait ListSeriesUseCase: Send + Sync {
+pub(crate) trait ListSeriesUseCase: Send + Sync {
     /// List the shows visible to the authenticated caller.
     ///
     /// The future is returned erased (`dyn`, not `impl Future`), boxed and

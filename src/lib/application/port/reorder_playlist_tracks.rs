@@ -7,7 +7,7 @@ use crate::domain::model::music_playlist::MusicPlaylist;
 /// Command to reorder the tracks of a playlist.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct ReorderPlaylistTracksCommand {
+pub(crate) struct ReorderPlaylistTracksCommand {
     /// Identifier of the authenticated caller.
     caller_id: NumericID,
     /// Complete permutation of the playlist's current track indices.
@@ -19,13 +19,13 @@ pub struct ReorderPlaylistTracksCommand {
 impl ReorderPlaylistTracksCommand {
     /// Return the identifier of the authenticated caller.
     #[must_use]
-    pub fn caller_id(&self) -> NumericID {
+    pub(crate) fn caller_id(&self) -> NumericID {
         self.caller_id
     }
 
     /// Create a new reorder-playlist-tracks command.
     #[must_use]
-    pub fn new(caller_id: NumericID, playlist_id: NumericID, order: Vec<u32>) -> Self {
+    pub(crate) fn new(caller_id: NumericID, playlist_id: NumericID, order: Vec<u32>) -> Self {
         Self {
             caller_id,
             order,
@@ -35,13 +35,13 @@ impl ReorderPlaylistTracksCommand {
 
     /// Return the requested order.
     #[must_use]
-    pub fn order(&self) -> &[u32] {
+    pub(crate) fn order(&self) -> &[u32] {
         &self.order
     }
 
     /// Return the identifier of the playlist to reorder.
     #[must_use]
-    pub fn playlist_id(&self) -> NumericID {
+    pub(crate) fn playlist_id(&self) -> NumericID {
         self.playlist_id
     }
 }
@@ -49,7 +49,7 @@ impl ReorderPlaylistTracksCommand {
 /// Response of a successful reorder.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct ReorderPlaylistTracksResponse {
+pub(crate) struct ReorderPlaylistTracksResponse {
     /// The reordered playlist.
     playlist: MusicPlaylist,
 }
@@ -57,13 +57,13 @@ pub struct ReorderPlaylistTracksResponse {
 impl ReorderPlaylistTracksResponse {
     /// Create a new reorder response.
     #[must_use]
-    pub fn new(playlist: MusicPlaylist) -> Self {
+    pub(crate) fn new(playlist: MusicPlaylist) -> Self {
         Self { playlist }
     }
 
     /// Return the reordered playlist.
     #[must_use]
-    pub fn playlist(&self) -> &MusicPlaylist {
+    pub(crate) fn playlist(&self) -> &MusicPlaylist {
         &self.playlist
     }
 }
@@ -71,7 +71,7 @@ impl ReorderPlaylistTracksResponse {
 /// Error returned when reordering the tracks of a playlist.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
-pub enum ReorderPlaylistTracksError {
+pub(crate) enum ReorderPlaylistTracksError {
     /// The caller may read the playlist but does not own it.
     #[error("the caller may not modify this playlist")]
     Forbidden,
@@ -93,7 +93,7 @@ pub enum ReorderPlaylistTracksError {
 
 /// Use case for reordering the tracks of a playlist.
 #[cfg_attr(test, mockall::automock)]
-pub trait ReorderPlaylistTracksUseCase: Send + Sync {
+pub(crate) trait ReorderPlaylistTracksUseCase: Send + Sync {
     /// Replace the playlist's track order with the requested permutation.
     fn execute<'future>(
         &'future self,

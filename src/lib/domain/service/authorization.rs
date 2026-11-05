@@ -18,7 +18,7 @@ use crate::domain::model::user::User;
 /// The rendering of a denial to the caller.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
-pub enum Decision {
+pub(crate) enum Decision {
     /// The caller may perform the action.
     Allow,
     /// The caller may not perform the action.
@@ -28,14 +28,18 @@ pub enum Decision {
 impl Decision {
     /// Return whether the decision allows the action.
     #[must_use]
-    pub fn is_allowed(&self) -> bool {
+    #[expect(
+        clippy::trivially_copy_pass_by_ref,
+        reason = "STY-RUST-019 fixes the getter receiver as `&self`"
+    )]
+    pub(crate) fn is_allowed(&self) -> bool {
         matches!(self, Self::Allow)
     }
 }
 
 /// A denied action and how the caller must see the refusal.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Denial {
+pub(crate) struct Denial {
     /// The denied action.
     action: Action,
     /// Whether the refusal conceals the addressed resource (`404`).
@@ -45,7 +49,11 @@ pub struct Denial {
 impl Denial {
     /// Return the denied action.
     #[must_use]
-    pub fn action(&self) -> Action {
+    #[expect(
+        clippy::trivially_copy_pass_by_ref,
+        reason = "STY-RUST-019 fixes the getter receiver as `&self`"
+    )]
+    pub(crate) fn action(&self) -> Action {
         self.action
     }
 
@@ -54,7 +62,11 @@ impl Denial {
     /// A concealed denial answers `404 Not Found`, indistinguishable from a
     /// missing resource; a revealed denial answers `403 Forbidden`.
     #[must_use]
-    pub fn conceals(&self) -> bool {
+    #[expect(
+        clippy::trivially_copy_pass_by_ref,
+        reason = "STY-RUST-019 fixes the getter receiver as `&self`"
+    )]
+    pub(crate) fn conceals(&self) -> bool {
         self.conceal
     }
 }
@@ -62,7 +74,7 @@ impl Denial {
 /// Domain service holding the authorization policy.
 #[derive(Debug)]
 #[non_exhaustive]
-pub struct Authorization;
+pub(crate) struct Authorization;
 
 impl Authorization {
     /// Return whether the scope `action` resolves to covers `resource`.
@@ -96,7 +108,7 @@ impl Authorization {
     /// for `action`, then the caller's role preset. A management or moderation
     /// denial conceals the resource when the caller cannot read it.
     #[must_use]
-    pub fn decide<P: Protected + ?Sized>(
+    pub(crate) fn decide<P: Protected + ?Sized>(
         caller: &User,
         permissions: &[Permission],
         action: Action,
@@ -123,7 +135,7 @@ impl Authorization {
     /// The decision is the owning resource's read action, never `file.read`:
     /// `file.read` is derived and its scope comes from the owner.
     #[must_use]
-    pub fn decide_asset<P: Protected + ?Sized>(
+    pub(crate) fn decide_asset<P: Protected + ?Sized>(
         caller: &User,
         permissions: &[Permission],
         context: AssetContext,
@@ -174,7 +186,10 @@ impl Authorization {
     /// cover it: only `ALL` (or the Root Admin short-circuit) reaches the
     /// surface. The denial is revealed because it guards a write.
     #[must_use]
-    pub fn decide_library_manage_surface(caller: &User, permissions: &[Permission]) -> Decision {
+    pub(crate) fn decide_library_manage_surface(
+        caller: &User,
+        permissions: &[Permission],
+    ) -> Decision {
         if caller.is_root_admin()
             || matches!(
                 Self::effective_scope(caller, permissions, Action::LibraryManage),
@@ -199,7 +214,7 @@ impl Authorization {
     /// `LISTED` — reaches the surface. The denial stays concealed because it
     /// guards a read.
     #[must_use]
-    pub fn decide_library_surface(caller: &User, permissions: &[Permission]) -> Decision {
+    pub(crate) fn decide_library_surface(caller: &User, permissions: &[Permission]) -> Decision {
         if caller.is_root_admin()
             || !matches!(
                 Self::effective_scope(caller, permissions, Action::LibraryRead),
@@ -221,7 +236,7 @@ impl Authorization {
     /// Every other caller sees the concealed `404 Not Found` of a missing
     /// asset.
     #[must_use]
-    pub fn decide_orphan_asset(caller: &User, file: &File) -> Decision {
+    pub(crate) fn decide_orphan_asset(caller: &User, file: &File) -> Decision {
         if caller.is_root_admin() || file.owner_id() == Some(caller.id()) {
             return Decision::Allow;
         }
