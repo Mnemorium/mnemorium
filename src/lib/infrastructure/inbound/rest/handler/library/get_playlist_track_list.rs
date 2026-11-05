@@ -63,7 +63,7 @@ use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
     ),
     summary = "Fetch a music playlist's tracks"
 )]
-pub async fn get_playlist_track_list(
+pub(crate) async fn get_playlist_track_list(
     Path(playlist_id_value): Path<String>,
     State(state): State<AppState>,
     caller: AuthenticatedUser,

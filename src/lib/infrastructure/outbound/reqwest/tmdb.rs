@@ -4,6 +4,10 @@
 //! a v3 API key travels in the query string and is therefore subject to the
 //! sanitizing rule: a failure is classified and logged by kind, never by the
 //! request address.
+#![allow(
+    dead_code,
+    reason = "the TMDB provider serves the internal video-identification path, which has no REST caller yet"
+)]
 
 use std::future::Future;
 use std::time::Duration;
@@ -125,7 +129,7 @@ struct SearchPayload {
 }
 
 /// Video metadata provider backed by the TMDB API.
-pub struct TmdbVideoMetadataProvider {
+pub(crate) struct TmdbVideoMetadataProvider {
     /// API key the request carries.
     api_key: String,
     /// Client downloading the artwork under the adapter's policy.
@@ -149,7 +153,7 @@ impl TmdbVideoMetadataProvider {
 
     /// Create a provider talking to the production endpoints.
     #[must_use]
-    pub fn new(api_key: String) -> Self {
+    pub(crate) fn new(api_key: String) -> Self {
         Self::with_endpoints(
             api_key,
             DEFAULT_BASE_URL.to_owned(),
@@ -187,7 +191,7 @@ impl TmdbVideoMetadataProvider {
 
     /// Create a provider talking to `base_url`, with the given timeout.
     #[must_use]
-    pub fn with_base_url(api_key: String, base_url: String, timeout: Duration) -> Self {
+    pub(crate) fn with_base_url(api_key: String, base_url: String, timeout: Duration) -> Self {
         Self::with_endpoints(
             api_key,
             base_url,
@@ -201,7 +205,7 @@ impl TmdbVideoMetadataProvider {
     /// The artwork base is a separate input so a test can stand the image CDN
     /// in for `wiremock` too.
     #[must_use]
-    pub fn with_endpoints(
+    pub(crate) fn with_endpoints(
         api_key: String,
         base_url: String,
         artwork_base_url: String,

@@ -23,7 +23,7 @@ use crate::domain::port::user_unit_of_work::UserUnitOfWork;
 /// The asset is authorized inside the unit of work; only a readable asset's
 /// bytes are read from storage, so a denied caller never reaches the file and
 /// cannot observe its existence through timing or size (`API-044`).
-pub struct GetAssetContent<F, S> {
+pub(crate) struct GetAssetContent<F, S> {
     /// Storage adapter reading the stored bytes.
     file_storage: Arc<S>,
     /// Factory opening the unit of work wrapping the authorization.
@@ -33,7 +33,7 @@ pub struct GetAssetContent<F, S> {
 impl<F: UnitOfWorkFactory, S: FileStorage> GetAssetContent<F, S> {
     /// Create a new use case.
     #[must_use]
-    pub fn new(unit_of_work_factory: Arc<F>, file_storage: Arc<S>) -> Self {
+    pub(crate) fn new(unit_of_work_factory: Arc<F>, file_storage: Arc<S>) -> Self {
         Self {
             file_storage,
             unit_of_work_factory,

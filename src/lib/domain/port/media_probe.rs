@@ -13,7 +13,7 @@ use crate::domain::port::error::MediaProbeError;
 
 /// Port for probing media files for their metadata.
 #[cfg_attr(test, mockall::automock)]
-pub trait MediaProbe: Send + Sync {
+pub(crate) trait MediaProbe: Send + Sync {
     /// Probe the audio stored at `path`.
     ///
     /// A file absent at `path` is a valid outcome, reported as `Ok(None)`; a

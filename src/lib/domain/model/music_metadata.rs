@@ -1,3 +1,8 @@
+#![allow(
+    dead_code,
+    reason = "the album metadata keeps the official-release predicate its contract declares; no caller reads it yet"
+)]
+
 use chrono::NaiveDate;
 
 use crate::domain::model::artwork::Artwork;
@@ -11,7 +16,7 @@ use crate::domain::model::music_album::ProductionType;
 /// phrase is metadata, never a separator the system invents.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct ArtistCredit {
+pub(crate) struct ArtistCredit {
     /// Phrase the provider places after the name, when it reports one.
     join_phrase: Option<String>,
     /// Name the provider credits.
@@ -21,19 +26,19 @@ pub struct ArtistCredit {
 impl ArtistCredit {
     /// Return the phrase that follows this name, when the provider reports one.
     #[must_use]
-    pub fn join_phrase(&self) -> Option<&str> {
+    pub(crate) fn join_phrase(&self) -> Option<&str> {
         self.join_phrase.as_deref()
     }
 
     /// Return the name the provider credits.
     #[must_use]
-    pub fn name(&self) -> &str {
+    pub(crate) fn name(&self) -> &str {
         &self.name
     }
 
     /// Create a new artist credit.
     #[must_use]
-    pub fn new(name: String, join_phrase: Option<String>) -> Self {
+    pub(crate) fn new(name: String, join_phrase: Option<String>) -> Self {
         Self { join_phrase, name }
     }
 }
@@ -46,7 +51,7 @@ impl ArtistCredit {
 /// catalogue pretending to model it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub enum MediumFormat {
+pub(crate) enum MediumFormat {
     /// A compact disc.
     Cd,
     /// Any other format the provider reports.
@@ -56,7 +61,7 @@ pub enum MediumFormat {
 impl MediumFormat {
     /// Return whether the medium is a compact disc.
     #[must_use]
-    pub fn is_compact_disc(&self) -> bool {
+    pub(crate) fn is_compact_disc(&self) -> bool {
         matches!(self, Self::Cd)
     }
 }
@@ -64,7 +69,7 @@ impl MediumFormat {
 /// One medium of an edition, as identification reports it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct MediumSummary {
+pub(crate) struct MediumSummary {
     /// Format of the medium.
     format: MediumFormat,
     /// Album-scoped position of the medium, starting at one.
@@ -76,19 +81,19 @@ pub struct MediumSummary {
 impl MediumSummary {
     /// Return the format of the medium.
     #[must_use]
-    pub fn format(&self) -> &MediumFormat {
+    pub(crate) fn format(&self) -> &MediumFormat {
         &self.format
     }
 
     /// Return the album-scoped position of the medium, starting at one.
     #[must_use]
-    pub fn index(&self) -> u32 {
+    pub(crate) fn index(&self) -> u32 {
         self.index
     }
 
     /// Create a new medium summary.
     #[must_use]
-    pub fn new(format: MediumFormat, index: u32, track_count: u32) -> Self {
+    pub(crate) fn new(format: MediumFormat, index: u32, track_count: u32) -> Self {
         Self {
             format,
             index,
@@ -98,7 +103,7 @@ impl MediumSummary {
 
     /// Return the number of tracks the medium carries.
     #[must_use]
-    pub fn track_count(&self) -> u32 {
+    pub(crate) fn track_count(&self) -> u32 {
         self.track_count
     }
 }
@@ -110,7 +115,7 @@ impl MediumSummary {
 /// rather than guessed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
-pub enum ReleaseStatus {
+pub(crate) enum ReleaseStatus {
     /// An unofficial release.
     Bootleg,
     /// A release the provider marks as cancelled.
@@ -131,7 +136,7 @@ impl ReleaseStatus {
     /// The names round-trip through [`ReleaseStatus::from_name`], which folds
     /// case and treats underscores as spaces.
     #[must_use]
-    pub fn as_wire(self) -> &'static str {
+    pub(crate) fn as_wire(self) -> &'static str {
         match self {
             Self::Bootleg => "BOOTLEG",
             Self::Cancelled => "CANCELLED",
@@ -149,7 +154,7 @@ impl ReleaseStatus {
     /// to [`ReleaseStatus::PseudoRelease`]. A value the list does not contain is
     /// absent, never guessed.
     #[must_use]
-    pub fn from_name(name: &str) -> Option<Self> {
+    pub(crate) fn from_name(name: &str) -> Option<Self> {
         let normalized = name
             .trim()
             .to_ascii_lowercase()
@@ -170,7 +175,7 @@ impl ReleaseStatus {
 
     /// Return whether the status is the official one.
     #[must_use]
-    pub fn is_official(self) -> bool {
+    pub(crate) fn is_official(self) -> bool {
         matches!(self, Self::Official)
     }
 }
@@ -182,7 +187,7 @@ impl ReleaseStatus {
 /// than replaced by a placeholder or a guess.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct Edition {
+pub(crate) struct Edition {
     /// Country of release as an uppercase ISO 3166-1 alpha-2 code, when the
     /// provider reports a mappable one.
     country: Option<String>,
@@ -201,19 +206,19 @@ pub struct Edition {
 impl Edition {
     /// Return the country of release, when the provider reports a mappable one.
     #[must_use]
-    pub fn country(&self) -> Option<&str> {
+    pub(crate) fn country(&self) -> Option<&str> {
         self.country.as_deref()
     }
 
     /// Return the mediums of the edition, in the provider's order.
     #[must_use]
-    pub fn mediums(&self) -> &[MediumSummary] {
+    pub(crate) fn mediums(&self) -> &[MediumSummary] {
         &self.mediums
     }
 
     /// Create a new edition.
     #[must_use]
-    pub fn new(
+    pub(crate) fn new(
         reference: ExternalRef,
         title: String,
         release_date: Option<NaiveDate>,
@@ -233,25 +238,25 @@ impl Edition {
 
     /// Return the opaque reference the provider issued for the edition.
     #[must_use]
-    pub fn reference(&self) -> &ExternalRef {
+    pub(crate) fn reference(&self) -> &ExternalRef {
         &self.reference
     }
 
     /// Return the date of release, when the provider reports a complete one.
     #[must_use]
-    pub fn release_date(&self) -> Option<NaiveDate> {
+    pub(crate) fn release_date(&self) -> Option<NaiveDate> {
         self.release_date
     }
 
     /// Return the status, when the provider reports a mappable one.
     #[must_use]
-    pub fn status(&self) -> Option<ReleaseStatus> {
+    pub(crate) fn status(&self) -> Option<ReleaseStatus> {
         self.status
     }
 
     /// Return the title the provider reports for the edition.
     #[must_use]
-    pub fn title(&self) -> &str {
+    pub(crate) fn title(&self) -> &str {
         &self.title
     }
 }
@@ -266,7 +271,7 @@ impl Edition {
 /// the film and television genre vocabulary does not apply here.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub enum MusicMetadata {
+pub(crate) enum MusicMetadata {
     /// One album and the editions the provider lists for it.
     Album {
         /// Artwork the provider reports, when the download succeeds.

@@ -15,12 +15,12 @@ const PASSWORD_LENGTH: usize = 20;
 const SYMBOLS: &[u8] = b"!@#$%^&*()-_=+";
 
 /// Password generator producing random, policy-compliant passwords.
-pub struct RandomPasswordGenerator;
+pub(crate) struct RandomPasswordGenerator;
 
 impl RandomPasswordGenerator {
     /// Create a new password generator.
     #[must_use]
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self
     }
 }

@@ -9,7 +9,7 @@ use crate::domain::service::name_policy::MAX_NAME_LENGTH;
 /// Command to create a gallery owned by the caller.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct CreateGalleryCommand {
+pub(crate) struct CreateGalleryCommand {
     /// Identifier of the authenticated caller that will own the gallery.
     caller_id: NumericID,
     /// Whether any authenticated user may read and moderate the gallery.
@@ -21,25 +21,25 @@ pub struct CreateGalleryCommand {
 impl CreateGalleryCommand {
     /// Return the identifier of the authenticated caller.
     #[must_use]
-    pub fn caller_id(&self) -> NumericID {
+    pub(crate) fn caller_id(&self) -> NumericID {
         self.caller_id
     }
 
     /// Return whether the gallery is public.
     #[must_use]
-    pub fn is_public(&self) -> bool {
+    pub(crate) fn is_public(&self) -> bool {
         self.is_public
     }
 
     /// Return the name of the gallery.
     #[must_use]
-    pub fn name(&self) -> &str {
+    pub(crate) fn name(&self) -> &str {
         &self.name
     }
 
     /// Create a new create-gallery command.
     #[must_use]
-    pub fn new(caller_id: NumericID, name: String, is_public: bool) -> Self {
+    pub(crate) fn new(caller_id: NumericID, name: String, is_public: bool) -> Self {
         Self {
             caller_id,
             is_public,
@@ -51,7 +51,7 @@ impl CreateGalleryCommand {
 /// Response of a successful gallery creation.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct CreateGalleryResponse {
+pub(crate) struct CreateGalleryResponse {
     /// Date and time at which the gallery was created.
     created_at: NaiveDateTime,
     /// Unique identifier of the created gallery.
@@ -69,37 +69,37 @@ pub struct CreateGalleryResponse {
 impl CreateGalleryResponse {
     /// Return the date and time at which the gallery was created.
     #[must_use]
-    pub fn created_at(&self) -> NaiveDateTime {
+    pub(crate) fn created_at(&self) -> NaiveDateTime {
         self.created_at
     }
 
     /// Return the unique identifier of the created gallery.
     #[must_use]
-    pub fn gallery_id(&self) -> NumericID {
+    pub(crate) fn gallery_id(&self) -> NumericID {
         self.gallery_id
     }
 
     /// Return whether the gallery is public.
     #[must_use]
-    pub fn is_public(&self) -> bool {
+    pub(crate) fn is_public(&self) -> bool {
         self.is_public
     }
 
     /// Return the date and time of the last modification of the gallery.
     #[must_use]
-    pub fn last_modified_at(&self) -> NaiveDateTime {
+    pub(crate) fn last_modified_at(&self) -> NaiveDateTime {
         self.last_modified_at
     }
 
     /// Return the name of the created gallery.
     #[must_use]
-    pub fn name(&self) -> &str {
+    pub(crate) fn name(&self) -> &str {
         &self.name
     }
 
     /// Create a new create-gallery response.
     #[must_use]
-    pub fn new(
+    pub(crate) fn new(
         gallery_id: NumericID,
         user_id: NumericID,
         name: String,
@@ -119,7 +119,7 @@ impl CreateGalleryResponse {
 
     /// Return the identifier of the owning user.
     #[must_use]
-    pub fn user_id(&self) -> NumericID {
+    pub(crate) fn user_id(&self) -> NumericID {
         self.user_id
     }
 }
@@ -127,7 +127,7 @@ impl CreateGalleryResponse {
 /// Error returned when creating a gallery.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
-pub enum CreateGalleryError {
+pub(crate) enum CreateGalleryError {
     /// The name is empty or made only of whitespace.
     #[error("gallery name must not be empty")]
     InvalidName,
@@ -147,7 +147,7 @@ pub enum CreateGalleryError {
 
 /// Use case for creating a gallery.
 #[cfg_attr(test, mockall::automock)]
-pub trait CreateGalleryUseCase: Send + Sync {
+pub(crate) trait CreateGalleryUseCase: Send + Sync {
     /// Create a gallery owned by the authenticated caller.
     ///
     /// The future is returned erased (`dyn`, not `impl Future`), boxed and

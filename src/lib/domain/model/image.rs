@@ -6,7 +6,7 @@ use crate::domain::model::scope::Scope;
 /// Error returned when initialising an `Image`.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
-pub enum ImageError {
+pub(crate) enum ImageError {
     /// The height is not positive.
     #[error("image height must be greater than zero")]
     InvalidHeightPx,
@@ -18,6 +18,10 @@ pub enum ImageError {
     InvalidWidthPx,
     /// An unexpected or unmapped error occurred.
     #[error("an unknown error occurred: {0}")]
+    #[expect(
+        dead_code,
+        reason = "the error enum keeps the catch-all variant the rulebook's error shape declares; no caller constructs it yet"
+    )]
     Unknown(#[source] anyhow::Error),
 }
 
@@ -27,7 +31,7 @@ pub enum ImageError {
 )]
 #[serde(rename_all = "UPPERCASE")]
 #[non_exhaustive]
-pub enum Orientation {
+pub(crate) enum Orientation {
     /// The width is greater than the height.
     Landscape,
     /// The height is greater than the width.
@@ -42,7 +46,7 @@ pub enum Orientation {
     clippy::struct_field_names,
     reason = "`image_id` is the primary key name mandated by the SQL section and the domain field naming"
 )]
-pub struct Image {
+pub(crate) struct Image {
     /// Date at which the image was created.
     created_at: NaiveDate,
     /// Identifier of the backing file.
@@ -64,43 +68,43 @@ pub struct Image {
 impl Image {
     /// Return the date at which the image was created.
     #[must_use]
-    pub fn created_at(&self) -> NaiveDate {
+    pub(crate) fn created_at(&self) -> NaiveDate {
         self.created_at
     }
 
     /// Return the identifier of the backing file.
     #[must_use]
-    pub fn file_id(&self) -> NumericID {
+    pub(crate) fn file_id(&self) -> NumericID {
         self.file_id
     }
 
     /// Return the height of the image, in pixels.
     #[must_use]
-    pub fn height_px(&self) -> i64 {
+    pub(crate) fn height_px(&self) -> i64 {
         self.height_px
     }
 
     /// Return the unique identifier of the image.
     #[must_use]
-    pub fn image_id(&self) -> NumericID {
+    pub(crate) fn image_id(&self) -> NumericID {
         self.image_id
     }
 
     /// Return the name of the image.
     #[must_use]
-    pub fn name(&self) -> &str {
+    pub(crate) fn name(&self) -> &str {
         &self.name
     }
 
     /// Return the orientation of the image.
     #[must_use]
-    pub fn orientation(&self) -> Orientation {
+    pub(crate) fn orientation(&self) -> Orientation {
         self.orientation
     }
 
     /// Return the scope fixed by the first attachment, if any.
     #[must_use]
-    pub fn scope(&self) -> Option<Scope> {
+    pub(crate) fn scope(&self) -> Option<Scope> {
         self.scope
     }
 
@@ -115,7 +119,7 @@ impl Image {
         clippy::too_many_arguments,
         reason = "try_new mirrors every image column"
     )]
-    pub fn try_new(
+    pub(crate) fn try_new(
         image_id: NumericID,
         name: String,
         width_px: i64,
@@ -148,7 +152,7 @@ impl Image {
 
     /// Return the width of the image, in pixels.
     #[must_use]
-    pub fn width_px(&self) -> i64 {
+    pub(crate) fn width_px(&self) -> i64 {
         self.width_px
     }
 }
@@ -156,7 +160,7 @@ impl Image {
 /// Metadata extracted from an image file.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct ProbedImage {
+pub(crate) struct ProbedImage {
     /// Height of the image, in pixels.
     pub height_px: i64,
     /// Orientation of the image.

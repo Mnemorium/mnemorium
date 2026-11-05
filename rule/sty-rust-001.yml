@@ -2,65 +2,27 @@
 id: sty-rust-001
 language: Rust
 severity: hint
-message: extract single-use extraction exemptions for STY-RUST-001
+message: >-
+  extract every production function declaration, for STY-RUST-001
+files:
+  - src/**/*.rs
 rule:
   all:
-    - regex: "single_call_fn"
-    - any:
-        # `#[expect(clippy::single_call_fn, ...)]` on one function: keyed by <file>::<function>.
-        - all:
-            - kind: attribute_item
-            - precedes:
-                kind: function_item
-                has:
-                  field: name
-                  pattern: $FUNC
-                stopBy:
-                  not:
-                    kind: attribute_item
-        # `#[expect(clippy::single_call_fn, ...)]` on a module (inline or `mod m;`): module-wide.
-        - all:
-            - kind: attribute_item
-            - precedes:
-                kind: mod_item
-                stopBy:
-                  not:
-                    kind: attribute_item
-        # `#[expect(clippy::single_call_fn, ...)]` on an `impl` or a `trait`: module-wide, since
-        # it silences every method the block declares.
-        - all:
-            - kind: attribute_item
-            - precedes:
-                any:
-                  - kind: impl_item
-                  - kind: trait_item
-                stopBy:
-                  not:
-                    kind: attribute_item
-        # `#![expect(clippy::single_call_fn, ...)]` at file or block scope: module-wide.
-        # `#![cfg_attr(test, allow(clippy::single_call_fn, ...))]` in src/lib/lib.rs is the
-        # crate-level test exemption and stays out.
-        - all:
-            - kind: inner_attribute_item
-            - not:
-                regex: 'cfg_attr\(\s*test'
+    - kind: function_item
+    - has:
+        field: name
+        pattern: $NAME
     - not:
-        any:
-          - follows:
-              kind: attribute_item
-              regex: 'cfg\(test\)'
-          - inside:
-              kind: mod_item
-              stopBy: end
+        inside:
+          any:
+            - kind: mod_item
               follows:
                 kind: attribute_item
-                regex: 'cfg\(test\)'
-          - inside:
-              kind: function_item
-              stopBy: end
+                regex: cfg\(test\)
+                stopBy: end
+            - kind: function_item
               follows:
                 kind: attribute_item
-                regex: 'cfg\(test\)'
-                stopBy:
-                  not:
-                    kind: attribute_item
+                regex: cfg\(test\)
+                stopBy: end
+          stopBy: end

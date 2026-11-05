@@ -29,7 +29,7 @@ use crate::domain::service::name_policy::NamePolicy;
 use crate::domain::service::name_policy::NamePolicyError;
 
 /// Use case implementation for updating a playlist's metadata or tracks.
-pub struct UpdatePlaylist<F> {
+pub(crate) struct UpdatePlaylist<F> {
     /// Factory opening the unit of work wrapping the update.
     unit_of_work_factory: Arc<F>,
 }
@@ -37,7 +37,7 @@ pub struct UpdatePlaylist<F> {
 impl<F: UnitOfWorkFactory> UpdatePlaylist<F> {
     /// Create a new use case.
     #[must_use]
-    pub fn new(unit_of_work_factory: Arc<F>) -> Self {
+    pub(crate) fn new(unit_of_work_factory: Arc<F>) -> Self {
         Self {
             unit_of_work_factory,
         }
@@ -258,10 +258,6 @@ where
 
 #[cfg(test)]
 mod tests {
-    #![expect(
-        clippy::single_call_fn,
-        reason = "named fixtures keep the tests readable"
-    )]
 
     use std::error::Error;
     use std::sync::Arc;

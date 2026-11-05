@@ -1,3 +1,8 @@
+#![allow(
+    dead_code,
+    reason = "the provider-independent video metadata belongs to the internal video-identification path, which has no REST caller yet"
+)]
+
 use chrono::NaiveDate;
 
 use crate::domain::model::artwork::Artwork;
@@ -12,7 +17,7 @@ use crate::domain::model::genre::Genre;
 /// them.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub enum MediaMetadata {
+pub(crate) enum MediaMetadata {
     /// One episode of a show.
     Episode {
         /// Date the episode first aired, when the provider reports one.

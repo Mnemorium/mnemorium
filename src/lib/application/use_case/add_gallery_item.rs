@@ -36,7 +36,7 @@ use crate::domain::service::authorization::Authorization;
 use crate::domain::service::authorization::Decision;
 
 /// Use case implementation for adding one of the caller's media to a gallery.
-pub struct AddGalleryItem<F> {
+pub(crate) struct AddGalleryItem<F> {
     /// Factory opening the unit of work wrapping the addition.
     unit_of_work_factory: Arc<F>,
 }
@@ -44,7 +44,7 @@ pub struct AddGalleryItem<F> {
 impl<F: UnitOfWorkFactory> AddGalleryItem<F> {
     /// Create a new use case.
     #[must_use]
-    pub fn new(unit_of_work_factory: Arc<F>) -> Self {
+    pub(crate) fn new(unit_of_work_factory: Arc<F>) -> Self {
         Self {
             unit_of_work_factory,
         }
@@ -435,10 +435,6 @@ mod tests {
             .return_once(move |_| Box::pin(async move { Ok(vec![stored]) }));
     }
 
-    #[expect(
-        clippy::single_call_fn,
-        reason = "the video expectation is named after the mock it configures"
-    )]
     fn expect_video(videos: &mut MockVideoRepository, file_id: i64, stored: Video) {
         videos
             .expect_search()

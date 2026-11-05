@@ -23,7 +23,7 @@ use crate::infrastructure::outbound::sqlx::unit_of_work::SqlxUnitOfWorkFactory;
 /// the signing secret come from the immutable instance identity, so building
 /// the password hasher from them once per use case is correct; the token
 /// lifetime still comes from the configuration.
-pub struct RuntimeIdentityUseCaseFactory {
+pub(crate) struct RuntimeIdentityUseCaseFactory {
     /// Immutable application configuration.
     configuration: Arc<Configuration>,
     /// Immutable instance identity carrying the secrets.
@@ -35,7 +35,7 @@ pub struct RuntimeIdentityUseCaseFactory {
 impl RuntimeIdentityUseCaseFactory {
     /// Create a new factory.
     #[must_use]
-    pub fn new(
+    pub(crate) fn new(
         configuration: Arc<Configuration>,
         instance_state: Arc<InstanceState>,
         unit_of_work_factory: Arc<SqlxUnitOfWorkFactory>,

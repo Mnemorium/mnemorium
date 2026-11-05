@@ -8,14 +8,14 @@ use crate::domain::port::error::RepositoryError;
 /// optional; an all-`None` filter returns every credential.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct CredentialFilter {
+pub(crate) struct CredentialFilter {
     /// Filter on the credential identifier.
     pub id: Option<NumericID>,
 }
 
 /// Port for persisting and querying `Credential`.
 #[cfg_attr(test, mockall::automock)]
-pub trait CredentialRepository: Send + Sync {
+pub(crate) trait CredentialRepository: Send + Sync {
     /// Insert a new `credential`, returning the persisted credential with its
     /// final identifier.
     ///
@@ -31,6 +31,13 @@ pub trait CredentialRepository: Send + Sync {
     /// Returns `Ok(true)` when a credential matched `id` and was deleted, and
     /// `Ok(false)` when no credential matched. A missing credential is a valid
     /// outcome, not an error.
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "part of the type's declared contract; no caller exercises it yet"
+        )
+    )]
     fn delete(
         &mut self,
         id: NumericID,

@@ -3,7 +3,7 @@ use crate::domain::alias::NumericID;
 /// Error returned when initialising or updating an `Audio`.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
-pub enum AudioError {
+pub(crate) enum AudioError {
     /// The `bit_depth` is not positive.
     #[error("bit_depth must be positive")]
     InvalidBitDepth,
@@ -21,12 +21,16 @@ pub enum AudioError {
     InvalidSampleRateHz,
     /// An unexpected or unmapped error occurred.
     #[error("an unknown error occurred: {0}")]
+    #[expect(
+        dead_code,
+        reason = "the error enum keeps the catch-all variant the rulebook's error shape declares; no caller constructs it yet"
+    )]
     Unknown(#[source] anyhow::Error),
 }
 
 /// An audio file.
 #[derive(Debug, Clone, PartialEq)]
-pub struct Audio {
+pub(crate) struct Audio {
     /// Bit depth of the audio, absent when the content does not report one.
     bit_depth: Option<i64>,
     /// Block size of the audio, absent when the content does not report one.
@@ -48,49 +52,49 @@ pub struct Audio {
 impl Audio {
     /// Return the bit depth, if the content reports one.
     #[must_use]
-    pub fn bit_depth(&self) -> Option<i64> {
+    pub(crate) fn bit_depth(&self) -> Option<i64> {
         self.bit_depth
     }
 
     /// Return the block size, if the content reports one.
     #[must_use]
-    pub fn block_size(&self) -> Option<i64> {
+    pub(crate) fn block_size(&self) -> Option<i64> {
         self.block_size
     }
 
     /// Return the codec.
     #[must_use]
-    pub fn codec(&self) -> &str {
+    pub(crate) fn codec(&self) -> &str {
         &self.codec
     }
 
     /// Return the duration, in milliseconds.
     #[must_use]
-    pub fn duration_ms(&self) -> f64 {
+    pub(crate) fn duration_ms(&self) -> f64 {
         self.duration_ms
     }
 
     /// Return the identifier of the backing file.
     #[must_use]
-    pub fn file_id(&self) -> NumericID {
+    pub(crate) fn file_id(&self) -> NumericID {
         self.file_id
     }
 
     /// Return the unique identifier.
     #[must_use]
-    pub fn id(&self) -> NumericID {
+    pub(crate) fn id(&self) -> NumericID {
         self.id
     }
 
     /// Return the name.
     #[must_use]
-    pub fn name(&self) -> &str {
+    pub(crate) fn name(&self) -> &str {
         &self.name
     }
 
     /// Return the sample rate, in hertz.
     #[must_use]
-    pub fn sample_rate_hz(&self) -> f64 {
+    pub(crate) fn sample_rate_hz(&self) -> f64 {
         self.sample_rate_hz
     }
 
@@ -99,7 +103,11 @@ impl Audio {
     /// # Errors
     ///
     /// Returns [`AudioError::InvalidName`] when `codec` is empty.
-    pub fn set_codec(&mut self, codec: String) -> Result<(), AudioError> {
+    #[expect(
+        dead_code,
+        reason = "part of the type's declared contract; no caller exercises it yet"
+    )]
+    fn set_codec(&mut self, codec: String) -> Result<(), AudioError> {
         self.codec = Self::validate_non_empty(codec)?;
         Ok(())
     }
@@ -109,7 +117,11 @@ impl Audio {
     /// # Errors
     ///
     /// Returns [`AudioError::InvalidName`] when `name` is empty.
-    pub fn set_name(&mut self, name: String) -> Result<(), AudioError> {
+    #[expect(
+        dead_code,
+        reason = "part of the type's declared contract; no caller exercises it yet"
+    )]
+    pub(crate) fn set_name(&mut self, name: String) -> Result<(), AudioError> {
         self.name = Self::validate_non_empty(name)?;
         Ok(())
     }
@@ -131,7 +143,7 @@ impl Audio {
         clippy::too_many_arguments,
         reason = "try_new mirrors all audio columns"
     )]
-    pub fn try_new(
+    pub(crate) fn try_new(
         id: NumericID,
         name: String,
         duration_ms: f64,
@@ -193,7 +205,7 @@ impl Audio {
 /// Metadata extracted from an audio file.
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
-pub struct ProbedAudio {
+pub(crate) struct ProbedAudio {
     /// Bit depth of the audio, absent when the content does not report one.
     pub bit_depth: Option<i64>,
     /// Block size of the audio, absent when the content does not report one.

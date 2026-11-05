@@ -26,7 +26,7 @@ use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 #[derive(Debug, Deserialize, IntoParams)]
 #[into_params(parameter_in = Query)]
 #[non_exhaustive]
-pub struct ListPlaylistsQuery {
+pub(crate) struct ListPlaylistsQuery {
     /// Only return playlists whose public flag matches this value.
     pub is_public: Option<bool>,
     /// Maximum number of playlists to return, between 1 and 100.
@@ -90,7 +90,7 @@ pub struct ListPlaylistsQuery {
     ),
     summary = "List music playlists"
 )]
-pub async fn get_playlist_list(
+pub(crate) async fn get_playlist_list(
     raw_query: Result<Query<ListPlaylistsQuery>, QueryRejection>,
     caller: AuthenticatedUser,
     State(state): State<AppState>,

@@ -9,7 +9,7 @@ use crate::domain::port::error::RepositoryError;
 /// all-`None` filter returns every video.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct VideoFilter {
+pub(crate) struct VideoFilter {
     /// Filter on the video codec.
     pub codec: Option<String>,
     /// Filter on the identifier of the colour space.
@@ -24,7 +24,7 @@ pub struct VideoFilter {
 
 /// Port for persisting and querying `Video`.
 #[cfg_attr(test, mockall::automock)]
-pub trait VideoRepository: Send + Sync {
+pub(crate) trait VideoRepository: Send + Sync {
     /// Insert a new `video`, returning the persisted video with its final
     /// identifier.
     ///
@@ -48,6 +48,13 @@ pub trait VideoRepository: Send + Sync {
     /// Return the video identified by `id`, if any.
     ///
     /// A missing video is `Ok(None)`, not an error.
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "part of the type's declared contract; no caller exercises it yet"
+        )
+    )]
     fn get(
         &mut self,
         id: NumericID,

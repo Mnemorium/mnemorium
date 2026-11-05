@@ -23,7 +23,7 @@ use crate::infrastructure::inbound::rest::hal::SelfLinks;
 /// `4xx`/`5xx` response.
 #[derive(Debug, serde::Deserialize, serde::Serialize, utoipa::ToSchema)]
 #[non_exhaustive]
-pub struct ErrorBody {
+pub(crate) struct ErrorBody {
     /// Human-readable description of the error.
     #[schema(example = "An error message")]
     pub error: String,
@@ -44,7 +44,7 @@ pub(crate) struct ApiErrorMessage(pub String);
 /// HTTP error mapped to a status code and the standard error body.
 #[derive(Debug)]
 #[non_exhaustive]
-pub enum ApiError {
+pub(crate) enum ApiError {
     /// The request is invalid (`400`).
     BadRequest(String),
     /// The request conflicts with the current state of the resource (`409`).
@@ -311,10 +311,6 @@ impl From<BytesRejection> for ApiError {
 ///
 /// It is the single envelope builder by design: only the root `hal_errors`
 /// middleware calls it, and only after it has read the [`ApiErrorMessage`].
-#[expect(
-    clippy::single_call_fn,
-    reason = "centralising the envelope in one builder is the point, even when only the root middleware calls it"
-)]
 #[must_use]
 pub(crate) fn error_response(status: StatusCode, message: String, path: &str) -> Response {
     let body = ErrorBody {
@@ -390,10 +386,6 @@ mod tests {
     }
 
     /// Echo the buffered raw body, converting any rejection through the impl.
-    #[expect(
-        clippy::single_call_fn,
-        reason = "the probe handler is a route target named for readability"
-    )]
     async fn bytes_probe(
         State(_state): State<AppState>,
         body: Result<Bytes, BytesRejection>,
@@ -433,10 +425,6 @@ mod tests {
     /// A `BytesRejection` cannot be constructed directly, so the test obtains a
     /// real one by routing an over-limit body through the `Bytes` extractor
     /// under a `DefaultBodyLimit::max` layer.
-    #[expect(
-        clippy::single_call_fn,
-        reason = "the probe harness is named for readability"
-    )]
     async fn bytes_rejection_response(
         body: &str,
         body_limit: usize,

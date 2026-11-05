@@ -4,7 +4,7 @@ use std::pin::Pin;
 /// Response of a successful root admin initialization.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct InitializeRootAdminResponse {
+pub(crate) struct InitializeRootAdminResponse {
     /// Default password generated for the root admin.
     default_password: String,
 }
@@ -12,13 +12,13 @@ pub struct InitializeRootAdminResponse {
 impl InitializeRootAdminResponse {
     /// Return the default password generated for the root admin.
     #[must_use]
-    pub fn default_password(&self) -> &str {
+    pub(crate) fn default_password(&self) -> &str {
         &self.default_password
     }
 
     /// Create a new initialization response.
     #[must_use]
-    pub fn new(default_password: String) -> Self {
+    pub(crate) fn new(default_password: String) -> Self {
         Self { default_password }
     }
 }
@@ -26,7 +26,7 @@ impl InitializeRootAdminResponse {
 /// Error returned when initializing the root admin.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
-pub enum InitializeRootAdminError {
+pub(crate) enum InitializeRootAdminError {
     /// An unexpected or unmapped error occurred.
     #[error("an unknown error occurred: {0}")]
     Unknown(#[source] anyhow::Error),
@@ -34,7 +34,7 @@ pub enum InitializeRootAdminError {
 
 /// Use case for initializing the root admin.
 #[cfg_attr(test, mockall::automock)]
-pub trait InitializeRootAdminUseCase: Send + Sync {
+pub(crate) trait InitializeRootAdminUseCase: Send + Sync {
     /// Initialize the root admin.
     ///
     /// The future is returned erased (`dyn`, not `impl Future`), boxed and

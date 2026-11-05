@@ -4,7 +4,7 @@ use crate::domain::alias::NumericID;
 
 /// Data model for the `gallery_item` table.
 #[derive(Debug, Clone, sqlx::FromRow)]
-pub struct GalleryItem {
+pub(crate) struct GalleryItem {
     /// Date and time at which the item was added.
     pub added_at: NaiveDateTime,
     /// Identifier of the gallery the item belongs to.
@@ -26,7 +26,7 @@ pub struct GalleryItem {
 /// falls back to the file path for a video, and `file_id` is the identifier of
 /// the backing file whichever medium the item references.
 #[derive(Debug, Clone, sqlx::FromRow)]
-pub struct GalleryItemDetail {
+pub(crate) struct GalleryItemDetail {
     /// Date and time at which the item was added.
     pub added_at: NaiveDateTime,
     /// Identifier of the backing file.

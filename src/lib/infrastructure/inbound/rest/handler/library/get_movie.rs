@@ -62,7 +62,7 @@ use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
     ),
     summary = "Fetch a film"
 )]
-pub async fn get_movie(
+pub(crate) async fn get_movie(
     Path(movie_id_value): Path<String>,
     State(state): State<AppState>,
     caller: AuthenticatedUser,

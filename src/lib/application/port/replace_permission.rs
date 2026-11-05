@@ -8,7 +8,7 @@ use crate::domain::model::permission::Scope;
 
 /// One requested override, validated by the use case.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ReplacePermissionCommand {
+pub(crate) struct ReplacePermissionCommand {
     /// Identifier of the authenticated caller.
     caller_id: NumericID,
     /// The complete override set the user must end with.
@@ -20,13 +20,13 @@ pub struct ReplacePermissionCommand {
 impl ReplacePermissionCommand {
     /// Return the identifier of the authenticated caller.
     #[must_use]
-    pub fn caller_id(&self) -> NumericID {
+    pub(crate) fn caller_id(&self) -> NumericID {
         self.caller_id
     }
 
     /// Initialise a new `ReplacePermissionCommand`.
     #[must_use]
-    pub fn new(
+    pub(crate) fn new(
         caller_id: NumericID,
         user_id: NumericID,
         permissions: Vec<PermissionRequest>,
@@ -40,20 +40,20 @@ impl ReplacePermissionCommand {
 
     /// Return the complete override set the user must end with.
     #[must_use]
-    pub fn permissions(&self) -> &[PermissionRequest] {
+    pub(crate) fn permissions(&self) -> &[PermissionRequest] {
         &self.permissions
     }
 
     /// Return the identifier of the user whose permissions are replaced.
     #[must_use]
-    pub fn user_id(&self) -> NumericID {
+    pub(crate) fn user_id(&self) -> NumericID {
         self.user_id
     }
 }
 
 /// Error returned when replacing a user's permissions fails.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PermissionRequest {
+pub(crate) struct PermissionRequest {
     /// The action the request overrides.
     action: Action,
     /// The requested scope.
@@ -63,19 +63,19 @@ pub struct PermissionRequest {
 impl PermissionRequest {
     /// Return the overridden action.
     #[must_use]
-    pub fn action(&self) -> Action {
+    pub(crate) fn action(&self) -> Action {
         self.action
     }
 
     /// Initialise a new `PermissionRequest`.
     #[must_use]
-    pub fn new(action: Action, scope: Scope) -> Self {
+    pub(crate) fn new(action: Action, scope: Scope) -> Self {
         Self { action, scope }
     }
 
     /// Return the requested scope.
     #[must_use]
-    pub fn scope(&self) -> &Scope {
+    pub(crate) fn scope(&self) -> &Scope {
         &self.scope
     }
 }
@@ -83,7 +83,7 @@ impl PermissionRequest {
 /// Command replacing every permission override of a user.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
-pub enum ReplacePermissionError {
+pub(crate) enum ReplacePermissionError {
     /// The same action appears twice in the request.
     #[error("the same action appears twice in the request")]
     DuplicateAction,
@@ -106,7 +106,7 @@ pub enum ReplacePermissionError {
 
 /// Use case replacing every permission override of a user.
 #[cfg_attr(test, mockall::automock)]
-pub trait ReplacePermissionUseCase: Send + Sync {
+pub(crate) trait ReplacePermissionUseCase: Send + Sync {
     /// Replace the overrides of the command's user, atomically.
     fn execute<'future>(
         &'future self,

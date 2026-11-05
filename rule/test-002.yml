@@ -15,5 +15,11 @@ rule:
           stopBy:
             kind: trait_item
     - any:
-        - pattern: 'pub trait $TRAIT: $$$BOUNDS { $$$BODY }'
-        - pattern: 'pub trait $TRAIT { $$$BODY }'
+        - any:
+            - pattern: 'pub trait $TRAIT: $$$BOUNDS { $$$BODY }'
+            - pattern: 'pub(crate) trait $TRAIT: $$$BOUNDS { $$$BODY }'
+            - pattern: 'trait $TRAIT: $$$BOUNDS { $$$BODY }'
+        - any:
+            - pattern: 'pub trait $TRAIT { $$$BODY }'
+            - pattern: 'pub(crate) trait $TRAIT { $$$BODY }'
+            - pattern: 'trait $TRAIT { $$$BODY }'

@@ -9,7 +9,7 @@ use crate::domain::alias::NumericID;
 /// columns are read as stored values so the repository can report a value the
 /// domain cannot hold as a data-integrity failure.
 #[derive(Debug, Clone, sqlx::FromRow)]
-pub struct MovieRow {
+pub(crate) struct MovieRow {
     /// Codec of the video.
     pub codec: String,
     /// Identifier of the colour space of the video.

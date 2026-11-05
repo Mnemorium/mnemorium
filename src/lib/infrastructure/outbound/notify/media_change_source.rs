@@ -28,7 +28,7 @@ use crate::application::port::media_change_source::MediaChangeSourceError;
 use crate::application::security_event;
 
 /// Change source backed by the local filesystem watcher.
-pub struct NotifyMediaChangeSource {
+pub(crate) struct NotifyMediaChangeSource {
     /// Watcher kept alive for the source's lifetime; dropping it stops the
     /// watch.
     _watcher: RecommendedWatcher,
@@ -44,7 +44,7 @@ impl NotifyMediaChangeSource {
     /// Returns [`MediaChangeSourceError::WatchFailed`] when the watch cannot be
     /// registered. The caller logs one warning and keeps running: the startup
     /// scan remains authoritative.
-    pub fn new(root: &Path) -> Result<Self, MediaChangeSourceError> {
+    pub(crate) fn new(root: &Path) -> Result<Self, MediaChangeSourceError> {
         // `notify` reports event paths absolute, so the root everything is made
         // relative to must be absolute too; the caller passes the fixed
         // `media/` path relative to the working directory.

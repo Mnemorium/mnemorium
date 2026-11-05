@@ -9,7 +9,7 @@ use crate::domain::model::permission::ResourceRef;
 /// Production type of a music album.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
-pub enum ProductionType {
+pub(crate) enum ProductionType {
     /// Compilation of tracks from various sources.
     Compilation,
     /// Demo recording.
@@ -34,7 +34,7 @@ impl ProductionType {
     /// The names match the `chk_music_album_production_type` values of the
     /// `music_album` table.
     #[must_use]
-    pub fn as_wire(self) -> &'static str {
+    pub(crate) fn as_wire(self) -> &'static str {
         match self {
             Self::Compilation => "COMPILATION",
             Self::Demo => "DEMO",
@@ -54,7 +54,7 @@ impl ProductionType {
     /// value outside the discrete list is reported as an absent production type
     /// rather than failing the read.
     #[must_use]
-    pub fn from_wire(value: &str) -> Option<Self> {
+    pub(crate) fn from_wire(value: &str) -> Option<Self> {
         match value {
             "COMPILATION" => Some(Self::Compilation),
             "DEMO" => Some(Self::Demo),
@@ -72,7 +72,7 @@ impl ProductionType {
 /// Error returned when initialising a `MusicAlbum`.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
-pub enum MusicAlbumError {
+pub(crate) enum MusicAlbumError {
     /// A genre identifier is empty.
     #[error("a genre identifier must not be empty")]
     InvalidGenre,
@@ -81,12 +81,16 @@ pub enum MusicAlbumError {
     InvalidName,
     /// An unexpected or unmapped error occurred.
     #[error("an unknown error occurred: {0}")]
+    #[expect(
+        dead_code,
+        reason = "the error enum keeps the catch-all variant the rulebook's error shape declares; no caller constructs it yet"
+    )]
     Unknown(#[source] anyhow::Error),
 }
 
 /// A music album.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct MusicAlbum {
+pub(crate) struct MusicAlbum {
     /// Identifier of the image holding the album's artwork, when set.
     cover_image_id: Option<NumericID>,
     /// Identifiers of the genres the album is associated with.
@@ -110,55 +114,55 @@ pub struct MusicAlbum {
 impl MusicAlbum {
     /// Return the identifier of the image holding the album's artwork, if any.
     #[must_use]
-    pub fn cover_image_id(&self) -> Option<NumericID> {
+    pub(crate) fn cover_image_id(&self) -> Option<NumericID> {
         self.cover_image_id
     }
 
     /// Return the identifiers of the genres the album is associated with.
     #[must_use]
-    pub fn genre_ids(&self) -> &[String] {
+    pub(crate) fn genre_ids(&self) -> &[String] {
         &self.genre_ids
     }
 
     /// Return the unique identifier.
     #[must_use]
-    pub fn id(&self) -> NumericID {
+    pub(crate) fn id(&self) -> NumericID {
         self.id
     }
 
     /// Return the mediums, in order.
     #[must_use]
-    pub fn mediums(&self) -> &[MusicMedium] {
+    pub(crate) fn mediums(&self) -> &[MusicMedium] {
         &self.mediums
     }
 
     /// Return the identifier of the music group the album belongs to.
     #[must_use]
-    pub fn music_group_id(&self) -> NumericID {
+    pub(crate) fn music_group_id(&self) -> NumericID {
         self.music_group_id
     }
 
     /// Return the identifiers of the associated music groups, if any.
     #[must_use]
-    pub fn music_group_ids(&self) -> Option<&[NumericID]> {
+    pub(crate) fn music_group_ids(&self) -> Option<&[NumericID]> {
         self.music_group_ids.as_deref()
     }
 
     /// Return the name.
     #[must_use]
-    pub fn name(&self) -> &str {
+    pub(crate) fn name(&self) -> &str {
         &self.name
     }
 
     /// Return the production type, if any.
     #[must_use]
-    pub fn production_type(&self) -> Option<ProductionType> {
+    pub(crate) fn production_type(&self) -> Option<ProductionType> {
         self.production_type
     }
 
     /// Return the date of the release, when the provider reports one.
     #[must_use]
-    pub fn release_date(&self) -> Option<NaiveDate> {
+    pub(crate) fn release_date(&self) -> Option<NaiveDate> {
         self.release_date
     }
 
@@ -173,7 +177,7 @@ impl MusicAlbum {
         clippy::too_many_arguments,
         reason = "the constructor mirrors the album's fields one-to-one"
     )]
-    pub fn try_new(
+    pub(crate) fn try_new(
         id: NumericID,
         name: String,
         release_date: Option<NaiveDate>,

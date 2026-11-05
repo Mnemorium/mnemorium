@@ -1,3 +1,8 @@
+#![allow(
+    dead_code,
+    reason = "the video metadata provider port belongs to the internal video-identification path, which has no REST caller yet"
+)]
+
 use std::future::Future;
 
 use crate::domain::model::media_candidate::Candidate;
@@ -17,7 +22,7 @@ use crate::domain::port::error::ExternalServiceError;
 /// `search` is cheap and returns candidates; `lookup` resolves one item and
 /// carries the artwork.
 #[cfg_attr(test, mockall::automock)]
-pub trait VideoMetadataProvider: Send + Sync {
+pub(crate) trait VideoMetadataProvider: Send + Sync {
     /// Resolve the rich metadata of `target` through the provider that issued
     /// the target's reference.
     ///

@@ -14,7 +14,7 @@ use crate::domain::model::music_album::ProductionType;
 /// optional value.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct UpdateMusicAlbumCommand {
+pub(crate) struct UpdateMusicAlbumCommand {
     /// Identifier of the album to update.
     album_id: NumericID,
     /// Identifier of the authenticated caller.
@@ -37,37 +37,37 @@ pub struct UpdateMusicAlbumCommand {
 impl UpdateMusicAlbumCommand {
     /// Return the identifier of the album to update.
     #[must_use]
-    pub fn album_id(&self) -> NumericID {
+    pub(crate) fn album_id(&self) -> NumericID {
         self.album_id
     }
 
     /// Return the identifier of the authenticated caller.
     #[must_use]
-    pub fn caller_id(&self) -> NumericID {
+    pub(crate) fn caller_id(&self) -> NumericID {
         self.caller_id
     }
 
     /// Return the replacement cover image, if the request names one.
     #[must_use]
-    pub fn cover_image_id(&self) -> FieldUpdate<NumericID> {
+    pub(crate) fn cover_image_id(&self) -> FieldUpdate<NumericID> {
         self.cover_image_id
     }
 
     /// Return the replacement genres, if the request names them.
     #[must_use]
-    pub fn genres(&self) -> Option<&[String]> {
+    pub(crate) fn genres(&self) -> Option<&[String]> {
         self.genres.as_deref()
     }
 
     /// Return the replacement group, if the request moves the album.
     #[must_use]
-    pub fn music_group_id(&self) -> Option<NumericID> {
+    pub(crate) fn music_group_id(&self) -> Option<NumericID> {
         self.music_group_id
     }
 
     /// Return the replacement name, if the request renames the album.
     #[must_use]
-    pub fn name(&self) -> Option<&str> {
+    pub(crate) fn name(&self) -> Option<&str> {
         self.name.as_deref()
     }
 
@@ -77,7 +77,7 @@ impl UpdateMusicAlbumCommand {
         clippy::too_many_arguments,
         reason = "the constructor mirrors the album's write fields one-to-one"
     )]
-    pub fn new(
+    pub(crate) fn new(
         caller_id: NumericID,
         album_id: NumericID,
         name: Option<String>,
@@ -101,13 +101,13 @@ impl UpdateMusicAlbumCommand {
 
     /// Return the replacement production type, if the request names one.
     #[must_use]
-    pub fn production_type(&self) -> FieldUpdate<ProductionType> {
+    pub(crate) fn production_type(&self) -> FieldUpdate<ProductionType> {
         self.production_type
     }
 
     /// Return the replacement release date, if the request names one.
     #[must_use]
-    pub fn release_date(&self) -> FieldUpdate<NaiveDate> {
+    pub(crate) fn release_date(&self) -> FieldUpdate<NaiveDate> {
         self.release_date
     }
 }
@@ -115,7 +115,7 @@ impl UpdateMusicAlbumCommand {
 /// Response of a successful album update: the stored album.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct UpdateMusicAlbumResponse {
+pub(crate) struct UpdateMusicAlbumResponse {
     /// The album that was stored.
     album: MusicAlbum,
 }
@@ -123,13 +123,13 @@ pub struct UpdateMusicAlbumResponse {
 impl UpdateMusicAlbumResponse {
     /// Return the album that was stored.
     #[must_use]
-    pub fn album(&self) -> &MusicAlbum {
+    pub(crate) fn album(&self) -> &MusicAlbum {
         &self.album
     }
 
     /// Create a new updated-album response.
     #[must_use]
-    pub fn new(album: MusicAlbum) -> Self {
+    pub(crate) fn new(album: MusicAlbum) -> Self {
         Self { album }
     }
 }
@@ -137,7 +137,7 @@ impl UpdateMusicAlbumResponse {
 /// Error returned when updating a music album.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
-pub enum UpdateMusicAlbumError {
+pub(crate) enum UpdateMusicAlbumError {
     /// The write duplicates another album's `(name, group)` identity.
     #[error("a music album with this name and group already exists")]
     Conflict,
@@ -169,7 +169,7 @@ pub enum UpdateMusicAlbumError {
 
 /// Use case for updating a music album.
 #[cfg_attr(test, mockall::automock)]
-pub trait UpdateMusicAlbumUseCase: Send + Sync {
+pub(crate) trait UpdateMusicAlbumUseCase: Send + Sync {
     /// Update the requested album.
     ///
     /// The future is returned erased (`dyn`, not `impl Future`), boxed and

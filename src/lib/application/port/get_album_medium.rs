@@ -6,7 +6,7 @@ use crate::domain::alias::NumericID;
 /// Command to fetch one medium of a music album.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct GetAlbumMediumCommand {
+pub(crate) struct GetAlbumMediumCommand {
     /// Identifier of the album the medium belongs to.
     album_id: NumericID,
     /// Identifier of the authenticated caller.
@@ -18,25 +18,25 @@ pub struct GetAlbumMediumCommand {
 impl GetAlbumMediumCommand {
     /// Return the identifier of the album the medium belongs to.
     #[must_use]
-    pub fn album_id(&self) -> NumericID {
+    pub(crate) fn album_id(&self) -> NumericID {
         self.album_id
     }
 
     /// Return the identifier of the authenticated caller.
     #[must_use]
-    pub fn caller_id(&self) -> NumericID {
+    pub(crate) fn caller_id(&self) -> NumericID {
         self.caller_id
     }
 
     /// Return the album-scoped index of the medium to fetch.
     #[must_use]
-    pub fn medium_index(&self) -> u8 {
+    pub(crate) fn medium_index(&self) -> u8 {
         self.medium_index
     }
 
     /// Create a new fetch-album-medium command.
     #[must_use]
-    pub fn new(caller_id: NumericID, album_id: NumericID, medium_index: u8) -> Self {
+    pub(crate) fn new(caller_id: NumericID, album_id: NumericID, medium_index: u8) -> Self {
         Self {
             album_id,
             caller_id,
@@ -48,7 +48,7 @@ impl GetAlbumMediumCommand {
 /// Response of a successful medium lookup: one medium of an album.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct GetAlbumMediumResponse {
+pub(crate) struct GetAlbumMediumResponse {
     /// Identifier of the album the medium belongs to.
     album_id: NumericID,
     /// Album-scoped index of the medium.
@@ -62,25 +62,25 @@ pub struct GetAlbumMediumResponse {
 impl GetAlbumMediumResponse {
     /// Return the identifier of the album the medium belongs to.
     #[must_use]
-    pub fn album_id(&self) -> NumericID {
+    pub(crate) fn album_id(&self) -> NumericID {
         self.album_id
     }
 
     /// Return the album-scoped index of the medium.
     #[must_use]
-    pub fn medium_index(&self) -> u8 {
+    pub(crate) fn medium_index(&self) -> u8 {
         self.medium_index
     }
 
     /// Return the stored type of the medium.
     #[must_use]
-    pub fn medium_type(&self) -> &str {
+    pub(crate) fn medium_type(&self) -> &str {
         &self.medium_type
     }
 
     /// Create a new fetch-album-medium response.
     #[must_use]
-    pub fn new(
+    pub(crate) fn new(
         album_id: NumericID,
         medium_index: u8,
         medium_type: String,
@@ -96,7 +96,7 @@ impl GetAlbumMediumResponse {
 
     /// Return the number of recordings the medium sequences.
     #[must_use]
-    pub fn track_count(&self) -> usize {
+    pub(crate) fn track_count(&self) -> usize {
         self.track_count
     }
 }
@@ -104,7 +104,7 @@ impl GetAlbumMediumResponse {
 /// Error returned when fetching one medium of an album.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
-pub enum GetAlbumMediumError {
+pub(crate) enum GetAlbumMediumError {
     /// No album matches the requested identifier.
     #[error("a music album with this identifier does not exist")]
     NoSuchAlbum,
@@ -121,7 +121,7 @@ pub enum GetAlbumMediumError {
 
 /// Use case for fetching one medium of a music album.
 #[cfg_attr(test, mockall::automock)]
-pub trait GetAlbumMediumUseCase: Send + Sync {
+pub(crate) trait GetAlbumMediumUseCase: Send + Sync {
     /// Fetch the requested medium, scoped to its album.
     ///
     /// The future is returned erased (`dyn`, not `impl Future`), boxed and

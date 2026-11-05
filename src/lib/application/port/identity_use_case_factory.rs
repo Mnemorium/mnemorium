@@ -11,7 +11,7 @@ use crate::application::port::replace_permission::ReplacePermissionUseCase;
 /// The inbound layer depends on this port instead of a pre-built use case, so
 /// that every request gets a use case bound to the current configuration.
 #[cfg_attr(test, mockall::automock)]
-pub trait IdentityUseCaseFactory: Send + Sync {
+pub(crate) trait IdentityUseCaseFactory: Send + Sync {
     /// Build the use case reading a user's effective permissions.
     fn get_permission(&self) -> Arc<dyn GetPermissionUseCase>;
 

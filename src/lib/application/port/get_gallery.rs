@@ -9,7 +9,7 @@ use crate::domain::model::gallery_item::GalleryItemMedia;
 /// Command to fetch one gallery and its items.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct GetGalleryCommand {
+pub(crate) struct GetGalleryCommand {
     /// Identifier of the authenticated caller.
     caller_id: NumericID,
     /// Identifier of the gallery to fetch.
@@ -19,19 +19,19 @@ pub struct GetGalleryCommand {
 impl GetGalleryCommand {
     /// Return the identifier of the authenticated caller.
     #[must_use]
-    pub fn caller_id(&self) -> NumericID {
+    pub(crate) fn caller_id(&self) -> NumericID {
         self.caller_id
     }
 
     /// Return the identifier of the gallery to fetch.
     #[must_use]
-    pub fn gallery_id(&self) -> NumericID {
+    pub(crate) fn gallery_id(&self) -> NumericID {
         self.gallery_id
     }
 
     /// Create a new fetch-gallery command.
     #[must_use]
-    pub fn new(caller_id: NumericID, gallery_id: NumericID) -> Self {
+    pub(crate) fn new(caller_id: NumericID, gallery_id: NumericID) -> Self {
         Self {
             caller_id,
             gallery_id,
@@ -42,7 +42,7 @@ impl GetGalleryCommand {
 /// One item of a gallery, without the metadata of its medium.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct GalleryItemSummary {
+pub(crate) struct GalleryItemSummary {
     /// Date and time at which the item was added.
     added_at: NaiveDateTime,
     /// Identifier of the backing file.
@@ -62,49 +62,53 @@ pub struct GalleryItemSummary {
 impl GalleryItemSummary {
     /// Return the date and time at which the item was added.
     #[must_use]
-    pub fn added_at(&self) -> NaiveDateTime {
+    pub(crate) fn added_at(&self) -> NaiveDateTime {
         self.added_at
     }
 
     /// Return the identifier of the backing file.
     #[must_use]
-    pub fn file_id(&self) -> NumericID {
+    pub(crate) fn file_id(&self) -> NumericID {
         self.file_id
     }
 
     /// Return the identifier of the gallery the item belongs to.
     #[must_use]
-    pub fn gallery_id(&self) -> NumericID {
+    pub(crate) fn gallery_id(&self) -> NumericID {
         self.gallery_id
     }
 
     /// Return the unique identifier of the item.
     #[must_use]
-    pub fn gallery_item_id(&self) -> NumericID {
+    pub(crate) fn gallery_item_id(&self) -> NumericID {
         self.gallery_item_id
     }
 
     /// Return the position of the item within its gallery.
     #[must_use]
-    pub fn item_index(&self) -> i64 {
+    #[expect(
+        dead_code,
+        reason = "part of the type's declared contract; no caller exercises it yet"
+    )]
+    pub(crate) fn item_index(&self) -> i64 {
         self.item_index
     }
 
     /// Return the medium the item references.
     #[must_use]
-    pub fn media(&self) -> GalleryItemMedia {
+    pub(crate) fn media(&self) -> GalleryItemMedia {
         self.media
     }
 
     /// Return the name of the item.
     #[must_use]
-    pub fn name(&self) -> &str {
+    pub(crate) fn name(&self) -> &str {
         &self.name
     }
 
     /// Create a new gallery-item summary.
     #[must_use]
-    pub fn new(
+    pub(crate) fn new(
         gallery_item_id: NumericID,
         gallery_id: NumericID,
         media: GalleryItemMedia,
@@ -128,7 +132,7 @@ impl GalleryItemSummary {
 /// Response of a successful gallery lookup: the gallery and its items.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct GetGalleryResponse {
+pub(crate) struct GetGalleryResponse {
     /// Date and time at which the gallery was created.
     created_at: NaiveDateTime,
     /// Unique identifier of the gallery.
@@ -150,49 +154,49 @@ pub struct GetGalleryResponse {
 impl GetGalleryResponse {
     /// Return the date and time at which the gallery was created.
     #[must_use]
-    pub fn created_at(&self) -> NaiveDateTime {
+    pub(crate) fn created_at(&self) -> NaiveDateTime {
         self.created_at
     }
 
     /// Return the unique identifier of the gallery.
     #[must_use]
-    pub fn gallery_id(&self) -> NumericID {
+    pub(crate) fn gallery_id(&self) -> NumericID {
         self.gallery_id
     }
 
     /// Return whether the gallery is public.
     #[must_use]
-    pub fn is_public(&self) -> bool {
+    pub(crate) fn is_public(&self) -> bool {
         self.is_public
     }
 
     /// Return the number of items the gallery contains.
     #[must_use]
-    pub fn item_count(&self) -> usize {
+    pub(crate) fn item_count(&self) -> usize {
         self.item_count
     }
 
     /// Return the items of the gallery.
     #[must_use]
-    pub fn items(&self) -> &[GalleryItemSummary] {
+    pub(crate) fn items(&self) -> &[GalleryItemSummary] {
         &self.items
     }
 
     /// Return the date and time of the last modification of the gallery.
     #[must_use]
-    pub fn last_modified_at(&self) -> NaiveDateTime {
+    pub(crate) fn last_modified_at(&self) -> NaiveDateTime {
         self.last_modified_at
     }
 
     /// Return the name of the gallery.
     #[must_use]
-    pub fn name(&self) -> &str {
+    pub(crate) fn name(&self) -> &str {
         &self.name
     }
 
     /// Create a new fetch-gallery response.
     #[must_use]
-    pub fn new(
+    pub(crate) fn new(
         gallery_id: NumericID,
         user_id: Option<NumericID>,
         name: String,
@@ -215,7 +219,7 @@ impl GetGalleryResponse {
 
     /// Return the identifier of the owning user, if any.
     #[must_use]
-    pub fn user_id(&self) -> Option<NumericID> {
+    pub(crate) fn user_id(&self) -> Option<NumericID> {
         self.user_id
     }
 }
@@ -223,7 +227,7 @@ impl GetGalleryResponse {
 /// Error returned when fetching a gallery.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
-pub enum GetGalleryError {
+pub(crate) enum GetGalleryError {
     /// The authenticated caller does not exist anymore.
     #[error("the authenticated user does not exist")]
     NoSuchCaller,
@@ -237,7 +241,7 @@ pub enum GetGalleryError {
 
 /// Use case for fetching one gallery and its items.
 #[cfg_attr(test, mockall::automock)]
-pub trait GetGalleryUseCase: Send + Sync {
+pub(crate) trait GetGalleryUseCase: Send + Sync {
     /// Fetch the requested gallery and its items.
     ///
     /// The future is returned erased (`dyn`, not `impl Future`), boxed and

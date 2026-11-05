@@ -8,12 +8,12 @@ use crate::domain::port::error::SecretGeneratorError;
 use crate::domain::port::secret_generator::SecretGenerator;
 
 /// Secret generator producing random bytes from a `ChaCha20` RNG.
-pub struct ChaChaSecretGenerator;
+pub(crate) struct ChaChaSecretGenerator;
 
 impl ChaChaSecretGenerator {
     /// Create a new secret generator.
     #[must_use]
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self
     }
 }

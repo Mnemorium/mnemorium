@@ -40,8 +40,12 @@ const DIGEST_BYTES: usize = DIGEST_HEX_LENGTH / 2;
 #[derive(Debug, Deserialize, ToSchema)]
 #[schema(value_type = String, format = Binary)]
 #[non_exhaustive]
-pub struct PutUploadChunkRequest(
+struct PutUploadChunkRequest(
     /// Raw bytes of the chunk.
+    #[expect(
+        dead_code,
+        reason = "the extractor carries the chunk bytes; the handler reads them through the body"
+    )]
     pub Vec<u8>,
 );
 
@@ -163,7 +167,7 @@ impl From<WriteUploadChunkError> for ApiError {
     ),
     summary = "Upload one chunk"
 )]
-pub async fn put_upload_chunk(
+pub(crate) async fn put_upload_chunk(
     State(state): State<AppState>,
     caller: AuthenticatedUser,
     Path((upload_id_value, chunk_number_value)): Path<(String, String)>,

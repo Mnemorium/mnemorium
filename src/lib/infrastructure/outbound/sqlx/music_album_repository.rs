@@ -21,7 +21,7 @@ use super::query_filter::push_filter;
 
 /// Repository querying music albums, their mediums and the recordings they
 /// sequence, backed by a `SQLite` transaction.
-pub struct SqlxMusicAlbumRepository<'transaction> {
+pub(crate) struct SqlxMusicAlbumRepository<'transaction> {
     /// Transaction the repository reads from.
     transaction: &'transaction mut Transaction<'static, Sqlite>,
 }
@@ -29,7 +29,7 @@ pub struct SqlxMusicAlbumRepository<'transaction> {
 impl<'transaction> SqlxMusicAlbumRepository<'transaction> {
     /// Create a new repository bound to `transaction`.
     #[must_use]
-    pub fn new(transaction: &'transaction mut Transaction<'static, Sqlite>) -> Self {
+    pub(crate) fn new(transaction: &'transaction mut Transaction<'static, Sqlite>) -> Self {
         Self { transaction }
     }
 }
@@ -851,10 +851,6 @@ mod tests {
     }
 
     /// Seed a playlist owned by `user_id`.
-    #[expect(
-        clippy::single_call_fn,
-        reason = "the playlist seed is a named, reusable fixture"
-    )]
     async fn seed_playlist(
         transaction: &mut Transaction<'static, Sqlite>,
         playlist_id: i64,

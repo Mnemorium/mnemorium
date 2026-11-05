@@ -10,7 +10,7 @@ use crate::domain::model::music_album::ProductionType;
 /// Command to create a music album.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct CreateMusicAlbumCommand {
+pub(crate) struct CreateMusicAlbumCommand {
     /// Identifier of the authenticated caller.
     caller_id: NumericID,
     /// Identifier of the image holding the album's artwork, when set.
@@ -30,37 +30,37 @@ pub struct CreateMusicAlbumCommand {
 impl CreateMusicAlbumCommand {
     /// Return the identifier of the authenticated caller.
     #[must_use]
-    pub fn caller_id(&self) -> NumericID {
+    pub(crate) fn caller_id(&self) -> NumericID {
         self.caller_id
     }
 
     /// Return the identifier of the image holding the album's artwork, if any.
     #[must_use]
-    pub fn cover_image_id(&self) -> Option<NumericID> {
+    pub(crate) fn cover_image_id(&self) -> Option<NumericID> {
         self.cover_image_id
     }
 
     /// Return the genres the album is associated with.
     #[must_use]
-    pub fn genres(&self) -> &[String] {
+    pub(crate) fn genres(&self) -> &[String] {
         &self.genres
     }
 
     /// Return the identifier of the music group the album belongs to.
     #[must_use]
-    pub fn music_group_id(&self) -> NumericID {
+    pub(crate) fn music_group_id(&self) -> NumericID {
         self.music_group_id
     }
 
     /// Return the name of the album.
     #[must_use]
-    pub fn name(&self) -> &str {
+    pub(crate) fn name(&self) -> &str {
         &self.name
     }
 
     /// Create a new create-album command.
     #[must_use]
-    pub fn new(
+    pub(crate) fn new(
         caller_id: NumericID,
         name: String,
         music_group_id: NumericID,
@@ -82,13 +82,13 @@ impl CreateMusicAlbumCommand {
 
     /// Return the production type, if any.
     #[must_use]
-    pub fn production_type(&self) -> Option<ProductionType> {
+    pub(crate) fn production_type(&self) -> Option<ProductionType> {
         self.production_type
     }
 
     /// Return the date of the release, if known.
     #[must_use]
-    pub fn release_date(&self) -> Option<NaiveDate> {
+    pub(crate) fn release_date(&self) -> Option<NaiveDate> {
         self.release_date
     }
 }
@@ -97,7 +97,7 @@ impl CreateMusicAlbumCommand {
 /// write created it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct CreateMusicAlbumResponse {
+pub(crate) struct CreateMusicAlbumResponse {
     /// The album that was stored.
     album: MusicAlbum,
     /// Set when the album was created, cleared when it already existed.
@@ -107,19 +107,19 @@ pub struct CreateMusicAlbumResponse {
 impl CreateMusicAlbumResponse {
     /// Return the album that was stored.
     #[must_use]
-    pub fn album(&self) -> &MusicAlbum {
+    pub(crate) fn album(&self) -> &MusicAlbum {
         &self.album
     }
 
     /// Return whether the write created the album.
     #[must_use]
-    pub fn created(&self) -> bool {
+    pub(crate) fn created(&self) -> bool {
         self.created
     }
 
     /// Create a new created-album response.
     #[must_use]
-    pub fn new(album: MusicAlbum, created: bool) -> Self {
+    pub(crate) fn new(album: MusicAlbum, created: bool) -> Self {
         Self { album, created }
     }
 }
@@ -127,7 +127,7 @@ impl CreateMusicAlbumResponse {
 /// Error returned when creating a music album.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
-pub enum CreateMusicAlbumError {
+pub(crate) enum CreateMusicAlbumError {
     /// The stored album refuses the write: the cover image belongs to a user.
     #[error("the music album cannot be created")]
     Conflict,
@@ -156,7 +156,7 @@ pub enum CreateMusicAlbumError {
 
 /// Use case for creating a music album.
 #[cfg_attr(test, mockall::automock)]
-pub trait CreateMusicAlbumUseCase: Send + Sync {
+pub(crate) trait CreateMusicAlbumUseCase: Send + Sync {
     /// Create the album, returning the existing one when its identity is
     /// already stored.
     ///

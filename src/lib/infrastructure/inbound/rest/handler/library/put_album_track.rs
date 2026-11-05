@@ -23,7 +23,7 @@ use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 /// Payload to place a recording at a medium track address.
 #[derive(Debug, Deserialize, ToSchema)]
 #[non_exhaustive]
-pub struct PutAlbumTrackRequest {
+pub(crate) struct PutAlbumTrackRequest {
     /// Identifier of the recording to place.
     #[schema(example = 5)]
     pub recording_id: NumericID,
@@ -121,7 +121,7 @@ pub struct PutAlbumTrackRequest {
     ),
     summary = "Place or move a recording at a medium track address"
 )]
-pub async fn put_album_track(
+pub(crate) async fn put_album_track(
     Path((album_id_value, medium_index_value, track_index_value)): Path<(String, String, String)>,
     State(state): State<AppState>,
     caller: AuthenticatedUser,

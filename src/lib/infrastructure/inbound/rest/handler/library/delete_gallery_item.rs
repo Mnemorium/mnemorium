@@ -82,7 +82,7 @@ impl From<DeleteGalleryItemError> for ApiError {
     ),
     summary = "Delete a gallery item"
 )]
-pub async fn delete_gallery_item(
+pub(crate) async fn delete_gallery_item(
     State(state): State<AppState>,
     caller: AuthenticatedUser,
     Path((gallery_id_value, item_id_value)): Path<(String, String)>,

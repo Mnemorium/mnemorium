@@ -22,7 +22,7 @@ use crate::domain::port::media_source::MediaEntry;
 use crate::domain::port::media_source::MediaSource;
 
 /// Media source backed by the local filesystem under a fixed root.
-pub struct LocalMediaSource {
+pub(crate) struct LocalMediaSource {
     /// Fixed root every reported path is relative to.
     root: PathBuf,
 }
@@ -30,7 +30,7 @@ pub struct LocalMediaSource {
 impl LocalMediaSource {
     /// Create a source rooted at `root`.
     #[must_use]
-    pub fn new(root: PathBuf) -> Self {
+    pub(crate) fn new(root: PathBuf) -> Self {
         Self { root }
     }
 }

@@ -9,7 +9,7 @@ use crate::domain::model::gallery_item::GalleryItemMedia;
 /// Command to fetch one item of a gallery.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct GetGalleryItemCommand {
+pub(crate) struct GetGalleryItemCommand {
     /// Identifier of the authenticated caller.
     caller_id: NumericID,
     /// Identifier of the gallery the item belongs to.
@@ -21,25 +21,29 @@ pub struct GetGalleryItemCommand {
 impl GetGalleryItemCommand {
     /// Return the identifier of the authenticated caller.
     #[must_use]
-    pub fn caller_id(&self) -> NumericID {
+    pub(crate) fn caller_id(&self) -> NumericID {
         self.caller_id
     }
 
     /// Return the identifier of the gallery the item belongs to.
     #[must_use]
-    pub fn gallery_id(&self) -> NumericID {
+    pub(crate) fn gallery_id(&self) -> NumericID {
         self.gallery_id
     }
 
     /// Return the identifier of the item to fetch.
     #[must_use]
-    pub fn gallery_item_id(&self) -> NumericID {
+    pub(crate) fn gallery_item_id(&self) -> NumericID {
         self.gallery_item_id
     }
 
     /// Create a new fetch-gallery-item command.
     #[must_use]
-    pub fn new(caller_id: NumericID, gallery_id: NumericID, gallery_item_id: NumericID) -> Self {
+    pub(crate) fn new(
+        caller_id: NumericID,
+        gallery_id: NumericID,
+        gallery_item_id: NumericID,
+    ) -> Self {
         Self {
             caller_id,
             gallery_id,
@@ -51,7 +55,7 @@ impl GetGalleryItemCommand {
 /// Response of a successful gallery-item lookup.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct GetGalleryItemResponse {
+pub(crate) struct GetGalleryItemResponse {
     /// Date and time at which the item was added.
     added_at: NaiveDateTime,
     /// Identifier of the backing file.
@@ -71,49 +75,53 @@ pub struct GetGalleryItemResponse {
 impl GetGalleryItemResponse {
     /// Return the date and time at which the item was added.
     #[must_use]
-    pub fn added_at(&self) -> NaiveDateTime {
+    pub(crate) fn added_at(&self) -> NaiveDateTime {
         self.added_at
     }
 
     /// Return the identifier of the backing file.
     #[must_use]
-    pub fn file_id(&self) -> NumericID {
+    pub(crate) fn file_id(&self) -> NumericID {
         self.file_id
     }
 
     /// Return the identifier of the gallery the item belongs to.
     #[must_use]
-    pub fn gallery_id(&self) -> NumericID {
+    pub(crate) fn gallery_id(&self) -> NumericID {
         self.gallery_id
     }
 
     /// Return the unique identifier of the item.
     #[must_use]
-    pub fn gallery_item_id(&self) -> NumericID {
+    pub(crate) fn gallery_item_id(&self) -> NumericID {
         self.gallery_item_id
     }
 
     /// Return the position of the item within its gallery.
     #[must_use]
-    pub fn item_index(&self) -> i64 {
+    #[expect(
+        dead_code,
+        reason = "part of the type's declared contract; no caller exercises it yet"
+    )]
+    pub(crate) fn item_index(&self) -> i64 {
         self.item_index
     }
 
     /// Return the medium the item references.
     #[must_use]
-    pub fn media(&self) -> GalleryItemMedia {
+    pub(crate) fn media(&self) -> GalleryItemMedia {
         self.media
     }
 
     /// Return the name of the item.
     #[must_use]
-    pub fn name(&self) -> &str {
+    pub(crate) fn name(&self) -> &str {
         &self.name
     }
 
     /// Create a new fetch-gallery-item response.
     #[must_use]
-    pub fn new(
+    pub(crate) fn new(
         gallery_item_id: NumericID,
         gallery_id: NumericID,
         media: GalleryItemMedia,
@@ -137,7 +145,7 @@ impl GetGalleryItemResponse {
 /// Error returned when fetching one item of a gallery.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
-pub enum GetGalleryItemError {
+pub(crate) enum GetGalleryItemError {
     /// The authenticated caller does not exist anymore.
     #[error("the authenticated user does not exist")]
     NoSuchCaller,
@@ -154,7 +162,7 @@ pub enum GetGalleryItemError {
 
 /// Use case for fetching one item of a gallery.
 #[cfg_attr(test, mockall::automock)]
-pub trait GetGalleryItemUseCase: Send + Sync {
+pub(crate) trait GetGalleryItemUseCase: Send + Sync {
     /// Fetch the requested item of the gallery.
     ///
     /// The future is returned erased (`dyn`, not `impl Future`), boxed and

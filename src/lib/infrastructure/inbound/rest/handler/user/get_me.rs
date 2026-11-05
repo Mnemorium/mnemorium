@@ -19,7 +19,7 @@ use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 /// Current user returned by a successful lookup.
 #[derive(Debug, Serialize, ToSchema)]
 #[non_exhaustive]
-pub struct GetMeResponse {
+struct GetMeResponse {
     /// Email address of the caller, when one was provided.
     #[schema(format = "email")]
     pub email: Option<String>,
@@ -85,7 +85,7 @@ impl From<GetCurrentUserError> for ApiError {
     ),
     summary = "Fetch the current user"
 )]
-pub async fn get_me(
+pub(crate) async fn get_me(
     State(state): State<AppState>,
     caller: AuthenticatedUser,
 ) -> Result<Response, ApiError> {

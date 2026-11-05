@@ -10,7 +10,7 @@ files:
 rule:
   all:
     - kind: struct_item
-    - regex: '^pub struct \w+Response\b'
+    - regex: '^(pub(\(crate\))? )?struct \w+Response\b'
     - not:
         inside:
           kind: mod_item
@@ -22,15 +22,15 @@ rule:
         # A response declared after the error enum is not second.
         - follows:
             kind: enum_item
-            regex: '^pub enum \w+Error\b'
+            regex: '^(pub(\(crate\))? )?enum \w+Error\b'
             stopBy: end
         # A response declared after the use-case trait is not second.
         - follows:
             kind: trait_item
-            regex: '^pub trait \w+UseCase\b'
+            regex: '^(pub(\(crate\))? )?trait \w+UseCase\b'
             stopBy: end
         # A response declared before the command object is not second.
         - precedes:
             kind: struct_item
-            regex: '^pub struct \w+Command\b'
+            regex: '^(pub(\(crate\))? )?struct \w+Command\b'
             stopBy: end

@@ -6,7 +6,7 @@ use crate::domain::model::video::ScanType as DomainScanType;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, sqlx::Type)]
 #[sqlx(rename_all = "UPPERCASE")]
 #[non_exhaustive]
-pub enum ScanType {
+pub(crate) enum ScanType {
     /// Interlaced scan of two separate fields per frame.
     Interlaced,
     /// Macroblock-adaptive frame/field scan.
@@ -19,7 +19,7 @@ pub enum ScanType {
 
 /// Data model for the `video` table.
 #[derive(Debug, Clone, sqlx::FromRow)]
-pub struct Video {
+pub(crate) struct Video {
     /// Codec of the video.
     pub codec: String,
     /// Identifier of the colour space of the video.

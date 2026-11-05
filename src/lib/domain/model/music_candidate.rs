@@ -12,7 +12,7 @@ use crate::domain::model::music_query::MusicKind;
 /// other kinds rather than repeated empty.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub enum MusicCandidate {
+pub(crate) enum MusicCandidate {
     /// The abstract album, independent of any one edition.
     Album {
         /// Group the provider reports, when it reports one.
@@ -55,6 +55,13 @@ pub enum MusicCandidate {
     },
 }
 
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "the music candidate carries provider detail the identification path does not read yet"
+    )
+)]
 impl MusicCandidate {
     /// Return the reference to the album the release belongs to, when the
     /// candidate is a release that names one.
@@ -63,7 +70,7 @@ impl MusicCandidate {
         clippy::pattern_type_mismatch,
         reason = "the arms read fields out of a non-Copy enum matched by reference"
     )]
-    pub fn album(&self) -> Option<&ExternalRef> {
+    pub(crate) fn album(&self) -> Option<&ExternalRef> {
         match self {
             Self::Album { .. } | Self::Recording { .. } => None,
             Self::Release { album, .. } => album.as_ref(),
@@ -76,7 +83,7 @@ impl MusicCandidate {
         clippy::pattern_type_mismatch,
         reason = "the arms read fields out of a non-Copy enum matched by reference"
     )]
-    pub fn group(&self) -> Option<&str> {
+    pub(crate) fn group(&self) -> Option<&str> {
         match self {
             Self::Album { group, .. }
             | Self::Recording { group, .. }
@@ -90,7 +97,7 @@ impl MusicCandidate {
         clippy::pattern_type_mismatch,
         reason = "the arms read fields out of a non-Copy enum matched by reference"
     )]
-    pub fn kind(&self) -> MusicKind {
+    pub(crate) fn kind(&self) -> MusicKind {
         match self {
             Self::Album { .. } => MusicKind::Album,
             Self::Recording { .. } => MusicKind::Recording,
@@ -104,7 +111,7 @@ impl MusicCandidate {
         clippy::pattern_type_mismatch,
         reason = "the arms read fields out of a non-Copy enum matched by reference"
     )]
-    pub fn mediums(&self) -> &[MediumSummary] {
+    pub(crate) fn mediums(&self) -> &[MediumSummary] {
         match self {
             Self::Album { .. } | Self::Recording { .. } => &[],
             Self::Release { mediums, .. } => mediums,
@@ -117,7 +124,7 @@ impl MusicCandidate {
         clippy::pattern_type_mismatch,
         reason = "the arms read fields out of a non-Copy enum matched by reference"
     )]
-    pub fn reference(&self) -> &ExternalRef {
+    pub(crate) fn reference(&self) -> &ExternalRef {
         match self {
             Self::Album { reference, .. }
             | Self::Recording { reference, .. }
@@ -132,7 +139,7 @@ impl MusicCandidate {
         clippy::pattern_type_mismatch,
         reason = "the arms read fields out of a non-Copy enum matched by reference"
     )]
-    pub fn status(&self) -> Option<ReleaseStatus> {
+    pub(crate) fn status(&self) -> Option<ReleaseStatus> {
         match self {
             Self::Album { .. } | Self::Recording { .. } => None,
             Self::Release { status, .. } => *status,
@@ -145,7 +152,7 @@ impl MusicCandidate {
         clippy::pattern_type_mismatch,
         reason = "the arms read fields out of a non-Copy enum matched by reference"
     )]
-    pub fn title(&self) -> &str {
+    pub(crate) fn title(&self) -> &str {
         match self {
             Self::Album { title, .. }
             | Self::Recording { title, .. }
@@ -159,7 +166,7 @@ impl MusicCandidate {
         clippy::pattern_type_mismatch,
         reason = "the arms read fields out of a non-Copy enum matched by reference"
     )]
-    pub fn year(&self) -> Option<u32> {
+    pub(crate) fn year(&self) -> Option<u32> {
         match self {
             Self::Album { year, .. }
             | Self::Recording { year, .. }
@@ -171,7 +178,7 @@ impl MusicCandidate {
 /// Item whose rich metadata is resolved through the reference's provider.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub enum MusicTarget {
+pub(crate) enum MusicTarget {
     /// One album.
     Album(ExternalRef),
     /// One recording.
@@ -187,7 +194,7 @@ impl MusicTarget {
         clippy::pattern_type_mismatch,
         reason = "the arms read fields out of a non-Copy enum matched by reference"
     )]
-    pub fn kind(&self) -> MusicKind {
+    pub(crate) fn kind(&self) -> MusicKind {
         match self {
             Self::Album(_) => MusicKind::Album,
             Self::Recording(_) => MusicKind::Recording,
@@ -201,7 +208,7 @@ impl MusicTarget {
         clippy::pattern_type_mismatch,
         reason = "the arms read fields out of a non-Copy enum matched by reference"
     )]
-    pub fn reference(&self) -> &ExternalRef {
+    pub(crate) fn reference(&self) -> &ExternalRef {
         match self {
             Self::Album(reference) | Self::Recording(reference) | Self::Release(reference) => {
                 reference

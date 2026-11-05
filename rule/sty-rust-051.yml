@@ -6,9 +6,15 @@ message: a *Filter struct is declared after the repository trait
 rule:
   all:
     - kind: struct_item
-    - pattern: pub struct $FILTER
-    - regex: '^pub struct \w+Filter\b'
+    - any:
+        - pattern: pub struct $FILTER
+        - pattern: pub(crate) struct $FILTER
+        - pattern: struct $FILTER
+    - regex: '^(pub(\(crate\))? )?struct \w+Filter\b'
     - follows:
         kind: trait_item
-        pattern: 'pub trait $TRAIT'
+        any:
+          - pattern: 'pub trait $TRAIT'
+          - pattern: 'pub(crate) trait $TRAIT'
+          - pattern: 'trait $TRAIT'
         stopBy: end

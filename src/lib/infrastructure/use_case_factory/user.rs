@@ -12,7 +12,7 @@ use crate::application::use_case::update_user::UpdateUser;
 use crate::infrastructure::outbound::sqlx::unit_of_work::SqlxUnitOfWorkFactory;
 
 /// Builds the User use cases over the shared unit of work factory.
-pub struct RuntimeUserUseCaseFactory {
+pub(crate) struct RuntimeUserUseCaseFactory {
     /// Factory opening the unit of work wrapping the User use cases.
     unit_of_work_factory: Arc<SqlxUnitOfWorkFactory>,
 }
@@ -20,7 +20,7 @@ pub struct RuntimeUserUseCaseFactory {
 impl RuntimeUserUseCaseFactory {
     /// Create a new factory.
     #[must_use]
-    pub fn new(unit_of_work_factory: Arc<SqlxUnitOfWorkFactory>) -> Self {
+    pub(crate) fn new(unit_of_work_factory: Arc<SqlxUnitOfWorkFactory>) -> Self {
         Self {
             unit_of_work_factory,
         }

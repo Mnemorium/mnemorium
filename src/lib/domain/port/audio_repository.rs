@@ -8,14 +8,14 @@ use crate::domain::port::error::RepositoryError;
 /// all-`None` filter returns every audio row.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct AudioFilter {
+pub(crate) struct AudioFilter {
     /// Filter on the identifier of the backing file.
     pub file_id: Option<NumericID>,
 }
 
 /// Port for persisting and querying `Audio`.
 #[cfg_attr(test, mockall::automock)]
-pub trait AudioRepository: Send + Sync {
+pub(crate) trait AudioRepository: Send + Sync {
     /// Insert a new `audio`, returning the persisted audio with its final
     /// identifier.
     ///

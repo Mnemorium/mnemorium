@@ -29,7 +29,7 @@ use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 /// holding a raw identifier (`API-034`, `API-037`).
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 #[non_exhaustive]
-pub struct UploadCompleteLinks {
+struct UploadCompleteLinks {
     /// Link to the file finalized by the completion.
     pub file: Link,
     /// Link to the completed upload session.
@@ -40,7 +40,7 @@ pub struct UploadCompleteLinks {
 impl UploadCompleteLinks {
     /// Build the links of the upload session identified by `upload_id`.
     #[must_use]
-    pub fn for_upload(upload_id: NumericID, file_id: NumericID) -> Self {
+    pub(crate) fn for_upload(upload_id: NumericID, file_id: NumericID) -> Self {
         Self {
             file: Link::new(&asset_file_href(file_id)),
             self_link: Link::new(&upload_self_href(upload_id)),
@@ -51,7 +51,7 @@ impl UploadCompleteLinks {
 /// File finalized by a successful completion.
 #[derive(Debug, Serialize, ToSchema)]
 #[non_exhaustive]
-pub struct PostUploadCompleteResponse {
+struct PostUploadCompleteResponse {
     /// Whether the upload session has been finished.
     pub is_finished: bool,
     /// Links to the completed upload session and the finalized file.
@@ -62,7 +62,7 @@ pub struct PostUploadCompleteResponse {
 impl PostUploadCompleteResponse {
     /// Map the completed upload onto its HTTP representation.
     #[must_use]
-    pub fn new(upload_id: NumericID, response: &CompleteUploadResponseData) -> Self {
+    pub(crate) fn new(upload_id: NumericID, response: &CompleteUploadResponseData) -> Self {
         Self {
             is_finished: response.is_finished(),
             links: UploadCompleteLinks::for_upload(upload_id, response.file_id()),
@@ -161,7 +161,7 @@ impl From<CompleteUploadError> for ApiError {
     ),
     summary = "Complete an upload session"
 )]
-pub async fn post_upload_complete(
+pub(crate) async fn post_upload_complete(
     Path(upload_id_value): Path<String>,
     State(state): State<AppState>,
     caller: AuthenticatedUser,

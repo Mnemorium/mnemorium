@@ -29,7 +29,7 @@ use crate::domain::service::authorization::Authorization;
 use crate::domain::service::authorization::Decision;
 
 /// Use case implementation for writing one chunk of an upload session.
-pub struct WriteUploadChunk<F, S, H> {
+pub(crate) struct WriteUploadChunk<F, S, H> {
     /// Lifetime of an upload session, in seconds.
     expiry_seconds: u64,
     /// Storage adapter writing the chunk bytes.
@@ -43,7 +43,7 @@ pub struct WriteUploadChunk<F, S, H> {
 impl<F: UnitOfWorkFactory, S: FileStorage, H: ContentHasher> WriteUploadChunk<F, S, H> {
     /// Create a new use case.
     #[must_use]
-    pub fn new(
+    pub(crate) fn new(
         unit_of_work_factory: Arc<F>,
         file_storage: Arc<S>,
         hasher: H,

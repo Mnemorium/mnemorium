@@ -16,7 +16,7 @@ use crate::domain::port::error::ExternalServiceError;
 /// `search` is shallow and returns candidates in the provider's order; `lookup`
 /// resolves one item and carries its artwork and editions.
 #[cfg_attr(test, mockall::automock)]
-pub trait MusicMetadataProvider: Send + Sync {
+pub(crate) trait MusicMetadataProvider: Send + Sync {
     /// Resolve the rich metadata of `target` through the provider that issued
     /// the target's reference.
     ///

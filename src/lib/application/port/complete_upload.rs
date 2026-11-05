@@ -6,7 +6,7 @@ use crate::domain::alias::NumericID;
 /// Command to complete an upload session.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct CompleteUploadCommand {
+pub(crate) struct CompleteUploadCommand {
     /// Identifier of the upload session.
     upload_id: NumericID,
     /// Identifier of the user owning the upload.
@@ -16,19 +16,19 @@ pub struct CompleteUploadCommand {
 impl CompleteUploadCommand {
     /// Create a new complete-upload command.
     #[must_use]
-    pub fn new(upload_id: NumericID, user_id: NumericID) -> Self {
+    pub(crate) fn new(upload_id: NumericID, user_id: NumericID) -> Self {
         Self { upload_id, user_id }
     }
 
     /// Return the identifier of the upload session.
     #[must_use]
-    pub fn upload_id(&self) -> NumericID {
+    pub(crate) fn upload_id(&self) -> NumericID {
         self.upload_id
     }
 
     /// Return the identifier of the owning user.
     #[must_use]
-    pub fn user_id(&self) -> NumericID {
+    pub(crate) fn user_id(&self) -> NumericID {
         self.user_id
     }
 }
@@ -36,7 +36,7 @@ impl CompleteUploadCommand {
 /// Response of a successfully completed upload session.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct CompleteUploadResponse {
+pub(crate) struct CompleteUploadResponse {
     /// Unique identifier of the finished file.
     file_id: NumericID,
     /// Whether the upload session has been finished.
@@ -46,19 +46,19 @@ pub struct CompleteUploadResponse {
 impl CompleteUploadResponse {
     /// Return the unique identifier of the finished file.
     #[must_use]
-    pub fn file_id(&self) -> NumericID {
+    pub(crate) fn file_id(&self) -> NumericID {
         self.file_id
     }
 
     /// Return whether the upload session has been finished.
     #[must_use]
-    pub fn is_finished(&self) -> bool {
+    pub(crate) fn is_finished(&self) -> bool {
         self.is_finished
     }
 
     /// Create a new complete-upload response.
     #[must_use]
-    pub fn new(file_id: NumericID, is_finished: bool) -> Self {
+    pub(crate) fn new(file_id: NumericID, is_finished: bool) -> Self {
         Self {
             file_id,
             is_finished,
@@ -69,7 +69,7 @@ impl CompleteUploadResponse {
 /// Error returned when completing an upload session.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
-pub enum CompleteUploadError {
+pub(crate) enum CompleteUploadError {
     /// The upload session has expired.
     #[error("the upload session has expired")]
     Expired,
@@ -95,7 +95,7 @@ pub enum CompleteUploadError {
 
 /// Use case for completing an upload session.
 #[cfg_attr(test, mockall::automock)]
-pub trait CompleteUploadUseCase: Send + Sync {
+pub(crate) trait CompleteUploadUseCase: Send + Sync {
     /// Complete an upload session, promoting the staged file.
     ///
     /// The future is returned erased (`dyn`, not `impl Future`), boxed and

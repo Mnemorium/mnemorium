@@ -159,8 +159,8 @@ Read the governing material at run time; never work from memory.
   `rstest`, `tempfile`, `wiremock`. Read the files for versions and licenses —
   never recite them from memory.
 - **Code map** (navigation, not rules):
-  - `src/bin/server.rs` — the composition root; wires concrete adapters and
-    builds `AppState`.
+  - `src/lib/app.rs` — the composition root; wires concrete adapters and
+    builds `AppState`. `src/bin/server.rs` only launches it.
   - `src/lib/domain/` — `model/` entities, `port/` traits and port errors,
     `service/` pure services.
   - `src/lib/application/` — `port/` use-case contracts and per-context

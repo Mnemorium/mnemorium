@@ -11,6 +11,10 @@
 //! identity available when authentication fails, and no other field can stand
 //! in for it. The field escapes control characters and bounds its length, so a
 //! client cannot forge a log record through it (`OBS-003`).
+#![allow(
+    dead_code,
+    reason = "the security-event catalog declares the metadata-provider and genre constructors; the video identification path that emits them has no caller yet"
+)]
 
 use tracing::debug;
 use tracing::error;
@@ -24,7 +28,7 @@ use tracing::warn;
 const MAX_CLAIMED_IDENTITY_CHARS: usize = 256;
 
 /// A credential was accepted (`authn_succeeded`, `info`, field `actor`).
-pub fn authentication_succeeded(actor: i64) {
+pub(crate) fn authentication_succeeded(actor: i64) {
     info!(
         target: "security",
         event = "authn_succeeded",
@@ -39,7 +43,7 @@ pub fn authentication_succeeded(actor: i64) {
 /// distinguishes the two (`OBS-006`). The claimed identity is bounded and its
 /// control characters are escaped, so it cannot forge a record on the
 /// non-suppressible `security` channel (`OBS-003`).
-pub fn authentication_failed(claimed_identity: &str) {
+pub(crate) fn authentication_failed(claimed_identity: &str) {
     let sanitized: String = claimed_identity
         .chars()
         .take(MAX_CLAIMED_IDENTITY_CHARS)
@@ -55,7 +59,7 @@ pub fn authentication_failed(claimed_identity: &str) {
 }
 
 /// An authorization decision denied an action (`authz_failed`, `warn`).
-pub fn authorization_failed(actor: i64, action: &str, target: &str) {
+pub(crate) fn authorization_failed(actor: i64, action: &str, target: &str) {
     warn!(
         target: "security",
         event = "authz_failed",
@@ -71,7 +75,7 @@ pub fn authorization_failed(actor: i64, action: &str, target: &str) {
 ///
 /// The `field` names the rejected attribute and `reason` its classification;
 /// the rejected value itself never reaches the sink (`OBS-003`, `OBS-006`).
-pub fn input_validation_failed(field: &str, reason: &str) {
+pub(crate) fn input_validation_failed(field: &str, reason: &str) {
     warn!(
         target: "security",
         event = "input_validation_failed",
@@ -82,7 +86,7 @@ pub fn input_validation_failed(field: &str, reason: &str) {
 }
 
 /// A use case originated an internal `Unknown` (`application_error`, `error`).
-pub fn application_error(operation: &str) {
+pub(crate) fn application_error(operation: &str) {
     error!(
         target: "security",
         event = "application_error",
@@ -92,7 +96,7 @@ pub fn application_error(operation: &str) {
 }
 
 /// A user-administration object changed (`user_admin`, `info`).
-pub fn user_admin(actor: i64, action: &str, target: &str) {
+pub(crate) fn user_admin(actor: i64, action: &str, target: &str) {
     info!(
         target: "security",
         event = "user_admin",
@@ -104,7 +108,7 @@ pub fn user_admin(actor: i64, action: &str, target: &str) {
 }
 
 /// A credential was replaced or rehashed (`credential_rotated`, `info`).
-pub fn credential_rotated(actor: i64) {
+pub(crate) fn credential_rotated(actor: i64) {
     info!(
         target: "security",
         event = "credential_rotated",
@@ -115,7 +119,7 @@ pub fn credential_rotated(actor: i64) {
 
 /// An upload was accepted, a chunk was written, or an upload completed
 /// (`upload`, `info`).
-pub fn upload(actor: i64, upload: &str, outcome: &str) {
+pub(crate) fn upload(actor: i64, upload: &str, outcome: &str) {
     info!(
         target: "security",
         event = "upload",
@@ -127,7 +131,7 @@ pub fn upload(actor: i64, upload: &str, outcome: &str) {
 }
 
 /// Personal data was read (`sensitive_data_access`, `debug`).
-pub fn sensitive_data_access(actor: i64, object: &str) {
+pub(crate) fn sensitive_data_access(actor: i64, object: &str) {
     debug!(
         target: "security",
         event = "sensitive_data_access",
@@ -144,7 +148,7 @@ pub fn sensitive_data_access(actor: i64, object: &str) {
 /// instance identity is created, once per generated secret. The `component`
 /// names which secret was generated; the secret value itself never reaches the
 /// sink (`OBS-003`, `OBS-004`).
-pub fn secret_initialized(component: &str) {
+pub(crate) fn secret_initialized(component: &str) {
     info!(
         target: "security",
         event = "secret_initialized",
@@ -154,7 +158,7 @@ pub fn secret_initialized(component: &str) {
 }
 
 /// A system-level object was created (`system_object`, `info`).
-pub fn system_object(object: &str, action: &str) {
+pub(crate) fn system_object(object: &str, action: &str) {
     info!(
         target: "security",
         event = "system_object",
@@ -168,7 +172,7 @@ pub fn system_object(object: &str, action: &str) {
 ///
 /// The record carries aggregate counts only: no file name and no path ever
 /// reaches the sink (`OBS-003`, `OBS-006`).
-pub fn media_ingest(
+pub(crate) fn media_ingest(
     registered: u64,
     completed: u64,
     untouched: u64,
@@ -193,7 +197,7 @@ pub fn media_ingest(
 ///
 /// A failed watch registration or a queue overflow is reported once; neither
 /// fails startup, and the startup scan remains the mechanism of record.
-pub fn media_ingest_fault(kind: &str) {
+pub(crate) fn media_ingest_fault(kind: &str) {
     warn!(
         target: "security",
         event = "ingest_fault",
@@ -207,7 +211,7 @@ pub fn media_ingest_fault(kind: &str) {
 ///
 /// The record carries the provider and the failure classification only: never
 /// the query, a title, a file name or a key (`OBS-003`, `OBS-006`).
-pub fn metadata_provider_fallback(provider: &str, classification: &str) {
+pub(crate) fn metadata_provider_fallback(provider: &str, classification: &str) {
     warn!(
         target: "security",
         event = "metadata_provider_fallback",
@@ -222,7 +226,7 @@ pub fn metadata_provider_fallback(provider: &str, classification: &str) {
 ///
 /// The record names only the provider; the reference itself never reaches the
 /// sink (`OBS-003`, `OBS-006`).
-pub fn metadata_provider_unconfigured(provider: &str) {
+pub(crate) fn metadata_provider_unconfigured(provider: &str) {
     warn!(
         target: "security",
         event = "metadata_provider_unconfigured",
@@ -236,7 +240,7 @@ pub fn metadata_provider_unconfigured(provider: &str) {
 ///
 /// The record carries the count only: the term itself never reaches the sink
 /// (`OBS-003`, `OBS-006`).
-pub fn metadata_genre_unmatched(count: u64) {
+pub(crate) fn metadata_genre_unmatched(count: u64) {
     debug!(
         target: "security",
         event = "metadata_genre_unmatched",
@@ -250,7 +254,7 @@ pub fn metadata_genre_unmatched(count: u64) {
 ///
 /// The record carries the provider and a stable reason: never the address, the
 /// bytes or a key (`OBS-003`, `OBS-004`).
-pub fn metadata_artwork_failed(provider: &str, reason: &str) {
+pub(crate) fn metadata_artwork_failed(provider: &str, reason: &str) {
     warn!(
         target: "security",
         event = "metadata_artwork_failed",
@@ -262,7 +266,7 @@ pub fn metadata_artwork_failed(provider: &str, reason: &str) {
 
 /// An action was out of order, nonsensical in context, or exceeded a limit
 /// (`suspicious_business_logic`, `warn`).
-pub fn suspicious_business_logic(actor: i64, action: &str, reason: &str) {
+pub(crate) fn suspicious_business_logic(actor: i64, action: &str, reason: &str) {
     warn!(
         target: "security",
         event = "suspicious_business_logic",

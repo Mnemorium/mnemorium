@@ -8,7 +8,7 @@ use crate::domain::model::music_album::MusicAlbum;
 /// Command to apply external metadata to a music album.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct ApplyMusicAlbumCommand {
+pub(crate) struct ApplyMusicAlbumCommand {
     /// Identifier of the album to write.
     album_id: NumericID,
     /// Identifier of the authenticated caller.
@@ -23,19 +23,19 @@ pub struct ApplyMusicAlbumCommand {
 impl ApplyMusicAlbumCommand {
     /// Return the identifier of the album to write.
     #[must_use]
-    pub fn album_id(&self) -> NumericID {
+    pub(crate) fn album_id(&self) -> NumericID {
         self.album_id
     }
 
     /// Return the identifier of the authenticated caller.
     #[must_use]
-    pub fn caller_id(&self) -> NumericID {
+    pub(crate) fn caller_id(&self) -> NumericID {
         self.caller_id
     }
 
     /// Create a new apply command.
     #[must_use]
-    pub fn new(
+    pub(crate) fn new(
         caller_id: NumericID,
         album_id: NumericID,
         reference: ExternalRef,
@@ -51,13 +51,13 @@ impl ApplyMusicAlbumCommand {
 
     /// Return the placements to apply.
     #[must_use]
-    pub fn placements(&self) -> &[AlbumPlacement] {
+    pub(crate) fn placements(&self) -> &[AlbumPlacement] {
         &self.placements
     }
 
     /// Return the reference to the provider's work.
     #[must_use]
-    pub fn reference(&self) -> &ExternalRef {
+    pub(crate) fn reference(&self) -> &ExternalRef {
         &self.reference
     }
 }
@@ -65,7 +65,7 @@ impl ApplyMusicAlbumCommand {
 /// Response of a successful apply: the stored album.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct ApplyMusicAlbumResponse {
+pub(crate) struct ApplyMusicAlbumResponse {
     /// The album that was stored.
     album: MusicAlbum,
 }
@@ -73,13 +73,13 @@ pub struct ApplyMusicAlbumResponse {
 impl ApplyMusicAlbumResponse {
     /// Return the album that was stored.
     #[must_use]
-    pub fn album(&self) -> &MusicAlbum {
+    pub(crate) fn album(&self) -> &MusicAlbum {
         &self.album
     }
 
     /// Create a new applied-album response.
     #[must_use]
-    pub fn new(album: MusicAlbum) -> Self {
+    pub(crate) fn new(album: MusicAlbum) -> Self {
         Self { album }
     }
 }
@@ -87,7 +87,7 @@ impl ApplyMusicAlbumResponse {
 /// Error returned when applying external metadata to an album.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
-pub enum ApplyMusicAlbumError {
+pub(crate) enum ApplyMusicAlbumError {
     /// The write duplicates another album's `(name, group)` identity, or a
     /// placement collides with an occupied destination.
     #[error("the applied metadata conflicts with the stored catalogue")]
@@ -131,7 +131,7 @@ pub enum ApplyMusicAlbumError {
 /// One recording the apply places at a destination address.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct AlbumPlacement {
+pub(crate) struct AlbumPlacement {
     /// Album-scoped index of the destination medium.
     medium_index: u8,
     /// Identifier of the recording to move.
@@ -143,13 +143,13 @@ pub struct AlbumPlacement {
 impl AlbumPlacement {
     /// Return the album-scoped index of the destination medium.
     #[must_use]
-    pub fn medium_index(&self) -> u8 {
+    pub(crate) fn medium_index(&self) -> u8 {
         self.medium_index
     }
 
     /// Create a new placement.
     #[must_use]
-    pub fn new(medium_index: u8, track_index: u8, recording_id: NumericID) -> Self {
+    pub(crate) fn new(medium_index: u8, track_index: u8, recording_id: NumericID) -> Self {
         Self {
             medium_index,
             recording_id,
@@ -159,20 +159,20 @@ impl AlbumPlacement {
 
     /// Return the identifier of the recording to move.
     #[must_use]
-    pub fn recording_id(&self) -> NumericID {
+    pub(crate) fn recording_id(&self) -> NumericID {
         self.recording_id
     }
 
     /// Return the index of the destination track within the medium.
     #[must_use]
-    pub fn track_index(&self) -> u8 {
+    pub(crate) fn track_index(&self) -> u8 {
         self.track_index
     }
 }
 
 /// Use case for applying external metadata to a music album.
 #[cfg_attr(test, mockall::automock)]
-pub trait ApplyMusicAlbumUseCase: Send + Sync {
+pub(crate) trait ApplyMusicAlbumUseCase: Send + Sync {
     /// Resolve the reference and write the album and its medium structure.
     ///
     /// The future is returned erased (`dyn`, not `impl Future`), boxed and

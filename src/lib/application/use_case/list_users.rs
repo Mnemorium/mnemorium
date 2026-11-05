@@ -21,7 +21,7 @@ use crate::domain::service::authorization::Authorization;
 use crate::domain::service::authorization::Decision;
 
 /// Use case implementation for listing the users of the instance.
-pub struct ListUsers<F> {
+pub(crate) struct ListUsers<F> {
     /// Factory opening the unit of work wrapping the read.
     unit_of_work_factory: Arc<F>,
 }
@@ -29,7 +29,7 @@ pub struct ListUsers<F> {
 impl<F: UnitOfWorkFactory> ListUsers<F> {
     /// Create a new use case.
     #[must_use]
-    pub fn new(unit_of_work_factory: Arc<F>) -> Self {
+    pub(crate) fn new(unit_of_work_factory: Arc<F>) -> Self {
         Self {
             unit_of_work_factory,
         }

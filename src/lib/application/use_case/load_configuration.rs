@@ -34,7 +34,7 @@ use crate::domain::port::error::ConfigurationSourceError;
 /// file layer is merged over them, and the environment layer is merged over the
 /// result. Each adapter only loads the settings its layer names; the merge
 /// itself lives here.
-pub struct LoadConfiguration<C, E> {
+pub(crate) struct LoadConfiguration<C, E> {
     /// Source loading the configuration file layer.
     configuration_source: Arc<C>,
     /// Source loading the environment layer.
@@ -44,7 +44,7 @@ pub struct LoadConfiguration<C, E> {
 impl<C: ConfigurationSource, E: EnvironmentConfiguration> LoadConfiguration<C, E> {
     /// Create a new use case.
     #[must_use]
-    pub fn new(configuration_source: Arc<C>, environment_configuration: Arc<E>) -> Self {
+    pub(crate) fn new(configuration_source: Arc<C>, environment_configuration: Arc<E>) -> Self {
         Self {
             configuration_source,
             environment_configuration,

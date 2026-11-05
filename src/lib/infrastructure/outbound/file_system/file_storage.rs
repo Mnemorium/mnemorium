@@ -29,7 +29,7 @@ const HASH_BUFFER_BYTES: usize = 64 * 1024;
 /// layout knowledge and no long-lived adapter. The media-library layout lives in
 /// the application layer.
 #[derive(Debug, Default)]
-pub struct FileSystemStorage;
+pub(crate) struct FileSystemStorage;
 
 impl FileSystemStorage {
     /// Map an I/O error onto a storage error.
@@ -81,7 +81,7 @@ impl FileSystemStorage {
 
     /// Create a new file system storage.
     #[must_use]
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self
     }
 

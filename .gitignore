@@ -39,3 +39,6 @@ events.ndjson
 
 # Personal plans
 .opencode/plan/
+
+# internal dependency graph
+deps_graph.png

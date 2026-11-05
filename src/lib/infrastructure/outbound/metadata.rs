@@ -4,8 +4,12 @@
 //! implementations and has no transport of its own: it tries the configured
 //! providers in ascending index order, records each fallback as a catalogued
 //! event, and routes a lookup to the provider that issued the reference.
+#![allow(
+    dead_code,
+    reason = "the provider chain serves the internal video-identification path, which has no REST caller yet"
+)]
 
-pub mod failover;
+pub(crate) mod failover;
 
 use crate::domain::model::configuration::MusicProviders;
 use crate::domain::model::configuration::VideoProviders;
@@ -22,7 +26,7 @@ use crate::infrastructure::outbound::reqwest::tmdb::TmdbVideoMetadataProvider;
 
 /// One configured provider link, selected at startup by configuration.
 #[non_exhaustive]
-pub enum ConfiguredProvider {
+pub(crate) enum ConfiguredProvider {
     /// The `OMDb` provider.
     Omdb(OmdbVideoMetadataProvider),
     /// The TMDB provider.
@@ -58,7 +62,7 @@ impl VideoMetadataProvider for ConfiguredProvider {
 /// The API key is read here, where the adapter that presents it is built; the
 /// configuration itself stays free of transport.
 #[must_use]
-pub fn configured_links(video: &VideoProviders) -> Vec<(ProviderId, ConfiguredProvider)> {
+pub(crate) fn configured_links(video: &VideoProviders) -> Vec<(ProviderId, ConfiguredProvider)> {
     video
         .providers()
         .iter()
@@ -92,7 +96,9 @@ pub fn configured_links(video: &VideoProviders) -> Vec<(ProviderId, ConfiguredPr
 /// naming it is the one that builds an adapter; a section the constructor
 /// validated can hold no other music provider.
 #[must_use]
-pub fn configured_music_provider(music: &MusicProviders) -> Option<MusicBrainzMetadataProvider> {
+pub(crate) fn configured_music_provider(
+    music: &MusicProviders,
+) -> Option<MusicBrainzMetadataProvider> {
     music
         .providers()
         .iter()

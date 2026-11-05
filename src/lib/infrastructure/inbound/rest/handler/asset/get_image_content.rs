@@ -61,7 +61,7 @@ use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
     ),
     summary = "Read the content of a typed image"
 )]
-pub async fn get_image_content(
+pub(crate) async fn get_image_content(
     Path(image_id_value): Path<String>,
     State(state): State<AppState>,
     caller: AuthenticatedUser,

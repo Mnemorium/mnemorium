@@ -82,7 +82,7 @@ const PROBE_TIMEOUT: Duration = Duration::from_secs(30);
 const DEFAULT_COLOR_ID: &str = "YCbCr";
 
 /// Media probe backed by the `image` crate and the local `ffprobe` binary.
-pub struct LocalMediaProbe {
+pub(crate) struct LocalMediaProbe {
     /// Permit pool bounding concurrent probes, shared with the process.
     permits: Arc<Semaphore>,
     /// Maximum time a video probe may take.
@@ -98,7 +98,7 @@ impl LocalMediaProbe {
     /// process-wide pool through [`LocalMediaProbe::with_permits`] so every
     /// probe the server builds shares one concurrency bound.
     #[must_use]
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self::with_permits(Self::new_permits())
     }
 
@@ -107,13 +107,13 @@ impl LocalMediaProbe {
     /// Called once by the composition root and shared by every probe instance, so
     /// the process-lifetime resource is sized where it is owned (`STY-RUST-067`).
     #[must_use]
-    pub fn new_permits() -> Arc<Semaphore> {
+    pub(crate) fn new_permits() -> Arc<Semaphore> {
         Arc::new(Semaphore::new(MAX_CONCURRENT_PROBES))
     }
 
     /// Create a probe sharing `permits` with the other probes the process builds.
     #[must_use]
-    pub fn with_permits(permits: Arc<Semaphore>) -> Self {
+    pub(crate) fn with_permits(permits: Arc<Semaphore>) -> Self {
         Self {
             permits,
             probe_timeout: PROBE_TIMEOUT,
@@ -128,7 +128,7 @@ impl LocalMediaProbe {
     ///
     /// Test-only: production resolves `ffprobe` from `PATH` with the default
     /// timeout.
-    pub(crate) fn with_program(program: impl Into<OsString>, probe_timeout: Duration) -> Self {
+    fn with_program(program: impl Into<OsString>, probe_timeout: Duration) -> Self {
         Self {
             permits: test_permits(),
             probe_timeout,
@@ -431,10 +431,6 @@ impl MediaProbe for LocalMediaProbe {
 /// spawn against a spawn and never a spawn against a stub write. Isolating the
 /// stub file is [`spawn_gate`]'s job (`TEST-052`).
 #[cfg(test)]
-#[expect(
-    clippy::single_call_fn,
-    reason = "the shared test pool is named after the concurrency it bounds"
-)]
 fn test_permits() -> Arc<Semaphore> {
     static PERMITS: OnceLock<Arc<Semaphore>> = OnceLock::new();
     Arc::clone(PERMITS.get_or_init(|| Arc::new(Semaphore::new(MAX_CONCURRENT_PROBES))))

@@ -92,7 +92,7 @@ impl From<GetUploadError> for ApiError {
     ),
     summary = "Fetch the state of an upload session"
 )]
-pub async fn get_upload(
+pub(crate) async fn get_upload(
     Path(upload_id_value): Path<String>,
     State(state): State<AppState>,
     caller: AuthenticatedUser,

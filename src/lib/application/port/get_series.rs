@@ -8,7 +8,7 @@ use crate::domain::alias::NumericID;
 /// Command to fetch one show.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct GetSeriesCommand {
+pub(crate) struct GetSeriesCommand {
     /// Identifier of the authenticated caller.
     caller_id: NumericID,
     /// Identifier of the show to fetch.
@@ -18,13 +18,13 @@ pub struct GetSeriesCommand {
 impl GetSeriesCommand {
     /// Return the identifier of the authenticated caller.
     #[must_use]
-    pub fn caller_id(&self) -> NumericID {
+    pub(crate) fn caller_id(&self) -> NumericID {
         self.caller_id
     }
 
     /// Create a new fetch-show command.
     #[must_use]
-    pub fn new(caller_id: NumericID, series_id: NumericID) -> Self {
+    pub(crate) fn new(caller_id: NumericID, series_id: NumericID) -> Self {
         Self {
             caller_id,
             series_id,
@@ -33,7 +33,7 @@ impl GetSeriesCommand {
 
     /// Return the identifier of the show to fetch.
     #[must_use]
-    pub fn series_id(&self) -> NumericID {
+    pub(crate) fn series_id(&self) -> NumericID {
         self.series_id
     }
 }
@@ -41,7 +41,7 @@ impl GetSeriesCommand {
 /// One season summary of a fetched show.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct GetSeriesSeasonItem {
+pub(crate) struct GetSeriesSeasonItem {
     /// Identifier of the image holding the season's artwork, when set.
     cover_image_id: Option<NumericID>,
     /// Number of episodes the season holds.
@@ -55,31 +55,31 @@ pub struct GetSeriesSeasonItem {
 impl GetSeriesSeasonItem {
     /// Return the identifier of the image holding the season's artwork, if any.
     #[must_use]
-    pub fn cover_image_id(&self) -> Option<NumericID> {
+    pub(crate) fn cover_image_id(&self) -> Option<NumericID> {
         self.cover_image_id
     }
 
     /// Return the number of episodes the season holds.
     #[must_use]
-    pub fn episode_count(&self) -> usize {
+    pub(crate) fn episode_count(&self) -> usize {
         self.episode_count
     }
 
     /// Return the series-scoped index of the season.
     #[must_use]
-    pub fn index(&self) -> u32 {
+    pub(crate) fn index(&self) -> u32 {
         self.index
     }
 
     /// Return the name of the season, if any.
     #[must_use]
-    pub fn name(&self) -> Option<&str> {
+    pub(crate) fn name(&self) -> Option<&str> {
         self.name.as_deref()
     }
 
     /// Create a new fetched show season.
     #[must_use]
-    pub fn new(
+    pub(crate) fn new(
         index: u32,
         name: Option<String>,
         episode_count: usize,
@@ -97,7 +97,7 @@ impl GetSeriesSeasonItem {
 /// Response of a successful show lookup: one show with its season summaries.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct GetSeriesResponse {
+pub(crate) struct GetSeriesResponse {
     /// Country of origin of the show.
     country_of_origin: String,
     /// Identifier of the image holding the show's artwork, when set.
@@ -119,37 +119,37 @@ pub struct GetSeriesResponse {
 impl GetSeriesResponse {
     /// Return the country of origin of the show.
     #[must_use]
-    pub fn country_of_origin(&self) -> &str {
+    pub(crate) fn country_of_origin(&self) -> &str {
         &self.country_of_origin
     }
 
     /// Return the identifier of the image holding the show's artwork, if any.
     #[must_use]
-    pub fn cover_image_id(&self) -> Option<NumericID> {
+    pub(crate) fn cover_image_id(&self) -> Option<NumericID> {
         self.cover_image_id
     }
 
     /// Return the date of the first airing.
     #[must_use]
-    pub fn first_air_date(&self) -> NaiveDate {
+    pub(crate) fn first_air_date(&self) -> NaiveDate {
         self.first_air_date
     }
 
     /// Return the genres of the show, ordered by genre identifier.
     #[must_use]
-    pub fn genre_ids(&self) -> &[String] {
+    pub(crate) fn genre_ids(&self) -> &[String] {
         &self.genre_ids
     }
 
     /// Return the unique identifier of the show.
     #[must_use]
-    pub fn id(&self) -> NumericID {
+    pub(crate) fn id(&self) -> NumericID {
         self.id
     }
 
     /// Return the name of the show.
     #[must_use]
-    pub fn name(&self) -> &str {
+    pub(crate) fn name(&self) -> &str {
         &self.name
     }
 
@@ -159,7 +159,7 @@ impl GetSeriesResponse {
         clippy::too_many_arguments,
         reason = "the constructor mirrors the response's fields one-to-one"
     )]
-    pub fn new(
+    pub(crate) fn new(
         id: NumericID,
         name: String,
         plot: String,
@@ -183,13 +183,13 @@ impl GetSeriesResponse {
 
     /// Return the plot of the show.
     #[must_use]
-    pub fn plot(&self) -> &str {
+    pub(crate) fn plot(&self) -> &str {
         &self.plot
     }
 
     /// Return the seasons of the show, ordered by index.
     #[must_use]
-    pub fn seasons(&self) -> &[GetSeriesSeasonItem] {
+    pub(crate) fn seasons(&self) -> &[GetSeriesSeasonItem] {
         &self.seasons
     }
 }
@@ -197,7 +197,7 @@ impl GetSeriesResponse {
 /// Error returned when fetching one show.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
-pub enum GetSeriesError {
+pub(crate) enum GetSeriesError {
     /// The authenticated caller does not exist anymore.
     #[error("the authenticated user does not exist")]
     NoSuchCaller,
@@ -211,7 +211,7 @@ pub enum GetSeriesError {
 
 /// Use case for fetching one show.
 #[cfg_attr(test, mockall::automock)]
-pub trait GetSeriesUseCase: Send + Sync {
+pub(crate) trait GetSeriesUseCase: Send + Sync {
     /// Fetch the requested show with its season summaries.
     ///
     /// The future is returned erased (`dyn`, not `impl Future`), boxed and

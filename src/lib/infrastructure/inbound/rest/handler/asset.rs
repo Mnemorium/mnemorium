@@ -1,12 +1,21 @@
-pub mod get_file;
-pub mod get_file_content;
-pub mod get_image;
-pub mod get_image_content;
-pub mod get_image_file;
-pub mod get_upload;
-pub mod post_upload;
-pub mod post_upload_complete;
-pub mod put_upload_chunk;
+/// The asset context endpoints.
+pub(crate) mod get_file;
+/// The asset context endpoints.
+pub(crate) mod get_file_content;
+/// The asset context endpoints.
+pub(crate) mod get_image;
+/// The asset context endpoints.
+pub(crate) mod get_image_content;
+/// The asset context endpoints.
+pub(crate) mod get_image_file;
+/// The asset context endpoints.
+pub(crate) mod get_upload;
+/// The asset context endpoints.
+pub(crate) mod post_upload;
+/// The asset context endpoints.
+pub(crate) mod post_upload_complete;
+/// The asset context endpoints.
+pub(crate) mod put_upload_chunk;
 
 use axum::body::Body;
 use axum::extract::DefaultBodyLimit;
@@ -47,7 +56,7 @@ const DATE_FORMAT: &str = "%Y-%m-%d";
 /// how to finish the session.
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 #[non_exhaustive]
-pub struct UploadSessionLinks {
+pub(crate) struct UploadSessionLinks {
     /// URI template for storing one chunk of the upload session.
     pub chunk: Link,
     /// Link completing the upload session.
@@ -60,7 +69,7 @@ pub struct UploadSessionLinks {
 impl UploadSessionLinks {
     /// Build the links of the upload session identified by `upload_id`.
     #[must_use]
-    pub fn for_upload(upload_id: NumericID) -> Self {
+    pub(crate) fn for_upload(upload_id: NumericID) -> Self {
         Self {
             chunk: Link::templated(&format!(
                 "/api/v1/asset/upload/{upload_id}/chunk/{{chunk_number}}"
@@ -74,7 +83,7 @@ impl UploadSessionLinks {
 /// State of an upload session returned by a successful lookup or chunk store.
 #[derive(Debug, Serialize, ToSchema)]
 #[non_exhaustive]
-pub struct UploadSessionResponse {
+pub(crate) struct UploadSessionResponse {
     /// One character per chunk, `1` when received and `0` otherwise.
     #[schema(example = json!("110"))]
     pub bitmap: String,
@@ -98,7 +107,7 @@ impl UploadSessionResponse {
     /// Map the state of the upload session identified by `upload_id` onto its
     /// HTTP representation.
     #[must_use]
-    pub fn new(
+    pub(crate) fn new(
         upload_id: NumericID,
         bitmap: String,
         total_chunks: usize,
@@ -209,7 +218,7 @@ pub(crate) fn asset_router(chunk_body_limit: Option<usize>) -> OpenApiRouter<App
 /// Routes of the asset bounded context.
 ///
 /// Every route requires an authenticated caller.
-pub fn asset_routes(state: &AppState) -> OpenApiRouter<()> {
+pub(crate) fn asset_routes(state: &AppState) -> OpenApiRouter<()> {
     // The chunk endpoint receives a full chunk (up to `chunk_size_bytes`), which
     // exceeds axum's 2 MiB default request body limit, so that route's limit is
     // raised to the configured chunk size; every other route keeps the default.

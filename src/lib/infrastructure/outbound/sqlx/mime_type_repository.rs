@@ -5,7 +5,7 @@ use crate::domain::port::error::RepositoryError;
 use crate::domain::port::mime_type_repository::MimeTypeRepository;
 
 /// Repository querying mime types, backed by a `SQLite` transaction.
-pub struct SqlxMimeTypeRepository<'transaction> {
+pub(crate) struct SqlxMimeTypeRepository<'transaction> {
     /// Transaction the repository reads from.
     transaction: &'transaction mut Transaction<'static, Sqlite>,
 }
@@ -13,7 +13,7 @@ pub struct SqlxMimeTypeRepository<'transaction> {
 impl<'transaction> SqlxMimeTypeRepository<'transaction> {
     /// Create a new repository bound to `transaction`.
     #[must_use]
-    pub fn new(transaction: &'transaction mut Transaction<'static, Sqlite>) -> Self {
+    pub(crate) fn new(transaction: &'transaction mut Transaction<'static, Sqlite>) -> Self {
         Self { transaction }
     }
 }

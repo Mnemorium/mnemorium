@@ -7,18 +7,18 @@ use crate::domain::model::video::Video;
 /// An episode is addressed by its index within its season; it carries no
 /// separate identifier into the API or the representation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub struct EpisodeIndex(u32);
+pub(crate) struct EpisodeIndex(u32);
 
 impl EpisodeIndex {
     /// Initialise a new `EpisodeIndex`.
     #[must_use]
-    pub fn new(value: u32) -> Self {
+    pub(crate) fn new(value: u32) -> Self {
         Self(value)
     }
 
     /// Return the season-scoped index of the episode.
     #[must_use]
-    pub fn value(self) -> u32 {
+    pub(crate) fn value(self) -> u32 {
         self.0
     }
 }
@@ -26,18 +26,22 @@ impl EpisodeIndex {
 /// Error returned when initialising an `Episode`.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
-pub enum EpisodeError {
+pub(crate) enum EpisodeError {
     /// The `name` is empty.
     #[error("name must not be empty")]
     InvalidName,
     /// An unexpected or unmapped error occurred.
     #[error("an unknown error occurred: {0}")]
+    #[expect(
+        dead_code,
+        reason = "the error enum keeps the catch-all variant the rulebook's error shape declares; no caller constructs it yet"
+    )]
     Unknown(#[source] anyhow::Error),
 }
 
 /// An episode of a season.
 #[derive(Debug, Clone, PartialEq)]
-pub struct Episode {
+pub(crate) struct Episode {
     /// Date of the first airing of the episode.
     air_date: NaiveDate,
     /// Season-scoped identity of the episode.
@@ -53,25 +57,25 @@ pub struct Episode {
 impl Episode {
     /// Return the date of the first airing of the episode.
     #[must_use]
-    pub fn air_date(&self) -> NaiveDate {
+    pub(crate) fn air_date(&self) -> NaiveDate {
         self.air_date
     }
 
     /// Return the season-scoped identity of the episode.
     #[must_use]
-    pub fn index(&self) -> EpisodeIndex {
+    pub(crate) fn index(&self) -> EpisodeIndex {
         self.index
     }
 
     /// Return the name of the episode.
     #[must_use]
-    pub fn name(&self) -> &str {
+    pub(crate) fn name(&self) -> &str {
         &self.name
     }
 
     /// Return the plot of the episode.
     #[must_use]
-    pub fn plot(&self) -> &str {
+    pub(crate) fn plot(&self) -> &str {
         &self.plot
     }
 
@@ -80,7 +84,7 @@ impl Episode {
     /// # Errors
     ///
     /// Returns [`EpisodeError::InvalidName`] when `name` is empty.
-    pub fn try_new(
+    pub(crate) fn try_new(
         index: EpisodeIndex,
         name: String,
         plot: String,
@@ -101,7 +105,7 @@ impl Episode {
 
     /// Return the video backing the episode.
     #[must_use]
-    pub fn video(&self) -> &Video {
+    pub(crate) fn video(&self) -> &Video {
         &self.video
     }
 }

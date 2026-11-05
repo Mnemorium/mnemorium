@@ -8,7 +8,7 @@ use crate::domain::model::user::Role;
 
 /// Command fetching a user's effective permissions.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct GetPermissionCommand {
+pub(crate) struct GetPermissionCommand {
     /// Identifier of the authenticated caller.
     caller_id: NumericID,
     /// Identifier of the user whose permissions are read.
@@ -18,26 +18,26 @@ pub struct GetPermissionCommand {
 impl GetPermissionCommand {
     /// Return the identifier of the authenticated caller.
     #[must_use]
-    pub fn caller_id(&self) -> NumericID {
+    pub(crate) fn caller_id(&self) -> NumericID {
         self.caller_id
     }
 
     /// Initialise a new `GetPermissionCommand`.
     #[must_use]
-    pub fn new(caller_id: NumericID, user_id: NumericID) -> Self {
+    pub(crate) fn new(caller_id: NumericID, user_id: NumericID) -> Self {
         Self { caller_id, user_id }
     }
 
     /// Return the identifier of the user whose permissions are read.
     #[must_use]
-    pub fn user_id(&self) -> NumericID {
+    pub(crate) fn user_id(&self) -> NumericID {
         self.user_id
     }
 }
 
 /// Effective permissions of one user.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct GetPermissionResponse {
+pub(crate) struct GetPermissionResponse {
     /// Role presets per configurable action, ordered by action name.
     defaults: Vec<PermissionPreset>,
     /// Stored overrides, ordered by action name.
@@ -51,13 +51,13 @@ pub struct GetPermissionResponse {
 impl GetPermissionResponse {
     /// Return the role presets per configurable action.
     #[must_use]
-    pub fn defaults(&self) -> &[PermissionPreset] {
+    pub(crate) fn defaults(&self) -> &[PermissionPreset] {
         &self.defaults
     }
 
     /// Initialise a new `GetPermissionResponse`.
     #[must_use]
-    pub fn new(
+    pub(crate) fn new(
         user_id: NumericID,
         role: Role,
         defaults: Vec<PermissionPreset>,
@@ -73,19 +73,19 @@ impl GetPermissionResponse {
 
     /// Return the stored overrides.
     #[must_use]
-    pub fn overrides(&self) -> &[Permission] {
+    pub(crate) fn overrides(&self) -> &[Permission] {
         &self.overrides
     }
 
     /// Return the role the presets are read from.
     #[must_use]
-    pub fn role(&self) -> Role {
+    pub(crate) fn role(&self) -> Role {
         self.role
     }
 
     /// Return the identifier of the user the permissions apply to.
     #[must_use]
-    pub fn user_id(&self) -> NumericID {
+    pub(crate) fn user_id(&self) -> NumericID {
         self.user_id
     }
 }
@@ -93,7 +93,7 @@ impl GetPermissionResponse {
 /// Error returned when fetching a user's permissions fails.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
-pub enum GetPermissionError {
+pub(crate) enum GetPermissionError {
     /// The caller may not administer permissions.
     #[error("only the Root Admin may administer permissions")]
     Forbidden,
@@ -110,7 +110,7 @@ pub enum GetPermissionError {
 
 /// Use case fetching a user's effective permissions.
 #[cfg_attr(test, mockall::automock)]
-pub trait GetPermissionUseCase: Send + Sync {
+pub(crate) trait GetPermissionUseCase: Send + Sync {
     /// Fetch the effective permissions of the command's user.
     fn execute<'future>(
         &'future self,

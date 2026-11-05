@@ -1,1 +1,2 @@
-pub mod content_hasher;
+/// The content hasher adapter.
+pub(crate) mod content_hasher;

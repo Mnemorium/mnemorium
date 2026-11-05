@@ -18,7 +18,7 @@ pub(crate) const HAL_CONTENT_TYPE: &str = "application/hal+json";
 /// A single HAL link.
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 #[non_exhaustive]
-pub struct Link {
+pub(crate) struct Link {
     /// Target URI reference of the link.
     pub href: String,
     /// Whether `href` is a URI template, per RFC 6570.
@@ -30,7 +30,7 @@ pub struct Link {
 impl Link {
     /// Build a plain link to `href`.
     #[must_use]
-    pub fn new(href: &str) -> Self {
+    pub(crate) fn new(href: &str) -> Self {
         Self {
             href: href.to_owned(),
             templated: None,
@@ -39,7 +39,7 @@ impl Link {
 
     /// Build a link whose `href` is a URI template.
     #[must_use]
-    pub fn templated(href: &str) -> Self {
+    pub(crate) fn templated(href: &str) -> Self {
         Self {
             href: href.to_owned(),
             templated: Some(true),
@@ -53,7 +53,7 @@ impl Link {
 /// never construct or hardcode it themselves (`API-032`, `API-037`).
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 #[non_exhaustive]
-pub struct SelfLinks {
+pub(crate) struct SelfLinks {
     /// Link to the resource itself.
     #[serde(rename = "self")]
     pub self_link: Link,
@@ -62,7 +62,7 @@ pub struct SelfLinks {
 impl SelfLinks {
     /// Build the `self` link pointing at `href`.
     #[must_use]
-    pub fn new(href: &str) -> Self {
+    pub(crate) fn new(href: &str) -> Self {
         Self {
             self_link: Link::new(href),
         }
@@ -72,7 +72,7 @@ impl SelfLinks {
 /// Wrap `body` in a HAL JSON response, served as `application/hal+json`
 /// (`API-031`).
 #[must_use]
-pub fn hal_json<T>(body: T) -> Response
+pub(crate) fn hal_json<T>(body: T) -> Response
 where
     T: Serialize,
 {

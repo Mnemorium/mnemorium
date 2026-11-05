@@ -34,7 +34,7 @@ use crate::infrastructure::inbound::rest::app_state::AppState;
 /// family: if the declared header is absent or unparseable, the peer address is
 /// used.
 #[derive(Debug, Clone)]
-pub struct TrustedProxyKeyExtractor {
+struct TrustedProxyKeyExtractor {
     /// Header the trusted proxy overwrites with the client address.
     header: ClientIpHeader,
     /// Addresses whose forwarded headers are trusted.
@@ -89,7 +89,7 @@ impl TrustedProxyKeyExtractor {
 
     /// Create a new extractor trusting `trusted` and reading `header`.
     #[must_use]
-    pub fn new(header: ClientIpHeader, trusted: Vec<IpAddr>) -> Self {
+    pub(crate) fn new(header: ClientIpHeader, trusted: Vec<IpAddr>) -> Self {
         Self {
             header,
             trusted: trusted.into(),
@@ -114,20 +114,13 @@ impl KeyExtractor for TrustedProxyKeyExtractor {
 /// replenished. The closures are opaque so no `governor` type leaks into a
 /// signature.
 #[derive(Default)]
-pub struct RateLimitCleanup {
+struct RateLimitCleanup {
     /// Per-limiter prune closures.
     prunes: Vec<Box<dyn Fn() + Send + Sync>>,
 }
 
 impl RateLimitCleanup {
     /// Build a cleanup from a single prune closure.
-    #[cfg_attr(
-        not(test),
-        expect(
-            clippy::single_call_fn,
-            reason = "the single-limiter constructor keeps the prune list private"
-        )
-    )]
     fn from_prune(prune: Box<dyn Fn() + Send + Sync>) -> Self {
         Self {
             prunes: vec![prune],
@@ -135,18 +128,25 @@ impl RateLimitCleanup {
     }
 
     /// Fold `other`'s prune closures into `self`.
-    pub fn merge(&mut self, other: Self) {
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "part of the type's declared contract; no caller exercises it yet"
+        )
+    )]
+    pub(crate) fn merge(&mut self, other: Self) {
         self.prunes.extend(other.prunes);
     }
 
     /// Create an empty cleanup.
     #[must_use]
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self::default()
     }
 
     /// Run every registered prune.
-    pub fn prune(&self) {
+    pub(crate) fn prune(&self) {
         for prune in &self.prunes {
             prune();
         }
@@ -159,7 +159,7 @@ impl RateLimitCleanup {
 /// root constructs it once (`STY-RUST-067`) and hands it to the
 /// router builder, which applies it to the `login` route. The `governor`
 /// concrete types stay private to this module.
-pub struct LoginRateLimiter {
+pub(crate) struct LoginRateLimiter {
     /// The wired governor layer, erased behind `apply`.
     apply: Box<dyn Fn(OpenApiRouter<AppState>) -> OpenApiRouter<AppState> + Send + Sync>,
     /// Periodic upkeep the composition root drives.
@@ -169,7 +169,7 @@ pub struct LoginRateLimiter {
 impl LoginRateLimiter {
     /// Apply the limiter to the `login` sub-router.
     #[must_use]
-    pub fn apply(&self, router: OpenApiRouter<AppState>) -> OpenApiRouter<AppState> {
+    pub(crate) fn apply(&self, router: OpenApiRouter<AppState>) -> OpenApiRouter<AppState> {
         (self.apply)(router)
     }
 
@@ -179,7 +179,7 @@ impl LoginRateLimiter {
     /// invalid; should it ever be, the limiter is skipped so the endpoint stays
     /// reachable.
     #[must_use]
-    pub fn new(rate_limit: &RateLimit) -> Self {
+    pub(crate) fn new(rate_limit: &RateLimit) -> Self {
         if rate_limit.trusted_proxies().is_empty() {
             build(rate_limit, PeerIpKeyExtractor)
         } else {
@@ -194,7 +194,7 @@ impl LoginRateLimiter {
     }
 
     /// Drive the periodic prune of the limiter's keyed store.
-    pub fn prune(&self) {
+    pub(crate) fn prune(&self) {
         self.cleanup.prune();
     }
 }
@@ -238,13 +238,6 @@ fn parse_address(value: &str) -> Option<IpAddr> {
 ///
 /// A rejected attempt is a reviewable security event (`OBS-005`, `OBS-006`).
 /// The client address is personal data and is never logged (`OBS-004`).
-#[cfg_attr(
-    not(test),
-    expect(
-        clippy::single_call_fn,
-        reason = "the error mapping is named for readability"
-    )
-)]
 fn rate_limit_error(error: GovernorError) -> Response {
     match error {
         GovernorError::TooManyRequests { headers, .. } => {

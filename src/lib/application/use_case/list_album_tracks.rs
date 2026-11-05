@@ -25,7 +25,7 @@ use crate::domain::service::authorization::Decision;
 
 /// Use case implementation for listing the tracks of one medium of one music
 /// album.
-pub struct ListAlbumTracks<F> {
+pub(crate) struct ListAlbumTracks<F> {
     /// Factory opening the unit of work wrapping the read.
     unit_of_work_factory: Arc<F>,
 }
@@ -33,7 +33,7 @@ pub struct ListAlbumTracks<F> {
 impl<F: UnitOfWorkFactory> ListAlbumTracks<F> {
     /// Create a new use case.
     #[must_use]
-    pub fn new(unit_of_work_factory: Arc<F>) -> Self {
+    pub(crate) fn new(unit_of_work_factory: Arc<F>) -> Self {
         Self {
             unit_of_work_factory,
         }
@@ -190,10 +190,6 @@ mod tests {
 
     /// Build a `CD` medium at `medium_index` sequencing one recording per
     /// track index.
-    #[expect(
-        clippy::single_call_fn,
-        reason = "the medium fixture names the case it builds"
-    )]
     fn medium(medium_index: u8, track_indexes: &[u8]) -> Result<MusicMedium, Box<dyn Error>> {
         let tracks = track_indexes
             .iter()
@@ -232,10 +228,6 @@ mod tests {
     }
 
     /// Build an album holding no medium.
-    #[expect(
-        clippy::single_call_fn,
-        reason = "the empty-album fixture names the case it builds"
-    )]
     fn empty_album(album_id: i64) -> Result<MusicAlbum, Box<dyn Error>> {
         Ok(MusicAlbum::try_new(
             album_id,

@@ -20,7 +20,7 @@ use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 /// Payload to create a gallery owned by the caller.
 #[derive(Debug, Deserialize, ToSchema)]
 #[non_exhaustive]
-pub struct PostGalleryRequest {
+pub(crate) struct PostGalleryRequest {
     /// Whether any authenticated user may read and moderate the gallery.
     #[serde(default)]
     pub is_public: bool,
@@ -111,7 +111,7 @@ impl From<CreateGalleryError> for ApiError {
     ),
     summary = "Create a gallery"
 )]
-pub async fn post_gallery(
+pub(crate) async fn post_gallery(
     State(state): State<AppState>,
     caller: AuthenticatedUser,
     payload: Result<Json<PostGalleryRequest>, JsonRejection>,
@@ -227,10 +227,6 @@ mod tests {
     }
 
     /// Make the mocked use case fail with `error`.
-    #[expect(
-        clippy::single_call_fn,
-        reason = "the data-driven error table drives the mock through a named helper"
-    )]
     fn expect_error(use_case: &mut MockCreateGalleryUseCase, error: CreateGalleryError) {
         use_case
             .expect_execute()

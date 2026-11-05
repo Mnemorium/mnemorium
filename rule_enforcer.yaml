@@ -1,12 +1,10 @@
 ---
 rules:
   STY-RUST-001:
-    # The production single-use extractions the rule permits.
-    allowed_locations:
-      - src/lib/infrastructure/inbound/rest/api_error.rs::error_response
-      - src/lib/infrastructure/inbound/rest/middleware/rate_limit.rs::from_prune
-      - src/lib/infrastructure/inbound/rest/middleware/rate_limit.rs::rate_limit_error
-      - src/lib/infrastructure/outbound/file_system/configuration_source.rs::deserialize
+    # The number of single-call helpers the tree may hold: a production function
+    # whose name is called exactly once. Adding one is a reviewed decision — inline
+    # it, or raise this budget in the same change.
+    max_single_call_functions: 67
   STY-RUST-002:
     bounded_contexts: &bounded_contexts
       - asset

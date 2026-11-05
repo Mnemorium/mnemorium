@@ -2,7 +2,7 @@ use crate::domain::alias::NumericID;
 
 /// Data model for the `permission` table.
 #[derive(Debug, Clone, sqlx::FromRow)]
-pub struct PermissionRow {
+pub(crate) struct PermissionRow {
     /// Stored name of the overridden action.
     pub action_name: String,
     /// Unique identifier of the permission.
@@ -15,7 +15,7 @@ pub struct PermissionRow {
 
 /// Data model for the `permission_resource` table.
 #[derive(Debug, Clone, sqlx::FromRow)]
-pub struct PermissionResourceRow {
+pub(crate) struct PermissionResourceRow {
     /// Identifier of the named aggregate.
     pub resource_id: NumericID,
     /// Stored kind of the named aggregate.

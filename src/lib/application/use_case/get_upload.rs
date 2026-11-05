@@ -39,7 +39,7 @@ enum Flow<T, E> {
 }
 
 /// Use case implementation for fetching the state of an upload session.
-pub struct GetUpload<F, S> {
+pub(crate) struct GetUpload<F, S> {
     /// Lifetime of an upload session, in seconds.
     expiry_seconds: u64,
     /// Storage adapter deleting the staged file of an expired upload.
@@ -51,7 +51,11 @@ pub struct GetUpload<F, S> {
 impl<F: UnitOfWorkFactory, S: FileStorage> GetUpload<F, S> {
     /// Create a new use case.
     #[must_use]
-    pub fn new(unit_of_work_factory: Arc<F>, file_storage: Arc<S>, expiry_seconds: u64) -> Self {
+    pub(crate) fn new(
+        unit_of_work_factory: Arc<F>,
+        file_storage: Arc<S>,
+        expiry_seconds: u64,
+    ) -> Self {
         Self {
             expiry_seconds,
             file_storage,
@@ -326,10 +330,6 @@ mod tests {
         });
     }
 
-    #[expect(
-        clippy::single_call_fn,
-        reason = "the failure fixture is named for readability"
-    )]
     fn expect_upload_failure(uploads: &mut MockUploadRepository) {
         uploads
             .expect_search()

@@ -28,7 +28,7 @@ use crate::domain::service::password_policy::PasswordPolicy;
 use crate::domain::service::password_policy::PasswordPolicyError;
 
 /// Use case implementation for changing the password behind a credential.
-pub struct PatchCredential<F, H> {
+pub(crate) struct PatchCredential<F, H> {
     /// Hasher for user passwords.
     password_hasher: Arc<H>,
     /// Factory opening the unit of work wrapping the change.
@@ -38,7 +38,7 @@ pub struct PatchCredential<F, H> {
 impl<F: UnitOfWorkFactory, H: PasswordHasher> PatchCredential<F, H> {
     /// Create a new use case.
     #[must_use]
-    pub fn new(unit_of_work_factory: Arc<F>, password_hasher: Arc<H>) -> Self {
+    pub(crate) fn new(unit_of_work_factory: Arc<F>, password_hasher: Arc<H>) -> Self {
         Self {
             password_hasher,
             unit_of_work_factory,

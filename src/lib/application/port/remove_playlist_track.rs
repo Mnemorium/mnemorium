@@ -6,7 +6,7 @@ use crate::domain::alias::NumericID;
 /// Command to remove one track of a playlist.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct RemovePlaylistTrackCommand {
+pub(crate) struct RemovePlaylistTrackCommand {
     /// Identifier of the authenticated caller.
     caller_id: NumericID,
     /// Identifier of the playlist the track belongs to.
@@ -18,13 +18,13 @@ pub struct RemovePlaylistTrackCommand {
 impl RemovePlaylistTrackCommand {
     /// Return the identifier of the authenticated caller.
     #[must_use]
-    pub fn caller_id(&self) -> NumericID {
+    pub(crate) fn caller_id(&self) -> NumericID {
         self.caller_id
     }
 
     /// Create a new remove-playlist-track command.
     #[must_use]
-    pub fn new(caller_id: NumericID, playlist_id: NumericID, track_index: u32) -> Self {
+    pub(crate) fn new(caller_id: NumericID, playlist_id: NumericID, track_index: u32) -> Self {
         Self {
             caller_id,
             playlist_id,
@@ -34,13 +34,13 @@ impl RemovePlaylistTrackCommand {
 
     /// Return the identifier of the playlist the track belongs to.
     #[must_use]
-    pub fn playlist_id(&self) -> NumericID {
+    pub(crate) fn playlist_id(&self) -> NumericID {
         self.playlist_id
     }
 
     /// Return the zero-based index of the track within the playlist.
     #[must_use]
-    pub fn track_index(&self) -> u32 {
+    pub(crate) fn track_index(&self) -> u32 {
         self.track_index
     }
 }
@@ -48,7 +48,7 @@ impl RemovePlaylistTrackCommand {
 /// Error returned when removing one track of a playlist.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
-pub enum RemovePlaylistTrackError {
+pub(crate) enum RemovePlaylistTrackError {
     /// The caller may read the playlist but does not own it.
     #[error("the caller may not modify this playlist")]
     Forbidden,
@@ -69,7 +69,7 @@ pub enum RemovePlaylistTrackError {
 
 /// Use case for removing one track of a playlist.
 #[cfg_attr(test, mockall::automock)]
-pub trait RemovePlaylistTrackUseCase: Send + Sync {
+pub(crate) trait RemovePlaylistTrackUseCase: Send + Sync {
     /// Remove the requested track placement.
     fn execute<'future>(
         &'future self,

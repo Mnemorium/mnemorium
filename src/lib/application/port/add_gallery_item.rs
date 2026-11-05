@@ -9,7 +9,7 @@ use crate::domain::model::gallery_item::GalleryItemMedia;
 /// Command to add one of the caller's media to a gallery.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct AddGalleryItemCommand {
+pub(crate) struct AddGalleryItemCommand {
     /// Identifier of the authenticated caller.
     caller_id: NumericID,
     /// Identifier of the gallery the media is added to.
@@ -21,25 +21,29 @@ pub struct AddGalleryItemCommand {
 impl AddGalleryItemCommand {
     /// Return the identifier of the authenticated caller.
     #[must_use]
-    pub fn caller_id(&self) -> NumericID {
+    pub(crate) fn caller_id(&self) -> NumericID {
         self.caller_id
     }
 
     /// Return the identifier of the gallery the media is added to.
     #[must_use]
-    pub fn gallery_id(&self) -> NumericID {
+    pub(crate) fn gallery_id(&self) -> NumericID {
         self.gallery_id
     }
 
     /// Return the medium to add.
     #[must_use]
-    pub fn media(&self) -> GalleryItemMedia {
+    pub(crate) fn media(&self) -> GalleryItemMedia {
         self.media
     }
 
     /// Create a new add-gallery-item command.
     #[must_use]
-    pub fn new(caller_id: NumericID, gallery_id: NumericID, media: GalleryItemMedia) -> Self {
+    pub(crate) fn new(
+        caller_id: NumericID,
+        gallery_id: NumericID,
+        media: GalleryItemMedia,
+    ) -> Self {
         Self {
             caller_id,
             gallery_id,
@@ -51,7 +55,7 @@ impl AddGalleryItemCommand {
 /// Response of a successful item addition.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct AddGalleryItemResponse {
+pub(crate) struct AddGalleryItemResponse {
     /// Date and time at which the item was added.
     added_at: NaiveDateTime,
     /// Identifier of the backing file.
@@ -71,49 +75,53 @@ pub struct AddGalleryItemResponse {
 impl AddGalleryItemResponse {
     /// Return the date and time at which the item was added.
     #[must_use]
-    pub fn added_at(&self) -> NaiveDateTime {
+    pub(crate) fn added_at(&self) -> NaiveDateTime {
         self.added_at
     }
 
     /// Return the identifier of the backing file.
     #[must_use]
-    pub fn file_id(&self) -> NumericID {
+    pub(crate) fn file_id(&self) -> NumericID {
         self.file_id
     }
 
     /// Return the identifier of the gallery the item belongs to.
     #[must_use]
-    pub fn gallery_id(&self) -> NumericID {
+    pub(crate) fn gallery_id(&self) -> NumericID {
         self.gallery_id
     }
 
     /// Return the unique identifier of the added item.
     #[must_use]
-    pub fn gallery_item_id(&self) -> NumericID {
+    pub(crate) fn gallery_item_id(&self) -> NumericID {
         self.gallery_item_id
     }
 
     /// Return the position of the item within its gallery.
     #[must_use]
-    pub fn item_index(&self) -> i64 {
+    #[expect(
+        dead_code,
+        reason = "part of the type's declared contract; no caller exercises it yet"
+    )]
+    pub(crate) fn item_index(&self) -> i64 {
         self.item_index
     }
 
     /// Return the medium the item references.
     #[must_use]
-    pub fn media(&self) -> GalleryItemMedia {
+    pub(crate) fn media(&self) -> GalleryItemMedia {
         self.media
     }
 
     /// Return the name of the item.
     #[must_use]
-    pub fn name(&self) -> &str {
+    pub(crate) fn name(&self) -> &str {
         &self.name
     }
 
     /// Create a new add-gallery-item response.
     #[must_use]
-    pub fn new(
+    pub(crate) fn new(
         gallery_item_id: NumericID,
         gallery_id: NumericID,
         media: GalleryItemMedia,
@@ -137,7 +145,7 @@ impl AddGalleryItemResponse {
 /// Error returned when adding an item to a gallery.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
-pub enum AddGalleryItemError {
+pub(crate) enum AddGalleryItemError {
     /// The medium already belongs to a gallery.
     #[error("the medium already belongs to a gallery")]
     AlreadyAssigned,
@@ -166,7 +174,7 @@ pub enum AddGalleryItemError {
 
 /// Use case for adding one of the caller's media to a gallery.
 #[cfg_attr(test, mockall::automock)]
-pub trait AddGalleryItemUseCase: Send + Sync {
+pub(crate) trait AddGalleryItemUseCase: Send + Sync {
     /// Add the requested medium to the gallery.
     ///
     /// The future is returned erased (`dyn`, not `impl Future`), boxed and

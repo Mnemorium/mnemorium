@@ -36,7 +36,7 @@ const DEFAULT_GENRE: &str = "UNKNOWN";
 const DIGITAL_MEDIUM_INDEX: u8 = 1;
 
 /// Use case implementation for applying external metadata to a music album.
-pub struct ApplyMusicAlbum<F, P> {
+pub(crate) struct ApplyMusicAlbum<F, P> {
     /// Configured provider, absent when music identification is unavailable.
     metadata_provider: Option<Arc<P>>,
     /// Factory opening the unit of work wrapping the write.
@@ -46,7 +46,7 @@ pub struct ApplyMusicAlbum<F, P> {
 impl<F: UnitOfWorkFactory, P: MusicMetadataProvider> ApplyMusicAlbum<F, P> {
     /// Create a new use case.
     #[must_use]
-    pub fn new(unit_of_work_factory: Arc<F>, metadata_provider: Option<Arc<P>>) -> Self {
+    pub(crate) fn new(unit_of_work_factory: Arc<F>, metadata_provider: Option<Arc<P>>) -> Self {
         Self {
             metadata_provider,
             unit_of_work_factory,

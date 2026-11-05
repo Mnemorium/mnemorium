@@ -11,12 +11,18 @@ rule:
     - all:
         - kind: trait_item
         - regex: 'trait \w*UseCaseFactory\b'
-        - pattern: 'pub trait $TRAIT: $$$BOUNDS { $$$BODY }'
+        - any:
+            - pattern: 'pub trait $TRAIT: $$$BOUNDS { $$$BODY }'
+            - pattern: 'pub(crate) trait $TRAIT: $$$BOUNDS { $$$BODY }'
+            - pattern: 'trait $TRAIT: $$$BOUNDS { $$$BODY }'
     # A use-case-factory trait without supertraits.
     - all:
         - kind: trait_item
         - regex: 'trait \w*UseCaseFactory\b'
-        - pattern: 'pub trait $TRAIT { $$$BODY }'
+        - any:
+            - pattern: 'pub trait $TRAIT { $$$BODY }'
+            - pattern: 'pub(crate) trait $TRAIT { $$$BODY }'
+            - pattern: 'trait $TRAIT { $$$BODY }'
     # An accessor signature declared inside a use-case-factory trait.
     - all:
         - kind: function_signature_item

@@ -75,7 +75,7 @@ impl From<GetGalleryError> for ApiError {
     ),
     summary = "Fetch a gallery by identifier"
 )]
-pub async fn get_gallery(
+pub(crate) async fn get_gallery(
     Path(id): Path<String>,
     State(state): State<AppState>,
     caller: AuthenticatedUser,

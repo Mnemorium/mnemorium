@@ -20,7 +20,7 @@ use crate::domain::service::authorization::Authorization;
 use crate::domain::service::authorization::Decision;
 
 /// Use case implementation for fetching the current user.
-pub struct GetCurrentUser<F> {
+pub(crate) struct GetCurrentUser<F> {
     /// Factory opening the unit of work wrapping the read.
     unit_of_work_factory: Arc<F>,
 }
@@ -28,7 +28,7 @@ pub struct GetCurrentUser<F> {
 impl<F: UnitOfWorkFactory> GetCurrentUser<F> {
     /// Create a new use case.
     #[must_use]
-    pub fn new(unit_of_work_factory: Arc<F>) -> Self {
+    pub(crate) fn new(unit_of_work_factory: Arc<F>) -> Self {
         Self {
             unit_of_work_factory,
         }

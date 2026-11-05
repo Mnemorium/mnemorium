@@ -8,7 +8,7 @@ use crate::domain::model::music_query::MusicQuery;
 /// Command for one music identification run.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct IdentifyMusicCommand {
+pub(crate) struct IdentifyMusicCommand {
     /// Caller on whose behalf the search runs.
     caller_id: NumericID,
     /// The query the caller wants searched.
@@ -18,19 +18,19 @@ pub struct IdentifyMusicCommand {
 impl IdentifyMusicCommand {
     /// Return the caller the search runs for.
     #[must_use]
-    pub fn caller_id(&self) -> NumericID {
+    pub(crate) fn caller_id(&self) -> NumericID {
         self.caller_id
     }
 
     /// Create a new command.
     #[must_use]
-    pub fn new(caller_id: NumericID, query: MusicQuery) -> Self {
+    pub(crate) fn new(caller_id: NumericID, query: MusicQuery) -> Self {
         Self { caller_id, query }
     }
 
     /// Return the query to search.
     #[must_use]
-    pub fn query(&self) -> &MusicQuery {
+    pub(crate) fn query(&self) -> &MusicQuery {
         &self.query
     }
 }
@@ -42,7 +42,7 @@ impl IdentifyMusicCommand {
 /// distinct from the unavailable error.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct IdentifyMusicResponse {
+pub(crate) struct IdentifyMusicResponse {
     /// Candidates the provider reported, in its order.
     candidates: Vec<MusicCandidate>,
 }
@@ -50,13 +50,13 @@ pub struct IdentifyMusicResponse {
 impl IdentifyMusicResponse {
     /// Return the candidates the provider reported, in its order.
     #[must_use]
-    pub fn candidates(&self) -> &[MusicCandidate] {
+    pub(crate) fn candidates(&self) -> &[MusicCandidate] {
         &self.candidates
     }
 
     /// Create a new response.
     #[must_use]
-    pub fn new(candidates: Vec<MusicCandidate>) -> Self {
+    pub(crate) fn new(candidates: Vec<MusicCandidate>) -> Self {
         Self { candidates }
     }
 }
@@ -64,7 +64,7 @@ impl IdentifyMusicResponse {
 /// Error returned when identifying music fails.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
-pub enum IdentifyMusicError {
+pub(crate) enum IdentifyMusicError {
     /// The caller does not exist.
     #[error("the caller does not exist")]
     NoSuchCaller,
@@ -84,7 +84,7 @@ pub enum IdentifyMusicError {
 /// It searches once, returns the provider's candidates in the provider's order
 /// and never ranks, persists or logs them. It is guarded by `library.read`.
 #[cfg_attr(test, mockall::automock)]
-pub trait IdentifyMusicUseCase: Send + Sync {
+pub(crate) trait IdentifyMusicUseCase: Send + Sync {
     /// Search the configured provider for the command's query and return its
     /// candidates in its order.
     ///

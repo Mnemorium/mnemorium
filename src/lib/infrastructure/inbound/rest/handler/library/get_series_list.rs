@@ -25,7 +25,7 @@ use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 #[derive(Debug, Deserialize, IntoParams)]
 #[into_params(parameter_in = Query)]
 #[non_exhaustive]
-pub struct ListSeriesQuery {
+pub(crate) struct ListSeriesQuery {
     /// Maximum number of shows to return, between 1 and 100.
     #[param(default = 20, minimum = 1, maximum = 100)]
     pub limit: Option<usize>,
@@ -85,7 +85,7 @@ pub struct ListSeriesQuery {
     ),
     summary = "List shows"
 )]
-pub async fn get_series_list(
+pub(crate) async fn get_series_list(
     raw_query: Result<Query<ListSeriesQuery>, QueryRejection>,
     caller: AuthenticatedUser,
     State(state): State<AppState>,

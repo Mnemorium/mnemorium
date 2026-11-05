@@ -65,7 +65,7 @@ use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
     ),
     summary = "Redirect an image to its stored file"
 )]
-pub async fn get_image_file(
+pub(crate) async fn get_image_file(
     Path(image_id_value): Path<String>,
     State(state): State<AppState>,
     caller: AuthenticatedUser,

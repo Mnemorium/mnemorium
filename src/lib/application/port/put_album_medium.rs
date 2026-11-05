@@ -7,7 +7,7 @@ use crate::domain::model::music_album::MusicAlbum;
 /// Command to create or retype one medium of a music album.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct PutAlbumMediumCommand {
+pub(crate) struct PutAlbumMediumCommand {
     /// Identifier of the album that holds the medium.
     album_id: NumericID,
     /// Identifier of the authenticated caller.
@@ -21,31 +21,31 @@ pub struct PutAlbumMediumCommand {
 impl PutAlbumMediumCommand {
     /// Return the identifier of the album that holds the medium.
     #[must_use]
-    pub fn album_id(&self) -> NumericID {
+    pub(crate) fn album_id(&self) -> NumericID {
         self.album_id
     }
 
     /// Return the identifier of the authenticated caller.
     #[must_use]
-    pub fn caller_id(&self) -> NumericID {
+    pub(crate) fn caller_id(&self) -> NumericID {
         self.caller_id
     }
 
     /// Return the album-scoped index of the medium.
     #[must_use]
-    pub fn medium_index(&self) -> u8 {
+    pub(crate) fn medium_index(&self) -> u8 {
         self.medium_index
     }
 
     /// Return the requested medium type.
     #[must_use]
-    pub fn medium_type(&self) -> &str {
+    pub(crate) fn medium_type(&self) -> &str {
         &self.medium_type
     }
 
     /// Create a new put-medium command.
     #[must_use]
-    pub fn new(
+    pub(crate) fn new(
         caller_id: NumericID,
         album_id: NumericID,
         medium_index: u8,
@@ -64,7 +64,7 @@ impl PutAlbumMediumCommand {
 /// now holds at the requested index.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct PutAlbumMediumResponse {
+pub(crate) struct PutAlbumMediumResponse {
     /// The stored album with its mediums.
     album: MusicAlbum,
     /// Set when the write created the medium, cleared when it retyped one.
@@ -76,25 +76,25 @@ pub struct PutAlbumMediumResponse {
 impl PutAlbumMediumResponse {
     /// Return the stored album.
     #[must_use]
-    pub fn album(&self) -> &MusicAlbum {
+    pub(crate) fn album(&self) -> &MusicAlbum {
         &self.album
     }
 
     /// Return whether the write created the medium.
     #[must_use]
-    pub fn created(&self) -> bool {
+    pub(crate) fn created(&self) -> bool {
         self.created
     }
 
     /// Return the album-scoped index of the written medium.
     #[must_use]
-    pub fn medium_index(&self) -> u8 {
+    pub(crate) fn medium_index(&self) -> u8 {
         self.medium_index
     }
 
     /// Create a new written-medium response.
     #[must_use]
-    pub fn new(album: MusicAlbum, medium_index: u8, created: bool) -> Self {
+    pub(crate) fn new(album: MusicAlbum, medium_index: u8, created: bool) -> Self {
         Self {
             album,
             created,
@@ -106,7 +106,7 @@ impl PutAlbumMediumResponse {
 /// Error returned when writing a music medium.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
-pub enum PutAlbumMediumError {
+pub(crate) enum PutAlbumMediumError {
     /// The write conflicts with the stored album's protected state.
     #[error("the music medium cannot be written")]
     Conflict,
@@ -132,7 +132,7 @@ pub enum PutAlbumMediumError {
 
 /// Use case for creating or retyping a music medium.
 #[cfg_attr(test, mockall::automock)]
-pub trait PutAlbumMediumUseCase: Send + Sync {
+pub(crate) trait PutAlbumMediumUseCase: Send + Sync {
     /// Create or retype the medium at the requested index.
     ///
     /// The future is returned erased (`dyn`, not `impl Future`), boxed and

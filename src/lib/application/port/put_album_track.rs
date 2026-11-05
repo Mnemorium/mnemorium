@@ -7,7 +7,7 @@ use crate::domain::model::music_album::MusicAlbum;
 /// Command to place or move a recording at a medium track address.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct PutAlbumTrackCommand {
+pub(crate) struct PutAlbumTrackCommand {
     /// Identifier of the album that holds the medium.
     album_id: NumericID,
     /// Identifier of the authenticated caller.
@@ -23,25 +23,25 @@ pub struct PutAlbumTrackCommand {
 impl PutAlbumTrackCommand {
     /// Return the identifier of the album that holds the medium.
     #[must_use]
-    pub fn album_id(&self) -> NumericID {
+    pub(crate) fn album_id(&self) -> NumericID {
         self.album_id
     }
 
     /// Return the identifier of the authenticated caller.
     #[must_use]
-    pub fn caller_id(&self) -> NumericID {
+    pub(crate) fn caller_id(&self) -> NumericID {
         self.caller_id
     }
 
     /// Return the album-scoped index of the medium.
     #[must_use]
-    pub fn medium_index(&self) -> u8 {
+    pub(crate) fn medium_index(&self) -> u8 {
         self.medium_index
     }
 
     /// Create a new put-track command.
     #[must_use]
-    pub fn new(
+    pub(crate) fn new(
         caller_id: NumericID,
         album_id: NumericID,
         medium_index: u8,
@@ -59,13 +59,13 @@ impl PutAlbumTrackCommand {
 
     /// Return the identifier of the recording to place.
     #[must_use]
-    pub fn recording_id(&self) -> NumericID {
+    pub(crate) fn recording_id(&self) -> NumericID {
         self.recording_id
     }
 
     /// Return the index of the track within the medium.
     #[must_use]
-    pub fn track_index(&self) -> u8 {
+    pub(crate) fn track_index(&self) -> u8 {
         self.track_index
     }
 }
@@ -74,7 +74,7 @@ impl PutAlbumTrackCommand {
 /// address.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct PutAlbumTrackResponse {
+pub(crate) struct PutAlbumTrackResponse {
     /// The stored album with its mediums.
     album: MusicAlbum,
     /// Set when the placement created a new medium placement.
@@ -88,25 +88,25 @@ pub struct PutAlbumTrackResponse {
 impl PutAlbumTrackResponse {
     /// Return the stored album.
     #[must_use]
-    pub fn album(&self) -> &MusicAlbum {
+    pub(crate) fn album(&self) -> &MusicAlbum {
         &self.album
     }
 
     /// Return whether the placement created a new medium placement.
     #[must_use]
-    pub fn created(&self) -> bool {
+    pub(crate) fn created(&self) -> bool {
         self.created
     }
 
     /// Return the album-scoped index of the medium.
     #[must_use]
-    pub fn medium_index(&self) -> u8 {
+    pub(crate) fn medium_index(&self) -> u8 {
         self.medium_index
     }
 
     /// Create a new placement response.
     #[must_use]
-    pub fn new(album: MusicAlbum, medium_index: u8, track_index: u8, created: bool) -> Self {
+    pub(crate) fn new(album: MusicAlbum, medium_index: u8, track_index: u8, created: bool) -> Self {
         Self {
             album,
             created,
@@ -117,7 +117,7 @@ impl PutAlbumTrackResponse {
 
     /// Return the index of the track within the medium.
     #[must_use]
-    pub fn track_index(&self) -> u8 {
+    pub(crate) fn track_index(&self) -> u8 {
         self.track_index
     }
 }
@@ -125,7 +125,7 @@ impl PutAlbumTrackResponse {
 /// Error returned when placing a recording.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
-pub enum PutAlbumTrackError {
+pub(crate) enum PutAlbumTrackError {
     /// The destination track already holds another recording.
     #[error("the destination track already holds another recording")]
     Conflict,
@@ -154,7 +154,7 @@ pub enum PutAlbumTrackError {
 
 /// Use case for placing a recording at a medium track address.
 #[cfg_attr(test, mockall::automock)]
-pub trait PutAlbumTrackUseCase: Send + Sync {
+pub(crate) trait PutAlbumTrackUseCase: Send + Sync {
     /// Place the recording, moving it from its previous medium placement.
     ///
     /// The future is returned erased (`dyn`, not `impl Future`), boxed and

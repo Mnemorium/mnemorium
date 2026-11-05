@@ -6,7 +6,7 @@ use crate::domain::port::error::ConfigurationSourceError;
 /// Response of a successful file-layer load.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct LoadedFileConfiguration {
+pub(crate) struct LoadedFileConfiguration {
     /// Whether this load generated the default configuration file.
     file_created: bool,
     /// The settings the file names.
@@ -16,20 +16,27 @@ pub struct LoadedFileConfiguration {
 impl LoadedFileConfiguration {
     /// Return whether this load generated the default configuration file.
     #[must_use]
-    pub fn file_created(&self) -> bool {
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "part of the type's declared contract; no caller exercises it yet"
+        )
+    )]
+    pub(crate) fn file_created(&self) -> bool {
         self.file_created
     }
 
     /// Split the result into its partial configuration and its file-created
     /// flag.
     #[must_use]
-    pub fn into_parts(self) -> (PartialConfiguration, bool) {
+    pub(crate) fn into_parts(self) -> (PartialConfiguration, bool) {
         (self.partial, self.file_created)
     }
 
     /// Create a new load result.
     #[must_use]
-    pub fn new(partial: PartialConfiguration, file_created: bool) -> Self {
+    pub(crate) fn new(partial: PartialConfiguration, file_created: bool) -> Self {
         Self {
             file_created,
             partial,
@@ -38,7 +45,14 @@ impl LoadedFileConfiguration {
 
     /// Return the settings the file names.
     #[must_use]
-    pub fn partial(&self) -> &PartialConfiguration {
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "part of the type's declared contract; no caller exercises it yet"
+        )
+    )]
+    pub(crate) fn partial(&self) -> &PartialConfiguration {
         &self.partial
     }
 }
@@ -50,7 +64,7 @@ impl LoadedFileConfiguration {
 /// them. The load configuration use case merges this layer over the built-in
 /// defaults, so the precedence lives in one place.
 #[cfg_attr(test, mockall::automock)]
-pub trait ConfigurationSource: Send + Sync {
+pub(crate) trait ConfigurationSource: Send + Sync {
     /// Load the configuration file layer.
     ///
     /// # Errors
@@ -70,7 +84,7 @@ pub trait ConfigurationSource: Send + Sync {
 /// configuration use case merges it over the file result. A prefixed name that
 /// matches no setting is ignored, never rejected.
 #[cfg_attr(test, mockall::automock)]
-pub trait EnvironmentConfiguration: Send + Sync {
+pub(crate) trait EnvironmentConfiguration: Send + Sync {
     /// Load the environment configuration layer.
     ///
     /// # Errors

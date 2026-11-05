@@ -28,7 +28,7 @@ use crate::domain::service::name_policy::NamePolicy;
 use crate::domain::service::name_policy::NamePolicyError;
 
 /// Use case implementation for updating a music album.
-pub struct UpdateMusicAlbum<F> {
+pub(crate) struct UpdateMusicAlbum<F> {
     /// Factory opening the unit of work wrapping the update.
     unit_of_work_factory: Arc<F>,
 }
@@ -36,7 +36,7 @@ pub struct UpdateMusicAlbum<F> {
 impl<F: UnitOfWorkFactory> UpdateMusicAlbum<F> {
     /// Create a new use case.
     #[must_use]
-    pub fn new(unit_of_work_factory: Arc<F>) -> Self {
+    pub(crate) fn new(unit_of_work_factory: Arc<F>) -> Self {
         Self {
             unit_of_work_factory,
         }

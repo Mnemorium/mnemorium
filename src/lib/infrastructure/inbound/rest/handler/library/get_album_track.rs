@@ -65,7 +65,7 @@ use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
     ),
     summary = "Fetch a music track"
 )]
-pub async fn get_album_track(
+pub(crate) async fn get_album_track(
     Path((album_id_value, medium_index_value, track_index_value)): Path<(String, String, String)>,
     State(state): State<AppState>,
     caller: AuthenticatedUser,

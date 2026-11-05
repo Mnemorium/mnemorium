@@ -1,3 +1,8 @@
+#![allow(
+    dead_code,
+    reason = "the internal video-identification path has no REST caller yet"
+)]
+
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -15,7 +20,7 @@ use crate::domain::service::media_name_interpreter::MediaNameInterpreter;
 /// the ordered queries, returns the candidates of the first query that yields
 /// any and stops on a failure. It never resolves a candidate's metadata, ranks
 /// the candidates, persists anything or logs the name.
-pub struct IdentifyVideo<P> {
+pub(crate) struct IdentifyVideo<P> {
     /// Configured provider chain, absent when identification is unavailable.
     metadata_provider: Option<Arc<P>>,
 }
@@ -23,7 +28,7 @@ pub struct IdentifyVideo<P> {
 impl<P: VideoMetadataProvider> IdentifyVideo<P> {
     /// Create a new use case.
     #[must_use]
-    pub fn new(metadata_provider: Option<Arc<P>>) -> Self {
+    pub(crate) fn new(metadata_provider: Option<Arc<P>>) -> Self {
         Self { metadata_provider }
     }
 }

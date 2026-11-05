@@ -47,7 +47,7 @@ use crate::infrastructure::outbound::sqlx::video_repository::SqlxVideoRepository
 const BEGIN_IMMEDIATE: &str = "BEGIN IMMEDIATE";
 
 /// Unit of work backed by a single `SQLite` transaction.
-pub struct SqlxUnitOfWork {
+pub(crate) struct SqlxUnitOfWork {
     /// Transaction shared by every repository the unit of work exposes.
     transaction: Transaction<'static, Sqlite>,
 }
@@ -140,7 +140,7 @@ impl UnitOfWork for SqlxUnitOfWork {
 }
 
 /// Factory opening [`SqlxUnitOfWork`] instances from a `SQLite` pool.
-pub struct SqlxUnitOfWorkFactory {
+pub(crate) struct SqlxUnitOfWorkFactory {
     /// Connection pool the transactions are acquired from.
     pool: SqlitePool,
 }
@@ -148,7 +148,7 @@ pub struct SqlxUnitOfWorkFactory {
 impl SqlxUnitOfWorkFactory {
     /// Create a new factory bound to `pool`.
     #[must_use]
-    pub fn new(pool: SqlitePool) -> Self {
+    pub(crate) fn new(pool: SqlitePool) -> Self {
         Self { pool }
     }
 }

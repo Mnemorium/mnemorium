@@ -27,7 +27,7 @@ use tokio::sync::Semaphore;
 /// Every accessor reads the current configuration for the chunk size and the
 /// upload expiry, so a runtime configuration change is picked up by the next
 /// request. The file storage adapter is stateless and rebuilt per accessor.
-pub struct RuntimeAssetUseCaseFactory {
+pub(crate) struct RuntimeAssetUseCaseFactory {
     /// Live application configuration.
     configuration: Arc<Configuration>,
     /// Permit pool bounding concurrent media probes, owned by the composition root.
@@ -44,7 +44,7 @@ impl RuntimeAssetUseCaseFactory {
 
     /// Create a new factory.
     #[must_use]
-    pub fn new(
+    pub(crate) fn new(
         configuration: Arc<Configuration>,
         unit_of_work_factory: Arc<SqlxUnitOfWorkFactory>,
         probe_permits: Arc<Semaphore>,

@@ -25,7 +25,7 @@ use crate::domain::service::authorization::Authorization;
 use crate::domain::service::authorization::Decision;
 
 /// Use case implementation for replacing a user's permission overrides.
-pub struct ReplacePermission<F> {
+pub(crate) struct ReplacePermission<F> {
     /// Factory opening the unit of work wrapping the replacement.
     unit_of_work_factory: Arc<F>,
 }
@@ -33,7 +33,7 @@ pub struct ReplacePermission<F> {
 impl<F: UnitOfWorkFactory> ReplacePermission<F> {
     /// Create a new use case.
     #[must_use]
-    pub fn new(unit_of_work_factory: Arc<F>) -> Self {
+    pub(crate) fn new(unit_of_work_factory: Arc<F>) -> Self {
         Self {
             unit_of_work_factory,
         }

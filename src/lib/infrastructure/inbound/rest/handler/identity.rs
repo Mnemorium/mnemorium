@@ -1,8 +1,13 @@
-pub mod get_permission;
-pub mod patch_credential;
-pub mod post_login;
-pub mod post_register;
-pub mod put_permission;
+/// The identity context endpoints.
+pub(crate) mod get_permission;
+/// The identity context endpoints.
+pub(crate) mod patch_credential;
+/// The identity context endpoints.
+pub(crate) mod post_login;
+/// The identity context endpoints.
+pub(crate) mod post_register;
+/// The identity context endpoints.
+pub(crate) mod put_permission;
 
 use axum::middleware;
 use utoipa_axum::router::OpenApiRouter;
@@ -30,7 +35,7 @@ use crate::infrastructure::outbound::jwt::token_provider::JwtTokenProvider;
 /// One named aggregate of a `LISTED` scope in a permission representation.
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 #[non_exhaustive]
-pub struct PermissionResource {
+pub(crate) struct PermissionResource {
     /// Identifier of the aggregate.
     pub id: NumericID,
     /// Kind of the aggregate (`GALLERY`, `MUSIC_PLAYLIST`, ...).
@@ -40,7 +45,7 @@ pub struct PermissionResource {
 /// One action's scope in a permission representation.
 #[derive(Debug, Serialize, ToSchema)]
 #[non_exhaustive]
-pub struct PermissionGrantResponse {
+pub(crate) struct PermissionGrantResponse {
     /// Stored name of the action (`playlist.read`).
     pub action: String,
     /// Aggregates a `LISTED` scope names; empty otherwise.
@@ -52,7 +57,7 @@ pub struct PermissionGrantResponse {
 /// Effective permissions of one user.
 #[derive(Debug, Serialize, ToSchema)]
 #[non_exhaustive]
-pub struct PermissionResponse {
+pub(crate) struct PermissionResponse {
     /// Role presets per configurable action.
     pub defaults: Vec<PermissionGrantResponse>,
     /// Link to the permission resource itself.
@@ -69,7 +74,7 @@ pub struct PermissionResponse {
 /// One requested override.
 #[derive(Debug, Deserialize, ToSchema)]
 #[non_exhaustive]
-pub struct PermissionOverrideRequest {
+pub(crate) struct PermissionOverrideRequest {
     /// Action the override names (`playlist.read`).
     pub action: String,
     /// Aggregates a `LISTED` scope names; empty otherwise.
@@ -82,7 +87,7 @@ pub struct PermissionOverrideRequest {
 /// Complete override set a user must end with.
 #[derive(Debug, Deserialize, ToSchema)]
 #[non_exhaustive]
-pub struct PermissionRequest {
+pub(crate) struct PermissionRequest {
     /// Every override the user must hold.
     pub permissions: Vec<PermissionOverrideRequest>,
 }
@@ -192,7 +197,7 @@ pub(crate) fn identity_public_router() -> OpenApiRouter<AppState> {
 /// authenticated caller. The public `login` route is rate limited per client
 /// address by the `limiter` the composition root built; the other routes are
 /// not.
-pub fn identity_routes(state: &AppState, limiter: &LoginRateLimiter) -> OpenApiRouter<()> {
+pub(crate) fn identity_routes(state: &AppState, limiter: &LoginRateLimiter) -> OpenApiRouter<()> {
     let protected = identity_protected_router().route_layer(middleware::from_fn_with_state(
         state.clone(),
         authenticate::<JwtTokenProvider>,

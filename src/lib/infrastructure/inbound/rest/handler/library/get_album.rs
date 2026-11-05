@@ -62,7 +62,7 @@ use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
     ),
     summary = "Fetch a music album"
 )]
-pub async fn get_album(
+pub(crate) async fn get_album(
     Path(album_id_value): Path<String>,
     State(state): State<AppState>,
     caller: AuthenticatedUser,
@@ -134,10 +134,6 @@ mod tests {
     }
 
     /// The album representation of a studio album holding one jazz medium.
-    #[expect(
-        clippy::single_call_fn,
-        reason = "the album fixture names the case it builds"
-    )]
     fn album() -> GetAlbumResponse {
         GetAlbumResponse::new(
             7,

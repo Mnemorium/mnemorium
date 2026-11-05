@@ -6,7 +6,7 @@ use crate::domain::alias::NumericID;
 /// Command to fetch one music group.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct GetMusicGroupCommand {
+pub(crate) struct GetMusicGroupCommand {
     /// Identifier of the authenticated caller.
     caller_id: NumericID,
     /// Identifier of the group to fetch.
@@ -16,19 +16,19 @@ pub struct GetMusicGroupCommand {
 impl GetMusicGroupCommand {
     /// Return the identifier of the authenticated caller.
     #[must_use]
-    pub fn caller_id(&self) -> NumericID {
+    pub(crate) fn caller_id(&self) -> NumericID {
         self.caller_id
     }
 
     /// Return the identifier of the group to fetch.
     #[must_use]
-    pub fn group_id(&self) -> NumericID {
+    pub(crate) fn group_id(&self) -> NumericID {
         self.group_id
     }
 
     /// Create a new fetch-group command.
     #[must_use]
-    pub fn new(caller_id: NumericID, group_id: NumericID) -> Self {
+    pub(crate) fn new(caller_id: NumericID, group_id: NumericID) -> Self {
         Self {
             caller_id,
             group_id,
@@ -39,7 +39,7 @@ impl GetMusicGroupCommand {
 /// Response of a successful group lookup: one group.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct GetMusicGroupResponse {
+pub(crate) struct GetMusicGroupResponse {
     /// Identifier of the image holding the group's artwork, when set.
     cover_image_id: Option<NumericID>,
     /// Unique identifier of the group.
@@ -51,25 +51,29 @@ pub struct GetMusicGroupResponse {
 impl GetMusicGroupResponse {
     /// Return the identifier of the image holding the group's artwork, if any.
     #[must_use]
-    pub fn cover_image_id(&self) -> Option<NumericID> {
+    pub(crate) fn cover_image_id(&self) -> Option<NumericID> {
         self.cover_image_id
     }
 
     /// Return the unique identifier of the group.
     #[must_use]
-    pub fn group_id(&self) -> NumericID {
+    pub(crate) fn group_id(&self) -> NumericID {
         self.group_id
     }
 
     /// Return the stage name of the group.
     #[must_use]
-    pub fn name(&self) -> &str {
+    pub(crate) fn name(&self) -> &str {
         &self.name
     }
 
     /// Create a new fetched-group response.
     #[must_use]
-    pub fn new(name: String, group_id: NumericID, cover_image_id: Option<NumericID>) -> Self {
+    pub(crate) fn new(
+        name: String,
+        group_id: NumericID,
+        cover_image_id: Option<NumericID>,
+    ) -> Self {
         Self {
             cover_image_id,
             group_id,
@@ -81,7 +85,7 @@ impl GetMusicGroupResponse {
 /// Error returned when fetching one music group.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
-pub enum GetMusicGroupError {
+pub(crate) enum GetMusicGroupError {
     /// The authenticated caller does not exist anymore.
     #[error("the authenticated user does not exist")]
     NoSuchCaller,
@@ -95,7 +99,7 @@ pub enum GetMusicGroupError {
 
 /// Use case for fetching one music group.
 #[cfg_attr(test, mockall::automock)]
-pub trait GetMusicGroupUseCase: Send + Sync {
+pub(crate) trait GetMusicGroupUseCase: Send + Sync {
     /// Fetch the requested group.
     ///
     /// The future is returned erased (`dyn`, not `impl Future`), boxed and

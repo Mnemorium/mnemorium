@@ -4,7 +4,7 @@ use std::pin::Pin;
 /// One change observed under the library root.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub enum MediaChange {
+pub(crate) enum MediaChange {
     /// A file appeared at the relative path.
     Created(String),
     /// A file no longer exists at the relative path.
@@ -21,7 +21,7 @@ pub enum MediaChange {
 /// Error returned when the change source cannot deliver an event.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
-pub enum MediaChangeSourceError {
+pub(crate) enum MediaChangeSourceError {
     /// The change queue overflowed, so changes were lost.
     #[error("the change queue overflowed")]
     Overflow,
@@ -42,7 +42,7 @@ pub enum MediaChangeSourceError {
 /// The source never blocks the watcher thread: an adapter hands each change to
 /// an internal queue that [`MediaChangeSource::changes`] drains.
 #[cfg_attr(test, mockall::automock)]
-pub trait MediaChangeSource: Send + Sync {
+pub(crate) trait MediaChangeSource: Send + Sync {
     /// Return the next observed change, waiting until one is available.
     ///
     /// An overflow is reported once as an error and does not end the

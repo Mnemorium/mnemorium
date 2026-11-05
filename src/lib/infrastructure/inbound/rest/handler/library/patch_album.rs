@@ -27,7 +27,7 @@ use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 /// An absent field keeps its value; a `null` clears an optional value.
 #[derive(Debug, Deserialize, ToSchema)]
 #[non_exhaustive]
-pub struct PatchAlbumRequest {
+pub(crate) struct PatchAlbumRequest {
     /// Identifier of the image holding the album's artwork; `null` clears it.
     #[serde(default, deserialize_with = "deserialize_field_update")]
     #[schema(value_type = Option<NumericID>, nullable = true)]
@@ -130,7 +130,7 @@ pub struct PatchAlbumRequest {
     ),
     summary = "Update a music album"
 )]
-pub async fn patch_album(
+pub(crate) async fn patch_album(
     Path(album_id_value): Path<String>,
     State(state): State<AppState>,
     caller: AuthenticatedUser,

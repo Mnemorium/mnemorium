@@ -7,7 +7,7 @@ use crate::domain::model::music_playlist::MusicPlaylist;
 /// Command to fetch one playlist.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct GetPlaylistCommand {
+pub(crate) struct GetPlaylistCommand {
     /// Identifier of the authenticated caller.
     caller_id: NumericID,
     /// Identifier of the playlist to fetch.
@@ -17,13 +17,13 @@ pub struct GetPlaylistCommand {
 impl GetPlaylistCommand {
     /// Return the identifier of the authenticated caller.
     #[must_use]
-    pub fn caller_id(&self) -> NumericID {
+    pub(crate) fn caller_id(&self) -> NumericID {
         self.caller_id
     }
 
     /// Create a new fetch-playlist command.
     #[must_use]
-    pub fn new(caller_id: NumericID, playlist_id: NumericID) -> Self {
+    pub(crate) fn new(caller_id: NumericID, playlist_id: NumericID) -> Self {
         Self {
             caller_id,
             playlist_id,
@@ -32,7 +32,7 @@ impl GetPlaylistCommand {
 
     /// Return the identifier of the playlist to fetch.
     #[must_use]
-    pub fn playlist_id(&self) -> NumericID {
+    pub(crate) fn playlist_id(&self) -> NumericID {
         self.playlist_id
     }
 }
@@ -40,7 +40,7 @@ impl GetPlaylistCommand {
 /// Response of a successful playlist lookup.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct GetPlaylistResponse {
+pub(crate) struct GetPlaylistResponse {
     /// The fetched playlist.
     playlist: MusicPlaylist,
 }
@@ -48,13 +48,13 @@ pub struct GetPlaylistResponse {
 impl GetPlaylistResponse {
     /// Create a new fetch-playlist response.
     #[must_use]
-    pub fn new(playlist: MusicPlaylist) -> Self {
+    pub(crate) fn new(playlist: MusicPlaylist) -> Self {
         Self { playlist }
     }
 
     /// Return the fetched playlist.
     #[must_use]
-    pub fn playlist(&self) -> &MusicPlaylist {
+    pub(crate) fn playlist(&self) -> &MusicPlaylist {
         &self.playlist
     }
 }
@@ -62,7 +62,7 @@ impl GetPlaylistResponse {
 /// Error returned when fetching one playlist.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
-pub enum GetPlaylistError {
+pub(crate) enum GetPlaylistError {
     /// The authenticated caller does not exist anymore.
     #[error("the authenticated user does not exist")]
     NoSuchCaller,
@@ -77,7 +77,7 @@ pub enum GetPlaylistError {
 
 /// Use case for fetching one playlist.
 #[cfg_attr(test, mockall::automock)]
-pub trait GetPlaylistUseCase: Send + Sync {
+pub(crate) trait GetPlaylistUseCase: Send + Sync {
     /// Fetch the requested playlist with its tracks.
     fn execute<'future>(
         &'future self,

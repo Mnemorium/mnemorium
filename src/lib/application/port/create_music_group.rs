@@ -7,7 +7,7 @@ use crate::domain::model::music_group::MusicGroup;
 /// Command to create a music group.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct CreateMusicGroupCommand {
+pub(crate) struct CreateMusicGroupCommand {
     /// Identifier of the authenticated caller.
     caller_id: NumericID,
     /// Identifier of the image holding the group's artwork, when set.
@@ -19,25 +19,29 @@ pub struct CreateMusicGroupCommand {
 impl CreateMusicGroupCommand {
     /// Return the identifier of the authenticated caller.
     #[must_use]
-    pub fn caller_id(&self) -> NumericID {
+    pub(crate) fn caller_id(&self) -> NumericID {
         self.caller_id
     }
 
     /// Return the identifier of the image holding the group's artwork, if any.
     #[must_use]
-    pub fn cover_image_id(&self) -> Option<NumericID> {
+    pub(crate) fn cover_image_id(&self) -> Option<NumericID> {
         self.cover_image_id
     }
 
     /// Return the stage name of the group.
     #[must_use]
-    pub fn name(&self) -> &str {
+    pub(crate) fn name(&self) -> &str {
         &self.name
     }
 
     /// Create a new create-group command.
     #[must_use]
-    pub fn new(caller_id: NumericID, name: String, cover_image_id: Option<NumericID>) -> Self {
+    pub(crate) fn new(
+        caller_id: NumericID,
+        name: String,
+        cover_image_id: Option<NumericID>,
+    ) -> Self {
         Self {
             caller_id,
             cover_image_id,
@@ -49,7 +53,7 @@ impl CreateMusicGroupCommand {
 /// Response of a successful group creation: the stored group.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct CreateMusicGroupResponse {
+pub(crate) struct CreateMusicGroupResponse {
     /// The group that was stored.
     group: MusicGroup,
 }
@@ -57,13 +61,13 @@ pub struct CreateMusicGroupResponse {
 impl CreateMusicGroupResponse {
     /// Return the group that was stored.
     #[must_use]
-    pub fn group(&self) -> &MusicGroup {
+    pub(crate) fn group(&self) -> &MusicGroup {
         &self.group
     }
 
     /// Create a new created-group response.
     #[must_use]
-    pub fn new(group: MusicGroup) -> Self {
+    pub(crate) fn new(group: MusicGroup) -> Self {
         Self { group }
     }
 }
@@ -71,7 +75,7 @@ impl CreateMusicGroupResponse {
 /// Error returned when creating a music group.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
-pub enum CreateMusicGroupError {
+pub(crate) enum CreateMusicGroupError {
     /// The caller may not manage the library catalogue.
     #[error("the caller may not manage the library")]
     Forbidden,
@@ -97,7 +101,7 @@ pub enum CreateMusicGroupError {
 
 /// Use case for creating a music group.
 #[cfg_attr(test, mockall::automock)]
-pub trait CreateMusicGroupUseCase: Send + Sync {
+pub(crate) trait CreateMusicGroupUseCase: Send + Sync {
     /// Create a group from the command.
     ///
     /// The future is returned erased (`dyn`, not `impl Future`), boxed and

@@ -30,7 +30,7 @@ use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 /// override can change either.
 #[derive(Debug, Deserialize, ToSchema)]
 #[non_exhaustive]
-pub struct RegisterRequest {
+pub(crate) struct RegisterRequest {
     /// Email address of the new user, when provided.
     #[schema(format = "email")]
     pub email: Option<String>,
@@ -56,7 +56,7 @@ pub struct RegisterRequest {
 /// User created by a successful registration.
 #[derive(Debug, Serialize, ToSchema)]
 #[non_exhaustive]
-pub struct RegisterResponse {
+struct RegisterResponse {
     /// Email address of the newly registered user, when one was provided.
     #[schema(format = "email")]
     pub email: Option<String>,
@@ -177,7 +177,7 @@ impl From<RegisterUserError> for ApiError {
     ),
     summary = "Register a new user"
 )]
-pub async fn post_register(
+pub(crate) async fn post_register(
     State(state): State<AppState>,
     caller: AuthenticatedUser,
     payload: Result<Json<RegisterRequest>, JsonRejection>,

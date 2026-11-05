@@ -4,7 +4,7 @@ use crate::domain::port::error::SecretGeneratorError;
 
 /// Port for generating a site-wide pepper for password hashing.
 #[cfg_attr(test, mockall::automock)]
-pub trait SecretGenerator: Send + Sync {
+pub(crate) trait SecretGenerator: Send + Sync {
     /// Generate a random secret.
     fn generate(
         &self,

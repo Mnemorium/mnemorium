@@ -123,6 +123,7 @@ RULES=(
 	"STY-RUST-085:check_sty_rust_085"
 	"STY-RUST-086:check_sty_rust_086"
 	"STY-RUST-087:check_sty_rust_087"
+	"STY-RUST-088:check_sty_rust_088"
 	"DOC-003:check_doc_003"
 	"DOC-005:check_doc_005"
 	"DOC-007:check_doc_007"
@@ -565,55 +566,63 @@ require_matches() {
 
 # --- Checks -----------------------------------------------------------------
 
+# check_sty_rust_001 — bound the number of single-call helpers (STY-RUST-001).
+#
+# The rule forbids extracting functionality used in fewer than four places. The
+# check measures the one-use end of it as a budget: a production function whose
+# name is called exactly once across `src` is a single-call helper, and the tree
+# may hold no more of them than `max_single_call_functions` records. Adding one
+# is then a reviewed change to that budget, not an accident. A call is an
+# identifier followed by `(` with comments stripped; a name declared more than
+# once is skipped because its occurrences cannot be attributed to one function.
 check_sty_rust_001() {
 	local id="STY-RUST-001"
-	local config matches file line func reason location result=0
-	local -A allowed=()
+	local config budget matches file name count lone result=0
+	local -A declarations=()
+	local -A calls=()
 
 	config="$(rule_config "$id")" || return 2
+	budget="$(jq -r '.max_single_call_functions // empty' <<<"$config")"
+	if [ -z "$budget" ]; then
+		printf 'error: %s: rule_enforcer.yaml records no max_single_call_functions\n' "$id" >&2
+		return 1
+	fi
 
-	# The allowlist is the set of code locations permitted to hold a single-use extraction: a production `#[expect(clippy::single_call_fn, reason = "...")]` is permitted only at a `<file>::<function>` listed here, and a module-wide exemption only at the bare `<file>` listed here.
-	while IFS= read -r location; do
-		[ -n "$location" ] || continue
-		allowed["$location"]=1
-	done < <(jq -r '.allowed_locations[]?' <<<"$config")
-
-	# sty-rust-001 extracts every production `#[expect(clippy::single_call_fn, reason = "...")]` together with the function, `mod`, `impl` or `trait` it annotates, and every module-wide exemption together with its file; test modules and `#[cfg(test)]` items are excluded by the rule.
 	matches="$(scan_json "$id" src)" || return 1
-	[ -n "$matches" ] || return 0
+	require_matches "$id" "production function declaration" "$matches" || return 1
 
-	while IFS=$'\t' read -r file line func reason; do
-		[ -n "$file" ] || continue
-		# A module-wide exemption captures no function name; jq fills the empty TSV column.
-		[ "$func" = "-" ] && func=""
-		# A module-wide exemption names no function: its reviewed location is the file.
-		if [ -n "$func" ]; then
-			location="${file}::${func}"
-		else
-			location="$file"
-		fi
-		if [ -z "$reason" ]; then
-			printf 'error: %s: %s:%s: single-use extraction at %s carries no reason; add one\n' \
-				"$id" "$file" "$line" "$location" >&2
-			result=1
-			continue
-		fi
-		if [ -z "${allowed[$location]+set}" ]; then
-			if [ -n "$func" ]; then
-				printf 'error: %s: %s:%s: single-use extraction at %s is not allowlisted; add "%s" to allowed_locations\n' \
-					"$id" "$file" "$line" "$location" "$location" >&2
-			else
-				printf 'error: %s: %s:%s: module-wide single-use extraction exemption at %s is not allowlisted; scope it to one function or add "%s" to allowed_locations\n' \
-					"$id" "$file" "$line" "$location" "$location" >&2
-			fi
-
-			result=1
-		fi
+	while IFS=$'\t' read -r file name; do
+		[ -n "$name" ] || continue
+		declarations["$name"]=$((${declarations["$name"]:-0} + 1))
 	done < <(printf '%s\n' "$matches" |
-		jq -r '[.file, ((.range.start.line + 1) | tostring),
-			(.metaVariables.single.FUNC.text // "-"),
-			(.text | gsub("\\s+"; " ") |
-				capture("reason *= *\"(?<r>[^\"]*)\"")? | .r // "")] | @tsv')
+		jq -r '[.file, .metaVariables.single.NAME.text] | @tsv')
+
+	# The declaration is one `name(` occurrence, so a name's callers are its
+	# occurrences minus its declarations.
+	while IFS= read -r file; do
+		[ -n "$file" ] || continue
+		while IFS= read -r name; do
+			[ -n "$name" ] || continue
+			calls["$name"]=$((${calls["$name"]:-0} + 1))
+		done < <(sed -E 's://.*::' "$file" |
+			grep -oE '[A-Za-z_][A-Za-z0-9_]*[[:space:]]*\(' |
+			sed -E 's/[[:space:]]*\($//')
+	done < <(find src -name '*.rs' | sort)
+
+	lone=0
+	for name in "${!declarations[@]}"; do
+		[ "${declarations[$name]}" -eq 1 ] || continue
+		count=$((${calls[$name]:-0} - 1))
+		if [ "$count" -eq 1 ]; then
+			lone=$((lone + 1))
+		fi
+	done
+
+	if [ "$lone" -gt "$budget" ]; then
+		printf 'error: %s: %s single-call helpers; the recorded budget is %s. Inline the new helper or raise max_single_call_functions in rule_enforcer.yaml\n' \
+			"$id" "$lone" "$budget" >&2
+		result=1
+	fi
 
 	return "$result"
 }
@@ -884,7 +893,7 @@ check_sty_rust_012() {
 	return "$result"
 }
 
-check_sty_rust_067() { scan_short_filtered STY-RUST-067 '^src/bin/server\.rs:' src '!src/bin/server.rs'; }
+check_sty_rust_067() { scan_short_filtered STY-RUST-067 '^src/lib/app\.rs:' src '!src/lib/app.rs'; }
 
 check_sty_rust_024() { scan_short STY-RUST-024 src; }
 
@@ -965,7 +974,7 @@ check_sty_rust_035() { scan_short STY-RUST-035 src; }
 
 check_sty_rust_036() { scan_short STY-RUST-036 src; }
 
-check_sty_rust_038() { scan_short_filtered STY-RUST-038 '^(src/lib/infrastructure/|src/lib/infrastructure\.rs:|src/bin/server\.rs:)' src '!src/lib/infrastructure/**' '!src/lib/infrastructure.rs' '!src/bin/server.rs'; }
+check_sty_rust_038() { scan_short_filtered STY-RUST-038 '^(src/lib/infrastructure/|src/lib/infrastructure\.rs:|src/lib/app\.rs:)' src '!src/lib/infrastructure/**' '!src/lib/infrastructure.rs' '!src/lib/app.rs'; }
 
 check_sty_rust_039() {
 	local id="STY-RUST-039"
@@ -1233,7 +1242,7 @@ check_sty_rust_060() {
 					"$id" "$file" "$method" "$expected" "$use_case" >&2
 				result=1
 			fi
-			if ! grep -rqE "pub trait ${use_case}\b" "$port_dir"; then
+			if ! grep -rqE "(pub(\(crate\))? )?trait ${use_case}\b" "$port_dir"; then
 				printf 'error: %s: %s: accessor %s returns %s, not a use-case trait under %s\n' \
 					"$id" "$file" "$method" "$use_case" "$port_dir" >&2
 				result=1
@@ -1343,7 +1352,7 @@ check_sty_rust_062() {
 			sed 's/.*:://' | sort -u)
 
 		# The long-lived factory struct's own fields, up to its closing brace.
-		struct_block="$(awk '/^pub struct [A-Za-z0-9_]+ ?\{/{f=1} f{print} f&&/^}/{f=0}' "$file")"
+		struct_block="$(awk '/^[[:space:]]*(pub(\([^)]*\))? )?struct [A-Za-z0-9_]+ ?\{/{f=1} f{print} f&&/^}/{f=0}' "$file")"
 
 		if [ "${#forbidden[@]}" -gt 0 ]; then
 			for name in "${forbidden[@]}"; do
@@ -1364,7 +1373,7 @@ check_sty_rust_063() { need_dir "STY-RUST-063" "src/lib/infrastructure/use_case_
 check_sty_rust_064() {
 	local id="STY-RUST-064"
 	local app_state="src/lib/infrastructure/inbound/rest/app_state.rs"
-	local server="src/bin/server.rs"
+	local server="src/lib/app.rs"
 	local matches app_matches file bindings binding_count binding executions result=0
 
 	need_file "$id" "$app_state" || return 1
@@ -1579,7 +1588,7 @@ check_sty_rust_070() {
 		while IFS= read -r trait; do
 			[ -n "$trait" ] || continue
 			dyn_unsafe["$trait"]=1
-		done < <(sed -nE 's/^[[:space:]]*pub trait ([A-Za-z0-9_]+).*/\1/p' "$file")
+		done < <(sed -nE 's/^[[:space:]]*(pub(\([^)]*\))? )?trait ([A-Za-z0-9_]+).*/\3/p' "$file")
 	done < <(grep -rlE 'impl Future' "$port_dir" --include='*.rs')
 
 	if [ "${#dyn_unsafe[@]}" -eq 0 ]; then
@@ -1657,7 +1666,7 @@ check_sty_rust_073() {
 	while IFS= read -r trait; do
 		[ -n "$trait" ] || continue
 		ports["$trait"]=1
-	done < <(grep -rhoE '^[[:space:]]*pub trait [A-Za-z0-9_]+' \
+	done < <(grep -rhoE '^[[:space:]]*(pub(\([^)]*\))? )?trait [A-Za-z0-9_]+' \
 		"$domain_port" "$app_port" --include='*.rs' | sed 's/.*trait //')
 
 	if [ "${#ports[@]}" -eq 0 ]; then
@@ -1691,10 +1700,10 @@ check_sty_rust_073() {
 				if ($0 ~ /derive\([^)]*Clone([^A-Za-z0-9_]|$)/) { clone = 1 }
 				next
 			}
-			/^[[:space:]]*(pub[[:space:]]+)?struct[[:space:]]+[A-Za-z0-9_]+/ {
+			/^[[:space:]]*(pub(\([^)]*\))?[[:space:]]+)?struct[[:space:]]+[A-Za-z0-9_]+/ {
 				if (clone) {
 					name = $0
-					sub(/^[[:space:]]*(pub[[:space:]]+)?struct[[:space:]]+/, "", name)
+					sub(/^[[:space:]]*(pub(\([^)]*\))?[[:space:]]+)?struct[[:space:]]+/, "", name)
 					sub(/[^A-Za-z0-9_].*$/, "", name)
 					print name
 				}
@@ -1719,7 +1728,7 @@ check_sty_rust_073() {
 
 check_sty_rust_074() {
 	local id="STY-RUST-074"
-	local server="src/bin/server.rs"
+	local server="src/lib/app.rs"
 	local matches installs install_count install_file var
 	local install_line execute_line result=0
 
@@ -1898,9 +1907,9 @@ check_sty_rust_077() {
 		# Blank lines and comments do not end an attribute run.
 		$0 ~ /^[ \t]*$/ || $0 ~ /^[ \t]*\/\// { next }
 
-		$0 ~ /^[ \t]*pub struct [A-Za-z_]/ {
+		$0 ~ /^[ \t]*(pub(\([^)]*\))?[ \t]+)?struct [A-Za-z_]/ {
 			line = $0
-			sub(/^[ \t]*pub struct[ \t]+/, "", line)
+			sub(/^[ \t]*(pub(\([^)]*\))?[ \t]+)?struct[ \t]+/, "", line)
 			match(line, /^[A-Za-z_][A-Za-z0-9_]*/)
 			name = substr(line, 1, RLENGTH)
 			key = FILENAME SUBSEP name
@@ -2161,13 +2170,12 @@ check_sty_rust_083() {
 
 check_sty_rust_085() {
 	local id="STY-RUST-085"
-	local matches rows file line name site enclosing visibility layer expected reachable result=0
-	local -A declarations=()
+	local matches rows file line name site enclosing result=0
 
 	matches="$(scan_json "$id" src)" || return 1
 	require_matches "$id" "production constant or static declaration" "$matches" || return 1
 
-	# The extractor reports every production declaration with its site and the visibility token of its first line; the path, visibility and reachability tests happen here because an ast-grep rule cannot read the file system.
+	# The extractor reports every production declaration with its site; the path test happens here because an ast-grep rule cannot read the file system. A constant's visibility is STY-RUST-088's.
 	rows="$(printf '%s\n' "$matches" | jq -r '
 		(.metaVariables.single.NAME.text // .metaVariables.single.STATIC.text) as $name
 		| (if .metaVariables.single.STATIC then "static"
@@ -2175,21 +2183,10 @@ check_sty_rust_085() {
 			elif (.metaVariables.single.IMPLEMENTOR or .metaVariables.single.TRAIT) then "assoc"
 			else "module" end) as $site
 		| ((.metaVariables.single.FUNCTION.text // .metaVariables.single.IMPLEMENTOR.text // .metaVariables.single.TRAIT.text) // "-") as $enclosing
-		| (.lines | split("\n")[0]) as $first
-		| (if ($first | test("^\\s*pub\\s*\\("))
-			then ($first | capture("^\\s*pub\\s*\\((?<inner>[^)]*)\\)").inner | gsub("^\\s+|\\s+$"; "") | "pub(" + . + ")")
-			elif ($first | test("^\\s*pub\\b")) then "pub"
-			else "private" end) as $visibility
-		| [.file, ((.range.start.line + 1) | tostring), $name, $site, $enclosing, $visibility] | @tsv
+		| [.file, ((.range.start.line + 1) | tostring), $name, $site, $enclosing] | @tsv
 	')" || return 1
 
-	# A name declared in more than one file has no single owner: 086 reports it, and testing each copy's reachability would ask the developer to widen a declaration 086 asks them to delete. Skipping the test also keeps the textual resolution sound, because no shadowing is possible for a crate-unique name.
-	while IFS=$'\t' read -r file line name site enclosing visibility; do
-		[ -n "$name" ] || continue
-		declarations["$name"]=$((${declarations["$name"]:-0} + 1))
-	done <<<"$rows"
-
-	while IFS=$'\t' read -r file line name site enclosing visibility; do
+	while IFS=$'\t' read -r file line name site enclosing; do
 		[ -n "$name" ] || continue
 
 		case "$site" in
@@ -2229,56 +2226,14 @@ check_sty_rust_085() {
 		esac
 
 		case "$file" in
-		src/lib/domain.rs | src/lib/domain/*) layer="domain" ;;
-		src/lib/application/port.rs | src/lib/application/port/*) layer="application-port" ;;
-		src/lib/application.rs | src/lib/application/*) layer="application" ;;
-		src/lib/infrastructure.rs | src/lib/infrastructure/*) layer="infrastructure" ;;
+		src/lib/domain.rs | src/lib/domain/* | src/lib/application/port.rs | src/lib/application/port/* | \
+			src/lib/application.rs | src/lib/application/* | src/lib/infrastructure.rs | src/lib/infrastructure/*) ;;
 		*)
 			printf 'error: %s: %s:%s: %s is declared outside a layer file\n' \
 				"$id" "$file" "$line" "$name" >&2
 			result=1
-			continue
 			;;
 		esac
-
-		case "$visibility" in
-		'pub(super)' | 'pub(in '*)
-			printf 'error: %s: %s:%s: %s is %s; the visibility is pub, pub(crate) or private\n' \
-				"$id" "$file" "$line" "$name" "$visibility" >&2
-			result=1
-			continue
-			;;
-		esac
-
-		case "$file" in
-		src/lib/infrastructure/inbound/rest/handler/*/*.rs)
-			if [ "$visibility" != "private" ]; then
-				printf 'error: %s: %s:%s: the endpoint constant %s is %s; an endpoint file declares a constant privately\n' \
-					"$id" "$file" "$line" "$name" "$visibility" >&2
-				result=1
-			fi
-			continue
-			;;
-		esac
-
-		if [ "$layer" = "domain" ] || [ "$layer" = "application-port" ]; then
-			expected="pub"
-		elif [ "${declarations[$name]:-0}" -gt 1 ]; then
-			continue
-		else
-			reachable="$(grep -rlwF -- "$name" src | grep -vxF -- "$file" | head -n 1)"
-			if [ -n "$reachable" ]; then
-				expected="pub(crate)"
-			else
-				expected="private"
-			fi
-		fi
-
-		if [ "$visibility" != "$expected" ]; then
-			printf 'error: %s: %s:%s: %s is %s; a constant in %s is %s\n' \
-				"$id" "$file" "$line" "$name" "$visibility" "$layer" "$expected" >&2
-			result=1
-		fi
 	done <<<"$rows"
 
 	return "$result"
@@ -3451,7 +3406,7 @@ check_test_004() {
 
 		# The payload DTOs the file declares: top-level structs named with the rule's `<Context>Request` / `<Context>Query` / `<Context>Response` suffix.
 		mapfile -t dtos < <(sed -nE \
-			's/^pub struct ([A-Za-z0-9_]+(Request|Query|Response))[[:space:]]*[({].*/\1/p' "$file")
+			's/^[[:space:]]*(pub(\([^)]*\))? )?struct ([A-Za-z0-9_]+(Request|Query|Response))[[:space:]]*[({].*/\3/p' "$file")
 		[ "${#dtos[@]}" -gt 0 ] || continue
 		found=$((found + 1))
 
@@ -6027,6 +5982,74 @@ check_arch_001() {
 
 # check_arch_005 — a domain model never invokes a domain service (ARCH-005).
 check_arch_005() { need_dir "ARCH-005" "src/lib/domain/model" && scan_short ARCH-005 "src/lib/domain/model"; }
+
+# check_sty_rust_088 — a declaration is private, `pub(crate)` when another module
+# names it, and `pub` only at the crate entry point (STY-RUST-088).
+check_sty_rust_088() {
+	local id="STY-RUST-088"
+	local matches index file line vis name key result=0
+	local -A files_of=()
+	local -A mentions=()
+	local -A seen=()
+
+	matches="$(scan_json "$id" src)" || return 1
+	require_matches "$id" "item carrying a visibility modifier" "$matches" || return 1
+
+	# "Another module names it" is an identifier occurrence in another file,
+	# comments excluded: the approximation STY-RUST-085 already shipped. The index
+	# records, per identifier, how many distinct files name it and how often the
+	# declaring file does, so a type a wider signature in its own module exposes
+	# (the signature lower bound) stays legal while a declaration nothing names
+	# does not.
+	index="$(mktemp "${TMPDIR:-/tmp}/sty-rust-088.XXXXXX")" || return 1
+	while IFS= read -r file; do
+		[ -n "$file" ] || continue
+		sed -E 's://.*::' "$file" |
+			grep -oE '[A-Za-z_][A-Za-z0-9_]*' |
+			sed "s|^|${file}"$'\t''|'
+	done < <(find src -name '*.rs' | sort) >"$index"
+	while IFS=$'\t' read -r file name; do
+		[ -n "$name" ] || continue
+		key="$name"$'\t'"$file"
+		mentions["$key"]=$((${mentions["$key"]:-0} + 1))
+		[ -n "${seen[$key]+set}" ] && continue
+		seen["$key"]=1
+		files_of["$name"]=$((${files_of["$name"]:-0} + 1))
+	done <"$index"
+	rm -f "$index"
+
+	while IFS=$'\t' read -r file line vis name; do
+		[ -n "$name" ] || continue
+		case "$vis" in
+		*super* | 'pub(in '*)
+			printf 'error: %s: %s:%s: %s is %s; a declaration is private, pub(crate) or the crate entry point\n' \
+				"$id" "$file" "$line" "$name" "$vis" >&2
+			result=1
+			continue
+			;;
+		esac
+		if [ "$vis" = "pub" ]; then
+			if { [ "$file" = "src/lib/lib.rs" ] && [ "$name" = "app" ]; } ||
+				{ [ "$file" = "src/lib/app.rs" ] && [ "$name" = "run" ]; }; then
+				continue
+			fi
+			printf 'error: %s: %s:%s: %s is pub; only the crate entry point is pub (pub mod app; in src/lib/lib.rs and pub async fn run in src/lib/app.rs)\n' \
+				"$id" "$file" "$line" "$name" >&2
+			result=1
+			continue
+		fi
+		key="$name"$'\t'"$file"
+		if [ "${files_of[$name]:-0}" -le 1 ] && [ "${mentions[$key]:-0}" -le 1 ]; then
+			printf 'error: %s: %s:%s: %s is pub(crate) but no other module names it; make it private\n' \
+				"$id" "$file" "$line" "$name" >&2
+			result=1
+		fi
+	done < <(printf '%s\n' "$matches" |
+		jq -r '[.file, ((.range.start.line + 1) | tostring),
+			.metaVariables.single.VIS.text, .metaVariables.single.NAME.text] | @tsv')
+
+	return "$result"
+}
 
 # --- Runner -----------------------------------------------------------------
 

@@ -4,7 +4,7 @@ use crate::domain::model::scope::Scope;
 /// Error returned when initialising a `Video`.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
-pub enum VideoError {
+pub(crate) enum VideoError {
     /// The duration is not finite or is negative.
     #[error("video duration must be finite and non-negative")]
     InvalidDurationMs,
@@ -19,6 +19,10 @@ pub enum VideoError {
     InvalidWidth,
     /// An unexpected or unmapped error occurred.
     #[error("an unknown error occurred: {0}")]
+    #[expect(
+        dead_code,
+        reason = "the error enum keeps the catch-all variant the rulebook's error shape declares; no caller constructs it yet"
+    )]
     Unknown(#[source] anyhow::Error),
 }
 
@@ -28,7 +32,7 @@ pub enum VideoError {
 )]
 #[serde(rename_all = "UPPERCASE")]
 #[non_exhaustive]
-pub enum ScanType {
+pub(crate) enum ScanType {
     /// Interlaced scan of two separate fields per frame.
     Interlaced,
     /// Macroblock-adaptive frame/field scan.
@@ -45,7 +49,7 @@ pub enum ScanType {
     clippy::struct_field_names,
     reason = "`video_id` is the primary key name mandated by the SQL section and the domain field naming"
 )]
-pub struct Video {
+pub(crate) struct Video {
     /// Codec of the video.
     codec: String,
     /// Identifier of the colour space of the video.
@@ -71,49 +75,49 @@ pub struct Video {
 impl Video {
     /// Return the codec of the video.
     #[must_use]
-    pub fn codec(&self) -> &str {
+    pub(crate) fn codec(&self) -> &str {
         &self.codec
     }
 
     /// Return the identifier of the colour space of the video.
     #[must_use]
-    pub fn color_id(&self) -> &str {
+    pub(crate) fn color_id(&self) -> &str {
         &self.color_id
     }
 
     /// Return the duration of the video, in milliseconds.
     #[must_use]
-    pub fn duration_ms(&self) -> f64 {
+    pub(crate) fn duration_ms(&self) -> f64 {
         self.duration_ms
     }
 
     /// Return the identifier of the backing file.
     #[must_use]
-    pub fn file_id(&self) -> NumericID {
+    pub(crate) fn file_id(&self) -> NumericID {
         self.file_id
     }
 
     /// Return the number of frames in the video.
     #[must_use]
-    pub fn frame_count(&self) -> i64 {
+    pub(crate) fn frame_count(&self) -> i64 {
         self.frame_count
     }
 
     /// Return the height of the video, in pixels.
     #[must_use]
-    pub fn height(&self) -> i64 {
+    pub(crate) fn height(&self) -> i64 {
         self.height
     }
 
     /// Return the scan type of the video.
     #[must_use]
-    pub fn scan_type(&self) -> ScanType {
+    pub(crate) fn scan_type(&self) -> ScanType {
         self.scan_type
     }
 
     /// Return the scope fixed by the first attachment, if any.
     #[must_use]
-    pub fn scope(&self) -> Option<Scope> {
+    pub(crate) fn scope(&self) -> Option<Scope> {
         self.scope
     }
 
@@ -131,7 +135,7 @@ impl Video {
         clippy::too_many_arguments,
         reason = "try_new mirrors every video column"
     )]
-    pub fn try_new(
+    pub(crate) fn try_new(
         video_id: NumericID,
         duration_ms: f64,
         codec: String,
@@ -171,13 +175,13 @@ impl Video {
 
     /// Return the unique identifier of the video.
     #[must_use]
-    pub fn video_id(&self) -> NumericID {
+    pub(crate) fn video_id(&self) -> NumericID {
         self.video_id
     }
 
     /// Return the width of the video, in pixels.
     #[must_use]
-    pub fn width(&self) -> i64 {
+    pub(crate) fn width(&self) -> i64 {
         self.width
     }
 }
@@ -185,7 +189,7 @@ impl Video {
 /// Metadata extracted from a video file.
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
-pub struct ProbedVideo {
+pub(crate) struct ProbedVideo {
     /// Codec of the video.
     pub codec: String,
     /// Identifier of the colour space of the video.

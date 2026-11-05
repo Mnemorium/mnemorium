@@ -8,7 +8,7 @@ message: >-
 rule:
   all:
     - kind: enum_item
-    - regex: '^pub enum \w*Error\b'
+    - regex: '^(pub(\(crate\))? )?enum \w*Error\b'
     - any:
         - follows:
             kind: trait_item

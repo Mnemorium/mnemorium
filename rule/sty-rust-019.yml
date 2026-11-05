@@ -16,13 +16,19 @@ rule:
             kind: field_declaration_list
             inside:
               kind: struct_item
-              pattern: 'pub struct $STRUCT { $$$FIELDS }'
+              any:
+                - pattern: 'pub struct $STRUCT { $$$FIELDS }'
+                - pattern: 'pub(crate) struct $STRUCT { $$$FIELDS }'
+                - pattern: 'struct $STRUCT { $$$FIELDS }'
               stopBy: end
     # A `&self` method: capture the impl target, the method name and its
     # return type. Both `pub` and private methods are matched.
     - all:
         - any:
-            - pattern: 'pub fn $METHOD(&self) -> $RET { $$$BODY }'
+            - any:
+                - pattern: 'pub fn $METHOD(&self) -> $RET { $$$BODY }'
+                - pattern: 'pub(crate) fn $METHOD(&self) -> $RET { $$$BODY }'
+                - pattern: 'fn $METHOD(&self) -> $RET { $$$BODY }'
             - pattern: 'fn $METHOD(&self) -> $RET { $$$BODY }'
         - inside:
             kind: impl_item

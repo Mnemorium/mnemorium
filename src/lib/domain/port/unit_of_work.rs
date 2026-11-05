@@ -7,7 +7,7 @@ use crate::domain::port::error::UnitOfWorkError;
 /// The application service opens a unit of work, runs business logic across
 /// the repositories it exposes, then commits on success or rolls back on
 /// failure. Only the application service manages the transaction lifecycle.
-pub trait UnitOfWork: Send + Sync {
+pub(crate) trait UnitOfWork: Send + Sync {
     /// Commit the unit of work, persisting every change made through it.
     fn commit(self) -> impl Future<Output = Result<(), UnitOfWorkError>> + Send;
 
@@ -16,7 +16,7 @@ pub trait UnitOfWork: Send + Sync {
 }
 
 /// Opens a new [`UnitOfWork`] bound to a single database transaction.
-pub trait UnitOfWorkFactory: Send + Sync {
+pub(crate) trait UnitOfWorkFactory: Send + Sync {
     /// Concrete unit of work produced by this factory.
     type Uow: UnitOfWork;
 
@@ -42,10 +42,6 @@ pub trait UnitOfWorkFactory: Send + Sync {
 #[expect(dead_code, reason = "compile-time bound assertion; never called")]
 fn unit_of_work_is_send_and_sync<T: UnitOfWork>() {
     /// Assert `T` implements `Send + Sync`.
-    #[expect(
-        clippy::single_call_fn,
-        reason = "a named bound assertion reads better than an inline bound"
-    )]
     fn assert_send_sync<T: Send + Sync + ?Sized>() {}
 
     assert_send_sync::<T>();

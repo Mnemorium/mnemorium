@@ -64,7 +64,7 @@ use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
     ),
     summary = "Fetch one track of a music playlist"
 )]
-pub async fn get_playlist_track(
+pub(crate) async fn get_playlist_track(
     Path((playlist_id_value, track_index_value)): Path<(String, String)>,
     State(state): State<AppState>,
     caller: AuthenticatedUser,
@@ -88,10 +88,6 @@ pub async fn get_playlist_track(
 
 #[cfg(test)]
 mod tests {
-    #![expect(
-        clippy::single_call_fn,
-        reason = "named fixtures keep the tests readable"
-    )]
 
     use std::error::Error;
     use std::sync::Arc;

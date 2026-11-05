@@ -8,7 +8,7 @@ use crate::domain::port::error::RepositoryError;
 /// an all-`None` filter returns every user.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct UserFilter {
+pub(crate) struct UserFilter {
     /// Filter on the email address.
     pub email: Option<String>,
     /// Filter on the user identifier.
@@ -21,7 +21,7 @@ pub struct UserFilter {
 
 /// Port for persisting and querying `User`.
 #[cfg_attr(test, mockall::automock)]
-pub trait UserRepository: Send + Sync {
+pub(crate) trait UserRepository: Send + Sync {
     /// Insert a new `user`, returning the persisted user with its final
     /// identifier.
     ///
@@ -34,6 +34,13 @@ pub trait UserRepository: Send + Sync {
     /// Returns `Ok(true)` when a user matched `id` and was deleted, and
     /// `Ok(false)` when no user matched. A missing user is a valid outcome,
     /// not an error.
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "part of the type's declared contract; no caller exercises it yet"
+        )
+    )]
     fn delete(
         &mut self,
         id: NumericID,

@@ -76,7 +76,7 @@ impl From<GetPermissionError> for ApiError {
     ),
     summary = "Read a user's effective permissions"
 )]
-pub async fn get_permission(
+pub(crate) async fn get_permission(
     Path(user_id_value): Path<String>,
     State(state): State<AppState>,
     caller: AuthenticatedUser,

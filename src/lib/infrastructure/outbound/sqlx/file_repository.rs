@@ -13,7 +13,7 @@ use crate::domain::port::file_repository::FileRepository;
 use super::model::file::File as SqlxFile;
 
 /// Repository persisting files, backed by a `SQLite` transaction.
-pub struct SqlxFileRepository<'transaction> {
+pub(crate) struct SqlxFileRepository<'transaction> {
     /// Transaction the repository reads from and writes to.
     transaction: &'transaction mut Transaction<'static, Sqlite>,
 }
@@ -21,7 +21,7 @@ pub struct SqlxFileRepository<'transaction> {
 impl<'transaction> SqlxFileRepository<'transaction> {
     /// Create a new repository bound to `transaction`.
     #[must_use]
-    pub fn new(transaction: &'transaction mut Transaction<'static, Sqlite>) -> Self {
+    pub(crate) fn new(transaction: &'transaction mut Transaction<'static, Sqlite>) -> Self {
         Self { transaction }
     }
 }

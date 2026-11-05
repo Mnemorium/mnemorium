@@ -66,7 +66,7 @@ use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
     ),
     summary = "List the episodes of a show season"
 )]
-pub async fn get_series_episode_list(
+pub(crate) async fn get_series_episode_list(
     Path((series_id_value, season_index_value)): Path<(String, String)>,
     State(state): State<AppState>,
     caller: AuthenticatedUser,

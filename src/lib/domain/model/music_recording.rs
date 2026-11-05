@@ -1,12 +1,12 @@
 use crate::domain::alias::NumericID;
 
 /// Required length of `MusicRecording::isrc_code`.
-pub const ISRC_CODE_LENGTH: usize = 12;
+const ISRC_CODE_LENGTH: usize = 12;
 
 /// Error returned when initialising or updating a `MusicRecording`.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
-pub enum MusicRecordingError {
+pub(crate) enum MusicRecordingError {
     /// The `isrc_code` is not exactly [`ISRC_CODE_LENGTH`] characters long.
     #[error("isrc_code must be exactly {ISRC_CODE_LENGTH} characters long")]
     InvalidIsrcCode,
@@ -15,6 +15,10 @@ pub enum MusicRecordingError {
     InvalidName,
     /// An unexpected or unmapped error occurred.
     #[error("an unknown error occurred: {0}")]
+    #[expect(
+        dead_code,
+        reason = "the error enum keeps the catch-all variant the rulebook's error shape declares; no caller constructs it yet"
+    )]
     Unknown(#[source] anyhow::Error),
 }
 
@@ -25,7 +29,7 @@ pub enum MusicRecordingError {
 /// container, so two occurrences of one recording are distinct values.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
-pub enum TrackIndex {
+pub(crate) enum TrackIndex {
     /// The recording is placed in an album medium, at this index.
     MediumIndex(u8),
     /// The recording is placed in a playlist, at this index.
@@ -35,7 +39,7 @@ pub enum TrackIndex {
 impl TrackIndex {
     /// Return the medium index, when the placement is a medium placement.
     #[must_use]
-    pub fn medium_index(self) -> Option<u8> {
+    pub(crate) fn medium_index(self) -> Option<u8> {
         match self {
             Self::MediumIndex(index) => Some(index),
             Self::PlaylistIndex(_) => None,
@@ -44,7 +48,7 @@ impl TrackIndex {
 
     /// Return the playlist index, when the placement is a playlist placement.
     #[must_use]
-    pub fn playlist_index(self) -> Option<u32> {
+    pub(crate) fn playlist_index(self) -> Option<u32> {
         match self {
             Self::PlaylistIndex(index) => Some(index),
             Self::MediumIndex(_) => None,
@@ -54,7 +58,7 @@ impl TrackIndex {
 
 /// A music recording.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct MusicRecording {
+pub(crate) struct MusicRecording {
     /// Identifier of the audio backing the recording.
     audio_id: NumericID,
     /// Identifier of the file the backing audio references.
@@ -74,43 +78,51 @@ pub struct MusicRecording {
 impl MusicRecording {
     /// Return the identifier of the backing audio.
     #[must_use]
-    pub fn audio_id(&self) -> NumericID {
+    #[expect(
+        dead_code,
+        reason = "part of the type's declared contract; no caller exercises it yet"
+    )]
+    pub(crate) fn audio_id(&self) -> NumericID {
         self.audio_id
     }
 
     /// Return the identifier of the file the backing audio references.
     #[must_use]
-    pub fn file_id(&self) -> NumericID {
+    pub(crate) fn file_id(&self) -> NumericID {
         self.file_id
     }
 
     /// Return the unique identifier.
     #[must_use]
-    pub fn id(&self) -> NumericID {
+    pub(crate) fn id(&self) -> NumericID {
         self.id
     }
 
     /// Return the placement of the recording within its container.
     #[must_use]
-    pub fn index(&self) -> TrackIndex {
+    pub(crate) fn index(&self) -> TrackIndex {
         self.index
     }
 
     /// Return the ISRC code, if any.
     #[must_use]
-    pub fn isrc_code(&self) -> Option<&str> {
+    pub(crate) fn isrc_code(&self) -> Option<&str> {
         self.isrc_code.as_deref()
     }
 
     /// Return the identifiers of the associated music groups, if any.
     #[must_use]
-    pub fn music_group_ids(&self) -> Option<&[NumericID]> {
+    #[expect(
+        dead_code,
+        reason = "part of the type's declared contract; no caller exercises it yet"
+    )]
+    pub(crate) fn music_group_ids(&self) -> Option<&[NumericID]> {
         self.music_group_ids.as_deref()
     }
 
     /// Return the name, if any.
     #[must_use]
-    pub fn name(&self) -> Option<&str> {
+    pub(crate) fn name(&self) -> Option<&str> {
         self.name.as_deref()
     }
 
@@ -120,7 +132,10 @@ impl MusicRecording {
     ///
     /// Returns [`MusicRecordingError::InvalidIsrcCode`] when `isrc_code` is
     /// not exactly [`ISRC_CODE_LENGTH`] characters long.
-    pub fn set_isrc_code(&mut self, isrc_code: Option<String>) -> Result<(), MusicRecordingError> {
+    pub(crate) fn set_isrc_code(
+        &mut self,
+        isrc_code: Option<String>,
+    ) -> Result<(), MusicRecordingError> {
         self.isrc_code = Self::validate_isrc_code(isrc_code)?;
         Ok(())
     }
@@ -130,7 +145,7 @@ impl MusicRecording {
     /// # Errors
     ///
     /// Returns [`MusicRecordingError::InvalidName`] when `name` is empty.
-    pub fn set_name(&mut self, name: Option<String>) -> Result<(), MusicRecordingError> {
+    pub(crate) fn set_name(&mut self, name: Option<String>) -> Result<(), MusicRecordingError> {
         self.name = Self::validate_name(name)?;
         Ok(())
     }
@@ -142,7 +157,7 @@ impl MusicRecording {
     /// Returns [`MusicRecordingError::InvalidName`] when `name` is empty, and
     /// [`MusicRecordingError::InvalidIsrcCode`] when `isrc_code` is not exactly
     /// [`ISRC_CODE_LENGTH`] characters long.
-    pub fn try_new(
+    pub(crate) fn try_new(
         id: NumericID,
         name: Option<String>,
         isrc_code: Option<String>,

@@ -13,10 +13,14 @@
 //! addresses are followed, but only to a host already on its own allow-list. A
 //! failed download yields no artwork and one catalogued event; it never fails
 //! the lookup.
+#![allow(
+    dead_code,
+    reason = "the artwork client keeps its download method and client field; the video metadata path that reads them has no caller yet"
+)]
 
-pub mod musicbrainz;
-pub mod omdb;
-pub mod tmdb;
+pub(crate) mod musicbrainz;
+pub(crate) mod omdb;
+pub(crate) mod tmdb;
 
 use std::time::Duration;
 

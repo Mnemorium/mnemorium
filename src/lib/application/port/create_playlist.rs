@@ -7,7 +7,7 @@ use crate::domain::model::music_playlist::MusicPlaylist;
 /// Command to create a playlist owned by the caller.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct CreatePlaylistCommand {
+pub(crate) struct CreatePlaylistCommand {
     /// Identifier of the authenticated caller that will own the playlist.
     caller_id: NumericID,
     /// Whether any authenticated user may read and moderate the playlist.
@@ -19,25 +19,25 @@ pub struct CreatePlaylistCommand {
 impl CreatePlaylistCommand {
     /// Return the identifier of the authenticated caller.
     #[must_use]
-    pub fn caller_id(&self) -> NumericID {
+    pub(crate) fn caller_id(&self) -> NumericID {
         self.caller_id
     }
 
     /// Return whether the playlist is public.
     #[must_use]
-    pub fn is_public(&self) -> bool {
+    pub(crate) fn is_public(&self) -> bool {
         self.is_public
     }
 
     /// Return the name of the playlist.
     #[must_use]
-    pub fn name(&self) -> &str {
+    pub(crate) fn name(&self) -> &str {
         &self.name
     }
 
     /// Create a new create-playlist command.
     #[must_use]
-    pub fn new(caller_id: NumericID, name: String, is_public: bool) -> Self {
+    pub(crate) fn new(caller_id: NumericID, name: String, is_public: bool) -> Self {
         Self {
             caller_id,
             is_public,
@@ -49,7 +49,7 @@ impl CreatePlaylistCommand {
 /// Response of a successful playlist creation.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct CreatePlaylistResponse {
+pub(crate) struct CreatePlaylistResponse {
     /// The created playlist.
     playlist: MusicPlaylist,
 }
@@ -57,13 +57,13 @@ pub struct CreatePlaylistResponse {
 impl CreatePlaylistResponse {
     /// Create a new create-playlist response.
     #[must_use]
-    pub fn new(playlist: MusicPlaylist) -> Self {
+    pub(crate) fn new(playlist: MusicPlaylist) -> Self {
         Self { playlist }
     }
 
     /// Return the created playlist.
     #[must_use]
-    pub fn playlist(&self) -> &MusicPlaylist {
+    pub(crate) fn playlist(&self) -> &MusicPlaylist {
         &self.playlist
     }
 }
@@ -71,7 +71,7 @@ impl CreatePlaylistResponse {
 /// Error returned when creating a playlist.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
-pub enum CreatePlaylistError {
+pub(crate) enum CreatePlaylistError {
     /// The name is empty or made only of whitespace.
     #[error("playlist name must not be empty")]
     InvalidName,
@@ -91,7 +91,7 @@ pub enum CreatePlaylistError {
 
 /// Use case for creating a playlist.
 #[cfg_attr(test, mockall::automock)]
-pub trait CreatePlaylistUseCase: Send + Sync {
+pub(crate) trait CreatePlaylistUseCase: Send + Sync {
     /// Create a playlist owned by the authenticated caller.
     fn execute<'future>(
         &'future self,

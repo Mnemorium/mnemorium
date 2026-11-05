@@ -8,8 +8,11 @@ files:
 rule:
   all:
     - kind: trait_item
-    - pattern: pub trait $TRAIT
-    - regex: '^pub trait \w+UseCase\b'
+    - any:
+        - pattern: pub trait $TRAIT
+        - pattern: pub(crate) trait $TRAIT
+        - pattern: trait $TRAIT
+    - regex: '^(pub(\(crate\))? )?trait \w+UseCase\b'
     - precedes:
         any:
           - kind: struct_item

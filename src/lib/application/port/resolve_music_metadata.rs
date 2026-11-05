@@ -8,7 +8,7 @@ use crate::domain::model::music_metadata::MusicMetadata;
 /// Command for one music metadata resolution run.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct ResolveMusicMetadataCommand {
+pub(crate) struct ResolveMusicMetadataCommand {
     /// Caller on whose behalf the resolution runs.
     caller_id: NumericID,
     /// The item whose metadata the caller wants resolved.
@@ -18,19 +18,19 @@ pub struct ResolveMusicMetadataCommand {
 impl ResolveMusicMetadataCommand {
     /// Return the caller the resolution runs for.
     #[must_use]
-    pub fn caller_id(&self) -> NumericID {
+    pub(crate) fn caller_id(&self) -> NumericID {
         self.caller_id
     }
 
     /// Create a new command.
     #[must_use]
-    pub fn new(caller_id: NumericID, target: MusicTarget) -> Self {
+    pub(crate) fn new(caller_id: NumericID, target: MusicTarget) -> Self {
         Self { caller_id, target }
     }
 
     /// Return the item to resolve.
     #[must_use]
-    pub fn target(&self) -> &MusicTarget {
+    pub(crate) fn target(&self) -> &MusicTarget {
         &self.target
     }
 }
@@ -41,7 +41,7 @@ impl ResolveMusicMetadataCommand {
 /// the provider does not know is reported as no response, not as an error.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct ResolveMusicMetadataResponse {
+pub(crate) struct ResolveMusicMetadataResponse {
     /// Metadata the provider reported for the target.
     metadata: MusicMetadata,
 }
@@ -49,13 +49,13 @@ pub struct ResolveMusicMetadataResponse {
 impl ResolveMusicMetadataResponse {
     /// Return the metadata the provider reported.
     #[must_use]
-    pub fn metadata(&self) -> &MusicMetadata {
+    pub(crate) fn metadata(&self) -> &MusicMetadata {
         &self.metadata
     }
 
     /// Create a new response.
     #[must_use]
-    pub fn new(metadata: MusicMetadata) -> Self {
+    pub(crate) fn new(metadata: MusicMetadata) -> Self {
         Self { metadata }
     }
 }
@@ -63,7 +63,7 @@ impl ResolveMusicMetadataResponse {
 /// Error returned when resolving music metadata fails.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
-pub enum ResolveMusicMetadataError {
+pub(crate) enum ResolveMusicMetadataError {
     /// The caller does not exist.
     #[error("the caller does not exist")]
     NoSuchCaller,
@@ -86,7 +86,7 @@ pub enum ResolveMusicMetadataError {
 /// It resolves once, reports an item the provider does not know as no response
 /// and never persists or logs the target. It is guarded by `library.read`.
 #[cfg_attr(test, mockall::automock)]
-pub trait ResolveMusicMetadataUseCase: Send + Sync {
+pub(crate) trait ResolveMusicMetadataUseCase: Send + Sync {
     /// Resolve the command's target through the configured provider, reporting
     /// an item the provider does not know as `Ok(None)`.
     ///

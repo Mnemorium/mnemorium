@@ -6,7 +6,7 @@
 /// three-way choice, which a nested `Option` expresses only ambiguously.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 #[non_exhaustive]
-pub enum FieldUpdate<T> {
+pub(crate) enum FieldUpdate<T> {
     /// The request does not name the field; the stored value is kept.
     #[default]
     Absent,
@@ -22,7 +22,7 @@ impl<T> FieldUpdate<T> {
     /// An absent field keeps `stored`, a cleared field drops it, and a set field
     /// replaces it.
     #[must_use]
-    pub fn resolve(self, stored: Option<T>) -> Option<T> {
+    pub(crate) fn resolve(self, stored: Option<T>) -> Option<T> {
         match self {
             Self::Absent => stored,
             Self::Clear => None,
@@ -36,7 +36,7 @@ impl<T> FieldUpdate<T> {
     ///
     /// Returns the error `map` produces for a set value; an absent or cleared
     /// field never fails.
-    pub fn try_map<U, E, F>(self, map: F) -> Result<FieldUpdate<U>, E>
+    pub(crate) fn try_map<U, E, F>(self, map: F) -> Result<FieldUpdate<U>, E>
     where
         F: FnOnce(T) -> Result<U, E>,
     {

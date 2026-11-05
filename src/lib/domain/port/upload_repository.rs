@@ -8,7 +8,7 @@ use crate::domain::port::error::RepositoryError;
 /// an all-`None` filter returns every upload.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct UploadFilter {
+pub(crate) struct UploadFilter {
     /// Filter on the upload identifier.
     pub upload_id: Option<NumericID>,
     /// Filter on the owning user identifier.
@@ -17,7 +17,7 @@ pub struct UploadFilter {
 
 /// Port for persisting and querying `Upload`.
 #[cfg_attr(test, mockall::automock)]
-pub trait UploadRepository: Send + Sync {
+pub(crate) trait UploadRepository: Send + Sync {
     /// Insert a new `upload`, returning the persisted upload with its final
     /// identifier.
     ///

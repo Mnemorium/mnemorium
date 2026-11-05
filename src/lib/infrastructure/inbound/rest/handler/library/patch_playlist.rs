@@ -19,7 +19,7 @@ use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 /// A recording to append to a playlist.
 #[derive(Debug, Deserialize, ToSchema)]
 #[non_exhaustive]
-pub struct AddPlaylistTrackRequest {
+pub(crate) struct AddPlaylistTrackRequest {
     /// Identifier of the shared recording to append.
     pub recording_id: NumericID,
 }
@@ -32,7 +32,7 @@ pub struct AddPlaylistTrackRequest {
 /// may moderate but not manage is rejected as a whole.
 #[derive(Debug, Deserialize, ToSchema)]
 #[non_exhaustive]
-pub struct PatchPlaylistRequest {
+pub(crate) struct PatchPlaylistRequest {
     /// Recording to append to the playlist, when requested.
     pub add_track: Option<AddPlaylistTrackRequest>,
     /// New visibility, when requested.
@@ -123,7 +123,7 @@ pub struct PatchPlaylistRequest {
     ),
     summary = "Update a music playlist"
 )]
-pub async fn patch_playlist(
+pub(crate) async fn patch_playlist(
     Path(playlist_id_value): Path<String>,
     State(state): State<AppState>,
     caller: AuthenticatedUser,

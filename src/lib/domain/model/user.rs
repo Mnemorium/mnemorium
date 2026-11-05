@@ -13,12 +13,16 @@ use crate::domain::model::permission::ResourceRef;
 /// Error returned when initialising or updating a `User`.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
-pub enum UserError {
+pub(crate) enum UserError {
     /// The email does not respect a valid email format.
     #[error("email has an invalid format")]
     InvalidEmail(#[from] email_address::Error),
     /// An unexpected or unmapped error occurred.
     #[error("an unknown error occurred: {0}")]
+    #[expect(
+        dead_code,
+        reason = "the error enum keeps the catch-all variant the rulebook's error shape declares; no caller constructs it yet"
+    )]
     Unknown(#[source] anyhow::Error),
 }
 
@@ -28,8 +32,10 @@ pub enum UserError {
 )]
 #[serde(rename_all = "UPPERCASE")]
 #[non_exhaustive]
-pub enum Role {
+pub(crate) enum Role {
+    /// A user who may administer the instance.
     Admin,
+    /// A regular user.
     Standard,
 }
 
@@ -41,7 +47,7 @@ impl Role {
     /// (`OBS-006`). The names match the `serde(rename_all = "UPPERCASE")`
     /// representation of [`Role`].
     #[must_use]
-    pub fn from_wire(value: &str) -> Option<Self> {
+    pub(crate) fn from_wire(value: &str) -> Option<Self> {
         match value {
             "ADMIN" => Some(Self::Admin),
             "STANDARD" => Some(Self::Standard),
@@ -52,7 +58,7 @@ impl Role {
 
 /// A user account.
 #[derive(Clone, PartialEq, Eq)]
-pub struct User {
+pub(crate) struct User {
     /// Identifier of the credential used to authenticate the user.
     credential_id: NumericID,
     /// Email address of the user, when set.
@@ -68,32 +74,32 @@ pub struct User {
 impl User {
     /// Return the identifier of the credential used to authenticate the user.
     #[must_use]
-    pub fn credential_id(&self) -> NumericID {
+    pub(crate) fn credential_id(&self) -> NumericID {
         self.credential_id
     }
 
     /// Return the email, if any.
     #[must_use]
-    pub fn email(&self) -> Option<&str> {
+    pub(crate) fn email(&self) -> Option<&str> {
         self.email.as_deref()
     }
 
     /// Return the user identifier.
     #[must_use]
-    pub fn id(&self) -> NumericID {
+    pub(crate) fn id(&self) -> NumericID {
         self.id
     }
 
     /// Return whether the user is the Root Admin: the `Role::Admin` account
     /// with identifier `0`.
     #[must_use]
-    pub fn is_root_admin(&self) -> bool {
+    pub(crate) fn is_root_admin(&self) -> bool {
         self.role == Role::Admin && self.id == 0
     }
 
     /// Return the role.
     #[must_use]
-    pub fn role(&self) -> Role {
+    pub(crate) fn role(&self) -> Role {
         self.role
     }
 
@@ -103,13 +109,13 @@ impl User {
     ///
     /// Returns [`UserError::InvalidEmail`] when `email` is not a valid email
     /// address.
-    pub fn set_email(&mut self, email: Option<String>) -> Result<(), UserError> {
+    pub(crate) fn set_email(&mut self, email: Option<String>) -> Result<(), UserError> {
         self.email = Self::validate_email(email)?;
         Ok(())
     }
 
     /// Update the role.
-    pub fn set_role(&mut self, role: Role) {
+    pub(crate) fn set_role(&mut self, role: Role) {
         self.role = role;
     }
 
@@ -118,7 +124,7 @@ impl User {
     /// The caller is responsible for validating the value through
     /// [`UsernamePolicy`](crate::domain::service::username_policy::UsernamePolicy);
     /// the model stores it unchanged.
-    pub fn set_username(&mut self, username: String) {
+    pub(crate) fn set_username(&mut self, username: String) {
         self.username = username;
     }
 
@@ -132,7 +138,7 @@ impl User {
     ///
     /// Returns [`UserError::InvalidEmail`] when `email` is not a valid email
     /// address.
-    pub fn try_new(
+    pub(crate) fn try_new(
         id: NumericID,
         username: String,
         email: Option<String>,
@@ -151,7 +157,7 @@ impl User {
 
     /// Return the username.
     #[must_use]
-    pub fn username(&self) -> &str {
+    pub(crate) fn username(&self) -> &str {
         &self.username
     }
 

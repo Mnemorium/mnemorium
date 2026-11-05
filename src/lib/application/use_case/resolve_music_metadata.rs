@@ -28,7 +28,7 @@ use crate::domain::service::authorization::Decision;
 /// the configured provider and never persists or logs the target. It is guarded
 /// by `library.read`: the resolution addresses no catalogue resource, so a
 /// denial conceals the whole surface rather than one album.
-pub struct ResolveMusicMetadata<F, P> {
+pub(crate) struct ResolveMusicMetadata<F, P> {
     /// Configured provider, absent when music identification is unavailable.
     metadata_provider: Option<Arc<P>>,
     /// Factory opening the unit of work wrapping the caller load and the lookup.
@@ -38,7 +38,7 @@ pub struct ResolveMusicMetadata<F, P> {
 impl<F: UnitOfWorkFactory, P: MusicMetadataProvider> ResolveMusicMetadata<F, P> {
     /// Create a new use case.
     #[must_use]
-    pub fn new(unit_of_work_factory: Arc<F>, metadata_provider: Option<Arc<P>>) -> Self {
+    pub(crate) fn new(unit_of_work_factory: Arc<F>, metadata_provider: Option<Arc<P>>) -> Self {
         Self {
             metadata_provider,
             unit_of_work_factory,

@@ -12,7 +12,7 @@ use crate::domain::model::permission::ResourceRef;
 /// Error returned when initialising or updating a `File`.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
-pub enum FileError {
+pub(crate) enum FileError {
     /// The integrity hash is malformed.
     #[error(transparent)]
     IntegrityHash(#[from] IntegrityHashError),
@@ -24,6 +24,10 @@ pub enum FileError {
     PathEmpty,
     /// An unexpected or unmapped error occurred.
     #[error("an unknown error occurred: {0}")]
+    #[expect(
+        dead_code,
+        reason = "the error enum keeps the catch-all variant the rulebook's error shape declares; no caller constructs it yet"
+    )]
     Unknown(#[source] anyhow::Error),
 }
 
@@ -34,7 +38,7 @@ pub enum FileError {
 /// did not create, which a future deletion policy must never remove.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 #[non_exhaustive]
-pub enum Origin {
+pub(crate) enum Origin {
     /// The bytes were found under the library root and were not written by the
     /// server.
     #[default]
@@ -47,7 +51,7 @@ pub enum Origin {
 impl Origin {
     /// Return the persisted representation.
     #[must_use]
-    pub fn as_str(self) -> &'static str {
+    pub(crate) fn as_str(self) -> &'static str {
         match self {
             Self::Scanned => "SCANNED",
             Self::Uploaded => "UPLOADED",
@@ -56,7 +60,7 @@ impl Origin {
 
     /// Parse the persisted representation, or `None` when it is not known.
     #[must_use]
-    pub fn parse(value: &str) -> Option<Self> {
+    pub(crate) fn parse(value: &str) -> Option<Self> {
         match value {
             "SCANNED" => Some(Self::Scanned),
             "UPLOADED" => Some(Self::Uploaded),
@@ -67,7 +71,7 @@ impl Origin {
 
 /// A file stored on the server.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct File {
+pub(crate) struct File {
     /// Unique identifier of the file.
     id: NumericID,
     /// Integrity hash of the file content, absent for a scanned file.
@@ -93,53 +97,64 @@ pub struct File {
 impl File {
     /// Return the unique identifier.
     #[must_use]
-    pub fn id(&self) -> NumericID {
+    pub(crate) fn id(&self) -> NumericID {
         self.id
     }
 
     /// Return the integrity hash of the file content, if it carries one.
     #[must_use]
-    pub fn integrity_hash(&self) -> Option<&IntegrityHash<DIGEST_HEX_LENGTH>> {
+    pub(crate) fn integrity_hash(&self) -> Option<&IntegrityHash<DIGEST_HEX_LENGTH>> {
         self.integrity_hash.as_ref()
     }
 
     /// Return whether the file is publicly accessible.
     #[must_use]
-    pub fn is_public(&self) -> bool {
+    pub(crate) fn is_public(&self) -> bool {
         self.is_public
     }
 
     /// Return the mime type identifier.
     #[must_use]
-    pub fn mime_type_id(&self) -> &str {
+    pub(crate) fn mime_type_id(&self) -> &str {
         &self.mime_type_id
     }
 
     /// Return the instant at which the content was last modified.
     #[must_use]
-    pub fn modified_at(&self) -> NaiveDateTime {
+    pub(crate) fn modified_at(&self) -> NaiveDateTime {
         self.modified_at
     }
 
     /// Return the origin of the file's bytes.
     #[must_use]
-    pub fn origin(&self) -> Origin {
+    pub(crate) fn origin(&self) -> Origin {
         self.origin
     }
 
     /// Return the path relative to the library root.
     #[must_use]
-    pub fn path(&self) -> &str {
+    pub(crate) fn path(&self) -> &str {
         &self.path
     }
 
     /// Update the `integrity_hash`.
-    pub fn set_integrity_hash(&mut self, integrity_hash: IntegrityHash<DIGEST_HEX_LENGTH>) {
+    #[expect(
+        dead_code,
+        reason = "part of the type's declared contract; no caller exercises it yet"
+    )]
+    fn set_integrity_hash(&mut self, integrity_hash: IntegrityHash<DIGEST_HEX_LENGTH>) {
         self.integrity_hash = Some(integrity_hash);
     }
 
     /// Update whether the file is publicly accessible.
-    pub fn set_is_public(&mut self, is_public: bool) {
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "part of the type's declared contract; no caller exercises it yet"
+        )
+    )]
+    pub(crate) fn set_is_public(&mut self, is_public: bool) {
         self.is_public = is_public;
     }
 
@@ -148,14 +163,14 @@ impl File {
     /// # Errors
     ///
     /// Returns [`FileError::PathEmpty`] when `path` is empty.
-    pub fn set_path(&mut self, path: String) -> Result<(), FileError> {
+    pub(crate) fn set_path(&mut self, path: String) -> Result<(), FileError> {
         self.path = Self::validate_path(path)?;
         Ok(())
     }
 
     /// Return the size of the content, in bytes.
     #[must_use]
-    pub fn size_bytes(&self) -> i64 {
+    pub(crate) fn size_bytes(&self) -> i64 {
         self.size_bytes
     }
 
@@ -171,7 +186,7 @@ impl File {
         clippy::too_many_arguments,
         reason = "try_new mirrors all file columns"
     )]
-    pub fn try_new(
+    pub(crate) fn try_new(
         id: NumericID,
         path: String,
         user_id: NumericID,
@@ -203,13 +218,13 @@ impl File {
 
     /// Return the date at which the file was uploaded.
     #[must_use]
-    pub fn uploaded_at(&self) -> NaiveDate {
+    pub(crate) fn uploaded_at(&self) -> NaiveDate {
         self.uploaded_at
     }
 
     /// Return the identifier of the owning user.
     #[must_use]
-    pub fn user_id(&self) -> NumericID {
+    pub(crate) fn user_id(&self) -> NumericID {
         self.user_id
     }
 

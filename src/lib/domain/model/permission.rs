@@ -9,7 +9,7 @@ use crate::domain::model::user::Role;
 /// Error returned when initialising a `Permission`.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
-pub enum PermissionError {
+pub(crate) enum PermissionError {
     /// The action repeats inside the permission set.
     #[error("the action repeats inside the permission set")]
     DuplicateAction,
@@ -24,6 +24,10 @@ pub enum PermissionError {
     NotConfigurable,
     /// An unexpected or unmapped error occurred.
     #[error("an unknown error occurred: {0}")]
+    #[expect(
+        dead_code,
+        reason = "the error enum keeps the catch-all variant the rulebook's error shape declares; no caller constructs it yet"
+    )]
     Unknown(#[source] anyhow::Error),
     /// The `LISTED` scope names a resource kind the action does not target.
     #[error("the action does not target the listed resource kind")]
@@ -36,7 +40,7 @@ pub enum PermissionError {
 /// Kind of aggregate a `LISTED` scope names.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[non_exhaustive]
-pub enum ResourceKind {
+pub(crate) enum ResourceKind {
     /// A stored file.
     File,
     /// A gallery.
@@ -61,7 +65,7 @@ impl ResourceKind {
     /// The names are the values persisted in
     /// `permission_resource.resource_type`.
     #[must_use]
-    pub fn as_wire(self) -> &'static str {
+    pub(crate) fn as_wire(self) -> &'static str {
         match self {
             Self::File => "FILE",
             Self::Gallery => "GALLERY",
@@ -78,7 +82,7 @@ impl ResourceKind {
     ///
     /// Returns `None` when `value` is not one of the persisted names.
     #[must_use]
-    pub fn from_wire(value: &str) -> Option<Self> {
+    pub(crate) fn from_wire(value: &str) -> Option<Self> {
         match value {
             "FILE" => Some(Self::File),
             "GALLERY" => Some(Self::Gallery),
@@ -95,7 +99,7 @@ impl ResourceKind {
 
 /// Reference to one aggregate a `LISTED` scope names.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct ResourceRef {
+pub(crate) struct ResourceRef {
     /// Identifier of the aggregate.
     id: NumericID,
     /// Kind of the aggregate.
@@ -105,19 +109,19 @@ pub struct ResourceRef {
 impl ResourceRef {
     /// Initialise a new `ResourceRef`.
     #[must_use]
-    pub fn new(kind: ResourceKind, id: NumericID) -> Self {
+    pub(crate) fn new(kind: ResourceKind, id: NumericID) -> Self {
         Self { id, kind }
     }
 
     /// Return the identifier of the aggregate.
     #[must_use]
-    pub fn id(self) -> NumericID {
+    pub(crate) fn id(self) -> NumericID {
         self.id
     }
 
     /// Return the kind of the aggregate.
     #[must_use]
-    pub fn kind(self) -> ResourceKind {
+    pub(crate) fn kind(self) -> ResourceKind {
         self.kind
     }
 }
@@ -126,7 +130,7 @@ impl ResourceRef {
 ///
 /// A collection-wide or creation action addresses no resource and uses
 /// [`Global`] instead.
-pub trait Protected {
+pub(crate) trait Protected {
     /// Return whether `self` is an account only the Root Admin may update.
     ///
     /// The relation guard refuses an administration action on another
@@ -148,7 +152,7 @@ pub trait Protected {
 
 /// The resource an action addresses when it targets no single aggregate.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Global;
+pub(crate) struct Global;
 
 impl Protected for Global {
     fn is_privileged_account(&self) -> bool {
@@ -169,21 +173,21 @@ impl Protected for Global {
 }
 
 /// Every scope a content action supports.
-pub const CONTENT_SCOPES: [&str; 5] = ["ALL", "LISTED", "NONE", "OWNED", "PUBLIC_OR_OWNED"];
+const CONTENT_SCOPES: [&str; 5] = ["ALL", "LISTED", "NONE", "OWNED", "PUBLIC_OR_OWNED"];
 
 /// The scopes a global or administration action supports.
-pub const GLOBAL_SCOPES: [&str; 2] = ["ALL", "NONE"];
+const GLOBAL_SCOPES: [&str; 2] = ["ALL", "NONE"];
 
 /// The scopes a library management action supports.
-pub const LIBRARY_MANAGE_SCOPES: [&str; 3] = ["ALL", "LISTED", "NONE"];
+const LIBRARY_MANAGE_SCOPES: [&str; 3] = ["ALL", "LISTED", "NONE"];
 
 /// The only scope an upload action supports.
-pub const OWNER_SCOPES: [&str; 1] = ["OWNED"];
+const OWNER_SCOPES: [&str; 1] = ["OWNED"];
 
 /// Scope an action grants over a resource family.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub enum Scope {
+pub(crate) enum Scope {
     /// Every resource of the action's family.
     All,
     /// Exactly the named aggregates.
@@ -206,7 +210,7 @@ impl Scope {
         clippy::pattern_type_mismatch,
         reason = "the scope owns its listed resources, so its methods match a reference"
     )]
-    pub fn as_wire(&self) -> &'static str {
+    pub(crate) fn as_wire(&self) -> &'static str {
         match self {
             Self::All => "ALL",
             Self::Listed(_) => "LISTED",
@@ -222,7 +226,7 @@ impl Scope {
         clippy::pattern_type_mismatch,
         reason = "the scope owns its listed resources, so its methods match a reference"
     )]
-    pub fn covers<P: Protected + ?Sized>(&self, caller_id: NumericID, resource: &P) -> bool {
+    pub(crate) fn covers<P: Protected + ?Sized>(&self, caller_id: NumericID, resource: &P) -> bool {
         match self {
             Self::All => true,
             Self::Listed(resources) => resource
@@ -241,7 +245,7 @@ impl Scope {
     /// `LISTED` parses to an empty list: the named aggregates come from the
     /// child table, and [`Permission::try_new`] rejects the empty list.
     #[must_use]
-    pub fn from_wire(value: &str) -> Option<Self> {
+    pub(crate) fn from_wire(value: &str) -> Option<Self> {
         match value {
             "ALL" => Some(Self::All),
             "LISTED" => Some(Self::Listed(Vec::new())),
@@ -254,7 +258,7 @@ impl Scope {
 
     /// Return whether `self` is one of `supported`, comparing wire names.
     #[must_use]
-    pub fn is_supported_by(&self, supported: &[&str]) -> bool {
+    pub(crate) fn is_supported_by(&self, supported: &[&str]) -> bool {
         supported.contains(&self.as_wire())
     }
 
@@ -267,7 +271,7 @@ impl Scope {
 /// How the Root Admin reaches an action.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
-pub enum RootAccess {
+pub(crate) enum RootAccess {
     /// The Root Admin is always allowed.
     All,
     /// The Root Admin falls through to the role preset like every caller.
@@ -277,7 +281,7 @@ pub enum RootAccess {
 /// An authorizable operation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[non_exhaustive]
-pub enum Action {
+pub(crate) enum Action {
     /// Read the film, show and album catalogue.
     LibraryRead,
     /// Write a film, show or album catalogue item.
@@ -319,7 +323,7 @@ pub enum Action {
 }
 
 /// Every action in the catalog.
-pub const ACTIONS: [Action; 19] = [
+pub(crate) const ACTIONS: [Action; 19] = [
     Action::LibraryRead,
     Action::LibraryManage,
     Action::CredentialPatch,
@@ -347,7 +351,7 @@ impl Action {
     /// The names are the values persisted in `permission.action` and the ones
     /// `docs/Permissions.md` documents.
     #[must_use]
-    pub fn as_wire(self) -> &'static str {
+    pub(crate) fn as_wire(self) -> &'static str {
         match self {
             Self::LibraryManage => "library.manage",
             Self::LibraryRead => "library.read",
@@ -377,7 +381,7 @@ impl Action {
     /// moderation action conceals only when the caller cannot read the
     /// resource (`Authorization::decide` evaluates the matching read action).
     #[must_use]
-    pub fn conceals_denial(self) -> bool {
+    pub(crate) fn conceals_denial(self) -> bool {
         matches!(
             self,
             Self::LibraryRead
@@ -393,7 +397,7 @@ impl Action {
     ///
     /// Returns `None` when `value` is not one of the catalog's names.
     #[must_use]
-    pub fn from_wire(value: &str) -> Option<Self> {
+    pub(crate) fn from_wire(value: &str) -> Option<Self> {
         ACTIONS.into_iter().find(|action| action.as_wire() == value)
     }
 
@@ -404,7 +408,7 @@ impl Action {
     /// asset. [`Self::FileRead`] is derived from the resource owning the file
     /// (`library.read`, `gallery.read` or `playlist.read`).
     #[must_use]
-    pub fn is_derived(self) -> bool {
+    pub(crate) fn is_derived(self) -> bool {
         matches!(self, Self::FileRead)
     }
 
@@ -413,7 +417,7 @@ impl Action {
     /// A derived action is never configurable: its scope comes from the
     /// resource that owns the asset, never from a per-user override.
     #[must_use]
-    pub fn is_configurable(self) -> bool {
+    pub(crate) fn is_configurable(self) -> bool {
         !self.is_derived()
             && !matches!(
                 self,
@@ -423,7 +427,7 @@ impl Action {
 
     /// Return the read action guarding `self`, if any.
     #[must_use]
-    pub fn read_action(self) -> Option<Self> {
+    pub(crate) fn read_action(self) -> Option<Self> {
         match self {
             Self::GalleryManage | Self::GalleryModerate => Some(Self::GalleryRead),
             Self::PlaylistManage | Self::PlaylistModerate => Some(Self::PlaylistRead),
@@ -447,7 +451,7 @@ impl Action {
 
     /// Return the kinds a `LISTED` scope may name for the action.
     #[must_use]
-    pub fn resource_kinds(self) -> &'static [ResourceKind] {
+    pub(crate) fn resource_kinds(self) -> &'static [ResourceKind] {
         match self {
             Self::LibraryManage | Self::LibraryRead => &[
                 ResourceKind::Movie,
@@ -475,7 +479,7 @@ impl Action {
 
     /// Return the scope a `role` obtains when the caller has no override.
     #[must_use]
-    pub fn role_scope(self, role: Role) -> Scope {
+    pub(crate) fn role_scope(self, role: Role) -> Scope {
         match self {
             Self::LibraryRead
             | Self::GalleryModerate
@@ -511,7 +515,7 @@ impl Action {
 
     /// Return how the Root Admin reaches the action.
     #[must_use]
-    pub fn root_access(self) -> RootAccess {
+    pub(crate) fn root_access(self) -> RootAccess {
         match self {
             Self::UploadRead | Self::UploadWrite => RootAccess::OwnerOnly,
             Self::LibraryManage
@@ -536,7 +540,7 @@ impl Action {
 
     /// Return the scopes the action supports.
     #[must_use]
-    pub fn supported_scopes(self) -> &'static [&'static str] {
+    pub(crate) fn supported_scopes(self) -> &'static [&'static str] {
         match self {
             Self::UploadRead | Self::UploadWrite => &OWNER_SCOPES,
             Self::LibraryManage => &LIBRARY_MANAGE_SCOPES,
@@ -561,7 +565,7 @@ impl Action {
 
     /// Return the event target the action names on a denial.
     #[must_use]
-    pub fn target(self) -> &'static str {
+    pub(crate) fn target(self) -> &'static str {
         match self {
             Self::LibraryManage | Self::LibraryRead => "library",
             Self::CredentialPatch
@@ -580,7 +584,7 @@ impl Action {
 
     /// Return the event verb the action names on a denial.
     #[must_use]
-    pub fn verb(self) -> &'static str {
+    pub(crate) fn verb(self) -> &'static str {
         match self {
             Self::LibraryRead
             | Self::FileRead
@@ -605,7 +609,7 @@ impl Action {
 
 /// One per-user scope override of an action.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Permission {
+pub(crate) struct Permission {
     /// The action whose default scope the permission overrides.
     action: Action,
     /// The scope the permission grants.
@@ -617,13 +621,13 @@ pub struct Permission {
 impl Permission {
     /// Return the overridden action.
     #[must_use]
-    pub fn action(&self) -> Action {
+    pub(crate) fn action(&self) -> Action {
         self.action
     }
 
     /// Return the granted scope.
     #[must_use]
-    pub fn scope(&self) -> &Scope {
+    pub(crate) fn scope(&self) -> &Scope {
         &self.scope
     }
 
@@ -637,7 +641,7 @@ impl Permission {
     /// scope names no resource, [`PermissionError::DuplicateResource`] when it
     /// repeats one, and [`PermissionError::UnsupportedResourceKind`] when it
     /// names a kind the action does not target.
-    pub fn try_new(
+    pub(crate) fn try_new(
         user_id: NumericID,
         action: Action,
         scope: Scope,
@@ -676,7 +680,7 @@ impl Permission {
 
     /// Return the user the permission applies to.
     #[must_use]
-    pub fn user_id(&self) -> NumericID {
+    pub(crate) fn user_id(&self) -> NumericID {
         self.user_id
     }
 
@@ -686,7 +690,7 @@ impl Permission {
     ///
     /// Returns [`PermissionError::DuplicateAction`] when two permissions name
     /// the same action.
-    pub fn validate_set(permissions: &[Self]) -> Result<(), PermissionError> {
+    pub(crate) fn validate_set(permissions: &[Self]) -> Result<(), PermissionError> {
         let mut seen = Vec::with_capacity(permissions.len());
         for permission in permissions {
             if seen.contains(&permission.action()) {
@@ -700,7 +704,7 @@ impl Permission {
 
 /// One action's role preset scope.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PermissionPreset {
+pub(crate) struct PermissionPreset {
     /// The action the preset describes.
     action: Action,
     /// The scope the role grants.
@@ -710,19 +714,19 @@ pub struct PermissionPreset {
 impl PermissionPreset {
     /// Initialise a new `PermissionPreset`.
     #[must_use]
-    pub fn new(action: Action, scope: Scope) -> Self {
+    pub(crate) fn new(action: Action, scope: Scope) -> Self {
         Self { action, scope }
     }
 
     /// Return the action the preset describes.
     #[must_use]
-    pub fn action(&self) -> Action {
+    pub(crate) fn action(&self) -> Action {
         self.action
     }
 
     /// Return the scope the role grants.
     #[must_use]
-    pub fn scope(&self) -> &Scope {
+    pub(crate) fn scope(&self) -> &Scope {
         &self.scope
     }
 }

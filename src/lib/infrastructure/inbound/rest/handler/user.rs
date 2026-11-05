@@ -1,7 +1,11 @@
-pub mod get_me;
-pub mod get_user;
-pub mod get_user_list;
-pub mod patch_user;
+/// The user context endpoints.
+pub(crate) mod get_me;
+/// The user context endpoints.
+pub(crate) mod get_user;
+/// The user context endpoints.
+pub(crate) mod get_user_list;
+/// The user context endpoints.
+pub(crate) mod patch_user;
 
 use axum::middleware;
 use serde::Serialize;
@@ -24,7 +28,7 @@ use crate::infrastructure::outbound::jwt::token_provider::JwtTokenProvider;
 /// User returned by a successful lookup.
 #[derive(Debug, Serialize, ToSchema)]
 #[non_exhaustive]
-pub struct GetUserResponse {
+pub(crate) struct GetUserResponse {
     /// Email address of the user, when one was provided.
     #[schema(format = "email")]
     pub email: Option<String>,
@@ -96,7 +100,7 @@ pub(crate) fn user_router() -> OpenApiRouter<AppState> {
 /// Routes of the user bounded context.
 ///
 /// Every route requires an authenticated caller.
-pub fn user_routes(state: &AppState) -> OpenApiRouter<()> {
+pub(crate) fn user_routes(state: &AppState) -> OpenApiRouter<()> {
     user_router()
         .route_layer(middleware::from_fn_with_state(
             state.clone(),

@@ -1,9 +1,14 @@
+#![allow(
+    dead_code,
+    reason = "the port error contract declares the catch-all and failure variants that no adapter constructs yet"
+)]
+
 //! Error types raised by the outbound port adapters.
 
 /// Error returned when a repository operation fails.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
-pub enum RepositoryError {
+pub(crate) enum RepositoryError {
     /// The entity already exists and cannot be created again. Typically caused
     /// by duplicate business keys or unique constraints.
     #[error("the entity already exists and cannot be created again")]
@@ -43,7 +48,7 @@ pub enum RepositoryError {
 /// Error returned when an external service operation fails.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
-pub enum ExternalServiceError {
+pub(crate) enum ExternalServiceError {
     /// A network, protocol, or transport-level error occurred while
     /// communicating with the service.
     #[error(
@@ -103,7 +108,7 @@ impl ExternalServiceError {
         clippy::pattern_type_mismatch,
         reason = "the arms name copies of a non-Copy error matched by reference"
     )]
-    pub fn classification(&self) -> &'static str {
+    pub(crate) fn classification(&self) -> &'static str {
         match self {
             Self::CommunicationFailure => "communication_failure",
             Self::DependencyFailure => "dependency_failure",
@@ -124,7 +129,7 @@ impl ExternalServiceError {
 /// Error returned when a content hashing operation fails.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
-pub enum ContentHasherError {
+pub(crate) enum ContentHasherError {
     /// The content hashing could not complete for a non-specific reason.
     #[error("the content hashing operation could not complete for a non-specific reason")]
     OperationFailed,
@@ -136,7 +141,7 @@ pub enum ContentHasherError {
 /// Error returned when a pepper generation operation fails.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
-pub enum SecretGeneratorError {
+pub(crate) enum SecretGeneratorError {
     /// The pepper generation could not complete for a non-specific reason.
     #[error("the pepper generation operation could not complete for a non-specific reason")]
     OperationFailed,
@@ -148,7 +153,7 @@ pub enum SecretGeneratorError {
 /// Error returned when a password hashing operation fails.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
-pub enum PasswordHasherError {
+pub(crate) enum PasswordHasherError {
     /// The password hashing or verification could not complete for a
     /// non-specific reason.
     #[error("the password hashing operation could not complete for a non-specific reason")]
@@ -161,7 +166,7 @@ pub enum PasswordHasherError {
 /// Error returned when a password generation operation fails.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
-pub enum PasswordGeneratorError {
+pub(crate) enum PasswordGeneratorError {
     /// The password generation could not complete for a non-specific reason.
     #[error("the password generation operation could not complete for a non-specific reason")]
     OperationFailed,
@@ -173,7 +178,7 @@ pub enum PasswordGeneratorError {
 /// Error returned when a token provider operation fails.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
-pub enum TokenProviderError {
+pub(crate) enum TokenProviderError {
     /// The claims could not be embedded into a token.
     #[error("the given claims are invalid and cannot be embedded into a token")]
     InvalidClaims,
@@ -197,7 +202,7 @@ pub enum TokenProviderError {
 /// Error returned when a unit of work operation fails.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
-pub enum UnitOfWorkError {
+pub(crate) enum UnitOfWorkError {
     /// The unit of work could not complete for a non-specific reason.
     #[error("the unit of work could not complete for a non-specific reason")]
     OperationFailed,
@@ -212,7 +217,7 @@ pub enum UnitOfWorkError {
 /// Error returned when loading the layered configuration fails.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
-pub enum ConfigurationSourceError {
+pub(crate) enum ConfigurationSourceError {
     /// The configuration file was absent and could not be written.
     #[error("the configuration file could not be written: {0}")]
     FileWriteFailed(#[source] anyhow::Error),
@@ -230,7 +235,7 @@ pub enum ConfigurationSourceError {
 /// Error returned when the instance identity cannot be read or persisted.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
-pub enum InstanceStateStoreError {
+pub(crate) enum InstanceStateStoreError {
     /// A concurrent creator persisted an identity first. The caller must not
     /// replace it: the persisted value is authoritative.
     #[error("another process created the instance identity first")]
@@ -255,7 +260,7 @@ pub enum InstanceStateStoreError {
 /// The message names the environment and never a value (`OBS-004`).
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
-pub enum StateSeedSourceError {
+pub(crate) enum StateSeedSourceError {
     /// The environment cannot be mapped onto the seed fields.
     #[error("the instance state seeds could not be read from the environment: {0}")]
     Unreadable(#[source] envy::Error),
@@ -264,7 +269,7 @@ pub enum StateSeedSourceError {
 /// Error returned when probing a media file fails.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
-pub enum MediaProbeError {
+pub(crate) enum MediaProbeError {
     /// The probe could not complete for a non-specific reason.
     #[error("the media probe could not complete for a non-specific reason")]
     OperationFailed,
@@ -282,7 +287,7 @@ pub enum MediaProbeError {
 /// Error returned when sniffing a file's content type fails.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
-pub enum ContentTypeSnifferError {
+pub(crate) enum ContentTypeSnifferError {
     /// The content could not be read for a non-specific reason.
     #[error("the content type could not be read for a non-specific reason")]
     OperationFailed,
@@ -294,7 +299,7 @@ pub enum ContentTypeSnifferError {
 /// Error returned when discovering files under the library root fails.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
-pub enum MediaSourceError {
+pub(crate) enum MediaSourceError {
     /// The library root could not be walked for a non-specific reason.
     #[error("the library root could not be walked for a non-specific reason")]
     OperationFailed,
@@ -306,7 +311,7 @@ pub enum MediaSourceError {
 /// Error returned when a file storage operation fails.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
-pub enum StorageError {
+pub(crate) enum StorageError {
     /// The requested operation conflicts with the current state of the stored
     /// file, for example when a target that must not exist already does. A
     /// missing file is not a conflict: operations report absence as a value.

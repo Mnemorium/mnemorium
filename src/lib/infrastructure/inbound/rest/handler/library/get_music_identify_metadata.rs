@@ -28,7 +28,7 @@ use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 /// One edition of an album, as identification reports it.
 #[derive(Debug, Serialize, ToSchema)]
 #[non_exhaustive]
-pub struct MusicEditionResponse {
+struct MusicEditionResponse {
     /// Country of release as an uppercase ISO 3166-1 alpha-2 code, when known.
     pub country: Option<String>,
     /// Mediums of the edition, in the provider's order.
@@ -46,7 +46,7 @@ pub struct MusicEditionResponse {
 impl MusicEditionResponse {
     /// Build the representation of an edition.
     #[must_use]
-    pub fn new(edition: &Edition) -> Self {
+    pub(crate) fn new(edition: &Edition) -> Self {
         Self {
             country: edition.country().map(str::to_owned),
             mediums: edition
@@ -66,7 +66,7 @@ impl MusicEditionResponse {
 #[derive(Debug, Serialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "lowercase")]
 #[non_exhaustive]
-pub enum MusicMetadataResponse {
+enum MusicMetadataResponse {
     /// One album and the editions the provider lists for it.
     Album {
         /// Names the provider credits.
@@ -176,7 +176,7 @@ impl From<&MusicMetadata> for MusicMetadataResponse {
 /// metadata, and collecting group artwork is a separate capability.
 #[derive(Debug, Serialize, ToSchema)]
 #[non_exhaustive]
-pub struct MusicMetadataDocumentResponse {
+struct MusicMetadataDocumentResponse {
     /// Whether a music metadata provider is configured.
     pub available: bool,
     /// Link to the resolve view the representation reports.
@@ -190,7 +190,7 @@ pub struct MusicMetadataDocumentResponse {
 impl MusicMetadataDocumentResponse {
     /// Build the representation of a resolved document over `href`.
     #[must_use]
-    pub fn new(href: &str, metadata: &MusicMetadata) -> Self {
+    pub(crate) fn new(href: &str, metadata: &MusicMetadata) -> Self {
         Self {
             links: SelfLinks::new(href),
             available: true,
@@ -200,7 +200,7 @@ impl MusicMetadataDocumentResponse {
 
     /// Build the representation of a surface with no configured provider.
     #[must_use]
-    pub fn unavailable(href: &str) -> Self {
+    pub(crate) fn unavailable(href: &str) -> Self {
         Self {
             links: SelfLinks::new(href),
             available: false,
@@ -263,7 +263,7 @@ impl MusicMetadataDocumentResponse {
     ),
     summary = "Resolve a music provider reference into its metadata"
 )]
-pub async fn get_music_identify_metadata(
+pub(crate) async fn get_music_identify_metadata(
     Path((provider_value, kind_value, reference_value)): Path<(String, String, String)>,
     caller: AuthenticatedUser,
     State(state): State<AppState>,

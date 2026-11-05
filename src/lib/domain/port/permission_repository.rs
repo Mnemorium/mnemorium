@@ -9,7 +9,7 @@ use crate::domain::port::error::RepositoryError;
 /// optional; an all-`None` filter returns every permission.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct PermissionFilter {
+pub(crate) struct PermissionFilter {
     /// Filter on the overridden action.
     pub action: Option<Action>,
     /// Filter on the identifier of the user the permission applies to.
@@ -18,12 +18,19 @@ pub struct PermissionFilter {
 
 /// Port for persisting and querying `Permission` overrides.
 #[cfg_attr(test, mockall::automock)]
-pub trait PermissionRepository: Send + Sync {
+pub(crate) trait PermissionRepository: Send + Sync {
     /// Delete the permission identified by `(user_id, action)`.
     ///
     /// Returns `Ok(true)` when a permission matched and was deleted, and
     /// `Ok(false)` when none matched. A missing permission is a valid outcome,
     /// not an error.
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "part of the type's declared contract; no caller exercises it yet"
+        )
+    )]
     fn delete(
         &mut self,
         user_id: NumericID,

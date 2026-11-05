@@ -10,7 +10,7 @@ use crate::domain::port::error::ContentHasherError;
 
 /// Content hasher backed by the SHA-256 algorithm.
 #[derive(Debug, Default)]
-pub struct Sha2ContentHasher;
+pub(crate) struct Sha2ContentHasher;
 
 impl ContentHasher for Sha2ContentHasher {
     fn hasher(&self) -> Box<dyn ContentHasherSession> {

@@ -29,7 +29,7 @@ use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 #[derive(Debug, Deserialize, IntoParams)]
 #[into_params(parameter_in = Query)]
 #[non_exhaustive]
-pub struct ListUsersQuery {
+pub(crate) struct ListUsersQuery {
     /// Only return users whose email matches this value.
     #[param(format = "email")]
     pub email: Option<String>,
@@ -47,7 +47,7 @@ pub struct ListUsersQuery {
 /// HAL links of a user collection representation.
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 #[non_exhaustive]
-pub struct UserListLinks {
+struct UserListLinks {
     /// Templated link exposing the collection's search filters.
     pub search: Link,
     /// Link to the collection itself.
@@ -58,7 +58,7 @@ pub struct UserListLinks {
 /// Users matching the requested filters.
 #[derive(Debug, Serialize, ToSchema)]
 #[non_exhaustive]
-pub struct GetUserListResponse {
+struct GetUserListResponse {
     /// The users matching the filters.
     pub items: Vec<GetUserResponse>,
     /// Navigation links of the collection.
@@ -147,7 +147,7 @@ impl From<ListUsersError> for ApiError {
     ),
     summary = "List users"
 )]
-pub async fn get_user_list(
+pub(crate) async fn get_user_list(
     raw_query: Result<Query<ListUsersQuery>, QueryRejection>,
     caller: AuthenticatedUser,
     State(state): State<AppState>,

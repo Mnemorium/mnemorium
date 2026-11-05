@@ -18,7 +18,7 @@ use crate::infrastructure::inbound::rest::app_state::AppState;
 /// Payload to authenticate a user.
 #[derive(Deserialize, ToSchema)]
 #[non_exhaustive]
-pub struct LoginRequest {
+pub(crate) struct LoginRequest {
     /// Password used to authenticate.
     #[schema(write_only)]
     pub password: String,
@@ -41,7 +41,7 @@ impl Debug for LoginRequest {
 /// Token issued by a successful authentication.
 #[derive(Serialize, ToSchema)]
 #[non_exhaustive]
-pub struct LoginResponse {
+pub(crate) struct LoginResponse {
     /// Token to present in the `Authorization` header of subsequent requests.
     pub access_token: String,
     /// Lifetime of the token, in seconds.
@@ -152,7 +152,7 @@ impl From<LoginUserError> for ApiError {
     security(()),
     summary = "Authenticate a user"
 )]
-pub async fn post_login(
+pub(crate) async fn post_login(
     State(state): State<AppState>,
     payload: Result<Json<LoginRequest>, JsonRejection>,
 ) -> Result<Json<LoginResponse>, ApiError> {

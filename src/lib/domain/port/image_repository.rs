@@ -9,7 +9,7 @@ use crate::domain::port::error::RepositoryError;
 /// all-`None` filter returns every image.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct ImageFilter {
+pub(crate) struct ImageFilter {
     /// Filter on the identifier of the backing file.
     pub file_id: Option<NumericID>,
     /// Filter on the image identifier.
@@ -22,7 +22,7 @@ pub struct ImageFilter {
 
 /// Port for persisting and querying `Image`.
 #[cfg_attr(test, mockall::automock)]
-pub trait ImageRepository: Send + Sync {
+pub(crate) trait ImageRepository: Send + Sync {
     /// Insert a new `image`, returning the persisted image with its final
     /// identifier.
     ///
@@ -46,6 +46,13 @@ pub trait ImageRepository: Send + Sync {
     /// Return the image identified by `id`, if any.
     ///
     /// A missing image is `Ok(None)`, not an error.
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "part of the type's declared contract; no caller exercises it yet"
+        )
+    )]
     fn get(
         &mut self,
         id: NumericID,

@@ -24,7 +24,7 @@ use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 /// An absent field keeps its value; a `null` clears an optional value.
 #[derive(Debug, Deserialize, ToSchema)]
 #[non_exhaustive]
-pub struct PatchAlbumTrackRequest {
+pub(crate) struct PatchAlbumTrackRequest {
     /// ISRC code of the recording; `null` clears it.
     #[serde(default, deserialize_with = "deserialize_field_update")]
     #[schema(value_type = Option<String>, nullable = true)]
@@ -118,7 +118,7 @@ pub struct PatchAlbumTrackRequest {
     ),
     summary = "Edit the shared recording behind a track"
 )]
-pub async fn patch_album_track(
+pub(crate) async fn patch_album_track(
     Path((album_id_value, medium_index_value, track_index_value)): Path<(String, String, String)>,
     State(state): State<AppState>,
     caller: AuthenticatedUser,

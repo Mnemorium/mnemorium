@@ -11,7 +11,7 @@ use crate::domain::model::music_album::MusicAlbum;
 /// optional value.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct PatchAlbumTrackCommand {
+pub(crate) struct PatchAlbumTrackCommand {
     /// Identifier of the album that holds the medium.
     album_id: NumericID,
     /// Identifier of the authenticated caller.
@@ -29,37 +29,37 @@ pub struct PatchAlbumTrackCommand {
 impl PatchAlbumTrackCommand {
     /// Return the identifier of the album that holds the medium.
     #[must_use]
-    pub fn album_id(&self) -> NumericID {
+    pub(crate) fn album_id(&self) -> NumericID {
         self.album_id
     }
 
     /// Return the identifier of the authenticated caller.
     #[must_use]
-    pub fn caller_id(&self) -> NumericID {
+    pub(crate) fn caller_id(&self) -> NumericID {
         self.caller_id
     }
 
     /// Return the replacement ISRC code, if the request names one.
     #[must_use]
-    pub fn isrc_code(&self) -> &FieldUpdate<String> {
+    pub(crate) fn isrc_code(&self) -> &FieldUpdate<String> {
         &self.isrc_code
     }
 
     /// Return the album-scoped index of the medium.
     #[must_use]
-    pub fn medium_index(&self) -> u8 {
+    pub(crate) fn medium_index(&self) -> u8 {
         self.medium_index
     }
 
     /// Return the replacement name, if the request names one.
     #[must_use]
-    pub fn name(&self) -> &FieldUpdate<String> {
+    pub(crate) fn name(&self) -> &FieldUpdate<String> {
         &self.name
     }
 
     /// Create a new patch-track command.
     #[must_use]
-    pub fn new(
+    pub(crate) fn new(
         caller_id: NumericID,
         album_id: NumericID,
         medium_index: u8,
@@ -79,7 +79,7 @@ impl PatchAlbumTrackCommand {
 
     /// Return the index of the track within the medium.
     #[must_use]
-    pub fn track_index(&self) -> u8 {
+    pub(crate) fn track_index(&self) -> u8 {
         self.track_index
     }
 }
@@ -88,7 +88,7 @@ impl PatchAlbumTrackCommand {
 /// recording's address.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct PatchAlbumTrackResponse {
+pub(crate) struct PatchAlbumTrackResponse {
     /// The stored album with its mediums.
     album: MusicAlbum,
     /// Album-scoped index of the medium.
@@ -100,19 +100,19 @@ pub struct PatchAlbumTrackResponse {
 impl PatchAlbumTrackResponse {
     /// Return the stored album.
     #[must_use]
-    pub fn album(&self) -> &MusicAlbum {
+    pub(crate) fn album(&self) -> &MusicAlbum {
         &self.album
     }
 
     /// Return the album-scoped index of the medium.
     #[must_use]
-    pub fn medium_index(&self) -> u8 {
+    pub(crate) fn medium_index(&self) -> u8 {
         self.medium_index
     }
 
     /// Create a new edited-track response.
     #[must_use]
-    pub fn new(album: MusicAlbum, medium_index: u8, track_index: u8) -> Self {
+    pub(crate) fn new(album: MusicAlbum, medium_index: u8, track_index: u8) -> Self {
         Self {
             album,
             medium_index,
@@ -122,7 +122,7 @@ impl PatchAlbumTrackResponse {
 
     /// Return the index of the track within the medium.
     #[must_use]
-    pub fn track_index(&self) -> u8 {
+    pub(crate) fn track_index(&self) -> u8 {
         self.track_index
     }
 }
@@ -130,7 +130,7 @@ impl PatchAlbumTrackResponse {
 /// Error returned when editing the recording behind a track.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
-pub enum PatchAlbumTrackError {
+pub(crate) enum PatchAlbumTrackError {
     /// The write conflicts with the stored recording's state.
     #[error("the music recording cannot be written")]
     Conflict,
@@ -168,7 +168,7 @@ pub enum PatchAlbumTrackError {
 
 /// Use case for editing the shared recording behind a track address.
 #[cfg_attr(test, mockall::automock)]
-pub trait PatchAlbumTrackUseCase: Send + Sync {
+pub(crate) trait PatchAlbumTrackUseCase: Send + Sync {
     /// Edit the recording placed at the requested address.
     ///
     /// The future is returned erased (`dyn`, not `impl Future`), boxed and

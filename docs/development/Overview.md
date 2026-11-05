@@ -69,8 +69,9 @@ document describes the source layout those rules constrain.
 | `docs`                                                          |                                                                                                                                   |
 | `src`                                                           |                                                                                                                                   |
 | `src/bin`                                                       |                                                                                                                                   |
-| `src/bin/server.rs`                                             | Server entrypoint and graceful shutdown                                                                                           |
+| `src/bin/server.rs`                                             | Server entrypoint; launches the composition root in `src/lib/app.rs`                                                              |
 | `src/lib`                                                       |                                                                                                                                   |
+| `src/lib/app.rs`                                                | Composition root: startup order, graceful shutdown and the process-lifetime adapters (`STY-RUST-067`)                             |
 | `src/lib/application`                                           | App Layer                                                                                                                         |
 | `src/lib/application/field_update.rs`                           | Tri-state field a partial-update command leaves alone, clears or replaces                                                         |
 | `src/lib/application/port`                                      | Application use-case interfaces (one application use case per file)                                                               |
@@ -136,7 +137,7 @@ An **application use case** (`port/<name>.rs` plus `use_case/<name>.rs`) is a te
 
 ## Startup
 
-`src/bin/server.rs` is the composition root and runs the startup in a fixed order:
+`src/lib/app.rs` is the composition root and runs the startup in a fixed order:
 
 1. Establish or load the instance state (`state.yaml`; `TechnicalDesign.md` § 10.2). `LoadState` checks the fixed
    `mnemorium.db` path itself first, so a datastore without state fails instead of regenerating the secrets, and it
@@ -154,7 +155,8 @@ provider sends no request until a trigger identifies a video.
 
 ## Server lifecycle
 
-The server binary (`src/bin/server.rs`) shuts down gracefully on `SIGINT` and `SIGTERM`:
+The composition root (`src/lib/app.rs`, launched by the binary `src/bin/server.rs`) shuts down gracefully on `SIGINT`
+and `SIGTERM`:
 
 1. The signal stops the listener: new connections are refused.
 2. In-flight requests drain to completion; idle keep-alive connections are closed.

@@ -1,1 +1,1 @@
-pub mod content_type_sniffer;
+pub(crate) mod content_type_sniffer;

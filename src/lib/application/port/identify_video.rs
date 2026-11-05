@@ -1,3 +1,8 @@
+#![allow(
+    dead_code,
+    reason = "the internal video-identification path has no REST caller yet, so its port is reachable only from tests"
+)]
+
 use std::future::Future;
 use std::pin::Pin;
 
@@ -6,7 +11,7 @@ use crate::domain::model::media_candidate::Candidate;
 /// Command for one identification run.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct IdentifyVideoCommand {
+pub(crate) struct IdentifyVideoCommand {
     /// The best human-meaningful name the caller has: the root-relative path
     /// for a scanned file, the original client file name for an upload.
     name: String,
@@ -15,13 +20,13 @@ pub struct IdentifyVideoCommand {
 impl IdentifyVideoCommand {
     /// Return the media name to interpret.
     #[must_use]
-    pub fn name(&self) -> &str {
+    pub(crate) fn name(&self) -> &str {
         &self.name
     }
 
     /// Create a new command.
     #[must_use]
-    pub fn new(name: String) -> Self {
+    pub(crate) fn new(name: String) -> Self {
         Self { name }
     }
 }
@@ -33,7 +38,7 @@ impl IdentifyVideoCommand {
 /// which is distinct from the unavailable error.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct IdentifyVideoResponse {
+pub(crate) struct IdentifyVideoResponse {
     /// Candidates of the first query that yielded any.
     candidates: Vec<Candidate>,
 }
@@ -41,13 +46,13 @@ pub struct IdentifyVideoResponse {
 impl IdentifyVideoResponse {
     /// Return the candidates of the first query that yielded any.
     #[must_use]
-    pub fn candidates(&self) -> &[Candidate] {
+    pub(crate) fn candidates(&self) -> &[Candidate] {
         &self.candidates
     }
 
     /// Create a new response.
     #[must_use]
-    pub fn new(candidates: Vec<Candidate>) -> Self {
+    pub(crate) fn new(candidates: Vec<Candidate>) -> Self {
         Self { candidates }
     }
 }
@@ -55,7 +60,7 @@ impl IdentifyVideoResponse {
 /// Error returned when identifying a media name fails.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
-pub enum IdentifyVideoError {
+pub(crate) enum IdentifyVideoError {
     /// No metadata provider is configured, so identification cannot run.
     #[error("no video metadata provider is configured")]
     Unavailable,
@@ -69,7 +74,7 @@ pub enum IdentifyVideoError {
 /// It is internal: it has no HTTP entry point, persists nothing and ranks
 /// nothing. A future upload, manual or background trigger is its caller.
 #[cfg_attr(test, mockall::automock)]
-pub trait IdentifyVideoUseCase: Send + Sync {
+pub(crate) trait IdentifyVideoUseCase: Send + Sync {
     /// Interpret the command's name, search the configured chain and return the
     /// candidates of the first query that yields any.
     ///

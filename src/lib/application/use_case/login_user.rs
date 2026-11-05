@@ -19,7 +19,7 @@ use crate::domain::port::user_repository::UserRepository as _;
 use crate::domain::port::user_unit_of_work::UserUnitOfWork;
 
 /// Use case implementation for authenticating a user.
-pub struct LoginUser<F, H, P> {
+pub(crate) struct LoginUser<F, H, P> {
     /// Hasher for user passwords.
     password_hasher: Arc<H>,
     /// Provider issuing and validating tokens.
@@ -31,7 +31,7 @@ pub struct LoginUser<F, H, P> {
 impl<F: UnitOfWorkFactory, H: PasswordHasher, P: TokenProvider> LoginUser<F, H, P> {
     /// Create a new use case.
     #[must_use]
-    pub fn new(
+    pub(crate) fn new(
         unit_of_work_factory: Arc<F>,
         password_hasher: Arc<H>,
         token_provider: Arc<P>,

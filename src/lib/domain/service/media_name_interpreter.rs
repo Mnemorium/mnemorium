@@ -1,3 +1,8 @@
+#![allow(
+    dead_code,
+    reason = "the file-name interpreter serves the internal video-identification path, which has no REST caller yet"
+)]
+
 use std::mem::take;
 
 use crate::domain::model::media_query::EpisodePosition;
@@ -5,7 +10,7 @@ use crate::domain::model::media_query::MediaQuery;
 use crate::domain::model::media_query::VideoKind;
 
 /// Folder and file names that denote an extra rather than the work itself.
-pub const EXTRAS: &[&str] = &[
+const EXTRAS: &[&str] = &[
     "behind the scenes",
     "bonus",
     "bonus features",
@@ -27,7 +32,7 @@ pub const EXTRAS: &[&str] = &[
 ];
 
 /// Folder names that group a library rather than name a work.
-pub const GENERIC_FOLDERS: &[&str] = &[
+const GENERIC_FOLDERS: &[&str] = &[
     "download",
     "downloads",
     "film",
@@ -45,19 +50,19 @@ pub const GENERIC_FOLDERS: &[&str] = &[
 ];
 
 /// Largest episode index a name may carry.
-pub const MAX_EPISODE: u32 = 999;
+const MAX_EPISODE: u32 = 999;
 
 /// Largest season index a name may carry.
-pub const MAX_SEASON: u32 = 99;
+const MAX_SEASON: u32 = 99;
 
 /// Newest year a release or first-air date may carry.
-pub const MAX_YEAR: u32 = 2100;
+const MAX_YEAR: u32 = 2100;
 
 /// Oldest year a release or first-air date may carry.
-pub const MIN_YEAR: u32 = 1878;
+const MIN_YEAR: u32 = 1878;
 
 /// Tokens a release group uses that never belong to a title.
-pub const RELEASE_TOKENS: &[&str] = &[
+const RELEASE_TOKENS: &[&str] = &[
     "10bit",
     "4k",
     "8bit",
@@ -128,7 +133,7 @@ pub const RELEASE_TOKENS: &[&str] = &[
 ];
 
 /// File extensions a media file carries.
-pub const VIDEO_EXTENSIONS: &[&str] = &[
+const VIDEO_EXTENSIONS: &[&str] = &[
     "3gp", "avi", "divx", "flv", "m2ts", "m4v", "mkv", "mov", "mp4", "mpeg", "mpg", "mts", "ogm",
     "ogv", "rmvb", "ts", "vob", "webm", "wmv",
 ];
@@ -165,7 +170,7 @@ struct Token {
 /// year, no season and no episode is ever fabricated, and a name with nothing
 /// usable yields an empty list.
 #[non_exhaustive]
-pub struct MediaNameInterpreter;
+pub(crate) struct MediaNameInterpreter;
 
 impl MediaNameInterpreter {
     /// Interpret `name` as an ordered list of search queries, most supported first.
@@ -175,7 +180,7 @@ impl MediaNameInterpreter {
     /// numeric token that could be either part of the title or the year yields
     /// both hypotheses rather than one guess.
     #[must_use]
-    pub fn interpret(name: &str) -> Vec<MediaQuery> {
+    pub(crate) fn interpret(name: &str) -> Vec<MediaQuery> {
         // A disc folder groups the parts of a multi-disc release.
         let is_disc_folder = |value: &str| -> bool {
             let normalized = normalized_words(value);

@@ -11,7 +11,10 @@ rule:
     # A CHECK-constraint enum: a `sqlx::Type` enum declared in a model file.
     - all:
         - kind: enum_item
-        - pattern: "pub enum $ENUM"
+        - any:
+            - pattern: "pub enum $ENUM"
+            - pattern: "pub(crate) enum $ENUM"
+            - pattern: "enum $ENUM"
         - follows:
             kind: attribute_item
             regex: "sqlx::Type"

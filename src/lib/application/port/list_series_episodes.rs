@@ -9,7 +9,7 @@ use crate::domain::model::video::Video;
 /// Command to list the episodes of one season.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct ListSeriesEpisodesCommand {
+pub(crate) struct ListSeriesEpisodesCommand {
     /// Identifier of the authenticated caller.
     caller_id: NumericID,
     /// Series-scoped index of the season holding the episodes.
@@ -21,13 +21,13 @@ pub struct ListSeriesEpisodesCommand {
 impl ListSeriesEpisodesCommand {
     /// Return the identifier of the authenticated caller.
     #[must_use]
-    pub fn caller_id(&self) -> NumericID {
+    pub(crate) fn caller_id(&self) -> NumericID {
         self.caller_id
     }
 
     /// Create a new list-episodes command.
     #[must_use]
-    pub fn new(caller_id: NumericID, series_id: NumericID, season_index: u32) -> Self {
+    pub(crate) fn new(caller_id: NumericID, series_id: NumericID, season_index: u32) -> Self {
         Self {
             caller_id,
             season_index,
@@ -37,13 +37,13 @@ impl ListSeriesEpisodesCommand {
 
     /// Return the series-scoped index of the season holding the episodes.
     #[must_use]
-    pub fn season_index(&self) -> u32 {
+    pub(crate) fn season_index(&self) -> u32 {
         self.season_index
     }
 
     /// Return the identifier of the show holding the season.
     #[must_use]
-    pub fn series_id(&self) -> NumericID {
+    pub(crate) fn series_id(&self) -> NumericID {
         self.series_id
     }
 }
@@ -51,7 +51,7 @@ impl ListSeriesEpisodesCommand {
 /// One episode of a listed season.
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
-pub struct ListSeriesEpisodesItem {
+pub(crate) struct ListSeriesEpisodesItem {
     /// Date of the first airing of the episode.
     air_date: NaiveDate,
     /// Season-scoped index of the episode.
@@ -71,25 +71,25 @@ pub struct ListSeriesEpisodesItem {
 impl ListSeriesEpisodesItem {
     /// Return the date of the first airing of the episode.
     #[must_use]
-    pub fn air_date(&self) -> NaiveDate {
+    pub(crate) fn air_date(&self) -> NaiveDate {
         self.air_date
     }
 
     /// Return the season-scoped index of the episode.
     #[must_use]
-    pub fn id(&self) -> u32 {
+    pub(crate) fn id(&self) -> u32 {
         self.id
     }
 
     /// Return the name of the episode.
     #[must_use]
-    pub fn name(&self) -> &str {
+    pub(crate) fn name(&self) -> &str {
         &self.name
     }
 
     /// Create a new listed episode.
     #[must_use]
-    pub fn new(
+    pub(crate) fn new(
         id: u32,
         series_id: NumericID,
         season_index: u32,
@@ -111,25 +111,25 @@ impl ListSeriesEpisodesItem {
 
     /// Return the plot of the episode.
     #[must_use]
-    pub fn plot(&self) -> &str {
+    pub(crate) fn plot(&self) -> &str {
         &self.plot
     }
 
     /// Return the series-scoped index of the season holding the episode.
     #[must_use]
-    pub fn season_index(&self) -> u32 {
+    pub(crate) fn season_index(&self) -> u32 {
         self.season_index
     }
 
     /// Return the identifier of the show holding the season.
     #[must_use]
-    pub fn series_id(&self) -> NumericID {
+    pub(crate) fn series_id(&self) -> NumericID {
         self.series_id
     }
 
     /// Return the video backing the episode.
     #[must_use]
-    pub fn video(&self) -> &Video {
+    pub(crate) fn video(&self) -> &Video {
         &self.video
     }
 }
@@ -137,7 +137,7 @@ impl ListSeriesEpisodesItem {
 /// Response of a successful episode listing: every episode of the season.
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
-pub struct ListSeriesEpisodesResponse {
+pub(crate) struct ListSeriesEpisodesResponse {
     /// The episodes of the season, ordered by index.
     episodes: Vec<ListSeriesEpisodesItem>,
 }
@@ -145,13 +145,13 @@ pub struct ListSeriesEpisodesResponse {
 impl ListSeriesEpisodesResponse {
     /// Return the episodes of the season, ordered by index.
     #[must_use]
-    pub fn episodes(&self) -> &[ListSeriesEpisodesItem] {
+    pub(crate) fn episodes(&self) -> &[ListSeriesEpisodesItem] {
         &self.episodes
     }
 
     /// Create a new list-episodes response.
     #[must_use]
-    pub fn new(episodes: Vec<ListSeriesEpisodesItem>) -> Self {
+    pub(crate) fn new(episodes: Vec<ListSeriesEpisodesItem>) -> Self {
         Self { episodes }
     }
 }
@@ -159,7 +159,7 @@ impl ListSeriesEpisodesResponse {
 /// Error returned when listing the episodes of a season.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
-pub enum ListSeriesEpisodesError {
+pub(crate) enum ListSeriesEpisodesError {
     /// The authenticated caller does not exist anymore.
     #[error("the authenticated user does not exist")]
     NoSuchCaller,
@@ -176,7 +176,7 @@ pub enum ListSeriesEpisodesError {
 
 /// Use case for listing the episodes of one season.
 #[cfg_attr(test, mockall::automock)]
-pub trait ListSeriesEpisodesUseCase: Send + Sync {
+pub(crate) trait ListSeriesEpisodesUseCase: Send + Sync {
     /// List the episodes of the requested season, scoped to its show.
     ///
     /// The future is returned erased (`dyn`, not `impl Future`), boxed and

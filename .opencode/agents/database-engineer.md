@@ -59,7 +59,7 @@ Datastore map (navigation):
   `STY-RUST-044`–`056`).
 - `src/lib/infrastructure/outbound/sqlx/error_mapping.rs` maps `sqlx::Error` into
   the port error (`STY-RUST-050`).
-- `src/bin/server.rs` is the composition root and the only caller of `init_db`
+- `src/lib/app.rs` is the composition root and the only caller of `init_db`
   (`STY-RUST-067`). That is where the datastore settings are read: it passes the
   fixed `DATABASE_PATH` (`mnemorium.db`, from the `load_state` port — not
   configurable) and the `persistence.sqlite3.max_connections` value from the

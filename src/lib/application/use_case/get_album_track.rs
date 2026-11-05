@@ -23,7 +23,7 @@ use crate::domain::service::authorization::Authorization;
 use crate::domain::service::authorization::Decision;
 
 /// Use case implementation for fetching one track of a music album medium.
-pub struct GetAlbumTrack<F> {
+pub(crate) struct GetAlbumTrack<F> {
     /// Factory opening the unit of work wrapping the read.
     unit_of_work_factory: Arc<F>,
 }
@@ -31,7 +31,7 @@ pub struct GetAlbumTrack<F> {
 impl<F: UnitOfWorkFactory> GetAlbumTrack<F> {
     /// Create a new use case.
     #[must_use]
-    pub fn new(unit_of_work_factory: Arc<F>) -> Self {
+    pub(crate) fn new(unit_of_work_factory: Arc<F>) -> Self {
         Self {
             unit_of_work_factory,
         }
@@ -213,10 +213,6 @@ mod tests {
     }
 
     /// Build an album holding no medium.
-    #[expect(
-        clippy::single_call_fn,
-        reason = "the empty-album fixture names the case it builds"
-    )]
     fn empty_album(album_id: i64) -> Result<MusicAlbum, Box<dyn Error>> {
         Ok(MusicAlbum::try_new(
             album_id,
