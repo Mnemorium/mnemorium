@@ -68,5 +68,4 @@ pub mod update_music_group;
 pub mod update_playlist;
 pub mod update_user;
 pub mod user_use_case_factory;
-pub mod video_summary;
 pub mod write_upload_chunk;

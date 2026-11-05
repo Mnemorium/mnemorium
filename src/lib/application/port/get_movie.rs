@@ -3,8 +3,8 @@ use std::pin::Pin;
 
 use chrono::NaiveDate;
 
-use crate::application::port::video_summary::VideoSummary;
 use crate::domain::alias::NumericID;
+use crate::domain::model::video::Video;
 
 /// Command to fetch one film.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -58,7 +58,7 @@ pub struct GetMovieResponse {
     /// Date of the release of the film.
     release_date: NaiveDate,
     /// Video backing the film.
-    video: VideoSummary,
+    video: Video,
 }
 
 impl GetMovieResponse {
@@ -106,7 +106,7 @@ impl GetMovieResponse {
         release_date: NaiveDate,
         genre_ids: Vec<String>,
         cover_image_id: Option<NumericID>,
-        video: VideoSummary,
+        video: Video,
     ) -> Self {
         Self {
             country_of_origin,
@@ -134,7 +134,7 @@ impl GetMovieResponse {
 
     /// Return the video backing the film.
     #[must_use]
-    pub fn video(&self) -> &VideoSummary {
+    pub fn video(&self) -> &Video {
         &self.video
     }
 }

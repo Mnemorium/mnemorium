@@ -117,7 +117,6 @@ mod tests {
     use crate::application::port::list_series_episodes::ListSeriesEpisodesResponse;
     use crate::application::port::list_series_episodes::ListSeriesEpisodesUseCase;
     use crate::application::port::list_series_episodes::MockListSeriesEpisodesUseCase;
-    use crate::application::port::video_summary::VideoSummary;
     use crate::domain::alias::NumericID;
     use crate::infrastructure::inbound::rest::handler::library::library_routes;
     use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
@@ -173,7 +172,7 @@ mod tests {
             episode.name().to_owned(),
             episode.plot().to_owned(),
             episode.air_date(),
-            VideoSummary::from(episode.video()),
+            episode.video().clone(),
         );
         use_case
             .expect_execute()
