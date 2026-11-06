@@ -1,15 +1,13 @@
 use std::future::{Future, ready};
 
-use chrono::Duration;
-use chrono::Utc;
+use chrono::{Duration, Utc};
 use jsonwebtoken::errors::ErrorKind;
 use jsonwebtoken::{Algorithm, DecodingKey, EncodingKey, Header, Validation, decode, encode};
 use serde::{Deserialize, Serialize};
 
 use crate::domain::alias::NumericID;
 use crate::domain::port::error::TokenProviderError;
-use crate::domain::port::token_provider::IssuedToken;
-use crate::domain::port::token_provider::TokenProvider;
+use crate::domain::port::token_provider::{IssuedToken, TokenProvider};
 
 /// Claims embedded in a `JwtTokenProvider` token.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -88,15 +86,10 @@ impl TokenProvider for JwtTokenProvider {
 
 #[cfg(test)]
 mod tests {
-    use std::error::Error;
-
+    use super::*;
     use jsonwebtoken::{Algorithm, EncodingKey, Header, encode};
     use serde_json::json;
-
-    use crate::domain::port::error::TokenProviderError;
-    use crate::domain::port::token_provider::TokenProvider as _;
-
-    use super::JwtTokenProvider;
+    use std::error::Error;
 
     #[tokio::test]
     async fn issue_then_validate_round_trips_user_id() -> Result<(), Box<dyn Error>> {

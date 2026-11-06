@@ -5,9 +5,7 @@
 
 use std::mem::take;
 
-use crate::domain::model::media_query::EpisodePosition;
-use crate::domain::model::media_query::MediaQuery;
-use crate::domain::model::media_query::VideoKind;
+use crate::domain::model::media_query::{EpisodePosition, MediaQuery, VideoKind};
 
 /// Folder and file names that denote an extra rather than the work itself.
 const EXTRAS: &[&str] = &[
@@ -692,13 +690,8 @@ fn take_digits(text: &str) -> Option<(u32, &str)> {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use rstest::rstest;
-
-    use crate::domain::model::media_query::EpisodePosition;
-    use crate::domain::model::media_query::MediaQuery;
-    use crate::domain::model::media_query::VideoKind;
-
-    use super::MediaNameInterpreter;
 
     /// Assert every query of one interpreted name keeps the corpus invariants.
     fn assert_invariants(name: &str) {

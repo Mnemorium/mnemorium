@@ -34,10 +34,8 @@ impl CountryCode {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use rstest::rstest;
-
-    use super::CountryCode;
-    use super::CountryCodeError;
 
     #[rstest]
     #[case::uppercase("US", "US")]

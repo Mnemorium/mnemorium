@@ -1,23 +1,16 @@
-use axum::extract::Query;
-use axum::extract::State;
 use axum::extract::rejection::QueryRejection;
+use axum::extract::{Query, State};
 use axum::response::Response;
-use serde::Deserialize;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tracing::warn;
-use utoipa::IntoParams;
-use utoipa::ToSchema;
+use utoipa::{IntoParams, ToSchema};
 
-use super::DEFAULT_LIMIT;
-use super::MAX_LIMIT;
-use crate::application::port::list_galleries::ListGalleriesCommand;
-use crate::application::port::list_galleries::ListGalleriesError;
+use super::{DEFAULT_LIMIT, MAX_LIMIT};
+use crate::application::port::list_galleries::{ListGalleriesCommand, ListGalleriesError};
 use crate::domain::alias::NumericID;
-use crate::infrastructure::inbound::rest::api_error::ApiError;
-use crate::infrastructure::inbound::rest::api_error::ErrorBody;
+use crate::infrastructure::inbound::rest::api_error::{ApiError, ErrorBody};
 use crate::infrastructure::inbound::rest::app_state::AppState;
-use crate::infrastructure::inbound::rest::hal::Link;
-use crate::infrastructure::inbound::rest::hal::hal_json;
+use crate::infrastructure::inbound::rest::hal::{Link, hal_json};
 use crate::infrastructure::inbound::rest::handler::library::GalleryResponse;
 use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 
@@ -262,37 +255,23 @@ pub(crate) async fn get_gallery_list(
 
 #[cfg(test)]
 mod tests {
-    use std::error::Error;
-    use std::sync::Arc;
-
+    use super::*;
+    use crate::application::port::library_use_case_factory::MockLibraryUseCaseFactory;
+    use crate::application::port::list_galleries::{
+        ListGalleriesItem, ListGalleriesResponse, ListGalleriesUseCase, MockListGalleriesUseCase,
+    };
+    use crate::test_helpers::*;
     use axum::body::Body;
-
     use axum::extract::Request;
     use axum::http::StatusCode;
-
-    use axum::response::Response;
     use axum::routing::get;
-    use chrono::NaiveDate;
-    use chrono::NaiveDateTime;
+    use chrono::{NaiveDate, NaiveDateTime};
     use mockall::predicate::eq;
     use rstest::rstest;
-    use serde_json::Value;
-    use serde_json::json;
+    use serde_json::{Value, json};
+    use std::error::Error;
+    use std::sync::Arc;
     use tower::ServiceExt as _;
-
-    use super::get_gallery_list;
-    use crate::application::port::library_use_case_factory::MockLibraryUseCaseFactory;
-    use crate::application::port::list_galleries::ListGalleriesCommand;
-    use crate::application::port::list_galleries::ListGalleriesError;
-    use crate::application::port::list_galleries::ListGalleriesItem;
-    use crate::application::port::list_galleries::ListGalleriesResponse;
-    use crate::application::port::list_galleries::ListGalleriesUseCase;
-    use crate::application::port::list_galleries::MockListGalleriesUseCase;
-    use crate::domain::alias::NumericID;
-    use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
-    use crate::test_helpers::app_state_with_library;
-    use crate::test_helpers::error_message_of;
-    use crate::test_helpers::into_parts;
 
     /// A fixed instant the fixtures timestamp with.
     fn ts() -> NaiveDateTime {

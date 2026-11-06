@@ -1,19 +1,11 @@
 use axum::Json;
 use axum::extract::path::ErrorKind;
-use axum::extract::rejection::BytesRejection;
-use axum::extract::rejection::JsonRejection;
-use axum::extract::rejection::PathRejection;
-use axum::extract::rejection::QueryRejection;
-use axum::http::HeaderValue;
-use axum::http::StatusCode;
-use axum::http::header;
-use axum::response::IntoResponse;
-use axum::response::Response;
-use tracing::error;
-use tracing::warn;
+use axum::extract::rejection::{BytesRejection, JsonRejection, PathRejection, QueryRejection};
+use axum::http::{HeaderValue, StatusCode, header};
+use axum::response::{IntoResponse, Response};
+use tracing::{error, warn};
 
-use crate::infrastructure::inbound::rest::hal::HAL_CONTENT_TYPE;
-use crate::infrastructure::inbound::rest::hal::SelfLinks;
+use crate::infrastructure::inbound::rest::hal::{HAL_CONTENT_TYPE, SelfLinks};
 
 /// Standard error payload returned by every failed request.
 ///
@@ -328,35 +320,19 @@ pub(crate) fn error_response(status: StatusCode, message: String, path: &str) ->
 
 #[cfg(test)]
 mod tests {
-    use std::error::Error;
-
-    use axum::Json;
+    use super::*;
+    use crate::infrastructure::inbound::rest::app_state::AppState;
+    use crate::test_helpers::*;
     use axum::Router;
-    use axum::body::Body;
-    use axum::body::Bytes;
-    use axum::extract::DefaultBodyLimit;
-    use axum::extract::Query;
-    use axum::extract::Request;
-    use axum::extract::State;
-    use axum::extract::path::ErrorKind;
-    use axum::extract::rejection::BytesRejection;
-    use axum::extract::rejection::JsonRejection;
+    use axum::body::{Body, Bytes};
     use axum::extract::rejection::MissingPathParams;
-    use axum::extract::rejection::PathRejection;
-    use axum::http::StatusCode;
+    use axum::extract::{DefaultBodyLimit, Query, Request, State};
     use axum::http::Uri;
-    use axum::http::header;
-    use axum::response::Response;
     use axum::routing::post;
     use rstest::rstest;
+    use std::error::Error;
     use tower::ServiceExt as _;
-
-    use crate::infrastructure::inbound::rest::app_state::AppState;
-    use crate::test_helpers::app_state;
-    use crate::test_helpers::error_message_of;
     use tracing_test::traced_test;
-
-    use super::ApiError;
 
     /// Body schema the probe route deserializes into.
     ///

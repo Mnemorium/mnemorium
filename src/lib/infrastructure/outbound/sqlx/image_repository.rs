@@ -1,19 +1,13 @@
-use sqlx::QueryBuilder;
-use sqlx::Sqlite;
-use sqlx::Transaction;
+use sqlx::{QueryBuilder, Sqlite, Transaction};
 
 use crate::domain::alias::NumericID;
-use crate::domain::model::image::Image;
-use crate::domain::model::image::Orientation;
+use crate::domain::model::image::{Image, Orientation};
 use crate::domain::port::error::RepositoryError;
-use crate::domain::port::image_repository::ImageFilter;
-use crate::domain::port::image_repository::ImageRepository;
+use crate::domain::port::image_repository::{ImageFilter, ImageRepository};
 
 use super::error_mapping::stored_data_invalid;
-use super::model::image::Image as SqlxImage;
-use super::model::image::Orientation as SqlxOrientation;
-use super::model::scope::parse_scope;
-use super::model::scope::scope_token;
+use super::model::image::{Image as SqlxImage, Orientation as SqlxOrientation};
+use super::model::scope::{parse_scope, scope_token};
 use super::query_filter::push_filter;
 
 /// Repository persisting images, backed by a `SQLite` transaction.
@@ -166,22 +160,12 @@ fn domain_image(row: SqlxImage) -> Result<Image, RepositoryError> {
 
 #[cfg(test)]
 mod tests {
-    use std::error::Error;
-
+    use super::*;
+    use crate::domain::model::scope::Scope;
     use chrono::NaiveDate;
     use rstest::rstest;
-    use sqlx::Sqlite;
-    use sqlx::Transaction;
     use sqlx::sqlite::SqlitePoolOptions;
-
-    use crate::domain::model::image::Image;
-    use crate::domain::model::image::Orientation;
-    use crate::domain::model::scope::Scope;
-    use crate::domain::port::error::RepositoryError;
-    use crate::domain::port::image_repository::ImageFilter;
-    use crate::domain::port::image_repository::ImageRepository as _;
-
-    use super::SqlxImageRepository;
+    use std::error::Error;
 
     /// Open a migrated in-memory database and begin one transaction.
     async fn begin_transaction() -> Result<Transaction<'static, Sqlite>, sqlx::Error> {

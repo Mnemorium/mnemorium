@@ -1,16 +1,11 @@
-use sqlx::QueryBuilder;
-use sqlx::Sqlite;
-use sqlx::Transaction;
+use sqlx::{QueryBuilder, Sqlite, Transaction};
 
 use crate::domain::alias::NumericID;
-use crate::domain::model::user::Role;
-use crate::domain::model::user::User;
+use crate::domain::model::user::{Role, User};
 use crate::domain::port::error::RepositoryError;
-use crate::domain::port::user_repository::UserFilter;
-use crate::domain::port::user_repository::UserRepository;
+use crate::domain::port::user_repository::{UserFilter, UserRepository};
 
-use super::model::user::Role as SqlxRole;
-use super::model::user::User as SqlxUser;
+use super::model::user::{Role as SqlxRole, User as SqlxUser};
 
 /// Repository persisting users, backed by a `SQLite` transaction.
 pub(crate) struct SqlxUserRepository<'transaction> {
@@ -157,20 +152,10 @@ fn domain_user(row: SqlxUser) -> Result<User, RepositoryError> {
 
 #[cfg(test)]
 mod tests {
-    use std::error::Error;
-
-    use sqlx::Sqlite;
-    use sqlx::Transaction;
-    use sqlx::sqlite::SqlitePoolOptions;
-
-    use crate::domain::model::user::Role;
-    use crate::domain::model::user::User;
+    use super::*;
     use crate::domain::model::user::UserError;
-    use crate::domain::port::error::RepositoryError;
-    use crate::domain::port::user_repository::UserFilter;
-    use crate::domain::port::user_repository::UserRepository as _;
-
-    use super::SqlxUserRepository;
+    use sqlx::sqlite::SqlitePoolOptions;
+    use std::error::Error;
 
     async fn begin_transaction() -> Result<Transaction<'static, Sqlite>, sqlx::Error> {
         let pool = SqlitePoolOptions::new()

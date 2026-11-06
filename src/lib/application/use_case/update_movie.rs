@@ -3,30 +3,23 @@ use std::pin::Pin;
 use std::sync::Arc;
 
 use crate::application::field_update::FieldUpdate;
-use crate::application::port::update_movie::UpdateMovieCommand;
-use crate::application::port::update_movie::UpdateMovieError;
-use crate::application::port::update_movie::UpdateMovieResponse;
-use crate::application::port::update_movie::UpdateMovieUseCase;
+use crate::application::port::update_movie::{
+    UpdateMovieCommand, UpdateMovieError, UpdateMovieResponse, UpdateMovieUseCase,
+};
 use crate::application::security_event;
 use crate::domain::model::movie::Movie;
 use crate::domain::model::permission::Action;
 use crate::domain::port::error::RepositoryError;
 use crate::domain::port::identity_unit_of_work::IdentityUnitOfWork;
 use crate::domain::port::library_unit_of_work::LibraryUnitOfWork;
-use crate::domain::port::movie_repository::MovieFilter;
-use crate::domain::port::movie_repository::MovieRepository as _;
-use crate::domain::port::permission_repository::PermissionFilter;
-use crate::domain::port::permission_repository::PermissionRepository as _;
-use crate::domain::port::unit_of_work::UnitOfWork as _;
-use crate::domain::port::unit_of_work::UnitOfWorkFactory;
-use crate::domain::port::user_repository::UserFilter;
-use crate::domain::port::user_repository::UserRepository as _;
+use crate::domain::port::movie_repository::{MovieFilter, MovieRepository as _};
+use crate::domain::port::permission_repository::{PermissionFilter, PermissionRepository as _};
+use crate::domain::port::unit_of_work::{UnitOfWork as _, UnitOfWorkFactory};
+use crate::domain::port::user_repository::{UserFilter, UserRepository as _};
 use crate::domain::port::user_unit_of_work::UserUnitOfWork;
-use crate::domain::service::authorization::Authorization;
-use crate::domain::service::authorization::Decision;
+use crate::domain::service::authorization::{Authorization, Decision};
 use crate::domain::service::country_code::CountryCode;
-use crate::domain::service::name_policy::NamePolicy;
-use crate::domain::service::name_policy::NamePolicyError;
+use crate::domain::service::name_policy::{NamePolicy, NamePolicyError};
 
 /// Use case implementation for updating a film partially.
 pub(crate) struct UpdateMovie<F> {
@@ -220,36 +213,17 @@ where
 
 #[cfg(test)]
 mod tests {
-    use std::error::Error;
-    use std::sync::Arc;
-    use std::sync::atomic::Ordering;
-
-    use chrono::NaiveDate;
-
-    use crate::application::field_update::FieldUpdate;
-    use crate::application::port::update_movie::UpdateMovieCommand;
-    use crate::application::port::update_movie::UpdateMovieError;
-    use crate::application::port::update_movie::UpdateMovieUseCase as _;
+    use super::*;
     use crate::domain::alias::NumericID;
-    use crate::domain::model::movie::Movie;
-    use crate::domain::model::permission::Action;
-    use crate::domain::model::permission::Permission;
-    use crate::domain::model::permission::Scope;
-    use crate::domain::model::user::Role;
-    use crate::domain::model::user::User;
-    use crate::domain::port::error::RepositoryError;
+    use crate::domain::model::permission::{Permission, Scope};
+    use crate::domain::model::user::{Role, User};
     use crate::domain::port::movie_repository::MockMovieRepository;
     use crate::domain::port::permission_repository::MockPermissionRepository;
     use crate::domain::port::user_repository::MockUserRepository;
-    use crate::test_helpers::GalleryFactoryHarness;
-    use crate::test_helpers::TestFactory;
-    use crate::test_helpers::TestUnitOfWork;
-    use crate::test_helpers::expect_caller;
-    use crate::test_helpers::expect_permissions;
-    use crate::test_helpers::no_permissions;
-    use crate::test_helpers::sample_movie;
-
-    use super::UpdateMovie;
+    use crate::test_helpers::*;
+    use chrono::NaiveDate;
+    use std::error::Error;
+    use std::sync::atomic::Ordering;
 
     /// The use case under test, bound to the mocked unit-of-work factory.
     type UseCase = UpdateMovie<TestFactory>;

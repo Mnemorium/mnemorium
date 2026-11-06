@@ -1,15 +1,12 @@
-use axum::extract::Path;
-use axum::extract::State;
+use axum::extract::{Path, State};
 use axum::response::Response;
 
 use crate::application::port::get_playlist::GetPlaylistCommand;
 use crate::domain::alias::NumericID;
-use crate::infrastructure::inbound::rest::api_error::ApiError;
-use crate::infrastructure::inbound::rest::api_error::ErrorBody;
+use crate::infrastructure::inbound::rest::api_error::{ApiError, ErrorBody};
 use crate::infrastructure::inbound::rest::app_state::AppState;
 use crate::infrastructure::inbound::rest::hal::hal_json;
-use crate::infrastructure::inbound::rest::handler::library::PlaylistResponse;
-use crate::infrastructure::inbound::rest::handler::library::parse_playlist_id;
+use crate::infrastructure::inbound::rest::handler::library::{PlaylistResponse, parse_playlist_id};
 use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 
 /// Fetch one music playlist with its tracks.
@@ -80,35 +77,25 @@ pub(crate) async fn get_playlist(
 #[cfg(test)]
 mod tests {
 
-    use std::error::Error;
-    use std::sync::Arc;
-
+    use super::*;
+    use crate::application::port::get_playlist::{
+        GetPlaylistError, GetPlaylistResponse, GetPlaylistUseCase, MockGetPlaylistUseCase,
+    };
+    use crate::application::port::library_use_case_factory::MockLibraryUseCaseFactory;
+    use crate::domain::model::music_playlist::MusicPlaylist;
+    use crate::domain::model::music_recording::{MusicRecording, TrackIndex};
+    use crate::infrastructure::inbound::rest::handler::library::library_routes;
+    use crate::test_helpers::*;
     use axum::body::Body;
     use axum::extract::Request;
     use axum::http::StatusCode;
-    use axum::response::Response;
     use axum::routing::get;
-    use chrono::NaiveDate;
-    use chrono::NaiveDateTime;
+    use chrono::{NaiveDate, NaiveDateTime};
     use rstest::rstest;
     use serde_json::json;
+    use std::error::Error;
+    use std::sync::Arc;
     use tower::ServiceExt as _;
-
-    use super::get_playlist;
-    use crate::application::port::get_playlist::GetPlaylistError;
-    use crate::application::port::get_playlist::GetPlaylistResponse;
-    use crate::application::port::get_playlist::GetPlaylistUseCase;
-    use crate::application::port::get_playlist::MockGetPlaylistUseCase;
-    use crate::application::port::library_use_case_factory::MockLibraryUseCaseFactory;
-    use crate::domain::alias::NumericID;
-    use crate::domain::model::music_playlist::MusicPlaylist;
-    use crate::domain::model::music_recording::MusicRecording;
-    use crate::domain::model::music_recording::TrackIndex;
-    use crate::infrastructure::inbound::rest::handler::library::library_routes;
-    use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
-    use crate::test_helpers::app_state_with_library;
-    use crate::test_helpers::error_message_of;
-    use crate::test_helpers::into_parts;
 
     fn ts() -> NaiveDateTime {
         NaiveDate::from_ymd_opt(2026, 10, 6)

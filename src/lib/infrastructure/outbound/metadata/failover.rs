@@ -8,8 +8,7 @@ use crate::application::security_event;
 use crate::domain::model::configuration::ProviderId;
 use crate::domain::model::media_metadata::MediaMetadata;
 use crate::domain::model::media_query::MediaQuery;
-use crate::domain::model::video_candidate::Candidate;
-use crate::domain::model::video_candidate::Target;
+use crate::domain::model::video_candidate::{Candidate, Target};
 use crate::domain::port::error::ExternalServiceError;
 use crate::domain::port::video_metadata_provider::VideoMetadataProvider;
 
@@ -72,33 +71,17 @@ impl<L: VideoMetadataProvider> VideoMetadataProvider for FailoverVideoMetadataPr
 
 #[cfg(test)]
 mod tests {
-    use std::error::Error;
-
-    use std::time::Duration;
-
-    use rstest::rstest;
-    use tracing_test::traced_test;
-    use wiremock::Mock;
-    use wiremock::MockServer;
-    use wiremock::ResponseTemplate;
-    use wiremock::matchers::method;
-    use wiremock::matchers::path;
-
-    use crate::domain::model::configuration::ProviderId;
+    use super::*;
     use crate::domain::model::external_ref::ExternalRef;
-    use crate::domain::model::media_metadata::MediaMetadata;
-    use crate::domain::model::media_query::MediaQuery;
-    use crate::domain::model::media_query::MediaQueryError;
-    use crate::domain::model::media_query::VideoKind;
-    use crate::domain::model::video_candidate::Candidate;
-    use crate::domain::model::video_candidate::Target;
-    use crate::domain::port::error::ExternalServiceError;
+    use crate::domain::model::media_query::{MediaQueryError, VideoKind};
     use crate::domain::port::video_metadata_provider::MockVideoMetadataProvider;
-    use crate::domain::port::video_metadata_provider::VideoMetadataProvider as _;
-
     use crate::infrastructure::outbound::reqwest::tmdb::TmdbVideoMetadataProvider;
-
-    use super::FailoverVideoMetadataProvider;
+    use rstest::rstest;
+    use std::error::Error;
+    use std::time::Duration;
+    use tracing_test::traced_test;
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
 
     /// The golden search payload the stub serves.
     const SEARCH_MOVIE: &str = include_str!("../reqwest/fixtures/tmdb/search_movie.json");

@@ -1,22 +1,17 @@
 use axum::Json;
 use axum::extract::State;
 use axum::extract::rejection::JsonRejection;
-use axum::http::HeaderValue;
-use axum::http::StatusCode;
-use axum::http::header;
-use axum::response::IntoResponse as _;
-use axum::response::Response;
+use axum::http::{HeaderValue, StatusCode, header};
+use axum::response::{IntoResponse as _, Response};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
-use crate::application::port::begin_upload::BeginUploadCommand;
-use crate::application::port::begin_upload::BeginUploadError;
-use crate::application::port::begin_upload::BeginUploadResponse as BeginUploadResponseData;
+use crate::application::port::begin_upload::{
+    BeginUploadCommand, BeginUploadError, BeginUploadResponse as BeginUploadResponseData,
+};
 use crate::domain::alias::NumericID;
-use crate::domain::model::integrity_hash::DIGEST_HEX_LENGTH;
-use crate::domain::model::integrity_hash::IntegrityHash;
-use crate::infrastructure::inbound::rest::api_error::ApiError;
-use crate::infrastructure::inbound::rest::api_error::ErrorBody;
+use crate::domain::model::integrity_hash::{DIGEST_HEX_LENGTH, IntegrityHash};
+use crate::infrastructure::inbound::rest::api_error::{ApiError, ErrorBody};
 use crate::infrastructure::inbound::rest::app_state::AppState;
 use crate::infrastructure::inbound::rest::hal::HAL_CONTENT_TYPE;
 use crate::infrastructure::inbound::rest::handler::asset::UploadSessionLinks;
@@ -208,36 +203,21 @@ pub(crate) async fn post_upload(
 
 #[cfg(test)]
 mod tests {
-    use std::error::Error;
-    use std::sync::Arc;
-
+    use super::*;
+    use crate::application::port::asset_use_case_factory::MockAssetUseCaseFactory;
+    use crate::application::port::begin_upload::{
+        BeginUploadResponse, BeginUploadUseCase, MockBeginUploadUseCase,
+    };
+    use crate::test_helpers::*;
     use axum::body::Body;
-
     use axum::extract::Request;
-    use axum::http::StatusCode;
-    use axum::http::header;
-    use axum::response::Response;
     use axum::routing::post;
     use chrono::NaiveDate;
     use mockall::predicate::eq;
-
     use serde_json::json;
+    use std::error::Error;
+    use std::sync::Arc;
     use tower::ServiceExt as _;
-
-    use super::post_upload;
-    use crate::application::port::asset_use_case_factory::MockAssetUseCaseFactory;
-    use crate::application::port::begin_upload::BeginUploadCommand;
-    use crate::application::port::begin_upload::BeginUploadError;
-    use crate::application::port::begin_upload::BeginUploadResponse;
-    use crate::application::port::begin_upload::BeginUploadUseCase;
-    use crate::application::port::begin_upload::MockBeginUploadUseCase;
-    use crate::domain::alias::NumericID;
-    use crate::domain::model::integrity_hash::IntegrityHash;
-    use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
-    use crate::test_helpers::DIGEST;
-    use crate::test_helpers::app_state_with_asset;
-    use crate::test_helpers::error_message_of;
-    use crate::test_helpers::into_status_and_body;
 
     /// Send `body` through the endpoint router on behalf of `caller_id`,
     /// injecting the caller identifier the way the auth middleware does.

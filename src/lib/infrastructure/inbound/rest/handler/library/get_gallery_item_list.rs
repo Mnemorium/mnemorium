@@ -1,15 +1,12 @@
-use axum::extract::Path;
-use axum::extract::State;
+use axum::extract::{Path, State};
 use axum::response::Response;
 
 use crate::application::port::get_gallery::GetGalleryCommand;
 use crate::domain::alias::NumericID;
-use crate::infrastructure::inbound::rest::api_error::ApiError;
-use crate::infrastructure::inbound::rest::api_error::ErrorBody;
+use crate::infrastructure::inbound::rest::api_error::{ApiError, ErrorBody};
 use crate::infrastructure::inbound::rest::app_state::AppState;
 use crate::infrastructure::inbound::rest::hal::hal_json;
-use crate::infrastructure::inbound::rest::handler::library::GalleryResponse;
-use crate::infrastructure::inbound::rest::handler::library::parse_gallery_id;
+use crate::infrastructure::inbound::rest::handler::library::{GalleryResponse, parse_gallery_id};
 use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 
 /// List the items of a gallery.
@@ -80,31 +77,21 @@ pub(crate) async fn get_gallery_item_list(
 
 #[cfg(test)]
 mod tests {
-    use std::error::Error;
-    use std::sync::Arc;
-
+    use super::*;
+    use crate::application::port::get_gallery::{
+        GetGalleryError, GetGalleryResponse, GetGalleryUseCase, MockGetGalleryUseCase,
+    };
+    use crate::application::port::library_use_case_factory::MockLibraryUseCaseFactory;
+    use crate::test_helpers::*;
     use axum::body::Body;
-
     use axum::extract::Request;
     use axum::http::StatusCode;
-    use axum::response::Response;
     use axum::routing::get;
-    use chrono::NaiveDate;
-    use chrono::NaiveDateTime;
+    use chrono::{NaiveDate, NaiveDateTime};
     use serde_json::Value;
+    use std::error::Error;
+    use std::sync::Arc;
     use tower::ServiceExt as _;
-
-    use super::get_gallery_item_list;
-    use crate::application::port::get_gallery::GetGalleryError;
-    use crate::application::port::get_gallery::GetGalleryResponse;
-    use crate::application::port::get_gallery::GetGalleryUseCase;
-    use crate::application::port::get_gallery::MockGetGalleryUseCase;
-    use crate::application::port::library_use_case_factory::MockLibraryUseCaseFactory;
-    use crate::domain::alias::NumericID;
-    use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
-    use crate::test_helpers::app_state_with_library;
-    use crate::test_helpers::error_message_of;
-    use crate::test_helpers::into_status_and_body;
 
     /// A fixed instant the fixtures timestamp with.
     fn ts() -> NaiveDateTime {

@@ -115,10 +115,9 @@ pub(crate) fn openapi() -> OpenApi {
 
 #[cfg(test)]
 mod tests {
-    use super::openapi;
+    use super::*;
     use utoipa::openapi::RefOr;
-    use utoipa::openapi::path::Parameter;
-    use utoipa::openapi::path::PathItem;
+    use utoipa::openapi::path::{Parameter, PathItem};
 
     #[test]
     fn openapi_collects_every_context_and_the_security_scheme() {

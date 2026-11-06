@@ -2,22 +2,18 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
-use crate::application::port::resolve_music_metadata::ResolveMusicMetadataCommand;
-use crate::application::port::resolve_music_metadata::ResolveMusicMetadataError;
-use crate::application::port::resolve_music_metadata::ResolveMusicMetadataResponse;
-use crate::application::port::resolve_music_metadata::ResolveMusicMetadataUseCase;
+use crate::application::port::resolve_music_metadata::{
+    ResolveMusicMetadataCommand, ResolveMusicMetadataError, ResolveMusicMetadataResponse,
+    ResolveMusicMetadataUseCase,
+};
 use crate::application::security_event;
 use crate::domain::port::identity_unit_of_work::IdentityUnitOfWork;
 use crate::domain::port::music_metadata_provider::MusicMetadataProvider;
-use crate::domain::port::permission_repository::PermissionFilter;
-use crate::domain::port::permission_repository::PermissionRepository as _;
-use crate::domain::port::unit_of_work::UnitOfWork as _;
-use crate::domain::port::unit_of_work::UnitOfWorkFactory;
-use crate::domain::port::user_repository::UserFilter;
-use crate::domain::port::user_repository::UserRepository as _;
+use crate::domain::port::permission_repository::{PermissionFilter, PermissionRepository as _};
+use crate::domain::port::unit_of_work::{UnitOfWork as _, UnitOfWorkFactory};
+use crate::domain::port::user_repository::{UserFilter, UserRepository as _};
 use crate::domain::port::user_unit_of_work::UserUnitOfWork;
-use crate::domain::service::authorization::Authorization;
-use crate::domain::service::authorization::Decision;
+use crate::domain::service::authorization::{Authorization, Decision};
 
 /// Use case implementation for resolving one music target's metadata.
 ///
@@ -146,36 +142,22 @@ where
 
 #[cfg(test)]
 mod tests {
-    use std::error::Error;
-    use std::sync::Arc;
-    use std::sync::atomic::AtomicBool;
-    use std::sync::atomic::Ordering;
-
-    use chrono::NaiveDate;
-    use tracing_test::traced_test;
-
-    use crate::application::port::resolve_music_metadata::ResolveMusicMetadataCommand;
-    use crate::application::port::resolve_music_metadata::ResolveMusicMetadataError;
-    use crate::application::port::resolve_music_metadata::ResolveMusicMetadataUseCase as _;
+    use super::*;
     use crate::domain::model::configuration::ProviderId;
     use crate::domain::model::external_ref::ExternalRef;
     use crate::domain::model::music_album::ProductionType;
     use crate::domain::model::music_candidate::MusicTarget;
-    use crate::domain::model::music_metadata::ArtistCredit;
-    use crate::domain::model::music_metadata::MusicMetadata;
+    use crate::domain::model::music_metadata::{ArtistCredit, MusicMetadata};
     use crate::domain::model::music_query::MusicKind;
-    use crate::domain::model::permission::Action;
-    use crate::domain::model::permission::Permission;
-    use crate::domain::model::permission::Scope;
+    use crate::domain::model::permission::{Action, Permission, Scope};
     use crate::domain::port::error::ExternalServiceError;
     use crate::domain::port::music_metadata_provider::MockMusicMetadataProvider;
     use crate::domain::port::permission_repository::MockPermissionRepository;
-    use crate::test_helpers::TestFactory;
-    use crate::test_helpers::TestUnitOfWork;
-    use crate::test_helpers::any_caller;
-    use crate::test_helpers::no_permissions;
-
-    use super::ResolveMusicMetadata;
+    use crate::test_helpers::*;
+    use chrono::NaiveDate;
+    use std::error::Error;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use tracing_test::traced_test;
 
     /// The caller every test resolves for.
     const CALLER_ID: i64 = 1;

@@ -1,15 +1,12 @@
-use std::future::Future;
-use std::future::ready;
+use std::future::{Future, ready};
 use std::sync::Arc;
 
-use axum::extract::FromRequestParts;
-use axum::extract::{Request, State};
+use axum::extract::{FromRequestParts, Request, State};
 use axum::http::header;
 use axum::http::request::Parts;
 use axum::middleware::Next;
 use axum::response::{IntoResponse as _, Response};
-use tracing::error;
-use tracing::warn;
+use tracing::{error, warn};
 
 use crate::domain::alias::NumericID;
 use crate::domain::port::error::TokenProviderError;
@@ -124,33 +121,19 @@ where
 
 #[cfg(test)]
 mod tests {
-    use std::error::Error;
-    use std::sync::Arc;
-
-    use axum::Json;
-    use axum::body::Body;
-
-    use axum::extract::Request;
-    use axum::http::HeaderValue;
-    use axum::http::StatusCode;
-    use axum::http::header;
-    use axum::middleware;
-    use axum::response::Response;
-    use axum::routing::get;
-    use rstest::rstest;
-    use serde_json::Value;
-    use serde_json::json;
-    use tower::ServiceExt as _;
-
-    use super::AuthenticatedUser;
-    use super::authenticate;
-    use crate::domain::alias::NumericID;
-    use crate::domain::port::error::TokenProviderError;
+    use super::*;
     use crate::domain::port::token_provider::MockTokenProvider;
     use crate::infrastructure::inbound::rest::app_state::AppState;
-    use crate::test_helpers::app_state;
-    use crate::test_helpers::error_message_of;
-    use crate::test_helpers::into_status_and_body;
+    use crate::test_helpers::*;
+    use axum::Json;
+    use axum::body::Body;
+    use axum::http::{HeaderValue, StatusCode};
+    use axum::middleware;
+    use axum::routing::get;
+    use rstest::rstest;
+    use serde_json::{Value, json};
+    use std::error::Error;
+    use tower::ServiceExt as _;
 
     /// Echo the caller identifier the extractor recovered from the request.
     async fn stub(caller: AuthenticatedUser) -> Json<Value> {

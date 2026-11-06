@@ -1,23 +1,19 @@
 use axum::Json;
-use axum::extract::Path;
-use axum::extract::State;
 use axum::extract::rejection::JsonRejection;
-use axum::http::HeaderValue;
-use axum::http::StatusCode;
-use axum::http::header;
+use axum::extract::{Path, State};
+use axum::http::{HeaderValue, StatusCode, header};
 use axum::response::Response;
 use serde::Deserialize;
 use utoipa::ToSchema;
 
 use crate::application::port::put_album_medium::PutAlbumMediumCommand;
 use crate::domain::alias::NumericID;
-use crate::infrastructure::inbound::rest::api_error::ApiError;
-use crate::infrastructure::inbound::rest::api_error::ErrorBody;
+use crate::infrastructure::inbound::rest::api_error::{ApiError, ErrorBody};
 use crate::infrastructure::inbound::rest::app_state::AppState;
 use crate::infrastructure::inbound::rest::hal::hal_json;
-use crate::infrastructure::inbound::rest::handler::library::MediumResponse;
-use crate::infrastructure::inbound::rest::handler::library::parse_album_id;
-use crate::infrastructure::inbound::rest::handler::library::parse_write_index;
+use crate::infrastructure::inbound::rest::handler::library::{
+    MediumResponse, parse_album_id, parse_write_index,
+};
 use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 
 /// Payload to create or retype a music medium.
@@ -160,35 +156,24 @@ pub(crate) async fn put_album_medium(
 
 #[cfg(test)]
 mod tests {
-    use std::error::Error;
-    use std::sync::Arc;
-
+    use super::*;
+    use crate::application::port::library_use_case_factory::MockLibraryUseCaseFactory;
+    use crate::application::port::put_album_medium::{
+        MockPutAlbumMediumUseCase, PutAlbumMediumError, PutAlbumMediumResponse,
+        PutAlbumMediumUseCase,
+    };
+    use crate::domain::model::music_album::MusicAlbum;
+    use crate::domain::model::music_medium::{MediumIndex, MusicMedium};
+    use crate::infrastructure::inbound::rest::handler::library::library_routes;
+    use crate::test_helpers::*;
     use axum::body::Body;
     use axum::extract::Request;
-    use axum::http::StatusCode;
-    use axum::http::header;
-    use axum::response::Response;
     use axum::routing::put;
     use rstest::rstest;
     use serde_json::json;
+    use std::error::Error;
+    use std::sync::Arc;
     use tower::ServiceExt as _;
-
-    use super::put_album_medium;
-    use crate::application::port::library_use_case_factory::MockLibraryUseCaseFactory;
-    use crate::application::port::put_album_medium::MockPutAlbumMediumUseCase;
-    use crate::application::port::put_album_medium::PutAlbumMediumError;
-    use crate::application::port::put_album_medium::PutAlbumMediumResponse;
-    use crate::application::port::put_album_medium::PutAlbumMediumUseCase;
-    use crate::domain::alias::NumericID;
-    use crate::domain::model::music_album::MusicAlbum;
-    use crate::domain::model::music_medium::MediumIndex;
-    use crate::domain::model::music_medium::MusicMedium;
-    use crate::infrastructure::inbound::rest::handler::library::library_routes;
-    use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
-    use crate::test_helpers::app_state_with_library;
-    use crate::test_helpers::error_message_of;
-    use crate::test_helpers::into_parts;
-    use crate::test_helpers::sample_album;
 
     /// Send a PUT to the medium route on behalf of `caller_id`.
     async fn send(

@@ -3,8 +3,7 @@ use std::pin::Pin;
 
 use crate::application::port::get_permission::GetPermissionResponse;
 use crate::domain::alias::NumericID;
-use crate::domain::model::permission::Action;
-use crate::domain::model::permission::Scope;
+use crate::domain::model::permission::{Action, Scope};
 
 /// One requested override, validated by the use case.
 #[derive(Debug, Clone, PartialEq, Eq)]

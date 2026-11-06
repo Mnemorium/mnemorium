@@ -1,24 +1,19 @@
 use axum::Json;
-use axum::extract::Path;
-use axum::extract::State;
 use axum::extract::rejection::JsonRejection;
-use axum::http::HeaderValue;
-use axum::http::StatusCode;
-use axum::http::header;
+use axum::extract::{Path, State};
+use axum::http::{HeaderValue, StatusCode, header};
 use axum::response::Response;
 use serde::Deserialize;
 use utoipa::ToSchema;
 
-use crate::application::port::add_gallery_item::AddGalleryItemCommand;
-use crate::application::port::add_gallery_item::AddGalleryItemError;
+use crate::application::port::add_gallery_item::{AddGalleryItemCommand, AddGalleryItemError};
 use crate::domain::alias::NumericID;
-use crate::infrastructure::inbound::rest::api_error::ApiError;
-use crate::infrastructure::inbound::rest::api_error::ErrorBody;
+use crate::infrastructure::inbound::rest::api_error::{ApiError, ErrorBody};
 use crate::infrastructure::inbound::rest::app_state::AppState;
 use crate::infrastructure::inbound::rest::hal::hal_json;
-use crate::infrastructure::inbound::rest::handler::library::GalleryItemDetailResponse;
-use crate::infrastructure::inbound::rest::handler::library::GalleryItemType;
-use crate::infrastructure::inbound::rest::handler::library::parse_gallery_id;
+use crate::infrastructure::inbound::rest::handler::library::{
+    GalleryItemDetailResponse, GalleryItemType, parse_gallery_id,
+};
 use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 
 /// Payload to add one of the caller's media to a gallery.
@@ -186,36 +181,23 @@ pub(crate) async fn post_gallery_item(
 
 #[cfg(test)]
 mod tests {
-    use std::error::Error;
-    use std::sync::Arc;
-
-    use axum::body::Body;
-    use axum::body::to_bytes;
+    use super::*;
+    use crate::application::port::add_gallery_item::{
+        AddGalleryItemResponse, AddGalleryItemUseCase, MockAddGalleryItemUseCase,
+    };
+    use crate::application::port::library_use_case_factory::MockLibraryUseCaseFactory;
+    use crate::domain::model::gallery_item::GalleryItemMedia;
+    use crate::test_helpers::*;
+    use axum::body::{Body, to_bytes};
     use axum::extract::Request;
-    use axum::http::StatusCode;
-    use axum::http::header;
-    use axum::response::Response;
     use axum::routing::post;
-    use chrono::NaiveDate;
-    use chrono::NaiveDateTime;
+    use chrono::{NaiveDate, NaiveDateTime};
     use mockall::predicate::eq;
     use rstest::rstest;
-    use serde_json::Value;
-    use serde_json::json;
+    use serde_json::{Value, json};
+    use std::error::Error;
+    use std::sync::Arc;
     use tower::ServiceExt as _;
-
-    use super::post_gallery_item;
-    use crate::application::port::add_gallery_item::AddGalleryItemCommand;
-    use crate::application::port::add_gallery_item::AddGalleryItemError;
-    use crate::application::port::add_gallery_item::AddGalleryItemResponse;
-    use crate::application::port::add_gallery_item::AddGalleryItemUseCase;
-    use crate::application::port::add_gallery_item::MockAddGalleryItemUseCase;
-    use crate::application::port::library_use_case_factory::MockLibraryUseCaseFactory;
-    use crate::domain::alias::NumericID;
-    use crate::domain::model::gallery_item::GalleryItemMedia;
-    use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
-    use crate::test_helpers::app_state_with_library;
-    use crate::test_helpers::error_message_of;
 
     /// A fixed instant the fixtures timestamp with.
     fn ts() -> NaiveDateTime {

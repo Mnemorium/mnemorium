@@ -124,6 +124,7 @@ RULES=(
 	"STY-RUST-086:check_sty_rust_086"
 	"STY-RUST-087:check_sty_rust_087"
 	"STY-RUST-088:check_sty_rust_088"
+	"STY-RUST-089:check_sty_rust_089"
 	"DOC-003:check_doc_003"
 	"DOC-005:check_doc_005"
 	"DOC-007:check_doc_007"
@@ -6047,6 +6048,32 @@ check_sty_rust_088() {
 	done < <(printf '%s\n' "$matches" |
 		jq -r '[.file, ((.range.start.line + 1) | tostring),
 			.metaVariables.single.VIS.text, .metaVariables.single.NAME.text] | @tsv')
+
+	return "$result"
+}
+
+# check_sty_rust_089 — a pair of adjacent imports from one parent module is one
+# brace group (STY-RUST-089). The extractor reports each later import of a pair;
+# the budget ratchets the count down as the tree merges them, and never up.
+check_sty_rust_089() {
+	local id="STY-RUST-089"
+	local config budget matches count result=0
+
+	config="$(rule_config "$id")" || return 2
+	budget="$(jq -r '.max_unmerged_imports // empty' <<<"$config")"
+	if [ -z "$budget" ]; then
+		printf 'error: %s: rule_enforcer.yaml records no max_unmerged_imports\n' "$id" >&2
+		return 1
+	fi
+
+	matches="$(scan_json "$id" src)" || return 1
+	count="$(printf '%s' "$matches" | jq -s 'length')"
+
+	if [ "$count" -gt "$budget" ]; then
+		printf 'error: %s: %s adjacent imports still share a parent module; the recorded budget is %s. Merge the pair into one brace group or lower max_unmerged_imports in rule_enforcer.yaml\n' \
+			"$id" "$count" "$budget" >&2
+		result=1
+	fi
 
 	return "$result"
 }

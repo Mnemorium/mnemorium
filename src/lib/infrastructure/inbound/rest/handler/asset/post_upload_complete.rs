@@ -1,25 +1,19 @@
 use axum::Json;
-use axum::extract::Path;
-use axum::extract::State;
-use axum::http::HeaderValue;
-use axum::http::header;
-use axum::response::IntoResponse as _;
-use axum::response::Response;
-use serde::Deserialize;
-use serde::Serialize;
+use axum::extract::{Path, State};
+use axum::http::{HeaderValue, header};
+use axum::response::{IntoResponse as _, Response};
+use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
-use crate::application::port::complete_upload::CompleteUploadCommand;
-use crate::application::port::complete_upload::CompleteUploadError;
-use crate::application::port::complete_upload::CompleteUploadResponse as CompleteUploadResponseData;
+use crate::application::port::complete_upload::{
+    CompleteUploadCommand, CompleteUploadError,
+    CompleteUploadResponse as CompleteUploadResponseData,
+};
 use crate::domain::alias::NumericID;
-use crate::infrastructure::inbound::rest::api_error::ApiError;
-use crate::infrastructure::inbound::rest::api_error::ErrorBody;
+use crate::infrastructure::inbound::rest::api_error::{ApiError, ErrorBody};
 use crate::infrastructure::inbound::rest::app_state::AppState;
-use crate::infrastructure::inbound::rest::hal::HAL_CONTENT_TYPE;
-use crate::infrastructure::inbound::rest::hal::Link;
-use crate::infrastructure::inbound::rest::handler::asset::asset_file_href;
-use crate::infrastructure::inbound::rest::handler::asset::upload_self_href;
+use crate::infrastructure::inbound::rest::hal::{HAL_CONTENT_TYPE, Link};
+use crate::infrastructure::inbound::rest::handler::asset::{asset_file_href, upload_self_href};
 use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 
 /// HAL links exposed by a completed upload.
@@ -187,33 +181,21 @@ pub(crate) async fn post_upload_complete(
 
 #[cfg(test)]
 mod tests {
-    use std::error::Error;
-    use std::sync::Arc;
-
+    use super::*;
+    use crate::application::port::asset_use_case_factory::MockAssetUseCaseFactory;
+    use crate::application::port::complete_upload::{
+        CompleteUploadResponse, CompleteUploadUseCase, MockCompleteUploadUseCase,
+    };
+    use crate::test_helpers::*;
     use axum::body::Body;
-
     use axum::extract::Request;
     use axum::http::StatusCode;
-    use axum::http::header;
-    use axum::response::Response;
     use axum::routing::post;
     use mockall::predicate::eq;
-
     use serde_json::json;
+    use std::error::Error;
+    use std::sync::Arc;
     use tower::ServiceExt as _;
-
-    use super::post_upload_complete;
-    use crate::application::port::asset_use_case_factory::MockAssetUseCaseFactory;
-    use crate::application::port::complete_upload::CompleteUploadCommand;
-    use crate::application::port::complete_upload::CompleteUploadError;
-    use crate::application::port::complete_upload::CompleteUploadResponse;
-    use crate::application::port::complete_upload::CompleteUploadUseCase;
-    use crate::application::port::complete_upload::MockCompleteUploadUseCase;
-    use crate::domain::alias::NumericID;
-    use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
-    use crate::test_helpers::app_state_with_asset;
-    use crate::test_helpers::error_message_of;
-    use crate::test_helpers::into_status_and_body;
 
     /// Send a completion POST for `upload_id` through the endpoint router on
     /// behalf of `caller_id`, injecting the caller the way the auth middleware

@@ -1,16 +1,11 @@
 use axum::Json;
-use axum::extract::Path;
-use axum::extract::State;
-use axum::http::HeaderValue;
-use axum::http::header;
-use axum::response::IntoResponse as _;
-use axum::response::Response;
+use axum::extract::{Path, State};
+use axum::http::{HeaderValue, header};
+use axum::response::{IntoResponse as _, Response};
 
-use crate::application::port::get_upload::GetUploadCommand;
-use crate::application::port::get_upload::GetUploadError;
+use crate::application::port::get_upload::{GetUploadCommand, GetUploadError};
 use crate::domain::alias::NumericID;
-use crate::infrastructure::inbound::rest::api_error::ApiError;
-use crate::infrastructure::inbound::rest::api_error::ErrorBody;
+use crate::infrastructure::inbound::rest::api_error::{ApiError, ErrorBody};
 use crate::infrastructure::inbound::rest::app_state::AppState;
 use crate::infrastructure::inbound::rest::hal::HAL_CONTENT_TYPE;
 use crate::infrastructure::inbound::rest::handler::asset::UploadSessionResponse;
@@ -125,35 +120,22 @@ pub(crate) async fn get_upload(
 
 #[cfg(test)]
 mod tests {
-    use std::error::Error;
-    use std::sync::Arc;
-
+    use super::*;
+    use crate::application::port::asset_use_case_factory::MockAssetUseCaseFactory;
+    use crate::application::port::get_upload::{
+        GetUploadResponse as GetUploadResponseData, GetUploadUseCase, MockGetUploadUseCase,
+    };
+    use crate::test_helpers::*;
     use axum::body::Body;
-
     use axum::extract::Request;
     use axum::http::StatusCode;
-    use axum::http::header;
-    use axum::response::Response;
     use axum::routing::get;
-    use chrono::NaiveDate;
-    use chrono::NaiveDateTime;
+    use chrono::{NaiveDate, NaiveDateTime};
     use mockall::predicate::eq;
-
     use serde_json::json;
+    use std::error::Error;
+    use std::sync::Arc;
     use tower::ServiceExt as _;
-
-    use super::get_upload;
-    use crate::application::port::asset_use_case_factory::MockAssetUseCaseFactory;
-    use crate::application::port::get_upload::GetUploadCommand;
-    use crate::application::port::get_upload::GetUploadError;
-    use crate::application::port::get_upload::GetUploadResponse as GetUploadResponseData;
-    use crate::application::port::get_upload::GetUploadUseCase;
-    use crate::application::port::get_upload::MockGetUploadUseCase;
-    use crate::domain::alias::NumericID;
-    use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
-    use crate::test_helpers::app_state_with_asset;
-    use crate::test_helpers::error_message_of;
-    use crate::test_helpers::into_status_and_body;
 
     /// Send a GET to `/api/v1/asset/upload/{upload_id}` on behalf of
     /// `caller_id`, injecting the caller the way the auth middleware does.

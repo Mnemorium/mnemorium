@@ -13,9 +13,7 @@ use std::future::Future;
 use std::time::Duration;
 
 use chrono::NaiveDate;
-use reqwest::Client;
-use reqwest::RequestBuilder;
-use reqwest::StatusCode;
+use reqwest::{Client, RequestBuilder, StatusCode};
 use serde::Deserialize;
 
 use crate::application::security_event;
@@ -23,19 +21,14 @@ use crate::domain::model::configuration::ProviderId;
 use crate::domain::model::external_ref::ExternalRef;
 use crate::domain::model::genre::Genre;
 use crate::domain::model::media_metadata::MediaMetadata;
-use crate::domain::model::media_query::MediaQuery;
-use crate::domain::model::media_query::VideoKind;
-use crate::domain::model::video_candidate::Candidate;
-use crate::domain::model::video_candidate::Target;
+use crate::domain::model::media_query::{MediaQuery, VideoKind};
+use crate::domain::model::video_candidate::{Candidate, Target};
 use crate::domain::port::error::ExternalServiceError;
 use crate::domain::port::video_metadata_provider::VideoMetadataProvider;
-use crate::infrastructure::outbound::reqwest::ArtworkClient;
-use crate::infrastructure::outbound::reqwest::REQUEST_TIMEOUT;
-use crate::infrastructure::outbound::reqwest::classify_status;
-use crate::infrastructure::outbound::reqwest::classify_transport_error;
-use crate::infrastructure::outbound::reqwest::log_provider_fault;
-use crate::infrastructure::outbound::reqwest::read_payload;
-use crate::infrastructure::outbound::reqwest::request_url;
+use crate::infrastructure::outbound::reqwest::{
+    ArtworkClient, REQUEST_TIMEOUT, classify_status, classify_transport_error, log_provider_fault,
+    read_payload, request_url,
+};
 
 /// Base address of the TMDB API.
 const DEFAULT_BASE_URL: &str = "https://api.themoviedb.org/3";
@@ -441,36 +434,15 @@ fn parse_date(value: Option<&str>) -> Option<NaiveDate> {
 
 #[cfg(test)]
 mod tests {
-    use std::error::Error;
-    use std::time::Duration;
-
-    use chrono::Datelike as _;
-    use chrono::NaiveDate;
-    use reqwest::StatusCode;
-    use rstest::rstest;
-    use tracing_test::traced_test;
-    use wiremock::Mock;
-    use wiremock::MockServer;
-    use wiremock::ResponseTemplate;
-    use wiremock::matchers::header;
-    use wiremock::matchers::method;
-    use wiremock::matchers::path;
-    use wiremock::matchers::query_param;
-
-    use crate::domain::model::configuration::ProviderId;
-    use crate::domain::model::external_ref::ExternalRef;
-    use crate::domain::model::genre::Genre;
-    use crate::domain::model::media_metadata::MediaMetadata;
-    use crate::domain::model::media_query::MediaQuery;
+    use super::*;
     use crate::domain::model::media_query::MediaQueryError;
-    use crate::domain::model::media_query::VideoKind;
-    use crate::domain::model::video_candidate::Candidate;
-    use crate::domain::model::video_candidate::Target;
-    use crate::domain::port::video_metadata_provider::VideoMetadataProvider as _;
     use crate::infrastructure::outbound::reqwest::ARTWORK_MAX_BYTES;
-    use crate::infrastructure::outbound::reqwest::ArtworkClient;
-
-    use super::TmdbVideoMetadataProvider;
+    use chrono::Datelike as _;
+    use rstest::rstest;
+    use std::error::Error;
+    use tracing_test::traced_test;
+    use wiremock::matchers::{header, method, path, query_param};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
 
     /// The film search payload `wiremock` serves.
     const SEARCH_MOVIE: &str = include_str!("fixtures/tmdb/search_movie.json");

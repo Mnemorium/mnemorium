@@ -2,26 +2,20 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
-use crate::application::port::list_album_tracks::ListAlbumTracksCommand;
-use crate::application::port::list_album_tracks::ListAlbumTracksError;
-use crate::application::port::list_album_tracks::ListAlbumTracksItem;
-use crate::application::port::list_album_tracks::ListAlbumTracksResponse;
-use crate::application::port::list_album_tracks::ListAlbumTracksUseCase;
+use crate::application::port::list_album_tracks::{
+    ListAlbumTracksCommand, ListAlbumTracksError, ListAlbumTracksItem, ListAlbumTracksResponse,
+    ListAlbumTracksUseCase,
+};
 use crate::application::security_event;
 use crate::domain::model::permission::Action;
 use crate::domain::port::identity_unit_of_work::IdentityUnitOfWork;
 use crate::domain::port::library_unit_of_work::LibraryUnitOfWork;
-use crate::domain::port::music_album_repository::MusicAlbumFilter;
-use crate::domain::port::music_album_repository::MusicAlbumRepository as _;
-use crate::domain::port::permission_repository::PermissionFilter;
-use crate::domain::port::permission_repository::PermissionRepository as _;
-use crate::domain::port::unit_of_work::UnitOfWork as _;
-use crate::domain::port::unit_of_work::UnitOfWorkFactory;
-use crate::domain::port::user_repository::UserFilter;
-use crate::domain::port::user_repository::UserRepository as _;
+use crate::domain::port::music_album_repository::{MusicAlbumFilter, MusicAlbumRepository as _};
+use crate::domain::port::permission_repository::{PermissionFilter, PermissionRepository as _};
+use crate::domain::port::unit_of_work::{UnitOfWork as _, UnitOfWorkFactory};
+use crate::domain::port::user_repository::{UserFilter, UserRepository as _};
 use crate::domain::port::user_unit_of_work::UserUnitOfWork;
-use crate::domain::service::authorization::Authorization;
-use crate::domain::service::authorization::Decision;
+use crate::domain::service::authorization::{Authorization, Decision};
 
 /// Use case implementation for listing the tracks of one medium of one music
 /// album.
@@ -158,32 +152,18 @@ where
 
 #[cfg(test)]
 mod tests {
-    use std::error::Error;
-    use std::sync::Arc;
-    use std::sync::atomic::Ordering;
-
-    use crate::application::port::list_album_tracks::ListAlbumTracksCommand;
-    use crate::application::port::list_album_tracks::ListAlbumTracksError;
-    use crate::application::port::list_album_tracks::ListAlbumTracksItem;
-    use crate::application::port::list_album_tracks::ListAlbumTracksUseCase as _;
+    use super::*;
     use crate::domain::model::music_album::MusicAlbum;
-    use crate::domain::model::music_medium::MediumIndex;
-    use crate::domain::model::music_medium::MusicMedium;
-    use crate::domain::model::music_recording::MusicRecording;
-    use crate::domain::model::music_recording::TrackIndex;
-    use crate::domain::model::user::Role;
-    use crate::domain::model::user::User;
+    use crate::domain::model::music_medium::{MediumIndex, MusicMedium};
+    use crate::domain::model::music_recording::{MusicRecording, TrackIndex};
+    use crate::domain::model::user::{Role, User};
     use crate::domain::port::error::RepositoryError;
     use crate::domain::port::music_album_repository::MockMusicAlbumRepository;
     use crate::domain::port::user_repository::MockUserRepository;
-    use crate::test_helpers::GalleryFactoryHarness;
-    use crate::test_helpers::TestFactory;
-    use crate::test_helpers::TestUnitOfWork;
-    use crate::test_helpers::album_release_date;
-    use crate::test_helpers::no_permissions;
+    use crate::test_helpers::*;
+    use std::error::Error;
+    use std::sync::atomic::Ordering;
     use tracing_test::traced_test;
-
-    use super::ListAlbumTracks;
 
     /// The use case under test, bound to the mocked unit-of-work factory.
     type UseCase = ListAlbumTracks<TestFactory>;

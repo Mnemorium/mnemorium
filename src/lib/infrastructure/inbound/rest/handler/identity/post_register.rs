@@ -1,23 +1,19 @@
 use axum::Json;
 use axum::extract::State;
 use axum::extract::rejection::JsonRejection;
-use axum::http::HeaderValue;
-use axum::http::StatusCode;
-use axum::http::header;
+use axum::http::{HeaderValue, StatusCode, header};
 use axum::response::Response;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
-use crate::application::port::register_user::RegisterUserCommand;
-use crate::application::port::register_user::RegisterUserError;
-use crate::application::port::register_user::RegisterUserResponse;
+use crate::application::port::register_user::{
+    RegisterUserCommand, RegisterUserError, RegisterUserResponse,
+};
 use crate::domain::alias::NumericID;
 use crate::domain::model::user::Role;
-use crate::infrastructure::inbound::rest::api_error::ApiError;
-use crate::infrastructure::inbound::rest::api_error::ErrorBody;
+use crate::infrastructure::inbound::rest::api_error::{ApiError, ErrorBody};
 use crate::infrastructure::inbound::rest::app_state::AppState;
-use crate::infrastructure::inbound::rest::hal::SelfLinks;
-use crate::infrastructure::inbound::rest::hal::hal_json;
+use crate::infrastructure::inbound::rest::hal::{SelfLinks, hal_json};
 use crate::infrastructure::inbound::rest::handler::user::user_self_href;
 use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 
@@ -208,34 +204,18 @@ pub(crate) async fn post_register(
 
 #[cfg(test)]
 mod tests {
-    use std::error::Error;
-    use std::sync::Arc;
-
-    use axum::body::Body;
-    use axum::body::to_bytes;
+    use super::*;
+    use crate::application::port::identity_use_case_factory::MockIdentityUseCaseFactory;
+    use crate::application::port::register_user::{MockRegisterUserUseCase, RegisterUserUseCase};
+    use crate::test_helpers::*;
+    use axum::body::{Body, to_bytes};
     use axum::extract::Request;
-    use axum::http::StatusCode;
-    use axum::http::header;
-    use axum::response::Response;
     use axum::routing::post;
     use mockall::predicate::eq;
-    use serde_json::Value;
-    use serde_json::json;
+    use serde_json::{Value, json};
+    use std::error::Error;
+    use std::sync::Arc;
     use tower::ServiceExt as _;
-
-    use super::post_register;
-    use crate::application::port::identity_use_case_factory::MockIdentityUseCaseFactory;
-    use crate::application::port::register_user::MockRegisterUserUseCase;
-    use crate::application::port::register_user::RegisterUserCommand;
-    use crate::application::port::register_user::RegisterUserError;
-    use crate::application::port::register_user::RegisterUserResponse;
-    use crate::application::port::register_user::RegisterUserUseCase;
-    use crate::domain::alias::NumericID;
-    use crate::domain::model::user::Role;
-    use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
-    use crate::test_helpers::SECRET_PASSWORD;
-    use crate::test_helpers::app_state_with_identity;
-    use crate::test_helpers::error_message_of;
     use tracing_test::traced_test;
 
     /// Send `body` through the endpoint router on behalf of `caller_id`,

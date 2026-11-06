@@ -1,14 +1,12 @@
 //! Projection helpers shared by the upload-session use cases.
 
-use chrono::Duration;
-use chrono::NaiveDateTime;
+use chrono::{Duration, NaiveDateTime};
 
 use crate::domain::alias::NumericID;
 use crate::domain::model::upload::Upload;
 use crate::domain::port::asset_unit_of_work::AssetUnitOfWork;
 use crate::domain::port::error::RepositoryError;
-use crate::domain::port::file_repository::FileFilter;
-use crate::domain::port::file_repository::FileRepository as _;
+use crate::domain::port::file_repository::{FileFilter, FileRepository as _};
 
 /// Find the caller's file matching the upload's digest, if any.
 ///

@@ -4,23 +4,20 @@ use std::sync::Arc;
 
 use chrono::Utc;
 
-use crate::application::port::create_playlist::CreatePlaylistCommand;
-use crate::application::port::create_playlist::CreatePlaylistError;
-use crate::application::port::create_playlist::CreatePlaylistResponse;
-use crate::application::port::create_playlist::CreatePlaylistUseCase;
+use crate::application::port::create_playlist::{
+    CreatePlaylistCommand, CreatePlaylistError, CreatePlaylistResponse, CreatePlaylistUseCase,
+};
 use crate::application::security_event;
 use crate::domain::model::music_playlist::MusicPlaylist;
 use crate::domain::port::error::RepositoryError;
 use crate::domain::port::library_unit_of_work::LibraryUnitOfWork;
-use crate::domain::port::music_playlist_repository::MusicPlaylistFilter;
-use crate::domain::port::music_playlist_repository::MusicPlaylistRepository as _;
-use crate::domain::port::unit_of_work::UnitOfWork as _;
-use crate::domain::port::unit_of_work::UnitOfWorkFactory;
-use crate::domain::port::user_repository::UserFilter;
-use crate::domain::port::user_repository::UserRepository as _;
+use crate::domain::port::music_playlist_repository::{
+    MusicPlaylistFilter, MusicPlaylistRepository as _,
+};
+use crate::domain::port::unit_of_work::{UnitOfWork as _, UnitOfWorkFactory};
+use crate::domain::port::user_repository::{UserFilter, UserRepository as _};
 use crate::domain::port::user_unit_of_work::UserUnitOfWork;
-use crate::domain::service::name_policy::NamePolicy;
-use crate::domain::service::name_policy::NamePolicyError;
+use crate::domain::service::name_policy::{NamePolicy, NamePolicyError};
 
 /// Use case implementation for creating a playlist.
 pub(crate) struct CreatePlaylist<F> {
@@ -151,27 +148,15 @@ where
 
 #[cfg(test)]
 mod tests {
-    use std::error::Error;
-    use std::sync::Arc;
-    use std::sync::atomic::Ordering;
-
-    use chrono::NaiveDateTime;
-
-    use crate::application::port::create_playlist::CreatePlaylistCommand;
-    use crate::application::port::create_playlist::CreatePlaylistError;
-    use crate::application::port::create_playlist::CreatePlaylistUseCase as _;
-    use crate::domain::model::music_playlist::MusicPlaylist;
-    use crate::domain::model::user::Role;
-    use crate::domain::model::user::User;
-    use crate::domain::port::error::RepositoryError;
+    use super::*;
+    use crate::domain::model::user::{Role, User};
     use crate::domain::port::music_playlist_repository::MockMusicPlaylistRepository;
     use crate::domain::port::user_repository::MockUserRepository;
     use crate::domain::service::name_policy::MAX_NAME_LENGTH;
-    use crate::test_helpers::GalleryFactoryHarness;
-    use crate::test_helpers::TestFactory;
-    use crate::test_helpers::TestUnitOfWork;
-
-    use super::CreatePlaylist;
+    use crate::test_helpers::*;
+    use chrono::NaiveDateTime;
+    use std::error::Error;
+    use std::sync::atomic::Ordering;
 
     type UseCase = CreatePlaylist<TestFactory>;
 

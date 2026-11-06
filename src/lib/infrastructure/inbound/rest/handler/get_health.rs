@@ -41,20 +41,15 @@ pub(crate) async fn get_health() -> Json<HealthResponse> {
 
 #[cfg(test)]
 mod tests {
-    use std::error::Error;
-
+    use super::*;
     use axum::Router;
-    use axum::body::Body;
-    use axum::body::to_bytes;
+    use axum::body::{Body, to_bytes};
     use axum::extract::Request;
-    use axum::http::StatusCode;
-    use axum::http::header;
+    use axum::http::{StatusCode, header};
     use axum::routing::get;
-    use serde_json::Value;
-    use serde_json::json;
+    use serde_json::{Value, json};
+    use std::error::Error;
     use tower::ServiceExt as _;
-
-    use super::get_health;
 
     #[tokio::test]
     async fn get_health_service_running_returns_ok() -> Result<(), Box<dyn Error>> {

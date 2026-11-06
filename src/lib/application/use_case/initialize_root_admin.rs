@@ -4,21 +4,18 @@ use std::sync::Arc;
 
 use chrono::Utc;
 
-use crate::application::port::initialize_root_admin::InitializeRootAdminError;
-use crate::application::port::initialize_root_admin::InitializeRootAdminResponse;
-use crate::application::port::initialize_root_admin::InitializeRootAdminUseCase;
+use crate::application::port::initialize_root_admin::{
+    InitializeRootAdminError, InitializeRootAdminResponse, InitializeRootAdminUseCase,
+};
 use crate::application::security_event;
 use crate::domain::model::credential::Credential;
-use crate::domain::model::user::Role;
-use crate::domain::model::user::User;
+use crate::domain::model::user::{Role, User};
 use crate::domain::port::credential_repository::CredentialRepository as _;
 use crate::domain::port::identity_unit_of_work::IdentityUnitOfWork;
 use crate::domain::port::password_generator::PasswordGenerator;
 use crate::domain::port::password_hasher::PasswordHasher;
-use crate::domain::port::unit_of_work::UnitOfWork as _;
-use crate::domain::port::unit_of_work::UnitOfWorkFactory;
-use crate::domain::port::user_repository::UserFilter;
-use crate::domain::port::user_repository::UserRepository as _;
+use crate::domain::port::unit_of_work::{UnitOfWork as _, UnitOfWorkFactory};
+use crate::domain::port::user_repository::{UserFilter, UserRepository as _};
 use crate::domain::port::user_unit_of_work::UserUnitOfWork;
 
 /// Username granted to the root admin.
@@ -150,26 +147,17 @@ where
 
 #[cfg(test)]
 mod tests {
-    use std::error::Error;
-    use std::sync::Arc;
-    use std::sync::atomic::AtomicBool;
-    use std::sync::atomic::Ordering;
-
-    use crate::application::port::initialize_root_admin::InitializeRootAdminError;
-    use crate::application::port::initialize_root_admin::InitializeRootAdminUseCase as _;
-    use crate::domain::model::user::Role;
-    use crate::domain::model::user::User;
+    use super::*;
     use crate::domain::port::credential_repository::MockCredentialRepository;
-    use crate::domain::port::error::PasswordGeneratorError;
-    use crate::domain::port::error::PasswordHasherError;
-    use crate::domain::port::error::RepositoryError;
+    use crate::domain::port::error::{
+        PasswordGeneratorError, PasswordHasherError, RepositoryError,
+    };
     use crate::domain::port::password_generator::MockPasswordGenerator;
     use crate::domain::port::password_hasher::MockPasswordHasher;
     use crate::domain::port::user_repository::MockUserRepository;
-    use crate::test_helpers::TestFactory;
-    use crate::test_helpers::TestUnitOfWork;
-
-    use super::InitializeRootAdmin;
+    use crate::test_helpers::*;
+    use std::error::Error;
+    use std::sync::atomic::{AtomicBool, Ordering};
 
     type UseCase = InitializeRootAdmin<TestFactory, MockPasswordHasher, MockPasswordGenerator>;
 

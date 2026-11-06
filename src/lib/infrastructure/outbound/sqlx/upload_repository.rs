@@ -1,16 +1,12 @@
 use std::collections::HashMap;
 
-use sqlx::QueryBuilder;
-use sqlx::Sqlite;
-use sqlx::Transaction;
+use sqlx::{QueryBuilder, Sqlite, Transaction};
 
 use crate::domain::alias::NumericID;
 use crate::domain::model::integrity_hash::IntegrityHash;
-use crate::domain::model::upload::ChunkBitmap;
-use crate::domain::model::upload::Upload;
+use crate::domain::model::upload::{ChunkBitmap, Upload};
 use crate::domain::port::error::RepositoryError;
-use crate::domain::port::upload_repository::UploadFilter;
-use crate::domain::port::upload_repository::UploadRepository;
+use crate::domain::port::upload_repository::{UploadFilter, UploadRepository};
 
 use super::error_mapping::emit_catalogued_failure;
 use super::model::upload::Upload as SqlxUpload;
@@ -335,24 +331,12 @@ fn domain_upload(row: SqlxUpload, chunk_numbers: &[usize]) -> Result<Upload, Rep
 
 #[cfg(test)]
 mod tests {
-    use std::error::Error;
-
+    use super::*;
+    use crate::test_helpers::*;
     use rstest::rstest;
-    use sqlx::Sqlite;
-    use sqlx::Transaction;
     use sqlx::sqlite::SqlitePoolOptions;
-
-    use crate::domain::model::integrity_hash::IntegrityHash;
-    use crate::domain::model::upload::ChunkBitmap;
-    use crate::domain::model::upload::Upload;
-    use crate::domain::port::error::RepositoryError;
-    use crate::domain::port::upload_repository::UploadFilter;
-    use crate::domain::port::upload_repository::UploadRepository as _;
-    use crate::test_helpers::CHUNK_SIZE;
-    use crate::test_helpers::DIGEST;
+    use std::error::Error;
     use tracing_test::traced_test;
-
-    use super::SqlxUploadRepository;
 
     async fn begin_transaction() -> Result<Transaction<'static, Sqlite>, sqlx::Error> {
         let pool = SqlitePoolOptions::new()

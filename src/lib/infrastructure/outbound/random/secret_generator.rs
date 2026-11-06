@@ -1,8 +1,7 @@
 use std::future::{Future, ready};
 
-use rand::Rng as _;
-use rand::SeedableRng as _;
 use rand::rngs::ChaCha20Rng;
+use rand::{Rng as _, SeedableRng as _};
 
 use crate::domain::port::error::SecretGeneratorError;
 use crate::domain::port::secret_generator::SecretGenerator;
@@ -38,9 +37,7 @@ impl SecretGenerator for ChaChaSecretGenerator {
 
 #[cfg(test)]
 mod tests {
-    use crate::domain::port::secret_generator::SecretGenerator as _;
-
-    use super::ChaChaSecretGenerator;
+    use super::*;
 
     #[tokio::test]
     async fn generate_returns_secret_of_expected_length() -> Result<(), anyhow::Error> {

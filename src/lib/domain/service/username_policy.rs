@@ -62,12 +62,8 @@ impl UsernamePolicy {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use rstest::rstest;
-
-    use super::MAX_USERNAME_LENGTH;
-    use super::MIN_USERNAME_LENGTH;
-    use super::UsernamePolicy;
-    use super::UsernamePolicyError;
 
     #[rstest]
     #[case::shortest_allowed("abcd")]

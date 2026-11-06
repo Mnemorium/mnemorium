@@ -2,10 +2,9 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
-use crate::application::port::get_file::GetFileCommand;
-use crate::application::port::get_file::GetFileError;
-use crate::application::port::get_file::GetFileResponse;
-use crate::application::port::get_file::GetFileUseCase;
+use crate::application::port::get_file::{
+    GetFileCommand, GetFileError, GetFileResponse, GetFileUseCase,
+};
 use crate::application::use_case::asset_access;
 use crate::application::use_case::asset_access::AssetAccessError;
 use crate::domain::model::audio::Audio;
@@ -14,8 +13,7 @@ use crate::domain::model::video::Video;
 use crate::domain::port::asset_unit_of_work::AssetUnitOfWork;
 use crate::domain::port::identity_unit_of_work::IdentityUnitOfWork;
 use crate::domain::port::library_unit_of_work::LibraryUnitOfWork;
-use crate::domain::port::unit_of_work::UnitOfWork as _;
-use crate::domain::port::unit_of_work::UnitOfWorkFactory;
+use crate::domain::port::unit_of_work::{UnitOfWork as _, UnitOfWorkFactory};
 use crate::domain::port::user_unit_of_work::UserUnitOfWork;
 
 /// Use case implementation for fetching one stored file.
@@ -101,42 +99,27 @@ where
 
 #[cfg(test)]
 mod tests {
-    use std::error::Error;
-    use std::sync::Arc;
-    use std::sync::atomic::Ordering;
-
-    use chrono::NaiveDate;
-    use chrono::NaiveDateTime;
-
-    use crate::application::port::get_file::GetFileCommand;
-    use crate::application::port::get_file::GetFileError;
-    use crate::application::port::get_file::GetFileUseCase as _;
+    use super::*;
     use crate::domain::alias::NumericID;
     use crate::domain::model::file::File;
     use crate::domain::model::gallery::Gallery;
     use crate::domain::model::gallery_item::GalleryItem;
-    use crate::domain::model::image::Image;
     use crate::domain::model::image::Orientation;
     use crate::domain::model::music_playlist::MusicPlaylist;
     use crate::domain::model::scope::Scope as AssetScope;
-    use crate::domain::model::user::Role;
-    use crate::domain::model::user::User;
+    use crate::domain::model::user::{Role, User};
     use crate::domain::port::audio_repository::MockAudioRepository;
     use crate::domain::port::error::RepositoryError;
     use crate::domain::port::file_repository::MockFileRepository;
-    use crate::domain::port::gallery_repository::GalleryItemDetail;
-    use crate::domain::port::gallery_repository::MockGalleryRepository;
+    use crate::domain::port::gallery_repository::{GalleryItemDetail, MockGalleryRepository};
     use crate::domain::port::image_repository::MockImageRepository;
     use crate::domain::port::music_playlist_repository::MockMusicPlaylistRepository;
     use crate::domain::port::user_repository::MockUserRepository;
     use crate::domain::port::video_repository::MockVideoRepository;
-    use crate::test_helpers::AssetFactoryHarness;
-    use crate::test_helpers::TestFactory;
-    use crate::test_helpers::TestUnitOfWork;
-    use crate::test_helpers::expect_caller;
-    use crate::test_helpers::no_permissions;
-
-    use super::GetFile;
+    use crate::test_helpers::*;
+    use chrono::{NaiveDate, NaiveDateTime};
+    use std::error::Error;
+    use std::sync::atomic::Ordering;
 
     type UseCase = GetFile<TestFactory>;
 

@@ -4,28 +4,21 @@ use std::sync::Arc;
 
 use chrono::Utc;
 
-use crate::application::port::patch_credential::PatchCredentialCommand;
-use crate::application::port::patch_credential::PatchCredentialError;
-use crate::application::port::patch_credential::PatchCredentialUseCase;
+use crate::application::port::patch_credential::{
+    PatchCredentialCommand, PatchCredentialError, PatchCredentialUseCase,
+};
 use crate::application::security_event;
 use crate::domain::model::credential::Credential;
-use crate::domain::model::permission::Action;
-use crate::domain::model::permission::Global;
-use crate::domain::port::credential_repository::CredentialFilter;
-use crate::domain::port::credential_repository::CredentialRepository as _;
+use crate::domain::model::permission::{Action, Global};
+use crate::domain::port::credential_repository::{CredentialFilter, CredentialRepository as _};
 use crate::domain::port::identity_unit_of_work::IdentityUnitOfWork;
 use crate::domain::port::password_hasher::PasswordHasher;
-use crate::domain::port::permission_repository::PermissionFilter;
-use crate::domain::port::permission_repository::PermissionRepository as _;
-use crate::domain::port::unit_of_work::UnitOfWork as _;
-use crate::domain::port::unit_of_work::UnitOfWorkFactory;
-use crate::domain::port::user_repository::UserFilter;
-use crate::domain::port::user_repository::UserRepository as _;
+use crate::domain::port::permission_repository::{PermissionFilter, PermissionRepository as _};
+use crate::domain::port::unit_of_work::{UnitOfWork as _, UnitOfWorkFactory};
+use crate::domain::port::user_repository::{UserFilter, UserRepository as _};
 use crate::domain::port::user_unit_of_work::UserUnitOfWork;
-use crate::domain::service::authorization::Authorization;
-use crate::domain::service::authorization::Decision;
-use crate::domain::service::password_policy::PasswordPolicy;
-use crate::domain::service::password_policy::PasswordPolicyError;
+use crate::domain::service::authorization::{Authorization, Decision};
+use crate::domain::service::password_policy::{PasswordPolicy, PasswordPolicyError};
 
 /// Use case implementation for changing the password behind a credential.
 pub(crate) struct PatchCredential<F, H> {
@@ -158,31 +151,16 @@ where
 
 #[cfg(test)]
 mod tests {
-    use std::error::Error;
-    use std::sync::Arc;
-    use std::sync::atomic::AtomicBool;
-    use std::sync::atomic::Ordering;
-
-    use chrono::NaiveDateTime;
-
-    use crate::application::port::patch_credential::PatchCredentialCommand;
-    use crate::application::port::patch_credential::PatchCredentialError;
-    use crate::application::port::patch_credential::PatchCredentialUseCase as _;
-    use crate::domain::model::credential::Credential;
-    use crate::domain::model::user::Role;
-    use crate::domain::model::user::User;
-    use crate::domain::model::user::UserError;
+    use super::*;
+    use crate::domain::model::user::{Role, User, UserError};
     use crate::domain::port::credential_repository::MockCredentialRepository;
-    use crate::domain::port::error::PasswordHasherError;
-    use crate::domain::port::error::RepositoryError;
+    use crate::domain::port::error::{PasswordHasherError, RepositoryError};
     use crate::domain::port::password_hasher::MockPasswordHasher;
     use crate::domain::port::user_repository::MockUserRepository;
-    use crate::test_helpers::SECRET_PASSWORD;
-    use crate::test_helpers::TestFactory;
-    use crate::test_helpers::TestUnitOfWork;
-    use crate::test_helpers::no_permissions;
-
-    use super::PatchCredential;
+    use crate::test_helpers::*;
+    use chrono::NaiveDateTime;
+    use std::error::Error;
+    use std::sync::atomic::{AtomicBool, Ordering};
 
     type UseCase = PatchCredential<TestFactory, MockPasswordHasher>;
 

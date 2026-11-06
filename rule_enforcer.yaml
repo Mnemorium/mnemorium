@@ -165,3 +165,8 @@ rules:
       - DEFAULT
       - MAX
       - MIN
+
+  STY-RUST-089:
+    # Import merging is enforced at zero: no two adjacent `use` declarations
+    # share a parent module. A new pair fails the gate.
+    max_unmerged_imports: 0

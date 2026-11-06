@@ -1,5 +1,4 @@
-use sqlx::Sqlite;
-use sqlx::Transaction;
+use sqlx::{Sqlite, Transaction};
 
 use crate::domain::port::error::RepositoryError;
 use crate::domain::port::mime_type_repository::MimeTypeRepository;
@@ -42,15 +41,9 @@ impl MimeTypeRepository for SqlxMimeTypeRepository<'_> {
 
 #[cfg(test)]
 mod tests {
-    use std::error::Error;
-
-    use sqlx::Sqlite;
-    use sqlx::Transaction;
+    use super::*;
     use sqlx::sqlite::SqlitePoolOptions;
-
-    use crate::domain::port::mime_type_repository::MimeTypeRepository as _;
-
-    use super::SqlxMimeTypeRepository;
+    use std::error::Error;
 
     async fn begin_transaction() -> Result<Transaction<'static, Sqlite>, sqlx::Error> {
         let pool = SqlitePoolOptions::new()

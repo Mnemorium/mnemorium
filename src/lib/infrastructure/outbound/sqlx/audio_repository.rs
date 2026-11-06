@@ -1,10 +1,7 @@
-use sqlx::QueryBuilder;
-use sqlx::Sqlite;
-use sqlx::Transaction;
+use sqlx::{QueryBuilder, Sqlite, Transaction};
 
 use crate::domain::model::audio::Audio;
-use crate::domain::port::audio_repository::AudioFilter;
-use crate::domain::port::audio_repository::AudioRepository;
+use crate::domain::port::audio_repository::{AudioFilter, AudioRepository};
 use crate::domain::port::error::RepositoryError;
 
 use super::model::audio::Audio as SqlxAudio;
@@ -99,19 +96,10 @@ fn domain_audio(row: SqlxAudio) -> Result<Audio, RepositoryError> {
 
 #[cfg(test)]
 mod tests {
-    use std::error::Error;
-
+    use super::*;
     use rstest::rstest;
-    use sqlx::Sqlite;
-    use sqlx::Transaction;
     use sqlx::sqlite::SqlitePoolOptions;
-
-    use crate::domain::model::audio::Audio;
-    use crate::domain::port::audio_repository::AudioFilter;
-    use crate::domain::port::audio_repository::AudioRepository as _;
-    use crate::domain::port::error::RepositoryError;
-
-    use super::SqlxAudioRepository;
+    use std::error::Error;
 
     /// Open a migrated in-memory database and begin one transaction.
     async fn begin_transaction() -> Result<Transaction<'static, Sqlite>, sqlx::Error> {

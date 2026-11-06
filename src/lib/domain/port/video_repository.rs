@@ -1,8 +1,7 @@
 use std::future::Future;
 
 use crate::domain::alias::NumericID;
-use crate::domain::model::video::ScanType;
-use crate::domain::model::video::Video;
+use crate::domain::model::video::{ScanType, Video};
 use crate::domain::port::error::RepositoryError;
 
 /// Search filters for [`VideoRepository::search`]. Every field is optional; an

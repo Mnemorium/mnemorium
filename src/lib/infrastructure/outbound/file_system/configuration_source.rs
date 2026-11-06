@@ -1,25 +1,14 @@
-use std::ffi::OsStr;
-use std::ffi::OsString;
-use std::fs::OpenOptions;
-use std::fs::Permissions;
-use std::fs::read_to_string;
-use std::fs::rename;
-use std::future::Future;
-use std::future::ready;
-use std::io::Error;
-use std::io::ErrorKind;
-use std::io::Write as _;
-use std::os::unix::fs::OpenOptionsExt as _;
-use std::os::unix::fs::PermissionsExt as _;
-use std::path::Path;
-use std::path::PathBuf;
+use std::ffi::{OsStr, OsString};
+use std::fs::{OpenOptions, Permissions, read_to_string, rename};
+use std::future::{Future, ready};
+use std::io::{Error, ErrorKind, Write as _};
+use std::os::unix::fs::{OpenOptionsExt as _, PermissionsExt as _};
+use std::path::{Path, PathBuf};
 
-use yaml_serde::Mapping;
-use yaml_serde::Value;
+use yaml_serde::{Mapping, Value};
 
 use crate::domain::model::partial_configuration::PartialConfiguration;
-use crate::domain::port::configuration_source::ConfigurationSource;
-use crate::domain::port::configuration_source::LoadedFileConfiguration;
+use crate::domain::port::configuration_source::{ConfigurationSource, LoadedFileConfiguration};
 use crate::domain::port::error::ConfigurationSourceError;
 
 /// Path to the user configuration file.
@@ -177,21 +166,12 @@ impl Resolver<'_> {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+    use crate::domain::model::configuration::{Configuration, Rotation};
+    use crate::domain::model::partial_configuration::PartialAsset;
     use std::error::Error;
     use std::fs;
-    use std::path::Path;
-
     use tempfile::tempdir;
-    use yaml_serde::Value;
-
-    use crate::domain::model::configuration::Configuration;
-    use crate::domain::model::configuration::Rotation;
-    use crate::domain::model::partial_configuration::PartialAsset;
-    use crate::domain::model::partial_configuration::PartialConfiguration;
-    use crate::domain::port::error::ConfigurationSourceError;
-
-    use super::DEFAULT_CONFIG_TEMPLATE;
-    use super::Resolver;
 
     /// Build a resolution over `path`.
     fn resolver(path: &Path) -> Resolver<'_> {

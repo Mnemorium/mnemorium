@@ -109,15 +109,10 @@ impl FromRef<AppState> for Arc<JwtTokenProvider> {
 
 #[cfg(test)]
 mod tests {
-    use std::error::Error;
-    use std::sync::Arc;
-
-    use axum::extract::FromRef as _;
-
+    use super::*;
     use crate::domain::port::token_provider::TokenProvider as _;
-    use crate::infrastructure::outbound::jwt::token_provider::JwtTokenProvider;
-    use crate::test_helpers::TEST_JWT_SECRET;
-    use crate::test_helpers::app_state;
+    use crate::test_helpers::*;
+    use std::error::Error;
 
     #[tokio::test]
     async fn from_ref_builds_the_provider_from_the_identity() -> Result<(), Box<dyn Error>> {

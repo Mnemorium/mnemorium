@@ -2,25 +2,19 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
-use crate::application::port::get_series_season::GetSeriesSeasonCommand;
-use crate::application::port::get_series_season::GetSeriesSeasonError;
-use crate::application::port::get_series_season::GetSeriesSeasonResponse;
-use crate::application::port::get_series_season::GetSeriesSeasonUseCase;
+use crate::application::port::get_series_season::{
+    GetSeriesSeasonCommand, GetSeriesSeasonError, GetSeriesSeasonResponse, GetSeriesSeasonUseCase,
+};
 use crate::application::security_event;
 use crate::domain::model::permission::Action;
 use crate::domain::port::identity_unit_of_work::IdentityUnitOfWork;
 use crate::domain::port::library_unit_of_work::LibraryUnitOfWork;
-use crate::domain::port::permission_repository::PermissionFilter;
-use crate::domain::port::permission_repository::PermissionRepository as _;
-use crate::domain::port::series_repository::SeriesFilter;
-use crate::domain::port::series_repository::SeriesRepository as _;
-use crate::domain::port::unit_of_work::UnitOfWork as _;
-use crate::domain::port::unit_of_work::UnitOfWorkFactory;
-use crate::domain::port::user_repository::UserFilter;
-use crate::domain::port::user_repository::UserRepository as _;
+use crate::domain::port::permission_repository::{PermissionFilter, PermissionRepository as _};
+use crate::domain::port::series_repository::{SeriesFilter, SeriesRepository as _};
+use crate::domain::port::unit_of_work::{UnitOfWork as _, UnitOfWorkFactory};
+use crate::domain::port::user_repository::{UserFilter, UserRepository as _};
 use crate::domain::port::user_unit_of_work::UserUnitOfWork;
-use crate::domain::service::authorization::Authorization;
-use crate::domain::service::authorization::Decision;
+use crate::domain::service::authorization::{Authorization, Decision};
 
 /// Use case implementation for fetching one season of a show.
 pub(crate) struct GetSeriesSeason<F> {
@@ -141,31 +135,15 @@ where
 
 #[cfg(test)]
 mod tests {
-    use std::error::Error;
-    use std::sync::Arc;
-    use std::sync::atomic::Ordering;
-
-    use crate::application::port::get_series_season::GetSeriesSeasonCommand;
-    use crate::application::port::get_series_season::GetSeriesSeasonError;
-    use crate::application::port::get_series_season::GetSeriesSeasonResponse;
-    use crate::application::port::get_series_season::GetSeriesSeasonUseCase as _;
-    use crate::domain::model::season::Season;
-    use crate::domain::model::season::SeasonIndex;
+    use super::*;
+    use crate::domain::model::season::{Season, SeasonIndex};
     use crate::domain::model::series::Series;
     use crate::domain::port::error::RepositoryError;
     use crate::domain::port::series_repository::MockSeriesRepository;
     use crate::domain::port::user_repository::MockUserRepository;
-    use crate::test_helpers::GalleryFactoryHarness;
-    use crate::test_helpers::TestFactory;
-    use crate::test_helpers::TestUnitOfWork;
-    use crate::test_helpers::expect_caller;
-    use crate::test_helpers::no_permissions;
-    use crate::test_helpers::sample_episode;
-    use crate::test_helpers::sample_season;
-    use crate::test_helpers::sample_series;
-    use crate::test_helpers::video_date;
-
-    use super::GetSeriesSeason;
+    use crate::test_helpers::*;
+    use std::error::Error;
+    use std::sync::atomic::Ordering;
 
     /// The use case under test, bound to the mocked unit-of-work factory.
     type UseCase = GetSeriesSeason<TestFactory>;

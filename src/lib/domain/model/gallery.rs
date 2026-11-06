@@ -1,9 +1,7 @@
 use chrono::NaiveDateTime;
 
 use crate::domain::alias::NumericID;
-use crate::domain::model::permission::Protected;
-use crate::domain::model::permission::ResourceKind;
-use crate::domain::model::permission::ResourceRef;
+use crate::domain::model::permission::{Protected, ResourceKind, ResourceRef};
 
 /// Identifier of the seeded, undeletable default gallery.
 const DEFAULT_GALLERY_ID: NumericID = 0;

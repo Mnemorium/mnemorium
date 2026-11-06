@@ -1,6 +1,5 @@
 use crate::domain::model::external_ref::ExternalRef;
-use crate::domain::model::music_metadata::MediumSummary;
-use crate::domain::model::music_metadata::ReleaseStatus;
+use crate::domain::model::music_metadata::{MediumSummary, ReleaseStatus};
 use crate::domain::model::music_query::MusicKind;
 
 /// One music search result, as any provider reports it.

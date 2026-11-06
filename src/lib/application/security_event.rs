@@ -16,10 +16,7 @@
     reason = "the security-event catalog declares the metadata-provider and genre constructors; the video identification path that emits them has no caller yet"
 )]
 
-use tracing::debug;
-use tracing::error;
-use tracing::info;
-use tracing::warn;
+use tracing::{debug, error, info, warn};
 
 /// Maximum number of characters of a claimed identity kept on the event.
 ///

@@ -1,7 +1,6 @@
 use axum::Json;
-use axum::extract::Path;
-use axum::extract::State;
 use axum::extract::rejection::JsonRejection;
+use axum::extract::{Path, State};
 use axum::response::Response;
 use chrono::NaiveDate;
 use serde::Deserialize;
@@ -11,16 +10,13 @@ use utoipa::ToSchema;
 use crate::application::field_update::FieldUpdate;
 use crate::application::port::update_series_episode::UpdateSeriesEpisodeCommand;
 use crate::domain::alias::NumericID;
-use crate::infrastructure::inbound::rest::api_error::ApiError;
-use crate::infrastructure::inbound::rest::api_error::ErrorBody;
+use crate::infrastructure::inbound::rest::api_error::{ApiError, ErrorBody};
 use crate::infrastructure::inbound::rest::app_state::AppState;
 use crate::infrastructure::inbound::rest::hal::hal_json;
-use crate::infrastructure::inbound::rest::handler::library::DATE_FORMAT;
-use crate::infrastructure::inbound::rest::handler::library::EpisodeResponse;
-use crate::infrastructure::inbound::rest::handler::library::deserialize_field_update;
-use crate::infrastructure::inbound::rest::handler::library::parse_episode_index;
-use crate::infrastructure::inbound::rest::handler::library::parse_season_index;
-use crate::infrastructure::inbound::rest::handler::library::parse_series_id;
+use crate::infrastructure::inbound::rest::handler::library::{
+    DATE_FORMAT, EpisodeResponse, deserialize_field_update, parse_episode_index,
+    parse_season_index, parse_series_id,
+};
 use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 
 /// Payload to update a season episode partially.
@@ -164,33 +160,23 @@ pub(crate) async fn patch_series_episode(
 
 #[cfg(test)]
 mod tests {
-    use std::error::Error;
-    use std::sync::Arc;
-
+    use super::*;
+    use crate::application::port::library_use_case_factory::MockLibraryUseCaseFactory;
+    use crate::application::port::update_series_episode::{
+        MockUpdateSeriesEpisodeUseCase, UpdateSeriesEpisodeError, UpdateSeriesEpisodeResponse,
+        UpdateSeriesEpisodeUseCase,
+    };
+    use crate::infrastructure::inbound::rest::handler::library::library_routes;
+    use crate::test_helpers::*;
     use axum::body::Body;
     use axum::extract::Request;
-    use axum::http::StatusCode;
-    use axum::http::header;
-    use axum::response::Response;
+    use axum::http::{StatusCode, header};
     use axum::routing::patch;
     use rstest::rstest;
     use serde_json::json;
+    use std::error::Error;
+    use std::sync::Arc;
     use tower::ServiceExt as _;
-
-    use super::patch_series_episode;
-    use crate::application::field_update::FieldUpdate;
-    use crate::application::port::library_use_case_factory::MockLibraryUseCaseFactory;
-    use crate::application::port::update_series_episode::MockUpdateSeriesEpisodeUseCase;
-    use crate::application::port::update_series_episode::UpdateSeriesEpisodeError;
-    use crate::application::port::update_series_episode::UpdateSeriesEpisodeResponse;
-    use crate::application::port::update_series_episode::UpdateSeriesEpisodeUseCase;
-    use crate::domain::alias::NumericID;
-    use crate::infrastructure::inbound::rest::handler::library::library_routes;
-    use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
-    use crate::test_helpers::app_state_with_library;
-    use crate::test_helpers::error_message_of;
-    use crate::test_helpers::into_parts;
-    use crate::test_helpers::sample_episode;
 
     /// Send a PATCH to the episode route on behalf of `caller_id`.
     async fn send(

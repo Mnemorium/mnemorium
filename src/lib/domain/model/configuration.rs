@@ -3,9 +3,7 @@
     reason = "the configuration value objects keep the provider accessors, setters and mutators their contract declares; several have no caller yet"
 )]
 
-use std::fmt::Debug;
-use std::fmt::Formatter;
-use std::fmt::Result as FmtResult;
+use std::fmt::{Debug, Formatter, Result as FmtResult};
 use std::net::IpAddr;
 use std::str::FromStr as _;
 

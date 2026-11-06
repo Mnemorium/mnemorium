@@ -1,11 +1,8 @@
-use sqlx::QueryBuilder;
-use sqlx::Sqlite;
-use sqlx::Transaction;
+use sqlx::{QueryBuilder, Sqlite, Transaction};
 
 use crate::domain::alias::NumericID;
 use crate::domain::model::credential::Credential;
-use crate::domain::port::credential_repository::CredentialFilter;
-use crate::domain::port::credential_repository::CredentialRepository;
+use crate::domain::port::credential_repository::{CredentialFilter, CredentialRepository};
 use crate::domain::port::error::RepositoryError;
 
 use super::model::credential::Credential as SqlxCredential;
@@ -94,20 +91,11 @@ fn domain_credential(row: SqlxCredential) -> Result<Credential, RepositoryError>
 
 #[cfg(test)]
 mod tests {
-    use std::error::Error;
-
-    use chrono::NaiveDateTime;
-    use sqlx::Sqlite;
-    use sqlx::Transaction;
-    use sqlx::sqlite::SqlitePoolOptions;
-
-    use crate::domain::model::credential::Credential;
+    use super::*;
     use crate::domain::model::credential::CredentialError;
-    use crate::domain::port::credential_repository::CredentialFilter;
-    use crate::domain::port::credential_repository::CredentialRepository as _;
-    use crate::domain::port::error::RepositoryError;
-
-    use super::SqlxCredentialRepository;
+    use chrono::NaiveDateTime;
+    use sqlx::sqlite::SqlitePoolOptions;
+    use std::error::Error;
 
     fn updated_at(value: &str) -> Result<NaiveDateTime, Box<dyn Error>> {
         Ok(NaiveDateTime::parse_from_str(value, "%F %T")?)

@@ -1,11 +1,7 @@
-use sha2::Digest as _;
-use sha2::Sha256;
+use sha2::{Digest as _, Sha256};
 
-use crate::domain::model::integrity_hash::DIGEST_HEX_LENGTH;
-
-use crate::domain::model::integrity_hash::IntegrityHash;
-use crate::domain::port::content_hasher::ContentHasher;
-use crate::domain::port::content_hasher::ContentHasherSession;
+use crate::domain::model::integrity_hash::{DIGEST_HEX_LENGTH, IntegrityHash};
+use crate::domain::port::content_hasher::{ContentHasher, ContentHasherSession};
 use crate::domain::port::error::ContentHasherError;
 
 /// Content hasher backed by the SHA-256 algorithm.
@@ -48,14 +44,8 @@ impl ContentHasherSession for Sha2ContentHasherSession {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use std::error::Error;
-
-    use crate::domain::model::integrity_hash::DIGEST_HEX_LENGTH;
-    use crate::domain::model::integrity_hash::IntegrityHash;
-    use crate::domain::port::content_hasher::ContentHasher as _;
-    use crate::domain::port::error::ContentHasherError;
-
-    use super::Sha2ContentHasher;
 
     /// SHA-256 of `b"1234"`, in lowercase hexadecimal.
     const DIGEST_1234: &str = "03ac674216f3e15c761ee1a5e255f067953623c8b388b4459e13f978d7c846f4";

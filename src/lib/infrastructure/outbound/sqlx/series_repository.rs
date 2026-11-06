@@ -1,19 +1,14 @@
 use std::collections::HashMap;
 
-use sqlx::QueryBuilder;
-use sqlx::Sqlite;
-use sqlx::Transaction;
+use sqlx::{QueryBuilder, Sqlite, Transaction};
 
 use crate::domain::alias::NumericID;
-use crate::domain::model::episode::Episode;
-use crate::domain::model::episode::EpisodeIndex;
-use crate::domain::model::season::Season;
-use crate::domain::model::season::SeasonIndex;
+use crate::domain::model::episode::{Episode, EpisodeIndex};
+use crate::domain::model::season::{Season, SeasonIndex};
 use crate::domain::model::series::Series;
 use crate::domain::model::video::Video;
 use crate::domain::port::error::RepositoryError;
-use crate::domain::port::series_repository::SeriesFilter;
-use crate::domain::port::series_repository::SeriesRepository;
+use crate::domain::port::series_repository::{SeriesFilter, SeriesRepository};
 
 use super::error_mapping::stored_data_invalid;
 use super::model::scope::parse_scope;
@@ -516,26 +511,13 @@ fn episode_from_row(row: &SeriesRow) -> Result<Option<Episode>, RepositoryError>
 
 #[cfg(test)]
 mod tests {
-    use std::error::Error;
-
-    use chrono::NaiveDate;
-    use sqlx::Sqlite;
-    use sqlx::Transaction;
-    use sqlx::sqlite::SqlitePoolOptions;
-
-    use crate::domain::model::episode::Episode;
-    use crate::domain::model::episode::EpisodeIndex;
-    use crate::domain::model::season::Season;
-    use crate::domain::model::season::SeasonIndex;
-    use crate::domain::model::series::Series;
+    use super::*;
     use crate::domain::model::video::ScanType;
-    use crate::domain::port::error::RepositoryError;
-    use crate::domain::port::series_repository::SeriesFilter;
-    use crate::domain::port::series_repository::SeriesRepository as _;
-    use crate::test_helpers::sample_video;
+    use crate::test_helpers::*;
+    use chrono::NaiveDate;
+    use sqlx::sqlite::SqlitePoolOptions;
+    use std::error::Error;
     use tracing_test::traced_test;
-
-    use super::SqlxSeriesRepository;
 
     /// Assert the captured output is exactly one `output_validation_failed`
     /// event with `reason`, carrying neither a stored value nor an `sqlx`

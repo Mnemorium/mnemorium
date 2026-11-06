@@ -3,15 +3,12 @@ use std::io::stdout;
 use anyhow::Context as _;
 use tracing::info;
 use tracing_appender::non_blocking::WorkerGuard;
-use tracing_appender::rolling::RollingFileAppender;
-use tracing_appender::rolling::Rotation as FileRotation;
-use tracing_subscriber::EnvFilter;
-use tracing_subscriber::fmt;
+use tracing_appender::rolling::{RollingFileAppender, Rotation as FileRotation};
 use tracing_subscriber::layer::SubscriberExt as _;
 use tracing_subscriber::util::SubscriberInitExt as _;
+use tracing_subscriber::{EnvFilter, fmt};
 
-use crate::domain::model::configuration::Logging;
-use crate::domain::model::configuration::Rotation;
+use crate::domain::model::configuration::{Logging, Rotation};
 
 /// Directory holding the log files, relative to the process working directory.
 const LOG_DIRECTORY: &str = "logs";

@@ -64,10 +64,8 @@ impl Default for PasswordPolicy {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use rstest::rstest;
-
-    use super::PasswordPolicy;
-    use super::PasswordPolicyError;
 
     #[rstest]
     #[case::with_letter_and_symbol("password!")]

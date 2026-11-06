@@ -9,6 +9,7 @@
         reason = "We are less strict about test code"
     )
 )]
+
 pub mod app;
 /// The application layer: use-case ports and their implementations.
 pub(crate) mod application;
@@ -21,81 +22,71 @@ pub(crate) mod infrastructure;
 #[cfg(test)]
 mod test_helpers {
     use std::error::Error;
-    use std::future::Future;
-    use std::future::ready;
-    use std::sync::Arc;
-    use std::sync::Mutex;
-    use std::sync::atomic::AtomicBool;
-    use std::sync::atomic::Ordering;
+    use std::future::{Future, ready};
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::{Arc, Mutex};
 
     use axum::body::to_bytes;
-    use axum::http::StatusCode;
-    use axum::http::header;
+    use axum::http::{StatusCode, header};
     use axum::response::Response;
     use chrono::NaiveDate;
     use serde_json::Value;
 
-    use crate::application::port::asset_use_case_factory::AssetUseCaseFactory;
-    use crate::application::port::asset_use_case_factory::MockAssetUseCaseFactory;
-    use crate::application::port::identity_use_case_factory::IdentityUseCaseFactory;
-    use crate::application::port::identity_use_case_factory::MockIdentityUseCaseFactory;
-    use crate::application::port::library_use_case_factory::LibraryUseCaseFactory;
-    use crate::application::port::library_use_case_factory::MockLibraryUseCaseFactory;
-    use crate::application::port::user_use_case_factory::MockUserUseCaseFactory;
-    use crate::application::port::user_use_case_factory::UserUseCaseFactory;
+    use crate::application::port::asset_use_case_factory::{
+        AssetUseCaseFactory, MockAssetUseCaseFactory,
+    };
+    use crate::application::port::identity_use_case_factory::{
+        IdentityUseCaseFactory, MockIdentityUseCaseFactory,
+    };
+    use crate::application::port::library_use_case_factory::{
+        LibraryUseCaseFactory, MockLibraryUseCaseFactory,
+    };
+    use crate::application::port::user_use_case_factory::{
+        MockUserUseCaseFactory, UserUseCaseFactory,
+    };
     use crate::domain::alias::NumericID;
     use crate::domain::model::configuration::Configuration;
-    use crate::domain::model::episode::Episode;
-    use crate::domain::model::episode::EpisodeIndex;
+    use crate::domain::model::episode::{Episode, EpisodeIndex};
     use crate::domain::model::instance_state::InstanceState;
     use crate::domain::model::movie::Movie;
     use crate::domain::model::music_album::MusicAlbum;
     use crate::domain::model::music_medium::MusicMedium;
     use crate::domain::model::permission::Permission;
-    use crate::domain::model::season::Season;
-    use crate::domain::model::season::SeasonIndex;
+    use crate::domain::model::season::{Season, SeasonIndex};
     use crate::domain::model::series::Series;
-    use crate::domain::model::user::Role;
-    use crate::domain::model::user::User;
-    use crate::domain::model::video::ScanType;
-    use crate::domain::model::video::Video;
+    use crate::domain::model::user::{Role, User};
+    use crate::domain::model::video::{ScanType, Video};
     use crate::domain::port::asset_unit_of_work::AssetUnitOfWork;
-    use crate::domain::port::audio_repository::AudioRepository;
-    use crate::domain::port::audio_repository::MockAudioRepository;
-    use crate::domain::port::credential_repository::CredentialRepository;
-    use crate::domain::port::credential_repository::MockCredentialRepository;
+    use crate::domain::port::audio_repository::{AudioRepository, MockAudioRepository};
+    use crate::domain::port::credential_repository::{
+        CredentialRepository, MockCredentialRepository,
+    };
     use crate::domain::port::error::UnitOfWorkError;
-    use crate::domain::port::file_repository::FileRepository;
-    use crate::domain::port::file_repository::MockFileRepository;
-    use crate::domain::port::gallery_repository::GalleryRepository;
-    use crate::domain::port::gallery_repository::MockGalleryRepository;
+    use crate::domain::port::file_repository::{FileRepository, MockFileRepository};
+    use crate::domain::port::gallery_repository::{GalleryRepository, MockGalleryRepository};
     use crate::domain::port::identity_unit_of_work::IdentityUnitOfWork;
-    use crate::domain::port::image_repository::ImageRepository;
-    use crate::domain::port::image_repository::MockImageRepository;
+    use crate::domain::port::image_repository::{ImageRepository, MockImageRepository};
     use crate::domain::port::library_unit_of_work::LibraryUnitOfWork;
-    use crate::domain::port::mime_type_repository::MimeTypeRepository;
-    use crate::domain::port::mime_type_repository::MockMimeTypeRepository;
-    use crate::domain::port::movie_repository::MockMovieRepository;
-    use crate::domain::port::movie_repository::MovieRepository;
-    use crate::domain::port::music_album_repository::MockMusicAlbumRepository;
-    use crate::domain::port::music_album_repository::MusicAlbumRepository;
-    use crate::domain::port::music_group_repository::MockMusicGroupRepository;
-    use crate::domain::port::music_group_repository::MusicGroupRepository;
-    use crate::domain::port::music_playlist_repository::MockMusicPlaylistRepository;
-    use crate::domain::port::music_playlist_repository::MusicPlaylistRepository;
-    use crate::domain::port::permission_repository::MockPermissionRepository;
-    use crate::domain::port::permission_repository::PermissionRepository;
-    use crate::domain::port::series_repository::MockSeriesRepository;
-    use crate::domain::port::series_repository::SeriesRepository;
-    use crate::domain::port::unit_of_work::UnitOfWork;
-    use crate::domain::port::unit_of_work::UnitOfWorkFactory;
-    use crate::domain::port::upload_repository::MockUploadRepository;
-    use crate::domain::port::upload_repository::UploadRepository;
-    use crate::domain::port::user_repository::MockUserRepository;
-    use crate::domain::port::user_repository::UserRepository;
+    use crate::domain::port::mime_type_repository::{MimeTypeRepository, MockMimeTypeRepository};
+    use crate::domain::port::movie_repository::{MockMovieRepository, MovieRepository};
+    use crate::domain::port::music_album_repository::{
+        MockMusicAlbumRepository, MusicAlbumRepository,
+    };
+    use crate::domain::port::music_group_repository::{
+        MockMusicGroupRepository, MusicGroupRepository,
+    };
+    use crate::domain::port::music_playlist_repository::{
+        MockMusicPlaylistRepository, MusicPlaylistRepository,
+    };
+    use crate::domain::port::permission_repository::{
+        MockPermissionRepository, PermissionRepository,
+    };
+    use crate::domain::port::series_repository::{MockSeriesRepository, SeriesRepository};
+    use crate::domain::port::unit_of_work::{UnitOfWork, UnitOfWorkFactory};
+    use crate::domain::port::upload_repository::{MockUploadRepository, UploadRepository};
+    use crate::domain::port::user_repository::{MockUserRepository, UserRepository};
     use crate::domain::port::user_unit_of_work::UserUnitOfWork;
-    use crate::domain::port::video_repository::MockVideoRepository;
-    use crate::domain::port::video_repository::VideoRepository;
+    use crate::domain::port::video_repository::{MockVideoRepository, VideoRepository};
     use crate::infrastructure::inbound::rest::api_error::ApiErrorMessage;
     use crate::infrastructure::inbound::rest::app_state::AppState;
 

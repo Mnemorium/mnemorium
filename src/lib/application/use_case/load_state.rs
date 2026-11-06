@@ -6,16 +6,11 @@ use std::sync::Arc;
 
 use chrono::Utc;
 
-use crate::application::port::load_state::DATABASE_PATH;
-use crate::application::port::load_state::JWT_SECRET_VARIABLE;
-use crate::application::port::load_state::LoadStateError;
-use crate::application::port::load_state::LoadStateResponse;
-use crate::application::port::load_state::LoadStateUseCase;
-use crate::application::port::load_state::PEPPER_VARIABLE;
-use crate::application::port::load_state::SECRET_LENGTH;
-use crate::application::port::load_state::StateSeedSource;
-use crate::domain::model::instance_state::InstanceState;
-use crate::domain::model::instance_state::SECRET_HEX_LENGTH;
+use crate::application::port::load_state::{
+    DATABASE_PATH, JWT_SECRET_VARIABLE, LoadStateError, LoadStateResponse, LoadStateUseCase,
+    PEPPER_VARIABLE, SECRET_LENGTH, StateSeedSource,
+};
+use crate::domain::model::instance_state::{InstanceState, SECRET_HEX_LENGTH};
 use crate::domain::port::error::InstanceStateStoreError;
 use crate::domain::port::instance_state_store::InstanceStateStore;
 use crate::domain::port::secret_generator::SecretGenerator;
@@ -220,27 +215,16 @@ fn validate_seed(seed: Option<&str>, variable: &'static str) -> Result<(), LoadS
 
 #[cfg(test)]
 mod tests {
-    use std::error::Error;
-    use std::future::Future;
-    use std::future::ready;
-    use std::iter::repeat_n;
-    use std::sync::Arc;
-    use std::sync::Mutex;
-    use std::sync::PoisonError;
-
-    use crate::application::port::load_state::LoadStateError;
-    use crate::application::port::load_state::LoadStateUseCase as _;
-    use crate::application::port::load_state::StateSeedSource;
+    use super::*;
     use crate::application::port::load_state::StateSeeds;
-    use crate::domain::model::instance_state::InstanceState;
     use crate::domain::model::instance_state::InstanceStateError;
-    use crate::domain::port::error::InstanceStateStoreError;
-    use crate::domain::port::error::SecretGeneratorError;
-    use crate::domain::port::error::StateSeedSourceError;
+    use crate::domain::port::error::{SecretGeneratorError, StateSeedSourceError};
     use crate::domain::port::instance_state_store::MockInstanceStateStore;
     use crate::domain::port::secret_generator::MockSecretGenerator;
-
-    use super::LoadState;
+    use std::error::Error;
+    use std::future::ready;
+    use std::iter::repeat_n;
+    use std::sync::{Mutex, PoisonError};
 
     type UseCase = LoadState<MockInstanceStateStore, MockSecretGenerator, TestSeedSource>;
 

@@ -9,10 +9,8 @@
 use std::cmp::Ordering;
 use std::ffi::OsString;
 use std::future::Future;
-use std::io::Error;
-use std::io::ErrorKind;
-use std::path::Path;
-use std::path::PathBuf;
+use std::io::{Error, ErrorKind};
+use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::sync::Arc;
 #[cfg(test)]
@@ -24,18 +22,14 @@ use serde::Deserialize;
 use tokio::fs;
 use tokio::io::AsyncReadExt as _;
 use tokio::process::Command;
-use tokio::sync::OwnedSemaphorePermit;
-use tokio::sync::Semaphore;
+use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 use tokio::task::spawn_blocking;
 use tokio::time::timeout;
-use tracing::error;
-use tracing::warn;
+use tracing::{error, warn};
 
 use crate::domain::model::audio::ProbedAudio;
-use crate::domain::model::image::Orientation;
-use crate::domain::model::image::ProbedImage;
-use crate::domain::model::video::ProbedVideo;
-use crate::domain::model::video::ScanType;
+use crate::domain::model::image::{Orientation, ProbedImage};
+use crate::domain::model::video::{ProbedVideo, ScanType};
 use crate::domain::port::error::MediaProbeError;
 use crate::domain::port::media_probe::MediaProbe;
 
@@ -661,32 +655,16 @@ fn log_fault(kind: &str) {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+    use image::ImageFormat;
+    use image::error::{
+        DecodingError, ImageFormatHint, LimitError, UnsupportedError, UnsupportedErrorKind,
+    };
+    use rstest::rstest;
     use std::error::Error;
     use std::fs;
     use std::io::Error as IoError;
-    use std::io::ErrorKind;
-    use std::path::Path;
-    use std::path::PathBuf;
-    use std::time::Duration;
-
-    use image::ImageFormat;
-    use image::error::DecodingError;
-    use image::error::ImageFormatHint;
-    use image::error::LimitError;
-    use image::error::LimitErrorKind;
-    use image::error::UnsupportedError;
-    use image::error::UnsupportedErrorKind;
-    use rstest::rstest;
     use tempfile::tempdir;
-
-    use crate::domain::model::image::Orientation;
-    use crate::domain::model::video::ScanType;
-    use crate::domain::port::error::MediaProbeError;
-    use crate::domain::port::media_probe::MediaProbe as _;
-
-    use super::LocalMediaProbe;
-    use super::classify_image_error;
-    use super::spawn_gate;
 
     /// A generous probe timeout so a loaded test runner cannot starve a stub.
     const STUB_TIMEOUT: Duration = Duration::from_secs(10);

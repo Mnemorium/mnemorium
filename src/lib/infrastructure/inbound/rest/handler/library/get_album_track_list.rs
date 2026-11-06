@@ -1,18 +1,14 @@
-use axum::extract::Path;
-use axum::extract::State;
+use axum::extract::{Path, State};
 use axum::response::Response;
 
 use crate::application::port::list_album_tracks::ListAlbumTracksCommand;
 use crate::domain::alias::NumericID;
-use crate::infrastructure::inbound::rest::api_error::ApiError;
-use crate::infrastructure::inbound::rest::api_error::ErrorBody;
+use crate::infrastructure::inbound::rest::api_error::{ApiError, ErrorBody};
 use crate::infrastructure::inbound::rest::app_state::AppState;
-use crate::infrastructure::inbound::rest::hal::SelfLinks;
-use crate::infrastructure::inbound::rest::hal::hal_json;
-use crate::infrastructure::inbound::rest::handler::library::TrackListResponse;
-use crate::infrastructure::inbound::rest::handler::library::TrackResponse;
-use crate::infrastructure::inbound::rest::handler::library::parse_album_id;
-use crate::infrastructure::inbound::rest::handler::library::parse_index;
+use crate::infrastructure::inbound::rest::hal::{SelfLinks, hal_json};
+use crate::infrastructure::inbound::rest::handler::library::{
+    TrackListResponse, TrackResponse, parse_album_id, parse_index,
+};
 use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 
 /// List the tracks of one medium of a music album.
@@ -97,31 +93,23 @@ pub(crate) async fn get_album_track_list(
 
 #[cfg(test)]
 mod tests {
-    use std::error::Error;
-    use std::sync::Arc;
-
+    use super::*;
+    use crate::application::port::library_use_case_factory::MockLibraryUseCaseFactory;
+    use crate::application::port::list_album_tracks::{
+        ListAlbumTracksError, ListAlbumTracksItem, ListAlbumTracksResponse, ListAlbumTracksUseCase,
+        MockListAlbumTracksUseCase,
+    };
+    use crate::infrastructure::inbound::rest::handler::library::library_routes;
+    use crate::test_helpers::*;
     use axum::body::Body;
     use axum::extract::Request;
     use axum::http::StatusCode;
-    use axum::response::Response;
     use axum::routing::get;
     use rstest::rstest;
     use serde_json::json;
+    use std::error::Error;
+    use std::sync::Arc;
     use tower::ServiceExt as _;
-
-    use super::get_album_track_list;
-    use crate::application::port::library_use_case_factory::MockLibraryUseCaseFactory;
-    use crate::application::port::list_album_tracks::ListAlbumTracksError;
-    use crate::application::port::list_album_tracks::ListAlbumTracksItem;
-    use crate::application::port::list_album_tracks::ListAlbumTracksResponse;
-    use crate::application::port::list_album_tracks::ListAlbumTracksUseCase;
-    use crate::application::port::list_album_tracks::MockListAlbumTracksUseCase;
-    use crate::domain::alias::NumericID;
-    use crate::infrastructure::inbound::rest::handler::library::library_routes;
-    use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
-    use crate::test_helpers::app_state_with_library;
-    use crate::test_helpers::error_message_of;
-    use crate::test_helpers::into_parts;
 
     /// Send a GET to
     /// `/api/v1/library/music/album/{album}/medium/{medium}/track` on behalf of

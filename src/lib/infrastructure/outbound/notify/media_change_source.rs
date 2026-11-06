@@ -7,24 +7,18 @@
 //! are coalesced by the consumer's stability gate before dispatch.
 
 use std::future::Future;
-use std::path::Component;
-use std::path::Path;
+use std::path::{Component, Path};
 use std::pin::Pin;
 use std::sync::Mutex as StdMutex;
 
-use notify::EventKind;
-use notify::RecommendedWatcher;
-use notify::RecursiveMode;
-use notify::Watcher as _;
-use notify::event::ModifyKind;
-use notify::event::RenameMode;
-use tokio::sync::Mutex;
-use tokio::sync::mpsc;
+use notify::event::{ModifyKind, RenameMode};
+use notify::{EventKind, RecommendedWatcher, RecursiveMode, Watcher as _};
 use tokio::sync::mpsc::UnboundedReceiver;
+use tokio::sync::{Mutex, mpsc};
 
-use crate::application::port::media_change_source::MediaChange;
-use crate::application::port::media_change_source::MediaChangeSource;
-use crate::application::port::media_change_source::MediaChangeSourceError;
+use crate::application::port::media_change_source::{
+    MediaChange, MediaChangeSource, MediaChangeSourceError,
+};
 use crate::application::security_event;
 
 /// Change source backed by the local filesystem watcher.
@@ -189,19 +183,13 @@ impl MediaChangeSource for NotifyMediaChangeSource {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use std::error::Error;
     use std::fs;
     use std::time::Duration;
-
     use tempfile::tempdir;
     use tokio::time::timeout;
-
-    use crate::application::port::media_change_source::MediaChange;
-    use crate::application::port::media_change_source::MediaChangeSource as _;
-    use crate::application::port::media_change_source::MediaChangeSourceError;
     use tracing_test::traced_test;
-
-    use super::NotifyMediaChangeSource;
 
     /// Wait up to five seconds for the next change.
     async fn next_change(source: &NotifyMediaChangeSource) -> Result<MediaChange, Box<dyn Error>> {

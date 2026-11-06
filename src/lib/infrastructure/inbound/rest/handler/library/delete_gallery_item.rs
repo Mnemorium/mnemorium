@@ -1,15 +1,13 @@
-use axum::extract::Path;
-use axum::extract::State;
+use axum::extract::{Path, State};
 use axum::http::StatusCode;
 
-use crate::application::port::delete_gallery_item::DeleteGalleryItemCommand;
-use crate::application::port::delete_gallery_item::DeleteGalleryItemError;
+use crate::application::port::delete_gallery_item::{
+    DeleteGalleryItemCommand, DeleteGalleryItemError,
+};
 use crate::domain::alias::NumericID;
-use crate::infrastructure::inbound::rest::api_error::ApiError;
-use crate::infrastructure::inbound::rest::api_error::ErrorBody;
+use crate::infrastructure::inbound::rest::api_error::{ApiError, ErrorBody};
 use crate::infrastructure::inbound::rest::app_state::AppState;
-use crate::infrastructure::inbound::rest::handler::library::parse_gallery_id;
-use crate::infrastructure::inbound::rest::handler::library::parse_item_id;
+use crate::infrastructure::inbound::rest::handler::library::{parse_gallery_id, parse_item_id};
 use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 
 /// Map a delete-gallery-item error to its API error.
@@ -103,27 +101,20 @@ pub(crate) async fn delete_gallery_item(
 
 #[cfg(test)]
 mod tests {
-    use std::error::Error;
-    use std::sync::Arc;
-
+    use super::*;
+    use crate::application::port::delete_gallery_item::{
+        DeleteGalleryItemUseCase, MockDeleteGalleryItemUseCase,
+    };
+    use crate::application::port::library_use_case_factory::MockLibraryUseCaseFactory;
+    use crate::test_helpers::*;
     use axum::body::Body;
     use axum::extract::Request;
-    use axum::http::StatusCode;
     use axum::response::Response;
     use axum::routing::delete;
     use mockall::predicate::eq;
+    use std::error::Error;
+    use std::sync::Arc;
     use tower::ServiceExt as _;
-
-    use super::delete_gallery_item;
-    use crate::application::port::delete_gallery_item::DeleteGalleryItemCommand;
-    use crate::application::port::delete_gallery_item::DeleteGalleryItemError;
-    use crate::application::port::delete_gallery_item::DeleteGalleryItemUseCase;
-    use crate::application::port::delete_gallery_item::MockDeleteGalleryItemUseCase;
-    use crate::application::port::library_use_case_factory::MockLibraryUseCaseFactory;
-    use crate::domain::alias::NumericID;
-    use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
-    use crate::test_helpers::app_state_with_library;
-    use crate::test_helpers::error_message_of;
 
     /// Send a DELETE to `/api/v1/library/gallery/{id}/item/{item_id}` on behalf
     /// of `caller_id`, injecting the caller identifier the way the auth

@@ -1,14 +1,9 @@
-use std::fmt::Debug;
-use std::fmt::Formatter;
-use std::fmt::Result as FmtResult;
+use std::fmt::{Debug, Formatter, Result as FmtResult};
 
-use email_address::EmailAddress;
-use email_address::Options;
+use email_address::{EmailAddress, Options};
 
 use crate::domain::alias::NumericID;
-use crate::domain::model::permission::Protected;
-use crate::domain::model::permission::ResourceKind;
-use crate::domain::model::permission::ResourceRef;
+use crate::domain::model::permission::{Protected, ResourceKind, ResourceRef};
 
 /// Error returned when initialising or updating a `User`.
 #[derive(Debug, thiserror::Error)]

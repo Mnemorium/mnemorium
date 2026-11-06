@@ -1,8 +1,7 @@
 use std::future::{Future, ready};
 
 use rand::RngExt as _;
-use rand::distr::Alphanumeric;
-use rand::distr::SampleString as _;
+use rand::distr::{Alphanumeric, SampleString as _};
 use rand::seq::IndexedRandom as _;
 
 use crate::domain::port::error::PasswordGeneratorError;

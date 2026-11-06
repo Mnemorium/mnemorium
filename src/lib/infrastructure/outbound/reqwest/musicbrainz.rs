@@ -17,39 +17,29 @@
 use std::time::Duration;
 
 use chrono::NaiveDate;
-use reqwest::Client;
-use reqwest::StatusCode;
+use reqwest::{Client, StatusCode};
 use serde::Deserialize;
 use serde::de::DeserializeOwned;
 use tokio::sync::Mutex;
-use tokio::time::Instant;
-use tokio::time::sleep_until;
+use tokio::time::{Instant, sleep_until};
 
 use crate::application::security_event;
 use crate::domain::model::artwork::Artwork;
 use crate::domain::model::configuration::ProviderId;
 use crate::domain::model::external_ref::ExternalRef;
 use crate::domain::model::music_album::ProductionType;
-use crate::domain::model::music_candidate::MusicCandidate;
-use crate::domain::model::music_candidate::MusicTarget;
-use crate::domain::model::music_metadata::ArtistCredit;
-use crate::domain::model::music_metadata::Edition;
-use crate::domain::model::music_metadata::MediumFormat;
-use crate::domain::model::music_metadata::MediumSummary;
-use crate::domain::model::music_metadata::MusicMetadata;
-use crate::domain::model::music_metadata::ReleaseStatus;
-use crate::domain::model::music_query::MusicKind;
-use crate::domain::model::music_query::MusicQuery;
+use crate::domain::model::music_candidate::{MusicCandidate, MusicTarget};
+use crate::domain::model::music_metadata::{
+    ArtistCredit, Edition, MediumFormat, MediumSummary, MusicMetadata, ReleaseStatus,
+};
+use crate::domain::model::music_query::{MusicKind, MusicQuery};
 use crate::domain::port::error::ExternalServiceError;
 use crate::domain::port::music_metadata_provider::MusicMetadataProvider;
 use crate::domain::service::release_order::ReleaseOrder;
-use crate::infrastructure::outbound::reqwest::ArtworkClient;
-use crate::infrastructure::outbound::reqwest::REQUEST_TIMEOUT;
-use crate::infrastructure::outbound::reqwest::classify_status;
-use crate::infrastructure::outbound::reqwest::classify_transport_error;
-use crate::infrastructure::outbound::reqwest::log_provider_fault;
-use crate::infrastructure::outbound::reqwest::read_payload;
-use crate::infrastructure::outbound::reqwest::request_url;
+use crate::infrastructure::outbound::reqwest::{
+    ArtworkClient, REQUEST_TIMEOUT, classify_status, classify_transport_error, log_provider_fault,
+    read_payload, request_url,
+};
 
 /// Base address of the `MusicBrainz` API.
 const DEFAULT_API_BASE_URL: &str = "https://musicbrainz.org/ws/2";
@@ -836,49 +826,16 @@ fn year(value: Option<&str>) -> Option<u32> {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+    use crate::domain::model::music_query::MusicQueryError;
+    use rstest::rstest;
     use std::collections::VecDeque;
     use std::error::Error;
     use std::sync::Mutex as StdMutex;
-    use std::time::Duration;
     use std::time::Instant as StdInstant;
-
-    use chrono::NaiveDate;
-    use reqwest::StatusCode;
-    use rstest::rstest;
     use tracing_test::traced_test;
-    use wiremock::Mock;
-    use wiremock::MockServer;
-    use wiremock::Request;
-    use wiremock::Respond;
-    use wiremock::ResponseTemplate;
-    use wiremock::matchers::header;
-    use wiremock::matchers::method;
-    use wiremock::matchers::path;
-    use wiremock::matchers::query_param;
-
-    use crate::domain::model::configuration::ProviderId;
-    use crate::domain::model::external_ref::ExternalRef;
-    use crate::domain::model::music_album::ProductionType;
-    use crate::domain::model::music_candidate::MusicCandidate;
-    use crate::domain::model::music_candidate::MusicTarget;
-    use crate::domain::model::music_metadata::ArtistCredit;
-    use crate::domain::model::music_metadata::MediumFormat;
-    use crate::domain::model::music_metadata::MediumSummary;
-    use crate::domain::model::music_metadata::MusicMetadata;
-    use crate::domain::model::music_metadata::ReleaseStatus;
-    use crate::domain::model::music_query::MusicKind;
-    use crate::domain::model::music_query::MusicQuery;
-    use crate::domain::model::music_query::MusicQueryError;
-    use crate::domain::port::music_metadata_provider::MusicMetadataProvider as _;
-    use crate::infrastructure::outbound::reqwest::ArtworkClient;
-
-    use super::MUSICBRAINZ_ARTWORK_HOSTS;
-    use super::MusicBrainzMetadataProvider;
-    use super::USER_AGENT;
-    use super::country;
-    use super::date;
-    use super::genres;
-    use super::mapped_production_type;
+    use wiremock::matchers::{header, method, path, query_param};
+    use wiremock::{Mock, MockServer, Request, Respond, ResponseTemplate};
 
     /// The album search payload `wiremock` serves.
     const SEARCH_RELEASE_GROUP: &str =

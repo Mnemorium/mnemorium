@@ -3,8 +3,7 @@ use std::pin::Pin;
 
 use crate::domain::alias::NumericID;
 use crate::domain::model::user::Role;
-use crate::domain::service::username_policy::MAX_USERNAME_LENGTH;
-use crate::domain::service::username_policy::MIN_USERNAME_LENGTH;
+use crate::domain::service::username_policy::{MAX_USERNAME_LENGTH, MIN_USERNAME_LENGTH};
 
 /// Command to register a new user on behalf of an authenticated caller.
 #[derive(Debug, Clone, PartialEq, Eq)]

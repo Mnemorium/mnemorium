@@ -1,28 +1,24 @@
-use axum::extract::Path;
-use axum::extract::State;
+use axum::extract::{Path, State};
 use axum::response::Response;
 use serde::Serialize;
 use tracing::warn;
 use utoipa::ToSchema;
 
-use crate::application::port::resolve_music_metadata::ResolveMusicMetadataCommand;
-use crate::application::port::resolve_music_metadata::ResolveMusicMetadataError;
+use crate::application::port::resolve_music_metadata::{
+    ResolveMusicMetadataCommand, ResolveMusicMetadataError,
+};
 use crate::domain::model::configuration::ProviderId;
 use crate::domain::model::external_ref::ExternalRef;
 use crate::domain::model::music_album::ProductionType;
 use crate::domain::model::music_candidate::MusicTarget;
-use crate::domain::model::music_metadata::Edition;
-use crate::domain::model::music_metadata::MusicMetadata;
+use crate::domain::model::music_metadata::{Edition, MusicMetadata};
 use crate::domain::model::music_query::MusicKind;
-use crate::infrastructure::inbound::rest::api_error::ApiError;
-use crate::infrastructure::inbound::rest::api_error::ErrorBody;
+use crate::infrastructure::inbound::rest::api_error::{ApiError, ErrorBody};
 use crate::infrastructure::inbound::rest::app_state::AppState;
-use crate::infrastructure::inbound::rest::hal::SelfLinks;
-use crate::infrastructure::inbound::rest::hal::hal_json;
-use crate::infrastructure::inbound::rest::handler::library::ArtistCreditResponse;
-use crate::infrastructure::inbound::rest::handler::library::MusicMediumResponse;
-use crate::infrastructure::inbound::rest::handler::library::MusicReferenceResponse;
-use crate::infrastructure::inbound::rest::handler::library::format_date;
+use crate::infrastructure::inbound::rest::hal::{SelfLinks, hal_json};
+use crate::infrastructure::inbound::rest::handler::library::{
+    ArtistCreditResponse, MusicMediumResponse, MusicReferenceResponse, format_date,
+};
 use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 
 /// One edition of an album, as identification reports it.
@@ -315,39 +311,26 @@ pub(crate) async fn get_music_identify_metadata(
 
 #[cfg(test)]
 mod tests {
-    use std::error::Error;
-    use std::sync::Arc;
-
+    use super::*;
+    use crate::application::port::library_use_case_factory::MockLibraryUseCaseFactory;
+    use crate::application::port::resolve_music_metadata::{
+        MockResolveMusicMetadataUseCase, ResolveMusicMetadataResponse, ResolveMusicMetadataUseCase,
+    };
+    use crate::domain::alias::NumericID;
+    use crate::domain::model::music_metadata::{
+        ArtistCredit, MediumFormat, MediumSummary, ReleaseStatus,
+    };
+    use crate::infrastructure::inbound::rest::handler::library::library_routes;
+    use crate::test_helpers::*;
     use axum::body::Body;
     use axum::extract::Request;
     use axum::http::StatusCode;
-    use axum::response::Response;
     use axum::routing::get;
     use chrono::NaiveDate;
     use serde_json::json;
+    use std::error::Error;
+    use std::sync::Arc;
     use tower::ServiceExt as _;
-
-    use super::get_music_identify_metadata;
-    use crate::application::port::library_use_case_factory::MockLibraryUseCaseFactory;
-    use crate::application::port::resolve_music_metadata::MockResolveMusicMetadataUseCase;
-    use crate::application::port::resolve_music_metadata::ResolveMusicMetadataError;
-    use crate::application::port::resolve_music_metadata::ResolveMusicMetadataResponse;
-    use crate::application::port::resolve_music_metadata::ResolveMusicMetadataUseCase;
-    use crate::domain::alias::NumericID;
-    use crate::domain::model::configuration::ProviderId;
-    use crate::domain::model::external_ref::ExternalRef;
-    use crate::domain::model::music_album::ProductionType;
-    use crate::domain::model::music_metadata::ArtistCredit;
-    use crate::domain::model::music_metadata::Edition;
-    use crate::domain::model::music_metadata::MediumFormat;
-    use crate::domain::model::music_metadata::MediumSummary;
-    use crate::domain::model::music_metadata::MusicMetadata;
-    use crate::domain::model::music_metadata::ReleaseStatus;
-    use crate::domain::model::music_query::MusicKind;
-    use crate::infrastructure::inbound::rest::handler::library::library_routes;
-    use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
-    use crate::test_helpers::app_state_with_library;
-    use crate::test_helpers::into_parts;
 
     /// The reference every test resolves.
     const REFERENCE: &str = "75b3b57b-5f6f-3c1f-9b7e-9b2f0a2b4b6e";

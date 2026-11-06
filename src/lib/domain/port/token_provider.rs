@@ -1,6 +1,4 @@
-use std::fmt::Debug;
-use std::fmt::Formatter;
-use std::fmt::Result as FmtResult;
+use std::fmt::{Debug, Formatter, Result as FmtResult};
 use std::future::Future;
 
 use crate::domain::alias::NumericID;
@@ -66,7 +64,7 @@ pub(crate) trait TokenProvider: Send + Sync {
 
 #[cfg(test)]
 mod tests {
-    use super::IssuedToken;
+    use super::*;
 
     #[test]
     fn issued_token_debug_redacts_the_value_but_keeps_the_lifetime() {

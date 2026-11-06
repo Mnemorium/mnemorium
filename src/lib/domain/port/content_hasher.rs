@@ -1,5 +1,4 @@
-use crate::domain::model::integrity_hash::DIGEST_HEX_LENGTH;
-use crate::domain::model::integrity_hash::IntegrityHash;
+use crate::domain::model::integrity_hash::{DIGEST_HEX_LENGTH, IntegrityHash};
 use crate::domain::port::error::ContentHasherError;
 
 /// Port for incrementally hashing byte content.
@@ -32,7 +31,7 @@ pub(crate) trait ContentHasherSession: Send + Sync {
 
 #[cfg(test)]
 mod tests {
-    use super::ContentHasherSession;
+    use super::*;
 
     /// Assert `T` implements `Send + Sync`.
     fn assert_send_sync<T: Send + Sync + ?Sized>() {}

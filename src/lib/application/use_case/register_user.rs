@@ -4,34 +4,24 @@ use std::sync::Arc;
 
 use chrono::Utc;
 
-use crate::application::port::register_user::RegisterUserCommand;
-use crate::application::port::register_user::RegisterUserError;
-use crate::application::port::register_user::RegisterUserResponse;
-use crate::application::port::register_user::RegisterUserUseCase;
+use crate::application::port::register_user::{
+    RegisterUserCommand, RegisterUserError, RegisterUserResponse, RegisterUserUseCase,
+};
 use crate::application::security_event;
 use crate::domain::model::credential::Credential;
-use crate::domain::model::permission::Action;
-use crate::domain::model::permission::Global;
-use crate::domain::model::user::Role;
-use crate::domain::model::user::User;
-use crate::domain::model::user::UserError;
+use crate::domain::model::permission::{Action, Global};
+use crate::domain::model::user::{Role, User, UserError};
 use crate::domain::port::credential_repository::CredentialRepository as _;
 use crate::domain::port::error::RepositoryError;
 use crate::domain::port::identity_unit_of_work::IdentityUnitOfWork;
 use crate::domain::port::password_hasher::PasswordHasher;
-use crate::domain::port::permission_repository::PermissionFilter;
-use crate::domain::port::permission_repository::PermissionRepository as _;
-use crate::domain::port::unit_of_work::UnitOfWork as _;
-use crate::domain::port::unit_of_work::UnitOfWorkFactory;
-use crate::domain::port::user_repository::UserFilter;
-use crate::domain::port::user_repository::UserRepository as _;
+use crate::domain::port::permission_repository::{PermissionFilter, PermissionRepository as _};
+use crate::domain::port::unit_of_work::{UnitOfWork as _, UnitOfWorkFactory};
+use crate::domain::port::user_repository::{UserFilter, UserRepository as _};
 use crate::domain::port::user_unit_of_work::UserUnitOfWork;
-use crate::domain::service::authorization::Authorization;
-use crate::domain::service::authorization::Decision;
-use crate::domain::service::password_policy::PasswordPolicy;
-use crate::domain::service::password_policy::PasswordPolicyError;
-use crate::domain::service::username_policy::UsernamePolicy;
-use crate::domain::service::username_policy::UsernamePolicyError;
+use crate::domain::service::authorization::{Authorization, Decision};
+use crate::domain::service::password_policy::{PasswordPolicy, PasswordPolicyError};
+use crate::domain::service::username_policy::{UsernamePolicy, UsernamePolicyError};
 
 /// Use case implementation for registering a new user.
 pub(crate) struct RegisterUser<F, P> {
@@ -231,33 +221,16 @@ where
 
 #[cfg(test)]
 mod tests {
-    use std::error::Error;
-    use std::sync::Arc;
-    use std::sync::atomic::AtomicBool;
-    use std::sync::atomic::Ordering;
-
-    use crate::application::port::register_user::RegisterUserCommand;
-    use crate::application::port::register_user::RegisterUserError;
-    use crate::application::port::register_user::RegisterUserUseCase as _;
-    use crate::domain::model::permission::Action;
-    use crate::domain::model::permission::Permission;
-    use crate::domain::model::permission::Scope;
-    use crate::domain::model::user::Role;
-    use crate::domain::model::user::User;
-    use crate::domain::model::user::UserError;
+    use super::*;
+    use crate::domain::model::permission::{Permission, Scope};
     use crate::domain::port::credential_repository::MockCredentialRepository;
     use crate::domain::port::error::PasswordHasherError;
-    use crate::domain::port::error::RepositoryError;
     use crate::domain::port::password_hasher::MockPasswordHasher;
     use crate::domain::port::permission_repository::MockPermissionRepository;
     use crate::domain::port::user_repository::MockUserRepository;
-    use crate::test_helpers::SECRET_PASSWORD;
-    use crate::test_helpers::TestFactory;
-    use crate::test_helpers::TestUnitOfWork;
-    use crate::test_helpers::expect_permissions;
-    use crate::test_helpers::no_permissions;
-
-    use super::RegisterUser;
+    use crate::test_helpers::*;
+    use std::error::Error;
+    use std::sync::atomic::{AtomicBool, Ordering};
 
     type UseCase = RegisterUser<TestFactory, MockPasswordHasher>;
 

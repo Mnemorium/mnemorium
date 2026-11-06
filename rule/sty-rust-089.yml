@@ -1,0 +1,21 @@
+---
+id: sty-rust-089
+language: Rust
+severity: hint
+message: >-
+  extract a pair of adjacent imports that share a parent module, for
+  STY-RUST-089
+rule:
+  kind: use_declaration
+  any:
+    # The later import of the pair: a plain item or an `as` alias.
+    - pattern: use $P::$A;
+    - pattern: use $P::$A as $ALIAS;
+  follows:
+    kind: use_declaration
+    any:
+      # The earlier import of the pair, under the same `$P` parent.
+      - pattern: use $P::$B;
+      - pattern: use $P::$B as $ALIAS2;
+      # A brace group: `use $P::{...};` sorts before a single import.
+      - pattern: use $P::{$B, $$$REST};

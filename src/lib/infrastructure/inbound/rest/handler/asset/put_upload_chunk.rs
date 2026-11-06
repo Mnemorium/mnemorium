@@ -1,25 +1,20 @@
 use axum::Json;
 use axum::body::Bytes;
-use axum::extract::Path;
-use axum::extract::State;
 use axum::extract::rejection::BytesRejection;
-use axum::http::HeaderMap;
-use axum::http::HeaderValue;
-use axum::http::header;
-use axum::response::IntoResponse as _;
-use axum::response::Response;
+use axum::extract::{Path, State};
+use axum::http::{HeaderMap, HeaderValue, header};
+use axum::response::{IntoResponse as _, Response};
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD;
 use serde::Deserialize;
 use utoipa::ToSchema;
 
-use crate::application::port::write_upload_chunk::WriteUploadChunkCommand;
-use crate::application::port::write_upload_chunk::WriteUploadChunkError;
+use crate::application::port::write_upload_chunk::{
+    WriteUploadChunkCommand, WriteUploadChunkError,
+};
 use crate::domain::alias::NumericID;
-use crate::domain::model::integrity_hash::DIGEST_HEX_LENGTH;
-use crate::domain::model::integrity_hash::IntegrityHash;
-use crate::infrastructure::inbound::rest::api_error::ApiError;
-use crate::infrastructure::inbound::rest::api_error::ErrorBody;
+use crate::domain::model::integrity_hash::{DIGEST_HEX_LENGTH, IntegrityHash};
+use crate::infrastructure::inbound::rest::api_error::{ApiError, ErrorBody};
 use crate::infrastructure::inbound::rest::app_state::AppState;
 use crate::infrastructure::inbound::rest::hal::HAL_CONTENT_TYPE;
 use crate::infrastructure::inbound::rest::handler::asset::UploadSessionResponse;
@@ -320,42 +315,24 @@ pub(crate) async fn put_upload_chunk(
 
 #[cfg(test)]
 mod tests {
-    use std::error::Error;
-    use std::sync::Arc;
-
+    use super::*;
+    use crate::application::port::asset_use_case_factory::MockAssetUseCaseFactory;
+    use crate::application::port::write_upload_chunk::{
+        MockWriteUploadChunkUseCase, WriteUploadChunkResponse, WriteUploadChunkUseCase,
+    };
+    use crate::test_helpers::*;
     use axum::body::Body;
-
     use axum::extract::Request;
-    use axum::http::HeaderValue;
     use axum::http::StatusCode;
-    use axum::http::header;
-    use axum::response::Response;
     use axum::routing::put;
-    use base64::Engine as _;
-    use base64::engine::general_purpose::STANDARD;
-    use chrono::NaiveDate;
-    use chrono::NaiveDateTime;
+    use chrono::{NaiveDate, NaiveDateTime};
     use mockall::predicate::eq;
     use rstest::rstest;
-
     use serde_json::json;
-    use sha2::Digest as _;
-    use sha2::Sha256;
+    use sha2::{Digest as _, Sha256};
+    use std::error::Error;
+    use std::sync::Arc;
     use tower::ServiceExt as _;
-
-    use super::put_upload_chunk;
-    use crate::application::port::asset_use_case_factory::MockAssetUseCaseFactory;
-    use crate::application::port::write_upload_chunk::MockWriteUploadChunkUseCase;
-    use crate::application::port::write_upload_chunk::WriteUploadChunkCommand;
-    use crate::application::port::write_upload_chunk::WriteUploadChunkError;
-    use crate::application::port::write_upload_chunk::WriteUploadChunkResponse;
-    use crate::application::port::write_upload_chunk::WriteUploadChunkUseCase;
-    use crate::domain::alias::NumericID;
-    use crate::domain::model::integrity_hash::IntegrityHash;
-    use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
-    use crate::test_helpers::app_state_with_asset;
-    use crate::test_helpers::error_message_of;
-    use crate::test_helpers::into_status_and_body;
 
     /// Chunk the tests upload, and its digest.
     const CHUNK: &[u8] = b"1234";

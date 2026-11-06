@@ -1,12 +1,9 @@
-use axum::extract::Path;
-use axum::extract::State;
+use axum::extract::{Path, State};
 use axum::response::Response;
 
-use crate::application::port::get_permission::GetPermissionCommand;
-use crate::application::port::get_permission::GetPermissionError;
+use crate::application::port::get_permission::{GetPermissionCommand, GetPermissionError};
 use crate::domain::alias::NumericID;
-use crate::infrastructure::inbound::rest::api_error::ApiError;
-use crate::infrastructure::inbound::rest::api_error::ErrorBody;
+use crate::infrastructure::inbound::rest::api_error::{ApiError, ErrorBody};
 use crate::infrastructure::inbound::rest::app_state::AppState;
 use crate::infrastructure::inbound::rest::hal::hal_json;
 use crate::infrastructure::inbound::rest::handler::identity::PermissionResponse;
@@ -108,20 +105,16 @@ mod tests {
     use mockall::predicate::eq;
     use tower::ServiceExt as _;
 
-    use crate::application::port::get_permission::GetPermissionCommand;
-    use crate::application::port::get_permission::GetPermissionError;
-    use crate::application::port::get_permission::GetPermissionResponse;
-    use crate::application::port::get_permission::GetPermissionUseCase;
-    use crate::application::port::get_permission::MockGetPermissionUseCase;
+    use crate::application::port::get_permission::{
+        GetPermissionCommand, GetPermissionError, GetPermissionResponse, GetPermissionUseCase,
+        MockGetPermissionUseCase,
+    };
     use crate::application::port::identity_use_case_factory::MockIdentityUseCaseFactory;
     use crate::domain::alias::NumericID;
-    use crate::domain::model::permission::Action;
-    use crate::domain::model::permission::PermissionPreset;
-    use crate::domain::model::permission::Scope;
+    use crate::domain::model::permission::{Action, PermissionPreset, Scope};
     use crate::domain::model::user::Role;
     use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
-    use crate::test_helpers::app_state_with_identity;
-    use crate::test_helpers::into_status_and_body;
+    use crate::test_helpers::{app_state_with_identity, into_status_and_body};
 
     use super::get_permission;
 

@@ -1,6 +1,5 @@
 use crate::domain::alias::NumericID;
-use crate::domain::model::permission::ResourceKind;
-use crate::domain::model::permission::ResourceRef;
+use crate::domain::model::permission::{ResourceKind, ResourceRef};
 
 /// The resource that owns a stored asset, as far as authorization is concerned.
 ///
