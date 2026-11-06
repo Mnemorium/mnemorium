@@ -6,18 +6,36 @@
 use std::future::Future;
 use std::pin::Pin;
 
-use crate::domain::model::media_candidate::Candidate;
+use crate::domain::alias::NumericID;
+use crate::domain::model::media_query::VideoKind;
+use crate::domain::model::video_candidate::Candidate;
 
 /// Command for one identification run.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub(crate) struct IdentifyVideoCommand {
+    /// Caller on whose behalf the search runs.
+    caller_id: NumericID,
+    /// Kind of work the route searches for.
+    kind: VideoKind,
     /// The best human-meaningful name the caller has: the root-relative path
     /// for a scanned file, the original client file name for an upload.
     name: String,
 }
 
 impl IdentifyVideoCommand {
+    /// Return the caller the search runs for.
+    #[must_use]
+    pub(crate) fn caller_id(&self) -> NumericID {
+        self.caller_id
+    }
+
+    /// Return the kind of work to search for.
+    #[must_use]
+    pub(crate) fn kind(&self) -> VideoKind {
+        self.kind
+    }
+
     /// Return the media name to interpret.
     #[must_use]
     pub(crate) fn name(&self) -> &str {
@@ -26,8 +44,12 @@ impl IdentifyVideoCommand {
 
     /// Create a new command.
     #[must_use]
-    pub(crate) fn new(name: String) -> Self {
-        Self { name }
+    pub(crate) fn new(caller_id: NumericID, kind: VideoKind, name: String) -> Self {
+        Self {
+            caller_id,
+            kind,
+            name,
+        }
     }
 }
 
@@ -61,6 +83,12 @@ impl IdentifyVideoResponse {
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub(crate) enum IdentifyVideoError {
+    /// The caller does not exist.
+    #[error("the caller does not exist")]
+    NoSuchCaller,
+    /// The caller may not read the library, so identification is concealed.
+    #[error("video identification is not available")]
+    NotPermitted,
     /// No metadata provider is configured, so identification cannot run.
     #[error("no video metadata provider is configured")]
     Unavailable,

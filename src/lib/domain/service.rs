@@ -1,4 +1,6 @@
 pub(crate) mod authorization;
+/// The country-of-origin code validation policy.
+pub(crate) mod country_code;
 /// The interpreter turning a file name into media queries.
 pub(crate) mod media_name_interpreter;
 /// The shared name validation policy.

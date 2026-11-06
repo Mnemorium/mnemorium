@@ -12,12 +12,12 @@
 pub(crate) mod failover;
 
 use crate::domain::model::configuration::MusicProviders;
+use crate::domain::model::configuration::ProviderId;
 use crate::domain::model::configuration::VideoProviders;
-use crate::domain::model::media_candidate::Candidate;
-use crate::domain::model::media_candidate::ProviderId;
-use crate::domain::model::media_candidate::Target;
 use crate::domain::model::media_metadata::MediaMetadata;
 use crate::domain::model::media_query::MediaQuery;
+use crate::domain::model::video_candidate::Candidate;
+use crate::domain::model::video_candidate::Target;
 use crate::domain::port::error::ExternalServiceError;
 use crate::domain::port::video_metadata_provider::VideoMetadataProvider;
 use crate::infrastructure::outbound::reqwest::musicbrainz::MusicBrainzMetadataProvider;
@@ -119,13 +119,13 @@ mod tests {
 
     use crate::domain::model::configuration::MusicProvider;
     use crate::domain::model::configuration::MusicProviders;
+    use crate::domain::model::configuration::ProviderId;
     use crate::domain::model::configuration::VideoProvider;
     use crate::domain::model::configuration::VideoProviders;
-    use crate::domain::model::media_candidate::Candidate;
-    use crate::domain::model::media_candidate::ProviderId;
     use crate::domain::model::media_query::MediaQuery;
     use crate::domain::model::media_query::MediaQueryError;
     use crate::domain::model::media_query::VideoKind;
+    use crate::domain::model::video_candidate::Candidate;
     use crate::domain::port::video_metadata_provider::VideoMetadataProvider as _;
     use crate::infrastructure::outbound::reqwest::tmdb::TmdbVideoMetadataProvider;
 

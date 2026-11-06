@@ -165,6 +165,38 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn get_series_episode_without_an_air_date_reports_null() -> Result<(), Box<dyn Error>> {
+        // Arrange: the episode stores no air date.
+        let mut use_case = MockGetSeriesEpisodeUseCase::new();
+        let episode = sample_episode(2, 12)?;
+        let response = GetSeriesEpisodeResponse::new(
+            episode.index().value(),
+            7,
+            1,
+            episode.name().to_owned(),
+            episode.plot().to_owned(),
+            None,
+            episode.video().clone(),
+        );
+        use_case.expect_execute().times(1).return_once(move |_| {
+            let copy = response.clone();
+            Box::pin(async move { Ok(copy) })
+        });
+
+        // Act
+        let (status, _, payload) = into_parts(send(use_case, 1, "7", "1", "2").await?).await?;
+
+        // Assert
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(
+            payload.get("air_date"),
+            Some(&serde_json::Value::Null),
+            "an absent air date must be represented as null"
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn get_series_episode_returns_the_episode() -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut use_case = MockGetSeriesEpisodeUseCase::new();

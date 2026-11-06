@@ -1155,12 +1155,25 @@ actor "Admin" as Admin
 package "Video" {
   usecase "UC-022 - Browse movies" as UC022
   usecase "UC-023 - Browse series" as UC023
+  usecase "UC-025 - Identify video metadata" as UC025
+  usecase "UC-026 - Write movie metadata" as UC026
+  usecase "UC-027 - Write series metadata" as UC027
+  usecase "UC-028 - Write season metadata" as UC028
+  usecase "UC-029 - Write episode metadata" as UC029
+  usecase "UC-030 - Apply external video metadata" as UC030
 }
 
 StandardUser --> UC022
 Admin --> UC022
 StandardUser --> UC023
 Admin --> UC023
+StandardUser --> UC025
+Admin --> UC025
+Admin --> UC026
+Admin --> UC027
+Admin --> UC028
+Admin --> UC029
+Admin --> UC030
 @enduml
 ```
 
@@ -1277,6 +1290,337 @@ each level's details and the video behind each episode.
 ##### Post condition(s)
 
 - The caller is shown the requested shows, show, season, episodes, or episode, as the system holds them.
+
+---
+
+#### UC-025 - Identify Video Metadata
+
+##### Description
+
+Allow an authenticated user to ask the configured video metadata provider about a film, a show or an episode, and to
+receive the provider's candidates or the provider-independent metadata document.
+
+##### Primary actor
+
+- Standard User
+- Admin
+
+##### Parameters
+
+- name — the media name the caller wants identified.
+- provider — the provider that issued a reference, when resolving one.
+- reference — the identifier the provider issued.
+- season — the season position, when resolving an episode; optional, required with the episode position.
+- episode — the episode position, when resolving an episode; optional, required with the season position.
+
+##### Pre condition(s)
+
+- The caller is authenticated and the library is open to the caller.
+
+##### Trigger
+
+- The caller asks to identify a film or a show by name.
+- The caller asks to resolve a provider reference to a film, a show or an episode.
+
+##### Happy path
+
+1. The caller asks to identify a film or a show by name, or to resolve a provider reference under the film or show
+   route.
+2. The system verifies the caller's account still exists and the caller may read the library.
+3. The system interprets the name into kind-scoped queries, or builds the target from the reference and the optional
+   position, and asks only the configured video metadata provider.
+4. The system returns the provider's candidates of the first query that yields any, or the provider-independent metadata
+   document of the resolved work.
+
+##### Alternative flow
+
+- 1a. The request is unauthenticated; the system rejects the request.
+- 2a. The caller's account no longer exists; the system rejects the request.
+- 2b. The library is closed to the caller; the system reports the surface as not found.
+- 3a. The name is empty, or only one of the season and episode positions is supplied, or a position is out of range; the
+  system rejects the request.
+- 3b. The provider named in the request is not one the system serves; the system reports it as not found.
+- 3c. The provider does not know the reference, or reports another kind or another episode position than the one
+  addressed; the system rejects the request rather than publishing another work's metadata.
+- 3d. No video metadata provider is configured; the system reports identification as unavailable, distinct from a search
+  that found no candidate.
+- 3e. The configured provider fails; the system reports the failure and asks no other provider for the reference.
+
+##### Post condition(s)
+
+- The caller is shown the provider's candidates or the metadata document of the requested work; the system persists
+  nothing.
+
+---
+
+#### UC-026 - Write Movie Metadata
+
+##### Description
+
+Allow an administrator to create a film from a video and to correct a film's metadata without changing the video behind
+it.
+
+##### Primary actor
+
+- Admin
+
+##### Parameters
+
+- video — the video that backs the new film.
+- film — the film to change, when changing one.
+- name — the film's name.
+- plot — the film's plot summary, when known.
+- release date — the film's release date, when known.
+- country — the film's country of origin, when known.
+- genres — the film's genres, when known.
+- cover — the film's artwork, when known.
+
+##### Pre condition(s)
+
+- The caller is authenticated and may manage the whole library.
+
+##### Trigger
+
+- The caller asks to create a film from a video.
+- The caller asks to correct one film's metadata.
+
+##### Happy path
+
+1. The caller submits a video and the film's metadata.
+2. The system returns the film already backed by that video unchanged when one exists, or stores a new film otherwise.
+3. The caller submits corrections to one film's metadata.
+4. The system stores the named values, keeps every value the caller leaves unmentioned, and clears every optional value
+   the caller clears.
+
+##### Alternative flow
+
+- 1a. The request is unauthenticated; the system rejects the request.
+- 2a. The video does not exist, the name is empty, a genre is empty, the date is malformed or the country is not a
+  two-letter code; the system rejects the request and stores nothing.
+- 2b. The video already backs another film or an episode; the system reports the conflict and stores nothing.
+- 2c. The cover is not library artwork; the system reports the conflict and stores nothing.
+- 3a. The film does not exist or the caller may not see it; the system reports it as not found, without distinguishing
+  the two cases.
+- 3b. The caller may see the film but may not manage the library; the system refuses the change and stores nothing.
+
+##### Post condition(s)
+
+- The film exists with the submitted metadata, or the corrected film is stored with the video behind it unchanged.
+
+---
+
+#### UC-027 - Write Series Metadata
+
+##### Description
+
+Allow an administrator to create a show and to correct a show's metadata without changing its seasons or episodes.
+
+##### Primary actor
+
+- Admin
+
+##### Parameters
+
+- show — the show to create, or the show to change when changing one.
+- name — the show's name.
+- plot — the show's plot summary, when known.
+- first air date — the date the show first aired, when known.
+- country — the show's country of origin, when known.
+- genres — the show's genres, when known.
+- cover — the show's artwork, when known.
+
+##### Pre condition(s)
+
+- The caller is authenticated and may manage the whole library.
+
+##### Trigger
+
+- The caller asks to create a show.
+- The caller asks to correct one show's metadata.
+
+##### Happy path
+
+1. The caller submits a show's metadata.
+2. The system stores a new show with no seasons.
+3. The caller submits corrections to one show's metadata.
+4. The system stores the named values, keeps every value the caller leaves unmentioned, and clears every optional value
+   the caller clears, leaving every season and episode untouched.
+
+##### Alternative flow
+
+- 1a. The request is unauthenticated; the system rejects the request.
+- 2a. The name is empty, a genre is empty, the date is malformed or the country is not a two-letter code; the system
+  rejects the request and stores nothing.
+- 2b. The cover is not library artwork; the system reports the conflict and stores nothing.
+- 2c. Another show already carries the same name; the system stores a second show rather than refusing.
+- 3a. The show does not exist or the caller may not see it; the system reports it as not found, without distinguishing
+  the two cases.
+- 3b. The caller may see the show but may not manage the library; the system refuses the change and stores nothing.
+
+##### Post condition(s)
+
+- The show exists with the submitted metadata, or the corrected show is stored with its seasons and episodes unchanged.
+
+---
+
+#### UC-028 - Write Season Metadata
+
+##### Description
+
+Allow an administrator to create or replace a season of a show and to correct one season's name or artwork without
+changing its episodes.
+
+##### Primary actor
+
+- Admin
+
+##### Parameters
+
+- show — the show holding the season.
+- season position — the season's position within the show.
+- name — the season's name, when known.
+- cover — the season's artwork, when known.
+
+##### Pre condition(s)
+
+- The caller is authenticated and may manage the whole library.
+
+##### Trigger
+
+- The caller asks to create or replace a season at a position.
+- The caller asks to correct one season's name or artwork.
+
+##### Happy path
+
+1. The caller submits a season position and its name or artwork.
+2. The system stores a new season at a free position or replaces the season at an occupied one, keeping the episodes it
+   already holds.
+3. The caller submits a correction to one season's name or artwork.
+4. The system stores the named values, keeps every value the caller leaves unmentioned, clears every optional value the
+   caller clears, and leaves the season's episodes untouched.
+
+##### Alternative flow
+
+- 1a. The request is unauthenticated; the system rejects the request.
+- 2a. The show does not exist, or the position is outside the accepted range; the system reports it as not found or
+  rejects the request and stores nothing.
+- 2b. The cover is not library artwork; the system reports the conflict and stores nothing.
+- 2c. The caller may not see the show, or may see it but may not manage the library; the system reports it as not found
+  or refuses the change and stores nothing.
+
+##### Post condition(s)
+
+- The season exists at the submitted position with the submitted metadata and its episodes unchanged.
+
+---
+
+#### UC-029 - Write Episode Metadata
+
+##### Description
+
+Allow an administrator to create or replace an episode of a season and to correct one episode's metadata without
+changing the video behind it.
+
+##### Primary actor
+
+- Admin
+
+##### Parameters
+
+- show — the show holding the season.
+- season position — the season's position within the show.
+- episode position — the episode's position within the season.
+- video — the video that backs the episode, when creating or replacing one.
+- name — the episode's name.
+- plot — the episode's plot summary, when known.
+- air date — the date the episode first aired, when known.
+
+##### Pre condition(s)
+
+- The caller is authenticated and may manage the whole library.
+
+##### Trigger
+
+- The caller asks to create or replace an episode at a position.
+- The caller asks to correct one episode's metadata.
+
+##### Happy path
+
+1. The caller submits an episode position, a video and the episode's metadata.
+2. The system stores a new episode at a free position or replaces the episode at an occupied one, using the video the
+   caller names.
+3. The caller submits corrections to one episode's metadata.
+4. The system stores the named values, keeps every value the caller leaves unmentioned, clears an air date the caller
+   clears, and leaves the video behind the episode untouched.
+
+##### Alternative flow
+
+- 1a. The request is unauthenticated; the system rejects the request.
+- 2a. The show or season does not exist, or a position is outside the accepted range; the system reports it as not found
+  or rejects the request and stores nothing.
+- 2b. The video does not exist, the name is empty or the date is malformed; the system rejects the request and stores
+  nothing.
+- 2c. The video already backs another film or episode; the system reports the conflict and stores nothing.
+- 3a. The episode does not exist, the caller may not see the show, or the caller may see it but may not manage the
+  library; the system reports it as not found or refuses the change and stores nothing.
+
+##### Post condition(s)
+
+- The episode exists at the submitted position with the submitted metadata and a video behind it.
+
+---
+
+#### UC-030 - Apply External Video Metadata
+
+##### Description
+
+Allow an administrator to replace a film's, a show's or an episode's metadata with the metadata an external provider
+reports for a reference the administrator supplies.
+
+##### Primary actor
+
+- Admin
+
+##### Parameters
+
+- film, show or episode — the catalogue entry to rewrite.
+- provider — the provider holding the reference.
+- reference — the provider's identifier for the work.
+- season position and episode position — the addressed episode, when rewriting one.
+
+##### Pre condition(s)
+
+- The caller is authenticated and may manage the whole library.
+- A video metadata provider is configured.
+
+##### Trigger
+
+- The caller asks to apply a provider reference to a film, a show or an episode.
+
+##### Happy path
+
+1. The caller submits a provider reference for one film, show or episode.
+2. The system resolves the reference through that provider.
+3. The system replaces the entry's name, plot, date, country and genres with the reported values.
+4. The system returns the rewritten entry, keeping the artwork and the video behind it.
+
+##### Alternative flow
+
+- 1a. The request is unauthenticated; the system rejects the request.
+- 2a. The named provider is not one the system serves for video; the system rejects the request.
+- 2b. The provider does not know the reference, or reports another kind than the entry addressed; the system reports it
+  as not found or rejects the request and writes nothing.
+- 2c. The provider reports another episode position than the one addressed; the system rejects the request and writes
+  nothing.
+- 2d. No provider is configured, or the provider fails; the system reports the failure and writes nothing.
+- 3a. The reference resolves no date, country or genre; the system clears the stored value.
+- 3b. The entry does not exist or the caller may not see it; the system reports it as not found.
+- 3c. The caller may see the entry but may not manage the library; the system refuses the write and applies nothing.
+- 3d. A show apply never creates a season or an episode.
+
+##### Post condition(s)
+
+- The addressed entry carries the provider's metadata, with its artwork, seasons, episodes and backing video unchanged.
 
 ## Configuration
 

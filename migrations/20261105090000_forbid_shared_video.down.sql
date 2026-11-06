@@ -1,0 +1,7 @@
+DROP TRIGGER tg_episode_reject_movie_video_update;
+
+DROP TRIGGER tg_episode_reject_movie_video_insert;
+
+DROP TRIGGER tg_movie_reject_episode_video_update;
+
+DROP TRIGGER tg_movie_reject_episode_video_insert;

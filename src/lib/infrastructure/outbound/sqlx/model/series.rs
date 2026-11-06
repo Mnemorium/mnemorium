@@ -21,8 +21,8 @@ pub(crate) struct SeriesRow {
     /// Identifier of the colour space of the video, when the season holds an
     /// episode.
     pub color_id: Option<String>,
-    /// Country of origin of the show.
-    pub country_of_origin: String,
+    /// Country of origin of the show, when stored.
+    pub country_of_origin: Option<String>,
     /// Identifier of the image holding the show's artwork, when set.
     pub cover_image_id: Option<NumericID>,
     /// Duration of the video, in milliseconds, when the season holds an
@@ -36,8 +36,8 @@ pub(crate) struct SeriesRow {
     pub episode_plot: Option<String>,
     /// Identifier of the backing file, when the season holds an episode.
     pub file_id: Option<NumericID>,
-    /// Date of the first airing of the show.
-    pub first_air_date: NaiveDate,
+    /// Date of the first airing of the show, when stored.
+    pub first_air_date: Option<NaiveDate>,
     /// Number of frames in the video, when the season holds an episode.
     pub frame_count: Option<i64>,
     /// Comma-separated genre identifiers of the show, ordered by identifier.

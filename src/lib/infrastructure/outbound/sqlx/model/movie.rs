@@ -14,8 +14,8 @@ pub(crate) struct MovieRow {
     pub codec: String,
     /// Identifier of the colour space of the video.
     pub color_id: String,
-    /// Country of origin of the film.
-    pub country_of_origin: String,
+    /// Country of origin of the film, when stored.
+    pub country_of_origin: Option<String>,
     /// Identifier of the image holding the film's artwork, when set.
     pub cover_image_id: Option<NumericID>,
     /// Duration of the video, in milliseconds.
@@ -35,8 +35,8 @@ pub(crate) struct MovieRow {
     pub name: String,
     /// Plot of the film.
     pub plot: String,
-    /// Date of the release of the film.
-    pub release_date: NaiveDate,
+    /// Date of the release of the film, when stored.
+    pub release_date: Option<NaiveDate>,
     /// Stored scan type of the video.
     pub scan_type: String,
     /// Unique identifier of the video.

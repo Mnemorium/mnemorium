@@ -146,8 +146,8 @@ mod tests {
     use crate::application::port::identify_music::IdentifyMusicCommand;
     use crate::application::port::identify_music::IdentifyMusicError;
     use crate::application::port::identify_music::IdentifyMusicUseCase as _;
-    use crate::domain::model::media_candidate::ExternalRef;
-    use crate::domain::model::media_candidate::ProviderId;
+    use crate::domain::model::configuration::ProviderId;
+    use crate::domain::model::external_ref::ExternalRef;
     use crate::domain::model::music_candidate::MusicCandidate;
     use crate::domain::model::music_query::MusicKind;
     use crate::domain::model::music_query::MusicQuery;

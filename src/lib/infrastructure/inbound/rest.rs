@@ -116,6 +116,9 @@ pub(crate) fn openapi() -> OpenApi {
 #[cfg(test)]
 mod tests {
     use super::openapi;
+    use utoipa::openapi::RefOr;
+    use utoipa::openapi::path::Parameter;
+    use utoipa::openapi::path::PathItem;
 
     #[test]
     fn openapi_collects_every_context_and_the_security_scheme() {
@@ -159,6 +162,117 @@ mod tests {
                     .contains_key("bearer_auth")
             }),
             "the security addon must register the bearer scheme"
+        );
+    }
+
+    /// Return whether the GET operation of `item` declares `name`.
+    fn declares_parameter(item: Option<&PathItem>, name: &str) -> bool {
+        item.and_then(|path_item| path_item.get.as_ref())
+            .is_some_and(|operation| {
+                operation.parameters.iter().flatten().any(|parameter| {
+                    matches!(
+                        parameter,
+                        RefOr::T(Parameter { name: declared, .. }) if declared == name
+                    )
+                })
+            })
+    }
+
+    #[test]
+    fn openapi_collects_the_video_write_routes() {
+        // Act
+        let document = openapi();
+        let paths = &document.paths.paths;
+
+        // Assert: every create, replace and partial-update route of the video
+        // catalogue is registered.
+        assert!(
+            paths.contains_key("/library/movie"),
+            "the document must declare the film create route"
+        );
+        assert!(
+            paths.contains_key("/library/movie/{movie_id}"),
+            "the document must declare the film update route"
+        );
+        assert!(
+            paths.contains_key("/library/series"),
+            "the document must declare the show create route"
+        );
+        assert!(
+            paths.contains_key("/library/series/{series_id}"),
+            "the document must declare the show update route"
+        );
+        assert!(
+            paths.contains_key("/library/series/{series_id}/season/{season_index}"),
+            "the document must declare the season write route"
+        );
+        assert!(
+            paths.contains_key(
+                "/library/series/{series_id}/season/{season_index}/episode/{episode_index}"
+            ),
+            "the document must declare the episode write route"
+        );
+    }
+
+    #[test]
+    fn openapi_collects_the_video_apply_routes() {
+        // Act
+        let document = openapi();
+        let paths = &document.paths.paths;
+
+        // Assert
+        assert!(
+            paths.contains_key("/library/movie/{movie_id}/apply"),
+            "the document must declare the film apply route"
+        );
+        assert!(
+            paths.contains_key("/library/series/{series_id}/apply"),
+            "the document must declare the show apply route"
+        );
+        assert!(
+            paths.contains_key(
+                "/library/series/{series_id}/season/{season_index}/episode/{episode_index}/apply"
+            ),
+            "the document must declare the episode apply route"
+        );
+    }
+
+    #[test]
+    fn openapi_collects_the_video_identification_routes() {
+        // Act
+        let document = openapi();
+        let paths = &document.paths.paths;
+
+        // Assert: each of the four routes is registered, and each carries the
+        // parameters the handler declares.
+        assert!(
+            paths.contains_key("/library/movie/identify"),
+            "the document must declare the film name route"
+        );
+        assert!(
+            paths.contains_key("/library/movie/identify/{provider}/{reference}"),
+            "the document must declare the film reference route"
+        );
+        assert!(
+            paths.contains_key("/library/series/identify"),
+            "the document must declare the show name route"
+        );
+        assert!(
+            paths.contains_key("/library/series/identify/{provider}/{reference}"),
+            "the document must declare the show reference route"
+        );
+        assert!(
+            declares_parameter(paths.get("/library/movie/identify"), "name"),
+            "the name identify route must declare its name query parameter"
+        );
+        let series_reference = paths.get("/library/series/identify/{provider}/{reference}");
+        assert!(
+            declares_parameter(series_reference, "season"),
+            "the series reference route must declare the season position"
+        );
+        assert!(
+            declares_parameter(series_reference, "episode"),
+            "the series reference route must declare the episode position"
         );
     }
 }

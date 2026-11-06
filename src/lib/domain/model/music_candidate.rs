@@ -1,4 +1,4 @@
-use crate::domain::model::media_candidate::ExternalRef;
+use crate::domain::model::external_ref::ExternalRef;
 use crate::domain::model::music_metadata::MediumSummary;
 use crate::domain::model::music_metadata::ReleaseStatus;
 use crate::domain::model::music_query::MusicKind;

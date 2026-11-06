@@ -4,7 +4,7 @@ CREATE TABLE episode (
     episode_index INTEGER NOT NULL,
     name TEXT NOT NULL,
     plot TEXT NOT NULL,
-    air_date DATE NOT NULL,
+    air_date DATE,
     video_id INTEGER NOT NULL,
     CONSTRAINT pk_episode_episode_id PRIMARY KEY (episode_id),
     CONSTRAINT uq_episode_season_id_episode_index UNIQUE (

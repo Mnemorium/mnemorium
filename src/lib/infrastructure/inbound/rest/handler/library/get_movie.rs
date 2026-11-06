@@ -151,7 +151,7 @@ mod tests {
             source.id(),
             source.name().to_owned(),
             source.plot().to_owned(),
-            source.country_of_origin().to_owned(),
+            source.country_of_origin().map(str::to_owned),
             source.release_date(),
             source.genre_ids().to_vec(),
             None,
@@ -205,6 +205,44 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn get_movie_without_a_date_or_country_reports_null() -> Result<(), Box<dyn Error>> {
+        // Arrange: the film stores neither a release date nor a country.
+        let mut use_case = MockGetMovieUseCase::new();
+        let source = sample_movie(7)?;
+        let response = GetMovieResponse::new(
+            source.id(),
+            source.name().to_owned(),
+            source.plot().to_owned(),
+            None,
+            None,
+            source.genre_ids().to_vec(),
+            None,
+            source.video().clone(),
+        );
+        use_case.expect_execute().times(1).return_once(move |_| {
+            let copy = response.clone();
+            Box::pin(async move { Ok(copy) })
+        });
+
+        // Act
+        let (status, _, payload) = into_parts(send(use_case, 1, "7").await?).await?;
+
+        // Assert
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(
+            payload.get("release_date"),
+            Some(&serde_json::Value::Null),
+            "an absent release date must be represented as null"
+        );
+        assert_eq!(
+            payload.get("country_of_origin"),
+            Some(&serde_json::Value::Null),
+            "an absent country must be represented as null"
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn get_movie_with_artwork_exposes_the_cover_link() -> Result<(), Box<dyn Error>> {
         // Arrange: the film's cover is file 19.
         let mut use_case = MockGetMovieUseCase::new();
@@ -213,7 +251,7 @@ mod tests {
             source.id(),
             source.name().to_owned(),
             source.plot().to_owned(),
-            source.country_of_origin().to_owned(),
+            source.country_of_origin().map(str::to_owned),
             source.release_date(),
             source.genre_ids().to_vec(),
             Some(19),

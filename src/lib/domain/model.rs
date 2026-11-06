@@ -10,6 +10,8 @@ pub(crate) mod configuration;
 pub(crate) mod credential;
 /// The episode domain model.
 pub(crate) mod episode;
+/// The external reference domain model.
+pub(crate) mod external_ref;
 /// The file domain model.
 pub(crate) mod file;
 /// The gallery domain model.
@@ -24,8 +26,6 @@ pub(crate) mod image;
 pub(crate) mod instance_state;
 /// The integrity hash domain model.
 pub(crate) mod integrity_hash;
-/// The media candidate domain model.
-pub(crate) mod media_candidate;
 /// The media metadata domain model.
 pub(crate) mod media_metadata;
 /// The media query domain model.
@@ -63,3 +63,5 @@ pub(crate) mod upload;
 pub(crate) mod user;
 /// The video domain model.
 pub(crate) mod video;
+/// The video candidate domain model.
+pub(crate) mod video_candidate;

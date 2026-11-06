@@ -326,8 +326,8 @@ mod tests {
     use crate::application::port::apply_music_album::ApplyMusicAlbumError;
     use crate::application::port::apply_music_album::ApplyMusicAlbumUseCase as _;
     use crate::domain::alias::NumericID;
-    use crate::domain::model::media_candidate::ExternalRef;
-    use crate::domain::model::media_candidate::ProviderId;
+    use crate::domain::model::configuration::ProviderId;
+    use crate::domain::model::external_ref::ExternalRef;
     use crate::domain::model::music_album::MusicAlbum;
     use crate::domain::model::music_album::ProductionType;
     use crate::domain::model::music_medium::MediumIndex;

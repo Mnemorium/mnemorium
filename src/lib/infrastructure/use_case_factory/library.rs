@@ -3,11 +3,16 @@ use std::sync::Arc;
 use tokio::sync::Semaphore;
 
 use crate::application::port::add_gallery_item::AddGalleryItemUseCase;
+use crate::application::port::apply_movie::ApplyMovieUseCase;
 use crate::application::port::apply_music_album::ApplyMusicAlbumUseCase;
+use crate::application::port::apply_series::ApplySeriesUseCase;
+use crate::application::port::apply_series_episode::ApplySeriesEpisodeUseCase;
 use crate::application::port::create_gallery::CreateGalleryUseCase;
+use crate::application::port::create_movie::CreateMovieUseCase;
 use crate::application::port::create_music_album::CreateMusicAlbumUseCase;
 use crate::application::port::create_music_group::CreateMusicGroupUseCase;
 use crate::application::port::create_playlist::CreatePlaylistUseCase;
+use crate::application::port::create_series::CreateSeriesUseCase;
 use crate::application::port::delete_gallery::DeleteGalleryUseCase;
 use crate::application::port::delete_gallery_item::DeleteGalleryItemUseCase;
 use crate::application::port::delete_playlist::DeletePlaylistUseCase;
@@ -38,18 +43,30 @@ use crate::application::port::list_series_episodes::ListSeriesEpisodesUseCase;
 use crate::application::port::patch_album_track::PatchAlbumTrackUseCase;
 use crate::application::port::put_album_medium::PutAlbumMediumUseCase;
 use crate::application::port::put_album_track::PutAlbumTrackUseCase;
+use crate::application::port::put_series_episode::PutSeriesEpisodeUseCase;
+use crate::application::port::put_series_season::PutSeriesSeasonUseCase;
 use crate::application::port::remove_playlist_track::RemovePlaylistTrackUseCase;
 use crate::application::port::reorder_playlist_tracks::ReorderPlaylistTracksUseCase;
 use crate::application::port::resolve_music_metadata::ResolveMusicMetadataUseCase;
+use crate::application::port::resolve_video_metadata::ResolveVideoMetadataUseCase;
+use crate::application::port::update_movie::UpdateMovieUseCase;
 use crate::application::port::update_music_album::UpdateMusicAlbumUseCase;
 use crate::application::port::update_music_group::UpdateMusicGroupUseCase;
 use crate::application::port::update_playlist::UpdatePlaylistUseCase;
+use crate::application::port::update_series::UpdateSeriesUseCase;
+use crate::application::port::update_series_episode::UpdateSeriesEpisodeUseCase;
+use crate::application::port::update_series_season::UpdateSeriesSeasonUseCase;
 use crate::application::use_case::add_gallery_item::AddGalleryItem;
+use crate::application::use_case::apply_movie::ApplyMovie;
 use crate::application::use_case::apply_music_album::ApplyMusicAlbum;
+use crate::application::use_case::apply_series::ApplySeries;
+use crate::application::use_case::apply_series_episode::ApplySeriesEpisode;
 use crate::application::use_case::create_gallery::CreateGallery;
+use crate::application::use_case::create_movie::CreateMovie;
 use crate::application::use_case::create_music_album::CreateMusicAlbum;
 use crate::application::use_case::create_music_group::CreateMusicGroup;
 use crate::application::use_case::create_playlist::CreatePlaylist;
+use crate::application::use_case::create_series::CreateSeries;
 use crate::application::use_case::delete_gallery::DeleteGallery;
 use crate::application::use_case::delete_gallery_item::DeleteGalleryItem;
 use crate::application::use_case::delete_playlist::DeletePlaylist;
@@ -79,12 +96,19 @@ use crate::application::use_case::list_series_episodes::ListSeriesEpisodes;
 use crate::application::use_case::patch_album_track::PatchAlbumTrack;
 use crate::application::use_case::put_album_medium::PutAlbumMedium;
 use crate::application::use_case::put_album_track::PutAlbumTrack;
+use crate::application::use_case::put_series_episode::PutSeriesEpisode;
+use crate::application::use_case::put_series_season::PutSeriesSeason;
 use crate::application::use_case::remove_playlist_track::RemovePlaylistTrack;
 use crate::application::use_case::reorder_playlist_tracks::ReorderPlaylistTracks;
 use crate::application::use_case::resolve_music_metadata::ResolveMusicMetadata;
+use crate::application::use_case::resolve_video_metadata::ResolveVideoMetadata;
+use crate::application::use_case::update_movie::UpdateMovie;
 use crate::application::use_case::update_music_album::UpdateMusicAlbum;
 use crate::application::use_case::update_music_group::UpdateMusicGroup;
 use crate::application::use_case::update_playlist::UpdatePlaylist;
+use crate::application::use_case::update_series::UpdateSeries;
+use crate::application::use_case::update_series_episode::UpdateSeriesEpisode;
+use crate::application::use_case::update_series_season::UpdateSeriesSeason;
 use crate::application::use_case::upload_layout::media_root;
 use crate::domain::model::configuration::Configuration;
 use crate::infrastructure::outbound::file_system::file_storage::FileSystemStorage;
@@ -133,6 +157,20 @@ impl LibraryUseCaseFactory for RuntimeLibraryUseCaseFactory {
         Arc::new(AddGalleryItem::new(Arc::clone(&self.unit_of_work_factory)))
     }
 
+    fn apply_movie(&self) -> Arc<dyn ApplyMovieUseCase> {
+        // The chain is configuration-derived, so the accessor rebuilds it from
+        // the immutable configuration on every call (STY-RUST-062).
+        let links = configured_links(self.configuration.library().metadata().video());
+        let provider = if links.is_empty() {
+            None
+        } else {
+            Some(Arc::new(FailoverVideoMetadataProvider::new(links)))
+        };
+        Arc::new(ApplyMovie::new(
+            Arc::clone(&self.unit_of_work_factory),
+            provider,
+        ))
+    }
     fn apply_music_album(&self) -> Arc<dyn ApplyMusicAlbumUseCase> {
         // The provider is configuration-derived, so the accessor rebuilds it from
         // the immutable configuration on every call (STY-RUST-062).
@@ -144,8 +182,42 @@ impl LibraryUseCaseFactory for RuntimeLibraryUseCaseFactory {
         ))
     }
 
+    fn apply_series(&self) -> Arc<dyn ApplySeriesUseCase> {
+        // The chain is configuration-derived, so the accessor rebuilds it from
+        // the immutable configuration on every call (STY-RUST-062).
+        let links = configured_links(self.configuration.library().metadata().video());
+        let provider = if links.is_empty() {
+            None
+        } else {
+            Some(Arc::new(FailoverVideoMetadataProvider::new(links)))
+        };
+        Arc::new(ApplySeries::new(
+            Arc::clone(&self.unit_of_work_factory),
+            provider,
+        ))
+    }
+
+    fn apply_series_episode(&self) -> Arc<dyn ApplySeriesEpisodeUseCase> {
+        // The chain is configuration-derived, so the accessor rebuilds it from
+        // the immutable configuration on every call (STY-RUST-062).
+        let links = configured_links(self.configuration.library().metadata().video());
+        let provider = if links.is_empty() {
+            None
+        } else {
+            Some(Arc::new(FailoverVideoMetadataProvider::new(links)))
+        };
+        Arc::new(ApplySeriesEpisode::new(
+            Arc::clone(&self.unit_of_work_factory),
+            provider,
+        ))
+    }
+
     fn create_gallery(&self) -> Arc<dyn CreateGalleryUseCase> {
         Arc::new(CreateGallery::new(Arc::clone(&self.unit_of_work_factory)))
+    }
+
+    fn create_movie(&self) -> Arc<dyn CreateMovieUseCase> {
+        Arc::new(CreateMovie::new(Arc::clone(&self.unit_of_work_factory)))
     }
 
     fn create_music_album(&self) -> Arc<dyn CreateMusicAlbumUseCase> {
@@ -162,6 +234,10 @@ impl LibraryUseCaseFactory for RuntimeLibraryUseCaseFactory {
 
     fn create_playlist(&self) -> Arc<dyn CreatePlaylistUseCase> {
         Arc::new(CreatePlaylist::new(Arc::clone(&self.unit_of_work_factory)))
+    }
+
+    fn create_series(&self) -> Arc<dyn CreateSeriesUseCase> {
+        Arc::new(CreateSeries::new(Arc::clone(&self.unit_of_work_factory)))
     }
 
     fn delete_gallery(&self) -> Arc<dyn DeleteGalleryUseCase> {
@@ -256,7 +332,10 @@ impl LibraryUseCaseFactory for RuntimeLibraryUseCaseFactory {
         } else {
             Some(Arc::new(FailoverVideoMetadataProvider::new(links)))
         };
-        Arc::new(IdentifyVideo::new(provider))
+        Arc::new(IdentifyVideo::new(
+            Arc::clone(&self.unit_of_work_factory),
+            provider,
+        ))
     }
 
     fn ingest_media(&self) -> Arc<dyn IngestMediaUseCase> {
@@ -316,6 +395,16 @@ impl LibraryUseCaseFactory for RuntimeLibraryUseCaseFactory {
         Arc::new(PutAlbumTrack::new(Arc::clone(&self.unit_of_work_factory)))
     }
 
+    fn put_series_episode(&self) -> Arc<dyn PutSeriesEpisodeUseCase> {
+        Arc::new(PutSeriesEpisode::new(Arc::clone(
+            &self.unit_of_work_factory,
+        )))
+    }
+
+    fn put_series_season(&self) -> Arc<dyn PutSeriesSeasonUseCase> {
+        Arc::new(PutSeriesSeason::new(Arc::clone(&self.unit_of_work_factory)))
+    }
+
     fn remove_playlist_track(&self) -> Arc<dyn RemovePlaylistTrackUseCase> {
         Arc::new(RemovePlaylistTrack::new(Arc::clone(
             &self.unit_of_work_factory,
@@ -339,6 +428,25 @@ impl LibraryUseCaseFactory for RuntimeLibraryUseCaseFactory {
         ))
     }
 
+    fn resolve_video_metadata(&self) -> Arc<dyn ResolveVideoMetadataUseCase> {
+        // The chain is configuration-derived, so the accessor rebuilds it from
+        // the immutable configuration on every call (STY-RUST-062).
+        let links = configured_links(self.configuration.library().metadata().video());
+        let provider = if links.is_empty() {
+            None
+        } else {
+            Some(Arc::new(FailoverVideoMetadataProvider::new(links)))
+        };
+        Arc::new(ResolveVideoMetadata::new(
+            Arc::clone(&self.unit_of_work_factory),
+            provider,
+        ))
+    }
+
+    fn update_movie(&self) -> Arc<dyn UpdateMovieUseCase> {
+        Arc::new(UpdateMovie::new(Arc::clone(&self.unit_of_work_factory)))
+    }
+
     fn update_music_album(&self) -> Arc<dyn UpdateMusicAlbumUseCase> {
         Arc::new(UpdateMusicAlbum::new(Arc::clone(
             &self.unit_of_work_factory,
@@ -353,5 +461,21 @@ impl LibraryUseCaseFactory for RuntimeLibraryUseCaseFactory {
 
     fn update_playlist(&self) -> Arc<dyn UpdatePlaylistUseCase> {
         Arc::new(UpdatePlaylist::new(Arc::clone(&self.unit_of_work_factory)))
+    }
+
+    fn update_series(&self) -> Arc<dyn UpdateSeriesUseCase> {
+        Arc::new(UpdateSeries::new(Arc::clone(&self.unit_of_work_factory)))
+    }
+
+    fn update_series_episode(&self) -> Arc<dyn UpdateSeriesEpisodeUseCase> {
+        Arc::new(UpdateSeriesEpisode::new(Arc::clone(
+            &self.unit_of_work_factory,
+        )))
+    }
+
+    fn update_series_season(&self) -> Arc<dyn UpdateSeriesSeasonUseCase> {
+        Arc::new(UpdateSeriesSeason::new(Arc::clone(
+            &self.unit_of_work_factory,
+        )))
     }
 }

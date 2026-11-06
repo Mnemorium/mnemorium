@@ -290,8 +290,8 @@ mod tests {
     use crate::application::port::identify_music::MockIdentifyMusicUseCase;
     use crate::application::port::library_use_case_factory::MockLibraryUseCaseFactory;
     use crate::domain::alias::NumericID;
-    use crate::domain::model::media_candidate::ExternalRef;
-    use crate::domain::model::media_candidate::ProviderId;
+    use crate::domain::model::configuration::ProviderId;
+    use crate::domain::model::external_ref::ExternalRef;
     use crate::domain::model::music_candidate::MusicCandidate;
     use crate::domain::model::music_metadata::MediumFormat;
     use crate::domain::model::music_metadata::MediumSummary;

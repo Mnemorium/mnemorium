@@ -7,8 +7,8 @@ use utoipa::ToSchema;
 
 use crate::application::port::resolve_music_metadata::ResolveMusicMetadataCommand;
 use crate::application::port::resolve_music_metadata::ResolveMusicMetadataError;
-use crate::domain::model::media_candidate::ExternalRef;
-use crate::domain::model::media_candidate::ProviderId;
+use crate::domain::model::configuration::ProviderId;
+use crate::domain::model::external_ref::ExternalRef;
 use crate::domain::model::music_album::ProductionType;
 use crate::domain::model::music_candidate::MusicTarget;
 use crate::domain::model::music_metadata::Edition;
@@ -334,8 +334,8 @@ mod tests {
     use crate::application::port::resolve_music_metadata::ResolveMusicMetadataResponse;
     use crate::application::port::resolve_music_metadata::ResolveMusicMetadataUseCase;
     use crate::domain::alias::NumericID;
-    use crate::domain::model::media_candidate::ExternalRef;
-    use crate::domain::model::media_candidate::ProviderId;
+    use crate::domain::model::configuration::ProviderId;
+    use crate::domain::model::external_ref::ExternalRef;
     use crate::domain::model::music_album::ProductionType;
     use crate::domain::model::music_metadata::ArtistCredit;
     use crate::domain::model::music_metadata::Edition;

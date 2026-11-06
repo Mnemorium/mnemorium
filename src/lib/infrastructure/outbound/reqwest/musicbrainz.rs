@@ -27,8 +27,8 @@ use tokio::time::sleep_until;
 
 use crate::application::security_event;
 use crate::domain::model::artwork::Artwork;
-use crate::domain::model::media_candidate::ExternalRef;
-use crate::domain::model::media_candidate::ProviderId;
+use crate::domain::model::configuration::ProviderId;
+use crate::domain::model::external_ref::ExternalRef;
 use crate::domain::model::music_album::ProductionType;
 use crate::domain::model::music_candidate::MusicCandidate;
 use crate::domain::model::music_candidate::MusicTarget;
@@ -856,8 +856,8 @@ mod tests {
     use wiremock::matchers::path;
     use wiremock::matchers::query_param;
 
-    use crate::domain::model::media_candidate::ExternalRef;
-    use crate::domain::model::media_candidate::ProviderId;
+    use crate::domain::model::configuration::ProviderId;
+    use crate::domain::model::external_ref::ExternalRef;
     use crate::domain::model::music_album::ProductionType;
     use crate::domain::model::music_candidate::MusicCandidate;
     use crate::domain::model::music_candidate::MusicTarget;

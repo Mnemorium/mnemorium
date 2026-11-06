@@ -34,7 +34,7 @@ use tracing::error;
 
 use crate::application::security_event;
 use crate::domain::model::artwork::Artwork;
-use crate::domain::model::media_candidate::ProviderId;
+use crate::domain::model::configuration::ProviderId;
 use crate::domain::port::error::ExternalServiceError;
 
 /// Largest artwork the server accepts, in bytes.
