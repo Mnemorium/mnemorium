@@ -1,3 +1,9 @@
+## [0.34.0](https://github.com/Mnemorium/mnemorium/compare/v0.33.0...v0.34.0) (2026-11-06)
+
+### Features
+
+* **api:** write video metadata ([#396](https://github.com/Mnemorium/mnemorium/issues/396)) ([77f29b6](https://github.com/Mnemorium/mnemorium/commit/77f29b6d6103dd96ef33f1d6e0f5a4bc2fcc39cd))
+
 ## [0.33.0](https://github.com/Mnemorium/mnemorium/compare/v0.32.0...v0.33.0) (2026-11-04)
 
 ### Features
