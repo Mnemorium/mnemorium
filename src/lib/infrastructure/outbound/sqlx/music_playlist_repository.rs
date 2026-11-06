@@ -1,16 +1,14 @@
 use std::mem::take;
 
-use sqlx::QueryBuilder;
-use sqlx::Sqlite;
-use sqlx::Transaction;
+use sqlx::{QueryBuilder, Sqlite, Transaction};
 
 use crate::domain::alias::NumericID;
 use crate::domain::model::music_playlist::MusicPlaylist;
-use crate::domain::model::music_recording::MusicRecording;
-use crate::domain::model::music_recording::TrackIndex;
+use crate::domain::model::music_recording::{MusicRecording, TrackIndex};
 use crate::domain::port::error::RepositoryError;
-use crate::domain::port::music_playlist_repository::MusicPlaylistFilter;
-use crate::domain::port::music_playlist_repository::MusicPlaylistRepository;
+use crate::domain::port::music_playlist_repository::{
+    MusicPlaylistFilter, MusicPlaylistRepository,
+};
 
 use super::error_mapping::stored_data_invalid;
 use super::model::music_playlist::MusicPlaylistRow;
@@ -355,21 +353,11 @@ fn domain_playlist(row: MusicPlaylistRow, tracks: Vec<MusicRecording>) -> MusicP
 #[cfg(test)]
 mod tests {
 
-    use std::error::Error;
-
+    use super::*;
     use chrono::NaiveDateTime;
-    use sqlx::Sqlite;
-    use sqlx::Transaction;
     use sqlx::sqlite::SqlitePoolOptions;
-
-    use crate::domain::model::music_playlist::MusicPlaylist;
-    use crate::domain::model::music_recording::MusicRecording;
-    use crate::domain::port::error::RepositoryError;
-    use crate::domain::port::music_playlist_repository::MusicPlaylistFilter;
-    use crate::domain::port::music_playlist_repository::MusicPlaylistRepository as _;
+    use std::error::Error;
     use tracing_test::traced_test;
-
-    use super::SqlxMusicPlaylistRepository;
 
     /// Assert the captured output is exactly one `output_validation_failed`
     /// event with `reason`.

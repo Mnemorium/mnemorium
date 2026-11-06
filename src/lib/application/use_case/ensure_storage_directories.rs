@@ -2,12 +2,11 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
-use crate::application::port::ensure_storage_directories::EnsureStorageDirectoriesCommand;
-use crate::application::port::ensure_storage_directories::EnsureStorageDirectoriesError;
-use crate::application::port::ensure_storage_directories::EnsureStorageDirectoriesResponse;
-use crate::application::port::ensure_storage_directories::EnsureStorageDirectoriesUseCase;
-use crate::application::use_case::upload_layout::media_root;
-use crate::application::use_case::upload_layout::uploads_path;
+use crate::application::port::ensure_storage_directories::{
+    EnsureStorageDirectoriesCommand, EnsureStorageDirectoriesError,
+    EnsureStorageDirectoriesResponse, EnsureStorageDirectoriesUseCase,
+};
+use crate::application::use_case::upload_layout::{media_root, uploads_path};
 use crate::domain::port::file_storage::FileStorage;
 
 /// Use case implementation for ensuring the storage folders exist.
@@ -68,17 +67,10 @@ impl<S: FileStorage> EnsureStorageDirectoriesUseCase for EnsureStorageDirectorie
 
 #[cfg(test)]
 mod tests {
-    use std::error::Error;
-    use std::sync::Arc;
-
-    use crate::application::use_case::upload_layout::media_root;
-    use crate::application::use_case::upload_layout::uploads_path;
+    use super::*;
     use crate::domain::port::error::StorageError;
     use crate::domain::port::file_storage::MockFileStorage;
-
-    use super::EnsureStorageDirectories;
-    use super::EnsureStorageDirectoriesCommand;
-    use super::EnsureStorageDirectoriesUseCase as _;
+    use std::error::Error;
 
     #[tokio::test]
     async fn ensure_storage_directories_creates_only_the_staging_folder()

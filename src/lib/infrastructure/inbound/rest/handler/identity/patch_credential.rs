@@ -1,18 +1,14 @@
 use axum::Json;
-use axum::extract::Path;
-use axum::extract::State;
-use axum::extract::rejection::JsonRejection;
-use axum::extract::rejection::PathRejection;
+use axum::extract::rejection::{JsonRejection, PathRejection};
+use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use serde::Deserialize;
 use utoipa::ToSchema;
 
-use crate::application::port::patch_credential::PatchCredentialCommand;
-use crate::application::port::patch_credential::PatchCredentialError;
+use crate::application::port::patch_credential::{PatchCredentialCommand, PatchCredentialError};
 use crate::domain::alias::NumericID;
-use crate::infrastructure::inbound::rest::api_error::ApiError;
-use crate::infrastructure::inbound::rest::api_error::ErrorBody;
+use crate::infrastructure::inbound::rest::api_error::{ApiError, ErrorBody};
 use crate::infrastructure::inbound::rest::app_state::AppState;
 use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 
@@ -138,32 +134,22 @@ pub(crate) async fn patch_credential(
 
 #[cfg(test)]
 mod tests {
-    use std::error::Error;
-    use std::sync::Arc;
-
-    use axum::body::Body;
-    use axum::body::to_bytes;
+    use super::*;
+    use crate::application::port::identity_use_case_factory::MockIdentityUseCaseFactory;
+    use crate::application::port::patch_credential::{
+        MockPatchCredentialUseCase, PatchCredentialUseCase,
+    };
+    use crate::test_helpers::*;
+    use axum::body::{Body, to_bytes};
     use axum::extract::Request;
-    use axum::http::StatusCode;
     use axum::http::header;
     use axum::response::Response;
     use axum::routing::patch;
     use mockall::predicate::eq;
-    use serde_json::Value;
-    use serde_json::json;
+    use serde_json::{Value, json};
+    use std::error::Error;
+    use std::sync::Arc;
     use tower::ServiceExt as _;
-
-    use super::patch_credential;
-    use crate::application::port::identity_use_case_factory::MockIdentityUseCaseFactory;
-    use crate::application::port::patch_credential::MockPatchCredentialUseCase;
-    use crate::application::port::patch_credential::PatchCredentialCommand;
-    use crate::application::port::patch_credential::PatchCredentialError;
-    use crate::application::port::patch_credential::PatchCredentialUseCase;
-    use crate::domain::alias::NumericID;
-    use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
-    use crate::test_helpers::SECRET_PASSWORD;
-    use crate::test_helpers::app_state_with_identity;
-    use crate::test_helpers::error_message_of;
 
     /// Send `body` through the endpoint router on behalf of `caller_id`,
     /// targeting credential `credential_id`, injecting the caller the way the

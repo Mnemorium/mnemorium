@@ -1,14 +1,10 @@
-use sqlx::QueryBuilder;
-use sqlx::Sqlite;
-use sqlx::Transaction;
+use sqlx::{QueryBuilder, Sqlite, Transaction};
 
 use crate::domain::alias::NumericID;
-use crate::domain::model::file::File;
-use crate::domain::model::file::Origin;
+use crate::domain::model::file::{File, Origin};
 use crate::domain::model::integrity_hash::IntegrityHash;
 use crate::domain::port::error::RepositoryError;
-use crate::domain::port::file_repository::FileFilter;
-use crate::domain::port::file_repository::FileRepository;
+use crate::domain::port::file_repository::{FileFilter, FileRepository};
 
 use super::model::file::File as SqlxFile;
 
@@ -197,24 +193,12 @@ fn domain_file(row: SqlxFile) -> Result<File, RepositoryError> {
 
 #[cfg(test)]
 mod tests {
-    use std::error::Error;
-
-    use chrono::NaiveDate;
-    use chrono::NaiveDateTime;
+    use super::*;
+    use crate::test_helpers::*;
+    use chrono::{NaiveDate, NaiveDateTime};
     use rstest::rstest;
-    use sqlx::Sqlite;
-    use sqlx::Transaction;
     use sqlx::sqlite::SqlitePoolOptions;
-
-    use crate::domain::model::file::File;
-    use crate::domain::model::file::Origin;
-    use crate::domain::model::integrity_hash::IntegrityHash;
-    use crate::domain::port::error::RepositoryError;
-    use crate::domain::port::file_repository::FileFilter;
-    use crate::domain::port::file_repository::FileRepository as _;
-    use crate::test_helpers::DIGEST;
-
-    use super::SqlxFileRepository;
+    use std::error::Error;
 
     async fn begin_transaction() -> Result<Transaction<'static, Sqlite>, sqlx::Error> {
         let pool = SqlitePoolOptions::new()

@@ -1,23 +1,16 @@
 use std::future::Future;
-use std::io::Error;
-use std::io::ErrorKind;
-use std::io::SeekFrom;
+use std::io::{Error, ErrorKind, SeekFrom};
 use std::path::Path;
 
-use chrono::DateTime;
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use tokio::fs;
-use tokio::io::AsyncReadExt as _;
-use tokio::io::AsyncSeekExt as _;
-use tokio::io::AsyncWriteExt as _;
+use tokio::io::{AsyncReadExt as _, AsyncSeekExt as _, AsyncWriteExt as _};
 use tracing::error;
 
-use crate::domain::model::integrity_hash::DIGEST_HEX_LENGTH;
-use crate::domain::model::integrity_hash::IntegrityHash;
+use crate::domain::model::integrity_hash::{DIGEST_HEX_LENGTH, IntegrityHash};
 use crate::domain::port::content_hasher::ContentHasher as _;
 use crate::domain::port::error::StorageError;
-use crate::domain::port::file_storage::FileStorage;
-use crate::domain::port::file_storage::PromotedFile;
+use crate::domain::port::file_storage::{FileStorage, PromotedFile};
 use crate::infrastructure::outbound::sha2::content_hasher::Sha2ContentHasher;
 
 /// Size of the buffer used to stream a file, in bytes.
@@ -348,15 +341,9 @@ async fn open_new(path: &Path) -> Result<fs::File, Error> {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use std::error::Error;
-
-    use tempfile::Builder;
-    use tempfile::tempdir;
-    use tokio::fs;
-
-    use super::FileSystemStorage;
-    use crate::domain::port::error::StorageError;
-    use crate::domain::port::file_storage::FileStorage as _;
+    use tempfile::{Builder, tempdir};
     use tracing_test::traced_test;
 
     #[tokio::test]

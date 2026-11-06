@@ -2,30 +2,16 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
-use crate::application::port::load_configuration::LoadConfigurationError;
-use crate::application::port::load_configuration::LoadConfigurationResponse;
-use crate::application::port::load_configuration::LoadConfigurationUseCase;
-use crate::domain::model::configuration::Asset;
-use crate::domain::model::configuration::AssetUpload;
-use crate::domain::model::configuration::ClientIpHeader;
-use crate::domain::model::configuration::Configuration;
-use crate::domain::model::configuration::Jwt;
-use crate::domain::model::configuration::Library;
-use crate::domain::model::configuration::LibraryMetadata;
-use crate::domain::model::configuration::Logging;
-use crate::domain::model::configuration::MusicProvider;
-use crate::domain::model::configuration::MusicProviders;
-use crate::domain::model::configuration::Persistence;
-use crate::domain::model::configuration::RateLimit;
-use crate::domain::model::configuration::RateLimitError;
-use crate::domain::model::configuration::Security;
-use crate::domain::model::configuration::Sqlite3;
-use crate::domain::model::configuration::VideoProvider;
-use crate::domain::model::configuration::VideoProviders;
-use crate::domain::model::configuration::parse_trusted_proxies;
+use crate::application::port::load_configuration::{
+    LoadConfigurationError, LoadConfigurationResponse, LoadConfigurationUseCase,
+};
+use crate::domain::model::configuration::{
+    Asset, AssetUpload, ClientIpHeader, Configuration, Jwt, Library, LibraryMetadata, Logging,
+    MusicProvider, MusicProviders, Persistence, RateLimit, RateLimitError, Security, Sqlite3,
+    VideoProvider, VideoProviders, parse_trusted_proxies,
+};
 use crate::domain::model::partial_configuration::PartialConfiguration;
-use crate::domain::port::configuration_source::ConfigurationSource;
-use crate::domain::port::configuration_source::EnvironmentConfiguration;
+use crate::domain::port::configuration_source::{ConfigurationSource, EnvironmentConfiguration};
 use crate::domain::port::error::ConfigurationSourceError;
 
 /// Use case implementation for loading the configuration.
@@ -311,36 +297,17 @@ fn resolve<T>(
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+    use crate::domain::model::configuration::{ProviderId, Rotation};
+    use crate::domain::model::partial_configuration::{
+        PartialAsset, PartialAssetUpload, PartialJwt, PartialLibrary, PartialLibraryMetadata,
+        PartialLogging, PartialMusicProvider, PartialMusicProviders, PartialRateLimit,
+        PartialSecurity, PartialVideoMetadata, PartialVideoProvider,
+    };
+    use crate::domain::port::configuration_source::{
+        LoadedFileConfiguration, MockConfigurationSource, MockEnvironmentConfiguration,
+    };
     use std::error::Error;
-    use std::sync::Arc;
-
-    use crate::application::port::load_configuration::LoadConfigurationError;
-    use crate::application::port::load_configuration::LoadConfigurationUseCase as _;
-    use crate::domain::model::configuration::ClientIpHeader;
-    use crate::domain::model::configuration::Configuration;
-    use crate::domain::model::configuration::MusicProvider;
-    use crate::domain::model::configuration::ProviderId;
-    use crate::domain::model::configuration::Rotation;
-    use crate::domain::model::configuration::VideoProvider;
-    use crate::domain::model::partial_configuration::PartialAsset;
-    use crate::domain::model::partial_configuration::PartialAssetUpload;
-    use crate::domain::model::partial_configuration::PartialConfiguration;
-    use crate::domain::model::partial_configuration::PartialJwt;
-    use crate::domain::model::partial_configuration::PartialLibrary;
-    use crate::domain::model::partial_configuration::PartialLibraryMetadata;
-    use crate::domain::model::partial_configuration::PartialLogging;
-    use crate::domain::model::partial_configuration::PartialMusicProvider;
-    use crate::domain::model::partial_configuration::PartialMusicProviders;
-    use crate::domain::model::partial_configuration::PartialRateLimit;
-    use crate::domain::model::partial_configuration::PartialSecurity;
-    use crate::domain::model::partial_configuration::PartialVideoMetadata;
-    use crate::domain::model::partial_configuration::PartialVideoProvider;
-    use crate::domain::port::configuration_source::LoadedFileConfiguration;
-    use crate::domain::port::configuration_source::MockConfigurationSource;
-    use crate::domain::port::configuration_source::MockEnvironmentConfiguration;
-    use crate::domain::port::error::ConfigurationSourceError;
-
-    use super::LoadConfiguration;
 
     type UseCase = LoadConfiguration<MockConfigurationSource, MockEnvironmentConfiguration>;
 

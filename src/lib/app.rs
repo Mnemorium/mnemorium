@@ -10,14 +10,13 @@ use tokio::signal::unix::{SignalKind, signal};
 use tokio::time::sleep;
 use tracing::{error, info, warn};
 
-use crate::application::port::ensure_storage_directories::EnsureStorageDirectoriesCommand;
-use crate::application::port::ensure_storage_directories::EnsureStorageDirectoriesUseCase as _;
+use crate::application::port::ensure_storage_directories::{
+    EnsureStorageDirectoriesCommand, EnsureStorageDirectoriesUseCase as _,
+};
 use crate::application::port::initialize_root_admin::InitializeRootAdminUseCase as _;
 use crate::application::port::library_use_case_factory::LibraryUseCaseFactory;
 use crate::application::port::load_configuration::LoadConfigurationUseCase as _;
-use crate::application::port::load_state::DATABASE_PATH;
-use crate::application::port::load_state::LoadStateUseCase as _;
-use crate::application::port::load_state::STATE_PATH;
+use crate::application::port::load_state::{DATABASE_PATH, LoadStateUseCase as _, STATE_PATH};
 use crate::application::security_event;
 use crate::application::use_case::ensure_storage_directories::EnsureStorageDirectories;
 use crate::application::use_case::initialize_root_admin::InitializeRootAdmin;

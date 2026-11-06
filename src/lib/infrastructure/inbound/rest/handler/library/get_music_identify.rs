@@ -1,25 +1,19 @@
-use axum::extract::Query;
-use axum::extract::State;
 use axum::extract::rejection::QueryRejection;
+use axum::extract::{Query, State};
 use axum::response::Response;
-use serde::Deserialize;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tracing::warn;
-use utoipa::IntoParams;
-use utoipa::ToSchema;
+use utoipa::{IntoParams, ToSchema};
 
-use crate::application::port::identify_music::IdentifyMusicCommand;
-use crate::application::port::identify_music::IdentifyMusicError;
+use crate::application::port::identify_music::{IdentifyMusicCommand, IdentifyMusicError};
 use crate::domain::model::music_candidate::MusicCandidate;
-use crate::domain::model::music_query::MusicKind;
-use crate::domain::model::music_query::MusicQuery;
-use crate::infrastructure::inbound::rest::api_error::ApiError;
-use crate::infrastructure::inbound::rest::api_error::ErrorBody;
+use crate::domain::model::music_query::{MusicKind, MusicQuery};
+use crate::infrastructure::inbound::rest::api_error::{ApiError, ErrorBody};
 use crate::infrastructure::inbound::rest::app_state::AppState;
-use crate::infrastructure::inbound::rest::hal::SelfLinks;
-use crate::infrastructure::inbound::rest::hal::hal_json;
-use crate::infrastructure::inbound::rest::handler::library::MusicMediumResponse;
-use crate::infrastructure::inbound::rest::handler::library::MusicReferenceResponse;
+use crate::infrastructure::inbound::rest::hal::{SelfLinks, hal_json};
+use crate::infrastructure::inbound::rest::handler::library::{
+    MusicMediumResponse, MusicReferenceResponse,
+};
 use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 
 /// Evidence a caller knows about the music work it wants identified.
@@ -272,35 +266,25 @@ pub(crate) async fn get_music_identify(
 
 #[cfg(test)]
 mod tests {
-    use std::error::Error;
-    use std::sync::Arc;
-
-    use axum::body::Body;
-    use axum::extract::Request;
-    use axum::http::StatusCode;
-    use axum::response::Response;
-    use axum::routing::get;
-    use serde_json::json;
-    use tower::ServiceExt as _;
-
-    use super::get_music_identify;
-    use crate::application::port::identify_music::IdentifyMusicError;
-    use crate::application::port::identify_music::IdentifyMusicResponse;
-    use crate::application::port::identify_music::IdentifyMusicUseCase;
-    use crate::application::port::identify_music::MockIdentifyMusicUseCase;
+    use super::*;
+    use crate::application::port::identify_music::{
+        IdentifyMusicResponse, IdentifyMusicUseCase, MockIdentifyMusicUseCase,
+    };
     use crate::application::port::library_use_case_factory::MockLibraryUseCaseFactory;
     use crate::domain::alias::NumericID;
     use crate::domain::model::configuration::ProviderId;
     use crate::domain::model::external_ref::ExternalRef;
-    use crate::domain::model::music_candidate::MusicCandidate;
-    use crate::domain::model::music_metadata::MediumFormat;
-    use crate::domain::model::music_metadata::MediumSummary;
-    use crate::domain::model::music_metadata::ReleaseStatus;
-    use crate::domain::model::music_query::MusicKind;
+    use crate::domain::model::music_metadata::{MediumFormat, MediumSummary, ReleaseStatus};
     use crate::infrastructure::inbound::rest::handler::library::library_routes;
-    use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
-    use crate::test_helpers::app_state_with_library;
-    use crate::test_helpers::into_parts;
+    use crate::test_helpers::*;
+    use axum::body::Body;
+    use axum::extract::Request;
+    use axum::http::StatusCode;
+    use axum::routing::get;
+    use serde_json::json;
+    use std::error::Error;
+    use std::sync::Arc;
+    use tower::ServiceExt as _;
 
     /// Send a GET to the identify route on behalf of `caller_id`, injecting the
     /// caller identifier the way the auth middleware does.

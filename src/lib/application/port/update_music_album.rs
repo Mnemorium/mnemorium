@@ -5,8 +5,7 @@ use chrono::NaiveDate;
 
 use crate::application::field_update::FieldUpdate;
 use crate::domain::alias::NumericID;
-use crate::domain::model::music_album::MusicAlbum;
-use crate::domain::model::music_album::ProductionType;
+use crate::domain::model::music_album::{MusicAlbum, ProductionType};
 
 /// Command to update a music album partially.
 ///

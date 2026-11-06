@@ -1,25 +1,18 @@
 //! Per-client rate limiting for the login endpoint.
 
-use std::net::IpAddr;
-use std::net::SocketAddr;
+use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 
 use axum::extract::ConnectInfo;
-use axum::http::HeaderMap;
-use axum::http::Request;
-use axum::response::IntoResponse as _;
-use axum::response::Response;
-use tower_governor::GovernorError;
-use tower_governor::GovernorLayer;
+use axum::http::{HeaderMap, Request};
+use axum::response::{IntoResponse as _, Response};
 use tower_governor::governor::GovernorConfigBuilder;
-use tower_governor::key_extractor::KeyExtractor;
-use tower_governor::key_extractor::PeerIpKeyExtractor;
-use tracing::error;
-use tracing::warn;
+use tower_governor::key_extractor::{KeyExtractor, PeerIpKeyExtractor};
+use tower_governor::{GovernorError, GovernorLayer};
+use tracing::{error, warn};
 use utoipa_axum::router::OpenApiRouter;
 
-use crate::domain::model::configuration::ClientIpHeader;
-use crate::domain::model::configuration::RateLimit;
+use crate::domain::model::configuration::{ClientIpHeader, RateLimit};
 use crate::infrastructure::inbound::rest::api_error::ApiError;
 use crate::infrastructure::inbound::rest::app_state::AppState;
 
@@ -265,27 +258,11 @@ fn rate_limit_error(error: GovernorError) -> Response {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+    use crate::test_helpers::*;
+    use axum::http::{HeaderValue, StatusCode};
     use std::error::Error;
-    use std::net::IpAddr;
-    use std::net::SocketAddr;
-    use std::sync::Arc;
-    use std::sync::atomic::AtomicUsize;
-    use std::sync::atomic::Ordering;
-
-    use axum::extract::ConnectInfo;
-    use axum::http::HeaderMap;
-    use axum::http::HeaderValue;
-    use axum::http::Request;
-    use axum::http::StatusCode;
-    use tower_governor::GovernorError;
-    use tower_governor::key_extractor::KeyExtractor as _;
-
-    use crate::domain::model::configuration::ClientIpHeader;
-    use crate::test_helpers::error_message_of;
-
-    use super::RateLimitCleanup;
-    use super::TrustedProxyKeyExtractor;
-    use super::rate_limit_error;
+    use std::sync::atomic::{AtomicUsize, Ordering};
 
     /// Build a request whose peer is `peer` and that carries `headers`.
     fn request(peer: &str, headers: &[(&str, &str)]) -> Result<Request<()>, Box<dyn Error>> {

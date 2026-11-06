@@ -1,5 +1,4 @@
-use sqlx::QueryBuilder;
-use sqlx::Sqlite;
+use sqlx::{QueryBuilder, Sqlite};
 
 /// Append a `WHERE`/`AND`-separated query filter condition to `builder`.
 pub(crate) fn push_filter<'value, T>(

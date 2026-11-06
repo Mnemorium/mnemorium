@@ -7,8 +7,7 @@ use axum::middleware::Next;
 use axum::response::Response;
 use serde_json::Value;
 
-use crate::infrastructure::inbound::rest::api_error::ApiErrorMessage;
-use crate::infrastructure::inbound::rest::api_error::error_response;
+use crate::infrastructure::inbound::rest::api_error::{ApiErrorMessage, error_response};
 
 /// Rewrap every `4xx`/`5xx` response as the HAL error envelope (`API-039`).
 ///
@@ -69,27 +68,19 @@ pub(crate) async fn hal_errors(request: Request, next: Next) -> Response {
 
 #[cfg(test)]
 mod tests {
-    use std::error::Error;
-
-    use axum::Json;
-    use axum::Router;
-    use axum::body::Body;
-    use axum::body::to_bytes;
-    use axum::extract::Path;
-    use axum::extract::Request;
-    use axum::http::StatusCode;
-    use axum::http::header;
-    use axum::middleware;
-    use axum::response::Response;
-    use axum::routing::get;
-    use rstest::rstest;
-    use serde_json::Value;
-    use serde_json::json;
-    use tower::ServiceExt as _;
-
-    use super::hal_errors;
+    use super::*;
     use crate::infrastructure::inbound::rest::api_error::ApiError;
-    use crate::test_helpers::into_status_and_body;
+    use crate::test_helpers::*;
+    use axum::body::Body;
+    use axum::extract::Path;
+    use axum::http::StatusCode;
+    use axum::middleware;
+    use axum::routing::get;
+    use axum::{Json, Router};
+    use rstest::rstest;
+    use serde_json::json;
+    use std::error::Error;
+    use tower::ServiceExt as _;
 
     /// Router exercising the middleware over an `ApiError`, a raw JSON error, a
     /// textual error, a framework path rejection, a healthy route and a method

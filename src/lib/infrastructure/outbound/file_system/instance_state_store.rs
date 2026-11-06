@@ -1,22 +1,11 @@
-use std::ffi::OsStr;
-use std::ffi::OsString;
-use std::fs::File;
-use std::fs::OpenOptions;
-use std::fs::Permissions;
-use std::fs::rename;
-use std::future::Future;
-use std::future::ready;
-use std::io::Error;
-use std::io::ErrorKind;
-use std::io::Read as _;
-use std::io::Write as _;
-use std::os::unix::fs::OpenOptionsExt as _;
-use std::os::unix::fs::PermissionsExt as _;
-use std::path::Path;
-use std::path::PathBuf;
+use std::ffi::{OsStr, OsString};
+use std::fs::{File, OpenOptions, Permissions, rename};
+use std::future::{Future, ready};
+use std::io::{Error, ErrorKind, Read as _, Write as _};
+use std::os::unix::fs::{OpenOptionsExt as _, PermissionsExt as _};
+use std::path::{Path, PathBuf};
 
-use tracing::error;
-use tracing::warn;
+use tracing::{error, warn};
 
 use crate::domain::model::instance_state::InstanceState;
 use crate::domain::port::error::InstanceStateStoreError;
@@ -296,20 +285,11 @@ impl From<&InstanceState> for StateFile {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use std::error::Error;
     use std::fs;
     use std::iter::repeat_n;
-    use std::os::unix::fs::PermissionsExt as _;
-    use std::path::Path;
-    use std::path::PathBuf;
-
     use tempfile::tempdir;
-
-    use crate::domain::model::instance_state::InstanceState;
-    use crate::domain::port::error::InstanceStateStoreError;
-    use crate::domain::port::instance_state_store::InstanceStateStore as _;
-
-    use super::FileInstanceStateStore;
 
     /// A 64-character hexadecimal string.
     fn hex64(character: char) -> String {

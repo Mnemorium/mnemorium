@@ -1,12 +1,9 @@
-use sqlx::QueryBuilder;
-use sqlx::Sqlite;
-use sqlx::Transaction;
+use sqlx::{QueryBuilder, Sqlite, Transaction};
 
 use crate::domain::alias::NumericID;
 use crate::domain::model::music_group::MusicGroup;
 use crate::domain::port::error::RepositoryError;
-use crate::domain::port::music_group_repository::MusicGroupFilter;
-use crate::domain::port::music_group_repository::MusicGroupRepository;
+use crate::domain::port::music_group_repository::{MusicGroupFilter, MusicGroupRepository};
 
 use super::error_mapping::stored_data_invalid;
 use super::model::music_group::MusicGroupRow;
@@ -107,19 +104,9 @@ fn domain_group(row: MusicGroupRow) -> Result<MusicGroup, RepositoryError> {
 
 #[cfg(test)]
 mod tests {
-    use std::error::Error;
-
-    use sqlx::Sqlite;
-    use sqlx::Transaction;
+    use super::*;
     use sqlx::sqlite::SqlitePoolOptions;
-
-    use crate::domain::alias::NumericID;
-    use crate::domain::model::music_group::MusicGroup;
-    use crate::domain::port::error::RepositoryError;
-    use crate::domain::port::music_group_repository::MusicGroupFilter;
-    use crate::domain::port::music_group_repository::MusicGroupRepository as _;
-
-    use super::SqlxMusicGroupRepository;
+    use std::error::Error;
 
     /// Open a migrated in-memory database and begin one transaction.
     async fn begin_transaction() -> Result<Transaction<'static, Sqlite>, sqlx::Error> {

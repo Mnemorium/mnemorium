@@ -1,7 +1,6 @@
 use axum::Json;
-use axum::extract::Path;
-use axum::extract::State;
 use axum::extract::rejection::JsonRejection;
+use axum::extract::{Path, State};
 use axum::response::Response;
 use chrono::NaiveDate;
 use serde::Deserialize;
@@ -11,14 +10,12 @@ use utoipa::ToSchema;
 use crate::application::field_update::FieldUpdate;
 use crate::application::port::update_series::UpdateSeriesCommand;
 use crate::domain::alias::NumericID;
-use crate::infrastructure::inbound::rest::api_error::ApiError;
-use crate::infrastructure::inbound::rest::api_error::ErrorBody;
+use crate::infrastructure::inbound::rest::api_error::{ApiError, ErrorBody};
 use crate::infrastructure::inbound::rest::app_state::AppState;
 use crate::infrastructure::inbound::rest::hal::hal_json;
-use crate::infrastructure::inbound::rest::handler::library::DATE_FORMAT;
-use crate::infrastructure::inbound::rest::handler::library::SeriesResponse;
-use crate::infrastructure::inbound::rest::handler::library::deserialize_field_update;
-use crate::infrastructure::inbound::rest::handler::library::parse_series_id;
+use crate::infrastructure::inbound::rest::handler::library::{
+    DATE_FORMAT, SeriesResponse, deserialize_field_update, parse_series_id,
+};
 use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 
 /// Payload to update a show partially.
@@ -168,33 +165,22 @@ pub(crate) async fn patch_series(
 
 #[cfg(test)]
 mod tests {
-    use std::error::Error;
-    use std::sync::Arc;
-
+    use super::*;
+    use crate::application::port::library_use_case_factory::MockLibraryUseCaseFactory;
+    use crate::application::port::update_series::{
+        MockUpdateSeriesUseCase, UpdateSeriesError, UpdateSeriesResponse, UpdateSeriesUseCase,
+    };
+    use crate::infrastructure::inbound::rest::handler::library::library_routes;
+    use crate::test_helpers::*;
     use axum::body::Body;
     use axum::extract::Request;
-    use axum::http::StatusCode;
-    use axum::http::header;
-    use axum::response::Response;
+    use axum::http::{StatusCode, header};
     use axum::routing::patch;
     use rstest::rstest;
     use serde_json::json;
+    use std::error::Error;
+    use std::sync::Arc;
     use tower::ServiceExt as _;
-
-    use super::patch_series;
-    use crate::application::field_update::FieldUpdate;
-    use crate::application::port::library_use_case_factory::MockLibraryUseCaseFactory;
-    use crate::application::port::update_series::MockUpdateSeriesUseCase;
-    use crate::application::port::update_series::UpdateSeriesError;
-    use crate::application::port::update_series::UpdateSeriesResponse;
-    use crate::application::port::update_series::UpdateSeriesUseCase;
-    use crate::domain::alias::NumericID;
-    use crate::infrastructure::inbound::rest::handler::library::library_routes;
-    use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
-    use crate::test_helpers::app_state_with_library;
-    use crate::test_helpers::error_message_of;
-    use crate::test_helpers::into_parts;
-    use crate::test_helpers::sample_series;
 
     /// Send a PATCH to `/api/v1/library/series/{series}` on behalf of
     /// `caller_id`.

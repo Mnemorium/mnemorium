@@ -4,26 +4,23 @@ use std::sync::Arc;
 
 use chrono::Utc;
 
-use crate::application::port::reorder_playlist_tracks::ReorderPlaylistTracksCommand;
-use crate::application::port::reorder_playlist_tracks::ReorderPlaylistTracksError;
-use crate::application::port::reorder_playlist_tracks::ReorderPlaylistTracksResponse;
-use crate::application::port::reorder_playlist_tracks::ReorderPlaylistTracksUseCase;
+use crate::application::port::reorder_playlist_tracks::{
+    ReorderPlaylistTracksCommand, ReorderPlaylistTracksError, ReorderPlaylistTracksResponse,
+    ReorderPlaylistTracksUseCase,
+};
 use crate::application::security_event;
 use crate::domain::model::music_playlist::MusicPlaylistError;
 use crate::domain::model::permission::Action;
 use crate::domain::port::identity_unit_of_work::IdentityUnitOfWork;
 use crate::domain::port::library_unit_of_work::LibraryUnitOfWork;
-use crate::domain::port::music_playlist_repository::MusicPlaylistFilter;
-use crate::domain::port::music_playlist_repository::MusicPlaylistRepository as _;
-use crate::domain::port::permission_repository::PermissionFilter;
-use crate::domain::port::permission_repository::PermissionRepository as _;
-use crate::domain::port::unit_of_work::UnitOfWork as _;
-use crate::domain::port::unit_of_work::UnitOfWorkFactory;
-use crate::domain::port::user_repository::UserFilter;
-use crate::domain::port::user_repository::UserRepository as _;
+use crate::domain::port::music_playlist_repository::{
+    MusicPlaylistFilter, MusicPlaylistRepository as _,
+};
+use crate::domain::port::permission_repository::{PermissionFilter, PermissionRepository as _};
+use crate::domain::port::unit_of_work::{UnitOfWork as _, UnitOfWorkFactory};
+use crate::domain::port::user_repository::{UserFilter, UserRepository as _};
 use crate::domain::port::user_unit_of_work::UserUnitOfWork;
-use crate::domain::service::authorization::Authorization;
-use crate::domain::service::authorization::Decision;
+use crate::domain::service::authorization::{Authorization, Decision};
 
 /// Use case implementation for reordering the tracks of a playlist.
 pub(crate) struct ReorderPlaylistTracks<F> {
@@ -168,29 +165,17 @@ where
 
 #[cfg(test)]
 mod tests {
-    use std::error::Error;
-    use std::sync::Arc;
-    use std::sync::atomic::Ordering;
-
-    use chrono::NaiveDateTime;
-
-    use crate::application::port::reorder_playlist_tracks::ReorderPlaylistTracksCommand;
-    use crate::application::port::reorder_playlist_tracks::ReorderPlaylistTracksError;
-    use crate::application::port::reorder_playlist_tracks::ReorderPlaylistTracksUseCase as _;
+    use super::*;
     use crate::domain::model::music_playlist::MusicPlaylist;
-    use crate::domain::model::music_recording::MusicRecording;
-    use crate::domain::model::music_recording::TrackIndex;
-    use crate::domain::model::user::Role;
-    use crate::domain::model::user::User;
+    use crate::domain::model::music_recording::{MusicRecording, TrackIndex};
+    use crate::domain::model::user::{Role, User};
     use crate::domain::port::error::RepositoryError;
     use crate::domain::port::music_playlist_repository::MockMusicPlaylistRepository;
     use crate::domain::port::user_repository::MockUserRepository;
-    use crate::test_helpers::GalleryFactoryHarness;
-    use crate::test_helpers::TestFactory;
-    use crate::test_helpers::TestUnitOfWork;
-    use crate::test_helpers::no_permissions;
-
-    use super::ReorderPlaylistTracks;
+    use crate::test_helpers::*;
+    use chrono::NaiveDateTime;
+    use std::error::Error;
+    use std::sync::atomic::Ordering;
 
     type UseCase = ReorderPlaylistTracks<TestFactory>;
 

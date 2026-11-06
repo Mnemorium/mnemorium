@@ -24,11 +24,8 @@ pub(crate) mod tmdb;
 
 use std::time::Duration;
 
-use reqwest::Client;
-use reqwest::Response;
-use reqwest::StatusCode;
-use reqwest::Url;
 use reqwest::redirect::Policy;
+use reqwest::{Client, Response, StatusCode, Url};
 use serde::de::DeserializeOwned;
 use tracing::error;
 
@@ -329,18 +326,11 @@ pub(crate) fn log_provider_fault(operation: &str, classification: &str) {
 
 #[cfg(test)]
 mod tests {
-    use std::error::Error;
-
-    use reqwest::StatusCode;
+    use super::*;
     use rstest::rstest;
-    use wiremock::Mock;
-    use wiremock::MockServer;
-    use wiremock::ResponseTemplate;
+    use std::error::Error;
     use wiremock::matchers::method;
-
-    use super::classify_status;
-    use super::read_payload;
-    use super::request_url;
+    use wiremock::{Mock, MockServer, ResponseTemplate};
 
     /// The golden payload the stub serves.
     const MOVIE: &str = include_str!("reqwest/fixtures/omdb/movie.json");

@@ -1,18 +1,14 @@
-use axum::extract::Path;
-use axum::extract::State;
+use axum::extract::{Path, State};
 use axum::response::Response;
 
 use crate::application::port::list_series_episodes::ListSeriesEpisodesCommand;
 use crate::domain::alias::NumericID;
-use crate::infrastructure::inbound::rest::api_error::ApiError;
-use crate::infrastructure::inbound::rest::api_error::ErrorBody;
+use crate::infrastructure::inbound::rest::api_error::{ApiError, ErrorBody};
 use crate::infrastructure::inbound::rest::app_state::AppState;
-use crate::infrastructure::inbound::rest::hal::SelfLinks;
-use crate::infrastructure::inbound::rest::hal::hal_json;
-use crate::infrastructure::inbound::rest::handler::library::EpisodeListResponse;
-use crate::infrastructure::inbound::rest::handler::library::EpisodeResponse;
-use crate::infrastructure::inbound::rest::handler::library::parse_season_index;
-use crate::infrastructure::inbound::rest::handler::library::parse_series_id;
+use crate::infrastructure::inbound::rest::hal::{SelfLinks, hal_json};
+use crate::infrastructure::inbound::rest::handler::library::{
+    EpisodeListResponse, EpisodeResponse, parse_season_index, parse_series_id,
+};
 use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 
 /// List the episodes of one season of a show.
@@ -97,33 +93,23 @@ pub(crate) async fn get_series_episode_list(
 
 #[cfg(test)]
 mod tests {
-    use std::error::Error;
-    use std::sync::Arc;
-
+    use super::*;
+    use crate::application::port::library_use_case_factory::MockLibraryUseCaseFactory;
+    use crate::application::port::list_series_episodes::{
+        ListSeriesEpisodesError, ListSeriesEpisodesItem, ListSeriesEpisodesResponse,
+        ListSeriesEpisodesUseCase, MockListSeriesEpisodesUseCase,
+    };
+    use crate::infrastructure::inbound::rest::handler::library::library_routes;
+    use crate::test_helpers::*;
     use axum::body::Body;
     use axum::extract::Request;
     use axum::http::StatusCode;
-    use axum::response::Response;
     use axum::routing::get;
     use rstest::rstest;
     use serde_json::json;
+    use std::error::Error;
+    use std::sync::Arc;
     use tower::ServiceExt as _;
-
-    use super::get_series_episode_list;
-    use crate::application::port::library_use_case_factory::MockLibraryUseCaseFactory;
-    use crate::application::port::list_series_episodes::ListSeriesEpisodesCommand;
-    use crate::application::port::list_series_episodes::ListSeriesEpisodesError;
-    use crate::application::port::list_series_episodes::ListSeriesEpisodesItem;
-    use crate::application::port::list_series_episodes::ListSeriesEpisodesResponse;
-    use crate::application::port::list_series_episodes::ListSeriesEpisodesUseCase;
-    use crate::application::port::list_series_episodes::MockListSeriesEpisodesUseCase;
-    use crate::domain::alias::NumericID;
-    use crate::infrastructure::inbound::rest::handler::library::library_routes;
-    use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
-    use crate::test_helpers::app_state_with_library;
-    use crate::test_helpers::error_message_of;
-    use crate::test_helpers::into_parts;
-    use crate::test_helpers::sample_episode;
 
     /// Send a GET to
     /// `/api/v1/library/series/{series}/season/{season}/episode` on behalf of

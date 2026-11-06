@@ -19,20 +19,14 @@ pub(crate) mod put_upload_chunk;
 
 use axum::body::Body;
 use axum::extract::DefaultBodyLimit;
-use axum::http::HeaderValue;
-use axum::http::StatusCode;
-use axum::http::header;
+use axum::http::{HeaderValue, StatusCode, header};
 use axum::middleware;
-use axum::response::IntoResponse as _;
-use axum::response::Response;
-use chrono::NaiveDate;
-use chrono::NaiveDateTime;
-use serde::Deserialize;
-use serde::Serialize;
+use axum::response::{IntoResponse as _, Response};
+use chrono::{NaiveDate, NaiveDateTime};
+use serde::{Deserialize, Serialize};
 use tracing::warn;
 use utoipa::ToSchema;
-use utoipa_axum::router::OpenApiRouter;
-use utoipa_axum::router::UtoipaMethodRouterExt as _;
+use utoipa_axum::router::{OpenApiRouter, UtoipaMethodRouterExt as _};
 use utoipa_axum::routes;
 
 use crate::domain::alias::NumericID;
@@ -240,26 +234,19 @@ pub(crate) fn asset_routes(state: &AppState) -> OpenApiRouter<()> {
 
 #[cfg(test)]
 mod tests {
-    use std::error::Error;
-    use std::sync::Arc;
-
-    use axum::body::Body;
-    use axum::extract::Request;
-    use axum::http::StatusCode;
-    use axum::http::header;
-    use axum::response::Response;
-    use tower::ServiceExt as _;
-
+    use super::*;
     use crate::application::port::asset_use_case_factory::MockAssetUseCaseFactory;
-    use crate::application::port::complete_upload::CompleteUploadResponse;
-    use crate::application::port::complete_upload::CompleteUploadUseCase;
-    use crate::application::port::complete_upload::MockCompleteUploadUseCase;
+    use crate::application::port::complete_upload::{
+        CompleteUploadResponse, CompleteUploadUseCase, MockCompleteUploadUseCase,
+    };
     use crate::domain::model::configuration::DEFAULT_CHUNK_SIZE_BYTES;
     use crate::domain::port::token_provider::TokenProvider as _;
     use crate::infrastructure::inbound::rest::handler::asset::asset_routes;
-    use crate::infrastructure::outbound::jwt::token_provider::JwtTokenProvider;
-    use crate::test_helpers::TEST_JWT_SECRET;
-    use crate::test_helpers::app_state_with_asset;
+    use crate::test_helpers::*;
+    use axum::extract::Request;
+    use std::error::Error;
+    use std::sync::Arc;
+    use tower::ServiceExt as _;
     use tracing_test::traced_test;
 
     /// Build the asset router whose complete-upload use case succeeds.

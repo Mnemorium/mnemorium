@@ -4,8 +4,7 @@ use std::pin::Pin;
 use chrono::NaiveDate;
 
 use crate::domain::alias::NumericID;
-use crate::domain::model::music_album::MusicAlbum;
-use crate::domain::model::music_album::ProductionType;
+use crate::domain::model::music_album::{MusicAlbum, ProductionType};
 
 /// Command to create a music album.
 #[derive(Debug, Clone, PartialEq, Eq)]

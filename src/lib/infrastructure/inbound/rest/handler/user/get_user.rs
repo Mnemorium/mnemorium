@@ -1,16 +1,12 @@
-use axum::extract::Path;
-use axum::extract::State;
+use axum::extract::{Path, State};
 use axum::response::Response;
 
-use crate::application::port::get_user::GetUserCommand;
-use crate::application::port::get_user::GetUserError;
+use crate::application::port::get_user::{GetUserCommand, GetUserError};
 use crate::domain::alias::NumericID;
-use crate::infrastructure::inbound::rest::api_error::ApiError;
-use crate::infrastructure::inbound::rest::api_error::ErrorBody;
+use crate::infrastructure::inbound::rest::api_error::{ApiError, ErrorBody};
 use crate::infrastructure::inbound::rest::app_state::AppState;
 use crate::infrastructure::inbound::rest::hal::hal_json;
-use crate::infrastructure::inbound::rest::handler::user::GetUserResponse;
-use crate::infrastructure::inbound::rest::handler::user::parse_user_id;
+use crate::infrastructure::inbound::rest::handler::user::{GetUserResponse, parse_user_id};
 use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 
 /// Map a fetch-user error to its API error.
@@ -91,34 +87,20 @@ pub(crate) async fn get_user(
 
 #[cfg(test)]
 mod tests {
-    use std::error::Error;
-    use std::sync::Arc;
-
+    use super::*;
+    use crate::application::port::get_user::{GetUserResponse, GetUserUseCase, MockGetUserUseCase};
+    use crate::application::port::user_use_case_factory::MockUserUseCaseFactory;
+    use crate::domain::model::user::Role;
+    use crate::test_helpers::*;
     use axum::body::Body;
-
     use axum::extract::Request;
     use axum::http::StatusCode;
-
-    use axum::response::Response;
     use axum::routing::get;
     use mockall::predicate::eq;
-
     use serde_json::json;
+    use std::error::Error;
+    use std::sync::Arc;
     use tower::ServiceExt as _;
-
-    use super::get_user;
-    use crate::application::port::get_user::GetUserCommand;
-    use crate::application::port::get_user::GetUserError;
-    use crate::application::port::get_user::GetUserResponse;
-    use crate::application::port::get_user::GetUserUseCase;
-    use crate::application::port::get_user::MockGetUserUseCase;
-    use crate::application::port::user_use_case_factory::MockUserUseCaseFactory;
-    use crate::domain::alias::NumericID;
-    use crate::domain::model::user::Role;
-    use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
-    use crate::test_helpers::app_state_with_user;
-    use crate::test_helpers::error_message_of;
-    use crate::test_helpers::into_parts;
     use tracing_test::traced_test;
 
     /// Send a GET to `/api/v1/user/{id}` on behalf of `caller_id`, injecting

@@ -4,9 +4,7 @@ use chrono::NaiveDateTime;
 
 use crate::domain::alias::NumericID;
 use crate::domain::model::music_recording::MusicRecording;
-use crate::domain::model::permission::Protected;
-use crate::domain::model::permission::ResourceKind;
-use crate::domain::model::permission::ResourceRef;
+use crate::domain::model::permission::{Protected, ResourceKind, ResourceRef};
 
 /// Error returned when initialising or updating a `MusicPlaylist`.
 #[derive(Debug, thiserror::Error)]

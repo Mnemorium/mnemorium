@@ -112,10 +112,8 @@ pub(crate) mod put_series_episode;
 pub(crate) mod put_series_season;
 
 use axum::middleware;
-use chrono::NaiveDate;
-use chrono::NaiveDateTime;
-use serde::Deserialize;
-use serde::Serialize;
+use chrono::{NaiveDate, NaiveDateTime};
+use serde::{Deserialize, Serialize};
 use tracing::warn;
 use utoipa::ToSchema;
 use utoipa_axum::router::OpenApiRouter;
@@ -134,44 +132,42 @@ use crate::application::port::create_music_group::CreateMusicGroupError;
 use crate::application::port::create_playlist::CreatePlaylistError;
 use crate::application::port::create_series::CreateSeriesError;
 use crate::application::port::delete_playlist::DeletePlaylistError;
-use crate::application::port::get_album::GetAlbumError;
-use crate::application::port::get_album::GetAlbumResponse as GetAlbumResponseData;
-use crate::application::port::get_album_medium::GetAlbumMediumError;
-use crate::application::port::get_album_medium::GetAlbumMediumResponse;
-use crate::application::port::get_album_track::GetAlbumTrackError;
-use crate::application::port::get_album_track::GetAlbumTrackResponse;
-use crate::application::port::get_gallery::GalleryItemSummary;
-use crate::application::port::get_gallery::GetGalleryResponse as GetGalleryResponseData;
+use crate::application::port::get_album::{
+    GetAlbumError, GetAlbumResponse as GetAlbumResponseData,
+};
+use crate::application::port::get_album_medium::{GetAlbumMediumError, GetAlbumMediumResponse};
+use crate::application::port::get_album_track::{GetAlbumTrackError, GetAlbumTrackResponse};
+use crate::application::port::get_gallery::{
+    GalleryItemSummary, GetGalleryResponse as GetGalleryResponseData,
+};
 use crate::application::port::get_gallery_item::GetGalleryItemResponse;
-use crate::application::port::get_movie::GetMovieError;
-use crate::application::port::get_movie::GetMovieResponse as GetMovieResponseData;
-use crate::application::port::get_music_group::GetMusicGroupError;
-use crate::application::port::get_music_group::GetMusicGroupResponse as GetMusicGroupResponseData;
+use crate::application::port::get_movie::{
+    GetMovieError, GetMovieResponse as GetMovieResponseData,
+};
+use crate::application::port::get_music_group::{
+    GetMusicGroupError, GetMusicGroupResponse as GetMusicGroupResponseData,
+};
 use crate::application::port::get_playlist::GetPlaylistError;
 use crate::application::port::get_playlist_track::GetPlaylistTrackError;
-use crate::application::port::get_series::GetSeriesError;
-use crate::application::port::get_series::GetSeriesResponse as GetSeriesResponseData;
-use crate::application::port::get_series_episode::GetSeriesEpisodeError;
-use crate::application::port::get_series_episode::GetSeriesEpisodeResponse;
-use crate::application::port::get_series_season::GetSeriesSeasonError;
-use crate::application::port::get_series_season::GetSeriesSeasonResponse;
+use crate::application::port::get_series::{
+    GetSeriesError, GetSeriesResponse as GetSeriesResponseData,
+};
+use crate::application::port::get_series_episode::{
+    GetSeriesEpisodeError, GetSeriesEpisodeResponse,
+};
+use crate::application::port::get_series_season::{GetSeriesSeasonError, GetSeriesSeasonResponse};
 use crate::application::port::identify_music::IdentifyMusicError;
 use crate::application::port::identify_video::IdentifyVideoError;
-use crate::application::port::list_album_tracks::ListAlbumTracksError;
-use crate::application::port::list_album_tracks::ListAlbumTracksItem;
-use crate::application::port::list_albums::ListAlbumsError;
-use crate::application::port::list_albums::ListAlbumsItem;
+use crate::application::port::list_album_tracks::{ListAlbumTracksError, ListAlbumTracksItem};
+use crate::application::port::list_albums::{ListAlbumsError, ListAlbumsItem};
 use crate::application::port::list_galleries::ListGalleriesItem;
-use crate::application::port::list_movies::ListMoviesError;
-use crate::application::port::list_movies::ListMoviesItem;
-use crate::application::port::list_music_groups::ListMusicGroupsError;
-use crate::application::port::list_music_groups::ListMusicGroupsItem;
-use crate::application::port::list_playlists::ListPlaylistsError;
-use crate::application::port::list_playlists::ListPlaylistsItem;
-use crate::application::port::list_series::ListSeriesError;
-use crate::application::port::list_series::ListSeriesItem;
-use crate::application::port::list_series_episodes::ListSeriesEpisodesError;
-use crate::application::port::list_series_episodes::ListSeriesEpisodesItem;
+use crate::application::port::list_movies::{ListMoviesError, ListMoviesItem};
+use crate::application::port::list_music_groups::{ListMusicGroupsError, ListMusicGroupsItem};
+use crate::application::port::list_playlists::{ListPlaylistsError, ListPlaylistsItem};
+use crate::application::port::list_series::{ListSeriesError, ListSeriesItem};
+use crate::application::port::list_series_episodes::{
+    ListSeriesEpisodesError, ListSeriesEpisodesItem,
+};
 use crate::application::port::patch_album_track::PatchAlbumTrackError;
 use crate::application::port::put_album_medium::PutAlbumMediumError;
 use crate::application::port::put_album_track::PutAlbumTrackError;
@@ -195,21 +191,16 @@ use crate::domain::model::gallery_item::GalleryItemMedia;
 use crate::domain::model::media_metadata::MediaMetadata;
 use crate::domain::model::media_query::VideoKind;
 use crate::domain::model::movie::Movie;
-use crate::domain::model::music_album::MusicAlbum;
-use crate::domain::model::music_album::ProductionType;
-use crate::domain::model::music_metadata::ArtistCredit;
-use crate::domain::model::music_metadata::MediumFormat;
-use crate::domain::model::music_metadata::MediumSummary;
+use crate::domain::model::music_album::{MusicAlbum, ProductionType};
+use crate::domain::model::music_metadata::{ArtistCredit, MediumFormat, MediumSummary};
 use crate::domain::model::music_playlist::MusicPlaylist;
 use crate::domain::model::music_recording::MusicRecording;
 use crate::domain::model::series::Series;
-use crate::domain::model::video::ScanType;
-use crate::domain::model::video::Video;
+use crate::domain::model::video::{ScanType, Video};
 use crate::domain::model::video_candidate::Candidate;
 use crate::infrastructure::inbound::rest::api_error::ApiError;
 use crate::infrastructure::inbound::rest::app_state::AppState;
-use crate::infrastructure::inbound::rest::hal::Link;
-use crate::infrastructure::inbound::rest::hal::SelfLinks;
+use crate::infrastructure::inbound::rest::hal::{Link, SelfLinks};
 use crate::infrastructure::inbound::rest::handler::asset::asset_image_href;
 use crate::infrastructure::inbound::rest::handler::library::get_album_list::ListAlbumsQuery;
 use crate::infrastructure::inbound::rest::handler::library::get_movie_list::ListMoviesQuery;
@@ -3440,59 +3431,48 @@ pub(crate) fn library_routes(state: &AppState) -> OpenApiRouter<()> {
 
 #[cfg(test)]
 mod tests {
-    use std::error::Error;
-    use std::sync::Arc;
-
+    use super::*;
+    use crate::application::port::create_gallery::{
+        CreateGalleryUseCase, MockCreateGalleryUseCase,
+    };
+    use crate::application::port::delete_gallery::{
+        DeleteGalleryUseCase, MockDeleteGalleryUseCase,
+    };
+    use crate::application::port::get_gallery::{
+        GetGalleryResponse, GetGalleryUseCase, MockGetGalleryUseCase,
+    };
+    use crate::application::port::get_movie::{
+        GetMovieResponse, GetMovieUseCase, MockGetMovieUseCase,
+    };
+    use crate::application::port::get_series::{
+        GetSeriesResponse, GetSeriesUseCase, MockGetSeriesUseCase,
+    };
+    use crate::application::port::get_series_episode::{
+        GetSeriesEpisodeUseCase, MockGetSeriesEpisodeUseCase,
+    };
+    use crate::application::port::get_series_season::{
+        GetSeriesSeasonUseCase, MockGetSeriesSeasonUseCase,
+    };
+    use crate::application::port::library_use_case_factory::MockLibraryUseCaseFactory;
+    use crate::application::port::list_movies::{
+        ListMoviesResponse, ListMoviesUseCase, MockListMoviesUseCase,
+    };
+    use crate::application::port::list_series::{
+        ListSeriesResponse, ListSeriesUseCase, MockListSeriesUseCase,
+    };
+    use crate::application::port::list_series_episodes::{
+        ListSeriesEpisodesResponse, ListSeriesEpisodesUseCase, MockListSeriesEpisodesUseCase,
+    };
+    use crate::domain::port::token_provider::TokenProvider as _;
+    use crate::test_helpers::*;
     use axum::body::Body;
     use axum::extract::Request;
-    use axum::http::StatusCode;
-    use axum::http::header;
+    use axum::http::{StatusCode, header};
     use axum::response::Response;
-    use chrono::NaiveDate;
-    use chrono::NaiveDateTime;
     use serde_json::json;
+    use std::error::Error;
+    use std::sync::Arc;
     use tower::ServiceExt as _;
-
-    use super::library_routes;
-    use crate::application::port::create_gallery::CreateGalleryResponse;
-    use crate::application::port::create_gallery::CreateGalleryUseCase;
-    use crate::application::port::create_gallery::MockCreateGalleryUseCase;
-    use crate::application::port::delete_gallery::DeleteGalleryUseCase;
-    use crate::application::port::delete_gallery::MockDeleteGalleryUseCase;
-    use crate::application::port::get_gallery::GetGalleryResponse;
-    use crate::application::port::get_gallery::GetGalleryUseCase;
-    use crate::application::port::get_gallery::MockGetGalleryUseCase;
-    use crate::application::port::get_movie::GetMovieResponse;
-    use crate::application::port::get_movie::GetMovieUseCase;
-    use crate::application::port::get_movie::MockGetMovieUseCase;
-    use crate::application::port::get_series::GetSeriesResponse;
-    use crate::application::port::get_series::GetSeriesUseCase;
-    use crate::application::port::get_series::MockGetSeriesUseCase;
-    use crate::application::port::get_series_episode::GetSeriesEpisodeResponse;
-    use crate::application::port::get_series_episode::GetSeriesEpisodeUseCase;
-    use crate::application::port::get_series_episode::MockGetSeriesEpisodeUseCase;
-    use crate::application::port::get_series_season::GetSeriesSeasonResponse;
-    use crate::application::port::get_series_season::GetSeriesSeasonUseCase;
-    use crate::application::port::get_series_season::MockGetSeriesSeasonUseCase;
-    use crate::application::port::library_use_case_factory::MockLibraryUseCaseFactory;
-    use crate::application::port::list_movies::ListMoviesResponse;
-    use crate::application::port::list_movies::ListMoviesUseCase;
-    use crate::application::port::list_movies::MockListMoviesUseCase;
-    use crate::application::port::list_series::ListSeriesResponse;
-    use crate::application::port::list_series::ListSeriesUseCase;
-    use crate::application::port::list_series::MockListSeriesUseCase;
-    use crate::application::port::list_series_episodes::ListSeriesEpisodesResponse;
-    use crate::application::port::list_series_episodes::ListSeriesEpisodesUseCase;
-    use crate::application::port::list_series_episodes::MockListSeriesEpisodesUseCase;
-    use crate::domain::port::token_provider::TokenProvider as _;
-    use crate::infrastructure::inbound::rest::app_state::AppState;
-    use crate::infrastructure::inbound::rest::handler::asset::asset_image_href;
-    use crate::infrastructure::outbound::jwt::token_provider::JwtTokenProvider;
-    use crate::test_helpers::TEST_JWT_SECRET;
-    use crate::test_helpers::app_state_with_library;
-    use crate::test_helpers::sample_episode;
-    use crate::test_helpers::sample_movie;
-    use crate::test_helpers::video_date;
 
     /// A fixed instant the fixtures timestamp with.
     fn ts() -> NaiveDateTime {

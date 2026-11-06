@@ -7,12 +7,9 @@
 
 use crate::domain::model::asset::AssetContext;
 use crate::domain::model::file::File;
-use crate::domain::model::permission::Action;
-use crate::domain::model::permission::Permission;
-use crate::domain::model::permission::Protected;
-use crate::domain::model::permission::ResourceRef;
-use crate::domain::model::permission::RootAccess;
-use crate::domain::model::permission::Scope;
+use crate::domain::model::permission::{
+    Action, Permission, Protected, ResourceRef, RootAccess, Scope,
+};
 use crate::domain::model::user::User;
 
 /// The rendering of a denial to the caller.
@@ -263,37 +260,18 @@ impl Authorization {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::BTreeSet;
-    use std::error::Error;
-
-    use chrono::NaiveDate;
-    use chrono::NaiveDateTime;
-
+    use super::*;
     use crate::domain::alias::NumericID;
-    use crate::domain::model::asset::AssetContext;
-    use crate::domain::model::file::File;
     use crate::domain::model::gallery::Gallery;
     use crate::domain::model::integrity_hash::IntegrityHash;
     use crate::domain::model::music_playlist::MusicPlaylist;
-    use crate::domain::model::permission::ACTIONS;
-    use crate::domain::model::permission::Action;
-    use crate::domain::model::permission::Global;
-    use crate::domain::model::permission::Permission;
-    use crate::domain::model::permission::PermissionError;
-    use crate::domain::model::permission::ResourceKind;
-    use crate::domain::model::permission::ResourceRef;
-    use crate::domain::model::permission::Scope;
-    use crate::domain::model::upload::ChunkBitmap;
-    use crate::domain::model::upload::Upload;
+    use crate::domain::model::permission::{ACTIONS, Global, PermissionError, ResourceKind};
+    use crate::domain::model::upload::{ChunkBitmap, Upload};
     use crate::domain::model::user::Role;
-    use crate::domain::model::user::User;
-    use crate::test_helpers::DIGEST;
-    use crate::test_helpers::sample_album;
-    use crate::test_helpers::sample_movie;
-    use crate::test_helpers::sample_series;
-
-    use super::Authorization;
-    use super::Decision;
+    use crate::test_helpers::*;
+    use chrono::{NaiveDate, NaiveDateTime};
+    use std::collections::BTreeSet;
+    use std::error::Error;
 
     fn user(id: NumericID, role: Role) -> Result<User, Box<dyn Error>> {
         Ok(User::try_new(

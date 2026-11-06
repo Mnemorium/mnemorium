@@ -1,21 +1,18 @@
-use axum::extract::Query;
-use axum::extract::State;
 use axum::extract::rejection::QueryRejection;
+use axum::extract::{Query, State};
 use axum::response::Response;
 use serde::Deserialize;
 use tracing::warn;
 use utoipa::IntoParams;
 
-use super::DEFAULT_LIMIT;
-use super::MAX_LIMIT;
+use super::{DEFAULT_LIMIT, MAX_LIMIT};
 use crate::application::port::list_albums::ListAlbumsCommand;
-use crate::infrastructure::inbound::rest::api_error::ApiError;
-use crate::infrastructure::inbound::rest::api_error::ErrorBody;
+use crate::infrastructure::inbound::rest::api_error::{ApiError, ErrorBody};
 use crate::infrastructure::inbound::rest::app_state::AppState;
 use crate::infrastructure::inbound::rest::hal::hal_json;
-use crate::infrastructure::inbound::rest::handler::library::AlbumListLinks;
-use crate::infrastructure::inbound::rest::handler::library::AlbumListResponse;
-use crate::infrastructure::inbound::rest::handler::library::AlbumResponse;
+use crate::infrastructure::inbound::rest::handler::library::{
+    AlbumListLinks, AlbumListResponse, AlbumResponse,
+};
 use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 
 /// Filters and pagination restricting the returned music albums.
@@ -127,36 +124,26 @@ pub(crate) async fn get_album_list(
 
 #[cfg(test)]
 mod tests {
-    use std::error::Error;
-    use std::sync::Arc;
-
+    use super::*;
+    use crate::application::port::library_use_case_factory::MockLibraryUseCaseFactory;
+    use crate::application::port::list_albums::{
+        ListAlbumsError, ListAlbumsItem, ListAlbumsMediumItem, ListAlbumsResponse,
+        ListAlbumsUseCase, MockListAlbumsUseCase,
+    };
+    use crate::domain::alias::NumericID;
+    use crate::domain::model::music_album::ProductionType;
+    use crate::infrastructure::inbound::rest::handler::library::library_routes;
+    use crate::test_helpers::*;
     use axum::body::Body;
     use axum::extract::Request;
     use axum::http::StatusCode;
-    use axum::response::Response;
     use axum::routing::get;
     use mockall::predicate::eq;
     use rstest::rstest;
     use serde_json::json;
+    use std::error::Error;
+    use std::sync::Arc;
     use tower::ServiceExt as _;
-
-    use super::get_album_list;
-    use crate::application::port::library_use_case_factory::MockLibraryUseCaseFactory;
-    use crate::application::port::list_albums::ListAlbumsCommand;
-    use crate::application::port::list_albums::ListAlbumsError;
-    use crate::application::port::list_albums::ListAlbumsItem;
-    use crate::application::port::list_albums::ListAlbumsMediumItem;
-    use crate::application::port::list_albums::ListAlbumsResponse;
-    use crate::application::port::list_albums::ListAlbumsUseCase;
-    use crate::application::port::list_albums::MockListAlbumsUseCase;
-    use crate::domain::alias::NumericID;
-    use crate::domain::model::music_album::ProductionType;
-    use crate::infrastructure::inbound::rest::handler::library::library_routes;
-    use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
-    use crate::test_helpers::album_release_date;
-    use crate::test_helpers::app_state_with_library;
-    use crate::test_helpers::error_message_of;
-    use crate::test_helpers::into_parts;
 
     /// Send a GET to `/api/v1/library/music/album{query}` on behalf of
     /// `caller_id`, injecting the caller identifier the way the auth

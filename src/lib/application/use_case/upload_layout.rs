@@ -2,8 +2,7 @@
 //! composed from them, kept in the application layer so the storage adapter
 //! stays a pure filesystem-I/O boundary.
 
-use std::path::Path;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::domain::alias::NumericID;
 
@@ -46,11 +45,7 @@ pub(crate) fn media_path(relative: &str) -> PathBuf {
 
 #[cfg(test)]
 mod tests {
-    use std::path::PathBuf;
-
-    use super::media_path;
-    use super::staged_path;
-    use super::uploads_path;
+    use super::*;
 
     #[tokio::test]
     async fn a_stored_file_is_addressed_relative_to_the_media_root() {

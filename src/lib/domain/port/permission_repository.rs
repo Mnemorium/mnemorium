@@ -1,8 +1,7 @@
 use std::future::Future;
 
 use crate::domain::alias::NumericID;
-use crate::domain::model::permission::Action;
-use crate::domain::model::permission::Permission;
+use crate::domain::model::permission::{Action, Permission};
 use crate::domain::port::error::RepositoryError;
 
 /// Search filters for [`PermissionRepository::search`]. Every field is

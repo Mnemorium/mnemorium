@@ -1,19 +1,13 @@
 use std::collections::HashMap;
 
-use sqlx::QueryBuilder;
-use sqlx::Sqlite;
-use sqlx::Transaction;
+use sqlx::{QueryBuilder, Sqlite, Transaction};
 
 use crate::domain::alias::NumericID;
-use crate::domain::model::music_album::MusicAlbum;
-use crate::domain::model::music_album::ProductionType;
-use crate::domain::model::music_medium::MediumIndex;
-use crate::domain::model::music_medium::MusicMedium;
-use crate::domain::model::music_recording::MusicRecording;
-use crate::domain::model::music_recording::TrackIndex;
+use crate::domain::model::music_album::{MusicAlbum, ProductionType};
+use crate::domain::model::music_medium::{MediumIndex, MusicMedium};
+use crate::domain::model::music_recording::{MusicRecording, TrackIndex};
 use crate::domain::port::error::RepositoryError;
-use crate::domain::port::music_album_repository::MusicAlbumFilter;
-use crate::domain::port::music_album_repository::MusicAlbumRepository;
+use crate::domain::port::music_album_repository::{MusicAlbumFilter, MusicAlbumRepository};
 
 use super::error_mapping::stored_data_invalid;
 use super::model::music_album::MusicAlbumRow;
@@ -614,24 +608,10 @@ struct RecordingRow {
 
 #[cfg(test)]
 mod tests {
-    use std::error::Error;
-
-    use sqlx::Sqlite;
-    use sqlx::Transaction;
+    use super::*;
     use sqlx::sqlite::SqlitePoolOptions;
-
-    use crate::domain::model::music_album::MusicAlbum;
-    use crate::domain::model::music_album::ProductionType;
-    use crate::domain::model::music_medium::MediumIndex;
-    use crate::domain::model::music_medium::MusicMedium;
-    use crate::domain::model::music_recording::MusicRecording;
-    use crate::domain::model::music_recording::TrackIndex;
-    use crate::domain::port::error::RepositoryError;
-    use crate::domain::port::music_album_repository::MusicAlbumFilter;
-    use crate::domain::port::music_album_repository::MusicAlbumRepository as _;
+    use std::error::Error;
     use tracing_test::traced_test;
-
-    use super::SqlxMusicAlbumRepository;
 
     /// Assert the captured output is exactly one `output_validation_failed`
     /// event with `reason`, carrying neither a stored value nor an `sqlx`

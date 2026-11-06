@@ -9,17 +9,13 @@ use std::fs;
 use std::fs::Metadata;
 use std::future::Future;
 use std::io;
-use std::path::Component;
-use std::path::Path;
-use std::path::PathBuf;
+use std::path::{Component, Path, PathBuf};
 
-use chrono::DateTime;
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use tokio::task::spawn_blocking;
 
 use crate::domain::port::error::MediaSourceError;
-use crate::domain::port::media_source::MediaEntry;
-use crate::domain::port::media_source::MediaSource;
+use crate::domain::port::media_source::{MediaEntry, MediaSource};
 
 /// Media source backed by the local filesystem under a fixed root.
 pub(crate) struct LocalMediaSource {
@@ -154,15 +150,9 @@ fn entry_of(relative: String, metadata: &Metadata) -> io::Result<MediaEntry> {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use std::error::Error;
-    use std::fs;
-    use std::io;
-    use std::path::Path;
-
     use tempfile::tempdir;
-
-    use super::LocalMediaSource;
-    use crate::domain::port::media_source::MediaSource as _;
 
     /// Create a symbolic link, available only on a Unix test host.
     fn unix_symlink(original: &Path, link: &Path) -> io::Result<()> {

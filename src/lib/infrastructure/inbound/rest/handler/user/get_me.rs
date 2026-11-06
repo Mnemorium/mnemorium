@@ -3,16 +3,14 @@ use axum::response::Response;
 use serde::Serialize;
 use utoipa::ToSchema;
 
-use crate::application::port::get_current_user::GetCurrentUserCommand;
-use crate::application::port::get_current_user::GetCurrentUserError;
-use crate::application::port::get_current_user::GetCurrentUserResponse;
+use crate::application::port::get_current_user::{
+    GetCurrentUserCommand, GetCurrentUserError, GetCurrentUserResponse,
+};
 use crate::domain::alias::NumericID;
 use crate::domain::model::user::Role;
-use crate::infrastructure::inbound::rest::api_error::ApiError;
-use crate::infrastructure::inbound::rest::api_error::ErrorBody;
+use crate::infrastructure::inbound::rest::api_error::{ApiError, ErrorBody};
 use crate::infrastructure::inbound::rest::app_state::AppState;
-use crate::infrastructure::inbound::rest::hal::SelfLinks;
-use crate::infrastructure::inbound::rest::hal::hal_json;
+use crate::infrastructure::inbound::rest::hal::{SelfLinks, hal_json};
 use crate::infrastructure::inbound::rest::handler::user::user_self_href;
 use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 
@@ -99,34 +97,21 @@ pub(crate) async fn get_me(
 
 #[cfg(test)]
 mod tests {
-    use std::error::Error;
-    use std::sync::Arc;
-
+    use super::*;
+    use crate::application::port::get_current_user::{
+        GetCurrentUserUseCase, MockGetCurrentUserUseCase,
+    };
+    use crate::application::port::user_use_case_factory::MockUserUseCaseFactory;
+    use crate::test_helpers::*;
     use axum::body::Body;
-
     use axum::extract::Request;
     use axum::http::StatusCode;
-
-    use axum::response::Response;
     use axum::routing::get;
     use mockall::predicate::eq;
-
     use serde_json::json;
+    use std::error::Error;
+    use std::sync::Arc;
     use tower::ServiceExt as _;
-
-    use super::get_me;
-    use crate::application::port::get_current_user::GetCurrentUserCommand;
-    use crate::application::port::get_current_user::GetCurrentUserError;
-    use crate::application::port::get_current_user::GetCurrentUserResponse;
-    use crate::application::port::get_current_user::GetCurrentUserUseCase;
-    use crate::application::port::get_current_user::MockGetCurrentUserUseCase;
-    use crate::application::port::user_use_case_factory::MockUserUseCaseFactory;
-    use crate::domain::alias::NumericID;
-    use crate::domain::model::user::Role;
-    use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
-    use crate::test_helpers::app_state_with_user;
-    use crate::test_helpers::error_message_of;
-    use crate::test_helpers::into_parts;
 
     /// Send a request through the endpoint router on behalf of `caller_id`,
     /// injecting the caller identifier the way the auth middleware does.

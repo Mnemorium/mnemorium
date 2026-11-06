@@ -1,22 +1,19 @@
-use axum::extract::Query;
-use axum::extract::State;
 use axum::extract::rejection::QueryRejection;
+use axum::extract::{Query, State};
 use axum::response::Response;
 use serde::Deserialize;
 use tracing::warn;
 use utoipa::IntoParams;
 
-use super::DEFAULT_LIMIT;
-use super::MAX_LIMIT;
+use super::{DEFAULT_LIMIT, MAX_LIMIT};
 use crate::application::port::list_playlists::ListPlaylistsCommand;
 use crate::domain::alias::NumericID;
-use crate::infrastructure::inbound::rest::api_error::ApiError;
-use crate::infrastructure::inbound::rest::api_error::ErrorBody;
+use crate::infrastructure::inbound::rest::api_error::{ApiError, ErrorBody};
 use crate::infrastructure::inbound::rest::app_state::AppState;
 use crate::infrastructure::inbound::rest::hal::hal_json;
-use crate::infrastructure::inbound::rest::handler::library::PlaylistListLinks;
-use crate::infrastructure::inbound::rest::handler::library::PlaylistListResponse;
-use crate::infrastructure::inbound::rest::handler::library::PlaylistResponse;
+use crate::infrastructure::inbound::rest::handler::library::{
+    PlaylistListLinks, PlaylistListResponse, PlaylistResponse,
+};
 use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 
 /// Filters and pagination restricting the returned playlists.
@@ -138,35 +135,24 @@ pub(crate) async fn get_playlist_list(
 
 #[cfg(test)]
 mod tests {
-    use std::error::Error;
-    use std::sync::Arc;
-
+    use super::*;
+    use crate::application::port::library_use_case_factory::MockLibraryUseCaseFactory;
+    use crate::application::port::list_playlists::{
+        ListPlaylistsError, ListPlaylistsItem, ListPlaylistsResponse, ListPlaylistsUseCase,
+        MockListPlaylistsUseCase,
+    };
+    use crate::test_helpers::*;
     use axum::body::Body;
     use axum::extract::Request;
     use axum::http::StatusCode;
-    use axum::response::Response;
     use axum::routing::get;
-    use chrono::NaiveDate;
-    use chrono::NaiveDateTime;
+    use chrono::{NaiveDate, NaiveDateTime};
     use mockall::predicate::eq;
     use rstest::rstest;
-    use serde_json::Value;
-    use serde_json::json;
+    use serde_json::{Value, json};
+    use std::error::Error;
+    use std::sync::Arc;
     use tower::ServiceExt as _;
-
-    use super::get_playlist_list;
-    use crate::application::port::library_use_case_factory::MockLibraryUseCaseFactory;
-    use crate::application::port::list_playlists::ListPlaylistsCommand;
-    use crate::application::port::list_playlists::ListPlaylistsError;
-    use crate::application::port::list_playlists::ListPlaylistsItem;
-    use crate::application::port::list_playlists::ListPlaylistsResponse;
-    use crate::application::port::list_playlists::ListPlaylistsUseCase;
-    use crate::application::port::list_playlists::MockListPlaylistsUseCase;
-    use crate::domain::alias::NumericID;
-    use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
-    use crate::test_helpers::app_state_with_library;
-    use crate::test_helpers::error_message_of;
-    use crate::test_helpers::into_parts;
 
     fn ts() -> NaiveDateTime {
         NaiveDate::from_ymd_opt(2026, 10, 6)

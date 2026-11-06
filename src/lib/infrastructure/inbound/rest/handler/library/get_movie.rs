@@ -1,12 +1,10 @@
-use axum::extract::Path;
-use axum::extract::State;
+use axum::extract::{Path, State};
 use axum::response::Response;
 use tracing::warn;
 
 use crate::application::port::get_movie::GetMovieCommand;
 use crate::domain::alias::NumericID;
-use crate::infrastructure::inbound::rest::api_error::ApiError;
-use crate::infrastructure::inbound::rest::api_error::ErrorBody;
+use crate::infrastructure::inbound::rest::api_error::{ApiError, ErrorBody};
 use crate::infrastructure::inbound::rest::app_state::AppState;
 use crate::infrastructure::inbound::rest::hal::hal_json;
 use crate::infrastructure::inbound::rest::handler::library::MovieResponse;
@@ -90,30 +88,21 @@ pub(crate) async fn get_movie(
 
 #[cfg(test)]
 mod tests {
-    use std::error::Error;
-    use std::sync::Arc;
-
+    use super::*;
+    use crate::application::port::get_movie::{
+        GetMovieError, GetMovieResponse, GetMovieUseCase, MockGetMovieUseCase,
+    };
+    use crate::application::port::library_use_case_factory::MockLibraryUseCaseFactory;
+    use crate::infrastructure::inbound::rest::handler::library::library_routes;
+    use crate::test_helpers::*;
     use axum::body::Body;
     use axum::extract::Request;
     use axum::http::StatusCode;
-    use axum::response::Response;
     use axum::routing::get;
     use serde_json::json;
+    use std::error::Error;
+    use std::sync::Arc;
     use tower::ServiceExt as _;
-
-    use super::get_movie;
-    use crate::application::port::get_movie::GetMovieError;
-    use crate::application::port::get_movie::GetMovieResponse;
-    use crate::application::port::get_movie::GetMovieUseCase;
-    use crate::application::port::get_movie::MockGetMovieUseCase;
-    use crate::application::port::library_use_case_factory::MockLibraryUseCaseFactory;
-    use crate::domain::alias::NumericID;
-    use crate::infrastructure::inbound::rest::handler::library::library_routes;
-    use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
-    use crate::test_helpers::app_state_with_library;
-    use crate::test_helpers::error_message_of;
-    use crate::test_helpers::into_parts;
-    use crate::test_helpers::sample_movie;
 
     /// Send a GET to `/api/v1/library/movie/{movie}` on behalf of `caller_id`,
     /// injecting the caller identifier the way the auth middleware does.

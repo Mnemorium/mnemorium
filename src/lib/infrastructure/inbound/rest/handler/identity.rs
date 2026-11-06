@@ -13,17 +13,13 @@ use axum::middleware;
 use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
 
-use serde::Deserialize;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
 use crate::application::port::get_permission::GetPermissionResponse as GetPermissionResponseData;
 use crate::application::port::replace_permission::PermissionRequest as PermissionRequestData;
 use crate::domain::alias::NumericID;
-use crate::domain::model::permission::Action;
-use crate::domain::model::permission::ResourceKind;
-use crate::domain::model::permission::ResourceRef;
-use crate::domain::model::permission::Scope;
+use crate::domain::model::permission::{Action, ResourceKind, ResourceRef, Scope};
 use crate::domain::model::user::Role;
 use crate::infrastructure::inbound::rest::api_error::ApiError;
 use crate::infrastructure::inbound::rest::app_state::AppState;

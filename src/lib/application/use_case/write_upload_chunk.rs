@@ -4,29 +4,23 @@ use std::sync::Arc;
 
 use chrono::Utc;
 
-use crate::application::port::write_upload_chunk::WriteUploadChunkCommand;
-use crate::application::port::write_upload_chunk::WriteUploadChunkError;
-use crate::application::port::write_upload_chunk::WriteUploadChunkResponse;
-use crate::application::port::write_upload_chunk::WriteUploadChunkUseCase;
+use crate::application::port::write_upload_chunk::{
+    WriteUploadChunkCommand, WriteUploadChunkError, WriteUploadChunkResponse,
+    WriteUploadChunkUseCase,
+};
 use crate::application::security_event;
 use crate::application::use_case::upload_layout::staged_path;
-use crate::application::use_case::upload_session::caller_file_id;
-use crate::application::use_case::upload_session::expiry;
-use crate::application::use_case::upload_session::received_bitmap;
+use crate::application::use_case::upload_session::{caller_file_id, expiry, received_bitmap};
 use crate::domain::model::permission::Action;
 use crate::domain::port::asset_unit_of_work::AssetUnitOfWork;
 use crate::domain::port::content_hasher::ContentHasher;
 use crate::domain::port::error::RepositoryError;
 use crate::domain::port::file_storage::FileStorage;
-use crate::domain::port::unit_of_work::UnitOfWork as _;
-use crate::domain::port::unit_of_work::UnitOfWorkFactory;
-use crate::domain::port::upload_repository::UploadFilter;
-use crate::domain::port::upload_repository::UploadRepository as _;
-use crate::domain::port::user_repository::UserFilter;
-use crate::domain::port::user_repository::UserRepository as _;
+use crate::domain::port::unit_of_work::{UnitOfWork as _, UnitOfWorkFactory};
+use crate::domain::port::upload_repository::{UploadFilter, UploadRepository as _};
+use crate::domain::port::user_repository::{UserFilter, UserRepository as _};
 use crate::domain::port::user_unit_of_work::UserUnitOfWork;
-use crate::domain::service::authorization::Authorization;
-use crate::domain::service::authorization::Decision;
+use crate::domain::service::authorization::{Authorization, Decision};
 
 /// Use case implementation for writing one chunk of an upload session.
 pub(crate) struct WriteUploadChunk<F, S, H> {
@@ -363,37 +357,21 @@ enum AttemptError {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::VecDeque;
-    use std::error::Error;
-    use std::sync::Arc;
-    use std::sync::Mutex;
-    use std::sync::PoisonError;
-    use std::sync::atomic::Ordering;
-
-    use crate::application::port::write_upload_chunk::WriteUploadChunkCommand;
-    use crate::application::port::write_upload_chunk::WriteUploadChunkError;
-    use crate::application::port::write_upload_chunk::WriteUploadChunkUseCase as _;
+    use super::*;
     use crate::application::use_case::test_fixtures::TTL_SECONDS;
     use crate::domain::model::integrity_hash::IntegrityHash;
-    use crate::domain::model::upload::ChunkBitmap;
-    use crate::domain::model::upload::Upload;
-    use crate::domain::port::content_hasher::MockContentHasher;
-    use crate::domain::port::content_hasher::MockContentHasherSession;
-    use crate::domain::port::error::ContentHasherError;
-    use crate::domain::port::error::RepositoryError;
-    use crate::domain::port::error::StorageError;
+    use crate::domain::model::upload::{ChunkBitmap, Upload};
+    use crate::domain::port::content_hasher::{MockContentHasher, MockContentHasherSession};
+    use crate::domain::port::error::{ContentHasherError, StorageError};
     use crate::domain::port::file_repository::MockFileRepository;
     use crate::domain::port::file_storage::MockFileStorage;
     use crate::domain::port::upload_repository::MockUploadRepository;
-    use crate::test_helpers::AssetFactoryHarness;
-    use crate::test_helpers::CHUNK_SIZE;
-    use crate::test_helpers::DIGEST;
-    use crate::test_helpers::TestFactory;
-    use crate::test_helpers::TestUnitOfWork;
-    use crate::test_helpers::any_caller;
+    use crate::test_helpers::*;
+    use std::collections::VecDeque;
+    use std::error::Error;
+    use std::sync::atomic::Ordering;
+    use std::sync::{Mutex, PoisonError};
     use tracing_test::traced_test;
-
-    use super::WriteUploadChunk;
 
     /// SHA-256 of `b"1234"`.
     const CHUNK_DIGEST: &str = "03ac674216f3e15c761ee1a5e255f067953623c8b388b4459e13f978d7c846f4";

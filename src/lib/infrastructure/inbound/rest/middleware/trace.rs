@@ -1,7 +1,6 @@
 use axum::http::StatusCode;
 use axum::{body::Body, http::Request, middleware::Next, response::Response};
-use tracing::debug;
-use tracing::warn;
+use tracing::{debug, warn};
 
 /// Log each request and response at `debug`, recording the path but never the
 /// query string (`OBS-003`).
@@ -36,19 +35,13 @@ pub(crate) async fn tracing(req: Request<Body>, next: Next) -> Response {
 
 #[cfg(test)]
 mod tests {
-    use std::error::Error;
-
-    use tracing_test::traced_test;
-
-    use axum::Router;
-    use axum::body::Body;
-    use axum::http::Request;
-    use axum::http::StatusCode;
-    use axum::middleware;
-    use axum::routing::get;
-    use tower::ServiceExt as _;
-
     use super::tracing as trace_middleware;
+    use super::*;
+    use axum::routing::get;
+    use axum::{Router, middleware};
+    use std::error::Error;
+    use tower::ServiceExt as _;
+    use tracing_test::traced_test;
 
     /// Router running the trace middleware over a trivial success route.
     fn router() -> Router {

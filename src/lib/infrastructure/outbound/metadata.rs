@@ -11,13 +11,10 @@
 
 pub(crate) mod failover;
 
-use crate::domain::model::configuration::MusicProviders;
-use crate::domain::model::configuration::ProviderId;
-use crate::domain::model::configuration::VideoProviders;
+use crate::domain::model::configuration::{MusicProviders, ProviderId, VideoProviders};
 use crate::domain::model::media_metadata::MediaMetadata;
 use crate::domain::model::media_query::MediaQuery;
-use crate::domain::model::video_candidate::Candidate;
-use crate::domain::model::video_candidate::Target;
+use crate::domain::model::video_candidate::{Candidate, Target};
 use crate::domain::port::error::ExternalServiceError;
 use crate::domain::port::video_metadata_provider::VideoMetadataProvider;
 use crate::infrastructure::outbound::reqwest::musicbrainz::MusicBrainzMetadataProvider;
@@ -108,30 +105,13 @@ pub(crate) fn configured_music_provider(
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+    use crate::domain::model::configuration::{MusicProvider, VideoProvider};
+    use crate::domain::model::media_query::{MediaQueryError, VideoKind};
     use std::error::Error;
     use std::time::Duration;
-
-    use wiremock::Mock;
-    use wiremock::MockServer;
-    use wiremock::ResponseTemplate;
-    use wiremock::matchers::method;
-    use wiremock::matchers::path;
-
-    use crate::domain::model::configuration::MusicProvider;
-    use crate::domain::model::configuration::MusicProviders;
-    use crate::domain::model::configuration::ProviderId;
-    use crate::domain::model::configuration::VideoProvider;
-    use crate::domain::model::configuration::VideoProviders;
-    use crate::domain::model::media_query::MediaQuery;
-    use crate::domain::model::media_query::MediaQueryError;
-    use crate::domain::model::media_query::VideoKind;
-    use crate::domain::model::video_candidate::Candidate;
-    use crate::domain::port::video_metadata_provider::VideoMetadataProvider as _;
-    use crate::infrastructure::outbound::reqwest::tmdb::TmdbVideoMetadataProvider;
-
-    use super::ConfiguredProvider;
-    use super::configured_links;
-    use super::configured_music_provider;
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
 
     /// The golden search payload the stub serves.
     const SEARCH_MOVIE: &str = include_str!("reqwest/fixtures/tmdb/search_movie.json");

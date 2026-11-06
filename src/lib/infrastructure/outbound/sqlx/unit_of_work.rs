@@ -1,6 +1,4 @@
-use sqlx::Sqlite;
-use sqlx::SqlitePool;
-use sqlx::Transaction;
+use sqlx::{Sqlite, SqlitePool, Transaction};
 
 use crate::domain::port::asset_unit_of_work::AssetUnitOfWork;
 use crate::domain::port::audio_repository::AudioRepository;
@@ -18,8 +16,7 @@ use crate::domain::port::music_group_repository::MusicGroupRepository;
 use crate::domain::port::music_playlist_repository::MusicPlaylistRepository;
 use crate::domain::port::permission_repository::PermissionRepository;
 use crate::domain::port::series_repository::SeriesRepository;
-use crate::domain::port::unit_of_work::UnitOfWork;
-use crate::domain::port::unit_of_work::UnitOfWorkFactory;
+use crate::domain::port::unit_of_work::{UnitOfWork, UnitOfWorkFactory};
 use crate::domain::port::upload_repository::UploadRepository;
 use crate::domain::port::user_repository::UserRepository;
 use crate::domain::port::user_unit_of_work::UserUnitOfWork;

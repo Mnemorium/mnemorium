@@ -4,12 +4,9 @@
 //! See `docs/development/TechnicalDesign.md` § HAL payload guidelines.
 
 use axum::Json;
-use axum::http::HeaderValue;
-use axum::http::header;
-use axum::response::IntoResponse as _;
-use axum::response::Response;
-use serde::Deserialize;
-use serde::Serialize;
+use axum::http::{HeaderValue, header};
+use axum::response::{IntoResponse as _, Response};
+use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
 /// Media type of a HAL response, per `API-031`.

@@ -2,20 +2,16 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
-use crate::application::port::login_user::LoginUserCommand;
-use crate::application::port::login_user::LoginUserError;
-use crate::application::port::login_user::LoginUserResponse;
-use crate::application::port::login_user::LoginUserUseCase;
+use crate::application::port::login_user::{
+    LoginUserCommand, LoginUserError, LoginUserResponse, LoginUserUseCase,
+};
 use crate::application::security_event;
-use crate::domain::port::credential_repository::CredentialFilter;
-use crate::domain::port::credential_repository::CredentialRepository as _;
+use crate::domain::port::credential_repository::{CredentialFilter, CredentialRepository as _};
 use crate::domain::port::identity_unit_of_work::IdentityUnitOfWork;
 use crate::domain::port::password_hasher::PasswordHasher;
 use crate::domain::port::token_provider::TokenProvider;
-use crate::domain::port::unit_of_work::UnitOfWork as _;
-use crate::domain::port::unit_of_work::UnitOfWorkFactory;
-use crate::domain::port::user_repository::UserFilter;
-use crate::domain::port::user_repository::UserRepository as _;
+use crate::domain::port::unit_of_work::{UnitOfWork as _, UnitOfWorkFactory};
+use crate::domain::port::user_repository::{UserFilter, UserRepository as _};
 use crate::domain::port::user_unit_of_work::UserUnitOfWork;
 
 /// Use case implementation for authenticating a user.
@@ -161,34 +157,19 @@ where
 
 #[cfg(test)]
 mod tests {
-    use std::error::Error;
-    use std::sync::Arc;
-    use std::sync::atomic::AtomicBool;
-    use std::sync::atomic::Ordering;
-
-    use chrono::NaiveDateTime;
-
-    use crate::application::port::login_user::LoginUserCommand;
-    use crate::application::port::login_user::LoginUserError;
-    use crate::application::port::login_user::LoginUserUseCase as _;
+    use super::*;
     use crate::domain::model::credential::Credential;
-    use crate::domain::model::user::Role;
-    use crate::domain::model::user::User;
-    use crate::domain::model::user::UserError;
+    use crate::domain::model::user::{Role, User, UserError};
     use crate::domain::port::credential_repository::MockCredentialRepository;
-    use crate::domain::port::error::PasswordHasherError;
-    use crate::domain::port::error::RepositoryError;
-    use crate::domain::port::error::TokenProviderError;
+    use crate::domain::port::error::{PasswordHasherError, RepositoryError, TokenProviderError};
     use crate::domain::port::password_hasher::MockPasswordHasher;
-    use crate::domain::port::token_provider::IssuedToken;
-    use crate::domain::port::token_provider::MockTokenProvider;
+    use crate::domain::port::token_provider::{IssuedToken, MockTokenProvider};
     use crate::domain::port::user_repository::MockUserRepository;
-    use crate::test_helpers::SECRET_PASSWORD;
-    use crate::test_helpers::TestFactory;
-    use crate::test_helpers::TestUnitOfWork;
+    use crate::test_helpers::*;
+    use chrono::NaiveDateTime;
+    use std::error::Error;
+    use std::sync::atomic::{AtomicBool, Ordering};
     use tracing_test::traced_test;
-
-    use super::LoginUser;
 
     type UseCase = LoginUser<TestFactory, MockPasswordHasher, MockTokenProvider>;
 

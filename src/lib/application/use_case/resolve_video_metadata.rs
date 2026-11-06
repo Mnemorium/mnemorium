@@ -2,24 +2,20 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
-use crate::application::port::resolve_video_metadata::ResolveVideoMetadataCommand;
-use crate::application::port::resolve_video_metadata::ResolveVideoMetadataError;
-use crate::application::port::resolve_video_metadata::ResolveVideoMetadataResponse;
-use crate::application::port::resolve_video_metadata::ResolveVideoMetadataUseCase;
+use crate::application::port::resolve_video_metadata::{
+    ResolveVideoMetadataCommand, ResolveVideoMetadataError, ResolveVideoMetadataResponse,
+    ResolveVideoMetadataUseCase,
+};
 use crate::application::security_event;
 use crate::domain::model::media_metadata::MediaMetadata;
 use crate::domain::model::video_candidate::Target;
 use crate::domain::port::identity_unit_of_work::IdentityUnitOfWork;
-use crate::domain::port::permission_repository::PermissionFilter;
-use crate::domain::port::permission_repository::PermissionRepository as _;
-use crate::domain::port::unit_of_work::UnitOfWork as _;
-use crate::domain::port::unit_of_work::UnitOfWorkFactory;
-use crate::domain::port::user_repository::UserFilter;
-use crate::domain::port::user_repository::UserRepository as _;
+use crate::domain::port::permission_repository::{PermissionFilter, PermissionRepository as _};
+use crate::domain::port::unit_of_work::{UnitOfWork as _, UnitOfWorkFactory};
+use crate::domain::port::user_repository::{UserFilter, UserRepository as _};
 use crate::domain::port::user_unit_of_work::UserUnitOfWork;
 use crate::domain::port::video_metadata_provider::VideoMetadataProvider;
-use crate::domain::service::authorization::Authorization;
-use crate::domain::service::authorization::Decision;
+use crate::domain::service::authorization::{Authorization, Decision};
 
 /// Use case implementation for resolving one video target's metadata.
 ///
@@ -171,34 +167,19 @@ where
 
 #[cfg(test)]
 mod tests {
-    use std::error::Error;
-    use std::sync::Arc;
-    use std::sync::atomic::AtomicBool;
-    use std::sync::atomic::Ordering;
-
-    use chrono::NaiveDate;
-    use tracing_test::traced_test;
-
-    use crate::application::port::resolve_video_metadata::ResolveVideoMetadataCommand;
-    use crate::application::port::resolve_video_metadata::ResolveVideoMetadataError;
-    use crate::application::port::resolve_video_metadata::ResolveVideoMetadataUseCase as _;
+    use super::*;
     use crate::domain::model::configuration::ProviderId;
     use crate::domain::model::external_ref::ExternalRef;
-    use crate::domain::model::media_metadata::MediaMetadata;
-    use crate::domain::model::permission::Action;
-    use crate::domain::model::permission::Permission;
-    use crate::domain::model::permission::Scope;
-    use crate::domain::model::video_candidate::Target;
+    use crate::domain::model::permission::{Action, Permission, Scope};
     use crate::domain::port::error::ExternalServiceError;
     use crate::domain::port::permission_repository::MockPermissionRepository;
     use crate::domain::port::user_repository::MockUserRepository;
     use crate::domain::port::video_metadata_provider::MockVideoMetadataProvider;
-    use crate::test_helpers::TestFactory;
-    use crate::test_helpers::TestUnitOfWork;
-    use crate::test_helpers::any_caller;
-    use crate::test_helpers::no_permissions;
-
-    use super::ResolveVideoMetadata;
+    use crate::test_helpers::*;
+    use chrono::NaiveDate;
+    use std::error::Error;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use tracing_test::traced_test;
 
     /// The caller every test resolves for.
     const CALLER_ID: i64 = 1;

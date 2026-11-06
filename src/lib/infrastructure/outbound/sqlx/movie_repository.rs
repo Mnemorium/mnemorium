@@ -1,13 +1,10 @@
-use sqlx::QueryBuilder;
-use sqlx::Sqlite;
-use sqlx::Transaction;
+use sqlx::{QueryBuilder, Sqlite, Transaction};
 
 use crate::domain::alias::NumericID;
 use crate::domain::model::movie::Movie;
 use crate::domain::model::video::Video;
 use crate::domain::port::error::RepositoryError;
-use crate::domain::port::movie_repository::MovieFilter;
-use crate::domain::port::movie_repository::MovieRepository;
+use crate::domain::port::movie_repository::{MovieFilter, MovieRepository};
 
 use super::error_mapping::stored_data_invalid;
 use super::model::movie::MovieRow;
@@ -222,22 +219,13 @@ impl MovieRepository for SqlxMovieRepository<'_> {
 
 #[cfg(test)]
 mod tests {
-    use std::error::Error;
-
-    use chrono::NaiveDate;
-    use sqlx::Sqlite;
-    use sqlx::Transaction;
-    use sqlx::sqlite::SqlitePoolOptions;
-
-    use crate::domain::model::movie::Movie;
+    use super::*;
     use crate::domain::model::video::ScanType;
-    use crate::domain::port::error::RepositoryError;
-    use crate::domain::port::movie_repository::MovieFilter;
-    use crate::domain::port::movie_repository::MovieRepository as _;
-    use crate::test_helpers::sample_video;
+    use crate::test_helpers::*;
+    use chrono::NaiveDate;
+    use sqlx::sqlite::SqlitePoolOptions;
+    use std::error::Error;
     use tracing_test::traced_test;
-
-    use super::SqlxMovieRepository;
 
     /// Assert the captured output is exactly one `output_validation_failed`
     /// event with `reason`, carrying neither a stored value nor an `sqlx`

@@ -45,11 +45,8 @@ impl NamePolicy {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use rstest::rstest;
-
-    use super::MAX_NAME_LENGTH;
-    use super::NamePolicy;
-    use super::NamePolicyError;
 
     #[rstest]
     #[case::plain("Holidays", "Holidays")]

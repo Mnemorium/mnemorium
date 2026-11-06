@@ -18,29 +18,23 @@ use crate::domain::model::permission::Global;
 use crate::domain::model::scope::Scope;
 use crate::domain::model::video::Video;
 use crate::domain::port::asset_unit_of_work::AssetUnitOfWork;
-use crate::domain::port::audio_repository::AudioFilter;
-use crate::domain::port::audio_repository::AudioRepository as _;
+use crate::domain::port::audio_repository::{AudioFilter, AudioRepository as _};
 use crate::domain::port::error::RepositoryError;
-use crate::domain::port::file_repository::FileFilter;
-use crate::domain::port::file_repository::FileRepository as _;
-use crate::domain::port::gallery_repository::GalleryFilter;
-use crate::domain::port::gallery_repository::GalleryItemFilter;
-use crate::domain::port::gallery_repository::GalleryRepository as _;
+use crate::domain::port::file_repository::{FileFilter, FileRepository as _};
+use crate::domain::port::gallery_repository::{
+    GalleryFilter, GalleryItemFilter, GalleryRepository as _,
+};
 use crate::domain::port::identity_unit_of_work::IdentityUnitOfWork;
-use crate::domain::port::image_repository::ImageFilter;
-use crate::domain::port::image_repository::ImageRepository as _;
+use crate::domain::port::image_repository::{ImageFilter, ImageRepository as _};
 use crate::domain::port::library_unit_of_work::LibraryUnitOfWork;
-use crate::domain::port::music_playlist_repository::MusicPlaylistFilter;
-use crate::domain::port::music_playlist_repository::MusicPlaylistRepository as _;
-use crate::domain::port::permission_repository::PermissionFilter;
-use crate::domain::port::permission_repository::PermissionRepository as _;
-use crate::domain::port::user_repository::UserFilter;
-use crate::domain::port::user_repository::UserRepository as _;
+use crate::domain::port::music_playlist_repository::{
+    MusicPlaylistFilter, MusicPlaylistRepository as _,
+};
+use crate::domain::port::permission_repository::{PermissionFilter, PermissionRepository as _};
+use crate::domain::port::user_repository::{UserFilter, UserRepository as _};
 use crate::domain::port::user_unit_of_work::UserUnitOfWork;
-use crate::domain::port::video_repository::VideoFilter;
-use crate::domain::port::video_repository::VideoRepository as _;
-use crate::domain::service::authorization::Authorization;
-use crate::domain::service::authorization::Decision;
+use crate::domain::port::video_repository::{VideoFilter, VideoRepository as _};
+use crate::domain::service::authorization::{Authorization, Decision};
 
 /// Why an asset could not be accessed.
 #[derive(Debug, thiserror::Error)]

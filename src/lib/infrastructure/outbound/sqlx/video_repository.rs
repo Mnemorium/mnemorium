@@ -1,19 +1,13 @@
-use sqlx::QueryBuilder;
-use sqlx::Sqlite;
-use sqlx::Transaction;
+use sqlx::{QueryBuilder, Sqlite, Transaction};
 
 use crate::domain::alias::NumericID;
-use crate::domain::model::video::ScanType;
-use crate::domain::model::video::Video;
+use crate::domain::model::video::{ScanType, Video};
 use crate::domain::port::error::RepositoryError;
-use crate::domain::port::video_repository::VideoFilter;
-use crate::domain::port::video_repository::VideoRepository;
+use crate::domain::port::video_repository::{VideoFilter, VideoRepository};
 
 use super::error_mapping::stored_data_invalid;
-use super::model::scope::parse_scope;
-use super::model::scope::scope_token;
-use super::model::video::ScanType as SqlxScanType;
-use super::model::video::Video as SqlxVideo;
+use super::model::scope::{parse_scope, scope_token};
+use super::model::video::{ScanType as SqlxScanType, Video as SqlxVideo};
 use super::query_filter::push_filter;
 
 /// Repository persisting videos, backed by a `SQLite` transaction.
@@ -191,21 +185,11 @@ fn domain_video(row: SqlxVideo) -> Result<Video, RepositoryError> {
 
 #[cfg(test)]
 mod tests {
-    use std::error::Error;
-
-    use rstest::rstest;
-    use sqlx::Sqlite;
-    use sqlx::Transaction;
-    use sqlx::sqlite::SqlitePoolOptions;
-
+    use super::*;
     use crate::domain::model::scope::Scope;
-    use crate::domain::model::video::ScanType;
-    use crate::domain::model::video::Video;
-    use crate::domain::port::error::RepositoryError;
-    use crate::domain::port::video_repository::VideoFilter;
-    use crate::domain::port::video_repository::VideoRepository as _;
-
-    use super::SqlxVideoRepository;
+    use rstest::rstest;
+    use sqlx::sqlite::SqlitePoolOptions;
+    use std::error::Error;
 
     /// Open a migrated in-memory database and begin one transaction.
     async fn begin_transaction() -> Result<Transaction<'static, Sqlite>, sqlx::Error> {

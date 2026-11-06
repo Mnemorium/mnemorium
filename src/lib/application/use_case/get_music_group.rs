@@ -2,24 +2,19 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
-use crate::application::port::get_music_group::GetMusicGroupCommand;
-use crate::application::port::get_music_group::GetMusicGroupError;
-use crate::application::port::get_music_group::GetMusicGroupResponse;
-use crate::application::port::get_music_group::GetMusicGroupUseCase;
+use crate::application::port::get_music_group::{
+    GetMusicGroupCommand, GetMusicGroupError, GetMusicGroupResponse, GetMusicGroupUseCase,
+};
 use crate::application::security_event;
 use crate::domain::model::permission::Action;
 use crate::domain::port::identity_unit_of_work::IdentityUnitOfWork;
 use crate::domain::port::library_unit_of_work::LibraryUnitOfWork;
 use crate::domain::port::music_group_repository::MusicGroupRepository as _;
-use crate::domain::port::permission_repository::PermissionFilter;
-use crate::domain::port::permission_repository::PermissionRepository as _;
-use crate::domain::port::unit_of_work::UnitOfWork as _;
-use crate::domain::port::unit_of_work::UnitOfWorkFactory;
-use crate::domain::port::user_repository::UserFilter;
-use crate::domain::port::user_repository::UserRepository as _;
+use crate::domain::port::permission_repository::{PermissionFilter, PermissionRepository as _};
+use crate::domain::port::unit_of_work::{UnitOfWork as _, UnitOfWorkFactory};
+use crate::domain::port::user_repository::{UserFilter, UserRepository as _};
 use crate::domain::port::user_unit_of_work::UserUnitOfWork;
-use crate::domain::service::authorization::Authorization;
-use crate::domain::service::authorization::Decision;
+use crate::domain::service::authorization::{Authorization, Decision};
 
 /// Use case implementation for fetching one music group.
 pub(crate) struct GetMusicGroup<F> {
@@ -125,31 +120,17 @@ where
 
 #[cfg(test)]
 mod tests {
-    use std::error::Error;
-    use std::sync::Arc;
-    use std::sync::atomic::Ordering;
-
-    use crate::application::port::get_music_group::GetMusicGroupCommand;
-    use crate::application::port::get_music_group::GetMusicGroupError;
-    use crate::application::port::get_music_group::GetMusicGroupResponse;
-    use crate::application::port::get_music_group::GetMusicGroupUseCase as _;
+    use super::*;
     use crate::domain::alias::NumericID;
     use crate::domain::model::music_group::MusicGroup;
-    use crate::domain::model::permission::Action;
-    use crate::domain::model::permission::Permission;
-    use crate::domain::model::permission::Scope;
+    use crate::domain::model::permission::{Permission, Scope};
     use crate::domain::port::error::RepositoryError;
     use crate::domain::port::music_group_repository::MockMusicGroupRepository;
     use crate::domain::port::permission_repository::MockPermissionRepository;
     use crate::domain::port::user_repository::MockUserRepository;
-    use crate::test_helpers::GalleryFactoryHarness;
-    use crate::test_helpers::TestFactory;
-    use crate::test_helpers::TestUnitOfWork;
-    use crate::test_helpers::expect_caller;
-    use crate::test_helpers::expect_permissions;
-    use crate::test_helpers::no_permissions;
-
-    use super::GetMusicGroup;
+    use crate::test_helpers::*;
+    use std::error::Error;
+    use std::sync::atomic::Ordering;
 
     /// The use case under test, bound to the mocked unit-of-work factory.
     type UseCase = GetMusicGroup<TestFactory>;

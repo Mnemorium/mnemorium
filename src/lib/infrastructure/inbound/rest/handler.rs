@@ -81,31 +81,21 @@ pub(crate) fn setup_routes(state: &AppState, limiter: &LoginRateLimiter) -> axum
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+    use crate::application::port::identity_use_case_factory::MockIdentityUseCaseFactory;
+    use crate::application::port::login_user::{
+        LoginUserError, LoginUserResponse, LoginUserUseCase, MockLoginUserUseCase,
+    };
+    use crate::test_helpers::*;
+    use axum::body::{Body, to_bytes};
+    use axum::extract::{ConnectInfo, Request};
+    use axum::http::{StatusCode, header};
+    use axum::response::Response;
+    use serde_json::{Value, json};
     use std::error::Error;
     use std::net::SocketAddr;
     use std::sync::Arc;
-
-    use axum::body::Body;
-    use axum::body::to_bytes;
-    use axum::extract::ConnectInfo;
-    use axum::extract::Request;
-    use axum::http::StatusCode;
-    use axum::http::header;
-    use axum::response::Response;
-    use serde_json::Value;
-    use serde_json::json;
     use tower::ServiceExt as _;
-
-    use super::setup_routes;
-    use crate::application::port::identity_use_case_factory::MockIdentityUseCaseFactory;
-    use crate::application::port::login_user::LoginUserError;
-    use crate::application::port::login_user::LoginUserResponse;
-    use crate::application::port::login_user::LoginUserUseCase;
-    use crate::application::port::login_user::MockLoginUserUseCase;
-    use crate::infrastructure::inbound::rest::middleware::rate_limit::LoginRateLimiter;
-    use crate::test_helpers::SECRET_PASSWORD;
-    use crate::test_helpers::app_state;
-    use crate::test_helpers::app_state_with_identity;
 
     /// Build a request with `method` and `uri`, optionally carrying a JSON body.
     ///

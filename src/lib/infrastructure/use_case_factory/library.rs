@@ -115,9 +115,8 @@ use crate::infrastructure::outbound::file_system::file_storage::FileSystemStorag
 use crate::infrastructure::outbound::file_system::media_source::LocalMediaSource;
 use crate::infrastructure::outbound::infer::content_type_sniffer::InferContentTypeSniffer;
 use crate::infrastructure::outbound::media_probe::LocalMediaProbe;
-use crate::infrastructure::outbound::metadata::configured_links;
-use crate::infrastructure::outbound::metadata::configured_music_provider;
 use crate::infrastructure::outbound::metadata::failover::FailoverVideoMetadataProvider;
+use crate::infrastructure::outbound::metadata::{configured_links, configured_music_provider};
 use crate::infrastructure::outbound::sqlx::unit_of_work::SqlxUnitOfWorkFactory;
 
 /// Builds the Library use cases.

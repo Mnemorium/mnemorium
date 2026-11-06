@@ -1,24 +1,18 @@
-use axum::extract::Path;
-use axum::extract::State;
+use axum::extract::{Path, State};
 use axum::response::Response;
-use serde::Deserialize;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
-use crate::application::port::get_file::GetFileCommand;
-use crate::application::port::get_file::GetFileError;
-use crate::application::port::get_file::GetFileResponse as GetFileResponseData;
+use crate::application::port::get_file::{
+    GetFileCommand, GetFileError, GetFileResponse as GetFileResponseData,
+};
 use crate::domain::alias::NumericID;
-use crate::infrastructure::inbound::rest::api_error::ApiError;
-use crate::infrastructure::inbound::rest::api_error::ErrorBody;
+use crate::infrastructure::inbound::rest::api_error::{ApiError, ErrorBody};
 use crate::infrastructure::inbound::rest::app_state::AppState;
-use crate::infrastructure::inbound::rest::hal::Link;
-use crate::infrastructure::inbound::rest::hal::hal_json;
-use crate::infrastructure::inbound::rest::handler::asset::TIMESTAMP_FORMAT;
-use crate::infrastructure::inbound::rest::handler::asset::asset_file_href;
-use crate::infrastructure::inbound::rest::handler::asset::asset_image_href;
-use crate::infrastructure::inbound::rest::handler::asset::format_date;
-use crate::infrastructure::inbound::rest::handler::asset::parse_asset_id;
+use crate::infrastructure::inbound::rest::hal::{Link, hal_json};
+use crate::infrastructure::inbound::rest::handler::asset::{
+    TIMESTAMP_FORMAT, asset_file_href, asset_image_href, format_date, parse_asset_id,
+};
 use crate::infrastructure::inbound::rest::handler::user::user_self_href;
 use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 
@@ -179,34 +173,21 @@ pub(crate) async fn get_file(
 
 #[cfg(test)]
 mod tests {
-    use std::error::Error;
-    use std::sync::Arc;
-
+    use super::*;
+    use crate::application::port::asset_use_case_factory::MockAssetUseCaseFactory;
+    use crate::application::port::get_file::{GetFileUseCase, MockGetFileUseCase};
+    use crate::domain::model::file::Origin;
+    use crate::test_helpers::*;
     use axum::body::Body;
     use axum::extract::Request;
     use axum::http::StatusCode;
-    use axum::response::Response;
     use axum::routing::get;
-    use chrono::NaiveDate;
-    use chrono::NaiveDateTime;
+    use chrono::{NaiveDate, NaiveDateTime};
     use mockall::predicate::eq;
     use serde_json::json;
+    use std::error::Error;
+    use std::sync::Arc;
     use tower::ServiceExt as _;
-
-    use super::get_file;
-    use crate::application::port::asset_use_case_factory::MockAssetUseCaseFactory;
-    use crate::application::port::get_file::GetFileCommand;
-    use crate::application::port::get_file::GetFileError;
-    use crate::application::port::get_file::GetFileResponse as GetFileResponseData;
-    use crate::application::port::get_file::GetFileUseCase;
-    use crate::application::port::get_file::MockGetFileUseCase;
-    use crate::domain::alias::NumericID;
-    use crate::domain::model::file::Origin;
-    use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
-    use crate::test_helpers::app_state_with_asset;
-    use crate::test_helpers::error_message_of;
-    use crate::test_helpers::into_parts;
-    use crate::test_helpers::into_status_and_body;
 
     /// Send a GET to `/api/v1/asset/file/{file_id}` on behalf of `caller_id`.
     async fn send(

@@ -2,11 +2,9 @@
 
 use sqlx::Error;
 use sqlx::error::ErrorKind;
-use tracing::error;
-use tracing::warn;
+use tracing::{error, warn};
 
-use crate::domain::port::error::RepositoryError;
-use crate::domain::port::error::UnitOfWorkError;
+use crate::domain::port::error::{RepositoryError, UnitOfWorkError};
 
 /// `SQLite` extended result code for a trigger `RAISE(ABORT)`
 /// (`SQLITE_CONSTRAINT_TRIGGER`), which `sqlx` collapses into `ErrorKind::Other`.
@@ -163,13 +161,10 @@ pub(crate) fn emit_catalogued_failure(kind: &str, operation: &str, expected_cons
 
 #[cfg(test)]
 mod tests {
-    use std::error::Error;
-
+    use super::*;
     use sqlx::SqlitePool;
     use sqlx::sqlite::SqlitePoolOptions;
-
-    use crate::domain::port::error::RepositoryError;
-    use crate::domain::port::error::UnitOfWorkError;
+    use std::error::Error;
     use tracing_test::traced_test;
 
     /// Build an in-memory `SQLite` pool holding `schema`.

@@ -10,9 +10,7 @@
 use std::cmp::Ordering;
 
 use crate::domain::model::music_candidate::MusicCandidate;
-use crate::domain::model::music_metadata::Edition;
-use crate::domain::model::music_metadata::MediumSummary;
-use crate::domain::model::music_metadata::ReleaseStatus;
+use crate::domain::model::music_metadata::{Edition, MediumSummary, ReleaseStatus};
 
 /// Domain service holding the edition ordering rule.
 ///
@@ -117,21 +115,13 @@ fn all_compact_discs(mediums: &[MediumSummary]) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use std::cmp::Ordering;
-    use std::error::Error;
-
-    use chrono::NaiveDate;
-
+    use super::*;
     use crate::domain::model::configuration::ProviderId;
     use crate::domain::model::external_ref::ExternalRef;
-    use crate::domain::model::music_candidate::MusicCandidate;
-    use crate::domain::model::music_metadata::Edition;
     use crate::domain::model::music_metadata::MediumFormat;
-    use crate::domain::model::music_metadata::MediumSummary;
-    use crate::domain::model::music_metadata::ReleaseStatus;
     use crate::domain::model::music_query::MusicKind;
-
-    use super::ReleaseOrder;
+    use chrono::NaiveDate;
+    use std::error::Error;
 
     /// Build a medium summary of `format` at `position`.
     fn medium(format: MediumFormat, position: u32) -> MediumSummary {

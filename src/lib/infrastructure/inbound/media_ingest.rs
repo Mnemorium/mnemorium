@@ -3,23 +3,18 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Duration;
 
-use tokio::sync::Mutex;
-use tokio::sync::watch;
+use tokio::sync::{Mutex, watch};
 use tokio::task::JoinHandle;
-use tokio::time::Instant;
-use tokio::time::sleep;
+use tokio::time::{Instant, sleep};
 
-use crate::application::port::ingest_media::IngestMediaCommand;
-use crate::application::port::ingest_media::IngestRequest;
+use crate::application::port::ingest_media::{IngestMediaCommand, IngestRequest};
 use crate::application::port::library_use_case_factory::LibraryUseCaseFactory;
-use crate::application::port::media_change_source::MediaChange;
-use crate::application::port::media_change_source::MediaChangeSource;
-use crate::application::port::media_change_source::MediaChangeSourceError;
+use crate::application::port::media_change_source::{
+    MediaChange, MediaChangeSource, MediaChangeSourceError,
+};
 use crate::application::security_event;
-use crate::application::use_case::upload_layout::MEDIA_ROOT;
-use crate::application::use_case::upload_layout::media_root;
-use crate::domain::port::media_source::MediaEntry;
-use crate::domain::port::media_source::MediaSource;
+use crate::application::use_case::upload_layout::{MEDIA_ROOT, media_root};
+use crate::domain::port::media_source::{MediaEntry, MediaSource};
 use crate::infrastructure::outbound::file_system::media_source::LocalMediaSource;
 use crate::infrastructure::outbound::notify::media_change_source::NotifyMediaChangeSource;
 use tracing::warn;
@@ -305,36 +300,19 @@ impl MediaChangeSource for StoppedMediaChangeSource {
 
 #[cfg(test)]
 mod tests {
-    use std::error::Error;
-    use std::future::Future;
-    use std::future::pending;
-    use std::sync::Arc;
-
-    use std::sync::atomic::AtomicBool;
-    use std::sync::atomic::Ordering;
-    use std::time::Duration;
-
-    use chrono::NaiveDateTime;
-
-    use crate::application::port::ingest_media::IngestMediaCommand;
-    use crate::application::port::ingest_media::IngestMediaResponse;
-    use crate::application::port::ingest_media::IngestMediaUseCase;
-    use crate::application::port::ingest_media::IngestRequest;
-    use crate::application::port::ingest_media::MockIngestMediaUseCase;
-    use crate::application::port::library_use_case_factory::LibraryUseCaseFactory;
+    use super::*;
+    use crate::application::port::ingest_media::{
+        IngestMediaResponse, IngestMediaUseCase, MockIngestMediaUseCase,
+    };
     use crate::application::port::library_use_case_factory::MockLibraryUseCaseFactory;
-    use crate::application::port::media_change_source::MediaChange;
-    use crate::application::port::media_change_source::MediaChangeSourceError;
     use crate::application::port::media_change_source::MockMediaChangeSource;
-    use crate::domain::port::media_source::MediaEntry;
     use crate::domain::port::media_source::MockMediaSource;
-    use tracing_test::traced_test;
-
-    use tokio::sync::watch;
-    use tokio::time::sleep;
+    use chrono::NaiveDateTime;
+    use std::error::Error;
+    use std::future::pending;
+    use std::sync::atomic::{AtomicBool, Ordering};
     use tokio::time::timeout;
-
-    use super::MediaIngestRuntime;
+    use tracing_test::traced_test;
 
     /// Await `future` for at most `duration`, returning whether it completed.
     async fn completes_within<F: Future>(future: F, duration: Duration) -> bool {

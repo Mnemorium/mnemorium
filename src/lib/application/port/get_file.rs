@@ -1,8 +1,7 @@
 use std::future::Future;
 use std::pin::Pin;
 
-use chrono::NaiveDate;
-use chrono::NaiveDateTime;
+use chrono::{NaiveDate, NaiveDateTime};
 
 use crate::domain::alias::NumericID;
 use crate::domain::model::file::Origin;

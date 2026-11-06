@@ -1,19 +1,18 @@
 use axum::Json;
-use axum::extract::Path;
-use axum::extract::State;
 use axum::extract::rejection::JsonRejection;
+use axum::extract::{Path, State};
 use axum::response::Response;
 
-use crate::application::port::replace_permission::PermissionRequest as PermissionRequestData;
-use crate::application::port::replace_permission::ReplacePermissionCommand;
-use crate::application::port::replace_permission::ReplacePermissionError;
+use crate::application::port::replace_permission::{
+    PermissionRequest as PermissionRequestData, ReplacePermissionCommand, ReplacePermissionError,
+};
 use crate::domain::alias::NumericID;
-use crate::infrastructure::inbound::rest::api_error::ApiError;
-use crate::infrastructure::inbound::rest::api_error::ErrorBody;
+use crate::infrastructure::inbound::rest::api_error::{ApiError, ErrorBody};
 use crate::infrastructure::inbound::rest::app_state::AppState;
 use crate::infrastructure::inbound::rest::hal::hal_json;
-use crate::infrastructure::inbound::rest::handler::identity::PermissionRequest;
-use crate::infrastructure::inbound::rest::handler::identity::PermissionResponse;
+use crate::infrastructure::inbound::rest::handler::identity::{
+    PermissionRequest, PermissionResponse,
+};
 use crate::infrastructure::inbound::rest::handler::user::parse_user_id;
 use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 
@@ -148,22 +147,17 @@ mod tests {
 
     use crate::application::port::get_permission::GetPermissionResponse;
     use crate::application::port::identity_use_case_factory::MockIdentityUseCaseFactory;
-    use crate::application::port::replace_permission::MockReplacePermissionUseCase;
-    use crate::application::port::replace_permission::PermissionRequest as PermissionRequestData;
-    use crate::application::port::replace_permission::ReplacePermissionCommand;
-    use crate::application::port::replace_permission::ReplacePermissionError;
-    use crate::application::port::replace_permission::ReplacePermissionUseCase;
+    use crate::application::port::replace_permission::{
+        MockReplacePermissionUseCase, PermissionRequest as PermissionRequestData,
+        ReplacePermissionCommand, ReplacePermissionError, ReplacePermissionUseCase,
+    };
     use crate::domain::alias::NumericID;
-    use crate::domain::model::permission::Action;
-    use crate::domain::model::permission::Permission;
-    use crate::domain::model::permission::PermissionPreset;
-    use crate::domain::model::permission::ResourceKind;
-    use crate::domain::model::permission::ResourceRef;
-    use crate::domain::model::permission::Scope;
+    use crate::domain::model::permission::{
+        Action, Permission, PermissionPreset, ResourceKind, ResourceRef, Scope,
+    };
     use crate::domain::model::user::Role;
     use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
-    use crate::test_helpers::app_state_with_identity;
-    use crate::test_helpers::into_status_and_body;
+    use crate::test_helpers::{app_state_with_identity, into_status_and_body};
 
     use super::put_permission;
 

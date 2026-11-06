@@ -64,16 +64,11 @@ impl ContentTypeSniffer for InferContentTypeSniffer {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use std::error::Error;
     use std::fs;
-    use std::path::Path;
     use std::path::PathBuf;
-
     use tempfile::tempdir;
-
-    use crate::domain::port::content_type_sniffer::ContentTypeSniffer as _;
-
-    use super::InferContentTypeSniffer;
 
     /// Write `bytes` into `dir/name` and return the path.
     fn fixture(dir: &Path, name: &str, bytes: &[u8]) -> Result<PathBuf, Box<dyn Error>> {

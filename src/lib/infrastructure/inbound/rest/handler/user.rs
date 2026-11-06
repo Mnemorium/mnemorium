@@ -20,8 +20,7 @@ use crate::domain::model::user::Role;
 use crate::infrastructure::inbound::rest::api_error::ApiError;
 use crate::infrastructure::inbound::rest::app_state::AppState;
 use crate::infrastructure::inbound::rest::hal::SelfLinks;
-use crate::infrastructure::inbound::rest::handler::identity::get_permission;
-use crate::infrastructure::inbound::rest::handler::identity::put_permission;
+use crate::infrastructure::inbound::rest::handler::identity::{get_permission, put_permission};
 use crate::infrastructure::inbound::rest::middleware::auth::authenticate;
 use crate::infrastructure::outbound::jwt::token_provider::JwtTokenProvider;
 

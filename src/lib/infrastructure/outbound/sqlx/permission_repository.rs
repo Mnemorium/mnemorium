@@ -1,20 +1,12 @@
-use sqlx::QueryBuilder;
-use sqlx::Sqlite;
-use sqlx::Transaction;
+use sqlx::{QueryBuilder, Sqlite, Transaction};
 
 use crate::domain::alias::NumericID;
-use crate::domain::model::permission::Action;
-use crate::domain::model::permission::Permission;
-use crate::domain::model::permission::ResourceKind;
-use crate::domain::model::permission::ResourceRef;
-use crate::domain::model::permission::Scope;
+use crate::domain::model::permission::{Action, Permission, ResourceKind, ResourceRef, Scope};
 use crate::domain::port::error::RepositoryError;
-use crate::domain::port::permission_repository::PermissionFilter;
-use crate::domain::port::permission_repository::PermissionRepository;
+use crate::domain::port::permission_repository::{PermissionFilter, PermissionRepository};
 
 use super::error_mapping::stored_data_invalid;
-use super::model::permission::PermissionResourceRow;
-use super::model::permission::PermissionRow;
+use super::model::permission::{PermissionResourceRow, PermissionRow};
 use super::query_filter::push_filter;
 
 /// Repository persisting permission overrides, backed by a `SQLite`
@@ -182,24 +174,9 @@ fn domain_permission(
 
 #[cfg(test)]
 mod tests {
-    use std::error::Error;
-
-    use sqlx::Sqlite;
-    use sqlx::Transaction;
+    use super::*;
     use sqlx::sqlite::SqlitePoolOptions;
-
-    use crate::domain::model::permission::Action;
-    use crate::domain::model::permission::Permission;
-    use crate::domain::model::permission::ResourceKind;
-    use crate::domain::model::permission::ResourceRef;
-    use crate::domain::model::permission::Scope;
-    use crate::domain::port::error::RepositoryError;
-    use crate::domain::port::permission_repository::PermissionFilter;
-    use crate::domain::port::permission_repository::PermissionRepository as _;
-
-    use super::PermissionRow;
-    use super::SqlxPermissionRepository;
-    use super::domain_permission;
+    use std::error::Error;
 
     async fn begin_transaction() -> Result<Transaction<'static, Sqlite>, sqlx::Error> {
         let pool = SqlitePoolOptions::new()

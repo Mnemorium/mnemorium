@@ -2,26 +2,20 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
-use crate::application::port::list_series_episodes::ListSeriesEpisodesCommand;
-use crate::application::port::list_series_episodes::ListSeriesEpisodesError;
-use crate::application::port::list_series_episodes::ListSeriesEpisodesItem;
-use crate::application::port::list_series_episodes::ListSeriesEpisodesResponse;
-use crate::application::port::list_series_episodes::ListSeriesEpisodesUseCase;
+use crate::application::port::list_series_episodes::{
+    ListSeriesEpisodesCommand, ListSeriesEpisodesError, ListSeriesEpisodesItem,
+    ListSeriesEpisodesResponse, ListSeriesEpisodesUseCase,
+};
 use crate::application::security_event;
 use crate::domain::model::permission::Action;
 use crate::domain::port::identity_unit_of_work::IdentityUnitOfWork;
 use crate::domain::port::library_unit_of_work::LibraryUnitOfWork;
-use crate::domain::port::permission_repository::PermissionFilter;
-use crate::domain::port::permission_repository::PermissionRepository as _;
-use crate::domain::port::series_repository::SeriesFilter;
-use crate::domain::port::series_repository::SeriesRepository as _;
-use crate::domain::port::unit_of_work::UnitOfWork as _;
-use crate::domain::port::unit_of_work::UnitOfWorkFactory;
-use crate::domain::port::user_repository::UserFilter;
-use crate::domain::port::user_repository::UserRepository as _;
+use crate::domain::port::permission_repository::{PermissionFilter, PermissionRepository as _};
+use crate::domain::port::series_repository::{SeriesFilter, SeriesRepository as _};
+use crate::domain::port::unit_of_work::{UnitOfWork as _, UnitOfWorkFactory};
+use crate::domain::port::user_repository::{UserFilter, UserRepository as _};
 use crate::domain::port::user_unit_of_work::UserUnitOfWork;
-use crate::domain::service::authorization::Authorization;
-use crate::domain::service::authorization::Decision;
+use crate::domain::service::authorization::{Authorization, Decision};
 
 /// Use case implementation for listing the episodes of one season.
 pub(crate) struct ListSeriesEpisodes<F> {
@@ -152,28 +146,13 @@ where
 
 #[cfg(test)]
 mod tests {
-    use std::error::Error;
-    use std::sync::Arc;
-    use std::sync::atomic::Ordering;
-
-    use crate::application::port::list_series_episodes::ListSeriesEpisodesCommand;
-    use crate::application::port::list_series_episodes::ListSeriesEpisodesError;
-    use crate::application::port::list_series_episodes::ListSeriesEpisodesItem;
-    use crate::application::port::list_series_episodes::ListSeriesEpisodesUseCase as _;
+    use super::*;
     use crate::domain::port::error::RepositoryError;
     use crate::domain::port::series_repository::MockSeriesRepository;
     use crate::domain::port::user_repository::MockUserRepository;
-    use crate::test_helpers::GalleryFactoryHarness;
-    use crate::test_helpers::TestFactory;
-    use crate::test_helpers::TestUnitOfWork;
-    use crate::test_helpers::expect_caller;
-    use crate::test_helpers::no_permissions;
-    use crate::test_helpers::sample_episode;
-    use crate::test_helpers::sample_season;
-    use crate::test_helpers::sample_series;
-    use crate::test_helpers::video_date;
-
-    use super::ListSeriesEpisodes;
+    use crate::test_helpers::*;
+    use std::error::Error;
+    use std::sync::atomic::Ordering;
 
     /// The use case under test, bound to the mocked unit-of-work factory.
     type UseCase = ListSeriesEpisodes<TestFactory>;

@@ -3,8 +3,7 @@ use std::path::Path;
 
 use chrono::NaiveDateTime;
 
-use crate::domain::model::integrity_hash::DIGEST_HEX_LENGTH;
-use crate::domain::model::integrity_hash::IntegrityHash;
+use crate::domain::model::integrity_hash::{DIGEST_HEX_LENGTH, IntegrityHash};
 use crate::domain::port::error::StorageError;
 
 /// Metadata of a file promoted into the media library.

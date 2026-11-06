@@ -1,18 +1,11 @@
 use std::env::vars;
-use std::future::Future;
-use std::future::ready;
+use std::future::{Future, ready};
 
 use crate::domain::model::configuration::Rotation;
-use crate::domain::model::partial_configuration::PartialAsset;
-use crate::domain::model::partial_configuration::PartialAssetUpload;
-use crate::domain::model::partial_configuration::PartialConfiguration;
-use crate::domain::model::partial_configuration::PartialJwt;
-use crate::domain::model::partial_configuration::PartialLibrary;
-use crate::domain::model::partial_configuration::PartialLogging;
-use crate::domain::model::partial_configuration::PartialPersistence;
-use crate::domain::model::partial_configuration::PartialRateLimit;
-use crate::domain::model::partial_configuration::PartialSecurity;
-use crate::domain::model::partial_configuration::PartialSqlite3;
+use crate::domain::model::partial_configuration::{
+    PartialAsset, PartialAssetUpload, PartialConfiguration, PartialJwt, PartialLibrary,
+    PartialLogging, PartialPersistence, PartialRateLimit, PartialSecurity, PartialSqlite3,
+};
 use crate::domain::port::configuration_source::EnvironmentConfiguration;
 use crate::domain::port::error::ConfigurationSourceError;
 
@@ -169,15 +162,9 @@ impl EnvironmentConfiguration for EnvConfigurationSource {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use std::error::Error;
     use std::iter::empty;
-
-    use crate::domain::model::configuration::Rotation;
-    use crate::domain::model::partial_configuration::PartialConfiguration;
-    use crate::domain::model::partial_configuration::PartialLibrary;
-    use crate::domain::port::error::ConfigurationSourceError;
-
-    use super::EnvConfigurationSource;
 
     /// Build a (name, value) pair the way the process environment yields it.
     fn variable(name: &str, value: &str) -> (String, String) {

@@ -1,21 +1,18 @@
 use chrono::NaiveDateTime;
-use sqlx::QueryBuilder;
-use sqlx::Sqlite;
-use sqlx::Transaction;
+use sqlx::{QueryBuilder, Sqlite, Transaction};
 
 use crate::domain::alias::NumericID;
 use crate::domain::model::gallery::Gallery;
-use crate::domain::model::gallery_item::GalleryItem;
-use crate::domain::model::gallery_item::GalleryItemMedia;
+use crate::domain::model::gallery_item::{GalleryItem, GalleryItemMedia};
 use crate::domain::port::error::RepositoryError;
-use crate::domain::port::gallery_repository::GalleryFilter;
-use crate::domain::port::gallery_repository::GalleryItemDetail;
-use crate::domain::port::gallery_repository::GalleryItemFilter;
-use crate::domain::port::gallery_repository::GalleryRepository;
+use crate::domain::port::gallery_repository::{
+    GalleryFilter, GalleryItemDetail, GalleryItemFilter, GalleryRepository,
+};
 
 use super::model::gallery::Gallery as SqlxGallery;
-use super::model::gallery_item::GalleryItem as SqlxGalleryItem;
-use super::model::gallery_item::GalleryItemDetail as SqlxGalleryItemDetail;
+use super::model::gallery_item::{
+    GalleryItem as SqlxGalleryItem, GalleryItemDetail as SqlxGalleryItemDetail,
+};
 
 /// Repository persisting galleries and their items, backed by a `SQLite`
 /// transaction.
@@ -311,22 +308,9 @@ fn domain_item(
 
 #[cfg(test)]
 mod tests {
-    use std::error::Error;
-
-    use chrono::NaiveDateTime;
-    use sqlx::Sqlite;
-    use sqlx::Transaction;
+    use super::*;
     use sqlx::sqlite::SqlitePoolOptions;
-
-    use crate::domain::model::gallery::Gallery;
-    use crate::domain::model::gallery_item::GalleryItem;
-    use crate::domain::model::gallery_item::GalleryItemMedia;
-    use crate::domain::port::error::RepositoryError;
-    use crate::domain::port::gallery_repository::GalleryFilter;
-    use crate::domain::port::gallery_repository::GalleryItemFilter;
-    use crate::domain::port::gallery_repository::GalleryRepository as _;
-
-    use super::SqlxGalleryRepository;
+    use std::error::Error;
 
     /// Open a migrated in-memory database and begin one transaction.
     async fn begin_transaction() -> Result<Transaction<'static, Sqlite>, sqlx::Error> {

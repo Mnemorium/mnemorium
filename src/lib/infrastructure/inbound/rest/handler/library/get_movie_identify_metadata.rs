@@ -1,15 +1,14 @@
-use axum::extract::Path;
-use axum::extract::State;
+use axum::extract::{Path, State};
 use axum::response::Response;
 use tracing::warn;
 
-use crate::application::port::resolve_video_metadata::ResolveVideoMetadataCommand;
-use crate::application::port::resolve_video_metadata::ResolveVideoMetadataError;
+use crate::application::port::resolve_video_metadata::{
+    ResolveVideoMetadataCommand, ResolveVideoMetadataError,
+};
 use crate::domain::model::configuration::ProviderId;
 use crate::domain::model::external_ref::ExternalRef;
 use crate::domain::model::video_candidate::Target;
-use crate::infrastructure::inbound::rest::api_error::ApiError;
-use crate::infrastructure::inbound::rest::api_error::ErrorBody;
+use crate::infrastructure::inbound::rest::api_error::{ApiError, ErrorBody};
 use crate::infrastructure::inbound::rest::app_state::AppState;
 use crate::infrastructure::inbound::rest::hal::hal_json;
 use crate::infrastructure::inbound::rest::handler::library::VideoMetadataDocumentResponse;
@@ -111,31 +110,24 @@ pub(crate) async fn get_movie_identify_metadata(
 
 #[cfg(test)]
 mod tests {
-    use std::error::Error;
-    use std::sync::Arc;
-
+    use super::*;
+    use crate::application::port::library_use_case_factory::MockLibraryUseCaseFactory;
+    use crate::application::port::resolve_video_metadata::{
+        MockResolveVideoMetadataUseCase, ResolveVideoMetadataResponse, ResolveVideoMetadataUseCase,
+    };
+    use crate::domain::alias::NumericID;
+    use crate::domain::model::media_metadata::MediaMetadata;
+    use crate::infrastructure::inbound::rest::handler::library::library_routes;
+    use crate::test_helpers::*;
     use axum::body::Body;
     use axum::extract::Request;
     use axum::http::StatusCode;
-    use axum::response::Response;
     use axum::routing::get;
     use chrono::NaiveDate;
     use serde_json::json;
+    use std::error::Error;
+    use std::sync::Arc;
     use tower::ServiceExt as _;
-
-    use super::get_movie_identify_metadata;
-    use crate::application::port::library_use_case_factory::MockLibraryUseCaseFactory;
-    use crate::application::port::resolve_video_metadata::MockResolveVideoMetadataUseCase;
-    use crate::application::port::resolve_video_metadata::ResolveVideoMetadataError;
-    use crate::application::port::resolve_video_metadata::ResolveVideoMetadataResponse;
-    use crate::application::port::resolve_video_metadata::ResolveVideoMetadataUseCase;
-    use crate::domain::alias::NumericID;
-    use crate::domain::model::media_metadata::MediaMetadata;
-    use crate::domain::model::video_candidate::Target;
-    use crate::infrastructure::inbound::rest::handler::library::library_routes;
-    use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
-    use crate::test_helpers::app_state_with_library;
-    use crate::test_helpers::into_parts;
 
     /// The reference every test resolves.
     const REFERENCE: &str = "27205";

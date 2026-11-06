@@ -1,49 +1,35 @@
-use std::collections::HashMap;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::future::Future;
-use std::path::Component;
-use std::path::Path;
+use std::path::{Component, Path};
 use std::pin::Pin;
 use std::sync::Arc;
 
 use chrono::Utc;
 
-use crate::application::port::ingest_media::IngestMediaCommand;
-use crate::application::port::ingest_media::IngestMediaError;
-use crate::application::port::ingest_media::IngestMediaResponse;
-use crate::application::port::ingest_media::IngestMediaUseCase;
-use crate::application::port::ingest_media::IngestRequest;
+use crate::application::port::ingest_media::{
+    IngestMediaCommand, IngestMediaError, IngestMediaResponse, IngestMediaUseCase, IngestRequest,
+};
 use crate::application::security_event;
 use crate::application::use_case::upload_layout::media_path;
 use crate::domain::alias::NumericID;
-use crate::domain::model::audio::Audio;
-use crate::domain::model::audio::ProbedAudio;
+use crate::domain::model::audio::{Audio, ProbedAudio};
 use crate::domain::model::file::File;
-use crate::domain::model::image::Image;
-use crate::domain::model::image::ProbedImage;
-use crate::domain::model::video::ProbedVideo;
-use crate::domain::model::video::Video;
+use crate::domain::model::image::{Image, ProbedImage};
+use crate::domain::model::video::{ProbedVideo, Video};
 use crate::domain::port::asset_unit_of_work::AssetUnitOfWork;
-use crate::domain::port::audio_repository::AudioFilter;
-use crate::domain::port::audio_repository::AudioRepository as _;
+use crate::domain::port::audio_repository::{AudioFilter, AudioRepository as _};
 use crate::domain::port::content_type_sniffer::ContentTypeSniffer;
 use crate::domain::port::error::RepositoryError;
-use crate::domain::port::file_repository::FileFilter;
-use crate::domain::port::file_repository::FileRepository as _;
-use crate::domain::port::image_repository::ImageFilter;
-use crate::domain::port::image_repository::ImageRepository as _;
+use crate::domain::port::file_repository::{FileFilter, FileRepository as _};
+use crate::domain::port::image_repository::{ImageFilter, ImageRepository as _};
 use crate::domain::port::library_unit_of_work::LibraryUnitOfWork;
 use crate::domain::port::media_probe::MediaProbe;
-use crate::domain::port::media_source::MediaEntry;
-use crate::domain::port::media_source::MediaSource;
+use crate::domain::port::media_source::{MediaEntry, MediaSource};
 use crate::domain::port::mime_type_repository::MimeTypeRepository as _;
-use crate::domain::port::unit_of_work::UnitOfWork;
-use crate::domain::port::unit_of_work::UnitOfWorkFactory;
-use crate::domain::port::user_repository::UserFilter;
-use crate::domain::port::user_repository::UserRepository as _;
+use crate::domain::port::unit_of_work::{UnitOfWork, UnitOfWorkFactory};
+use crate::domain::port::user_repository::{UserFilter, UserRepository as _};
 use crate::domain::port::user_unit_of_work::UserUnitOfWork;
-use crate::domain::port::video_repository::VideoFilter;
-use crate::domain::port::video_repository::VideoRepository as _;
+use crate::domain::port::video_repository::{VideoFilter, VideoRepository as _};
 
 /// Identifier of the Root Admin, who owns a file the server did not store.
 const ROOT_ADMIN_USER_ID: NumericID = 0;
@@ -748,46 +734,22 @@ fn media_kind(mime_type_id: &str) -> Option<MediaKind> {
 
 #[cfg(test)]
 mod tests {
-    use std::error::Error;
-    use std::path::Path;
-    use std::sync::Arc;
-    use std::sync::Mutex;
-    use std::sync::atomic::AtomicBool;
-    use std::sync::atomic::Ordering;
-
-    use chrono::NaiveDate;
-    use chrono::NaiveDateTime;
-    use tracing_test::traced_test;
-
-    use crate::application::port::ingest_media::IngestMediaCommand;
-    use crate::application::port::ingest_media::IngestMediaUseCase as _;
-    use crate::application::port::ingest_media::IngestRequest;
-    use crate::domain::model::audio::Audio;
+    use super::*;
     use crate::domain::model::audio::AudioError;
-    use crate::domain::model::audio::ProbedAudio;
-    use crate::domain::model::file::File;
-    use crate::domain::model::file::FileError;
-    use crate::domain::model::file::Origin;
-    use crate::domain::model::image::Image;
+    use crate::domain::model::file::{FileError, Origin};
     use crate::domain::model::image::Orientation;
-    use crate::domain::model::image::ProbedImage;
-    use crate::domain::model::user::Role;
-    use crate::domain::model::user::User;
-    use crate::domain::model::video::ProbedVideo;
+    use crate::domain::model::user::{Role, User};
     use crate::domain::model::video::ScanType;
-    use crate::domain::port::audio_repository::AudioFilter;
     use crate::domain::port::content_type_sniffer::MockContentTypeSniffer;
-    use crate::domain::port::error::ContentTypeSnifferError;
-    use crate::domain::port::error::MediaProbeError;
-    use crate::domain::port::error::RepositoryError;
-    use crate::domain::port::image_repository::ImageFilter;
+    use crate::domain::port::error::{ContentTypeSnifferError, MediaProbeError};
     use crate::domain::port::media_probe::MockMediaProbe;
-    use crate::domain::port::media_source::MediaEntry;
     use crate::domain::port::media_source::MockMediaSource;
-    use crate::test_helpers::TestFactory;
-    use crate::test_helpers::TestUow;
-
-    use super::IngestMedia;
+    use crate::test_helpers::*;
+    use chrono::{NaiveDate, NaiveDateTime};
+    use std::error::Error;
+    use std::sync::Mutex;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use tracing_test::traced_test;
 
     type UseCase =
         IngestMedia<TestFactory, MockContentTypeSniffer, MockMediaProbe, MockMediaSource>;

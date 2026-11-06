@@ -4,8 +4,7 @@ use std::pin::Pin;
 use chrono::NaiveDateTime;
 
 use crate::domain::alias::NumericID;
-use crate::domain::model::integrity_hash::DIGEST_HEX_LENGTH;
-use crate::domain::model::integrity_hash::IntegrityHash;
+use crate::domain::model::integrity_hash::{DIGEST_HEX_LENGTH, IntegrityHash};
 
 /// Command to write one chunk of an upload session.
 #[derive(Debug, Clone, PartialEq, Eq)]

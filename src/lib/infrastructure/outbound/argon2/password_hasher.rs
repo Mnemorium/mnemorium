@@ -1,11 +1,9 @@
 use std::future::{Future, ready};
 
-use argon2::Algorithm;
-use argon2::Argon2;
-use argon2::Params;
-use argon2::Version;
-use argon2::password_hash::Error as PasswordHashError;
-use argon2::password_hash::{PasswordHasher as _, PasswordVerifier as _};
+use argon2::password_hash::{
+    Error as PasswordHashError, PasswordHasher as _, PasswordVerifier as _,
+};
+use argon2::{Algorithm, Argon2, Params, Version};
 use tracing::error;
 
 use crate::domain::port::error::PasswordHasherError;
@@ -104,9 +102,7 @@ impl PasswordHasher for Argon2PasswordHasher {
 
 #[cfg(test)]
 mod tests {
-    use crate::domain::port::password_hasher::PasswordHasher as _;
-
-    use super::Argon2PasswordHasher;
+    use super::*;
 
     fn pepper(value: u8) -> Vec<u8> {
         vec![value; 32]

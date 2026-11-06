@@ -1,17 +1,14 @@
 use axum::Json;
 use axum::extract::State;
 use axum::extract::rejection::JsonRejection;
-use axum::http::HeaderValue;
-use axum::http::StatusCode;
-use axum::http::header;
+use axum::http::{HeaderValue, StatusCode, header};
 use axum::response::Response;
 use serde::Deserialize;
 use utoipa::ToSchema;
 
 use crate::application::port::create_music_group::CreateMusicGroupCommand;
 use crate::domain::alias::NumericID;
-use crate::infrastructure::inbound::rest::api_error::ApiError;
-use crate::infrastructure::inbound::rest::api_error::ErrorBody;
+use crate::infrastructure::inbound::rest::api_error::{ApiError, ErrorBody};
 use crate::infrastructure::inbound::rest::app_state::AppState;
 use crate::infrastructure::inbound::rest::hal::hal_json;
 use crate::infrastructure::inbound::rest::handler::library::MusicGroupResponse;
@@ -137,34 +134,24 @@ pub(crate) async fn post_music_group(
 
 #[cfg(test)]
 mod tests {
-    use std::error::Error;
-    use std::sync::Arc;
-
+    use super::*;
+    use crate::application::port::create_music_group::{
+        CreateMusicGroupError, CreateMusicGroupResponse, CreateMusicGroupUseCase,
+        MockCreateMusicGroupUseCase,
+    };
+    use crate::application::port::library_use_case_factory::MockLibraryUseCaseFactory;
+    use crate::domain::model::music_group::MusicGroup;
+    use crate::infrastructure::inbound::rest::handler::library::library_routes;
+    use crate::test_helpers::*;
     use axum::body::Body;
     use axum::extract::Request;
-    use axum::http::StatusCode;
-    use axum::http::header;
-    use axum::response::Response;
     use axum::routing::post;
     use mockall::predicate::eq;
     use rstest::rstest;
     use serde_json::json;
+    use std::error::Error;
+    use std::sync::Arc;
     use tower::ServiceExt as _;
-
-    use super::post_music_group;
-    use crate::application::port::create_music_group::CreateMusicGroupCommand;
-    use crate::application::port::create_music_group::CreateMusicGroupError;
-    use crate::application::port::create_music_group::CreateMusicGroupResponse;
-    use crate::application::port::create_music_group::CreateMusicGroupUseCase;
-    use crate::application::port::create_music_group::MockCreateMusicGroupUseCase;
-    use crate::application::port::library_use_case_factory::MockLibraryUseCaseFactory;
-    use crate::domain::alias::NumericID;
-    use crate::domain::model::music_group::MusicGroup;
-    use crate::infrastructure::inbound::rest::handler::library::library_routes;
-    use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
-    use crate::test_helpers::app_state_with_library;
-    use crate::test_helpers::error_message_of;
-    use crate::test_helpers::into_parts;
 
     /// Send a POST to `/api/v1/library/music/group` on behalf of `caller_id`,
     /// injecting the caller identifier the way the auth middleware does.

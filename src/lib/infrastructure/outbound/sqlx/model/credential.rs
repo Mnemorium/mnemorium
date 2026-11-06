@@ -1,6 +1,4 @@
-use std::fmt::Debug;
-use std::fmt::Formatter;
-use std::fmt::Result as FmtResult;
+use std::fmt::{Debug, Formatter, Result as FmtResult};
 
 use chrono::NaiveDateTime;
 
@@ -31,9 +29,7 @@ impl Debug for Credential {
 
 #[cfg(test)]
 mod tests {
-    use chrono::NaiveDateTime;
-
-    use super::Credential;
+    use super::*;
 
     #[test]
     fn credential_debug_redacts_the_password_hash_but_keeps_the_id() {

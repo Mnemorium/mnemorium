@@ -1,26 +1,19 @@
-use axum::extract::Query;
-use axum::extract::State;
 use axum::extract::rejection::QueryRejection;
+use axum::extract::{Query, State};
 use axum::response::Response;
 use serde::{Deserialize, Serialize};
 use tracing::warn;
-use utoipa::IntoParams;
-use utoipa::ToSchema;
+use utoipa::{IntoParams, ToSchema};
 
-use crate::application::port::list_users::ListUsersCommand;
-use crate::application::port::list_users::ListUsersError;
-use crate::application::port::list_users::ListUsersResponse as ListUsersResponseData;
+use crate::application::port::list_users::{
+    ListUsersCommand, ListUsersError, ListUsersResponse as ListUsersResponseData,
+};
 use crate::domain::model::user::Role;
-use crate::domain::service::username_policy::MAX_USERNAME_LENGTH;
-use crate::domain::service::username_policy::MIN_USERNAME_LENGTH;
-use crate::infrastructure::inbound::rest::api_error::ApiError;
-use crate::infrastructure::inbound::rest::api_error::ErrorBody;
+use crate::domain::service::username_policy::{MAX_USERNAME_LENGTH, MIN_USERNAME_LENGTH};
+use crate::infrastructure::inbound::rest::api_error::{ApiError, ErrorBody};
 use crate::infrastructure::inbound::rest::app_state::AppState;
-use crate::infrastructure::inbound::rest::hal::Link;
-use crate::infrastructure::inbound::rest::hal::SelfLinks;
-use crate::infrastructure::inbound::rest::hal::hal_json;
-use crate::infrastructure::inbound::rest::handler::user::GetUserResponse;
-use crate::infrastructure::inbound::rest::handler::user::user_self_href;
+use crate::infrastructure::inbound::rest::hal::{Link, SelfLinks, hal_json};
+use crate::infrastructure::inbound::rest::handler::user::{GetUserResponse, user_self_href};
 use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 
 /// Filters restricting the returned users.
@@ -226,34 +219,22 @@ pub(crate) async fn get_user_list(
 
 #[cfg(test)]
 mod tests {
-    use std::error::Error;
-    use std::sync::Arc;
-
-    use axum::body::Body;
-
-    use axum::extract::Request;
-    use axum::http::StatusCode;
-
-    use axum::response::Response;
-    use axum::routing::get;
-    use mockall::predicate::eq;
-
-    use serde_json::json;
-    use tower::ServiceExt as _;
-
-    use super::get_user_list;
-    use crate::application::port::list_users::ListUsersCommand;
-    use crate::application::port::list_users::ListUsersError;
-    use crate::application::port::list_users::ListUsersResponse;
-    use crate::application::port::list_users::ListUsersUseCase;
-    use crate::application::port::list_users::MockListUsersUseCase;
+    use super::*;
+    use crate::application::port::list_users::{
+        ListUsersResponse, ListUsersUseCase, MockListUsersUseCase,
+    };
     use crate::application::port::user_use_case_factory::MockUserUseCaseFactory;
     use crate::domain::alias::NumericID;
-    use crate::domain::model::user::Role;
-    use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
-    use crate::test_helpers::app_state_with_user;
-    use crate::test_helpers::error_message_of;
-    use crate::test_helpers::into_parts;
+    use crate::test_helpers::*;
+    use axum::body::Body;
+    use axum::extract::Request;
+    use axum::http::StatusCode;
+    use axum::routing::get;
+    use mockall::predicate::eq;
+    use serde_json::json;
+    use std::error::Error;
+    use std::sync::Arc;
+    use tower::ServiceExt as _;
     use tracing_test::traced_test;
 
     /// Send a GET to `/api/v1/user{query}` on behalf of `caller_id`, injecting

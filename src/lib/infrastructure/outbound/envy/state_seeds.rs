@@ -1,12 +1,8 @@
 use std::env::vars;
-use std::fmt::Debug;
-use std::fmt::Formatter;
-use std::fmt::Result as FmtResult;
-use std::future::Future;
-use std::future::ready;
+use std::fmt::{Debug, Formatter, Result as FmtResult};
+use std::future::{Future, ready};
 
-use crate::application::port::load_state::StateSeedSource;
-use crate::application::port::load_state::StateSeeds as StateSeedsPort;
+use crate::application::port::load_state::{StateSeedSource, StateSeeds as StateSeedsPort};
 use crate::domain::port::error::StateSeedSourceError;
 
 /// Prefix every server environment variable carries.
@@ -110,12 +106,9 @@ impl StateSeedSource for EnvStateSeedSource {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use std::error::Error;
     use std::iter::empty;
-
-    use crate::application::port::load_state::StateSeeds as StateSeedsPort;
-
-    use super::EnvStateSeedSource;
 
     /// Build a (name, value) pair the way the process environment yields it.
     fn variable(name: &str, value: &str) -> (String, String) {

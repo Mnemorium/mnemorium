@@ -1,16 +1,13 @@
 use axum::Json;
 use axum::extract::State;
 use axum::extract::rejection::JsonRejection;
-use axum::http::HeaderValue;
-use axum::http::StatusCode;
-use axum::http::header;
+use axum::http::{HeaderValue, StatusCode, header};
 use axum::response::Response;
 use serde::Deserialize;
 use utoipa::ToSchema;
 
 use crate::application::port::create_playlist::CreatePlaylistCommand;
-use crate::infrastructure::inbound::rest::api_error::ApiError;
-use crate::infrastructure::inbound::rest::api_error::ErrorBody;
+use crate::infrastructure::inbound::rest::api_error::{ApiError, ErrorBody};
 use crate::infrastructure::inbound::rest::app_state::AppState;
 use crate::infrastructure::inbound::rest::hal::hal_json;
 use crate::infrastructure::inbound::rest::handler::library::PlaylistResponse;
@@ -125,36 +122,25 @@ pub(crate) async fn post_playlist(
 #[cfg(test)]
 mod tests {
 
-    use std::error::Error;
-    use std::sync::Arc;
-
-    use axum::body::Body;
-    use axum::body::to_bytes;
-    use axum::extract::Request;
-    use axum::http::StatusCode;
-    use axum::http::header;
-    use axum::response::Response;
-    use axum::routing::post;
-    use chrono::NaiveDate;
-    use chrono::NaiveDateTime;
-    use mockall::predicate::eq;
-    use rstest::rstest;
-    use serde_json::Value;
-    use serde_json::json;
-    use tower::ServiceExt as _;
-
-    use super::post_playlist;
-    use crate::application::port::create_playlist::CreatePlaylistCommand;
-    use crate::application::port::create_playlist::CreatePlaylistError;
-    use crate::application::port::create_playlist::CreatePlaylistResponse;
-    use crate::application::port::create_playlist::CreatePlaylistUseCase;
-    use crate::application::port::create_playlist::MockCreatePlaylistUseCase;
+    use super::*;
+    use crate::application::port::create_playlist::{
+        CreatePlaylistError, CreatePlaylistResponse, CreatePlaylistUseCase,
+        MockCreatePlaylistUseCase,
+    };
     use crate::application::port::library_use_case_factory::MockLibraryUseCaseFactory;
     use crate::domain::alias::NumericID;
     use crate::domain::model::music_playlist::MusicPlaylist;
-    use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
-    use crate::test_helpers::app_state_with_library;
-    use crate::test_helpers::error_message_of;
+    use crate::test_helpers::*;
+    use axum::body::{Body, to_bytes};
+    use axum::extract::Request;
+    use axum::routing::post;
+    use chrono::{NaiveDate, NaiveDateTime};
+    use mockall::predicate::eq;
+    use rstest::rstest;
+    use serde_json::{Value, json};
+    use std::error::Error;
+    use std::sync::Arc;
+    use tower::ServiceExt as _;
 
     fn ts() -> NaiveDateTime {
         NaiveDate::from_ymd_opt(2026, 10, 6)

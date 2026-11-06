@@ -1,21 +1,18 @@
-use axum::extract::Query;
-use axum::extract::State;
 use axum::extract::rejection::QueryRejection;
+use axum::extract::{Query, State};
 use axum::response::Response;
 use serde::Deserialize;
 use tracing::warn;
 use utoipa::IntoParams;
 
-use super::DEFAULT_LIMIT;
-use super::MAX_LIMIT;
+use super::{DEFAULT_LIMIT, MAX_LIMIT};
 use crate::application::port::list_series::ListSeriesCommand;
-use crate::infrastructure::inbound::rest::api_error::ApiError;
-use crate::infrastructure::inbound::rest::api_error::ErrorBody;
+use crate::infrastructure::inbound::rest::api_error::{ApiError, ErrorBody};
 use crate::infrastructure::inbound::rest::app_state::AppState;
 use crate::infrastructure::inbound::rest::hal::hal_json;
-use crate::infrastructure::inbound::rest::handler::library::SeriesListLinks;
-use crate::infrastructure::inbound::rest::handler::library::SeriesListResponse;
-use crate::infrastructure::inbound::rest::handler::library::SeriesSummaryResponse;
+use crate::infrastructure::inbound::rest::handler::library::{
+    SeriesListLinks, SeriesListResponse, SeriesSummaryResponse,
+};
 use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 
 /// Filters and pagination restricting the returned shows.
@@ -131,32 +128,24 @@ pub(crate) async fn get_series_list(
 
 #[cfg(test)]
 mod tests {
-    use std::error::Error;
-    use std::sync::Arc;
-
+    use super::*;
+    use crate::application::port::library_use_case_factory::MockLibraryUseCaseFactory;
+    use crate::application::port::list_series::{
+        ListSeriesError, ListSeriesItem, ListSeriesResponse, ListSeriesUseCase,
+        MockListSeriesUseCase,
+    };
+    use crate::domain::alias::NumericID;
+    use crate::infrastructure::inbound::rest::handler::library::library_routes;
+    use crate::test_helpers::*;
     use axum::body::Body;
     use axum::extract::Request;
     use axum::http::StatusCode;
-    use axum::response::Response;
     use axum::routing::get;
     use rstest::rstest;
     use serde_json::json;
+    use std::error::Error;
+    use std::sync::Arc;
     use tower::ServiceExt as _;
-
-    use super::get_series_list;
-    use crate::application::port::library_use_case_factory::MockLibraryUseCaseFactory;
-    use crate::application::port::list_series::ListSeriesCommand;
-    use crate::application::port::list_series::ListSeriesError;
-    use crate::application::port::list_series::ListSeriesItem;
-    use crate::application::port::list_series::ListSeriesResponse;
-    use crate::application::port::list_series::ListSeriesUseCase;
-    use crate::application::port::list_series::MockListSeriesUseCase;
-    use crate::domain::alias::NumericID;
-    use crate::infrastructure::inbound::rest::handler::library::library_routes;
-    use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
-    use crate::test_helpers::app_state_with_library;
-    use crate::test_helpers::error_message_of;
-    use crate::test_helpers::into_parts;
 
     /// Send a GET to `/api/v1/library/series{query}` on behalf of `caller_id`,
     /// injecting the caller identifier the way the auth middleware does.
