@@ -43,8 +43,8 @@ impl GetMovieCommand {
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
 pub(crate) struct GetMovieResponse {
-    /// Country of origin of the film.
-    country_of_origin: String,
+    /// Country of origin of the film, when known.
+    country_of_origin: Option<String>,
     /// Identifier of the image holding the film's artwork, when set.
     cover_image_id: Option<NumericID>,
     /// Genres of the film, ordered by genre identifier.
@@ -55,17 +55,17 @@ pub(crate) struct GetMovieResponse {
     name: String,
     /// Plot of the film.
     plot: String,
-    /// Date of the release of the film.
-    release_date: NaiveDate,
+    /// Date of the release of the film, when known.
+    release_date: Option<NaiveDate>,
     /// Video backing the film.
     video: Video,
 }
 
 impl GetMovieResponse {
-    /// Return the country of origin of the film.
+    /// Return the country of origin of the film, if known.
     #[must_use]
-    pub(crate) fn country_of_origin(&self) -> &str {
-        &self.country_of_origin
+    pub(crate) fn country_of_origin(&self) -> Option<&str> {
+        self.country_of_origin.as_deref()
     }
 
     /// Return the identifier of the image holding the film's artwork, if any.
@@ -102,8 +102,8 @@ impl GetMovieResponse {
         id: NumericID,
         name: String,
         plot: String,
-        country_of_origin: String,
-        release_date: NaiveDate,
+        country_of_origin: Option<String>,
+        release_date: Option<NaiveDate>,
         genre_ids: Vec<String>,
         cover_image_id: Option<NumericID>,
         video: Video,
@@ -126,9 +126,9 @@ impl GetMovieResponse {
         &self.plot
     }
 
-    /// Return the date of the release of the film.
+    /// Return the date of the release of the film, if known.
     #[must_use]
-    pub(crate) fn release_date(&self) -> NaiveDate {
+    pub(crate) fn release_date(&self) -> Option<NaiveDate> {
         self.release_date
     }
 

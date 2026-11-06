@@ -27,6 +27,10 @@ pub(crate) mod get_gallery_list;
 /// The library context endpoints.
 pub(crate) mod get_movie;
 /// The library context endpoints.
+pub(crate) mod get_movie_identify;
+/// The library context endpoints.
+pub(crate) mod get_movie_identify_metadata;
+/// The library context endpoints.
 pub(crate) mod get_movie_list;
 /// The library context endpoints.
 pub(crate) mod get_music_group;
@@ -51,6 +55,10 @@ pub(crate) mod get_series_episode;
 /// The library context endpoints.
 pub(crate) mod get_series_episode_list;
 /// The library context endpoints.
+pub(crate) mod get_series_identify;
+/// The library context endpoints.
+pub(crate) mod get_series_identify_metadata;
+/// The library context endpoints.
 pub(crate) mod get_series_list;
 /// The library context endpoints.
 pub(crate) mod get_series_season;
@@ -59,9 +67,17 @@ pub(crate) mod patch_album;
 /// The library context endpoints.
 pub(crate) mod patch_album_track;
 /// The library context endpoints.
+pub(crate) mod patch_movie;
+/// The library context endpoints.
 pub(crate) mod patch_music_group;
 /// The library context endpoints.
 pub(crate) mod patch_playlist;
+/// The library context endpoints.
+pub(crate) mod patch_series;
+/// The library context endpoints.
+pub(crate) mod patch_series_episode;
+/// The library context endpoints.
+pub(crate) mod patch_series_season;
 /// The library context endpoints.
 pub(crate) mod post_album;
 /// The library context endpoints.
@@ -71,15 +87,29 @@ pub(crate) mod post_gallery;
 /// The library context endpoints.
 pub(crate) mod post_gallery_item;
 /// The library context endpoints.
+pub(crate) mod post_movie;
+/// The library context endpoints.
+pub(crate) mod post_movie_apply;
+/// The library context endpoints.
 pub(crate) mod post_music_group;
 /// The library context endpoints.
 pub(crate) mod post_playlist;
+/// The library context endpoints.
+pub(crate) mod post_series;
+/// The library context endpoints.
+pub(crate) mod post_series_apply;
+/// The library context endpoints.
+pub(crate) mod post_series_episode_apply;
 /// The library context endpoints.
 pub(crate) mod put_album_medium;
 /// The library context endpoints.
 pub(crate) mod put_album_track;
 /// The library context endpoints.
 pub(crate) mod put_playlist_track;
+/// The library context endpoints.
+pub(crate) mod put_series_episode;
+/// The library context endpoints.
+pub(crate) mod put_series_season;
 
 use axum::middleware;
 use chrono::NaiveDate;
@@ -93,11 +123,16 @@ use utoipa_axum::routes;
 
 use crate::application::field_update::FieldUpdate;
 use crate::application::port::add_gallery_item::AddGalleryItemResponse;
+use crate::application::port::apply_movie::ApplyMovieError;
 use crate::application::port::apply_music_album::ApplyMusicAlbumError;
+use crate::application::port::apply_series::ApplySeriesError;
+use crate::application::port::apply_series_episode::ApplySeriesEpisodeError;
 use crate::application::port::create_gallery::CreateGalleryResponse;
+use crate::application::port::create_movie::CreateMovieError;
 use crate::application::port::create_music_album::CreateMusicAlbumError;
 use crate::application::port::create_music_group::CreateMusicGroupError;
 use crate::application::port::create_playlist::CreatePlaylistError;
+use crate::application::port::create_series::CreateSeriesError;
 use crate::application::port::delete_playlist::DeletePlaylistError;
 use crate::application::port::get_album::GetAlbumError;
 use crate::application::port::get_album::GetAlbumResponse as GetAlbumResponseData;
@@ -121,6 +156,7 @@ use crate::application::port::get_series_episode::GetSeriesEpisodeResponse;
 use crate::application::port::get_series_season::GetSeriesSeasonError;
 use crate::application::port::get_series_season::GetSeriesSeasonResponse;
 use crate::application::port::identify_music::IdentifyMusicError;
+use crate::application::port::identify_video::IdentifyVideoError;
 use crate::application::port::list_album_tracks::ListAlbumTracksError;
 use crate::application::port::list_album_tracks::ListAlbumTracksItem;
 use crate::application::port::list_albums::ListAlbumsError;
@@ -139,15 +175,26 @@ use crate::application::port::list_series_episodes::ListSeriesEpisodesItem;
 use crate::application::port::patch_album_track::PatchAlbumTrackError;
 use crate::application::port::put_album_medium::PutAlbumMediumError;
 use crate::application::port::put_album_track::PutAlbumTrackError;
+use crate::application::port::put_series_episode::PutSeriesEpisodeError;
+use crate::application::port::put_series_season::PutSeriesSeasonError;
 use crate::application::port::remove_playlist_track::RemovePlaylistTrackError;
 use crate::application::port::reorder_playlist_tracks::ReorderPlaylistTracksError;
 use crate::application::port::resolve_music_metadata::ResolveMusicMetadataError;
+use crate::application::port::resolve_video_metadata::ResolveVideoMetadataError;
+use crate::application::port::update_movie::UpdateMovieError;
 use crate::application::port::update_music_album::UpdateMusicAlbumError;
 use crate::application::port::update_music_group::UpdateMusicGroupError;
 use crate::application::port::update_playlist::UpdatePlaylistError;
+use crate::application::port::update_series::UpdateSeriesError;
+use crate::application::port::update_series_episode::UpdateSeriesEpisodeError;
+use crate::application::port::update_series_season::UpdateSeriesSeasonError;
 use crate::domain::alias::NumericID;
+use crate::domain::model::episode::Episode;
+use crate::domain::model::external_ref::ExternalRef;
 use crate::domain::model::gallery_item::GalleryItemMedia;
-use crate::domain::model::media_candidate::ExternalRef;
+use crate::domain::model::media_metadata::MediaMetadata;
+use crate::domain::model::media_query::VideoKind;
+use crate::domain::model::movie::Movie;
 use crate::domain::model::music_album::MusicAlbum;
 use crate::domain::model::music_album::ProductionType;
 use crate::domain::model::music_metadata::ArtistCredit;
@@ -155,8 +202,10 @@ use crate::domain::model::music_metadata::MediumFormat;
 use crate::domain::model::music_metadata::MediumSummary;
 use crate::domain::model::music_playlist::MusicPlaylist;
 use crate::domain::model::music_recording::MusicRecording;
+use crate::domain::model::series::Series;
 use crate::domain::model::video::ScanType;
 use crate::domain::model::video::Video;
+use crate::domain::model::video_candidate::Candidate;
 use crate::infrastructure::inbound::rest::api_error::ApiError;
 use crate::infrastructure::inbound::rest::app_state::AppState;
 use crate::infrastructure::inbound::rest::hal::Link;
@@ -1179,12 +1228,285 @@ impl From<&Video> for VideoResponse {
     }
 }
 
+/// An opaque provider reference.
+#[derive(Debug, Serialize, ToSchema)]
+#[non_exhaustive]
+pub(crate) struct VideoReferenceResponse {
+    /// Identifier the provider issued for the item.
+    pub id: String,
+    /// Provider that issued the identifier.
+    pub provider: String,
+}
+
+impl VideoReferenceResponse {
+    /// Build the representation of `reference`.
+    #[must_use]
+    pub(crate) fn new(reference: &ExternalRef) -> Self {
+        Self {
+            id: reference.id().to_owned(),
+            provider: reference.provider().as_str().to_owned(),
+        }
+    }
+}
+
+/// One video candidate the provider reported, shaped by its kind.
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(tag = "kind", rename_all = "lowercase")]
+#[non_exhaustive]
+pub(crate) enum VideoCandidateResponse {
+    /// A film.
+    Movie {
+        /// Opaque reference the provider issued.
+        reference: VideoReferenceResponse,
+        /// Title the provider reports.
+        title: String,
+        /// Release year, when the provider reports one.
+        year: Option<u32>,
+    },
+    /// A show.
+    Series {
+        /// Opaque reference the provider issued.
+        reference: VideoReferenceResponse,
+        /// Title the provider reports.
+        title: String,
+        /// First-air year, when the provider reports one.
+        year: Option<u32>,
+    },
+}
+
+impl From<&Candidate> for VideoCandidateResponse {
+    fn from(candidate: &Candidate) -> Self {
+        let reference = VideoReferenceResponse::new(candidate.reference());
+        let title = candidate.title().to_owned();
+        let year = candidate.year();
+        match candidate.kind() {
+            VideoKind::Movie => Self::Movie {
+                reference,
+                title,
+                year,
+            },
+            VideoKind::Series => Self::Series {
+                reference,
+                title,
+                year,
+            },
+        }
+    }
+}
+
+/// Candidates the configured provider reported, in its order.
+///
+/// `available` tells a configured provider apart from no provider at all: an
+/// empty `items` list is a search that ran and found nothing, while
+/// `available: false` is a surface the system cannot offer.
+#[derive(Debug, Serialize, ToSchema)]
+#[non_exhaustive]
+pub(crate) struct VideoCandidateListResponse {
+    /// Whether a video metadata provider is configured.
+    pub available: bool,
+    /// Candidates the provider reported, in its order.
+    pub items: Vec<VideoCandidateResponse>,
+    /// Link to the search view the representation reports.
+    #[serde(rename = "_links")]
+    pub links: SelfLinks,
+}
+
+impl VideoCandidateListResponse {
+    /// Build the representation of a completed search over `href`.
+    #[must_use]
+    pub(crate) fn new(href: &str, candidates: &[Candidate]) -> Self {
+        Self {
+            links: SelfLinks::new(href),
+            available: true,
+            items: candidates
+                .iter()
+                .map(VideoCandidateResponse::from)
+                .collect(),
+        }
+    }
+
+    /// Build the representation of a surface with no configured provider.
+    #[must_use]
+    pub(crate) fn unavailable(href: &str) -> Self {
+        Self {
+            links: SelfLinks::new(href),
+            available: false,
+            items: Vec::new(),
+        }
+    }
+}
+
+/// The provider-independent metadata document of an identified video work.
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(tag = "kind", rename_all = "lowercase")]
+#[non_exhaustive]
+pub(crate) enum VideoMetadataResponse {
+    /// One episode.
+    Episode {
+        /// Date the episode first aired, in `YYYY-MM-DD` form, when known.
+        air_date: Option<String>,
+        /// Index of the episode within its season.
+        episode: u32,
+        /// Plot summary the provider reports.
+        plot: String,
+        /// Index of the season within the show.
+        season: u32,
+        /// Title the provider reports.
+        title: String,
+    },
+    /// One film.
+    Movie {
+        /// Country of origin as an uppercase ISO 3166-1 alpha-2 code, when known.
+        country_of_origin: Option<String>,
+        /// Genres from the shared vocabulary.
+        genres: Vec<String>,
+        /// Plot summary the provider reports.
+        plot: String,
+        /// Date the film was released, in `YYYY-MM-DD` form, when known.
+        release_date: Option<String>,
+        /// Title the provider reports.
+        title: String,
+    },
+    /// One show.
+    Series {
+        /// Country of origin as an uppercase ISO 3166-1 alpha-2 code, when known.
+        country_of_origin: Option<String>,
+        /// Date the show first aired, in `YYYY-MM-DD` form, when known.
+        first_air_date: Option<String>,
+        /// Genres from the shared vocabulary.
+        genres: Vec<String>,
+        /// Plot summary the provider reports.
+        plot: String,
+        /// Title the provider reports.
+        title: String,
+    },
+}
+
+impl From<&MediaMetadata> for VideoMetadataResponse {
+    #[expect(
+        clippy::pattern_type_mismatch,
+        reason = "the arms borrow the metadata out of a non-Copy enum matched by reference"
+    )]
+    fn from(metadata: &MediaMetadata) -> Self {
+        match metadata {
+            MediaMetadata::Episode {
+                air_date,
+                episode,
+                plot,
+                season,
+                title,
+                ..
+            } => Self::Episode {
+                air_date: air_date.map(format_date),
+                episode: *episode,
+                plot: plot.clone(),
+                season: *season,
+                title: title.clone(),
+            },
+            MediaMetadata::Movie {
+                country_of_origin,
+                genres,
+                plot,
+                release_date,
+                title,
+                ..
+            } => Self::Movie {
+                country_of_origin: country_of_origin.clone(),
+                genres: genres
+                    .iter()
+                    .map(|genre| genre.as_str().to_owned())
+                    .collect(),
+                plot: plot.clone(),
+                release_date: release_date.map(format_date),
+                title: title.clone(),
+            },
+            MediaMetadata::Series {
+                country_of_origin,
+                first_air_date,
+                genres,
+                plot,
+                title,
+                ..
+            } => Self::Series {
+                country_of_origin: country_of_origin.clone(),
+                first_air_date: first_air_date.map(format_date),
+                genres: genres
+                    .iter()
+                    .map(|genre| genre.as_str().to_owned())
+                    .collect(),
+                plot: plot.clone(),
+                title: title.clone(),
+            },
+        }
+    }
+}
+
+/// The metadata document of one identified work, when one is available.
+///
+/// `available` tells a configured provider apart from no provider at all, so a
+/// client does not read an unconfigured system as a provider that could not
+/// resolve the reference.
+#[derive(Debug, Serialize, ToSchema)]
+#[non_exhaustive]
+pub(crate) struct VideoMetadataDocumentResponse {
+    /// Whether a video metadata provider is configured.
+    pub available: bool,
+    /// Link to the resolve view the representation reports.
+    #[serde(rename = "_links")]
+    pub links: SelfLinks,
+    /// The resolved document, absent when no provider is configured.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub metadata: Option<VideoMetadataResponse>,
+}
+
+impl VideoMetadataDocumentResponse {
+    /// Build the representation of a resolved document over `href`.
+    #[must_use]
+    pub(crate) fn new(href: &str, metadata: &MediaMetadata) -> Self {
+        Self {
+            links: SelfLinks::new(href),
+            available: true,
+            metadata: Some(VideoMetadataResponse::from(metadata)),
+        }
+    }
+
+    /// Build the representation of a surface with no configured provider.
+    #[must_use]
+    pub(crate) fn unavailable(href: &str) -> Self {
+        Self {
+            links: SelfLinks::new(href),
+            available: false,
+            metadata: None,
+        }
+    }
+}
+
+/// A provider reference in a video metadata apply body.
+#[derive(Debug, Deserialize, ToSchema)]
+#[non_exhaustive]
+pub(crate) struct VideoApplyReferenceRequest {
+    /// Identifier the provider issued.
+    #[schema(example = "27205")]
+    pub id: String,
+    /// Provider that issued the identifier (`tmdb` or `omdb`).
+    #[schema(example = "tmdb")]
+    pub provider: String,
+}
+
+/// Payload to apply external metadata to a video catalogue entity.
+#[derive(Debug, Deserialize, ToSchema)]
+#[non_exhaustive]
+pub(crate) struct VideoApplyRequest {
+    /// Reference to the provider work.
+    pub reference: VideoApplyReferenceRequest,
+}
+
 /// A film representation.
 #[derive(Debug, Serialize, ToSchema)]
 #[non_exhaustive]
 pub(crate) struct MovieResponse {
-    /// Country of origin of the film.
-    pub country_of_origin: String,
+    /// Country of origin of the film, when known.
+    pub country_of_origin: Option<String>,
     /// Identifier of the image holding the film's artwork, when set.
     pub cover_image_id: Option<NumericID>,
     /// Genres of the film, ordered by genre identifier.
@@ -1198,8 +1520,8 @@ pub(crate) struct MovieResponse {
     pub name: String,
     /// Plot of the film.
     pub plot: String,
-    /// Date of the release of the film, in `YYYY-MM-DD` form.
-    pub release_date: String,
+    /// Date of the release of the film, in `YYYY-MM-DD` form, when known.
+    pub release_date: Option<String>,
     /// Video backing the film.
     pub video: VideoResponse,
 }
@@ -1208,13 +1530,13 @@ impl From<&ListMoviesItem> for MovieResponse {
     fn from(item: &ListMoviesItem) -> Self {
         Self {
             cover_image_id: item.cover_image_id(),
-            country_of_origin: item.country_of_origin().to_owned(),
+            country_of_origin: item.country_of_origin().map(str::to_owned),
             genres: item.genre_ids().to_vec(),
             id: item.id(),
             links: MovieLinks::for_movie(item.id(), item.cover_image_id()),
             name: item.name().to_owned(),
             plot: item.plot().to_owned(),
-            release_date: format_date(item.release_date()),
+            release_date: item.release_date().map(format_date),
             video: VideoResponse::from(item.video()),
         }
     }
@@ -1224,14 +1546,30 @@ impl From<&GetMovieResponseData> for MovieResponse {
     fn from(response: &GetMovieResponseData) -> Self {
         Self {
             cover_image_id: response.cover_image_id(),
-            country_of_origin: response.country_of_origin().to_owned(),
+            country_of_origin: response.country_of_origin().map(str::to_owned),
             genres: response.genre_ids().to_vec(),
             id: response.id(),
             links: MovieLinks::for_movie(response.id(), response.cover_image_id()),
             name: response.name().to_owned(),
             plot: response.plot().to_owned(),
-            release_date: format_date(response.release_date()),
+            release_date: response.release_date().map(format_date),
             video: VideoResponse::from(response.video()),
+        }
+    }
+}
+
+impl From<&Movie> for MovieResponse {
+    fn from(movie: &Movie) -> Self {
+        Self {
+            cover_image_id: movie.cover_image_id(),
+            country_of_origin: movie.country_of_origin().map(str::to_owned),
+            genres: movie.genre_ids().to_vec(),
+            id: movie.id(),
+            links: MovieLinks::for_movie(movie.id(), movie.cover_image_id()),
+            name: movie.name().to_owned(),
+            plot: movie.plot().to_owned(),
+            release_date: movie.release_date().map(format_date),
+            video: VideoResponse::from(movie.video()),
         }
     }
 }
@@ -1413,7 +1751,6 @@ pub(crate) struct SeasonResponse {
     #[serde(rename = "_links")]
     pub links: SeriesSeasonLinks,
     /// Name of the season, when set.
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
     /// Identifier of the show holding the season.
     pub series_id: NumericID,
@@ -1456,12 +1793,12 @@ impl From<&GetSeriesSeasonResponse> for SeasonResponse {
 #[derive(Debug, Serialize, ToSchema)]
 #[non_exhaustive]
 pub(crate) struct SeriesResponse {
-    /// Country of origin of the show.
-    pub country_of_origin: String,
+    /// Country of origin of the show, when known.
+    pub country_of_origin: Option<String>,
     /// Identifier of the image holding the show's artwork, when set.
     pub cover_image_id: Option<NumericID>,
-    /// Date of the first airing of the show, in `YYYY-MM-DD` form.
-    pub first_air_date: String,
+    /// Date of the first airing of the show, in `YYYY-MM-DD` form, when known.
+    pub first_air_date: Option<String>,
     /// Genres of the show, ordered by genre identifier.
     pub genres: Vec<String>,
     /// Unique identifier of the show.
@@ -1481,8 +1818,8 @@ impl From<&GetSeriesResponseData> for SeriesResponse {
     fn from(response: &GetSeriesResponseData) -> Self {
         Self {
             cover_image_id: response.cover_image_id(),
-            country_of_origin: response.country_of_origin().to_owned(),
-            first_air_date: format_date(response.first_air_date()),
+            country_of_origin: response.country_of_origin().map(str::to_owned),
+            first_air_date: response.first_air_date().map(format_date),
             genres: response.genre_ids().to_vec(),
             id: response.id(),
             links: SeriesLinks::for_series(response.id(), response.cover_image_id()),
@@ -1497,6 +1834,34 @@ impl From<&GetSeriesResponseData> for SeriesResponse {
                         season.index(),
                         season.name().map(str::to_owned),
                         season.episode_count(),
+                        season.cover_image_id(),
+                    )
+                })
+                .collect(),
+        }
+    }
+}
+
+impl From<&Series> for SeriesResponse {
+    fn from(series: &Series) -> Self {
+        Self {
+            cover_image_id: series.cover_image_id(),
+            country_of_origin: series.country_of_origin().map(str::to_owned),
+            first_air_date: series.first_air_date().map(format_date),
+            genres: series.genre_ids().to_vec(),
+            id: series.id(),
+            links: SeriesLinks::for_series(series.id(), series.cover_image_id()),
+            name: series.name().to_owned(),
+            plot: series.plot().to_owned(),
+            seasons: series
+                .seasons()
+                .iter()
+                .map(|season| {
+                    SeasonResponse::new(
+                        series.id(),
+                        season.index().value(),
+                        season.name().map(str::to_owned),
+                        season.episodes().len(),
                         season.cover_image_id(),
                     )
                 })
@@ -1601,8 +1966,9 @@ pub(crate) struct SeriesListResponse {
 #[derive(Debug, Serialize, ToSchema)]
 #[non_exhaustive]
 pub(crate) struct EpisodeResponse {
-    /// Date of the first airing of the episode, in `YYYY-MM-DD` form.
-    pub air_date: String,
+    /// Date of the first airing of the episode, in `YYYY-MM-DD` form, when
+    /// known.
+    pub air_date: Option<String>,
     /// Season-scoped index of the episode.
     pub id: u32,
     /// Links to the episode, its show and its season.
@@ -1623,7 +1989,7 @@ pub(crate) struct EpisodeResponse {
 impl From<&ListSeriesEpisodesItem> for EpisodeResponse {
     fn from(item: &ListSeriesEpisodesItem) -> Self {
         Self {
-            air_date: format_date(item.air_date()),
+            air_date: item.air_date().map(format_date),
             id: item.id(),
             links: SeriesEpisodeLinks::for_episode(
                 item.series_id(),
@@ -1642,7 +2008,7 @@ impl From<&ListSeriesEpisodesItem> for EpisodeResponse {
 impl From<&GetSeriesEpisodeResponse> for EpisodeResponse {
     fn from(response: &GetSeriesEpisodeResponse) -> Self {
         Self {
-            air_date: format_date(response.air_date()),
+            air_date: response.air_date().map(format_date),
             id: response.id(),
             links: SeriesEpisodeLinks::for_episode(
                 response.series_id(),
@@ -1654,6 +2020,25 @@ impl From<&GetSeriesEpisodeResponse> for EpisodeResponse {
             season_index: response.season_index(),
             series_id: response.series_id(),
             video: VideoResponse::from(response.video()),
+        }
+    }
+}
+
+impl EpisodeResponse {
+    /// Assemble the representation of `episode` at the addressed show and
+    /// season.
+    #[must_use]
+    pub(crate) fn from_episode(series_id: NumericID, season_index: u32, episode: &Episode) -> Self {
+        let episode_index = episode.index().value();
+        Self {
+            air_date: episode.air_date().map(format_date),
+            id: episode_index,
+            links: SeriesEpisodeLinks::for_episode(series_id, season_index, episode_index),
+            name: episode.name().to_owned(),
+            plot: episode.plot().to_owned(),
+            season_index,
+            series_id,
+            video: VideoResponse::from(episode.video()),
         }
     }
 }
@@ -2134,6 +2519,64 @@ impl From<ApplyMusicAlbumError> for ApiError {
     }
 }
 
+/// Map an applied-film error to its API error.
+impl From<ApplyMovieError> for ApiError {
+    fn from(err: ApplyMovieError) -> Self {
+        match err {
+            ApplyMovieError::Conflict => Self::Conflict(err.to_string()),
+            ApplyMovieError::Forbidden => Self::Forbidden(err.to_string()),
+            ApplyMovieError::InvalidReference => Self::UnprocessableEntity(err.to_string()),
+            ApplyMovieError::NoSuchMovie | ApplyMovieError::UnknownReference => {
+                Self::NotFound(err.to_string())
+            }
+            ApplyMovieError::NoSuchCaller => Self::Unauthorized(err.to_string()),
+            ApplyMovieError::ProviderUnavailable
+            | ApplyMovieError::ProviderFailure
+            | ApplyMovieError::Unknown(_) => Self::InternalServerError,
+        }
+    }
+}
+
+/// Map an applied-show error to its API error.
+impl From<ApplySeriesError> for ApiError {
+    fn from(err: ApplySeriesError) -> Self {
+        match err {
+            ApplySeriesError::Conflict => Self::Conflict(err.to_string()),
+            ApplySeriesError::Forbidden => Self::Forbidden(err.to_string()),
+            ApplySeriesError::InvalidReference => Self::UnprocessableEntity(err.to_string()),
+            ApplySeriesError::NoSuchSeries | ApplySeriesError::UnknownReference => {
+                Self::NotFound(err.to_string())
+            }
+            ApplySeriesError::NoSuchCaller => Self::Unauthorized(err.to_string()),
+            ApplySeriesError::ProviderUnavailable
+            | ApplySeriesError::ProviderFailure
+            | ApplySeriesError::Unknown(_) => Self::InternalServerError,
+        }
+    }
+}
+
+/// Map an applied-episode error to its API error.
+impl From<ApplySeriesEpisodeError> for ApiError {
+    fn from(err: ApplySeriesEpisodeError) -> Self {
+        match err {
+            ApplySeriesEpisodeError::Conflict => Self::Conflict(err.to_string()),
+            ApplySeriesEpisodeError::Forbidden => Self::Forbidden(err.to_string()),
+            ApplySeriesEpisodeError::InvalidReference
+            | ApplySeriesEpisodeError::PositionMismatch => {
+                Self::UnprocessableEntity(err.to_string())
+            }
+            ApplySeriesEpisodeError::NoSuchEpisode
+            | ApplySeriesEpisodeError::NoSuchSeason
+            | ApplySeriesEpisodeError::NoSuchSeries
+            | ApplySeriesEpisodeError::UnknownReference => Self::NotFound(err.to_string()),
+            ApplySeriesEpisodeError::NoSuchCaller => Self::Unauthorized(err.to_string()),
+            ApplySeriesEpisodeError::ProviderUnavailable
+            | ApplySeriesEpisodeError::ProviderFailure
+            | ApplySeriesEpisodeError::Unknown(_) => Self::InternalServerError,
+        }
+    }
+}
+
 /// Map a create-music-group error to its API error.
 impl From<CreateMusicGroupError> for ApiError {
     fn from(err: CreateMusicGroupError) -> Self {
@@ -2260,6 +2703,40 @@ impl From<ResolveMusicMetadataError> for ApiError {
     }
 }
 
+/// Map a video identification error to its API error.
+impl From<IdentifyVideoError> for ApiError {
+    fn from(err: IdentifyVideoError) -> Self {
+        match err {
+            IdentifyVideoError::NoSuchCaller => Self::Unauthorized(err.to_string()),
+            IdentifyVideoError::NotPermitted => Self::NotFound(err.to_string()),
+            // The handler reports an unconfigured provider as an unavailable
+            // document before the conversion, so reaching this arm is a fault.
+            IdentifyVideoError::Unavailable | IdentifyVideoError::Unknown(_) => {
+                Self::InternalServerError
+            }
+        }
+    }
+}
+
+/// Map a video metadata resolution error to its API error.
+impl From<ResolveVideoMetadataError> for ApiError {
+    fn from(err: ResolveVideoMetadataError) -> Self {
+        match err {
+            ResolveVideoMetadataError::NoSuchCaller => Self::Unauthorized(err.to_string()),
+            ResolveVideoMetadataError::NotPermitted => Self::NotFound(err.to_string()),
+            ResolveVideoMetadataError::KindMismatch
+            | ResolveVideoMetadataError::PositionMismatch => {
+                Self::UnprocessableEntity(err.to_string())
+            }
+            // The handler reports an unconfigured provider as an unavailable
+            // document before the conversion, so reaching this arm is a fault.
+            ResolveVideoMetadataError::Unavailable | ResolveVideoMetadataError::Unknown(_) => {
+                Self::InternalServerError
+            }
+        }
+    }
+}
+
 /// Map a list-films error to its API error.
 impl From<ListMoviesError> for ApiError {
     fn from(err: ListMoviesError) -> Self {
@@ -2337,6 +2814,136 @@ impl From<GetSeriesEpisodeError> for ApiError {
             | GetSeriesEpisodeError::NoSuchEpisode => Self::NotFound(err.to_string()),
             GetSeriesEpisodeError::NoSuchCaller => Self::Unauthorized(err.to_string()),
             GetSeriesEpisodeError::Unknown(_) => Self::InternalServerError,
+        }
+    }
+}
+
+/// Map a create-film error to its API error.
+impl From<CreateMovieError> for ApiError {
+    fn from(err: CreateMovieError) -> Self {
+        match err {
+            CreateMovieError::Conflict => Self::Conflict(err.to_string()),
+            CreateMovieError::Forbidden => Self::Forbidden(err.to_string()),
+            CreateMovieError::InvalidCountry
+            | CreateMovieError::InvalidGenre
+            | CreateMovieError::InvalidName
+            | CreateMovieError::NameTooLong
+            | CreateMovieError::NoSuchVideo => Self::UnprocessableEntity(err.to_string()),
+            CreateMovieError::NoSuchCaller => Self::Unauthorized(err.to_string()),
+            CreateMovieError::Unknown(_) => Self::InternalServerError,
+        }
+    }
+}
+
+/// Map an update-film error to its API error.
+impl From<UpdateMovieError> for ApiError {
+    fn from(err: UpdateMovieError) -> Self {
+        match err {
+            UpdateMovieError::Conflict => Self::Conflict(err.to_string()),
+            UpdateMovieError::Forbidden => Self::Forbidden(err.to_string()),
+            UpdateMovieError::InvalidCountry
+            | UpdateMovieError::InvalidGenre
+            | UpdateMovieError::InvalidName
+            | UpdateMovieError::NameTooLong => Self::UnprocessableEntity(err.to_string()),
+            UpdateMovieError::NoSuchMovie => Self::NotFound(err.to_string()),
+            UpdateMovieError::NoSuchCaller => Self::Unauthorized(err.to_string()),
+            UpdateMovieError::Unknown(_) => Self::InternalServerError,
+        }
+    }
+}
+
+/// Map a create-show error to its API error.
+impl From<CreateSeriesError> for ApiError {
+    fn from(err: CreateSeriesError) -> Self {
+        match err {
+            CreateSeriesError::Conflict => Self::Conflict(err.to_string()),
+            CreateSeriesError::Forbidden => Self::Forbidden(err.to_string()),
+            CreateSeriesError::InvalidCountry
+            | CreateSeriesError::InvalidGenre
+            | CreateSeriesError::InvalidName
+            | CreateSeriesError::NameTooLong => Self::UnprocessableEntity(err.to_string()),
+            CreateSeriesError::NoSuchCaller => Self::Unauthorized(err.to_string()),
+            CreateSeriesError::Unknown(_) => Self::InternalServerError,
+        }
+    }
+}
+
+/// Map an update-show error to its API error.
+impl From<UpdateSeriesError> for ApiError {
+    fn from(err: UpdateSeriesError) -> Self {
+        match err {
+            UpdateSeriesError::Conflict => Self::Conflict(err.to_string()),
+            UpdateSeriesError::Forbidden => Self::Forbidden(err.to_string()),
+            UpdateSeriesError::InvalidCountry
+            | UpdateSeriesError::InvalidGenre
+            | UpdateSeriesError::InvalidName
+            | UpdateSeriesError::NameTooLong => Self::UnprocessableEntity(err.to_string()),
+            UpdateSeriesError::NoSuchSeries => Self::NotFound(err.to_string()),
+            UpdateSeriesError::NoSuchCaller => Self::Unauthorized(err.to_string()),
+            UpdateSeriesError::Unknown(_) => Self::InternalServerError,
+        }
+    }
+}
+
+/// Map a write-season error to its API error.
+impl From<PutSeriesSeasonError> for ApiError {
+    fn from(err: PutSeriesSeasonError) -> Self {
+        match err {
+            PutSeriesSeasonError::Conflict => Self::Conflict(err.to_string()),
+            PutSeriesSeasonError::Forbidden => Self::Forbidden(err.to_string()),
+            PutSeriesSeasonError::NoSuchSeries => Self::NotFound(err.to_string()),
+            PutSeriesSeasonError::NoSuchCaller => Self::Unauthorized(err.to_string()),
+            PutSeriesSeasonError::Unknown(_) => Self::InternalServerError,
+        }
+    }
+}
+
+/// Map an update-season error to its API error.
+impl From<UpdateSeriesSeasonError> for ApiError {
+    fn from(err: UpdateSeriesSeasonError) -> Self {
+        match err {
+            UpdateSeriesSeasonError::Conflict => Self::Conflict(err.to_string()),
+            UpdateSeriesSeasonError::Forbidden => Self::Forbidden(err.to_string()),
+            UpdateSeriesSeasonError::NoSuchSeason | UpdateSeriesSeasonError::NoSuchSeries => {
+                Self::NotFound(err.to_string())
+            }
+            UpdateSeriesSeasonError::NoSuchCaller => Self::Unauthorized(err.to_string()),
+            UpdateSeriesSeasonError::Unknown(_) => Self::InternalServerError,
+        }
+    }
+}
+
+/// Map a write-episode error to its API error.
+impl From<PutSeriesEpisodeError> for ApiError {
+    fn from(err: PutSeriesEpisodeError) -> Self {
+        match err {
+            PutSeriesEpisodeError::Conflict => Self::Conflict(err.to_string()),
+            PutSeriesEpisodeError::Forbidden => Self::Forbidden(err.to_string()),
+            PutSeriesEpisodeError::InvalidName
+            | PutSeriesEpisodeError::NameTooLong
+            | PutSeriesEpisodeError::NoSuchVideo => Self::UnprocessableEntity(err.to_string()),
+            PutSeriesEpisodeError::NoSuchSeason | PutSeriesEpisodeError::NoSuchSeries => {
+                Self::NotFound(err.to_string())
+            }
+            PutSeriesEpisodeError::NoSuchCaller => Self::Unauthorized(err.to_string()),
+            PutSeriesEpisodeError::Unknown(_) => Self::InternalServerError,
+        }
+    }
+}
+
+/// Map an update-episode error to its API error.
+impl From<UpdateSeriesEpisodeError> for ApiError {
+    fn from(err: UpdateSeriesEpisodeError) -> Self {
+        match err {
+            UpdateSeriesEpisodeError::Forbidden => Self::Forbidden(err.to_string()),
+            UpdateSeriesEpisodeError::InvalidName | UpdateSeriesEpisodeError::NameTooLong => {
+                Self::UnprocessableEntity(err.to_string())
+            }
+            UpdateSeriesEpisodeError::NoSuchEpisode
+            | UpdateSeriesEpisodeError::NoSuchSeason
+            | UpdateSeriesEpisodeError::NoSuchSeries => Self::NotFound(err.to_string()),
+            UpdateSeriesEpisodeError::NoSuchCaller => Self::Unauthorized(err.to_string()),
+            UpdateSeriesEpisodeError::Unknown(_) => Self::InternalServerError,
         }
     }
 }
@@ -2576,6 +3183,20 @@ pub(crate) fn parse_season_index(value: &str) -> Result<u32, ApiError> {
     })
 }
 
+/// Parse a `u32` episode index from a path segment.
+pub(crate) fn parse_episode_index(value: &str) -> Result<u32, ApiError> {
+    value.parse::<u32>().map_err(|_| {
+        warn!(
+            target: "security",
+            event = "input_validation_failed",
+            field = "episode_index",
+            reason = "invalid_index",
+            "rejected a malformed episode index"
+        );
+        ApiError::BadRequest("invalid episode index".to_owned())
+    })
+}
+
 /// Parse a show identifier from a path segment.
 pub(crate) fn parse_series_id(value: &str) -> Result<NumericID, ApiError> {
     value.parse::<NumericID>().map_err(|_| {
@@ -2748,17 +3369,44 @@ pub(crate) fn library_router() -> OpenApiRouter<AppState> {
             get_gallery_item::get_gallery_item,
             delete_gallery_item::delete_gallery_item
         ))
-        .routes(routes!(get_movie_list::get_movie_list))
-        .routes(routes!(get_movie::get_movie))
+        .routes(routes!(
+            get_movie_list::get_movie_list,
+            post_movie::post_movie
+        ))
+        .routes(routes!(get_movie::get_movie, patch_movie::patch_movie))
+        .routes(routes!(post_movie_apply::post_movie_apply))
+        .routes(routes!(get_movie_identify::get_movie_identify))
+        .routes(routes!(
+            get_movie_identify_metadata::get_movie_identify_metadata
+        ))
         .routes(routes!(get_music_identify::get_music_identify))
         .routes(routes!(
             get_music_identify_metadata::get_music_identify_metadata
         ))
-        .routes(routes!(get_series_list::get_series_list))
-        .routes(routes!(get_series::get_series))
-        .routes(routes!(get_series_season::get_series_season))
+        .routes(routes!(
+            get_series_list::get_series_list,
+            post_series::post_series
+        ))
+        .routes(routes!(get_series::get_series, patch_series::patch_series))
+        .routes(routes!(post_series_apply::post_series_apply))
+        .routes(routes!(get_series_identify::get_series_identify))
+        .routes(routes!(
+            get_series_identify_metadata::get_series_identify_metadata
+        ))
+        .routes(routes!(
+            get_series_season::get_series_season,
+            put_series_season::put_series_season,
+            patch_series_season::patch_series_season
+        ))
         .routes(routes!(get_series_episode_list::get_series_episode_list))
-        .routes(routes!(get_series_episode::get_series_episode))
+        .routes(routes!(
+            get_series_episode::get_series_episode,
+            put_series_episode::put_series_episode,
+            patch_series_episode::patch_series_episode
+        ))
+        .routes(routes!(
+            post_series_episode_apply::post_series_episode_apply
+        ))
         .routes(routes!(
             get_playlist_list::get_playlist_list,
             post_playlist::post_playlist
@@ -3027,7 +3675,7 @@ mod tests {
             movie.id(),
             movie.name().to_owned(),
             movie.plot().to_owned(),
-            movie.country_of_origin().to_owned(),
+            movie.country_of_origin().map(str::to_owned),
             movie.release_date(),
             movie.genre_ids().to_vec(),
             None,
@@ -3091,8 +3739,8 @@ mod tests {
             3,
             "Twin Peaks".to_owned(),
             "A plot".to_owned(),
-            "US".to_owned(),
-            video_date(),
+            Some("US".to_owned()),
+            Some(video_date()),
             Vec::new(),
             None,
             Vec::new(),

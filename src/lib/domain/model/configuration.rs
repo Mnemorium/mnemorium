@@ -9,8 +9,6 @@ use std::fmt::Result as FmtResult;
 use std::net::IpAddr;
 use std::str::FromStr as _;
 
-use crate::domain::model::media_candidate::ProviderId;
-
 /// Default size of every chunk except the last, in bytes.
 pub(crate) const DEFAULT_CHUNK_SIZE_BYTES: u64 = 5_242_880;
 
@@ -56,6 +54,77 @@ const DEFAULT_PERIOD_SECONDS: u64 = 12;
 
 /// Separator between addresses in the [`RateLimit::trusted_proxies`] list.
 const TRUSTED_PROXIES_SEPARATOR: char = ',';
+
+/// Identifier of an external metadata provider.
+///
+/// The identifier is provider-tagged rather than positional: a reference one
+/// provider issues means nothing to another, so every reference and every
+/// configured link carries the provider that owns it. The supported providers
+/// are configuration vocabulary; no other domain model names them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "lowercase")]
+#[non_exhaustive]
+pub(crate) enum ProviderId {
+    /// `MusicBrainz`, which serves music metadata.
+    MusicBrainz,
+    /// The Open Movie Database.
+    Omdb,
+    /// The Movie Database.
+    Tmdb,
+}
+
+impl ProviderId {
+    /// Return the provider name as the configuration declares it.
+    #[must_use]
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            Self::MusicBrainz => "musicbrainz",
+            Self::Omdb => "omdb",
+            Self::Tmdb => "tmdb",
+        }
+    }
+
+    /// Parse the provider name a configuration entry declares.
+    ///
+    /// The comparison is case-insensitive and ignores surrounding whitespace, so
+    /// `TMDB` and ` tmdb ` both name the same provider.
+    #[must_use]
+    pub(crate) fn parse(value: &str) -> Option<Self> {
+        let normalized = value.trim().to_ascii_lowercase();
+        match normalized.as_str() {
+            "musicbrainz" => Some(Self::MusicBrainz),
+            "omdb" => Some(Self::Omdb),
+            "tmdb" => Some(Self::Tmdb),
+            _ => None,
+        }
+    }
+
+    /// Return whether this provider serves music rather than video.
+    ///
+    /// The predicate names the medium a provider answers for, so a
+    /// configuration section admits only the providers it can use: the music
+    /// section takes a music provider and the video section takes a video one.
+    #[must_use]
+    pub(crate) fn serves_music(self) -> bool {
+        match self {
+            Self::MusicBrainz => true,
+            Self::Omdb | Self::Tmdb => false,
+        }
+    }
+
+    /// Return whether this provider serves video metadata rather than music.
+    ///
+    /// The predicate names the medium a provider answers for, so a
+    /// configuration section admits only the providers it can use: the video
+    /// section takes a video provider and the music section takes a music one.
+    #[must_use]
+    pub(crate) fn serves_video(self) -> bool {
+        match self {
+            Self::MusicBrainz => false,
+            Self::Omdb | Self::Tmdb => true,
+        }
+    }
+}
 
 /// Error returned when initialising or updating an asset value object.
 #[derive(Debug, thiserror::Error)]

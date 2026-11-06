@@ -98,12 +98,12 @@ impl GetSeriesSeasonItem {
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub(crate) struct GetSeriesResponse {
-    /// Country of origin of the show.
-    country_of_origin: String,
+    /// Country of origin of the show, when known.
+    country_of_origin: Option<String>,
     /// Identifier of the image holding the show's artwork, when set.
     cover_image_id: Option<NumericID>,
-    /// Date of the first airing of the show.
-    first_air_date: NaiveDate,
+    /// Date of the first airing of the show, when known.
+    first_air_date: Option<NaiveDate>,
     /// Genres of the show, ordered by genre identifier.
     genre_ids: Vec<String>,
     /// Unique identifier of the show.
@@ -117,10 +117,10 @@ pub(crate) struct GetSeriesResponse {
 }
 
 impl GetSeriesResponse {
-    /// Return the country of origin of the show.
+    /// Return the country of origin of the show, if known.
     #[must_use]
-    pub(crate) fn country_of_origin(&self) -> &str {
-        &self.country_of_origin
+    pub(crate) fn country_of_origin(&self) -> Option<&str> {
+        self.country_of_origin.as_deref()
     }
 
     /// Return the identifier of the image holding the show's artwork, if any.
@@ -129,9 +129,9 @@ impl GetSeriesResponse {
         self.cover_image_id
     }
 
-    /// Return the date of the first airing.
+    /// Return the date of the first airing, if known.
     #[must_use]
-    pub(crate) fn first_air_date(&self) -> NaiveDate {
+    pub(crate) fn first_air_date(&self) -> Option<NaiveDate> {
         self.first_air_date
     }
 
@@ -163,8 +163,8 @@ impl GetSeriesResponse {
         id: NumericID,
         name: String,
         plot: String,
-        country_of_origin: String,
-        first_air_date: NaiveDate,
+        country_of_origin: Option<String>,
+        first_air_date: Option<NaiveDate>,
         genre_ids: Vec<String>,
         cover_image_id: Option<NumericID>,
         seasons: Vec<GetSeriesSeasonItem>,

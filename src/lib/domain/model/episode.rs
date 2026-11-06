@@ -42,8 +42,8 @@ pub(crate) enum EpisodeError {
 /// An episode of a season.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct Episode {
-    /// Date of the first airing of the episode.
-    air_date: NaiveDate,
+    /// Date of the first airing of the episode, when known.
+    air_date: Option<NaiveDate>,
     /// Season-scoped identity of the episode.
     index: EpisodeIndex,
     /// Name of the episode.
@@ -55,9 +55,9 @@ pub(crate) struct Episode {
 }
 
 impl Episode {
-    /// Return the date of the first airing of the episode.
+    /// Return the date of the first airing of the episode, if known.
     #[must_use]
-    pub(crate) fn air_date(&self) -> NaiveDate {
+    pub(crate) fn air_date(&self) -> Option<NaiveDate> {
         self.air_date
     }
 
@@ -88,7 +88,7 @@ impl Episode {
         index: EpisodeIndex,
         name: String,
         plot: String,
-        air_date: NaiveDate,
+        air_date: Option<NaiveDate>,
         video: Video,
     ) -> Result<Self, EpisodeError> {
         if name.is_empty() {

@@ -28,12 +28,12 @@ pub(crate) enum SeriesError {
 /// A show the server holds, with its seasons.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct Series {
-    /// Country of origin of the show.
-    country_of_origin: String,
+    /// Country of origin of the show, when known.
+    country_of_origin: Option<String>,
     /// Identifier of the image holding the show's artwork, when set.
     cover_image_id: Option<NumericID>,
-    /// Date of the first airing of the show.
-    first_air_date: NaiveDate,
+    /// Date of the first airing of the show, when known.
+    first_air_date: Option<NaiveDate>,
     /// Identifiers of the genres the show is associated with.
     genre_ids: Vec<String>,
     /// Unique identifier of the show.
@@ -47,10 +47,10 @@ pub(crate) struct Series {
 }
 
 impl Series {
-    /// Return the country of origin of the show.
+    /// Return the country of origin of the show, if known.
     #[must_use]
-    pub(crate) fn country_of_origin(&self) -> &str {
-        &self.country_of_origin
+    pub(crate) fn country_of_origin(&self) -> Option<&str> {
+        self.country_of_origin.as_deref()
     }
 
     /// Return the identifier of the image holding the show's artwork, if any.
@@ -59,9 +59,9 @@ impl Series {
         self.cover_image_id
     }
 
-    /// Return the date of the first airing.
+    /// Return the date of the first airing, if known.
     #[must_use]
-    pub(crate) fn first_air_date(&self) -> NaiveDate {
+    pub(crate) fn first_air_date(&self) -> Option<NaiveDate> {
         self.first_air_date
     }
 
@@ -109,8 +109,8 @@ impl Series {
         id: NumericID,
         name: String,
         plot: String,
-        country_of_origin: String,
-        first_air_date: NaiveDate,
+        country_of_origin: Option<String>,
+        first_air_date: Option<NaiveDate>,
         genre_ids: Vec<String>,
         cover_image_id: Option<NumericID>,
         seasons: Vec<Season>,

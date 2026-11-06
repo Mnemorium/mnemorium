@@ -319,9 +319,9 @@ mod tests {
     use crate::domain::model::configuration::ClientIpHeader;
     use crate::domain::model::configuration::Configuration;
     use crate::domain::model::configuration::MusicProvider;
+    use crate::domain::model::configuration::ProviderId;
     use crate::domain::model::configuration::Rotation;
     use crate::domain::model::configuration::VideoProvider;
-    use crate::domain::model::media_candidate::ProviderId;
     use crate::domain::model::partial_configuration::PartialAsset;
     use crate::domain::model::partial_configuration::PartialAssetUpload;
     use crate::domain::model::partial_configuration::PartialConfiguration;

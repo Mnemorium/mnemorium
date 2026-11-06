@@ -132,6 +132,43 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn get_series_without_a_date_or_country_reports_null() -> Result<(), Box<dyn Error>> {
+        // Arrange: the show stores neither a first-air date nor a country.
+        let mut use_case = MockGetSeriesUseCase::new();
+        use_case.expect_execute().times(1).return_once(|_| {
+            Box::pin(async {
+                Ok(GetSeriesResponse::new(
+                    7,
+                    "Twin Peaks".to_owned(),
+                    "A plot".to_owned(),
+                    None,
+                    None,
+                    Vec::new(),
+                    None,
+                    Vec::new(),
+                ))
+            })
+        });
+
+        // Act
+        let (status, _, payload) = into_parts(send(use_case, 1, "7").await?).await?;
+
+        // Assert
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(
+            payload.get("first_air_date"),
+            Some(&serde_json::Value::Null),
+            "an absent first-air date must be represented as null"
+        );
+        assert_eq!(
+            payload.get("country_of_origin"),
+            Some(&serde_json::Value::Null),
+            "an absent country must be represented as null"
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn get_series_returns_metadata_and_season_summaries() -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut use_case = MockGetSeriesUseCase::new();
@@ -145,8 +182,8 @@ mod tests {
                         7,
                         "Twin Peaks".to_owned(),
                         "A plot".to_owned(),
-                        "US".to_owned(),
-                        video_date(),
+                        Some("US".to_owned()),
+                        Some(video_date()),
                         vec!["DRAMA".to_owned()],
                         None,
                         vec![GetSeriesSeasonItem::new(
@@ -213,8 +250,8 @@ mod tests {
                     7,
                     "Twin Peaks".to_owned(),
                     "A plot".to_owned(),
-                    "US".to_owned(),
-                    video_date(),
+                    Some("US".to_owned()),
+                    Some(video_date()),
                     Vec::new(),
                     Some(19),
                     vec![

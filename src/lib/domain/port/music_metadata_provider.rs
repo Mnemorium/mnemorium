@@ -1,6 +1,6 @@
 use std::future::Future;
 
-use crate::domain::model::media_candidate::ProviderId;
+use crate::domain::model::configuration::ProviderId;
 use crate::domain::model::music_candidate::MusicCandidate;
 use crate::domain::model::music_candidate::MusicTarget;
 use crate::domain::model::music_metadata::MusicMetadata;

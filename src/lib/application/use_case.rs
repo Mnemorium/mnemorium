@@ -1,7 +1,13 @@
 /// The add gallery item use case implementation.
 pub(crate) mod add_gallery_item;
+/// The apply movie metadata use case implementation.
+pub(crate) mod apply_movie;
 /// The apply music album use case implementation.
 pub(crate) mod apply_music_album;
+/// The apply series metadata use case implementation.
+pub(crate) mod apply_series;
+/// The apply series episode metadata use case implementation.
+pub(crate) mod apply_series_episode;
 pub(crate) mod asset_access;
 /// The begin upload use case implementation.
 pub(crate) mod begin_upload;
@@ -9,12 +15,16 @@ pub(crate) mod begin_upload;
 pub(crate) mod complete_upload;
 /// The create gallery use case implementation.
 pub(crate) mod create_gallery;
+/// The create movie use case implementation.
+pub(crate) mod create_movie;
 /// The create music album use case implementation.
 pub(crate) mod create_music_album;
 /// The create music group use case implementation.
 pub(crate) mod create_music_group;
 /// The create playlist use case implementation.
 pub(crate) mod create_playlist;
+/// The create series use case implementation.
+pub(crate) mod create_series;
 /// The delete gallery use case implementation.
 pub(crate) mod delete_gallery;
 /// The delete gallery item use case implementation.
@@ -101,6 +111,10 @@ pub(crate) mod patch_credential;
 pub(crate) mod put_album_medium;
 /// The put album track use case implementation.
 pub(crate) mod put_album_track;
+/// The put series episode use case implementation.
+pub(crate) mod put_series_episode;
+/// The put series season use case implementation.
+pub(crate) mod put_series_season;
 /// The register user use case implementation.
 pub(crate) mod register_user;
 /// The remove playlist track use case implementation.
@@ -111,12 +125,22 @@ pub(crate) mod reorder_playlist_tracks;
 pub(crate) mod replace_permission;
 /// The resolve music metadata use case implementation.
 pub(crate) mod resolve_music_metadata;
+/// The resolve video metadata use case implementation.
+pub(crate) mod resolve_video_metadata;
+/// The update movie use case implementation.
+pub(crate) mod update_movie;
 /// The update music album use case implementation.
 pub(crate) mod update_music_album;
 /// The update music group use case implementation.
 pub(crate) mod update_music_group;
 /// The update playlist use case implementation.
 pub(crate) mod update_playlist;
+/// The update series use case implementation.
+pub(crate) mod update_series;
+/// The update series episode use case implementation.
+pub(crate) mod update_series_episode;
+/// The update series season use case implementation.
+pub(crate) mod update_series_season;
 /// The update user use case implementation.
 pub(crate) mod update_user;
 pub(crate) mod upload_layout;

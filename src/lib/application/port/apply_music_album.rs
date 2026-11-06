@@ -2,7 +2,7 @@ use std::future::Future;
 use std::pin::Pin;
 
 use crate::domain::alias::NumericID;
-use crate::domain::model::media_candidate::ExternalRef;
+use crate::domain::model::external_ref::ExternalRef;
 use crate::domain::model::music_album::MusicAlbum;
 
 /// Command to apply external metadata to a music album.

@@ -1,0 +1,284 @@
+use axum::extract::Query;
+use axum::extract::State;
+use axum::extract::rejection::QueryRejection;
+use axum::response::Response;
+use serde::Deserialize;
+use tracing::warn;
+use utoipa::IntoParams;
+
+use crate::application::port::identify_video::IdentifyVideoCommand;
+use crate::application::port::identify_video::IdentifyVideoError;
+use crate::domain::model::media_query::VideoKind;
+use crate::infrastructure::inbound::rest::api_error::ApiError;
+use crate::infrastructure::inbound::rest::api_error::ErrorBody;
+use crate::infrastructure::inbound::rest::app_state::AppState;
+use crate::infrastructure::inbound::rest::hal::hal_json;
+use crate::infrastructure::inbound::rest::handler::library::VideoCandidateListResponse;
+use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
+
+/// The name a caller knows about the show work it wants identified.
+#[derive(Debug, Deserialize, IntoParams)]
+#[into_params(parameter_in = Query)]
+#[non_exhaustive]
+pub(crate) struct IdentifySeriesQuery {
+    /// Media name to search for; never empty.
+    name: String,
+}
+
+/// Search the configured video provider for show candidates.
+///
+/// The route reads a provider rather than the catalogue, so it is guarded by
+/// `library.read` and returns only the candidates the show kind names. With no
+/// provider configured it answers an `available: false` document.
+#[utoipa::path(
+    get,
+    operation_id = "identify_video_series",
+    path = "/series/identify",
+    tag = "library",
+    params(IdentifySeriesQuery),
+    responses(
+        (
+            status = OK,
+            body = VideoCandidateListResponse,
+            content_type = "application/hal+json",
+            description = "Show candidates the configured provider reported, in its order"
+        ),
+        (
+            status = BAD_REQUEST,
+            body = ErrorBody,
+            content_type = "application/hal+json",
+            description = "Malformed query string"
+        ),
+        (
+            status = UNAUTHORIZED,
+            body = ErrorBody,
+            content_type = "application/hal+json",
+            description = "Missing or invalid credentials"
+        ),
+        (
+            status = NOT_FOUND,
+            body = ErrorBody,
+            content_type = "application/hal+json",
+            description = "The caller may not read the library"
+        ),
+        (
+            status = UNPROCESSABLE_ENTITY,
+            body = ErrorBody,
+            content_type = "application/hal+json",
+            description = "The name is empty"
+        ),
+        (
+            status = INTERNAL_SERVER_ERROR,
+            body = ErrorBody,
+            content_type = "application/hal+json",
+            description = "Unexpected error"
+        ),
+    ),
+    security(
+        ("bearer_auth" = [])
+    ),
+    summary = "Search the configured video metadata provider for shows"
+)]
+pub(crate) async fn get_series_identify(
+    raw_query: Result<Query<IdentifySeriesQuery>, QueryRejection>,
+    caller: AuthenticatedUser,
+    State(state): State<AppState>,
+) -> Result<Response, ApiError> {
+    let Query(query) = raw_query.map_err(ApiError::from)?;
+    if query.name.is_empty() {
+        warn!(
+            target: "security",
+            event = "input_validation_failed",
+            field = "name",
+            reason = "empty",
+            "rejected an empty video identification name"
+        );
+        return Err(ApiError::UnprocessableEntity(
+            "the name must not be empty".to_owned(),
+        ));
+    }
+    // The representation is the answer to the search view, so its `self` link
+    // addresses the surface rather than repeating the caller's filter.
+    let href = "/api/v1/library/series/identify";
+    let result = state
+        .library_use_case_factory()
+        .identify_video()
+        .execute(IdentifyVideoCommand::new(
+            caller.user_id(),
+            VideoKind::Series,
+            query.name,
+        ))
+        .await;
+    match result {
+        Ok(response) => Ok(hal_json(VideoCandidateListResponse::new(
+            href,
+            response.candidates(),
+        ))),
+        Err(IdentifyVideoError::Unavailable) => {
+            Ok(hal_json(VideoCandidateListResponse::unavailable(href)))
+        }
+        Err(error) => Err(ApiError::from(error)),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::error::Error;
+    use std::sync::Arc;
+
+    use axum::body::Body;
+    use axum::extract::Request;
+    use axum::http::StatusCode;
+    use axum::response::Response;
+    use axum::routing::get;
+    use serde_json::json;
+    use tower::ServiceExt as _;
+
+    use super::get_series_identify;
+    use crate::application::port::identify_video::IdentifyVideoError;
+    use crate::application::port::identify_video::IdentifyVideoResponse;
+    use crate::application::port::identify_video::IdentifyVideoUseCase;
+    use crate::application::port::identify_video::MockIdentifyVideoUseCase;
+    use crate::application::port::library_use_case_factory::MockLibraryUseCaseFactory;
+    use crate::domain::alias::NumericID;
+    use crate::domain::model::configuration::ProviderId;
+    use crate::domain::model::external_ref::ExternalRef;
+    use crate::domain::model::media_query::VideoKind;
+    use crate::domain::model::video_candidate::Candidate;
+    use crate::infrastructure::inbound::rest::handler::library::library_routes;
+    use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
+    use crate::test_helpers::app_state_with_library;
+    use crate::test_helpers::into_parts;
+
+    /// A show candidate for `Twin Peaks`.
+    fn series_candidate() -> Candidate {
+        Candidate::new(
+            ExternalRef::new(ProviderId::Tmdb, "1920".to_owned()),
+            VideoKind::Series,
+            "Twin Peaks".to_owned(),
+            Some(1990),
+        )
+    }
+
+    /// Send a GET to the show identify route on behalf of `caller_id`.
+    async fn send(
+        use_case: MockIdentifyVideoUseCase,
+        caller_id: NumericID,
+        query: &str,
+    ) -> Result<Response, Box<dyn Error>> {
+        let mut factory = MockLibraryUseCaseFactory::new();
+        factory
+            .expect_identify_video()
+            .times(0..=1)
+            .return_once(move || Arc::new(use_case) as Arc<dyn IdentifyVideoUseCase>);
+
+        let mut request = Request::builder()
+            .method("GET")
+            .uri(format!("/api/v1/library/series/identify?{query}"))
+            .body(Body::empty())?;
+        request
+            .extensions_mut()
+            .insert(AuthenticatedUser::from(caller_id));
+
+        let router = axum::Router::new()
+            .route("/api/v1/library/series/identify", get(get_series_identify))
+            .with_state(app_state_with_library(Arc::new(factory))?);
+        Ok(router.oneshot(request).await?)
+    }
+
+    #[tokio::test]
+    async fn get_series_identify_returns_the_candidates() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let mut use_case = MockIdentifyVideoUseCase::new();
+        use_case
+            .expect_execute()
+            .times(1)
+            .withf(|command| command.kind() == VideoKind::Series)
+            .return_once(|_| {
+                Box::pin(async { Ok(IdentifyVideoResponse::new(vec![series_candidate()])) })
+            });
+
+        // Act
+        let (status, _, payload) =
+            into_parts(send(use_case, 1, "name=Twin%20Peaks").await?).await?;
+
+        // Assert
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(
+            payload.pointer("/items/0/kind"),
+            Some(&json!("series")),
+            "the series route must return show candidates"
+        );
+        assert_eq!(payload.pointer("/items/0/year"), Some(&json!(1990u32)));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn get_series_identify_rejects_an_empty_name() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let use_case = MockIdentifyVideoUseCase::new();
+
+        // Act
+        let response = send(use_case, 1, "name=").await?;
+
+        // Assert
+        assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn get_series_identify_reports_an_unconfigured_provider() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let mut use_case = MockIdentifyVideoUseCase::new();
+        use_case
+            .expect_execute()
+            .times(1)
+            .return_once(|_| Box::pin(async { Err(IdentifyVideoError::Unavailable) }));
+
+        // Act
+        let (status, _, payload) =
+            into_parts(send(use_case, 1, "name=Twin%20Peaks").await?).await?;
+
+        // Assert
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(payload.get("available"), Some(&json!(false)));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn get_series_identify_conceals_a_denied_caller() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let mut use_case = MockIdentifyVideoUseCase::new();
+        use_case
+            .expect_execute()
+            .times(1)
+            .return_once(|_| Box::pin(async { Err(IdentifyVideoError::NotPermitted) }));
+
+        // Act
+        let response = send(use_case, 1, "name=Twin%20Peaks").await?;
+
+        // Assert
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn get_series_identify_missing_credentials_returns_unauthorized()
+    -> Result<(), Box<dyn Error>> {
+        // Arrange: the real router, wrapped in its `authenticate` layer.
+        let state = app_state_with_library(Arc::new(MockLibraryUseCaseFactory::new()))?;
+        let request = Request::builder()
+            .method("GET")
+            .uri("/series/identify?name=Twin%20Peaks")
+            .body(Body::empty())?;
+
+        // Act
+        let response: Response = axum::Router::from(library_routes(&state))
+            .oneshot(request)
+            .await?;
+
+        // Assert
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        Ok(())
+    }
+}

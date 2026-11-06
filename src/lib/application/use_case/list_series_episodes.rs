@@ -227,7 +227,7 @@ mod tests {
                     1,
                     "Episode 1".to_owned(),
                     "A plot".to_owned(),
-                    video_date(),
+                    Some(video_date()),
                     first_video,
                 ),
                 ListSeriesEpisodesItem::new(
@@ -236,7 +236,7 @@ mod tests {
                     1,
                     "Episode 2".to_owned(),
                     "A plot".to_owned(),
-                    video_date(),
+                    Some(video_date()),
                     second_video,
                 ),
             ],

@@ -2,6 +2,7 @@ use sqlx::QueryBuilder;
 use sqlx::Sqlite;
 use sqlx::Transaction;
 
+use crate::domain::alias::NumericID;
 use crate::domain::model::movie::Movie;
 use crate::domain::model::video::Video;
 use crate::domain::port::error::RepositoryError;
@@ -27,9 +28,68 @@ impl<'transaction> SqlxMovieRepository<'transaction> {
     pub(crate) fn new(transaction: &'transaction mut Transaction<'static, Sqlite>) -> Self {
         Self { transaction }
     }
+
+    /// Remove every genre link of `movie_id` and link `genre_ids` instead.
+    ///
+    /// The genre vocabulary is open, so a genre the catalogue does not know yet
+    /// is inserted before it is linked.
+    async fn replace_genres(
+        &mut self,
+        movie_id: NumericID,
+        genre_ids: &[String],
+    ) -> Result<(), RepositoryError> {
+        sqlx::query("DELETE FROM movie_genre WHERE movie_id = ?")
+            .bind(movie_id)
+            .execute(&mut **self.transaction)
+            .await?;
+        for genre_id in genre_ids {
+            // The genre table uppercases its identifier through a trigger, so the
+            // link is written in the stored vocabulary rather than the caller's.
+            let stored_genre = genre_id.to_ascii_uppercase();
+            sqlx::query("INSERT OR IGNORE INTO genre (genre_id) VALUES (?)")
+                .bind(&stored_genre)
+                .execute(&mut **self.transaction)
+                .await?;
+            sqlx::query("INSERT INTO movie_genre (movie_id, genre_id) VALUES (?1, ?2)")
+                .bind(movie_id)
+                .bind(&stored_genre)
+                .execute(&mut **self.transaction)
+                .await?;
+        }
+        Ok(())
+    }
 }
 
 impl MovieRepository for SqlxMovieRepository<'_> {
+    async fn create(&mut self, movie: Movie) -> Result<Movie, RepositoryError> {
+        let movie_id = sqlx::query_scalar::<_, NumericID>(
+            "INSERT INTO movie (
+                name, plot, country_of_origin, release_date, video_id, cover_image_id
+             )
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+             RETURNING movie_id",
+        )
+        .bind(movie.name())
+        .bind(movie.plot())
+        .bind(movie.country_of_origin())
+        .bind(movie.release_date())
+        .bind(movie.video_id())
+        .bind(movie.cover_image_id())
+        .fetch_one(&mut **self.transaction)
+        .await?;
+
+        self.replace_genres(movie_id, movie.genre_ids()).await?;
+
+        self.search(&MovieFilter {
+            id: Some(movie_id),
+            ..MovieFilter::default()
+        })
+        .await?
+        .into_iter()
+        .next()
+        .ok_or(RepositoryError::OperationFailed)
+    }
+
     async fn search(&mut self, filter: &MovieFilter) -> Result<Vec<Movie>, RepositoryError> {
         let mut builder = QueryBuilder::<Sqlite>::new(
             "SELECT
@@ -68,6 +128,9 @@ impl MovieRepository for SqlxMovieRepository<'_> {
         }
         if let Some(name) = filter.name.as_deref() {
             push_filter(&mut first, &mut builder, "movie.name = ", name);
+        }
+        if let Some(video_id) = filter.video_id {
+            push_filter(&mut first, &mut builder, "movie.video_id = ", video_id);
         }
 
         // A stable identifier order makes the caller's offset/limit pagination
@@ -121,6 +184,40 @@ impl MovieRepository for SqlxMovieRepository<'_> {
             })
             .collect()
     }
+
+    async fn update(&mut self, movie: Movie) -> Result<Option<Movie>, RepositoryError> {
+        let result = sqlx::query(
+            "UPDATE movie
+             SET name = ?1,
+                 plot = ?2,
+                 country_of_origin = ?3,
+                 release_date = ?4,
+                 cover_image_id = ?5
+             WHERE movie_id = ?6",
+        )
+        .bind(movie.name())
+        .bind(movie.plot())
+        .bind(movie.country_of_origin())
+        .bind(movie.release_date())
+        .bind(movie.cover_image_id())
+        .bind(movie.id())
+        .execute(&mut **self.transaction)
+        .await?;
+        if result.rows_affected() == 0 {
+            return Ok(None);
+        }
+
+        self.replace_genres(movie.id(), movie.genre_ids()).await?;
+        self.search(&MovieFilter {
+            id: Some(movie.id()),
+            ..MovieFilter::default()
+        })
+        .await?
+        .into_iter()
+        .next()
+        .map(Some)
+        .ok_or(RepositoryError::OperationFailed)
+    }
 }
 
 #[cfg(test)]
@@ -137,6 +234,7 @@ mod tests {
     use crate::domain::port::error::RepositoryError;
     use crate::domain::port::movie_repository::MovieFilter;
     use crate::domain::port::movie_repository::MovieRepository as _;
+    use crate::test_helpers::sample_video;
     use tracing_test::traced_test;
 
     use super::SqlxMovieRepository;
@@ -233,6 +331,23 @@ mod tests {
         Ok(())
     }
 
+    /// Seed an image file of `file_id`.
+    async fn seed_image_file(
+        transaction: &mut Transaction<'static, Sqlite>,
+        file_id: i64,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            "INSERT INTO file (file_id, path, user_id, is_public, mime_type_id, size_bytes, modified_at, origin, integrity_hash)
+             VALUES (?1, ?2, 1, 0, 'image/png', 1024, '2026-10-06 00:00:00', 'UPLOADED', ?3)",
+        )
+        .bind(file_id)
+        .bind(format!("{file_id}.png"))
+        .bind(format!("{file_id:064x}"))
+        .execute(&mut **transaction)
+        .await?;
+        Ok(())
+    }
+
     /// Seed a progressive video of `width` pixels on `file_id`.
     async fn seed_video(
         transaction: &mut Transaction<'static, Sqlite>,
@@ -301,6 +416,115 @@ mod tests {
         Ok(())
     }
 
+    /// Seed a show holding one season and an episode backed by `video_id`.
+    async fn seed_episode_backed_by(
+        transaction: &mut Transaction<'static, Sqlite>,
+        video_id: i64,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            "INSERT INTO series (series_id, name, plot) VALUES (1, 'Twin Peaks', 'A plot')",
+        )
+        .execute(&mut **transaction)
+        .await?;
+        sqlx::query("INSERT INTO season (season_id, series_id, season_index) VALUES (1, 1, 1)")
+            .execute(&mut **transaction)
+            .await?;
+        sqlx::query(
+            "INSERT INTO episode (episode_id, season_id, episode_index, name, plot, video_id)
+             VALUES (1, 1, 1, 'Pilot', 'A plot', ?1)",
+        )
+        .bind(video_id)
+        .execute(&mut **transaction)
+        .await?;
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn search_reports_an_absent_release_date_and_country_as_none()
+    -> Result<(), Box<dyn Error>> {
+        // Arrange: a film storing neither a release date nor a country.
+        let mut transaction = begin_transaction().await?;
+        seed_user(&mut transaction).await?;
+        seed_video_file(&mut transaction, 10).await?;
+        seed_video(&mut transaction, 20, 10, 1920).await?;
+        sqlx::query(
+            "INSERT INTO movie (movie_id, name, plot, video_id)
+             VALUES (1, 'Some Like It Hot', 'A plot', 20)",
+        )
+        .execute(&mut *transaction)
+        .await?;
+        let mut repository = SqlxMovieRepository::new(&mut transaction);
+
+        // Act
+        let movies = repository.search(&MovieFilter::default()).await?;
+
+        // Assert
+        let movie = movies.first().ok_or("the film must be found")?;
+        assert_eq!(
+            movie.release_date(),
+            None,
+            "a stored null must read as none"
+        );
+        assert_eq!(
+            movie.country_of_origin(),
+            None,
+            "a stored null must read as none"
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn insert_rejects_a_video_already_backing_an_episode() -> Result<(), Box<dyn Error>> {
+        // Arrange: an episode already backs video 20.
+        let mut transaction = begin_transaction().await?;
+        seed_user(&mut transaction).await?;
+        seed_video_file(&mut transaction, 10).await?;
+        seed_video(&mut transaction, 20, 10, 1920).await?;
+        seed_episode_backed_by(&mut transaction, 20).await?;
+
+        // Act
+        let result = sqlx::query(
+            "INSERT INTO movie (movie_id, name, plot, video_id)
+             VALUES (1, 'Some Like It Hot', 'A plot', 20)",
+        )
+        .execute(&mut *transaction)
+        .await
+        .map_err(RepositoryError::from);
+
+        // Assert
+        assert!(
+            matches!(result, Err(RepositoryError::Conflict)),
+            "a video backing an episode must be rejected as a conflict, got: {result:?}"
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn update_rejects_a_video_already_backing_an_episode() -> Result<(), Box<dyn Error>> {
+        // Arrange: film 1 backs video 21 and an episode backs video 20.
+        let mut transaction = begin_transaction().await?;
+        seed_user(&mut transaction).await?;
+        seed_video_file(&mut transaction, 10).await?;
+        seed_video_file(&mut transaction, 11).await?;
+        seed_video(&mut transaction, 20, 10, 1920).await?;
+        seed_video(&mut transaction, 21, 11, 1920).await?;
+        seed_episode_backed_by(&mut transaction, 20).await?;
+        seed_movie(&mut transaction, 1, "Some Like It Hot", 21).await?;
+
+        // Act
+        let result = sqlx::query("UPDATE movie SET video_id = 20 WHERE movie_id = 1")
+            .execute(&mut *transaction)
+            .await
+            .map_err(RepositoryError::from);
+
+        // Assert
+        assert!(
+            matches!(result, Err(RepositoryError::Conflict)),
+            "moving a film onto an episode's video must be rejected as a conflict, got: {result:?}"
+        );
+        Ok(())
+    }
+
     #[tokio::test]
     async fn search_returns_movies_with_genres_and_their_video() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -329,12 +553,12 @@ mod tests {
         assert_eq!(first.plot(), "A plot");
         assert_eq!(
             first.country_of_origin(),
-            "US",
+            Some("US"),
             "the insert trigger must uppercase the country of origin"
         );
         assert_eq!(
             first.release_date(),
-            NaiveDate::from_ymd_opt(1959, 8, 17).unwrap_or_default()
+            Some(NaiveDate::from_ymd_opt(1959, 8, 17).unwrap_or_default())
         );
         assert_eq!(
             first.genre_ids(),
@@ -554,6 +778,222 @@ mod tests {
             Err(RepositoryError::DataIntegrityViolation)
         ));
         logs_assert(|lines| assert_output_validation_failed(lines, "invalid_movie"));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn create_stores_the_film_with_its_genres_and_cover() -> Result<(), Box<dyn Error>> {
+        // Arrange: a free video and a library cover, with two genre identifiers
+        // the catalogue does not hold yet.
+        let mut transaction = begin_transaction().await?;
+        seed_user(&mut transaction).await?;
+        seed_video_file(&mut transaction, 10).await?;
+        seed_image_file(&mut transaction, 12).await?;
+        seed_image(&mut transaction, 12, 12).await?;
+        seed_video(&mut transaction, 20, 10, 1920).await?;
+        let movie = Movie::try_new(
+            0,
+            "Some Like It Hot".to_owned(),
+            "A plot".to_owned(),
+            Some("us".to_owned()),
+            Some(NaiveDate::from_ymd_opt(1959, 8, 17).unwrap_or_default()),
+            vec!["Drama".to_owned(), "MYSTERY".to_owned()],
+            Some(12),
+            sample_video(20, 10)?,
+        )?;
+        let mut repository = SqlxMovieRepository::new(&mut transaction);
+
+        // Act
+        let stored = repository.create(movie).await?;
+
+        // Assert
+        assert_ne!(stored.id(), 0, "the repository assigns an identity");
+        assert_eq!(stored.name(), "Some Like It Hot");
+        assert_eq!(stored.plot(), "A plot");
+        assert_eq!(
+            stored.country_of_origin(),
+            Some("US"),
+            "the insert trigger must uppercase the country of origin"
+        );
+        assert_eq!(
+            stored.release_date(),
+            Some(NaiveDate::from_ymd_opt(1959, 8, 17).unwrap_or_default())
+        );
+        assert_eq!(
+            stored.genre_ids(),
+            ["DRAMA", "MYSTERY"],
+            "an unknown genre must be stored in the catalogue vocabulary and linked"
+        );
+        assert_eq!(stored.cover_image_id(), Some(12));
+        assert_eq!(stored.video_id(), 20, "the film must read back its video");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn create_rejects_a_video_already_backing_a_film() -> Result<(), Box<dyn Error>> {
+        // Arrange: film 1 already backs video 20.
+        let mut transaction = begin_transaction().await?;
+        seed_user(&mut transaction).await?;
+        seed_video_file(&mut transaction, 10).await?;
+        seed_video(&mut transaction, 20, 10, 1920).await?;
+        seed_movie(&mut transaction, 1, "Some Like It Hot", 20).await?;
+        let movie = Movie::try_new(
+            0,
+            "Another Film".to_owned(),
+            "A plot".to_owned(),
+            None,
+            None,
+            Vec::new(),
+            None,
+            sample_video(20, 10)?,
+        )?;
+        let mut repository = SqlxMovieRepository::new(&mut transaction);
+
+        // Act
+        let result = repository.create(movie).await;
+
+        // Assert
+        assert!(
+            matches!(result, Err(RepositoryError::AlreadyExist)),
+            "a video already backing a film must violate the unique key, got: {result:?}"
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn create_rejects_a_video_already_backing_an_episode() -> Result<(), Box<dyn Error>> {
+        // Arrange: an episode already backs video 20.
+        let mut transaction = begin_transaction().await?;
+        seed_user(&mut transaction).await?;
+        seed_video_file(&mut transaction, 10).await?;
+        seed_video(&mut transaction, 20, 10, 1920).await?;
+        seed_episode_backed_by(&mut transaction, 20).await?;
+        let movie = Movie::try_new(
+            0,
+            "Some Like It Hot".to_owned(),
+            "A plot".to_owned(),
+            None,
+            None,
+            Vec::new(),
+            None,
+            sample_video(20, 10)?,
+        )?;
+        let mut repository = SqlxMovieRepository::new(&mut transaction);
+
+        // Act
+        let result = repository.create(movie).await;
+
+        // Assert
+        assert!(
+            matches!(result, Err(RepositoryError::Conflict)),
+            "the cross-kind trigger must reject a video backing an episode, got: {result:?}"
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn create_rejects_a_cover_that_is_not_a_library_image() -> Result<(), Box<dyn Error>> {
+        // Arrange: image 12 is attached to a user asset, so it cannot become a
+        // film cover.
+        let mut transaction = begin_transaction().await?;
+        seed_user(&mut transaction).await?;
+        seed_video_file(&mut transaction, 10).await?;
+        seed_image_file(&mut transaction, 12).await?;
+        seed_image(&mut transaction, 12, 12).await?;
+        sqlx::query("UPDATE image SET scope = 'USER' WHERE image_id = 12")
+            .execute(&mut *transaction)
+            .await?;
+        seed_video(&mut transaction, 20, 10, 1920).await?;
+        let movie = Movie::try_new(
+            0,
+            "Some Like It Hot".to_owned(),
+            "A plot".to_owned(),
+            None,
+            None,
+            Vec::new(),
+            Some(12),
+            sample_video(20, 10)?,
+        )?;
+        let mut repository = SqlxMovieRepository::new(&mut transaction);
+
+        // Act
+        let result = repository.create(movie).await;
+
+        // Assert
+        assert!(
+            matches!(result, Err(RepositoryError::Conflict)),
+            "a USER image must be rejected as a cover conflict, got: {result:?}"
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn update_replaces_metadata_and_genres_but_not_the_video() -> Result<(), Box<dyn Error>> {
+        // Arrange: film 1 backs video 20; the update names an unseeded video to
+        // prove the adapter never rewrites it.
+        let mut transaction = begin_transaction().await?;
+        seed_user(&mut transaction).await?;
+        seed_video_file(&mut transaction, 10).await?;
+        seed_video(&mut transaction, 20, 10, 1920).await?;
+        seed_movie(&mut transaction, 1, "Old Name", 20).await?;
+        let updated = Movie::try_new(
+            1,
+            "New Name".to_owned(),
+            "New plot".to_owned(),
+            Some("GB".to_owned()),
+            Some(NaiveDate::from_ymd_opt(1960, 1, 2).unwrap_or_default()),
+            vec!["Science Fiction".to_owned()],
+            None,
+            sample_video(99, 99)?,
+        )?;
+        let mut repository = SqlxMovieRepository::new(&mut transaction);
+
+        // Act
+        let stored = repository.update(updated).await?;
+
+        // Assert
+        let persisted = stored.ok_or("the stored film must be returned")?;
+        assert_eq!(persisted.name(), "New Name");
+        assert_eq!(persisted.plot(), "New plot");
+        assert_eq!(persisted.country_of_origin(), Some("GB"));
+        assert_eq!(
+            persisted.release_date(),
+            Some(NaiveDate::from_ymd_opt(1960, 1, 2).unwrap_or_default())
+        );
+        assert_eq!(
+            persisted.genre_ids(),
+            ["SCIENCE FICTION"],
+            "the genre links must be replaced"
+        );
+        assert_eq!(
+            persisted.video_id(),
+            20,
+            "the update must never rewrite the backing video"
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn update_returns_none_for_an_absent_film() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let mut transaction = begin_transaction().await?;
+        let updated = Movie::try_new(
+            404,
+            "New Name".to_owned(),
+            "New plot".to_owned(),
+            None,
+            None,
+            Vec::new(),
+            None,
+            sample_video(1, 1)?,
+        )?;
+        let mut repository = SqlxMovieRepository::new(&mut transaction);
+
+        // Act
+        let stored = repository.update(updated).await?;
+
+        // Assert
+        assert!(stored.is_none(), "an absent film must read as none");
         Ok(())
     }
 }

@@ -5,11 +5,11 @@
 )]
 
 use crate::application::security_event;
-use crate::domain::model::media_candidate::Candidate;
-use crate::domain::model::media_candidate::ProviderId;
-use crate::domain::model::media_candidate::Target;
+use crate::domain::model::configuration::ProviderId;
 use crate::domain::model::media_metadata::MediaMetadata;
 use crate::domain::model::media_query::MediaQuery;
+use crate::domain::model::video_candidate::Candidate;
+use crate::domain::model::video_candidate::Target;
 use crate::domain::port::error::ExternalServiceError;
 use crate::domain::port::video_metadata_provider::VideoMetadataProvider;
 
@@ -84,14 +84,14 @@ mod tests {
     use wiremock::matchers::method;
     use wiremock::matchers::path;
 
-    use crate::domain::model::media_candidate::Candidate;
-    use crate::domain::model::media_candidate::ExternalRef;
-    use crate::domain::model::media_candidate::ProviderId;
-    use crate::domain::model::media_candidate::Target;
+    use crate::domain::model::configuration::ProviderId;
+    use crate::domain::model::external_ref::ExternalRef;
     use crate::domain::model::media_metadata::MediaMetadata;
     use crate::domain::model::media_query::MediaQuery;
     use crate::domain::model::media_query::MediaQueryError;
     use crate::domain::model::media_query::VideoKind;
+    use crate::domain::model::video_candidate::Candidate;
+    use crate::domain::model::video_candidate::Target;
     use crate::domain::port::error::ExternalServiceError;
     use crate::domain::port::video_metadata_provider::MockVideoMetadataProvider;
     use crate::domain::port::video_metadata_provider::VideoMetadataProvider as _;

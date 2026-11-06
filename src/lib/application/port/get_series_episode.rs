@@ -66,8 +66,8 @@ impl GetSeriesEpisodeCommand {
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
 pub(crate) struct GetSeriesEpisodeResponse {
-    /// Date of the first airing of the episode.
-    air_date: NaiveDate,
+    /// Date of the first airing of the episode, when known.
+    air_date: Option<NaiveDate>,
     /// Season-scoped index of the episode.
     id: u32,
     /// Name of the episode.
@@ -83,9 +83,9 @@ pub(crate) struct GetSeriesEpisodeResponse {
 }
 
 impl GetSeriesEpisodeResponse {
-    /// Return the date of the first airing of the episode.
+    /// Return the date of the first airing of the episode, if known.
     #[must_use]
-    pub(crate) fn air_date(&self) -> NaiveDate {
+    pub(crate) fn air_date(&self) -> Option<NaiveDate> {
         self.air_date
     }
 
@@ -109,7 +109,7 @@ impl GetSeriesEpisodeResponse {
         season_index: u32,
         name: String,
         plot: String,
-        air_date: NaiveDate,
+        air_date: Option<NaiveDate>,
         video: Video,
     ) -> Self {
         Self {

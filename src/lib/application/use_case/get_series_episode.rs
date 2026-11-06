@@ -223,7 +223,7 @@ mod tests {
                 1,
                 "Episode 2".to_owned(),
                 "A plot".to_owned(),
-                video_date(),
+                Some(video_date()),
                 expected_video,
             ),
             "the representation must carry the requested episode"

@@ -2239,8 +2239,8 @@ entity movie {
    --
    * name: TEXT <<NN>>
    * plot: TEXT <<NN>>
-   * country_of_origin: VARCHAR(30) <<NN>>
-   * release_date: DATE <<NN, DF(date('now'))>>
+   country_of_origin: VARCHAR(30)
+   release_date: DATE
    * video_id: INTEGER <<FK, NN, UN>>
    cover_image_id: INTEGER <<FK>>
 }
@@ -2250,8 +2250,8 @@ entity series {
    --
    * name: TEXT <<NN>>
    * plot: TEXT <<NN>>
-   * country_of_origin: VARCHAR(30) <<NN>>
-   * first_air_date: DATE <<NN, DF(date('now'))>>
+   country_of_origin: VARCHAR(30)
+   first_air_date: DATE
    cover_image_id: INTEGER <<FK>>
 }
 
@@ -2276,7 +2276,7 @@ entity episode {
    * episode_index: INTEGER <<NN, CC(episode_index BETWEEN 0 AND 4294967295)>>
    * name: TEXT <<NN>>
    * plot: TEXT <<NN>>
-   * air_date: DATE <<NN>>
+   air_date: DATE
    * video_id: INTEGER <<FK, NN, UN>>
 }
 

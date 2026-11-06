@@ -122,8 +122,8 @@ mod tests {
 
     use chrono::NaiveDate;
 
-    use crate::domain::model::media_candidate::ExternalRef;
-    use crate::domain::model::media_candidate::ProviderId;
+    use crate::domain::model::configuration::ProviderId;
+    use crate::domain::model::external_ref::ExternalRef;
     use crate::domain::model::music_candidate::MusicCandidate;
     use crate::domain::model::music_metadata::Edition;
     use crate::domain::model::music_metadata::MediumFormat;

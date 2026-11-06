@@ -48,13 +48,6 @@ pub(crate) trait VideoRepository: Send + Sync {
     /// Return the video identified by `id`, if any.
     ///
     /// A missing video is `Ok(None)`, not an error.
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "part of the type's declared contract; no caller exercises it yet"
-        )
-    )]
     fn get(
         &mut self,
         id: NumericID,

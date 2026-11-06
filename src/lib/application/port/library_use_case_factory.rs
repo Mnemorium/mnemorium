@@ -1,11 +1,16 @@
 use std::sync::Arc;
 
 use crate::application::port::add_gallery_item::AddGalleryItemUseCase;
+use crate::application::port::apply_movie::ApplyMovieUseCase;
 use crate::application::port::apply_music_album::ApplyMusicAlbumUseCase;
+use crate::application::port::apply_series::ApplySeriesUseCase;
+use crate::application::port::apply_series_episode::ApplySeriesEpisodeUseCase;
 use crate::application::port::create_gallery::CreateGalleryUseCase;
+use crate::application::port::create_movie::CreateMovieUseCase;
 use crate::application::port::create_music_album::CreateMusicAlbumUseCase;
 use crate::application::port::create_music_group::CreateMusicGroupUseCase;
 use crate::application::port::create_playlist::CreatePlaylistUseCase;
+use crate::application::port::create_series::CreateSeriesUseCase;
 use crate::application::port::delete_gallery::DeleteGalleryUseCase;
 use crate::application::port::delete_gallery_item::DeleteGalleryItemUseCase;
 use crate::application::port::delete_playlist::DeletePlaylistUseCase;
@@ -35,12 +40,19 @@ use crate::application::port::list_series_episodes::ListSeriesEpisodesUseCase;
 use crate::application::port::patch_album_track::PatchAlbumTrackUseCase;
 use crate::application::port::put_album_medium::PutAlbumMediumUseCase;
 use crate::application::port::put_album_track::PutAlbumTrackUseCase;
+use crate::application::port::put_series_episode::PutSeriesEpisodeUseCase;
+use crate::application::port::put_series_season::PutSeriesSeasonUseCase;
 use crate::application::port::remove_playlist_track::RemovePlaylistTrackUseCase;
 use crate::application::port::reorder_playlist_tracks::ReorderPlaylistTracksUseCase;
 use crate::application::port::resolve_music_metadata::ResolveMusicMetadataUseCase;
+use crate::application::port::resolve_video_metadata::ResolveVideoMetadataUseCase;
+use crate::application::port::update_movie::UpdateMovieUseCase;
 use crate::application::port::update_music_album::UpdateMusicAlbumUseCase;
 use crate::application::port::update_music_group::UpdateMusicGroupUseCase;
 use crate::application::port::update_playlist::UpdatePlaylistUseCase;
+use crate::application::port::update_series::UpdateSeriesUseCase;
+use crate::application::port::update_series_episode::UpdateSeriesEpisodeUseCase;
+use crate::application::port::update_series_season::UpdateSeriesSeasonUseCase;
 
 /// Builds the use cases of the Library bounded context on demand.
 ///
@@ -51,11 +63,23 @@ pub(crate) trait LibraryUseCaseFactory: Send + Sync {
     /// Build the use case adding one of the caller's media to a gallery.
     fn add_gallery_item(&self) -> Arc<dyn AddGalleryItemUseCase>;
 
+    /// Build the use case applying external metadata to a film.
+    fn apply_movie(&self) -> Arc<dyn ApplyMovieUseCase>;
+
     /// Build the use case applying external metadata to a music album.
     fn apply_music_album(&self) -> Arc<dyn ApplyMusicAlbumUseCase>;
 
+    /// Build the use case applying external metadata to a show.
+    fn apply_series(&self) -> Arc<dyn ApplySeriesUseCase>;
+
+    /// Build the use case applying external metadata to one episode.
+    fn apply_series_episode(&self) -> Arc<dyn ApplySeriesEpisodeUseCase>;
+
     /// Build the use case creating a gallery.
     fn create_gallery(&self) -> Arc<dyn CreateGalleryUseCase>;
+
+    /// Build the use case creating a film from a video.
+    fn create_movie(&self) -> Arc<dyn CreateMovieUseCase>;
 
     /// Build the use case creating a music album.
     fn create_music_album(&self) -> Arc<dyn CreateMusicAlbumUseCase>;
@@ -65,6 +89,9 @@ pub(crate) trait LibraryUseCaseFactory: Send + Sync {
 
     /// Build the use case creating a playlist.
     fn create_playlist(&self) -> Arc<dyn CreatePlaylistUseCase>;
+
+    /// Build the use case creating a show.
+    fn create_series(&self) -> Arc<dyn CreateSeriesUseCase>;
 
     /// Build the use case deleting a gallery and its items.
     fn delete_gallery(&self) -> Arc<dyn DeleteGalleryUseCase>;
@@ -115,10 +142,6 @@ pub(crate) trait LibraryUseCaseFactory: Send + Sync {
     fn identify_music(&self) -> Arc<dyn IdentifyMusicUseCase>;
 
     /// Build the internal use case identifying a video from its name.
-    #[expect(
-        dead_code,
-        reason = "part of the type's declared contract; no caller exercises it yet"
-    )]
     fn identify_video(&self) -> Arc<dyn IdentifyVideoUseCase>;
 
     /// Build the use case reconciling the library root with the registered
@@ -158,6 +181,12 @@ pub(crate) trait LibraryUseCaseFactory: Send + Sync {
     /// Build the use case placing a recording at a medium track address.
     fn put_album_track(&self) -> Arc<dyn PutAlbumTrackUseCase>;
 
+    /// Build the use case creating or replacing a season episode.
+    fn put_series_episode(&self) -> Arc<dyn PutSeriesEpisodeUseCase>;
+
+    /// Build the use case creating or replacing a show season.
+    fn put_series_season(&self) -> Arc<dyn PutSeriesSeasonUseCase>;
+
     /// Build the use case removing one track of a playlist.
     fn remove_playlist_track(&self) -> Arc<dyn RemovePlaylistTrackUseCase>;
 
@@ -167,6 +196,12 @@ pub(crate) trait LibraryUseCaseFactory: Send + Sync {
     /// Build the internal use case resolving one music target's metadata.
     fn resolve_music_metadata(&self) -> Arc<dyn ResolveMusicMetadataUseCase>;
 
+    /// Build the internal use case resolving one video target's metadata.
+    fn resolve_video_metadata(&self) -> Arc<dyn ResolveVideoMetadataUseCase>;
+
+    /// Build the use case updating a film.
+    fn update_movie(&self) -> Arc<dyn UpdateMovieUseCase>;
+
     /// Build the use case updating a music album.
     fn update_music_album(&self) -> Arc<dyn UpdateMusicAlbumUseCase>;
 
@@ -175,4 +210,13 @@ pub(crate) trait LibraryUseCaseFactory: Send + Sync {
 
     /// Build the use case updating a playlist.
     fn update_playlist(&self) -> Arc<dyn UpdatePlaylistUseCase>;
+
+    /// Build the use case updating a show.
+    fn update_series(&self) -> Arc<dyn UpdateSeriesUseCase>;
+
+    /// Build the use case updating a season episode.
+    fn update_series_episode(&self) -> Arc<dyn UpdateSeriesEpisodeUseCase>;
+
+    /// Build the use case updating a show season.
+    fn update_series_season(&self) -> Arc<dyn UpdateSeriesSeasonUseCase>;
 }
