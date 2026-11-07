@@ -74,7 +74,7 @@ where
                     file.user_id(),
                     accessed.image.as_ref().map(Image::image_id),
                     accessed.audio.as_ref().map(Audio::id),
-                    accessed.video.as_ref().map(Video::video_id),
+                    accessed.video.as_ref().map(Video::id),
                 ))
             }
             .await;

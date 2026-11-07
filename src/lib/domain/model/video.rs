@@ -45,10 +45,6 @@ pub(crate) enum ScanType {
 
 /// A video stored on the server.
 #[derive(Debug, Clone, PartialEq)]
-#[expect(
-    clippy::struct_field_names,
-    reason = "`video_id` is the primary key name mandated by the SQL section and the domain field naming"
-)]
 pub(crate) struct Video {
     /// Codec of the video.
     codec: String,
@@ -62,12 +58,12 @@ pub(crate) struct Video {
     frame_count: i64,
     /// Height of the video, in pixels.
     height: i64,
+    /// Unique identifier of the video.
+    id: NumericID,
     /// Scan type of the video.
     scan_type: ScanType,
     /// Scope fixed by the first attachment, when set.
     scope: Option<Scope>,
-    /// Unique identifier of the video.
-    video_id: NumericID,
     /// Width of the video, in pixels.
     width: i64,
 }
@@ -109,6 +105,12 @@ impl Video {
         self.height
     }
 
+    /// Return the unique identifier of the video.
+    #[must_use]
+    pub(crate) fn id(&self) -> NumericID {
+        self.id
+    }
+
     /// Return the scan type of the video.
     #[must_use]
     pub(crate) fn scan_type(&self) -> ScanType {
@@ -136,7 +138,7 @@ impl Video {
         reason = "try_new mirrors every video column"
     )]
     pub(crate) fn try_new(
-        video_id: NumericID,
+        id: NumericID,
         duration_ms: f64,
         codec: String,
         frame_count: i64,
@@ -166,17 +168,11 @@ impl Video {
             file_id,
             frame_count,
             height,
+            id,
             scan_type,
             scope,
-            video_id,
             width,
         })
-    }
-
-    /// Return the unique identifier of the video.
-    #[must_use]
-    pub(crate) fn video_id(&self) -> NumericID {
-        self.video_id
     }
 
     /// Return the width of the video, in pixels.

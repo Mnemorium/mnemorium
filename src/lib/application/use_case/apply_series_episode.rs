@@ -349,7 +349,7 @@ mod tests {
             NaiveDate::from_ymd_opt(1991, 4, 8)
         );
         assert_eq!(
-            response.episode().video().video_id(),
+            response.episode().video().id(),
             20,
             "the video must be untouched"
         );
