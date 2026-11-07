@@ -145,11 +145,7 @@ where
                             .into_iter()
                             .next()
                             .ok_or(AddGalleryItemError::NoSuchMedia)?;
-                        (
-                            GalleryItemMedia::Video(video.video_id()),
-                            video.file_id(),
-                            None,
-                        )
+                        (GalleryItemMedia::Video(video.id()), video.file_id(), None)
                     }
                 };
 

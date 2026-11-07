@@ -285,7 +285,7 @@ mod tests {
                 *series_id == 7
                     && *season_index == 1
                     && episode.name() == "New Name"
-                    && episode.video().video_id() == 20
+                    && episode.video().id() == 20
             })
             .return_once(move |_, _, _| {
                 let copy = written.clone();
@@ -309,7 +309,7 @@ mod tests {
 
         // Assert
         assert_eq!(response.episode().name(), "New Name");
-        assert_eq!(response.episode().video().video_id(), 20);
+        assert_eq!(response.episode().video().id(), 20);
         assert!(harness.committed.load(Ordering::SeqCst));
         Ok(())
     }
@@ -332,7 +332,7 @@ mod tests {
                 episode.name() == "Episode 1"
                     && episode.plot() == "A plot"
                     && episode.air_date().is_some()
-                    && episode.video().video_id() == 20
+                    && episode.video().id() == 20
             })
             .returning(|_, _, episode| Box::pin(async move { Ok(Some(episode)) }));
         let harness = harness_with(users, no_permissions(), series);
@@ -345,7 +345,7 @@ mod tests {
         assert_eq!(response.episode().name(), "Episode 1");
         assert_eq!(response.episode().plot(), "A plot");
         assert!(response.episode().air_date().is_some());
-        assert_eq!(response.episode().video().video_id(), 20);
+        assert_eq!(response.episode().video().id(), 20);
         Ok(())
     }
 
