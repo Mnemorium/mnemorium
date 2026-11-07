@@ -259,17 +259,8 @@ where
         );
         match media {
             MediaRow::Image(probed) => {
-                let pending = Image::try_new(
-                    0,
-                    name,
-                    probed.width_px,
-                    probed.height_px,
-                    probed.orientation,
-                    Utc::now().date_naive(),
-                    file.id(),
-                    None,
-                )
-                .map_err(|error| IngestMediaError::Unknown(anyhow::Error::new(error)))?;
+                let pending =
+                    Image::from_probed(0, name, probed, Utc::now().date_naive(), file.id(), None);
                 unit_of_work
                     .images()
                     .create(pending)
@@ -278,19 +269,7 @@ where
                     .map_err(|error| IngestMediaError::Unknown(error.into()))
             }
             MediaRow::Video(probed) => {
-                let pending = Video::try_new(
-                    0,
-                    probed.duration_ms,
-                    probed.codec,
-                    probed.frame_count,
-                    probed.width,
-                    probed.height,
-                    probed.color_id,
-                    probed.scan_type,
-                    file.id(),
-                    None,
-                )
-                .map_err(|error| IngestMediaError::Unknown(anyhow::Error::new(error)))?;
+                let pending = Video::from_probed(0, probed, file.id(), None);
                 unit_of_work
                     .videos()
                     .create(pending)
@@ -299,17 +278,7 @@ where
                     .map_err(|error| IngestMediaError::Unknown(error.into()))
             }
             MediaRow::Audio(probed) => {
-                let pending = Audio::try_new(
-                    0,
-                    name,
-                    probed.duration_ms,
-                    probed.codec,
-                    probed.sample_rate_hz,
-                    probed.bit_depth,
-                    probed.block_size,
-                    file.id(),
-                )
-                .map_err(|error| IngestMediaError::Unknown(anyhow::Error::new(error)))?;
+                let pending = Audio::from_probed(0, name, probed, file.id());
                 unit_of_work
                     .audios()
                     .create(pending)
@@ -735,6 +704,7 @@ fn media_kind(mime_type_id: &str) -> Option<MediaKind> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::alias::{NonNegativeF64, PositiveI64};
     use crate::domain::model::audio::AudioError;
     use crate::domain::model::file::{FileError, Origin};
     use crate::domain::model::image::Orientation;
@@ -899,35 +869,53 @@ mod tests {
     }
 
     /// Build a probed image.
+    #[expect(
+        clippy::expect_used,
+        reason = "the fixture scalars are valid by construction"
+    )]
     fn probed_image() -> ProbedImage {
         ProbedImage {
-            height_px: 480,
+            height_px: PositiveI64::try_new(480).expect("the fixture height is positive"),
             orientation: Orientation::Landscape,
-            width_px: 640,
+            width_px: PositiveI64::try_new(640).expect("the fixture width is positive"),
         }
     }
 
     /// Build a probed video.
+    #[expect(
+        clippy::expect_used,
+        reason = "the fixture scalars are valid by construction"
+    )]
     fn probed_video() -> ProbedVideo {
         ProbedVideo {
             codec: "h264".to_owned(),
             color_id: "YCbCr".to_owned(),
-            duration_ms: 1_000.0f64,
-            frame_count: 30,
-            height: 480,
+            duration_ms: NonNegativeF64::try_new(1_000.0f64)
+                .expect("the fixture duration is non-negative"),
+            frame_count: PositiveI64::try_new(30).expect("the fixture frame count is positive"),
+            height: PositiveI64::try_new(480).expect("the fixture height is positive"),
             scan_type: ScanType::Progressive,
-            width: 640,
+            width: PositiveI64::try_new(640).expect("the fixture width is positive"),
         }
     }
 
     /// Build a probed audio row with absent measurements.
+    #[expect(
+        clippy::expect_used,
+        reason = "the fixture scalars are valid by construction"
+    )]
     fn probed_audio() -> ProbedAudio {
         ProbedAudio {
             bit_depth: None,
             block_size: None,
             codec: "mp3".to_owned(),
-            duration_ms: 1_000.0f64,
-            sample_rate_hz: 44_100.0f64,
+            duration_ms: Some(
+                NonNegativeF64::try_new(1_000.0f64).expect("the fixture duration is non-negative"),
+            ),
+            sample_rate_hz: Some(
+                NonNegativeF64::try_new(44_100.0f64)
+                    .expect("the fixture sample rate is non-negative"),
+            ),
         }
     }
 
@@ -1621,9 +1609,9 @@ mod tests {
         let present = Audio::try_new(
             1,
             "track.mp3".to_owned(),
-            1_000.0,
+            Some(1_000.0f64),
             "mp3".to_owned(),
-            44_100.0,
+            Some(44_100.0f64),
             Some(16),
             Some(1152),
             2,
@@ -1631,17 +1619,21 @@ mod tests {
         let absent = Audio::try_new(
             2,
             "track.mp3".to_owned(),
-            1_000.0,
+            None,
             "mp3".to_owned(),
-            44_100.0,
+            None,
             None,
             None,
             3,
         )?;
 
         // Assert
+        assert_eq!(present.duration_ms(), Some(1_000.0f64));
+        assert_eq!(present.sample_rate_hz(), Some(44_100.0f64));
         assert_eq!(present.bit_depth(), Some(16));
         assert_eq!(present.block_size(), Some(1152));
+        assert!(absent.duration_ms().is_none());
+        assert!(absent.sample_rate_hz().is_none());
         assert!(absent.bit_depth().is_none());
         assert!(absent.block_size().is_none());
         Ok(())
@@ -1650,28 +1642,50 @@ mod tests {
     #[tokio::test]
     async fn an_audio_row_rejects_present_and_invalid_measurements() {
         // Act
-        let depth = Audio::try_new(
+        let duration = Audio::try_new(
             1,
             "track.mp3".to_owned(),
-            1_000.0,
+            Some(-1.0f64),
             "mp3".to_owned(),
-            44_100.0,
-            Some(0),
+            Some(44_100.0f64),
+            None,
             None,
             2,
         );
-        let block = Audio::try_new(
+        let sample_rate = Audio::try_new(
             2,
             "track.mp3".to_owned(),
-            1_000.0,
+            Some(1_000.0f64),
             "mp3".to_owned(),
-            44_100.0,
+            Some(-1.0f64),
+            None,
+            None,
+            3,
+        );
+        let depth = Audio::try_new(
+            3,
+            "track.mp3".to_owned(),
+            Some(1_000.0f64),
+            "mp3".to_owned(),
+            Some(44_100.0f64),
+            Some(0),
+            None,
+            4,
+        );
+        let block = Audio::try_new(
+            4,
+            "track.mp3".to_owned(),
+            Some(1_000.0f64),
+            "mp3".to_owned(),
+            Some(44_100.0f64),
             None,
             Some(-1),
-            3,
+            5,
         );
 
         // Assert
+        assert!(matches!(duration, Err(AudioError::InvalidDurationMs)));
+        assert!(matches!(sample_rate, Err(AudioError::InvalidSampleRateHz)));
         assert!(matches!(depth, Err(AudioError::InvalidBitDepth)));
         assert!(matches!(block, Err(AudioError::InvalidBlockSize)));
     }

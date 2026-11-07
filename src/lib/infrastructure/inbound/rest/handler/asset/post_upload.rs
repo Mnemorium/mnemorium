@@ -82,6 +82,7 @@ impl From<BeginUploadError> for ApiError {
                 Self::UnprocessableEntity(err.to_string())
             }
             BeginUploadError::FileTooLarge => Self::PayloadTooLarge(err.to_string()),
+            BeginUploadError::LibraryUnavailable => Self::ServiceUnavailable(err.to_string()),
             BeginUploadError::NoSuchCaller => Self::Unauthorized(err.to_string()),
             BeginUploadError::Unknown(_) => Self::InternalServerError,
             BeginUploadError::UnsupportedMediaType => Self::UnsupportedMediaType(err.to_string()),
@@ -151,6 +152,12 @@ impl From<BeginUploadError> for ApiError {
             body = ErrorBody,
             content_type = "application/hal+json",
             description = "The request body does not match the expected schema, or the file name or size fails validation"
+        ),
+        (
+            status = SERVICE_UNAVAILABLE,
+            body = ErrorBody,
+            content_type = "application/hal+json",
+            description = "The media library root is absent"
         ),
         (
             status = INTERNAL_SERVER_ERROR,

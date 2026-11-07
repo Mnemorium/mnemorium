@@ -51,6 +51,10 @@ pub(crate) struct PartialAssetUpload {
     pub expiry_seconds: Option<u64>,
     /// Maximum size of a single uploaded file, in bytes.
     pub max_file_size_bytes: Option<u64>,
+    /// Maximum number of upload sessions the reaper handles per phase.
+    pub reap_batch_size: Option<usize>,
+    /// Interval between two upload-reaper runs, in seconds.
+    pub reap_interval_seconds: Option<u64>,
 }
 
 /// Library-related settings named by the layer.

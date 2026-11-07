@@ -165,9 +165,9 @@ mod tests {
         Ok(Audio::try_new(
             0,
             "track.mp3".to_owned(),
-            1_000.0f64,
+            Some(1_000.0f64),
             "MP3".to_owned(),
-            44_100.0f64,
+            Some(44_100.0f64),
             bit_depth,
             block_size,
             file_id,
@@ -210,13 +210,42 @@ mod tests {
         seed_user(&mut transaction, 1).await?;
         seed_file(&mut transaction, 10, 1, "audio/mpeg").await?;
         let mut repository = SqlxAudioRepository::new(&mut transaction);
+        let pending = Audio::try_new(
+            0,
+            "track.mp3".to_owned(),
+            None,
+            "MP3".to_owned(),
+            None,
+            None,
+            None,
+            10,
+        )?;
 
         // Act
-        let persisted = repository.create(audio(10, None, None)?).await?;
+        let persisted = repository.create(pending).await?;
 
         // Assert: an unknown measurement is absent rather than fabricated.
+        assert!(persisted.duration_ms().is_none());
+        assert!(persisted.sample_rate_hz().is_none());
         assert!(persisted.bit_depth().is_none());
         assert!(persisted.block_size().is_none());
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn create_and_read_back_present_measurements() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let mut transaction = begin_transaction().await?;
+        seed_user(&mut transaction, 1).await?;
+        seed_file(&mut transaction, 10, 1, "audio/mpeg").await?;
+        let mut repository = SqlxAudioRepository::new(&mut transaction);
+
+        // Act
+        let persisted = repository.create(audio(10, Some(16), Some(1_152))?).await?;
+
+        // Assert
+        assert_eq!(persisted.duration_ms(), Some(1_000.0f64));
+        assert_eq!(persisted.sample_rate_hz(), Some(44_100.0f64));
         Ok(())
     }
 

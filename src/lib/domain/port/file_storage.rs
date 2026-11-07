@@ -1,5 +1,5 @@
 use std::future::Future;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use chrono::NaiveDateTime;
 
@@ -89,6 +89,17 @@ pub(crate) trait FileStorage: Send + Sync {
         &self,
         path: &Path,
     ) -> impl Future<Output = Result<Option<IntegrityHash<DIGEST_HEX_LENGTH>>, StorageError>> + Send;
+
+    /// List the regular files directly under `path`.
+    ///
+    /// The returned paths are the entries the adapter found; interpreting the
+    /// staging layout, such as an identifier encoded in a file name, belongs to
+    /// the caller. A directory that does not exist is a valid outcome, reported
+    /// as an empty list.
+    fn list_staged(
+        &self,
+        path: &Path,
+    ) -> impl Future<Output = Result<Vec<PathBuf>, StorageError>> + Send;
 
     /// Move the file at `staged` to `final_path`, returning the promoted
     /// content's size and modification instant.

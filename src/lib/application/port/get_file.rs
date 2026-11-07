@@ -69,10 +69,6 @@ pub(crate) struct GetFileResponse {
 impl GetFileResponse {
     /// Return the identifier of the audio backing the file, if any.
     #[must_use]
-    #[expect(
-        dead_code,
-        reason = "part of the type's declared contract; no caller exercises it yet"
-    )]
     pub(crate) fn audio_id(&self) -> Option<NumericID> {
         self.audio_id
     }

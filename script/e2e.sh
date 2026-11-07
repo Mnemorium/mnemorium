@@ -47,6 +47,7 @@ echo "==> Starting container ${CONTAINER}"
 docker rm -f "${CONTAINER}" >/dev/null 2>&1 || true
 docker run -d --name "${CONTAINER}" -p "${PORT}:4080" \
 	-e MNEMORIUM_SECURITY_RATE_LIMIT_BURST_SIZE=1000 \
+	-e MNEMORIUM_ASSET_UPLOAD_EXPIRY_SECONDS=10 \
 	-v "${MEDIA_DIR}:/app/media" \
 	"${IMAGE}" >/dev/null
 

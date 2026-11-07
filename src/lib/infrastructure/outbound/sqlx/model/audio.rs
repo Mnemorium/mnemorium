@@ -12,12 +12,12 @@ pub(crate) struct Audio {
     pub block_size: Option<i64>,
     /// Codec name.
     pub codec: String,
-    /// Duration in milliseconds.
-    pub duration_ms: f64,
+    /// Duration in milliseconds, when the file reports it.
+    pub duration_ms: Option<f64>,
     /// Identifier of the `file` row holding the encoded audio.
     pub file_id: NumericID,
     /// Track name.
     pub name: String,
-    /// Sample rate in hertz.
-    pub sample_rate_hz: f64,
+    /// Sample rate in hertz, when the file reports it.
+    pub sample_rate_hz: Option<f64>,
 }

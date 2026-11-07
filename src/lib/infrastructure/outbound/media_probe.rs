@@ -27,6 +27,7 @@ use tokio::task::spawn_blocking;
 use tokio::time::timeout;
 use tracing::{error, warn};
 
+use crate::domain::alias::{NonNegativeF64, PositiveI64, ScalarError};
 use crate::domain::model::audio::ProbedAudio;
 use crate::domain::model::image::{Orientation, ProbedImage};
 use crate::domain::model::video::{ProbedVideo, ScanType};
@@ -212,18 +213,23 @@ impl MediaProbe for LocalMediaProbe {
                 return Err(MediaProbeError::UnsupportedMedia);
             };
 
-            let duration_s = output
+            let duration_ms = output
                 .format
                 .as_ref()
                 .and_then(|format| format.duration.as_deref())
                 .or(stream.duration.as_deref())
                 .and_then(parse_finite)
-                .unwrap_or(0.0f64);
+                .map(|seconds| seconds * MILLIS_PER_SECOND)
+                .map(NonNegativeF64::try_new)
+                .transpose()
+                .map_err(invalid_metadata)?;
             let sample_rate_hz = stream
                 .sample_rate
                 .as_deref()
                 .and_then(parse_finite)
-                .unwrap_or(0.0f64);
+                .map(NonNegativeF64::try_new)
+                .transpose()
+                .map_err(invalid_metadata)?;
 
             Ok(Some(ProbedAudio {
                 // The sample format implies the depth; the content does not
@@ -240,7 +246,7 @@ impl MediaProbe for LocalMediaProbe {
                 // `frame_size` is absent for PCM and every lossy codec.
                 block_size: stream.frame_size.map(i64::from).filter(|size| *size > 0),
                 codec,
-                duration_ms: duration_s * MILLIS_PER_SECOND,
+                duration_ms,
                 sample_rate_hz,
             }))
         }
@@ -281,9 +287,11 @@ impl MediaProbe for LocalMediaProbe {
                     };
 
                     Ok(Some(ProbedImage {
-                        height_px: i64::from(height),
+                        height_px: PositiveI64::try_new(i64::from(height))
+                            .map_err(invalid_metadata)?,
                         orientation,
-                        width_px: i64::from(width),
+                        width_px: PositiveI64::try_new(i64::from(width))
+                            .map_err(invalid_metadata)?,
                     }))
                 }),
             )
@@ -324,14 +332,16 @@ impl MediaProbe for LocalMediaProbe {
                 return Err(MediaProbeError::UnsupportedMedia);
             };
 
-            let Some(width) = stream.width.map(i64::from).filter(|value| *value > 0) else {
+            let Some(width_value) = stream.width.map(i64::from) else {
                 log_validation_failure("unsupported_media");
                 return Err(MediaProbeError::UnsupportedMedia);
             };
-            let Some(height) = stream.height.map(i64::from).filter(|value| *value > 0) else {
+            let width = PositiveI64::try_new(width_value).map_err(invalid_metadata)?;
+            let Some(height_value) = stream.height.map(i64::from) else {
                 log_validation_failure("unsupported_media");
                 return Err(MediaProbeError::UnsupportedMedia);
             };
+            let height = PositiveI64::try_new(height_value).map_err(invalid_metadata)?;
             let Some(codec) = stream.codec_name.clone().filter(|name| !name.is_empty()) else {
                 log_validation_failure("unsupported_media");
                 return Err(MediaProbeError::UnsupportedMedia);
@@ -405,8 +415,9 @@ impl MediaProbe for LocalMediaProbe {
                     }
                     .to_owned(),
                 },
-                duration_ms: duration_s * MILLIS_PER_SECOND,
-                frame_count,
+                duration_ms: NonNegativeF64::try_new(duration_s * MILLIS_PER_SECOND)
+                    .map_err(invalid_metadata)?,
+                frame_count: PositiveI64::try_new(frame_count).map_err(invalid_metadata)?,
                 height,
                 scan_type: match stream.field_order.as_deref() {
                     Some("tt" | "bb" | "tb" | "bt") => ScanType::Interlaced,
@@ -493,7 +504,18 @@ fn io_fault(error: impl Into<anyhow::Error>) -> MediaProbeError {
     MediaProbeError::Unknown(error.into())
 }
 
-/// Parse a non-negative, finite floating-point value, or `None`.
+/// Classify a scalar validation failure as unsupported content.
+///
+/// A measurement the probe derived cannot be represented by the domain model, so
+/// the content is rejected as unsupported media (a validation event, `422`)
+/// rather than allowed to reach the row constructor and fail as a server fault
+/// (`OBS-005`).
+fn invalid_metadata(_error: ScalarError) -> MediaProbeError {
+    log_validation_failure("invalid_metadata");
+    MediaProbeError::UnsupportedMedia
+}
+
+/// Parse a configuration or probe value as a finite, non-negative number.
 fn parse_finite(value: &str) -> Option<f64> {
     value
         .trim()
@@ -696,8 +718,8 @@ mod tests {
             .ok_or("the image should exist")?;
 
         // Assert
-        assert_eq!(probed.width_px, 4);
-        assert_eq!(probed.height_px, 2);
+        assert_eq!(probed.width_px.value(), 4);
+        assert_eq!(probed.height_px.value(), 2);
         assert_eq!(probed.orientation, Orientation::Landscape);
         Ok(())
     }
@@ -717,8 +739,8 @@ mod tests {
             .ok_or("the image should exist")?;
 
         // Assert
-        assert_eq!(probed.width_px, 2);
-        assert_eq!(probed.height_px, 5);
+        assert_eq!(probed.width_px.value(), 2);
+        assert_eq!(probed.height_px.value(), 5);
         assert_eq!(probed.orientation, Orientation::Portrait);
         Ok(())
     }
@@ -775,13 +797,63 @@ mod tests {
 
         // Assert
         assert_eq!(probed.codec, "h264");
-        assert_eq!(probed.width, 640);
-        assert_eq!(probed.height, 480);
+        assert_eq!(probed.width.value(), 640);
+        assert_eq!(probed.height.value(), 480);
         assert_eq!(probed.color_id, "YCbCr");
         assert_eq!(probed.scan_type, ScanType::Interlaced);
-        assert_eq!(probed.frame_count, 48);
-        assert!((probed.duration_ms - 2000.0f64).abs() < f64::EPSILON);
+        assert_eq!(probed.frame_count.value(), 48);
+        assert!((probed.duration_ms.value() - 2000.0f64).abs() < f64::EPSILON);
         Ok(())
+    }
+
+    #[tokio::test]
+    async fn probe_video_zero_width_returns_unsupported_media() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let _gate = spawn_gate().acquire_owned().await?;
+        let tmp = tempdir()?;
+        let program = stub(
+            tmp.path(),
+            "ffprobe",
+            "cat <<'JSON'\n{\"streams\":[{\"codec_type\":\"video\",\"codec_name\":\"h264\",\"width\":0,\"height\":480,\"pix_fmt\":\"yuv420p\",\"field_order\":\"tt\",\"nb_frames\":\"48\"}],\"format\":{\"duration\":\"2.0\"}}\nJSON",
+        )?;
+        let media = tmp.path().join("clip.mp4");
+        fs::write(&media, b"stub")?;
+        let probe = LocalMediaProbe::with_program(program, STUB_TIMEOUT);
+
+        // Act
+        let result = probe.probe_video(&media).await;
+
+        // Assert: a measurement the domain cannot represent is unsupported
+        // content, not a server fault.
+        assert!(matches!(result, Err(MediaProbeError::UnsupportedMedia)));
+        Ok(())
+    }
+
+    #[test]
+    fn invalid_metadata_maps_negative_duration_to_unsupported_media() {
+        // Act
+        let result = NonNegativeF64::try_new(-1.0f64).map_err(invalid_metadata);
+
+        // Assert
+        assert!(matches!(result, Err(MediaProbeError::UnsupportedMedia)));
+    }
+
+    #[test]
+    fn invalid_metadata_maps_zero_dimension_to_unsupported_media() {
+        // Act
+        let result = PositiveI64::try_new(0).map_err(invalid_metadata);
+
+        // Assert
+        assert!(matches!(result, Err(MediaProbeError::UnsupportedMedia)));
+    }
+
+    #[test]
+    fn invalid_metadata_maps_negative_frame_count_to_unsupported_media() {
+        // Act
+        let result = PositiveI64::try_new(-1).map_err(invalid_metadata);
+
+        // Assert
+        assert!(matches!(result, Err(MediaProbeError::UnsupportedMedia)));
     }
 
     #[tokio::test]
@@ -806,7 +878,7 @@ mod tests {
             .ok_or("the video should exist")?;
 
         // Assert
-        assert_eq!(probed.frame_count, 30);
+        assert_eq!(probed.frame_count.value(), 30);
         assert_eq!(probed.color_id, "Grayscale");
         assert_eq!(probed.scan_type, ScanType::Progressive);
         Ok(())
@@ -956,7 +1028,7 @@ mod tests {
             .probe_video(&media)
             .await?
             .ok_or("the video should exist")?;
-        assert_eq!(probed.width, 10);
+        assert_eq!(probed.width.value(), 10);
         let recorded = fs::read_to_string(tmp.path().join("args.txt"))?;
 
         // Assert: the path is exactly one argv element; a shell would have split
@@ -1052,8 +1124,8 @@ mod tests {
             .ok_or("the image should exist")?;
 
         // Assert
-        assert_eq!(probed.width_px, 3);
-        assert_eq!(probed.height_px, 3);
+        assert_eq!(probed.width_px.value(), 3);
+        assert_eq!(probed.height_px.value(), 3);
         assert_eq!(probed.orientation, Orientation::Square);
         Ok(())
     }
@@ -1157,7 +1229,7 @@ mod tests {
             .ok_or("the video should exist")?;
 
         // Assert
-        assert_eq!(probed.frame_count, 30);
+        assert_eq!(probed.frame_count.value(), 30);
         Ok(())
     }
 
@@ -1249,8 +1321,14 @@ mod tests {
         assert_eq!(probed.codec, "aac");
         assert_eq!(probed.bit_depth, Some(32));
         assert!(probed.block_size.is_none());
-        assert!((probed.sample_rate_hz - 48_000.0f64).abs() < f64::EPSILON);
-        assert!((probed.duration_ms - 2_500.0f64).abs() < f64::EPSILON);
+        assert_eq!(
+            probed.sample_rate_hz.map(NonNegativeF64::value),
+            Some(48_000.0f64)
+        );
+        assert_eq!(
+            probed.duration_ms.map(NonNegativeF64::value),
+            Some(2_500.0f64)
+        );
         Ok(())
     }
 

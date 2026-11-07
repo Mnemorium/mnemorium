@@ -164,6 +164,20 @@ mod tests {
         );
     }
 
+    #[test]
+    fn openapi_collects_the_upload_cancel_operation() {
+        // Act
+        let document = openapi();
+        let item = document.paths.paths.get("/asset/upload/{upload_id}");
+
+        // Assert: cancelling a session is part of the declared surface, so a
+        // client can discover it from the served specification.
+        assert!(
+            item.is_some_and(|path_item| path_item.delete.is_some()),
+            "the document must declare DELETE /asset/upload/{{upload_id}}"
+        );
+    }
+
     /// Return whether the GET operation of `item` declares `name`.
     fn declares_parameter(item: Option<&PathItem>, name: &str) -> bool {
         item.and_then(|path_item| path_item.get.as_ref())

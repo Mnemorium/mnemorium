@@ -161,6 +161,7 @@ INSERT INTO mime_type (mime_type_id, type) VALUES
 ('audio/vnd.rip', 'AUDIO'),
 ('audio/vnd.sealedmedia.softseal.mpeg', 'AUDIO'),
 ('audio/vnd.vmx.cvsd', 'AUDIO'),
+('audio/vnd.wave', 'AUDIO'),
 ('audio/vorbis', 'AUDIO'),
 ('audio/vorbis-config', 'AUDIO'),
 

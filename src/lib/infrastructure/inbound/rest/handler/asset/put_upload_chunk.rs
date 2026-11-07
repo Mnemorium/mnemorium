@@ -55,7 +55,8 @@ impl From<WriteUploadChunkError> for ApiError {
                 Self::UnprocessableEntity(err.to_string())
             }
             WriteUploadChunkError::Expired => Self::Gone(err.to_string()),
-            WriteUploadChunkError::AlreadyFinished => Self::Conflict(err.to_string()),
+            WriteUploadChunkError::AlreadyFinished
+            | WriteUploadChunkError::CompletionInProgress => Self::Conflict(err.to_string()),
             WriteUploadChunkError::NoSuchCaller => Self::Unauthorized(err.to_string()),
             WriteUploadChunkError::NoSuchUpload => Self::NotFound(err.to_string()),
             WriteUploadChunkError::Unknown(_) => Self::InternalServerError,

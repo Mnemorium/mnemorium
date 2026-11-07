@@ -71,7 +71,9 @@ impl From<CompleteUploadError> for ApiError {
             CompleteUploadError::Incomplete
             | CompleteUploadError::IntegrityMismatch
             | CompleteUploadError::UnsupportedMedia => Self::UnprocessableEntity(err.to_string()),
+            CompleteUploadError::CompletionInProgress => Self::Conflict(err.to_string()),
             CompleteUploadError::Expired => Self::Gone(err.to_string()),
+            CompleteUploadError::LibraryUnavailable => Self::ServiceUnavailable(err.to_string()),
             CompleteUploadError::NoSuchCaller => Self::Unauthorized(err.to_string()),
             CompleteUploadError::NoSuchUpload => Self::NotFound(err.to_string()),
             CompleteUploadError::Unknown(_) => Self::InternalServerError,
@@ -142,6 +144,18 @@ impl From<CompleteUploadError> for ApiError {
             body = ErrorBody,
             content_type = "application/hal+json",
             description = "Upload session expired"
+        ),
+        (
+            status = CONFLICT,
+            body = ErrorBody,
+            content_type = "application/hal+json",
+            description = "Another completion of the upload session is in progress"
+        ),
+        (
+            status = SERVICE_UNAVAILABLE,
+            body = ErrorBody,
+            content_type = "application/hal+json",
+            description = "The media library root is absent"
         ),
         (
             status = INTERNAL_SERVER_ERROR,

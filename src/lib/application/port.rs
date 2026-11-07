@@ -17,6 +17,8 @@ pub(crate) mod apply_series_episode;
 pub(crate) mod asset_use_case_factory;
 /// The begin upload use-case port.
 pub(crate) mod begin_upload;
+/// The cancel upload use-case port.
+pub(crate) mod cancel_upload;
 /// The complete upload use-case port.
 pub(crate) mod complete_upload;
 /// The create gallery use-case port.
@@ -127,6 +129,8 @@ pub(crate) mod put_album_track;
 pub(crate) mod put_series_episode;
 /// The put series season use-case port.
 pub(crate) mod put_series_season;
+/// The reap uploads use-case port.
+pub(crate) mod reap_uploads;
 /// The register user use-case port.
 pub(crate) mod register_user;
 /// The remove playlist track use-case port.

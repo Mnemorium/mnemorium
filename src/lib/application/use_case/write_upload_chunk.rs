@@ -156,6 +156,15 @@ where
                     ));
                 }
 
+                // A completion that is verifying the staged content holds the
+                // seal: a chunk written now would change the bytes after the
+                // whole-file hash.
+                if upload.is_verifying() {
+                    return Err(AttemptError::Business(
+                        WriteUploadChunkError::CompletionInProgress,
+                    ));
+                }
+
                 let total_chunks = upload.total_chunks();
                 let chunk_number = usize::try_from(command.chunk_number()).map_err(|error| {
                     security_event::application_error("write_upload_chunk");
@@ -324,7 +333,8 @@ where
                     let reason = match error {
                         WriteUploadChunkError::AlreadyFinished => Some("already_finished"),
                         WriteUploadChunkError::InvalidChunkNumber => Some("out_of_range"),
-                        WriteUploadChunkError::Expired
+                        WriteUploadChunkError::CompletionInProgress
+                        | WriteUploadChunkError::Expired
                         | WriteUploadChunkError::InvalidChunk
                         | WriteUploadChunkError::InvalidChunkRange
                         | WriteUploadChunkError::InvalidContentDigest
@@ -419,6 +429,8 @@ mod tests {
             hash(DIGEST),
             bitmap,
             is_finished,
+            false,
+            None,
             timestamp(),
         )
         .map_err(|_| RepositoryError::OperationFailed)
@@ -701,6 +713,8 @@ mod tests {
             hash(DIGEST),
             bitmap,
             false,
+            false,
+            None,
             expired_at,
         )
         .map_err(|_| RepositoryError::OperationFailed)?;
@@ -767,6 +781,8 @@ mod tests {
             hash(DIGEST),
             bitmap,
             false,
+            false,
+            None,
             expired_at,
         )
         .map_err(|_| RepositoryError::OperationFailed)?;
@@ -838,6 +854,56 @@ mod tests {
         assert!(matches!(
             result,
             Err(WriteUploadChunkError::AlreadyFinished)
+        ));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn write_upload_chunk_sealed_upload_returns_completion_in_progress()
+    -> Result<(), Box<dyn Error>> {
+        let hasher = MockContentHasher::new();
+        // Arrange: a completion holds the verification seal, so the session is
+        // not writable even though it is not finished.
+        let mut bitmap = ChunkBitmap::try_new(1)?;
+        bitmap.mark_received(0)?;
+        let sealed = Upload::try_new(
+            5,
+            3,
+            "clip.mp4".to_owned(),
+            4,
+            "video/mp4".to_owned(),
+            CHUNK_SIZE,
+            hash(DIGEST),
+            bitmap,
+            false,
+            true,
+            Some(timestamp()),
+            timestamp(),
+        )?;
+        let mut uploads = MockUploadRepository::new();
+        expect_upload(&mut uploads, sealed);
+        let unit_of_work = TestUnitOfWork {
+            users: any_caller(),
+            uploads,
+            ..TestUnitOfWork::default()
+        };
+        let factory = TestFactory::new(unit_of_work);
+        let use_case = WriteUploadChunk::new(
+            Arc::new(factory),
+            Arc::new(MockFileStorage::new()),
+            hasher,
+            TTL_SECONDS,
+        );
+        let command =
+            WriteUploadChunkCommand::new(5, 0, 0, b"1234".to_vec(), hash(CHUNK_DIGEST), 3);
+
+        // Act
+        let result = use_case.execute(command).await;
+
+        // Assert
+        assert!(matches!(
+            result,
+            Err(WriteUploadChunkError::CompletionInProgress)
         ));
         Ok(())
     }
