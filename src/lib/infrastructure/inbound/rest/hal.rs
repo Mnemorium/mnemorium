@@ -47,7 +47,7 @@ impl Link {
 /// The `self` link of a HAL representation.
 ///
 /// Every resource representation carries the URI it was served from, so clients
-/// never construct or hardcode it themselves (`API-032`, `API-037`).
+/// never construct or hardcode it themselves.
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 #[non_exhaustive]
 pub(crate) struct SelfLinks {

@@ -19,7 +19,7 @@ use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 /// HAL links exposed by a typed-image representation.
 ///
 /// The `self` link addresses the image and `file` names the stored file it
-/// backs (`API-032`, `API-034`, `API-037`).
+/// backs.
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 #[non_exhaustive]
 struct ImageLinks {
@@ -97,8 +97,7 @@ impl From<GetImageError> for ApiError {
 /// Fetch one typed image by its identifier.
 ///
 /// The image follows the read rule of the resource that owns its file. An
-/// unknown image and an unreadable image are one outcome, `404 Not Found`
-/// (`API-044`).
+/// unknown image and an unreadable image answer the same `404 Not Found`.
 #[utoipa::path(
     get,
     operation_id = "get_image",

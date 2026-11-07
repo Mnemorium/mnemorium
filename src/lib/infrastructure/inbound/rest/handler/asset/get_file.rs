@@ -19,8 +19,7 @@ use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 /// HAL links exposed by a stored-file representation.
 ///
 /// The `self` link addresses the file; `owner` names the account that owns it,
-/// and `image` names the typed image the file backs when an image row exists
-/// (`API-032`, `API-034`, `API-037`).
+/// and `image` names the typed image the file backs when an image row exists.
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 #[non_exhaustive]
 struct FileLinks {
@@ -110,8 +109,8 @@ impl From<GetFileError> for ApiError {
 ///
 /// Any authenticated caller may read a file it is allowed to read: a catalogue
 /// asset follows `library.read`, a gallery asset its gallery and a playlist
-/// cover its playlist. An unknown file and an unreadable file are one outcome,
-/// `404 Not Found` (`API-044`).
+/// cover its playlist. An unknown file and an unreadable file answer the same
+/// `404 Not Found`.
 #[utoipa::path(
     get,
     operation_id = "get_file",

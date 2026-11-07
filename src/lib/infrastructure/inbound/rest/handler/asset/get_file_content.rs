@@ -25,9 +25,8 @@ impl From<GetAssetContentError> for ApiError {
 
 /// Read the bytes of a stored file.
 ///
-/// The file is authorized before any byte is read, so an unreadable file is
-/// `404 Not Found` with no content, indistinguishable from an unknown one
-/// (`API-044`).
+/// The file is authorized before any byte is read, so an unreadable file
+/// answers `404 Not Found` with no content, exactly as an unknown one does.
 #[utoipa::path(
     get,
     operation_id = "get_file_content",

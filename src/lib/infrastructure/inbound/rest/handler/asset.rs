@@ -46,8 +46,8 @@ const DATE_FORMAT: &str = "%Y-%m-%d";
 ///
 /// The `self` link addresses the session itself; the templated `chunk` link
 /// lets clients discover where to store a chunk instead of building the URL
-/// from the identifiers (`API-037`); the `complete` link lets clients discover
-/// how to finish the session.
+/// from the identifiers; the `complete` link lets clients discover how to
+/// finish the session.
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 #[non_exhaustive]
 pub(crate) struct UploadSessionLinks {

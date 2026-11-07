@@ -13,9 +13,8 @@ use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 ///
 /// This route is a true alias of `GET /library/gallery/{id}`: it returns the
 /// same gallery representation, and the `_links.self` of that representation is
-/// the canonical gallery URI, never this alias path (`API-042`). A gallery the
-/// caller cannot read answers `404 Not Found`, indistinguishable from a
-/// missing one.
+/// the canonical gallery URI, never this alias path. A gallery the caller
+/// cannot read answers `404 Not Found`, indistinguishable from a missing one.
 #[utoipa::path(
     get,
     operation_id = "get_gallery_item_list",

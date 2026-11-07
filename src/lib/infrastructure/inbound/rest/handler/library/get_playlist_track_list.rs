@@ -13,8 +13,8 @@ use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 ///
 /// This is a literal alias of `GET /library/music/playlist/{playlist_id}`: it
 /// returns the same playlist representation with its tracks embedded, and
-/// `_links.self` keeps naming the canonical playlist URI (`API-042`). The
-/// playlist's `tracks` link points here.
+/// `_links.self` keeps naming the canonical playlist URI. The playlist's
+/// `tracks` link points here.
 #[utoipa::path(
     get,
     operation_id = "get_playlist_track_list",

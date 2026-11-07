@@ -40,9 +40,9 @@ pub(crate) struct ListGalleriesQuery {
 ///
 /// The `self` link addresses the collection view the representation is about,
 /// `next` and `prev` navigate that same view when another page exists, and the
-/// templated `search` link exposes the collection filters (`API-037`,
-/// `API-042`). The active filters and the page size are carried into every link
-/// so a filtered or paginated listing stays navigable.
+/// templated `search` link exposes the collection filters. The active filters
+/// and the page size are carried into every link so a filtered or paginated
+/// listing stays navigable.
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 #[non_exhaustive]
 struct GalleryListLinks {

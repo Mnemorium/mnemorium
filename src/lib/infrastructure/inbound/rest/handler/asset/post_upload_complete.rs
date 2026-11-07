@@ -20,7 +20,7 @@ use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 ///
 /// The `self` link addresses the upload session and `file` the file the
 /// completion finalized, so a client follows `upload -> file -> image` without
-/// holding a raw identifier (`API-034`, `API-037`).
+/// holding a raw identifier.
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 #[non_exhaustive]
 struct UploadCompleteLinks {

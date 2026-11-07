@@ -13,7 +13,7 @@ use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 /// Read the bytes of a typed image.
 ///
 /// The image is authorized through the resource that owns it before any byte is
-/// read; an unreadable image is `404 Not Found` with no content (`API-044`).
+/// read; an unreadable image answers `404 Not Found` with no content.
 #[utoipa::path(
     get,
     operation_id = "get_image_content",

@@ -226,7 +226,7 @@ pub(crate) const DATE_FORMAT: &str = "%Y-%m-%d";
 /// HAL links exposed by a gallery representation.
 ///
 /// The `self` link addresses the gallery; the `items` link exposes the alias
-/// path where its items are served (`API-037`).
+/// path where its items are served.
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 #[non_exhaustive]
 pub(crate) struct GalleryLinks {
@@ -485,9 +485,9 @@ impl From<GetGalleryResponseData> for GalleryResponse {
 /// HAL links exposed by a music album representation.
 ///
 /// The `self` link addresses the album; the album's mediums are embedded in the
-/// representation and each medium carries its own links (`API-037`). A cover is
-/// exposed as the `cover` link when the album stores artwork, and the group the
-/// album belongs to is exposed as the `group` link.
+/// representation and each medium carries its own links. A cover is exposed as
+/// the `cover` link when the album stores artwork, and the group the album
+/// belongs to is exposed as the `group` link.
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 #[non_exhaustive]
 pub(crate) struct AlbumLinks {
@@ -520,8 +520,7 @@ impl AlbumLinks {
 /// HAL links exposed by a music medium representation.
 ///
 /// The `self` link addresses the medium, the `album` link the album that holds
-/// it, and the `tracks` link the medium's track collection (`API-034`,
-/// `API-037`).
+/// it, and the `tracks` link the medium's track collection.
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 #[non_exhaustive]
 pub(crate) struct MediumLinks {
@@ -599,9 +598,9 @@ impl From<GetAlbumMediumResponse> for MediumResponse {
 ///
 /// The `self` link addresses the collection view the representation is about,
 /// `next` and `prev` navigate that same view when another page exists, and the
-/// templated `search` link exposes the collection filters (`API-037`,
-/// `API-042`). The active filter and the page size are carried into every link
-/// so a filtered or paginated listing stays navigable.
+/// templated `search` link exposes the collection filters. The active filter
+/// and the page size are carried into every link so a filtered or paginated
+/// listing stays navigable.
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 #[non_exhaustive]
 pub(crate) struct AlbumListLinks {
@@ -844,7 +843,7 @@ impl TrackResponse {
 /// HAL links exposed by a music group representation.
 ///
 /// The `self` link addresses the group and the `cover` link its artwork, when
-/// the group stores one (`API-034`, `API-037`).
+/// the group stores one.
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 #[non_exhaustive]
 pub(crate) struct MusicGroupLinks {
@@ -923,9 +922,9 @@ impl From<&GetMusicGroupResponseData> for MusicGroupResponse {
 ///
 /// The `self` link addresses the collection view the representation is about,
 /// `next` and `prev` navigate that same view when another page exists, and the
-/// templated `search` link exposes the collection filters (`API-037`,
-/// `API-042`). The active filter and the page size are carried into every link
-/// so a filtered or paginated listing stays navigable.
+/// templated `search` link exposes the collection filters. The active filter
+/// and the page size are carried into every link so a filtered or paginated
+/// listing stays navigable.
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 #[non_exhaustive]
 pub(crate) struct MusicGroupListLinks {
@@ -983,8 +982,7 @@ pub(crate) struct MusicGroupListResponse {
 /// HAL links exposed by a music track representation.
 ///
 /// The `self` link addresses the track, the `album` link the album that holds
-/// it, and the `medium` link the medium that sequences it (`API-034`,
-/// `API-037`).
+/// it, and the `medium` link the medium that sequences it.
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 #[non_exhaustive]
 pub(crate) struct TrackLinks {
@@ -1161,8 +1159,8 @@ impl MusicMediumResponse {
 /// HAL links exposed by a film representation.
 ///
 /// The `self` link addresses the film; the video is embedded in the
-/// representation and carries no links of its own (`API-037`). A cover is
-/// exposed as the `cover` link when the film stores artwork.
+/// representation and carries no links of its own. A cover is exposed as the
+/// `cover` link when the film stores artwork.
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 #[non_exhaustive]
 pub(crate) struct MovieLinks {
@@ -1569,9 +1567,9 @@ impl From<&Movie> for MovieResponse {
 ///
 /// The `self` link addresses the collection view the representation is about,
 /// `next` and `prev` navigate that same view when another page exists, and the
-/// templated `search` link exposes the collection filters (`API-037`,
-/// `API-042`). The active filter and the page size are carried into every link
-/// so a filtered or paginated listing stays navigable.
+/// templated `search` link exposes the collection filters. The active filter
+/// and the page size are carried into every link so a filtered or paginated
+/// listing stays navigable.
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 #[non_exhaustive]
 pub(crate) struct MovieListLinks {
@@ -1629,8 +1627,8 @@ pub(crate) struct MovieListResponse {
 /// HAL links exposed by a show representation.
 ///
 /// The `self` link addresses the show; the seasons are embedded and each
-/// season carries its own links (`API-037`). A cover is exposed as the `cover`
-/// link when the show stores artwork.
+/// season carries its own links. A cover is exposed as the `cover` link when
+/// the show stores artwork.
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 #[non_exhaustive]
 pub(crate) struct SeriesLinks {
@@ -1656,9 +1654,8 @@ impl SeriesLinks {
 /// HAL links exposed by a season representation.
 ///
 /// The `self` link addresses the season, the `series` link the show that holds
-/// it, and the `episodes` link the season's episode collection (`API-034`,
-/// `API-037`). A cover is exposed as the `cover` link when the season stores
-/// artwork.
+/// it, and the `episodes` link the season's episode collection. A cover is
+/// exposed as the `cover` link when the season stores artwork.
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 #[non_exhaustive]
 pub(crate) struct SeriesSeasonLinks {
@@ -1698,8 +1695,7 @@ impl SeriesSeasonLinks {
 /// HAL links exposed by an episode representation.
 ///
 /// The `self` link addresses the episode, the `series` link the show that holds
-/// it, and the `season` link the season that sequences it (`API-034`,
-/// `API-037`).
+/// it, and the `season` link the season that sequences it.
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 #[non_exhaustive]
 pub(crate) struct SeriesEpisodeLinks {
@@ -1891,8 +1887,7 @@ impl From<&ListSeriesItem> for SeriesSummaryResponse {
 ///
 /// The `self` link addresses the collection view the representation is about,
 /// `next` and `prev` navigate that same view when another page exists, and the
-/// templated `search` link exposes the collection filters (`API-037`,
-/// `API-042`).
+/// templated `search` link exposes the collection filters.
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 #[non_exhaustive]
 pub(crate) struct SeriesListLinks {
@@ -2048,9 +2043,8 @@ pub(crate) struct EpisodeListResponse {
 /// HAL links exposed by a music playlist representation.
 ///
 /// The `self` link addresses the canonical playlist; the `tracks` link exposes
-/// the alias route that serves the playlist with its embedded tracks
-/// (`API-037`, `API-042`). A cover is exposed as the `cover` link when the
-/// playlist stores artwork.
+/// the alias route that serves the playlist with its embedded tracks. A cover
+/// is exposed as the `cover` link when the playlist stores artwork.
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 #[non_exhaustive]
 pub(crate) struct PlaylistLinks {
@@ -2081,7 +2075,7 @@ impl PlaylistLinks {
 /// HAL links exposed by a playlist track representation.
 ///
 /// The `self` link addresses the track, and the `playlist` link the playlist
-/// that sequences it (`API-034`, `API-037`).
+/// that sequences it.
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 #[non_exhaustive]
 pub(crate) struct PlaylistTrackLinks {
@@ -2211,9 +2205,9 @@ impl PlaylistResponse {
 ///
 /// The `self` link addresses the collection view the representation is about,
 /// `next` and `prev` navigate that same view when another page exists, and the
-/// templated `search` link exposes the collection filters (`API-037`,
-/// `API-042`). The active filters and the page size are carried into every link
-/// so a filtered or paginated listing stays navigable.
+/// templated `search` link exposes the collection filters. The active filters
+/// and the page size are carried into every link so a filtered or paginated
+/// listing stays navigable.
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 #[non_exhaustive]
 pub(crate) struct PlaylistListLinks {

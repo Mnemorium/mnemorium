@@ -10,8 +10,8 @@ use crate::infrastructure::inbound::rest::hal::{HAL_CONTENT_TYPE, SelfLinks};
 /// Standard error payload returned by every failed request.
 ///
 /// The envelope is uniform across every error the server emits, including
-/// routing fallbacks and extractor rejections (`API-039`). The `error_response`
-/// helper builds it, and the root `hal_errors` middleware applies it to every
+/// routing fallbacks and extractor rejections. The `error_response` helper
+/// builds it, and the root `hal_errors` middleware applies it to every
 /// `4xx`/`5xx` response.
 #[derive(Debug, serde::Deserialize, serde::Serialize, utoipa::ToSchema)]
 #[non_exhaustive]
