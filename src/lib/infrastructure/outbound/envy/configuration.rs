@@ -29,6 +29,10 @@ struct EnvConfiguration {
     asset_upload_expiry_seconds: Option<u64>,
     /// `asset.upload.max_file_size_bytes`.
     asset_upload_max_file_size_bytes: Option<u64>,
+    /// `asset.upload.reap_batch_size`.
+    asset_upload_reap_batch_size: Option<usize>,
+    /// `asset.upload.reap_interval_seconds`.
+    asset_upload_reap_interval_seconds: Option<u64>,
     /// `logging.ansi`.
     logging_ansi: Option<bool>,
     /// `logging.level`.
@@ -61,6 +65,8 @@ impl From<EnvConfiguration> for PartialConfiguration {
                     chunk_size_bytes: env.asset_upload_chunk_size_bytes,
                     expiry_seconds: env.asset_upload_expiry_seconds,
                     max_file_size_bytes: env.asset_upload_max_file_size_bytes,
+                    reap_batch_size: env.asset_upload_reap_batch_size,
+                    reap_interval_seconds: env.asset_upload_reap_interval_seconds,
                 },
             },
             // The video metadata provider list, and the keys it carries, are
@@ -189,6 +195,8 @@ mod tests {
             variable("MNEMORIUM_ASSET_UPLOAD_CHUNK_SIZE_BYTES", "1024"),
             variable("MNEMORIUM_ASSET_UPLOAD_EXPIRY_SECONDS", "60"),
             variable("MNEMORIUM_ASSET_UPLOAD_MAX_FILE_SIZE_BYTES", "2048"),
+            variable("MNEMORIUM_ASSET_UPLOAD_REAP_BATCH_SIZE", "7"),
+            variable("MNEMORIUM_ASSET_UPLOAD_REAP_INTERVAL_SECONDS", "60"),
             variable("MNEMORIUM_LOGGING_ANSI", "true"),
             variable("MNEMORIUM_LOGGING_LEVEL", "info"),
             variable("MNEMORIUM_LOGGING_MAX_FILES", "2"),
@@ -212,6 +220,8 @@ mod tests {
         assert_eq!(partial.asset.upload.chunk_size_bytes, Some(1024));
         assert_eq!(partial.asset.upload.expiry_seconds, Some(60));
         assert_eq!(partial.asset.upload.max_file_size_bytes, Some(2048));
+        assert_eq!(partial.asset.upload.reap_batch_size, Some(7));
+        assert_eq!(partial.asset.upload.reap_interval_seconds, Some(60));
         assert_eq!(partial.logging.ansi, Some(true));
         assert_eq!(partial.logging.level.as_deref(), Some("info"));
         assert_eq!(partial.logging.max_files, Some(2));

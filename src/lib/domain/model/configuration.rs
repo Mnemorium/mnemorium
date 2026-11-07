@@ -16,6 +16,15 @@ const DEFAULT_EXPIRY_SECONDS: u64 = 86_400;
 /// Default maximum size of a single uploaded file, in bytes (100 GiB).
 const DEFAULT_MAX_FILE_SIZE_BYTES: u64 = 107_374_182_400;
 
+/// Default interval between two upload-reaper runs, in seconds.
+const DEFAULT_REAP_INTERVAL_SECONDS: u64 = 900;
+
+/// Default maximum number of upload sessions a reaper phase handles per run.
+const DEFAULT_REAP_BATCH_LENGTH: usize = 100;
+
+/// Largest accepted upload-reaper interval, in seconds (one day).
+const MAX_REAP_INTERVAL_SECONDS: u64 = 86_400;
+
 /// Reserved target carrying security events; a verbosity directive must never
 /// target it, or it could suppress a catalog event (`OBS-007`).
 const SECURITY_TARGET: &str = "security";
@@ -140,6 +149,12 @@ pub(crate) enum AssetError {
     /// The maximum file size is zero.
     #[error("asset upload max_file_size_bytes must be greater than zero")]
     MaxFileSizeZero,
+    /// The reaper batch size is zero.
+    #[error("asset upload reap_batch_size must be greater than zero")]
+    ReapBatchSizeZero,
+    /// The reaper interval is outside the accepted range.
+    #[error("asset upload reap_interval_seconds must be between 1 and 86400")]
+    ReapIntervalOutOfRange,
 }
 
 /// Upload-related settings of the Asset bounded context.
@@ -156,6 +171,10 @@ pub(crate) struct AssetUpload {
     expiry_seconds: u64,
     /// Maximum size of a single uploaded file, in bytes.
     max_file_size_bytes: u64,
+    /// Maximum number of upload sessions the reaper handles per phase.
+    reap_batch_size: usize,
+    /// Interval between two upload-reaper runs, in seconds.
+    reap_interval_seconds: u64,
 }
 
 impl AssetUpload {
@@ -175,6 +194,19 @@ impl AssetUpload {
     #[must_use]
     pub(crate) fn max_file_size_bytes(&self) -> u64 {
         self.max_file_size_bytes
+    }
+
+    /// Return the maximum number of upload sessions the reaper handles per
+    /// phase.
+    #[must_use]
+    pub(crate) fn reap_batch_size(&self) -> usize {
+        self.reap_batch_size
+    }
+
+    /// Return the interval between two upload-reaper runs, in seconds.
+    #[must_use]
+    pub(crate) fn reap_interval_seconds(&self) -> u64 {
+        self.reap_interval_seconds
     }
 
     /// Update the size of every chunk except the last, in bytes.
@@ -209,26 +241,57 @@ impl AssetUpload {
         Ok(())
     }
 
+    /// Update the maximum number of upload sessions the reaper handles per
+    /// phase.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`AssetError::ReapBatchSizeZero`] when `reap_batch_size` is zero.
+    fn set_reap_batch_size(&mut self, reap_batch_size: usize) -> Result<(), AssetError> {
+        self.reap_batch_size = Self::validate_reap_batch_size(reap_batch_size)?;
+        Ok(())
+    }
+
+    /// Update the interval between two upload-reaper runs, in seconds.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`AssetError::ReapIntervalOutOfRange`] when
+    /// `reap_interval_seconds` is zero or exceeds one day.
+    fn set_reap_interval_seconds(&mut self, reap_interval_seconds: u64) -> Result<(), AssetError> {
+        self.reap_interval_seconds = Self::validate_reap_interval_seconds(reap_interval_seconds)?;
+        Ok(())
+    }
+
     /// Initialise a new `AssetUpload`, validating every setting.
     ///
     /// # Errors
     ///
     /// Returns [`AssetError::ChunkSizeZero`] when `chunk_size_bytes` is zero,
     /// [`AssetError::ExpiryZero`] when `expiry_seconds` is zero,
-    /// [`AssetError::MaxFileSizeZero`] when `max_file_size_bytes` is zero, and
-    /// [`AssetError::MaxFileSizeTooLarge`] when it exceeds [`i64::MAX`].
+    /// [`AssetError::MaxFileSizeZero`] when `max_file_size_bytes` is zero,
+    /// [`AssetError::MaxFileSizeTooLarge`] when it exceeds [`i64::MAX`],
+    /// [`AssetError::ReapBatchSizeZero`] when `reap_batch_size` is zero, and
+    /// [`AssetError::ReapIntervalOutOfRange`] when `reap_interval_seconds` is
+    /// outside `1..=86400`.
     pub(crate) fn try_new(
         chunk_size_bytes: u64,
         expiry_seconds: u64,
         max_file_size_bytes: u64,
+        reap_batch_size: usize,
+        reap_interval_seconds: u64,
     ) -> Result<Self, AssetError> {
         let validated_chunk_size = Self::validate_chunk_size_bytes(chunk_size_bytes)?;
         let validated_expiry = Self::validate_expiry_seconds(expiry_seconds)?;
         let validated_max_file_size = Self::validate_max_file_size_bytes(max_file_size_bytes)?;
+        let validated_reap_batch_size = Self::validate_reap_batch_size(reap_batch_size)?;
+        let validated_reap_interval = Self::validate_reap_interval_seconds(reap_interval_seconds)?;
         Ok(Self {
             chunk_size_bytes: validated_chunk_size,
             expiry_seconds: validated_expiry,
             max_file_size_bytes: validated_max_file_size,
+            reap_batch_size: validated_reap_batch_size,
+            reap_interval_seconds: validated_reap_interval,
         })
     }
 
@@ -272,6 +335,31 @@ impl AssetUpload {
         }
         Ok(max_file_size_bytes)
     }
+
+    /// Validate `reap_batch_size`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`AssetError::ReapBatchSizeZero`] when `reap_batch_size` is zero.
+    fn validate_reap_batch_size(reap_batch_size: usize) -> Result<usize, AssetError> {
+        if reap_batch_size == 0 {
+            return Err(AssetError::ReapBatchSizeZero);
+        }
+        Ok(reap_batch_size)
+    }
+
+    /// Validate `reap_interval_seconds`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`AssetError::ReapIntervalOutOfRange`] when
+    /// `reap_interval_seconds` is zero or exceeds one day.
+    fn validate_reap_interval_seconds(reap_interval_seconds: u64) -> Result<u64, AssetError> {
+        if reap_interval_seconds == 0 || reap_interval_seconds > MAX_REAP_INTERVAL_SECONDS {
+            return Err(AssetError::ReapIntervalOutOfRange);
+        }
+        Ok(reap_interval_seconds)
+    }
 }
 
 impl Default for AssetUpload {
@@ -280,6 +368,8 @@ impl Default for AssetUpload {
             chunk_size_bytes: DEFAULT_CHUNK_SIZE_BYTES,
             expiry_seconds: DEFAULT_EXPIRY_SECONDS,
             max_file_size_bytes: DEFAULT_MAX_FILE_SIZE_BYTES,
+            reap_batch_size: DEFAULT_REAP_BATCH_LENGTH,
+            reap_interval_seconds: DEFAULT_REAP_INTERVAL_SECONDS,
         }
     }
 }

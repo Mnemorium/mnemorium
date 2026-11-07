@@ -10,6 +10,7 @@ use tokio::signal::unix::{SignalKind, signal};
 use tokio::time::sleep;
 use tracing::{error, info, warn};
 
+use crate::application::port::asset_use_case_factory::AssetUseCaseFactory;
 use crate::application::port::ensure_storage_directories::{
     EnsureStorageDirectoriesCommand, EnsureStorageDirectoriesUseCase as _,
 };
@@ -26,6 +27,7 @@ use crate::infrastructure::inbound::media_ingest::MediaIngestRunner;
 use crate::infrastructure::inbound::rest::app_state::AppState;
 use crate::infrastructure::inbound::rest::handler;
 use crate::infrastructure::inbound::rest::middleware::rate_limit::LoginRateLimiter;
+use crate::infrastructure::inbound::upload_reaper::UploadReaperRunner;
 use crate::infrastructure::logging;
 use crate::infrastructure::outbound::argon2::password_hasher::Argon2PasswordHasher;
 use crate::infrastructure::outbound::envy::configuration::EnvConfigurationSource;
@@ -165,6 +167,12 @@ pub async fn run() -> anyhow::Result<()> {
 
     let login_rate_limiter = Arc::new(LoginRateLimiter::new(configuration.security().rate_limit()));
 
+    // The reaper reads its interval once, at startup (`STY-RUST-076`), and the
+    // factory each tick for the live batch size.
+    let upload_reap_interval =
+        Duration::from_secs(configuration.asset().upload().reap_interval_seconds());
+    let reaper_factory: Arc<dyn AssetUseCaseFactory> = Arc::clone(&asset_use_case_factory) as _;
+
     let state = AppState::new(
         asset_use_case_factory,
         configuration,
@@ -186,6 +194,11 @@ pub async fn run() -> anyhow::Result<()> {
         )
         .start(),
     );
+
+    // The upload reaper starts with the server and never delays readiness: its
+    // first pass runs after one full interval.
+    let upload_reaper =
+        Arc::new(UploadReaperRunner::new(reaper_factory, upload_reap_interval).start());
 
     let rate_limit_cleanup_interval = Duration::from_mins(1);
     tokio::spawn(async move {
@@ -216,6 +229,7 @@ pub async fn run() -> anyhow::Result<()> {
             );
 
             let media_ingest_signal = Arc::clone(&media_ingest);
+            let upload_reaper_signal = Arc::clone(&upload_reaper);
             let shutdown_signal = async move {
                 let interrupt = async {
                     if let Err(err) = ctrl_c().await {
@@ -248,9 +262,10 @@ pub async fn run() -> anyhow::Result<()> {
                     outcome = "draining",
                     "shutdown signal received; draining in-flight requests"
                 );
-                // Stop the ingest drivers before axum drains, so neither a scan
-                // nor an observer outlives the process.
+                // Stop the background drivers before axum drains, so neither a
+                // scan, an observer nor a reaping pass outlives the process.
                 media_ingest_signal.shutdown();
+                upload_reaper_signal.shutdown();
             };
 
             match axum::serve(
@@ -274,10 +289,13 @@ pub async fn run() -> anyhow::Result<()> {
                 }
             }
             media_ingest.wait().await;
+            upload_reaper.wait().await;
         }
         Err(err) => {
             media_ingest.shutdown();
+            upload_reaper.shutdown();
             media_ingest.wait().await;
+            upload_reaper.wait().await;
             error!(kind = ?err.kind(), "Fail to bind TcpListener to port");
         }
     }

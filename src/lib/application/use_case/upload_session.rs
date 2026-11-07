@@ -50,14 +50,18 @@ pub(crate) fn expiry(
 }
 
 /// Build the per-chunk received bitmap, one character per chunk.
+///
+/// A finished session reports every chunk as received: its chunk rows are
+/// removed at finish, so the stored bitmap no longer describes it.
 #[must_use]
 pub(crate) fn received_bitmap(upload: &Upload) -> String {
     let mut bitmap = String::with_capacity(upload.total_chunks());
     for chunk_number in 0..upload.total_chunks() {
-        let received = upload
-            .chunk_bitmap()
-            .is_received(chunk_number)
-            .unwrap_or(false);
+        let received = upload.is_finished()
+            || upload
+                .chunk_bitmap()
+                .is_received(chunk_number)
+                .unwrap_or(false);
         if received {
             bitmap.push('1');
         } else {

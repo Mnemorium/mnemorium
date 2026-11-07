@@ -1,3 +1,4 @@
+import array
 import base64
 import hashlib
 import os
@@ -71,12 +72,25 @@ UNKNOWN_ID = 999_999_999
 # The tiny, real H.264 fixture the container's `ffprobe` can probe (TEST-050).
 _VIDEO_FIXTURE = Path(__file__).resolve().parent / "fixture" / "tiny_video.mp4"
 
+# The session lifetime the E2E container starts with, in seconds
+# (`MNEMORIUM_ASSET_UPLOAD_EXPIRY_SECONDS` in `script/e2e.sh`). It is short so
+# the expiry flow is exercised without waiting a day; every other upload test
+# finishes well inside it.
+UPLOAD_EXPIRY_SECONDS = 10
+
+# Time an expiry test waits to be past the session lifetime.
+UPLOAD_EXPIRY_WAIT_SECONDS = UPLOAD_EXPIRY_SECONDS + 1
+
+# The declared media type of the handcrafted WAV fixture.
+AUDIO_CONTENT_TYPE = "audio/vnd.wave"
+
 # Each generated medium must have distinct bytes: the upload-completion handler
 # deduplicates by integrity hash, so identical bytes would reuse a file (and its
 # already-registered medium) across tests. The counters are seeded from the clock
 # so a second run against the same container still produces distinct bytes.
 _IMAGE_NONCE = count(time.time_ns() & 0xFFFFFF)
 _VIDEO_NONCE = count(time.time_ns() & 0xFFFFFF)
+_AUDIO_NONCE = count(time.time_ns() & 0xFFFFFF)
 
 
 def _png_chunk(chunk_type: bytes, data: bytes) -> bytes:
@@ -103,6 +117,36 @@ def video() -> bytes:
     """
     padding = struct.pack(">I", next(_VIDEO_NONCE))
     return _VIDEO_FIXTURE.read_bytes() + struct.pack(">I", 8 + len(padding)) + b"free" + padding
+
+
+def audio(seconds: int = 1) -> bytes:
+    """Build a minimal valid, unique 16-bit mono PCM WAV of the given length.
+
+    The samples carry a per-call nonce, so the bytes stay unique and the
+    upload-completion deduplication never reuses an earlier file (see
+    `_AUDIO_NONCE`).
+    """
+    sample_rate = 44_100
+    nonce = next(_AUDIO_NONCE)
+    one_second = array.array("h", ((sample * 97 + nonce) % 20_000 - 10_000 for sample in range(sample_rate)))
+    pcm = (one_second * seconds).tobytes()
+    header = struct.pack(
+        "<4sI4s4sIHHIIHH4sI",
+        b"RIFF",
+        36 + len(pcm),
+        b"WAVE",
+        b"fmt ",
+        16,
+        1,
+        1,
+        sample_rate,
+        sample_rate * 2,
+        2,
+        16,
+        b"data",
+        len(pcm),
+    )
+    return header + pcm
 
 
 def register_image(

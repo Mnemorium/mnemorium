@@ -156,6 +156,10 @@ pub(crate) enum WriteUploadChunkError {
     /// The upload session has already been finished.
     #[error("the upload session has already been finished")]
     AlreadyFinished,
+    /// A completion of the upload session is verifying its content, so the
+    /// session is sealed against writes.
+    #[error("the upload session is being verified")]
+    CompletionInProgress,
     /// The upload session has expired.
     #[error("the upload session has expired")]
     Expired,

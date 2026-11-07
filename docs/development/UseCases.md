@@ -1707,7 +1707,8 @@ StandardUser --> UC006
 #### Description
 
 Allow a user to upload a supported media file to the service for storage, processing, cataloging, and distribution. The
-upload is resumable and chunked, so it spans several requests.
+upload is resumable and chunked, so it spans several requests. The caller declares the media kind, and that declaration
+is authoritative: the system confirms the content belongs to it and never reclassifies the file.
 
 #### Primary actor
 
@@ -1716,11 +1717,13 @@ upload is resumable and chunked, so it spans several requests.
 #### Parameters
 
 - media file — the content to upload; required.
-- fingerprint — the caller's declaration of the content fingerprint; optional.
+- media kind — the declared kind of the content; required.
+- fingerprint — the caller's declaration of the content fingerprint; required.
 
 #### Pre condition(s)
 
 - The caller is authenticated.
+- The media library is available.
 
 #### Trigger
 
@@ -1728,20 +1731,41 @@ upload is resumable and chunked, so it spans several requests.
 
 #### Happy path
 
-1. The user starts an upload.
-2. The system determines the media kind from the file content.
-3. The system verifies the media kind is supported.
-4. The system computes the content fingerprint.
-5. The system stores the file and saves its record bound to the caller.
-6. The system returns the created file record.
+1. The user starts an upload, declaring the media file's kind, name, size and fingerprint.
+2. The system checks the declared media kind is supported.
+3. The system opens an upload session with a fixed chunk size and an expiry instant.
+4. The user sends each chunk of the content.
+5. Once every chunk arrived, the user completes the upload.
+6. The system sets the session aside for verification, so no further chunk is accepted.
+7. The system verifies the whole-file fingerprint against the declared one.
+8. The system confirms the content belongs to the declared media kind.
+9. The system stores the file and saves its record together with the media record the declared kind requires, bound to
+   the caller.
+10. The system returns the created file record.
 
 #### Alternative flow
 
-- 3a. The media kind is unsupported; the system rejects the upload and stores nothing.
-- 4a. The caller already owns a file with the same fingerprint; the system verifies the uploaded content and returns the
+- 2a. The media kind is unsupported; the system rejects the request, starts no session and stores nothing.
+- 2b. The media library is unavailable; the system rejects the request, starts no session and stores nothing.
+- 4a. A chunk is sent after the session expired; the system rejects the request, stores nothing and removes the session
+  and its content.
+- 4b. The user cancels the upload; the system removes the session and its content and leaves any completed file
+  untouched.
+- 4c. The user cancels a finished or verifying upload; the system rejects the request and leaves the file untouched.
+- 5a. Not every chunk arrived; the system rejects the request and stores nothing.
+- 5b. A chunk is sent while the session is being verified; the system rejects the request and stores nothing.
+- 7a. The fingerprint does not match the declared one; the system rejects the request, stores nothing and makes the
+  session available again.
+- 8a. The content does not belong to the declared media kind; the system rejects the request, stores nothing and makes
+  the session available again.
+- 9a. The caller already owns a file with the same fingerprint; the system verifies the uploaded content and returns the
   existing file record, storing nothing new and leaving the upload unfinished.
 
 #### Post condition(s)
 
 - The file is stored under a unique path.
-- A file record bound to the caller exists with its media kind, content fingerprint and private visibility.
+- A file record bound to the caller exists with its declared media kind, verified fingerprint and private visibility.
+- A media record matching the declared kind — image, video or audio — exists with its probed measurements; a measurement
+  the content does not report is absent rather than fabricated.
+- A finished upload keeps its identity: completing it again returns the caller's file.
+- An abandoned or expired upload leaves neither a session nor staged content behind.

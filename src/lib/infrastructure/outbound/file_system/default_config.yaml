@@ -16,6 +16,8 @@ asset:
     chunk_size_bytes: 5242880
     expiry_seconds: 86400
     max_file_size_bytes: 107374182400
+    reap_batch_size: 100
+    reap_interval_seconds: 900
 library:
   metadata:
     music:

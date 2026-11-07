@@ -8,7 +8,7 @@ use crate::application::port::begin_upload::{
     BeginUploadCommand, BeginUploadError, BeginUploadResponse, BeginUploadUseCase,
 };
 use crate::application::security_event;
-use crate::application::use_case::upload_layout::staged_path;
+use crate::application::use_case::upload_layout::{media_root, staged_path};
 use crate::domain::alias::NumericID;
 use crate::domain::model::upload::{ChunkBitmap, MAX_TOTAL_CHUNKS, Upload, UploadError};
 use crate::domain::port::asset_unit_of_work::AssetUnitOfWork;
@@ -103,6 +103,15 @@ where
                 return Err(BeginUploadError::FileTooLarge);
             }
 
+            // The library root is the operator's mount and is never created, so
+            // a missing root fails the begin before anything is allocated rather
+            // than after the client has uploaded the whole file.
+            match file_storage.directory_exist(&media_root()).await {
+                Ok(true) => {}
+                Ok(false) => return Err(BeginUploadError::LibraryUnavailable),
+                Err(error) => return Err(BeginUploadError::Unknown(error.into())),
+            }
+
             let mut unit_of_work = unit_of_work_factory
                 .begin_write()
                 .await
@@ -150,6 +159,8 @@ where
                     integrity_hash,
                     chunk_bitmap,
                     false,
+                    false,
+                    None,
                     created_at,
                 )
                 .map_err(|error| match error {
@@ -300,7 +311,7 @@ mod tests {
             &mut MockFileStorage,
         ) -> Result<(), Box<dyn Error>>,
     ) -> Result<Harness, Box<dyn Error>> {
-        use_case_with_all(setup, TTL_SECONDS, DEFAULT_MAX_FILE_SIZE)
+        use_case_with_all(setup, TTL_SECONDS, DEFAULT_MAX_FILE_SIZE, true, CHUNK_SIZE)
     }
 
     /// Build a use case whose configured maximum file size is
@@ -313,7 +324,7 @@ mod tests {
         ) -> Result<(), Box<dyn Error>>,
         max_file_size_bytes: u64,
     ) -> Result<Harness, Box<dyn Error>> {
-        use_case_with_all(setup, TTL_SECONDS, max_file_size_bytes)
+        use_case_with_all(setup, TTL_SECONDS, max_file_size_bytes, true, CHUNK_SIZE)
     }
 
     /// Build a use case configured with `expiry_seconds` and
@@ -326,11 +337,20 @@ mod tests {
         ) -> Result<(), Box<dyn Error>>,
         expiry_seconds: u64,
         max_file_size_bytes: u64,
+        library_root_exists: bool,
+        chunk_size: u64,
     ) -> Result<Harness, Box<dyn Error>> {
         let mut uploads = MockUploadRepository::new();
         let mut mime_types = MockMimeTypeRepository::new();
         let mut file_storage = MockFileStorage::new();
         setup(&mut uploads, &mut mime_types, &mut file_storage)?;
+        // The library root is present unless the caller says otherwise. The
+        // expectation tolerates being unreached: a request rejected on its
+        // declared size or name never looks at the root.
+        file_storage
+            .expect_directory_exist()
+            .times(0..)
+            .returning(move |_| Box::pin(async move { Ok(library_root_exists) }));
         let unit_of_work = TestUnitOfWork {
             users: any_caller(),
             mime_types,
@@ -342,7 +362,7 @@ mod tests {
             use_case: BeginUpload::new(
                 Arc::clone(&harness.factory),
                 Arc::new(file_storage),
-                CHUNK_SIZE,
+                chunk_size,
                 expiry_seconds,
                 max_file_size_bytes,
             ),
@@ -395,6 +415,8 @@ mod tests {
                 .map_err(|_| RepositoryError::OperationFailed)?,
             bitmap,
             false,
+            false,
+            None,
             chrono::Utc::now().naive_utc(),
         )
         .map_err(|_| RepositoryError::OperationFailed)
@@ -413,9 +435,14 @@ mod tests {
             ..TestUnitOfWork::default()
         };
         let harness = AssetFactoryHarness::new(unit_of_work);
+        let mut file_storage = MockFileStorage::new();
+        file_storage
+            .expect_directory_exist()
+            .times(1)
+            .returning(|_| Box::pin(async { Ok(true) }));
         let use_case = BeginUpload::new(
             Arc::clone(&harness.factory),
-            Arc::new(MockFileStorage::new()),
+            Arc::new(file_storage),
             CHUNK_SIZE,
             TTL_SECONDS,
             DEFAULT_MAX_FILE_SIZE,
@@ -669,6 +696,8 @@ mod tests {
             },
             u64::MAX,
             DEFAULT_MAX_FILE_SIZE,
+            true,
+            CHUNK_SIZE,
         )?;
         let command = command(10);
 
@@ -948,6 +977,67 @@ mod tests {
             logs_contain("reason=total_chunks_exceeded"),
             "the event must classify the reason as the chunk-count limit"
         );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn begin_upload_absent_library_root_returns_library_unavailable()
+    -> Result<(), Box<dyn Error>> {
+        // Arrange: the library root is absent and the use case must stop before
+        // creating a session or a staging file.
+        let harness = use_case_with_all(
+            |_uploads, _mime_types, _file_storage| Ok(()),
+            TTL_SECONDS,
+            DEFAULT_MAX_FILE_SIZE,
+            false,
+            CHUNK_SIZE,
+        )?;
+
+        // Act
+        let result = harness.use_case.execute(command(4)).await;
+
+        // Assert
+        assert!(matches!(result, Err(BeginUploadError::LibraryUnavailable)));
+        assert!(!harness.committed.load(Ordering::SeqCst));
+        assert!(!harness.rolled_back.load(Ordering::SeqCst));
+        Ok(())
+    }
+
+    /// Build a use case whose session geometry is fixed at `chunk_size` bytes.
+    fn use_case_with_chunk_size(chunk_size: u64) -> Result<Harness, Box<dyn Error>> {
+        use_case_with_all(
+            |uploads, mime_types, file_storage| {
+                expect_mime_type(mime_types, true);
+                uploads
+                    .expect_create()
+                    .times(1)
+                    .withf(move |upload| upload.chunk_size() == chunk_size)
+                    .returning(|upload| Box::pin(async move { Ok(upload) }));
+                file_storage
+                    .expect_create_upload_file()
+                    .times(1)
+                    .returning(|_, _| Box::pin(async { Ok(()) }));
+                Ok(())
+            },
+            TTL_SECONDS,
+            DEFAULT_MAX_FILE_SIZE,
+            true,
+            chunk_size,
+        )
+    }
+
+    #[tokio::test]
+    async fn begin_upload_keeps_the_chunk_size_it_was_built_with() -> Result<(), Box<dyn Error>> {
+        // Arrange: the use case holds the chunk size it was built with and reads
+        // no configuration itself, so a runtime change cannot reach a session.
+        let harness = use_case_with_chunk_size(8)?;
+
+        // Act
+        let response = harness.use_case.execute(command(16)).await?;
+
+        // Assert
+        assert_eq!(response.chunk_size(), 8);
+        assert_eq!(response.chunk_size().div_ceil(16), 1);
         Ok(())
     }
 }

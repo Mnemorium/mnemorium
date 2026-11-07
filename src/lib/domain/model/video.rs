@@ -1,4 +1,4 @@
-use crate::domain::alias::NumericID;
+use crate::domain::alias::{NonNegativeF64, NumericID, PositiveI64};
 use crate::domain::model::scope::Scope;
 
 /// Error returned when initialising a `Video`.
@@ -103,6 +103,31 @@ impl Video {
         self.frame_count
     }
 
+    /// Build a `Video` from probed metadata, which is valid by construction.
+    ///
+    /// The probed measurements carry the validated scalar types, so the
+    /// conversion has no error branch.
+    #[must_use]
+    pub(crate) fn from_probed(
+        video_id: NumericID,
+        probed: ProbedVideo,
+        file_id: NumericID,
+        scope: Option<Scope>,
+    ) -> Self {
+        Self {
+            codec: probed.codec,
+            color_id: probed.color_id,
+            duration_ms: probed.duration_ms.value(),
+            file_id,
+            frame_count: probed.frame_count.value(),
+            height: probed.height.value(),
+            scan_type: probed.scan_type,
+            scope,
+            video_id,
+            width: probed.width.value(),
+        }
+    }
+
     /// Return the height of the video, in pixels.
     #[must_use]
     pub(crate) fn height(&self) -> i64 {
@@ -195,13 +220,13 @@ pub(crate) struct ProbedVideo {
     /// Identifier of the colour space of the video.
     pub color_id: String,
     /// Duration of the video, in milliseconds.
-    pub duration_ms: f64,
+    pub duration_ms: NonNegativeF64,
     /// Number of frames in the video.
-    pub frame_count: i64,
+    pub frame_count: PositiveI64,
     /// Height of the video, in pixels.
-    pub height: i64,
+    pub height: PositiveI64,
     /// Scan type of the video.
     pub scan_type: ScanType,
     /// Width of the video, in pixels.
-    pub width: i64,
+    pub width: PositiveI64,
 }

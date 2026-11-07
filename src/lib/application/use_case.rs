@@ -11,6 +11,8 @@ pub(crate) mod apply_series_episode;
 pub(crate) mod asset_access;
 /// The begin upload use case implementation.
 pub(crate) mod begin_upload;
+/// The cancel upload use case implementation.
+pub(crate) mod cancel_upload;
 /// The complete upload use case implementation.
 pub(crate) mod complete_upload;
 /// The create gallery use case implementation.
@@ -115,6 +117,8 @@ pub(crate) mod put_album_track;
 pub(crate) mod put_series_episode;
 /// The put series season use case implementation.
 pub(crate) mod put_series_season;
+/// The reap uploads use case implementation.
+pub(crate) mod reap_uploads;
 /// The register user use case implementation.
 pub(crate) mod register_user;
 /// The remove playlist track use case implementation.

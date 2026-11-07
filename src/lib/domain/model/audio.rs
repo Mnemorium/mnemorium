@@ -1,4 +1,4 @@
-use crate::domain::alias::NumericID;
+use crate::domain::alias::{NonNegativeF64, NumericID};
 
 /// Error returned when initialising or updating an `Audio`.
 #[derive(Debug, thiserror::Error)]
@@ -37,16 +37,18 @@ pub(crate) struct Audio {
     block_size: Option<i64>,
     /// Codec of the audio.
     codec: String,
-    /// Duration of the audio, in milliseconds.
-    duration_ms: f64,
+    /// Duration of the audio, in milliseconds, absent when the content does not
+    /// report one.
+    duration_ms: Option<f64>,
     /// Identifier of the backing file.
     file_id: NumericID,
     /// Unique identifier of the audio.
     id: NumericID,
     /// Name of the audio.
     name: String,
-    /// Sample rate of the audio, in hertz.
-    sample_rate_hz: f64,
+    /// Sample rate of the audio, in hertz, absent when the content does not
+    /// report one.
+    sample_rate_hz: Option<f64>,
 }
 
 impl Audio {
@@ -68,9 +70,9 @@ impl Audio {
         &self.codec
     }
 
-    /// Return the duration, in milliseconds.
+    /// Return the duration, in milliseconds, if the content reports one.
     #[must_use]
-    pub(crate) fn duration_ms(&self) -> f64 {
+    pub(crate) fn duration_ms(&self) -> Option<f64> {
         self.duration_ms
     }
 
@@ -78,6 +80,29 @@ impl Audio {
     #[must_use]
     pub(crate) fn file_id(&self) -> NumericID {
         self.file_id
+    }
+
+    /// Build an `Audio` from probed metadata, which is valid by construction.
+    ///
+    /// The probed measurements carry the validated scalar types, so the
+    /// conversion has no error branch.
+    #[must_use]
+    pub(crate) fn from_probed(
+        id: NumericID,
+        name: String,
+        probed: ProbedAudio,
+        file_id: NumericID,
+    ) -> Self {
+        Self {
+            bit_depth: probed.bit_depth,
+            block_size: probed.block_size,
+            codec: probed.codec,
+            duration_ms: probed.duration_ms.map(NonNegativeF64::value),
+            file_id,
+            id,
+            name,
+            sample_rate_hz: probed.sample_rate_hz.map(NonNegativeF64::value),
+        }
     }
 
     /// Return the unique identifier.
@@ -92,9 +117,9 @@ impl Audio {
         &self.name
     }
 
-    /// Return the sample rate, in hertz.
+    /// Return the sample rate, in hertz, if the content reports one.
     #[must_use]
-    pub(crate) fn sample_rate_hz(&self) -> f64 {
+    pub(crate) fn sample_rate_hz(&self) -> Option<f64> {
         self.sample_rate_hz
     }
 
@@ -129,16 +154,17 @@ impl Audio {
     /// Initialise a new `Audio`, validating `name`, `duration_ms`,
     /// `sample_rate_hz`, `bit_depth` and `block_size`.
     ///
-    /// An absent `bit_depth` or `block_size` is valid: neither exists for every
-    /// codec, and "unknown" is recorded rather than fabricated.
+    /// An absent `duration_ms`, `sample_rate_hz`, `bit_depth` or `block_size`
+    /// is valid: none exists for every codec, and "unknown" is recorded rather
+    /// than fabricated.
     ///
     /// # Errors
     ///
     /// Returns [`AudioError::InvalidName`] when `name` is empty,
-    /// [`AudioError::InvalidDurationMs`] when `duration_ms` is negative,
-    /// [`AudioError::InvalidSampleRateHz`] when `sample_rate_hz` is negative,
-    /// and [`AudioError::InvalidBitDepth`] or [`AudioError::InvalidBlockSize`]
-    /// when a present value is not positive.
+    /// [`AudioError::InvalidDurationMs`] when a present `duration_ms` is
+    /// negative, [`AudioError::InvalidSampleRateHz`] when a present
+    /// `sample_rate_hz` is negative, and [`AudioError::InvalidBitDepth`] or
+    /// [`AudioError::InvalidBlockSize`] when a present value is not positive.
     #[expect(
         clippy::too_many_arguments,
         reason = "try_new mirrors all audio columns"
@@ -146,19 +172,19 @@ impl Audio {
     pub(crate) fn try_new(
         id: NumericID,
         name: String,
-        duration_ms: f64,
+        duration_ms: Option<f64>,
         codec: String,
-        sample_rate_hz: f64,
+        sample_rate_hz: Option<f64>,
         bit_depth: Option<i64>,
         block_size: Option<i64>,
         file_id: NumericID,
     ) -> Result<Self, AudioError> {
         let validated_name = Self::validate_non_empty(name)?;
         let validated_codec = Self::validate_non_empty(codec)?;
-        if duration_ms < 0.0f64 {
+        if duration_ms.is_some_and(|value| value < 0.0f64) {
             return Err(AudioError::InvalidDurationMs);
         }
-        if sample_rate_hz < 0.0f64 {
+        if sample_rate_hz.is_some_and(|value| value < 0.0f64) {
             return Err(AudioError::InvalidSampleRateHz);
         }
         if let Some(value) = bit_depth {
@@ -212,8 +238,10 @@ pub(crate) struct ProbedAudio {
     pub block_size: Option<i64>,
     /// Codec of the audio.
     pub codec: String,
-    /// Duration of the audio, in milliseconds.
-    pub duration_ms: f64,
-    /// Sample rate of the audio, in hertz.
-    pub sample_rate_hz: f64,
+    /// Duration of the audio, in milliseconds, absent when the content does not
+    /// report one.
+    pub duration_ms: Option<NonNegativeF64>,
+    /// Sample rate of the audio, in hertz, absent when the content does not
+    /// report one.
+    pub sample_rate_hz: Option<NonNegativeF64>,
 }

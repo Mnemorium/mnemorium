@@ -1,6 +1,6 @@
 use std::future::Future;
 use std::io::{Error, ErrorKind, SeekFrom};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use chrono::{DateTime, Utc};
 use tokio::fs;
@@ -49,7 +49,10 @@ impl FileSystemStorage {
                     operation = "promote",
                     "an outbound dependency failed"
                 );
-                Err(StorageError::OperationFailed)
+                // The destination directory is the operator's mount: its
+                // absence makes the library unavailable, not the storage
+                // operation faulty, so the completion can answer `503`.
+                Err(StorageError::Unavailable)
             }
             Err(metadata_err) => Err(Self::map_io_error(metadata_err, "promote")),
         }
@@ -250,6 +253,36 @@ impl FileStorage for FileSystemStorage {
                 );
                 StorageError::Unknown(error.into())
             })
+        }
+    }
+
+    fn list_staged(
+        &self,
+        path: &Path,
+    ) -> impl Future<Output = Result<Vec<PathBuf>, StorageError>> + Send {
+        let owned_path = path.to_path_buf();
+
+        async move {
+            let mut entries = match fs::read_dir(&owned_path).await {
+                Ok(entries) => entries,
+                Err(err) if err.kind() == ErrorKind::NotFound => return Ok(Vec::new()),
+                Err(err) => return Err(Self::map_io_error(err, "list_staged")),
+            };
+            let mut paths = Vec::new();
+            while let Some(entry) = entries
+                .next_entry()
+                .await
+                .map_err(|error| Self::map_io_error(error, "list_staged"))?
+            {
+                let metadata = entry
+                    .metadata()
+                    .await
+                    .map_err(|error| Self::map_io_error(error, "list_staged"))?;
+                if metadata.is_file() {
+                    paths.push(entry.path());
+                }
+            }
+            Ok(paths)
         }
     }
 
@@ -690,7 +723,7 @@ mod tests {
 
     #[tokio::test]
     #[traced_test]
-    async fn promote_staged_file_missing_destination_directory_returns_operation_failed()
+    async fn promote_staged_file_missing_destination_directory_returns_unavailable()
     -> Result<(), Box<dyn Error>> {
         // Arrange
         let tmp = tempdir()?;
@@ -706,8 +739,9 @@ mod tests {
         // Act
         let result = storage.promote(&staged, &final_path).await;
 
-        // Assert
-        assert!(matches!(result, Err(StorageError::OperationFailed)));
+        // Assert: a missing destination is the operator's mount being absent,
+        // which makes the library unavailable rather than the storage faulty.
+        assert!(matches!(result, Err(StorageError::Unavailable)));
         assert!(
             staged.is_file(),
             "a failed promote must leave the staged file in place"
@@ -814,6 +848,44 @@ mod tests {
 
         // Assert
         assert!(path.is_dir());
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn list_staged_returns_files_only() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let tmp = tempdir()?;
+        let storage = FileSystemStorage::new();
+        let uploads = tmp.path().join("uploads");
+        storage.create_directory(&uploads).await?;
+        storage.create_upload_file(&uploads.join("7"), 4).await?;
+        storage.create_upload_file(&uploads.join("9"), 4).await?;
+        storage.create_directory(&uploads.join("nested")).await?;
+
+        // Act
+        let mut found = storage.list_staged(&uploads).await?;
+
+        // Assert
+        found.sort();
+        assert_eq!(
+            found,
+            vec![uploads.join("7"), uploads.join("9")],
+            "only regular files are staged entries"
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn list_staged_missing_directory_returns_empty() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let tmp = tempdir()?;
+        let storage = FileSystemStorage::new();
+
+        // Act
+        let found = storage.list_staged(&tmp.path().join("absent")).await?;
+
+        // Assert
+        assert!(found.is_empty());
         Ok(())
     }
 }

@@ -12,13 +12,15 @@ use crate::application::security_event;
 use crate::application::use_case::upload_layout::{media_path, staged_path};
 use crate::application::use_case::upload_session::{caller_file_id, expiry};
 use crate::domain::alias::NumericID;
+use crate::domain::model::audio::{Audio, ProbedAudio};
 use crate::domain::model::file::{File, Origin};
 use crate::domain::model::image::{Image, ProbedImage};
 use crate::domain::model::permission::Action;
 use crate::domain::model::upload::Upload;
 use crate::domain::model::video::{ProbedVideo, Video};
 use crate::domain::port::asset_unit_of_work::AssetUnitOfWork;
-use crate::domain::port::error::{MediaProbeError, RepositoryError};
+use crate::domain::port::audio_repository::AudioRepository as _;
+use crate::domain::port::error::{MediaProbeError, RepositoryError, StorageError};
 use crate::domain::port::file_repository::FileRepository as _;
 use crate::domain::port::file_storage::FileStorage;
 use crate::domain::port::image_repository::ImageRepository as _;
@@ -72,6 +74,8 @@ struct Promoted {
 /// Kind of media an upload's mime type denotes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum MediaKind {
+    /// An `audio/*` file.
+    Audio,
     /// An `image/*` file.
     Image,
     /// A `video/*` file.
@@ -80,6 +84,8 @@ enum MediaKind {
 
 /// The probed metadata of a media upload.
 enum Probed {
+    /// Audio metadata.
+    Audio(ProbedAudio),
     /// Image metadata.
     Image(ProbedImage),
     /// Video metadata.
@@ -88,11 +94,15 @@ enum Probed {
 
 /// Use case implementation for completing an upload session.
 ///
-/// Completion spans two bounded contexts: for a supported image or video the
-/// Asset completion writes and the Library media insert share one mutating unit
-/// of work, so the file is never committed without its media row (`ARCH-003`,
-/// `STY-RUST-040`). A file whose mime type is another family completes without a
-/// media row.
+/// Completion spans two bounded contexts: for a supported image, video or audio
+/// file the Asset completion writes and the Library media insert share one
+/// mutating unit of work, so the file is never committed without its media row
+/// (`ARCH-003`, `STY-RUST-040`). A file whose mime type is another family
+/// completes without a media row.
+///
+/// The session is sealed before its content is verified, so a chunk written
+/// between the hash and the promote cannot change the bytes after the hash. A
+/// completion that fails after sealing unseals the session so it can be retried.
 pub(crate) struct CompleteUpload<F, S, P> {
     /// Lifetime of an upload session, in seconds.
     expiry_seconds: u64,
@@ -146,33 +156,63 @@ where
 
         Box::pin(async move {
             // Phase 1: a short unit of work that resolves and validates the
-            // upload. It is closed before the staged content is hashed,
-            // releasing the pooled connection and holding no snapshot across
-            // the hash. It is write-intent because the expiry branch deletes
-            // the upload row and its staged file.
-            let staged_media = {
+            // upload, then seals it. It is write-intent because it seals the
+            // session and the expiry branch deletes the upload row and its
+            // staged file. The seal commits before the content is hashed, so it
+            // is durable for the whole verification.
+            let sealed_media = {
                 let mut unit_of_work = unit_of_work_factory
                     .begin_write()
                     .await
                     .map_err(|error| CompleteUploadError::Unknown(error.into()))?;
-                match resolve(&mut unit_of_work, &file_storage, &command, expiry_seconds).await {
+                match resolve(
+                    &mut unit_of_work,
+                    &file_storage,
+                    &command,
+                    expiry_seconds,
+                    false,
+                )
+                .await
+                {
                     Resolution::Ready(upload) => {
-                        // Nothing was written on this path: roll back to release
-                        // the connection before hashing. The media kind and the
-                        // staged path are kept so the probe runs with no unit of
-                        // work open.
+                        // The media kind and the staged path are kept so the
+                        // probe runs with no unit of work open.
                         let mime_type_id = upload.mime_type_id();
                         let media_kind = if mime_type_id.starts_with("image/") {
                             Some(MediaKind::Image)
                         } else if mime_type_id.starts_with("video/") {
                             Some(MediaKind::Video)
+                        } else if mime_type_id.starts_with("audio/") {
+                            Some(MediaKind::Audio)
                         } else {
                             None
                         };
-                        let staged_media =
-                            media_kind.map(|kind| (kind, staged_path(upload.upload_id())));
-                        discard(unit_of_work).await;
-                        staged_media
+                        let upload_id = upload.upload_id();
+                        let staged_media = media_kind.map(|kind| (kind, staged_path(upload_id)));
+                        let sealed = unit_of_work
+                            .uploads()
+                            .seal(upload_id, Utc::now().naive_utc())
+                            .await;
+                        match sealed {
+                            Ok(true) => {
+                                unit_of_work
+                                    .commit()
+                                    .await
+                                    .map_err(|error| CompleteUploadError::Unknown(error.into()))?;
+                                staged_media
+                            }
+                            // Another writer finished the session or holds its
+                            // seal: report the freshly-read state.
+                            Ok(false) => {
+                                let outcome = lost_seal(&mut unit_of_work, &command).await;
+                                discard(unit_of_work).await;
+                                return outcome;
+                            }
+                            Err(error) => {
+                                discard(unit_of_work).await;
+                                return Err(CompleteUploadError::Unknown(error.into()));
+                            }
+                        }
                     }
                     Resolution::Finished(file_id) => {
                         // Idempotent completion: the upload finished since the
@@ -215,42 +255,56 @@ where
                 }
             };
 
-            // The staged content is hashed with no unit of work open, so the
-            // pooled connection is free and a concurrent writer cannot
-            // invalidate a read snapshot underneath the hash.
-            let computed = match file_storage
-                .integrity_hash(&staged_path(command.upload_id()))
-                .await
-            {
-                Ok(Some(digest)) => digest,
-                Ok(None) => return Err(CompleteUploadError::NoSuchUpload),
-                Err(error) => return Err(CompleteUploadError::Unknown(error.into())),
-            };
+            // The staged content is hashed and probed with no unit of work
+            // open, so the pooled connection is free and the 30-second probe
+            // never holds it. A failure here unseals the session so the caller
+            // can retry instead of waiting for the reaper.
+            let verified = async {
+                let computed = match file_storage
+                    .integrity_hash(&staged_path(command.upload_id()))
+                    .await
+                {
+                    Ok(Some(digest)) => digest,
+                    Ok(None) => return Err(CompleteUploadError::NoSuchUpload),
+                    Err(error) => return Err(CompleteUploadError::Unknown(error.into())),
+                };
 
-            // The media probe runs with no unit of work open, alongside the
-            // hash, so the 30-second probe never holds a pooled connection.
-            let probed = match staged_media {
-                Some((kind, path)) => Some(match kind {
-                    MediaKind::Image => match media_probe.probe_image(&path).await {
-                        Ok(Some(image)) => Probed::Image(image),
-                        Ok(None) => return Err(CompleteUploadError::NoSuchUpload),
-                        Err(error) => return Err(probe_fault(error)),
-                    },
-                    MediaKind::Video => match media_probe.probe_video(&path).await {
-                        Ok(Some(video)) => Probed::Video(video),
-                        Ok(None) => return Err(CompleteUploadError::NoSuchUpload),
-                        Err(error) => return Err(probe_fault(error)),
-                    },
-                }),
-                None => None,
+                let probed = match sealed_media {
+                    Some((kind, path)) => Some(match kind {
+                        MediaKind::Audio => match media_probe.probe_audio(&path).await {
+                            Ok(Some(audio)) => Probed::Audio(audio),
+                            Ok(None) => return Err(CompleteUploadError::NoSuchUpload),
+                            Err(error) => return Err(probe_fault(error)),
+                        },
+                        MediaKind::Image => match media_probe.probe_image(&path).await {
+                            Ok(Some(image)) => Probed::Image(image),
+                            Ok(None) => return Err(CompleteUploadError::NoSuchUpload),
+                            Err(error) => return Err(probe_fault(error)),
+                        },
+                        MediaKind::Video => match media_probe.probe_video(&path).await {
+                            Ok(Some(video)) => Probed::Video(video),
+                            Ok(None) => return Err(CompleteUploadError::NoSuchUpload),
+                            Err(error) => return Err(probe_fault(error)),
+                        },
+                    }),
+                    None => None,
+                };
+
+                Ok::<_, CompleteUploadError>((computed, probed))
+            }
+            .await;
+            let (computed, probed) = match verified {
+                Ok(outcome) => outcome,
+                Err(error) => {
+                    unseal(&unit_of_work_factory, command.upload_id()).await;
+                    return Err(error);
+                }
             };
 
             // Phase 2: a fresh mutating unit of work. The upload is re-read and
-            // re-validated (a time-of-check/time-of-use re-check) before the
-            // computed digest is compared and the completion is persisted. It
-            // is a write-intent unit of work: the file row it creates takes the
-            // write lock at `BEGIN`, so a concurrent ingest queues instead of
-            // failing on the snapshot the re-read pinned.
+            // re-validated (a time-of-check/time-of-use re-check), requiring the
+            // seal the first phase took, before the computed digest is compared
+            // and the completion is persisted.
             let mut unit_of_work = unit_of_work_factory
                 .begin_write()
                 .await
@@ -258,16 +312,22 @@ where
             let mut promoted: Option<Promoted> = None;
 
             let flow = async {
-                let upload =
-                    match resolve(&mut unit_of_work, &file_storage, &command, expiry_seconds).await
-                    {
-                        Resolution::Ready(upload) => *upload,
-                        Resolution::Finished(file_id) => {
-                            return Flow::Succeeded(CompleteUploadResponse::new(file_id, true));
-                        }
-                        Resolution::Expired => return Flow::Expired,
-                        Resolution::Failed(error) => return Flow::Failed(error),
-                    };
+                let upload = match resolve(
+                    &mut unit_of_work,
+                    &file_storage,
+                    &command,
+                    expiry_seconds,
+                    true,
+                )
+                .await
+                {
+                    Resolution::Ready(upload) => *upload,
+                    Resolution::Finished(file_id) => {
+                        return Flow::Succeeded(CompleteUploadResponse::new(file_id, true));
+                    }
+                    Resolution::Expired => return Flow::Expired,
+                    Resolution::Failed(error) => return Flow::Failed(error),
+                };
 
                 // The computed digest is compared before any file-table lookup,
                 // so a caller cannot probe the file table for a guessed hash
@@ -278,10 +338,11 @@ where
 
                 // Deduplication is caller-scoped: a caller who already owns a
                 // file with this digest gets that file back and no new copy is
-                // stored. The session is left unfinished and the staged file is
-                // left for the reaper.
+                // stored. The session is left unfinished, so the seal is
+                // released for a retry.
                 match caller_file_id(&mut unit_of_work, &upload, command.user_id()).await {
                     Ok(Some(file_id)) => {
+                        let _unsealed = unit_of_work.uploads().unseal(upload.upload_id()).await;
                         return Flow::Succeeded(CompleteUploadResponse::new(file_id, false));
                     }
                     Ok(None) => {}
@@ -310,6 +371,12 @@ where
                     // outcome rather than a storage failure.
                     Ok(None) => return Flow::Failed(CompleteUploadError::NoSuchUpload),
                     Ok(Some(promoted_file)) => promoted_file,
+                    // The library root is the operator's mount and is never
+                    // created: a missing destination is a deliberate `503`, not
+                    // an accidental `500`.
+                    Err(StorageError::Unavailable) => {
+                        return Flow::Failed(CompleteUploadError::LibraryUnavailable);
+                    }
                     Err(error) => return Flow::Failed(CompleteUploadError::Unknown(error.into())),
                 };
                 promoted = Some(Promoted {
@@ -317,10 +384,6 @@ where
                     staged_path: staged,
                 });
 
-                // TODO(ingest): an uploaded audio file is stored without its
-                // audio row, because only `image/` and `video/` media kinds are
-                // registered here; the ingest scan's verification pass creates
-                // the missing audio row and repairs the gap on its next run.
                 let pending = match File::try_new(
                     0,
                     relative_path,
@@ -349,6 +412,7 @@ where
                     Err(RepositoryError::AlreadyExist) => {
                         restore_promoted(&file_storage, promoted.as_ref()).await;
                         promoted = None;
+                        let _unsealed = unit_of_work.uploads().unseal(upload.upload_id()).await;
                         return match caller_file_id(&mut unit_of_work, &upload, command.user_id())
                             .await
                         {
@@ -368,30 +432,13 @@ where
                 };
 
                 // The media insert shares the completion's unit of work, so the
-                // file row and its image or video row commit together
-                // (`STY-RUST-040`).
+                // file row and its media row commit together (`STY-RUST-040`).
                 if let Some(media) = probed {
                     let registered = match media {
-                        Probed::Image(image) => {
-                            let pending_image = match Image::try_new(
-                                0,
-                                file_name.to_owned(),
-                                image.width_px,
-                                image.height_px,
-                                image.orientation,
-                                Utc::now().date_naive(),
-                                file.id(),
-                                None,
-                            ) {
-                                Ok(pending_image) => pending_image,
-                                Err(error) => {
-                                    security_event::application_error("complete_upload");
-                                    return Flow::Failed(CompleteUploadError::Unknown(
-                                        anyhow::Error::new(error),
-                                    ));
-                                }
-                            };
-                            match unit_of_work.images().create(pending_image).await {
+                        Probed::Audio(audio) => {
+                            let pending_audio =
+                                Audio::from_probed(0, file_name.to_owned(), audio, file.id());
+                            match unit_of_work.audios().create(pending_audio).await {
                                 // `Ok` and the defensive `AlreadyExist` are both
                                 // success: the file row was created in this unit
                                 // of work, so the insert cannot race.
@@ -399,31 +446,23 @@ where
                                 Err(error) => Err(CompleteUploadError::Unknown(error.into())),
                             }
                         }
-                        Probed::Video(video) => {
-                            let pending_video = match Video::try_new(
+                        Probed::Image(image) => {
+                            let pending_image = Image::from_probed(
                                 0,
-                                video.duration_ms,
-                                video.codec,
-                                video.frame_count,
-                                video.width,
-                                video.height,
-                                video.color_id,
-                                video.scan_type,
+                                file_name.to_owned(),
+                                image,
+                                Utc::now().date_naive(),
                                 file.id(),
                                 None,
-                            ) {
-                                Ok(pending_video) => pending_video,
-                                Err(error) => {
-                                    security_event::application_error("complete_upload");
-                                    return Flow::Failed(CompleteUploadError::Unknown(
-                                        anyhow::Error::new(error),
-                                    ));
-                                }
-                            };
+                            );
+                            match unit_of_work.images().create(pending_image).await {
+                                Ok(_) | Err(RepositoryError::AlreadyExist) => Ok(()),
+                                Err(error) => Err(CompleteUploadError::Unknown(error.into())),
+                            }
+                        }
+                        Probed::Video(video) => {
+                            let pending_video = Video::from_probed(0, video, file.id(), None);
                             match unit_of_work.videos().create(pending_video).await {
-                                // `Ok` and the defensive `AlreadyExist` are both
-                                // success: the file row was created in this unit
-                                // of work, so the insert cannot race.
                                 Ok(_) | Err(RepositoryError::AlreadyExist) => Ok(()),
                                 Err(error) => Err(CompleteUploadError::Unknown(error.into())),
                             }
@@ -451,6 +490,7 @@ where
                 Flow::Succeeded(value) => {
                     if let Err(error) = unit_of_work.commit().await {
                         restore_promoted(&file_storage, promoted.as_ref()).await;
+                        unseal(&unit_of_work_factory, command.upload_id()).await;
                         return Err(CompleteUploadError::Unknown(error.into()));
                     }
                     security_event::upload(
@@ -479,6 +519,7 @@ where
                 Flow::Failed(error) => {
                     discard(unit_of_work).await;
                     restore_promoted(&file_storage, promoted.as_ref()).await;
+                    unseal(&unit_of_work_factory, command.upload_id()).await;
                     if matches!(&error, CompleteUploadError::Incomplete) {
                         security_event::suspicious_business_logic(
                             command.user_id(),
@@ -493,17 +534,88 @@ where
     }
 }
 
-/// Resolve and validate the upload through `unit_of_work`, applying the owner,
-/// expiry, finished and completeness rules shared by both phases.
+/// Report the state a completion found after losing the seal.
 ///
-/// The mutating phase calls this again as a time-of-check/time-of-use re-check:
-/// an upload another request finished, expired or completed between the phases
-/// is reported from the freshly-read state.
+/// The guarded seal matched no row, so another writer either finished the
+/// session or holds its seal. The fresh read classifies which: a finished
+/// session answers idempotently with the caller's file, a live one is a
+/// concurrent completion.
+async fn lost_seal<U>(
+    unit_of_work: &mut U,
+    command: &CompleteUploadCommand,
+) -> Result<CompleteUploadResponse, CompleteUploadError>
+where
+    U: AssetUnitOfWork + UserUnitOfWork,
+{
+    let found = unit_of_work
+        .uploads()
+        .search(&UploadFilter {
+            upload_id: Some(command.upload_id()),
+            ..UploadFilter::default()
+        })
+        .await
+        .map_err(|error| CompleteUploadError::Unknown(error.into()))?;
+    let Some(upload) = found.into_iter().next() else {
+        return Err(CompleteUploadError::NoSuchUpload);
+    };
+    if !upload.is_finished() {
+        return Err(CompleteUploadError::CompletionInProgress);
+    }
+    match caller_file_id(unit_of_work, &upload, command.user_id()).await {
+        Ok(Some(file_id)) => Ok(CompleteUploadResponse::new(file_id, true)),
+        Ok(None) => {
+            security_event::application_error("complete_upload");
+            Err(CompleteUploadError::Unknown(anyhow::anyhow!(
+                "the finished upload has no matching file"
+            )))
+        }
+        Err(error) => Err(CompleteUploadError::Unknown(error.into())),
+    }
+}
+
+/// Best-effort clear the verification seal of `upload_id` in its own unit of
+/// work.
+///
+/// A failure after the seal must not wedge the session: a seal left behind is
+/// unsealed by the reaper after the verification bound. The unit-of-work and
+/// repository adapters own the failure logs (`OBS-002`), so a failed unseal is
+/// swallowed here.
+async fn unseal<F>(unit_of_work_factory: &Arc<F>, upload_id: NumericID)
+where
+    F: UnitOfWorkFactory,
+    F::Uow: AssetUnitOfWork,
+{
+    let Ok(mut unit_of_work) = unit_of_work_factory.begin_write().await else {
+        return;
+    };
+    if unit_of_work.uploads().unseal(upload_id).await.is_err() {
+        // The repository adapter owns the failure log (`OBS-002`).
+    }
+    match unit_of_work.commit().await {
+        Ok(()) => {}
+        Err(error) => {
+            // Best-effort: the reaper unseals a stale seal after the
+            // verification bound, so the business error the caller sees is
+            // preserved. The failure is still classified as the use case's
+            // `CompleteUploadError::Unknown` rather than discarded, and the
+            // unit-of-work adapter already logged it (`OBS-002`).
+            let _unmapped = CompleteUploadError::Unknown(error.into());
+        }
+    }
+}
+
+/// Resolve and validate the upload through `unit_of_work`, applying the owner,
+/// expiry, finished, seal and completeness rules shared by both phases.
+///
+/// The mutating phase calls this again as a time-of-check/time-of-use re-check
+/// with `require_seal`: an upload another request finished, expired or completed
+/// between the phases is reported from the freshly-read state.
 async fn resolve<U, S>(
     unit_of_work: &mut U,
     file_storage: &Arc<S>,
     command: &CompleteUploadCommand,
     expiry_seconds: u64,
+    require_seal: bool,
 ) -> Resolution
 where
     U: AssetUnitOfWork + UserUnitOfWork,
@@ -559,10 +671,10 @@ where
         Err(error) => return Resolution::Failed(CompleteUploadError::Unknown(error)),
     };
     if !upload.is_finished() && Utc::now().naive_utc() > expires_at {
-        // TODO(reaper): move the expiry cleanup to a background task; this lazy
-        // delete keeps the row and the staged file only until the next access.
-        // The file-storage and repository adapters own the failure logs
-        // (`OBS-002`), so a failed cleanup is swallowed here.
+        // The reaper removes an expired session in the background; this lazy
+        // delete releases the row and the staged file on the next access. The
+        // file-storage and repository adapters own the failure logs (`OBS-002`),
+        // so a failed cleanup is swallowed here.
         if file_storage
             .delete_upload_file(&staged_path(command.upload_id()))
             .await
@@ -595,6 +707,13 @@ where
             }
             Err(error) => Resolution::Failed(CompleteUploadError::Unknown(error.into())),
         };
+    }
+
+    // The second phase runs only under the seal the first phase took: a
+    // completion whose seal was released by a failure elsewhere must not
+    // persist against content that may have changed.
+    if require_seal && !upload.is_verifying() {
+        return Resolution::Failed(CompleteUploadError::CompletionInProgress);
     }
 
     if !upload.can_finish() {
@@ -630,9 +749,9 @@ where
         .await
         .is_err()
     {
-        // The file-storage adapter owns the failure log (`OBS-002`).
-        // TODO(reaper): a failed restore leaves the final file orphaned; delete
-        // it once a background reaper exists.
+        // The file-storage adapter owns the failure log (`OBS-002`). A leftover
+        // promoted file is the operator's content: the ingest registers it as a
+        // found file, which is harmless.
     }
 }
 
@@ -650,10 +769,12 @@ fn probe_fault(error: MediaProbeError) -> CompleteUploadError {
 mod tests {
     use super::*;
     use crate::application::use_case::test_fixtures::TTL_SECONDS;
+    use crate::domain::alias::{NonNegativeF64, PositiveI64};
     use crate::domain::model::image::Orientation;
     use crate::domain::model::integrity_hash::IntegrityHash;
     use crate::domain::model::upload::ChunkBitmap;
     use crate::domain::model::video::ScanType;
+    use crate::domain::port::audio_repository::MockAudioRepository;
     use crate::domain::port::error::StorageError;
     use crate::domain::port::file_repository::MockFileRepository;
     use crate::domain::port::file_storage::{MockFileStorage, PromotedFile};
@@ -687,8 +808,34 @@ mod tests {
         phase_two_committed: Arc<AtomicBool>,
         /// Set when the phase-2 unit of work is rolled back.
         phase_two_rolled_back: Arc<AtomicBool>,
+        /// Set when a failed completion unseals the session.
+        unsealed: Arc<AtomicBool>,
         /// The use case under test.
         use_case: UseCase,
+    }
+
+    /// Tolerate a best-effort unseal through `uploads`, recording that it ran.
+    fn expect_unseal(uploads: &mut MockUploadRepository, unsealed: Arc<AtomicBool>) {
+        uploads.expect_unseal().times(0..).returning(move |_| {
+            unsealed.store(true, Ordering::SeqCst);
+            Box::pin(async { Ok(true) })
+        });
+    }
+
+    /// Build the unit of work a failed completion unseals through.
+    ///
+    /// Its upload repository records that the seal was cleared, and tolerates
+    /// never being reached on a successful completion.
+    fn unseal_unit_of_work(unsealed: Arc<AtomicBool>) -> TestUow {
+        let mut uploads = MockUploadRepository::new();
+        uploads.expect_unseal().times(0..).returning(move |_| {
+            unsealed.store(true, Ordering::SeqCst);
+            Box::pin(async { Ok(true) })
+        });
+        TestUnitOfWork {
+            uploads,
+            ..TestUnitOfWork::default()
+        }
     }
 
     /// Build a completion whose two phases each open their own unit of work.
@@ -697,12 +844,15 @@ mod tests {
     /// repositories; the same upload is usually expected on both upload
     /// repositories.
     fn use_case_with(
-        phase_one_uploads: MockUploadRepository,
+        mut phase_one_uploads: MockUploadRepository,
         phase_one_files: MockFileRepository,
-        phase_two_uploads: MockUploadRepository,
+        mut phase_two_uploads: MockUploadRepository,
         phase_two_files: MockFileRepository,
         file_storage: MockFileStorage,
     ) -> Harness {
+        let unsealed = Arc::new(AtomicBool::new(false));
+        expect_unseal(&mut phase_one_uploads, Arc::clone(&unsealed));
+        expect_unseal(&mut phase_two_uploads, Arc::clone(&unsealed));
         let phase_one = TestUnitOfWork {
             users: any_caller(),
             files: phase_one_files,
@@ -722,7 +872,11 @@ mod tests {
         let phase_one_commit_fails = Arc::clone(&phase_one.commit_fails);
         let phase_two_commit_fails = Arc::clone(&phase_two.commit_fails);
         let factory = TestUnitOfWorkFactory {
-            unit_of_works: Mutex::new(vec![phase_one, phase_two]),
+            unit_of_works: Mutex::new(vec![
+                phase_one,
+                phase_two,
+                unseal_unit_of_work(Arc::clone(&unsealed)),
+            ]),
         };
         Harness {
             phase_one_commit_fails,
@@ -731,6 +885,7 @@ mod tests {
             phase_two_commit_fails,
             phase_two_committed,
             phase_two_rolled_back,
+            unsealed,
             use_case: CompleteUpload::new(
                 Arc::new(factory),
                 Arc::new(file_storage),
@@ -745,10 +900,12 @@ mod tests {
         uploads: MockUploadRepository,
         files: MockFileRepository,
         images: MockImageRepository,
+        audios: MockAudioRepository,
         videos: MockVideoRepository,
     ) -> (TestUow, Arc<AtomicBool>, Arc<AtomicBool>) {
         let unit_of_work = TestUnitOfWork {
             users: any_caller(),
+            audios,
             files,
             images,
             uploads,
@@ -763,33 +920,42 @@ mod tests {
     /// Build a completion whose phases carry explicit media repositories and a
     /// configured media probe, for the registration paths.
     fn use_case_with_media(
-        phase_one_uploads: MockUploadRepository,
+        mut phase_one_uploads: MockUploadRepository,
         phase_one_files: MockFileRepository,
         phase_one_images: MockImageRepository,
         phase_one_videos: MockVideoRepository,
-        phase_two_uploads: MockUploadRepository,
+        mut phase_two_uploads: MockUploadRepository,
         phase_two_files: MockFileRepository,
         phase_two_images: MockImageRepository,
         phase_two_videos: MockVideoRepository,
         file_storage: MockFileStorage,
         media_probe: MockMediaProbe,
     ) -> Harness {
+        let unsealed = Arc::new(AtomicBool::new(false));
+        expect_unseal(&mut phase_one_uploads, Arc::clone(&unsealed));
+        expect_unseal(&mut phase_two_uploads, Arc::clone(&unsealed));
         let (phase_one, phase_one_committed, phase_one_rolled_back) = phase_unit_of_work(
             phase_one_uploads,
             phase_one_files,
             phase_one_images,
+            MockAudioRepository::new(),
             phase_one_videos,
         );
         let (phase_two, phase_two_committed, phase_two_rolled_back) = phase_unit_of_work(
             phase_two_uploads,
             phase_two_files,
             phase_two_images,
+            MockAudioRepository::new(),
             phase_two_videos,
         );
         let phase_one_commit_fails = Arc::clone(&phase_one.commit_fails);
         let phase_two_commit_fails = Arc::clone(&phase_two.commit_fails);
         let factory = TestUnitOfWorkFactory {
-            unit_of_works: Mutex::new(vec![phase_one, phase_two]),
+            unit_of_works: Mutex::new(vec![
+                phase_one,
+                phase_two,
+                unseal_unit_of_work(Arc::clone(&unsealed)),
+            ]),
         };
         Harness {
             phase_one_commit_fails,
@@ -798,6 +964,59 @@ mod tests {
             phase_two_commit_fails,
             phase_two_committed,
             phase_two_rolled_back,
+            unsealed,
+            use_case: CompleteUpload::new(
+                Arc::new(factory),
+                Arc::new(file_storage),
+                Arc::new(media_probe),
+                TTL_SECONDS,
+            ),
+        }
+    }
+
+    /// Build a completion whose mutating phase carries an audio repository.
+    fn use_case_with_audio(
+        mut phase_one_uploads: MockUploadRepository,
+        mut phase_two_uploads: MockUploadRepository,
+        phase_two_files: MockFileRepository,
+        phase_two_audios: MockAudioRepository,
+        file_storage: MockFileStorage,
+        media_probe: MockMediaProbe,
+    ) -> Harness {
+        let unsealed = Arc::new(AtomicBool::new(false));
+        expect_unseal(&mut phase_one_uploads, Arc::clone(&unsealed));
+        expect_unseal(&mut phase_two_uploads, Arc::clone(&unsealed));
+        let (phase_one, phase_one_committed, phase_one_rolled_back) = phase_unit_of_work(
+            phase_one_uploads,
+            MockFileRepository::new(),
+            MockImageRepository::new(),
+            MockAudioRepository::new(),
+            MockVideoRepository::new(),
+        );
+        let (phase_two, phase_two_committed, phase_two_rolled_back) = phase_unit_of_work(
+            phase_two_uploads,
+            phase_two_files,
+            MockImageRepository::new(),
+            phase_two_audios,
+            MockVideoRepository::new(),
+        );
+        let phase_one_commit_fails = Arc::clone(&phase_one.commit_fails);
+        let phase_two_commit_fails = Arc::clone(&phase_two.commit_fails);
+        let factory = TestUnitOfWorkFactory {
+            unit_of_works: Mutex::new(vec![
+                phase_one,
+                phase_two,
+                unseal_unit_of_work(Arc::clone(&unsealed)),
+            ]),
+        };
+        Harness {
+            phase_one_commit_fails,
+            phase_one_committed,
+            phase_one_rolled_back,
+            phase_two_commit_fails,
+            phase_two_committed,
+            phase_two_rolled_back,
+            unsealed,
             use_case: CompleteUpload::new(
                 Arc::new(factory),
                 Arc::new(file_storage),
@@ -869,6 +1088,8 @@ mod tests {
                 .map_err(|_| RepositoryError::OperationFailed)?,
             bitmap,
             is_finished,
+            true,
+            Some(timestamp()),
             timestamp(),
         )
         .map_err(|_| RepositoryError::OperationFailed)
@@ -897,6 +1118,8 @@ mod tests {
                 .map_err(|_| RepositoryError::OperationFailed)?,
             bitmap,
             false,
+            false,
+            None,
             expired_at,
         )
         .map_err(|_| RepositoryError::OperationFailed)
@@ -907,6 +1130,15 @@ mod tests {
             let stored = upload.clone();
             Box::pin(async move { Ok(vec![stored]) })
         });
+    }
+
+    /// Expect a pending upload that resolves and wins its verification seal.
+    fn expect_pending_upload(uploads: &mut MockUploadRepository, upload: Upload) {
+        expect_upload(uploads, upload);
+        uploads
+            .expect_seal()
+            .times(1)
+            .returning(|_, _| Box::pin(async { Ok(true) }));
     }
 
     fn stored_file(id: i64, user_id: i64) -> Result<File, RepositoryError> {
@@ -949,7 +1181,7 @@ mod tests {
         let resolved = upload(5, 3, 4, &[0], false)?;
         let finished = resolved.clone();
         let mut phase_one_uploads = MockUploadRepository::new();
-        expect_upload(&mut phase_one_uploads, resolved.clone());
+        expect_pending_upload(&mut phase_one_uploads, resolved.clone());
         let mut phase_two_uploads = MockUploadRepository::new();
         expect_upload(&mut phase_two_uploads, resolved);
         let mut phase_two_files = MockFileRepository::new();
@@ -999,7 +1231,7 @@ mod tests {
         // Assert
         assert_eq!(response.file_id(), 0);
         assert!(response.is_finished());
-        assert!(harness.phase_one_rolled_back.load(Ordering::SeqCst));
+        assert!(harness.phase_one_committed.load(Ordering::SeqCst));
         assert!(harness.phase_two_committed.load(Ordering::SeqCst));
         assert!(!harness.phase_two_rolled_back.load(Ordering::SeqCst));
         Ok(())
@@ -1011,7 +1243,7 @@ mod tests {
         // Arrange
         let resolved = upload(5, 3, 4, &[0], false)?;
         let mut phase_one_uploads = MockUploadRepository::new();
-        expect_upload(&mut phase_one_uploads, resolved.clone());
+        expect_pending_upload(&mut phase_one_uploads, resolved.clone());
         let mut phase_two_uploads = MockUploadRepository::new();
         expect_upload(&mut phase_two_uploads, resolved);
         phase_two_uploads
@@ -1051,7 +1283,7 @@ mod tests {
 
         // Assert
         assert!(matches!(result, Err(CompleteUploadError::NoSuchUpload)));
-        assert!(harness.phase_one_rolled_back.load(Ordering::SeqCst));
+        assert!(harness.phase_one_committed.load(Ordering::SeqCst));
         assert!(harness.phase_two_rolled_back.load(Ordering::SeqCst));
         Ok(())
     }
@@ -1062,7 +1294,7 @@ mod tests {
         // Arrange
         let resolved = upload(5, 3, 4, &[0], false)?;
         let mut phase_one_uploads = MockUploadRepository::new();
-        expect_upload(&mut phase_one_uploads, resolved.clone());
+        expect_pending_upload(&mut phase_one_uploads, resolved.clone());
         let mut phase_two_uploads = MockUploadRepository::new();
         expect_upload(&mut phase_two_uploads, resolved);
         // The mismatch is detected before any digest lookup, so the file table
@@ -1088,7 +1320,7 @@ mod tests {
             result,
             Err(CompleteUploadError::IntegrityMismatch)
         ));
-        assert!(harness.phase_one_rolled_back.load(Ordering::SeqCst));
+        assert!(harness.phase_one_committed.load(Ordering::SeqCst));
         assert!(harness.phase_two_rolled_back.load(Ordering::SeqCst));
         Ok(())
     }
@@ -1332,7 +1564,7 @@ mod tests {
         let resolved = upload(5, 3, 4, &[0], false)?;
         let finished = resolved.clone();
         let mut phase_one_uploads = MockUploadRepository::new();
-        expect_upload(&mut phase_one_uploads, resolved.clone());
+        expect_pending_upload(&mut phase_one_uploads, resolved.clone());
         let mut phase_two_uploads = MockUploadRepository::new();
         expect_upload(&mut phase_two_uploads, resolved);
         let mut phase_two_files = MockFileRepository::new();
@@ -1389,7 +1621,7 @@ mod tests {
         // Arrange
         let resolved = upload(5, 3, 4, &[0], false)?;
         let mut phase_one_uploads = MockUploadRepository::new();
-        expect_upload(&mut phase_one_uploads, resolved.clone());
+        expect_pending_upload(&mut phase_one_uploads, resolved.clone());
         let mut phase_two_uploads = MockUploadRepository::new();
         expect_upload(&mut phase_two_uploads, resolved);
         let mut phase_two_files = MockFileRepository::new();
@@ -1414,6 +1646,7 @@ mod tests {
         // Assert
         assert_eq!(response.file_id(), 11);
         assert!(!response.is_finished());
+        assert!(harness.unsealed.load(Ordering::SeqCst));
         assert!(harness.phase_two_committed.load(Ordering::SeqCst));
         Ok(())
     }
@@ -1424,7 +1657,7 @@ mod tests {
         // Arrange
         let resolved = upload(5, 3, 4, &[0], false)?;
         let mut phase_one_uploads = MockUploadRepository::new();
-        expect_upload(&mut phase_one_uploads, resolved.clone());
+        expect_pending_upload(&mut phase_one_uploads, resolved.clone());
         let mut phase_two_uploads = MockUploadRepository::new();
         expect_upload(&mut phase_two_uploads, resolved);
         let mut phase_two_files = MockFileRepository::new();
@@ -1471,6 +1704,7 @@ mod tests {
         // Assert
         assert_eq!(response.file_id(), 11);
         assert!(!response.is_finished());
+        assert!(harness.unsealed.load(Ordering::SeqCst));
         assert!(harness.phase_two_committed.load(Ordering::SeqCst));
         Ok(())
     }
@@ -1481,7 +1715,7 @@ mod tests {
         // Arrange
         let resolved = upload(5, 3, 4, &[0], false)?;
         let mut phase_one_uploads = MockUploadRepository::new();
-        expect_upload(&mut phase_one_uploads, resolved.clone());
+        expect_pending_upload(&mut phase_one_uploads, resolved.clone());
         let mut phase_two_uploads = MockUploadRepository::new();
         expect_upload(&mut phase_two_uploads, resolved);
         // The mismatch is detected before the duplicate lookup.
@@ -1511,11 +1745,12 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn complete_upload_promote_failure_returns_unknown() -> Result<(), Box<dyn Error>> {
+    async fn complete_upload_promote_destination_missing_returns_library_unavailable()
+    -> Result<(), Box<dyn Error>> {
         // Arrange
         let resolved = upload(5, 3, 4, &[0], false)?;
         let mut phase_one_uploads = MockUploadRepository::new();
-        expect_upload(&mut phase_one_uploads, resolved.clone());
+        expect_pending_upload(&mut phase_one_uploads, resolved.clone());
         let mut phase_two_uploads = MockUploadRepository::new();
         expect_upload(&mut phase_two_uploads, resolved);
         let mut phase_two_files = MockFileRepository::new();
@@ -1542,7 +1777,10 @@ mod tests {
         let result = harness.use_case.execute(command).await;
 
         // Assert
-        assert!(matches!(result, Err(CompleteUploadError::Unknown(_))));
+        assert!(matches!(
+            result,
+            Err(CompleteUploadError::LibraryUnavailable)
+        ));
         assert!(harness.phase_two_rolled_back.load(Ordering::SeqCst));
         Ok(())
     }
@@ -1552,7 +1790,7 @@ mod tests {
         // Arrange
         let resolved = upload(5, 3, 4, &[0], false)?;
         let mut phase_one_uploads = MockUploadRepository::new();
-        expect_upload(&mut phase_one_uploads, resolved.clone());
+        expect_pending_upload(&mut phase_one_uploads, resolved.clone());
         let mut phase_two_uploads = MockUploadRepository::new();
         expect_upload(&mut phase_two_uploads, resolved);
         phase_two_uploads
@@ -1601,7 +1839,7 @@ mod tests {
         // Arrange
         let resolved = upload(5, 3, 4, &[0], false)?;
         let mut phase_one_uploads = MockUploadRepository::new();
-        expect_upload(&mut phase_one_uploads, resolved.clone());
+        expect_pending_upload(&mut phase_one_uploads, resolved.clone());
         let mut phase_two_uploads = MockUploadRepository::new();
         expect_upload(&mut phase_two_uploads, resolved);
         let mut phase_two_files = MockFileRepository::new();
@@ -1647,7 +1885,7 @@ mod tests {
         let resolved = upload(5, 3, 4, &[0], false)?;
         let finished = resolved.clone();
         let mut phase_one_uploads = MockUploadRepository::new();
-        expect_upload(&mut phase_one_uploads, resolved.clone());
+        expect_pending_upload(&mut phase_one_uploads, resolved.clone());
         let mut phase_two_uploads = MockUploadRepository::new();
         expect_upload(&mut phase_two_uploads, resolved);
         phase_two_uploads
@@ -1701,28 +1939,28 @@ mod tests {
         // Arrange
         let resolved = upload(5, 3, 4, &[0], false)?;
         let mut phase_one_uploads = MockUploadRepository::new();
-        expect_upload(&mut phase_one_uploads, resolved.clone());
+        expect_pending_upload(&mut phase_one_uploads, resolved.clone());
         let phase_one = TestUnitOfWork {
             users: any_caller(),
             uploads: phase_one_uploads,
             ..TestUnitOfWork::default()
         };
         let _phase_one_committed = Arc::clone(&phase_one.committed);
-        let phase_one_rolled_back = Arc::clone(&phase_one.rolled_back);
+        let phase_one_committed = Arc::clone(&phase_one.committed);
 
         // The hash closure records that the read-only phase has been rolled
         // back, releasing its connection, before the staged content is read.
         let hash_called = Arc::new(AtomicBool::new(false));
         let hash_called_by_hash = Arc::clone(&hash_called);
-        let rolled_back_by_hash = Arc::clone(&phase_one_rolled_back);
+        let committed_by_hash = Arc::clone(&phase_one_committed);
         let mut file_storage = MockFileStorage::new();
         file_storage
             .expect_integrity_hash()
             .times(1)
             .returning(move |_| {
                 assert!(
-                    rolled_back_by_hash.load(Ordering::SeqCst),
-                    "phase 1 must be closed before the hash"
+                    committed_by_hash.load(Ordering::SeqCst),
+                    "phase 1 must commit its seal before the hash"
                 );
                 hash_called_by_hash.store(true, Ordering::SeqCst);
                 let hash = IntegrityHash::try_new(DIGEST.to_owned())
@@ -1791,7 +2029,7 @@ mod tests {
 
         // Assert
         assert_eq!(response.file_id(), 0);
-        assert!(phase_one_rolled_back.load(Ordering::SeqCst));
+        assert!(phase_one_committed.load(Ordering::SeqCst));
         assert!(hash_called.load(Ordering::SeqCst));
         assert!(phase_two_committed.load(Ordering::SeqCst));
         Ok(())
@@ -1802,7 +2040,7 @@ mod tests {
     -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut phase_one_uploads = MockUploadRepository::new();
-        expect_upload(&mut phase_one_uploads, upload(5, 3, 4, &[0], false)?);
+        expect_pending_upload(&mut phase_one_uploads, upload(5, 3, 4, &[0], false)?);
         let mut phase_two_uploads = MockUploadRepository::new();
         expect_upload(&mut phase_two_uploads, upload(5, 3, 4, &[0], true)?);
         let mut phase_two_files = MockFileRepository::new();
@@ -1827,7 +2065,7 @@ mod tests {
         // Assert
         assert_eq!(response.file_id(), 11);
         assert!(response.is_finished());
-        assert!(harness.phase_one_rolled_back.load(Ordering::SeqCst));
+        assert!(harness.phase_one_committed.load(Ordering::SeqCst));
         assert!(harness.phase_two_committed.load(Ordering::SeqCst));
         Ok(())
     }
@@ -1837,7 +2075,7 @@ mod tests {
     {
         // Arrange
         let mut phase_one_uploads = MockUploadRepository::new();
-        expect_upload(&mut phase_one_uploads, upload(5, 3, 4, &[0], false)?);
+        expect_pending_upload(&mut phase_one_uploads, upload(5, 3, 4, &[0], false)?);
         // The upload expires between the phases; the re-check cleans it up in
         // the mutating phase and reports the expiry.
         let mut phase_two_uploads = MockUploadRepository::new();
@@ -1866,7 +2104,7 @@ mod tests {
 
         // Assert
         assert!(matches!(result, Err(CompleteUploadError::Expired)));
-        assert!(harness.phase_one_rolled_back.load(Ordering::SeqCst));
+        assert!(harness.phase_one_committed.load(Ordering::SeqCst));
         assert!(harness.phase_two_committed.load(Ordering::SeqCst));
         Ok(())
     }
@@ -1876,7 +2114,7 @@ mod tests {
     {
         // Arrange
         let mut phase_one_uploads = MockUploadRepository::new();
-        expect_upload(&mut phase_one_uploads, upload(5, 3, 4, &[0], false)?);
+        expect_pending_upload(&mut phase_one_uploads, upload(5, 3, 4, &[0], false)?);
         let mut file_storage = MockFileStorage::new();
         // The digest cannot be computed with no unit of work open, so the
         // mutating phase is never reached.
@@ -1898,8 +2136,8 @@ mod tests {
 
         // Assert
         assert!(matches!(result, Err(CompleteUploadError::Unknown(_))));
-        assert!(harness.phase_one_rolled_back.load(Ordering::SeqCst));
-        assert!(!harness.phase_two_committed.load(Ordering::SeqCst));
+        assert!(harness.phase_one_committed.load(Ordering::SeqCst));
+        assert!(harness.unsealed.load(Ordering::SeqCst));
         Ok(())
     }
 
@@ -1909,7 +2147,7 @@ mod tests {
         // Arrange: the staged file no longer exists, so the adapter reports
         // absence while the phase-1 resolve still finds the upload row.
         let mut phase_one_uploads = MockUploadRepository::new();
-        expect_upload(&mut phase_one_uploads, upload(5, 3, 4, &[0], false)?);
+        expect_pending_upload(&mut phase_one_uploads, upload(5, 3, 4, &[0], false)?);
         let mut file_storage = MockFileStorage::new();
         file_storage
             .expect_integrity_hash()
@@ -1929,8 +2167,8 @@ mod tests {
 
         // Assert
         assert!(matches!(result, Err(CompleteUploadError::NoSuchUpload)));
-        assert!(harness.phase_one_rolled_back.load(Ordering::SeqCst));
-        assert!(!harness.phase_two_committed.load(Ordering::SeqCst));
+        assert!(harness.phase_one_committed.load(Ordering::SeqCst));
+        assert!(harness.unsealed.load(Ordering::SeqCst));
         Ok(())
     }
 
@@ -1939,7 +2177,7 @@ mod tests {
         // Arrange
         let resolved = upload(5, 3, 4, &[0], false)?;
         let mut phase_one_uploads = MockUploadRepository::new();
-        expect_upload(&mut phase_one_uploads, resolved.clone());
+        expect_pending_upload(&mut phase_one_uploads, resolved.clone());
         let mut phase_two_uploads = MockUploadRepository::new();
         expect_upload(&mut phase_two_uploads, resolved);
         // The freshly-read digest is compared before the file table is probed,
@@ -1969,25 +2207,54 @@ mod tests {
         Ok(())
     }
 
+    /// Build an audio probe result.
+    #[expect(
+        clippy::expect_used,
+        reason = "the fixture scalars are valid by construction"
+    )]
+    fn probed_audio() -> ProbedAudio {
+        ProbedAudio {
+            bit_depth: Some(16),
+            block_size: Some(1_152),
+            codec: "mp3".to_owned(),
+            duration_ms: Some(
+                NonNegativeF64::try_new(1_000.0f64).expect("the fixture duration is non-negative"),
+            ),
+            sample_rate_hz: Some(
+                NonNegativeF64::try_new(44_100.0f64)
+                    .expect("the fixture sample rate is non-negative"),
+            ),
+        }
+    }
+
     /// Build an image probe result.
+    #[expect(
+        clippy::expect_used,
+        reason = "the fixture scalars are valid by construction"
+    )]
     fn probed_image() -> ProbedImage {
         ProbedImage {
-            height_px: 480,
+            height_px: PositiveI64::try_new(480).expect("the fixture height is positive"),
             orientation: Orientation::Landscape,
-            width_px: 640,
+            width_px: PositiveI64::try_new(640).expect("the fixture width is positive"),
         }
     }
 
     /// Build a video probe result.
+    #[expect(
+        clippy::expect_used,
+        reason = "the fixture scalars are valid by construction"
+    )]
     fn probed_video() -> ProbedVideo {
         ProbedVideo {
             codec: "h264".to_owned(),
             color_id: "YCbCr".to_owned(),
-            duration_ms: 1000.0,
-            frame_count: 30,
-            height: 480,
+            duration_ms: NonNegativeF64::try_new(1000.0)
+                .expect("the fixture duration is non-negative"),
+            frame_count: PositiveI64::try_new(30).expect("the fixture frame count is positive"),
+            height: PositiveI64::try_new(480).expect("the fixture height is positive"),
             scan_type: ScanType::Progressive,
-            width: 640,
+            width: PositiveI64::try_new(640).expect("the fixture width is positive"),
         }
     }
 
@@ -1997,7 +2264,7 @@ mod tests {
         let resolved = upload_with_mime(5, 3, 4, &[0], false, "image/png")?;
         let finished = resolved.clone();
         let mut phase_one_uploads = MockUploadRepository::new();
-        expect_upload(&mut phase_one_uploads, resolved.clone());
+        expect_pending_upload(&mut phase_one_uploads, resolved.clone());
         let mut phase_two_uploads = MockUploadRepository::new();
         expect_upload(&mut phase_two_uploads, resolved);
         phase_two_uploads
@@ -2065,7 +2332,7 @@ mod tests {
         let resolved = upload_with_mime(5, 3, 4, &[0], false, "video/mp4")?;
         let finished = resolved.clone();
         let mut phase_one_uploads = MockUploadRepository::new();
-        expect_upload(&mut phase_one_uploads, resolved.clone());
+        expect_pending_upload(&mut phase_one_uploads, resolved.clone());
         let mut phase_two_uploads = MockUploadRepository::new();
         expect_upload(&mut phase_two_uploads, resolved);
         phase_two_uploads
@@ -2132,7 +2399,7 @@ mod tests {
         let resolved = upload_with_mime(5, 3, 4, &[0], false, "video/mp4")?;
         let finished = resolved.clone();
         let mut phase_one_uploads = MockUploadRepository::new();
-        expect_upload(&mut phase_one_uploads, resolved.clone());
+        expect_pending_upload(&mut phase_one_uploads, resolved.clone());
         let mut phase_two_uploads = MockUploadRepository::new();
         expect_upload(&mut phase_two_uploads, resolved);
         phase_two_uploads
@@ -2197,7 +2464,7 @@ mod tests {
         // Arrange
         let resolved = upload_with_mime(5, 3, 4, &[0], false, "video/mp4")?;
         let mut phase_one_uploads = MockUploadRepository::new();
-        expect_upload(&mut phase_one_uploads, resolved.clone());
+        expect_pending_upload(&mut phase_one_uploads, resolved.clone());
         let mut phase_two_uploads = MockUploadRepository::new();
         expect_upload(&mut phase_two_uploads, resolved);
         let mut phase_two_files = MockFileRepository::new();
@@ -2260,7 +2527,7 @@ mod tests {
     -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut phase_one_uploads = MockUploadRepository::new();
-        expect_upload(
+        expect_pending_upload(
             &mut phase_one_uploads,
             upload_with_mime(5, 3, 4, &[0], false, "video/mp4")?,
         );
@@ -2292,7 +2559,7 @@ mod tests {
 
         // Assert
         assert!(matches!(result, Err(CompleteUploadError::UnsupportedMedia)));
-        assert!(!harness.phase_two_committed.load(Ordering::SeqCst));
+        assert!(harness.unsealed.load(Ordering::SeqCst));
         Ok(())
     }
 
@@ -2301,7 +2568,7 @@ mod tests {
     -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut phase_one_uploads = MockUploadRepository::new();
-        expect_upload(
+        expect_pending_upload(
             &mut phase_one_uploads,
             upload_with_mime(5, 3, 4, &[0], false, "video/mp4")?,
         );
@@ -2335,7 +2602,7 @@ mod tests {
 
         // Assert
         assert!(matches!(result, Err(CompleteUploadError::NoSuchUpload)));
-        assert!(!harness.phase_two_committed.load(Ordering::SeqCst));
+        assert!(harness.unsealed.load(Ordering::SeqCst));
         Ok(())
     }
 
@@ -2343,7 +2610,7 @@ mod tests {
     async fn complete_upload_probe_failure_returns_unknown() -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut phase_one_uploads = MockUploadRepository::new();
-        expect_upload(
+        expect_pending_upload(
             &mut phase_one_uploads,
             upload_with_mime(5, 3, 4, &[0], false, "video/mp4")?,
         );
@@ -2375,7 +2642,7 @@ mod tests {
 
         // Assert
         assert!(matches!(result, Err(CompleteUploadError::Unknown(_))));
-        assert!(!harness.phase_two_committed.load(Ordering::SeqCst));
+        assert!(harness.unsealed.load(Ordering::SeqCst));
         Ok(())
     }
 
@@ -2413,7 +2680,7 @@ mod tests {
         // Arrange: the upload row exists but the staged bytes vanished between
         // the hash and the image probe.
         let mut phase_one_uploads = MockUploadRepository::new();
-        expect_upload(
+        expect_pending_upload(
             &mut phase_one_uploads,
             upload_with_mime(5, 3, 4, &[0], false, "image/png")?,
         );
@@ -2445,7 +2712,7 @@ mod tests {
 
         // Assert
         assert!(matches!(result, Err(CompleteUploadError::NoSuchUpload)));
-        assert!(!harness.phase_two_committed.load(Ordering::SeqCst));
+        assert!(harness.unsealed.load(Ordering::SeqCst));
         Ok(())
     }
 
@@ -2453,7 +2720,7 @@ mod tests {
     async fn complete_upload_image_probe_timeout_returns_unknown() -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut phase_one_uploads = MockUploadRepository::new();
-        expect_upload(
+        expect_pending_upload(
             &mut phase_one_uploads,
             upload_with_mime(5, 3, 4, &[0], false, "image/png")?,
         );
@@ -2485,7 +2752,7 @@ mod tests {
 
         // Assert
         assert!(matches!(result, Err(CompleteUploadError::Unknown(_))));
-        assert!(!harness.phase_two_committed.load(Ordering::SeqCst));
+        assert!(harness.unsealed.load(Ordering::SeqCst));
         Ok(())
     }
 
@@ -2494,7 +2761,7 @@ mod tests {
     -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut phase_one_uploads = MockUploadRepository::new();
-        expect_upload(
+        expect_pending_upload(
             &mut phase_one_uploads,
             upload_with_mime(5, 3, 4, &[0], false, "image/png")?,
         );
@@ -2526,7 +2793,7 @@ mod tests {
 
         // Assert
         assert!(matches!(result, Err(CompleteUploadError::UnsupportedMedia)));
-        assert!(!harness.phase_two_committed.load(Ordering::SeqCst));
+        assert!(harness.unsealed.load(Ordering::SeqCst));
         Ok(())
     }
 
@@ -2536,7 +2803,7 @@ mod tests {
         // Arrange
         let resolved = upload_with_mime(5, 3, 4, &[0], false, "image/png")?;
         let mut phase_one_uploads = MockUploadRepository::new();
-        expect_upload(&mut phase_one_uploads, resolved.clone());
+        expect_pending_upload(&mut phase_one_uploads, resolved.clone());
         let mut phase_two_uploads = MockUploadRepository::new();
         expect_upload(&mut phase_two_uploads, resolved.clone());
         phase_two_uploads
@@ -2591,7 +2858,7 @@ mod tests {
         // Arrange
         let resolved = upload_with_mime(5, 3, 4, &[0], false, "image/png")?;
         let mut phase_one_uploads = MockUploadRepository::new();
-        expect_upload(&mut phase_one_uploads, resolved.clone());
+        expect_pending_upload(&mut phase_one_uploads, resolved.clone());
         let mut phase_two_uploads = MockUploadRepository::new();
         expect_upload(&mut phase_two_uploads, resolved);
         let mut phase_two_files = MockFileRepository::new();
@@ -2637,211 +2904,167 @@ mod tests {
     }
 
     #[tokio::test]
-    #[traced_test]
-    async fn complete_upload_invalid_image_metadata_returns_unknown() -> Result<(), Box<dyn Error>>
-    {
-        // Arrange: the probe yields a non-positive width, which the domain
-        // constructor rejects; no media row is written and the unit rolls back.
-        let resolved = upload_with_mime(5, 3, 4, &[0], false, "image/png")?;
+    async fn complete_upload_registers_an_audio_row() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let resolved = upload_with_mime(5, 3, 4, &[0], false, "audio/mpeg")?;
+        let finished = resolved.clone();
         let mut phase_one_uploads = MockUploadRepository::new();
-        expect_upload(&mut phase_one_uploads, resolved.clone());
+        expect_pending_upload(&mut phase_one_uploads, resolved.clone());
         let mut phase_two_uploads = MockUploadRepository::new();
         expect_upload(&mut phase_two_uploads, resolved);
-        let mut phase_two_files = MockFileRepository::new();
-        expect_file_create(&mut phase_two_files);
-        let mut file_storage = MockFileStorage::new();
-        expect_integrity_hash(&mut file_storage, DIGEST);
-        expect_promote(&mut file_storage);
-        expect_restore(&mut file_storage);
-        let mut media_probe = MockMediaProbe::new();
-        media_probe.expect_probe_image().times(1).returning(|_| {
-            Box::pin(async {
-                Ok(Some(ProbedImage {
-                    height_px: 480,
-                    orientation: Orientation::Landscape,
-                    width_px: 0,
-                }))
-            })
-        });
-        let harness = use_case_with_media(
-            phase_one_uploads,
-            MockFileRepository::new(),
-            MockImageRepository::new(),
-            MockVideoRepository::new(),
-            phase_two_uploads,
-            phase_two_files,
-            MockImageRepository::new(),
-            MockVideoRepository::new(),
-            file_storage,
-            media_probe,
-        );
-
-        // Act
-        let result = harness
-            .use_case
-            .execute(CompleteUploadCommand::new(5, 3))
-            .await;
-
-        // Assert
-        assert!(matches!(result, Err(CompleteUploadError::Unknown(_))));
-        assert!(harness.phase_two_rolled_back.load(Ordering::SeqCst));
-        assert!(!harness.phase_two_committed.load(Ordering::SeqCst));
-        assert!(
-            logs_contain("ERROR") && logs_contain("event=\"application_error\""),
-            "the constructor failure must emit the catalogued application_error"
-        );
-        assert!(
-            logs_contain("operation=complete_upload"),
-            "the event must name the owning operation"
-        );
-        Ok(())
-    }
-
-    #[tokio::test]
-    #[traced_test]
-    async fn complete_upload_invalid_video_metadata_returns_unknown() -> Result<(), Box<dyn Error>>
-    {
-        // Arrange: the probe yields a non-positive frame count, which the domain
-        // constructor rejects; no media row is written and the unit rolls back.
-        let resolved = upload_with_mime(5, 3, 4, &[0], false, "video/mp4")?;
-        let mut phase_one_uploads = MockUploadRepository::new();
-        expect_upload(&mut phase_one_uploads, resolved.clone());
-        let mut phase_two_uploads = MockUploadRepository::new();
-        expect_upload(&mut phase_two_uploads, resolved);
-        let mut phase_two_files = MockFileRepository::new();
-        expect_file_create(&mut phase_two_files);
-        let mut file_storage = MockFileStorage::new();
-        expect_integrity_hash(&mut file_storage, DIGEST);
-        expect_promote(&mut file_storage);
-        expect_restore(&mut file_storage);
-        let mut media_probe = MockMediaProbe::new();
-        media_probe.expect_probe_video().times(1).returning(|_| {
-            Box::pin(async {
-                Ok(Some(ProbedVideo {
-                    codec: "h264".to_owned(),
-                    color_id: "YCbCr".to_owned(),
-                    duration_ms: 1000.0,
-                    frame_count: 0,
-                    height: 480,
-                    scan_type: ScanType::Progressive,
-                    width: 640,
-                }))
-            })
-        });
-        let harness = use_case_with_media(
-            phase_one_uploads,
-            MockFileRepository::new(),
-            MockImageRepository::new(),
-            MockVideoRepository::new(),
-            phase_two_uploads,
-            phase_two_files,
-            MockImageRepository::new(),
-            MockVideoRepository::new(),
-            file_storage,
-            media_probe,
-        );
-
-        // Act
-        let result = harness
-            .use_case
-            .execute(CompleteUploadCommand::new(5, 3))
-            .await;
-
-        // Assert
-        assert!(matches!(result, Err(CompleteUploadError::Unknown(_))));
-        assert!(harness.phase_two_rolled_back.load(Ordering::SeqCst));
-        assert!(!harness.phase_two_committed.load(Ordering::SeqCst));
-        assert!(
-            logs_contain("ERROR") && logs_contain("event=\"application_error\""),
-            "the constructor failure must emit the catalogued application_error"
-        );
-        assert!(
-            logs_contain("operation=complete_upload"),
-            "the event must name the owning operation"
-        );
-        Ok(())
-    }
-
-    #[tokio::test]
-    #[traced_test]
-    async fn complete_upload_video_with_negative_duration_returns_unknown()
-    -> Result<(), Box<dyn Error>> {
-        // Act
-        assert_invalid_video_duration(-1.0f64).await?;
-
-        // Assert
-        assert!(
-            logs_contain("ERROR") && logs_contain("event=\"application_error\""),
-            "the constructor failure must emit the catalogued application_error"
-        );
-        assert!(
-            logs_contain("operation=complete_upload"),
-            "the event must name the owning operation"
-        );
-        Ok(())
-    }
-
-    #[tokio::test]
-    #[traced_test]
-    async fn complete_upload_video_with_not_finite_duration_returns_unknown()
-    -> Result<(), Box<dyn Error>> {
-        // Act
-        assert_invalid_video_duration(f64::INFINITY).await?;
-
-        // Assert
-        assert!(
-            logs_contain("ERROR") && logs_contain("event=\"application_error\""),
-            "the constructor failure must emit the catalogued application_error"
-        );
-        assert!(
-            logs_contain("operation=complete_upload"),
-            "the event must name the owning operation"
-        );
-        Ok(())
-    }
-
-    /// Run the completion whose probe yields a duration the domain rejects.
-    async fn assert_invalid_video_duration(duration_ms: f64) -> Result<(), Box<dyn Error>> {
-        // Arrange: the probe yields a duration the domain constructor rejects
-        // as not finite or negative; no media row is written and the unit rolls
-        // back.
-        let resolved = upload_with_mime(5, 3, 4, &[0], false, "video/mp4")?;
-        let mut phase_one_uploads = MockUploadRepository::new();
-        expect_upload(&mut phase_one_uploads, resolved.clone());
-        let mut phase_two_uploads = MockUploadRepository::new();
-        expect_upload(&mut phase_two_uploads, resolved);
-        let mut phase_two_files = MockFileRepository::new();
-        expect_file_create(&mut phase_two_files);
-        let mut file_storage = MockFileStorage::new();
-        expect_integrity_hash(&mut file_storage, DIGEST);
-        expect_promote(&mut file_storage);
-        expect_restore(&mut file_storage);
-        let mut media_probe = MockMediaProbe::new();
-        media_probe
-            .expect_probe_video()
+        phase_two_uploads
+            .expect_finish()
             .times(1)
             .returning(move |_| {
-                Box::pin(async move {
-                    Ok(Some(ProbedVideo {
-                        codec: "h264".to_owned(),
-                        color_id: "YCbCr".to_owned(),
-                        duration_ms,
-                        frame_count: 30,
-                        height: 480,
-                        scan_type: ScanType::Progressive,
-                        width: 640,
-                    }))
-                })
+                let stored = finished.clone();
+                Box::pin(async move { Ok(Some(stored)) })
             });
-        let harness = use_case_with_media(
+        let mut phase_two_files = MockFileRepository::new();
+        phase_two_files
+            .expect_search()
+            .times(1)
+            .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+        phase_two_files
+            .expect_create()
+            .times(1)
+            .returning(|file| Box::pin(async move { Ok(file) }));
+        let mut phase_two_audios = MockAudioRepository::new();
+        phase_two_audios
+            .expect_create()
+            .times(1)
+            .withf(|audio| {
+                audio.file_id() == 0
+                    && audio.name() == "clip.mp4"
+                    && audio.duration_ms() == Some(1_000.0f64)
+                    && audio.sample_rate_hz() == Some(44_100.0f64)
+            })
+            .returning(|audio| Box::pin(async move { Ok(audio) }));
+        let mut file_storage = MockFileStorage::new();
+        expect_integrity_hash(&mut file_storage, DIGEST);
+        file_storage
+            .expect_promote()
+            .times(1)
+            .returning(|_, _| Box::pin(async { Ok(Some(promoted_file())) }));
+        let mut media_probe = MockMediaProbe::new();
+        media_probe
+            .expect_probe_audio()
+            .times(1)
+            .returning(|_| Box::pin(async { Ok(Some(probed_audio())) }));
+        let harness = use_case_with_audio(
             phase_one_uploads,
-            MockFileRepository::new(),
-            MockImageRepository::new(),
-            MockVideoRepository::new(),
             phase_two_uploads,
             phase_two_files,
-            MockImageRepository::new(),
-            MockVideoRepository::new(),
+            phase_two_audios,
+            file_storage,
+            media_probe,
+        );
+
+        // Act
+        let result = harness
+            .use_case
+            .execute(CompleteUploadCommand::new(5, 3))
+            .await;
+
+        // Assert
+        assert!(result.is_ok());
+        assert!(harness.phase_two_committed.load(Ordering::SeqCst));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn complete_upload_absent_staged_audio_returns_no_such_upload()
+    -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let mut phase_one_uploads = MockUploadRepository::new();
+        expect_pending_upload(
+            &mut phase_one_uploads,
+            upload_with_mime(5, 3, 4, &[0], false, "audio/mpeg")?,
+        );
+        let mut file_storage = MockFileStorage::new();
+        expect_integrity_hash(&mut file_storage, DIGEST);
+        let mut media_probe = MockMediaProbe::new();
+        media_probe
+            .expect_probe_audio()
+            .times(1)
+            .returning(|_| Box::pin(async { Ok(None) }));
+        let harness = use_case_with_audio(
+            phase_one_uploads,
+            MockUploadRepository::new(),
+            MockFileRepository::new(),
+            MockAudioRepository::new(),
+            file_storage,
+            media_probe,
+        );
+
+        // Act
+        let result = harness
+            .use_case
+            .execute(CompleteUploadCommand::new(5, 3))
+            .await;
+
+        // Assert
+        assert!(matches!(result, Err(CompleteUploadError::NoSuchUpload)));
+        assert!(harness.unsealed.load(Ordering::SeqCst));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn complete_upload_audio_content_without_an_audio_stream_returns_unsupported_media()
+    -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let mut phase_one_uploads = MockUploadRepository::new();
+        expect_pending_upload(
+            &mut phase_one_uploads,
+            upload_with_mime(5, 3, 4, &[0], false, "audio/mpeg")?,
+        );
+        let mut file_storage = MockFileStorage::new();
+        expect_integrity_hash(&mut file_storage, DIGEST);
+        let mut media_probe = MockMediaProbe::new();
+        media_probe
+            .expect_probe_audio()
+            .times(1)
+            .returning(|_| Box::pin(async { Err(MediaProbeError::UnsupportedMedia) }));
+        let harness = use_case_with_audio(
+            phase_one_uploads,
+            MockUploadRepository::new(),
+            MockFileRepository::new(),
+            MockAudioRepository::new(),
+            file_storage,
+            media_probe,
+        );
+
+        // Act
+        let result = harness
+            .use_case
+            .execute(CompleteUploadCommand::new(5, 3))
+            .await;
+
+        // Assert
+        assert!(matches!(result, Err(CompleteUploadError::UnsupportedMedia)));
+        assert!(harness.unsealed.load(Ordering::SeqCst));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn complete_upload_audio_probe_timeout_returns_unknown() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let mut phase_one_uploads = MockUploadRepository::new();
+        expect_pending_upload(
+            &mut phase_one_uploads,
+            upload_with_mime(5, 3, 4, &[0], false, "audio/mpeg")?,
+        );
+        let mut file_storage = MockFileStorage::new();
+        expect_integrity_hash(&mut file_storage, DIGEST);
+        let mut media_probe = MockMediaProbe::new();
+        media_probe
+            .expect_probe_audio()
+            .times(1)
+            .returning(|_| Box::pin(async { Err(MediaProbeError::Timeout) }));
+        let harness = use_case_with_audio(
+            phase_one_uploads,
+            MockUploadRepository::new(),
+            MockFileRepository::new(),
+            MockAudioRepository::new(),
             file_storage,
             media_probe,
         );
@@ -2854,8 +3077,153 @@ mod tests {
 
         // Assert
         assert!(matches!(result, Err(CompleteUploadError::Unknown(_))));
+        assert!(harness.unsealed.load(Ordering::SeqCst));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn complete_upload_concurrent_completion_returns_completion_in_progress()
+    -> Result<(), Box<dyn Error>> {
+        // Arrange: another completion holds the seal, so the guarded update
+        // matches no row and the fresh read reports the live session.
+        let resolved = upload(5, 3, 4, &[0], false)?;
+        let mut phase_one_uploads = MockUploadRepository::new();
+        phase_one_uploads
+            .expect_search()
+            .times(2)
+            .returning(move |_| {
+                let stored = resolved.clone();
+                Box::pin(async move { Ok(vec![stored]) })
+            });
+        phase_one_uploads
+            .expect_seal()
+            .times(1)
+            .returning(|_, _| Box::pin(async { Ok(false) }));
+        let harness = use_case_with(
+            phase_one_uploads,
+            MockFileRepository::new(),
+            MockUploadRepository::new(),
+            MockFileRepository::new(),
+            MockFileStorage::new(),
+        );
+
+        // Act
+        let result = harness
+            .use_case
+            .execute(CompleteUploadCommand::new(5, 3))
+            .await;
+
+        // Assert
+        assert!(matches!(
+            result,
+            Err(CompleteUploadError::CompletionInProgress)
+        ));
+        assert!(harness.phase_one_rolled_back.load(Ordering::SeqCst));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn complete_upload_lost_seal_to_finished_session_returns_the_file()
+    -> Result<(), Box<dyn Error>> {
+        // Arrange: the session finished while this completion was resolving, so
+        // the seal matched no row and the fresh read answers idempotently.
+        let pending = upload(5, 3, 4, &[0], false)?;
+        let finished = upload(5, 3, 4, &[0], true)?;
+        let mut phase_one_uploads = MockUploadRepository::new();
+        phase_one_uploads
+            .expect_search()
+            .times(1)
+            .returning(move |_| {
+                let stored = pending.clone();
+                Box::pin(async move { Ok(vec![stored]) })
+            });
+        phase_one_uploads
+            .expect_search()
+            .times(1)
+            .returning(move |_| {
+                let stored = finished.clone();
+                Box::pin(async move { Ok(vec![stored]) })
+            });
+        phase_one_uploads
+            .expect_seal()
+            .times(1)
+            .returning(|_, _| Box::pin(async { Ok(false) }));
+        let mut phase_one_files = MockFileRepository::new();
+        phase_one_files
+            .expect_search()
+            .times(1)
+            .returning(|_| Box::pin(async { Ok(vec![stored_file(7, 3)?]) }));
+        let harness = use_case_with(
+            phase_one_uploads,
+            phase_one_files,
+            MockUploadRepository::new(),
+            MockFileRepository::new(),
+            MockFileStorage::new(),
+        );
+
+        // Act
+        let result = harness
+            .use_case
+            .execute(CompleteUploadCommand::new(5, 3))
+            .await;
+
+        // Assert
+        assert_eq!(
+            result.as_ref().map(CompleteUploadResponse::file_id).ok(),
+            Some(7)
+        );
+        assert!(result.is_ok_and(|response| response.is_finished()));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn complete_upload_missing_seal_in_phase_two_returns_completion_in_progress()
+    -> Result<(), Box<dyn Error>> {
+        // Arrange: the seal was released between the phases, so the mutating
+        // phase must not persist against content that may have changed.
+        let resolved = upload(5, 3, 4, &[0], false)?;
+        let mut bitmap = ChunkBitmap::try_new(1)?;
+        bitmap.mark_received(0)?;
+        let unsealed = Upload::try_new(
+            5,
+            3,
+            "clip.mp4".to_owned(),
+            4,
+            "application/octet-stream".to_owned(),
+            CHUNK_SIZE,
+            IntegrityHash::try_new(DIGEST.to_owned())?,
+            bitmap,
+            false,
+            false,
+            None,
+            timestamp(),
+        )?;
+        let mut phase_one_uploads = MockUploadRepository::new();
+        expect_pending_upload(&mut phase_one_uploads, resolved);
+        let mut phase_two_uploads = MockUploadRepository::new();
+        expect_upload(&mut phase_two_uploads, unsealed);
+        let mut file_storage = MockFileStorage::new();
+        expect_integrity_hash(&mut file_storage, DIGEST);
+        let harness = use_case_with(
+            phase_one_uploads,
+            MockFileRepository::new(),
+            phase_two_uploads,
+            MockFileRepository::new(),
+            file_storage,
+        );
+
+        // Act
+        let result = harness
+            .use_case
+            .execute(CompleteUploadCommand::new(5, 3))
+            .await;
+
+        // Assert
+        assert!(matches!(
+            result,
+            Err(CompleteUploadError::CompletionInProgress)
+        ));
         assert!(harness.phase_two_rolled_back.load(Ordering::SeqCst));
-        assert!(!harness.phase_two_committed.load(Ordering::SeqCst));
         Ok(())
     }
 }
