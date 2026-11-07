@@ -318,6 +318,7 @@ jobs:
         run: |
           mkdir -p .artifacts/coverage
           cargo llvm-cov --lib \
+            --ignore-filename-regex 'src/lib/infrastructure/inbound/rest/handler' \
             --fail-under-functions 80 \
             --fail-under-regions 80 \
             --fail-under-lines 80 \

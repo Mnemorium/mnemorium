@@ -143,7 +143,7 @@
     coverage = {
       enable = true;
       name = "Coverage >= 80%";
-      entry = "cargo llvm-cov --lib --fail-under-functions 80 --fail-under-regions 80 --fail-under-lines 80";
+      entry = "cargo llvm-cov --lib --ignore-filename-regex 'src/lib/infrastructure/inbound/rest/handler' --fail-under-functions 80 --fail-under-regions 80 --fail-under-lines 80";
       pass_filenames = false;
       files = "\\.rs$";
       language = "rust";
@@ -247,12 +247,12 @@
   };
 
   tasks."docs:html-coverage" = {
-    exec = "cargo llvm-cov --lib --html && xdg-open target/llvm-cov/html/index.html";
+    exec = "cargo llvm-cov --lib --ignore-filename-regex 'src/lib/infrastructure/inbound/rest/handler' --html && xdg-open target/llvm-cov/html/index.html";
     description = "Generate HTML coverage report and open it in the browser";
   };
 
   tasks."test:coverage" = {
-    exec = "cargo llvm-cov --lib";
+    exec = "cargo llvm-cov --lib --ignore-filename-regex 'src/lib/infrastructure/inbound/rest/handler'";
     description = "Generate test coverage report";
   };
 

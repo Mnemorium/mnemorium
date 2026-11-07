@@ -4,7 +4,10 @@ rules:
     # The number of single-call helpers the tree may hold: a production function
     # whose name is called exactly once. Adding one is a reviewed decision — inline
     # it, or raise this budget in the same change.
-    max_single_call_functions: 67
+    # Raised from 67 when the REST handler endpoint tests were removed: the count
+    # is textual across `src` (test code included), and those tests supplied call
+    # sites for handler and router helpers that production still calls once.
+    max_single_call_functions: 71
   STY-RUST-002:
     bounded_contexts: &bounded_contexts
       - asset

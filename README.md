@@ -192,15 +192,15 @@ at `/doc`.
 
 Enter the environment first: `devenv shell`.
 
-| Task      | Command                                                                                  |
-| --------- | ---------------------------------------------------------------------------------------- |
-| Build     | `cargo build` (server: `cargo build --bin server`)                                       |
-| Run       | `cargo run --bin server` (listens on `:4080`; health `GET /health`)                      |
-| Test      | `cargo test` (unit + integration)                                                        |
-| Coverage  | `cargo llvm-cov --lib` (gate ≥ 80% lines/regions/functions)                              |
-| E2E       | `script/e2e.sh` (builds and runs the container; `NO_BUILD=1` reuses the image)           |
-| Lint      | `cargo clippy --all-targets --all-features -- -D warnings`; `cargo fmt --all -- --check` |
-| Full gate | `devenv test` (all pre-commit hooks)                                                     |
+| Task      | Command                                                                                                                                                                          |
+| --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Build     | `cargo build` (server: `cargo build --bin server`)                                                                                                                               |
+| Run       | `cargo run --bin server` (listens on `:4080`; health `GET /health`)                                                                                                              |
+| Test      | `cargo test` (unit + integration)                                                                                                                                                |
+| Coverage  | `cargo llvm-cov --lib --ignore-filename-regex 'src/lib/infrastructure/inbound/rest/handler'` (gate ≥ 80% lines/regions/functions; REST handlers are covered by E2E/Schemathesis) |
+| E2E       | `script/e2e.sh` (builds and runs the container; `NO_BUILD=1` reuses the image)                                                                                                   |
+| Lint      | `cargo clippy --all-targets --all-features -- -D warnings`; `cargo fmt --all -- --check`                                                                                         |
+| Full gate | `devenv test` (all pre-commit hooks)                                                                                                                                             |
 
 The module and layer map lives in [Overview](docs/development/Overview.md). That document also defines the branch, PR
 title, and commit conventions; see the [Technical Design Document](docs/development/TechnicalDesign.md) § 5 for the
