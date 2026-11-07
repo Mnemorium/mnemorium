@@ -1212,7 +1212,7 @@ impl From<&Video> for VideoResponse {
             duration_ms: video.duration_ms(),
             file_id: video.file_id(),
             height: video.height(),
-            id: video.video_id(),
+            id: video.id(),
             scan_type: video.scan_type(),
             width: video.width(),
         }

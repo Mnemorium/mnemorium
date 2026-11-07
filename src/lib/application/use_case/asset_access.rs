@@ -150,7 +150,7 @@ where
 
     let (media, scope) = match (image.as_ref(), video.as_ref()) {
         (Some(image_row), _) => (Some(Media::Image(image_row.image_id())), image_row.scope()),
-        (None, Some(video_row)) => (Some(Media::Video(video_row.video_id())), video_row.scope()),
+        (None, Some(video_row)) => (Some(Media::Video(video_row.id())), video_row.scope()),
         (None, None) => (None, None),
     };
     let decision = match (media, scope) {

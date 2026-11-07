@@ -15,10 +15,10 @@ pub(crate) struct VideoFilter {
     pub color_id: Option<String>,
     /// Filter on the identifier of the backing file.
     pub file_id: Option<NumericID>,
+    /// Filter on the video identifier.
+    pub id: Option<NumericID>,
     /// Filter on the video scan type.
     pub scan_type: Option<ScanType>,
-    /// Filter on the video identifier.
-    pub video_id: Option<NumericID>,
 }
 
 /// Port for persisting and querying `Video`.

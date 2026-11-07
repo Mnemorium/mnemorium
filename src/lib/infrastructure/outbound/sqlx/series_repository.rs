@@ -232,7 +232,7 @@ impl SeriesRepository for SqlxSeriesRepository<'_> {
         .bind(episode.name())
         .bind(episode.plot())
         .bind(episode.air_date())
-        .bind(episode.video().video_id())
+        .bind(episode.video().id())
         .execute(&mut **self.transaction)
         .await?;
 
@@ -945,7 +945,7 @@ mod tests {
             pilot.air_date(),
             Some(NaiveDate::from_ymd_opt(1991, 4, 8).unwrap_or_default())
         );
-        assert_eq!(pilot.video().video_id(), 20);
+        assert_eq!(pilot.video().id(), 20);
         assert_eq!(pilot.video().file_id(), 10);
         assert_eq!(pilot.video().codec(), "H264");
         assert_eq!(pilot.video().width(), 1920);
@@ -1293,7 +1293,7 @@ mod tests {
             .ok_or("the persisted episode must be kept")?;
         assert_eq!(episode.name(), "Pilot");
         assert_eq!(
-            episode.video().video_id(),
+            episode.video().id(),
             20,
             "the update must never rewrite an episode's video"
         );
@@ -1380,7 +1380,7 @@ mod tests {
             .first()
             .ok_or("the replaced season must keep its episode")?;
         assert_eq!(episode.name(), "Pilot");
-        assert_eq!(episode.video().video_id(), 20);
+        assert_eq!(episode.video().id(), 20);
         Ok(())
     }
 
@@ -1432,7 +1432,7 @@ mod tests {
             .first()
             .ok_or("the persisted season must keep its episode")?;
         assert_eq!(episode.name(), "Pilot");
-        assert_eq!(episode.video().video_id(), 20);
+        assert_eq!(episode.video().id(), 20);
         Ok(())
     }
 
@@ -1502,11 +1502,11 @@ mod tests {
         // Assert
         let inserted = created.ok_or("the inserted episode must be returned")?;
         assert_eq!(inserted.name(), "Pilot");
-        assert_eq!(inserted.video().video_id(), 20);
+        assert_eq!(inserted.video().id(), 20);
         let playback = replaced.ok_or("the playback episode must be returned")?;
         assert_eq!(playback.name(), "Pilot Two");
         assert_eq!(
-            playback.video().video_id(),
+            playback.video().id(),
             21,
             "the replacement must store the newly named video"
         );
@@ -1616,7 +1616,7 @@ mod tests {
             Some(NaiveDate::from_ymd_opt(1992, 2, 3).unwrap_or_default())
         );
         assert_eq!(
-            persisted.video().video_id(),
+            persisted.video().id(),
             20,
             "the update must never rewrite the backing video"
         );
@@ -1670,7 +1670,7 @@ mod tests {
         let episode = attached.ok_or("the attached episode must be returned")?;
         assert_eq!(episode.index().value(), 1);
         assert_eq!(episode.name(), "Pilot");
-        assert_eq!(episode.video().video_id(), 20);
+        assert_eq!(episode.video().id(), 20);
         assert!(
             unattached.is_none(),
             "a video the catalogue does not attach must read as none"

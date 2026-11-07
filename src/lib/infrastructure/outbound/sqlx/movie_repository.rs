@@ -554,7 +554,7 @@ mod tests {
             "the genres must be ordered by identifier"
         );
         let video = first.video();
-        assert_eq!(video.video_id(), 20);
+        assert_eq!(video.id(), 20);
         assert_eq!(video.file_id(), 10);
         assert_eq!(video.codec(), "H264");
         assert_eq!(video.width(), 1920);

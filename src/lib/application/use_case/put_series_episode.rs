@@ -150,8 +150,8 @@ where
                     .episodes()
                     .iter()
                     .find(|episode| episode.index().value() == command.episode_index());
-                let already_attached = existing
-                    .is_some_and(|episode| episode.video().video_id() == command.video_id());
+                let already_attached =
+                    existing.is_some_and(|episode| episode.video().id() == command.video_id());
                 if !already_attached {
                     let attached = unit_of_work
                         .series()
@@ -308,7 +308,7 @@ mod tests {
                 *series_id == 7
                     && *season_index == 1
                     && episode.index().value() == 1
-                    && episode.video().video_id() == 5
+                    && episode.video().id() == 5
             })
             .return_once(move |_, _, _| {
                 let copy = written.clone();
@@ -341,7 +341,7 @@ mod tests {
         // Assert
         assert!(response.created(), "a free index must create the episode");
         assert_eq!(response.episode().index().value(), 1);
-        assert_eq!(response.episode().video().video_id(), 5);
+        assert_eq!(response.episode().video().id(), 5);
         assert!(harness.committed.load(Ordering::SeqCst));
         Ok(())
     }
@@ -387,7 +387,7 @@ mod tests {
 
         // Assert
         assert!(!response.created(), "an existing index must be replaced");
-        assert_eq!(response.episode().video().video_id(), 5);
+        assert_eq!(response.episode().video().id(), 5);
         Ok(())
     }
 
@@ -428,7 +428,7 @@ mod tests {
 
         // Assert
         assert!(!response.created());
-        assert_eq!(response.episode().video().video_id(), 5);
+        assert_eq!(response.episode().video().id(), 5);
         Ok(())
     }
 
