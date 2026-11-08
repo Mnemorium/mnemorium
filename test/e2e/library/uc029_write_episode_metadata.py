@@ -149,7 +149,7 @@ def test_putting_an_out_of_range_episode_index_is_rejected(
         timeout=10,
     )
 
-    assert_error_body(response, 400)
+    assert_error_body(response, 422)
 
 
 def test_patching_an_unknown_episode_is_not_found(
