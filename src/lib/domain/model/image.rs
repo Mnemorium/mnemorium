@@ -1,6 +1,6 @@
 use chrono::NaiveDate;
 
-use crate::domain::alias::NumericID;
+use crate::domain::alias::{NumericID, PositiveI64};
 use crate::domain::model::scope::Scope;
 
 /// Error returned when initialising an `Image`.
@@ -76,6 +76,31 @@ impl Image {
     #[must_use]
     pub(crate) fn file_id(&self) -> NumericID {
         self.file_id
+    }
+
+    /// Build an `Image` from probed metadata, which is valid by construction.
+    ///
+    /// The probed dimensions carry the validated scalar type, so the conversion
+    /// has no error branch.
+    #[must_use]
+    pub(crate) fn from_probed(
+        image_id: NumericID,
+        name: String,
+        probed: ProbedImage,
+        created_at: NaiveDate,
+        file_id: NumericID,
+        scope: Option<Scope>,
+    ) -> Self {
+        Self {
+            created_at,
+            file_id,
+            height_px: probed.height_px.value(),
+            image_id,
+            name,
+            orientation: probed.orientation,
+            scope,
+            width_px: probed.width_px.value(),
+        }
     }
 
     /// Return the height of the image, in pixels.
@@ -158,13 +183,13 @@ impl Image {
 }
 
 /// Metadata extracted from an image file.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
 pub(crate) struct ProbedImage {
     /// Height of the image, in pixels.
-    pub height_px: i64,
+    pub height_px: PositiveI64,
     /// Orientation of the image.
     pub orientation: Orientation,
     /// Width of the image, in pixels.
-    pub width_px: i64,
+    pub width_px: PositiveI64,
 }

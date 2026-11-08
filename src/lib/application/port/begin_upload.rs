@@ -127,6 +127,9 @@ pub(crate) enum BeginUploadError {
     /// The file size is zero.
     #[error("the file size must be greater than zero")]
     InvalidFileSize,
+    /// The library root is absent, so the server cannot store the file.
+    #[error("the media library is unavailable")]
+    LibraryUnavailable,
     /// The authenticated caller does not exist anymore.
     #[error("the authenticated user does not exist")]
     NoSuchCaller,

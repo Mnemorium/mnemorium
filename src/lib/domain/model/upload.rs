@@ -136,6 +136,19 @@ impl ChunkBitmap {
         self.total_chunks
     }
 
+    /// Initialise a bitmap tracking `total_chunks` chunks, every one of them
+    /// received.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ChunkBitmapError::TotalChunksZero`] when `total_chunks` is
+    /// zero.
+    pub(crate) fn try_complete(total_chunks: usize) -> Result<Self, ChunkBitmapError> {
+        let mut bitmap = Self::try_new(total_chunks)?;
+        bitmap.bytes.fill(u8::MAX);
+        Ok(bitmap)
+    }
+
     /// Initialise a bitmap tracking `total_chunks` chunks, none of them
     /// received.
     ///
@@ -204,8 +217,12 @@ pub(crate) struct Upload {
     integrity_hash: IntegrityHash<DIGEST_HEX_LENGTH>,
     /// Whether the upload has been finished.
     is_finished: bool,
+    /// Whether a completion is verifying the staged content.
+    is_verifying: bool,
     /// Identifier of the mime type of the file being uploaded.
     mime_type_id: String,
+    /// Instant at which the current verification sealed the session, if any.
+    sealed_at: Option<NaiveDateTime>,
     /// Unique identifier of the upload.
     upload_id: NumericID,
     /// Identifier of the user owning the upload.
@@ -267,6 +284,12 @@ impl Upload {
         self.is_finished
     }
 
+    /// Return whether a completion is verifying the staged content.
+    #[must_use]
+    pub(crate) fn is_verifying(&self) -> bool {
+        self.is_verifying
+    }
+
     /// Mark chunk `chunk_number` as received.
     ///
     /// # Errors
@@ -288,6 +311,12 @@ impl Upload {
     #[must_use]
     pub(crate) fn mime_type_id(&self) -> &str {
         &self.mime_type_id
+    }
+
+    /// Return the instant at which the current verification sealed the session.
+    #[must_use]
+    pub(crate) fn sealed_at(&self) -> Option<NaiveDateTime> {
+        self.sealed_at
     }
 
     /// Return the total number of chunks the upload is split into.
@@ -322,6 +351,8 @@ impl Upload {
         integrity_hash: IntegrityHash<DIGEST_HEX_LENGTH>,
         chunk_bitmap: ChunkBitmap,
         is_finished: bool,
+        is_verifying: bool,
+        sealed_at: Option<NaiveDateTime>,
         created_at: NaiveDateTime,
     ) -> Result<Self, UploadError> {
         let is_safe_file_name = !file_name.is_empty()
@@ -345,7 +376,9 @@ impl Upload {
             file_size,
             integrity_hash,
             is_finished,
+            is_verifying,
             mime_type_id,
+            sealed_at,
             upload_id,
             user_id,
         })

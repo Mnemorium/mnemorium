@@ -1,4 +1,7 @@
 /// The asset context endpoints.
+/// The cancel-upload endpoint.
+pub(crate) mod delete_upload;
+/// The get-file endpoint.
 pub(crate) mod get_file;
 /// The asset context endpoints.
 pub(crate) mod get_file_content;
@@ -141,6 +144,12 @@ pub(crate) fn asset_image_href(image_id: NumericID) -> String {
     format!("/api/v1/asset/image/{image_id}")
 }
 
+/// Canonical URI reference of the typed audio identified by `audio_id`.
+#[must_use]
+pub(crate) fn asset_audio_href(audio_id: NumericID) -> String {
+    format!("/api/v1/asset/audio/{audio_id}")
+}
+
 /// Render `value` with the representation's date format.
 fn format_date(value: NaiveDate) -> String {
     value.format(DATE_FORMAT).to_string()
@@ -200,6 +209,7 @@ pub(crate) fn asset_router(chunk_body_limit: Option<usize>) -> OpenApiRouter<App
     OpenApiRouter::new()
         .routes(routes!(post_upload::post_upload))
         .routes(routes!(post_upload_complete::post_upload_complete))
+        .routes(routes!(delete_upload::delete_upload))
         .routes(routes!(get_upload::get_upload))
         .merge(chunk)
         .routes(routes!(get_file::get_file))
@@ -216,10 +226,9 @@ pub(crate) fn asset_routes(state: &AppState) -> OpenApiRouter<()> {
     // The chunk endpoint receives a full chunk (up to `chunk_size_bytes`), which
     // exceeds axum's 2 MiB default request body limit, so that route's limit is
     // raised to the configured chunk size; every other route keeps the default.
-    //
-    // TODO(hot-reload): the limit is fixed when the router is built, so a runtime
-    // change to `asset.upload.chunk_size_bytes` only takes effect after a
-    // restart.
+    // The limit is fixed when the router is built, so
+    // `asset.upload.chunk_size_bytes` is a startup-only setting
+    // (`STY-RUST-076`): a change applies after a restart.
     let chunk_body_limit =
         usize::try_from(state.configuration().asset().upload().chunk_size_bytes())
             .unwrap_or(usize::MAX);

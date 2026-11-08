@@ -10,7 +10,10 @@ rules:
     # Raised from 71 for the shared `JsonObject` request-body extractor's
     # `FromRequest::from_request`, which the framework calls rather than a
     # textual call site (API-045 request-body hardening).
-    max_single_call_functions: 72
+    # Raised from 72 when origin/main's complete-upload lifecycle merged in: its
+    # new helpers lost the textual call sites the removed REST endpoint tests
+    # used to supply.
+    max_single_call_functions: 75
   STY-RUST-002:
     bounded_contexts: &bounded_contexts
       - asset

@@ -295,6 +295,8 @@ mod tests {
                 .map_err(|_| RepositoryError::OperationFailed)?,
             bitmap,
             is_finished,
+            false,
+            None,
             created_at,
         )
         .map_err(|_| RepositoryError::OperationFailed)
@@ -400,9 +402,10 @@ mod tests {
         // Act
         let response = harness.use_case.execute(command).await?;
 
-        // Assert
+        // Assert: a finished session reports every chunk as received.
         assert!(response.is_finished());
         assert_eq!(response.file_id(), Some(11));
+        assert_eq!(response.bitmap(), "1");
         Ok(())
     }
 

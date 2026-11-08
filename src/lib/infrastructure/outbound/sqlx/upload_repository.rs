@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use chrono::NaiveDateTime;
 use sqlx::{QueryBuilder, Sqlite, Transaction};
 
 use crate::domain::alias::NumericID;
@@ -47,6 +48,8 @@ impl UploadRepository for SqlxUploadRepository<'_> {
                 chunk_size,
                 integrity_hash,
                 is_finished,
+                is_verifying,
+                sealed_at,
                 created_at",
         )
         .bind(upload.user_id())
@@ -76,12 +79,59 @@ impl UploadRepository for SqlxUploadRepository<'_> {
         Ok(result.rows_affected() > 0)
     }
 
+    async fn delete_chunks(&mut self, id: NumericID) -> Result<bool, RepositoryError> {
+        let result = sqlx::query("DELETE FROM upload_chunk WHERE upload_id = ?")
+            .bind(id)
+            .execute(&mut **self.transaction)
+            .await?;
+        Ok(result.rows_affected() > 0)
+    }
+
+    async fn expired(
+        &mut self,
+        instant: NaiveDateTime,
+        limit: usize,
+    ) -> Result<Vec<Upload>, RepositoryError> {
+        let rows = sqlx::query_as::<_, SqlxUpload>(
+            "SELECT
+                upload_id,
+                user_id,
+                file_name,
+                file_size,
+                mime_type_id,
+                chunk_size,
+                integrity_hash,
+                is_finished,
+                is_verifying,
+                sealed_at,
+                created_at
+            FROM upload
+            WHERE is_finished = 0
+              AND is_verifying = 0
+              AND created_at < ?1
+            ORDER BY created_at, upload_id
+            LIMIT ?2",
+        )
+        .bind(instant)
+        .bind(to_i64(
+            u64::try_from(limit).unwrap_or(u64::MAX),
+            "reap batch size",
+        )?)
+        .fetch_all(&mut **self.transaction)
+        .await?;
+
+        rows.into_iter()
+            .map(|row| domain_upload(row, &[]))
+            .collect()
+    }
+
     async fn finish(&mut self, id: NumericID) -> Result<Option<Upload>, RepositoryError> {
         let persisted = sqlx::query_as::<_, SqlxUpload>(
             "UPDATE upload
-            SET is_finished = 1
+            SET is_finished = 1, is_verifying = 0, sealed_at = NULL
             WHERE upload_id = ?1
               AND is_finished = 0
+              AND is_verifying = 1
               AND (SELECT COUNT(*) FROM upload_chunk WHERE upload_id = ?1)
                   = ((file_size - 1) / chunk_size + 1)
             RETURNING
@@ -93,6 +143,8 @@ impl UploadRepository for SqlxUploadRepository<'_> {
                 chunk_size,
                 integrity_hash,
                 is_finished,
+                is_verifying,
+                sealed_at,
                 created_at",
         )
         .bind(id)
@@ -100,30 +152,34 @@ impl UploadRepository for SqlxUploadRepository<'_> {
         .await?;
 
         if let Some(row) = persisted {
-            let chunk_numbers = self.chunk_numbers(id).await?;
-            return Ok(Some(domain_upload(row, &chunk_numbers)?));
+            // The session's chunk rows are removed in the same transaction: a
+            // finished session reports an all-ones bitmap by definition, so no
+            // chunk row is read after this point.
+            let _chunks_removed = self.delete_chunks(id).await?;
+            return Ok(Some(domain_upload(row, &[])?));
         }
 
         // The guarded update matched no row. Distinguish a missing upload from
         // a live one: a finished upload means another writer won the transition,
-        // an unfinished one means the upload is not complete yet.
-        let state =
-            sqlx::query_scalar::<_, i64>("SELECT is_finished FROM upload WHERE upload_id = ?")
-                .bind(id)
-                .fetch_optional(&mut **self.transaction)
-                .await?;
+        // an unfinished one means the upload is not sealed or not complete yet.
+        let state = sqlx::query_as::<_, (bool, bool)>(
+            "SELECT is_finished, is_verifying FROM upload WHERE upload_id = ?",
+        )
+        .bind(id)
+        .fetch_optional(&mut **self.transaction)
+        .await?;
         // The adapter owns the failure log for the outcome it classified
         // (`OBS-002`): an already-finished upload is a lost race for the
         // once-only transition and a genuine dependency fault, whereas an
-        // unfinished one is the expected not-complete-yet constraint. Only the
+        // unsealed or incomplete one is the expected constraint. Only the
         // stable `kind` and `operation` are logged, never the row (`OBS-003`).
         match state {
             None => Ok(None),
-            Some(1) => {
+            Some((true, _)) => {
                 emit_catalogued_failure("concurrency_conflict", "finish", false);
                 Err(RepositoryError::ConcurrencyConflict)
             }
-            Some(_) => {
+            Some((false, _)) => {
                 emit_catalogued_failure("conflict", "finish", true);
                 Err(RepositoryError::Conflict)
             }
@@ -150,6 +206,25 @@ impl UploadRepository for SqlxUploadRepository<'_> {
         Ok(())
     }
 
+    async fn seal(
+        &mut self,
+        id: NumericID,
+        sealed_at: NaiveDateTime,
+    ) -> Result<bool, RepositoryError> {
+        let result = sqlx::query(
+            "UPDATE upload
+            SET is_verifying = 1, sealed_at = ?2
+            WHERE upload_id = ?1
+              AND is_finished = 0
+              AND is_verifying = 0",
+        )
+        .bind(id)
+        .bind(sealed_at)
+        .execute(&mut **self.transaction)
+        .await?;
+        Ok(result.rows_affected() > 0)
+    }
+
     async fn search(&mut self, filter: &UploadFilter) -> Result<Vec<Upload>, RepositoryError> {
         let mut builder = QueryBuilder::<Sqlite>::new(
             "SELECT
@@ -161,6 +236,8 @@ impl UploadRepository for SqlxUploadRepository<'_> {
                 chunk_size,
                 integrity_hash,
                 is_finished,
+                is_verifying,
+                sealed_at,
                 created_at
             FROM upload",
         );
@@ -241,27 +318,56 @@ impl UploadRepository for SqlxUploadRepository<'_> {
             })
             .collect()
     }
-}
 
-impl SqlxUploadRepository<'_> {
-    /// Return the received chunk numbers of `id`, ordered.
-    async fn chunk_numbers(&mut self, id: NumericID) -> Result<Vec<usize>, RepositoryError> {
-        let rows: Vec<i64> = sqlx::query_scalar(
-            "SELECT chunk_number FROM upload_chunk WHERE upload_id = ? ORDER BY chunk_number",
+    async fn stale_seals(
+        &mut self,
+        instant: NaiveDateTime,
+        limit: usize,
+    ) -> Result<Vec<Upload>, RepositoryError> {
+        let rows = sqlx::query_as::<_, SqlxUpload>(
+            "SELECT
+                upload_id,
+                user_id,
+                file_name,
+                file_size,
+                mime_type_id,
+                chunk_size,
+                integrity_hash,
+                is_finished,
+                is_verifying,
+                sealed_at,
+                created_at
+            FROM upload
+            WHERE is_verifying = 1
+              AND sealed_at IS NOT NULL
+              AND sealed_at < ?1
+            ORDER BY sealed_at, upload_id
+            LIMIT ?2",
         )
-        .bind(id)
+        .bind(instant)
+        .bind(to_i64(
+            u64::try_from(limit).unwrap_or(u64::MAX),
+            "reap batch size",
+        )?)
         .fetch_all(&mut **self.transaction)
         .await?;
 
         rows.into_iter()
-            .map(|chunk_number| {
-                usize::try_from(chunk_number).map_err(|error| {
-                    RepositoryError::Unknown(
-                        anyhow::anyhow!(error).context("upload chunk_number is negative"),
-                    )
-                })
-            })
+            .map(|row| domain_upload(row, &[]))
             .collect()
+    }
+
+    async fn unseal(&mut self, id: NumericID) -> Result<bool, RepositoryError> {
+        let result = sqlx::query(
+            "UPDATE upload
+            SET is_verifying = 0, sealed_at = NULL
+            WHERE upload_id = ?1
+              AND is_verifying = 1",
+        )
+        .bind(id)
+        .execute(&mut **self.transaction)
+        .await?;
+        Ok(result.rows_affected() > 0)
     }
 }
 
@@ -292,6 +398,9 @@ fn to_i64(value: u64, message: &'static str) -> Result<i64, RepositoryError> {
 
 /// Map a persisted upload row back to the domain model, rebuilding its chunk
 /// bitmap from the `chunk_numbers` recorded for it.
+///
+/// A finished session removed its chunk rows at finish, so it reports an
+/// all-ones bitmap: every chunk was received by definition.
 fn domain_upload(row: SqlxUpload, chunk_numbers: &[usize]) -> Result<Upload, RepositoryError> {
     let file_size = u64::try_from(row.file_size).map_err(|error| {
         RepositoryError::Unknown(anyhow::anyhow!(error).context("upload file_size is negative"))
@@ -304,8 +413,12 @@ fn domain_upload(row: SqlxUpload, chunk_numbers: &[usize]) -> Result<Upload, Rep
             anyhow::anyhow!(error).context("upload total chunk count does not fit in usize"),
         )
     })?;
-    let mut chunk_bitmap =
-        ChunkBitmap::try_new(total_chunks).map_err(|_| RepositoryError::DataIntegrityViolation)?;
+    let mut chunk_bitmap = if row.is_finished {
+        ChunkBitmap::try_complete(total_chunks)
+    } else {
+        ChunkBitmap::try_new(total_chunks)
+    }
+    .map_err(|_| RepositoryError::DataIntegrityViolation)?;
     for &chunk_number in chunk_numbers {
         chunk_bitmap
             .mark_received(chunk_number)
@@ -324,6 +437,8 @@ fn domain_upload(row: SqlxUpload, chunk_numbers: &[usize]) -> Result<Upload, Rep
         integrity_hash,
         chunk_bitmap,
         row.is_finished,
+        row.is_verifying,
+        row.sealed_at,
         row.created_at,
     )
     .map_err(|_| RepositoryError::DataIntegrityViolation)
@@ -391,6 +506,8 @@ mod tests {
             IntegrityHash::try_new(DIGEST.to_owned())?,
             bitmap,
             is_finished,
+            false,
+            None,
             chrono::Utc::now().naive_utc(),
         )?)
     }
@@ -496,10 +613,13 @@ mod tests {
         let mut repository = SqlxUploadRepository::new(&mut transaction);
         let created = repository.create(upload(0, 1, 8, &[], false)?).await?;
 
-        // Act: finishing an incomplete upload matches no row.
+        // Act: finishing an incomplete, unsealed upload matches no row.
         let incomplete = repository.finish(created.upload_id()).await;
         repository.record_chunk(created.upload_id(), 0).await?;
         repository.record_chunk(created.upload_id(), 1).await?;
+        repository
+            .seal(created.upload_id(), chrono::Utc::now().naive_utc())
+            .await?;
         let finished = repository
             .finish(created.upload_id())
             .await?
@@ -514,9 +634,18 @@ mod tests {
         // Assert
         assert!(matches!(incomplete, Err(RepositoryError::Conflict)));
         assert!(finished.is_finished());
+        assert!(!finished.is_verifying());
+        assert!(finished.sealed_at().is_none());
         assert!(finished.chunk_bitmap().is_received(0)?);
         assert!(finished.chunk_bitmap().is_received(1)?);
         assert_eq!(found.first(), Some(&finished));
+        // The finished session's chunk rows are removed in the same transaction.
+        let chunks: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM upload_chunk WHERE upload_id = ?")
+                .bind(created.upload_id())
+                .fetch_one(&mut *transaction)
+                .await?;
+        assert_eq!(chunks, 0);
         // An unfinished upload is the expected not-complete-yet constraint, so
         // the adapter logs it once at `warn`, never as a dependency fault.
         logs_assert(|lines| {
@@ -565,6 +694,9 @@ mod tests {
         let created = repository.create(upload(0, 1, 8, &[], false)?).await?;
         repository.record_chunk(created.upload_id(), 0).await?;
         repository.record_chunk(created.upload_id(), 1).await?;
+        repository
+            .seal(created.upload_id(), chrono::Utc::now().naive_utc())
+            .await?;
         repository.finish(created.upload_id()).await?;
 
         // Act: the second writer loses the once-only transition.
@@ -619,6 +751,9 @@ mod tests {
         let created = repository.create(upload(0, 1, 8, &[], false)?).await?;
         repository.record_chunk(created.upload_id(), 0).await?;
         repository.record_chunk(created.upload_id(), 1).await?;
+        repository
+            .seal(created.upload_id(), chrono::Utc::now().naive_utc())
+            .await?;
         repository.finish(created.upload_id()).await?;
 
         // Act: the finished-guard trigger rejects a late chunk.
@@ -678,6 +813,8 @@ mod tests {
             IntegrityHash::try_new(DIGEST.to_owned())?,
             chunk_bitmap,
             false,
+            false,
+            None,
             chrono::Utc::now().naive_utc(),
         )?;
 
@@ -712,6 +849,11 @@ mod tests {
     #[case::is_finished_out_of_range(
         "INSERT INTO upload (
             user_id, file_name, file_size, mime_type_id, chunk_size, integrity_hash, is_finished
+         ) VALUES (1, 'clip.mp4', 4, 'video/mp4', 4, '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef', 2)"
+    )]
+    #[case::is_verifying_out_of_range(
+        "INSERT INTO upload (
+            user_id, file_name, file_size, mime_type_id, chunk_size, integrity_hash, is_verifying
          ) VALUES (1, 'clip.mp4', 4, 'video/mp4', 4, '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef', 2)"
     )]
     #[tokio::test]
@@ -786,6 +928,217 @@ mod tests {
         assert_eq!(first_user.len(), 1);
         assert_eq!(first_user.first().map(Upload::user_id), Some(1));
         assert_eq!(all.len(), 2);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn seal_transitions_a_pending_upload() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let mut transaction = begin_transaction().await?;
+        seed_user(&mut transaction, 1).await?;
+        let mut repository = SqlxUploadRepository::new(&mut transaction);
+        let created = repository.create(upload(0, 1, 8, &[], false)?).await?;
+        let sealed_at = chrono::Utc::now().naive_utc();
+
+        // Act
+        let sealed = repository.seal(created.upload_id(), sealed_at).await?;
+        let found = repository
+            .search(&UploadFilter {
+                upload_id: Some(created.upload_id()),
+                ..UploadFilter::default()
+            })
+            .await?;
+
+        // Assert
+        let persisted = found.first().ok_or("the upload must still exist")?;
+        assert!(sealed);
+        assert!(persisted.is_verifying());
+        assert_eq!(persisted.sealed_at(), Some(sealed_at));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn seal_twice_returns_false() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let mut transaction = begin_transaction().await?;
+        seed_user(&mut transaction, 1).await?;
+        let mut repository = SqlxUploadRepository::new(&mut transaction);
+        let created = repository.create(upload(0, 1, 8, &[], false)?).await?;
+        repository
+            .seal(created.upload_id(), chrono::Utc::now().naive_utc())
+            .await?;
+
+        // Act: the second verification loses the seal.
+        let result = repository
+            .seal(created.upload_id(), chrono::Utc::now().naive_utc())
+            .await;
+
+        // Assert
+        assert!(matches!(result, Ok(false)));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn seal_finished_upload_returns_false() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let mut transaction = begin_transaction().await?;
+        seed_user(&mut transaction, 1).await?;
+        let mut repository = SqlxUploadRepository::new(&mut transaction);
+        let created = repository.create(upload(0, 1, 8, &[], false)?).await?;
+        repository.record_chunk(created.upload_id(), 0).await?;
+        repository.record_chunk(created.upload_id(), 1).await?;
+        repository
+            .seal(created.upload_id(), chrono::Utc::now().naive_utc())
+            .await?;
+        repository.finish(created.upload_id()).await?;
+
+        // Act
+        let result = repository
+            .seal(created.upload_id(), chrono::Utc::now().naive_utc())
+            .await;
+
+        // Assert
+        assert!(matches!(result, Ok(false)));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn unseal_clears_the_seal() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let mut transaction = begin_transaction().await?;
+        seed_user(&mut transaction, 1).await?;
+        let mut repository = SqlxUploadRepository::new(&mut transaction);
+        let created = repository.create(upload(0, 1, 8, &[], false)?).await?;
+        repository
+            .seal(created.upload_id(), chrono::Utc::now().naive_utc())
+            .await?;
+
+        // Act
+        let unsealed = repository.unseal(created.upload_id()).await?;
+        let again = repository.unseal(created.upload_id()).await?;
+        let found = repository
+            .search(&UploadFilter {
+                upload_id: Some(created.upload_id()),
+                ..UploadFilter::default()
+            })
+            .await?;
+
+        // Assert
+        let persisted = found.first().ok_or("the upload must still exist")?;
+        assert!(unsealed);
+        assert!(!again, "unsealing an unsealed upload is a no-op");
+        assert!(!persisted.is_verifying());
+        assert!(persisted.sealed_at().is_none());
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn record_chunk_on_sealed_upload_returns_conflict() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let mut transaction = begin_transaction().await?;
+        seed_user(&mut transaction, 1).await?;
+        let mut repository = SqlxUploadRepository::new(&mut transaction);
+        let created = repository.create(upload(0, 1, 8, &[], false)?).await?;
+        repository
+            .seal(created.upload_id(), chrono::Utc::now().naive_utc())
+            .await?;
+
+        // Act: the not-writable trigger rejects a chunk during verification.
+        let result = repository.record_chunk(created.upload_id(), 0).await;
+
+        // Assert
+        assert!(matches!(result, Err(RepositoryError::Conflict)));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn delete_chunks_removes_the_recorded_rows() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let mut transaction = begin_transaction().await?;
+        seed_user(&mut transaction, 1).await?;
+        let mut repository = SqlxUploadRepository::new(&mut transaction);
+        let created = repository.create(upload(0, 1, 8, &[], false)?).await?;
+        repository.record_chunk(created.upload_id(), 0).await?;
+        repository.record_chunk(created.upload_id(), 1).await?;
+
+        // Act
+        let removed = repository.delete_chunks(created.upload_id()).await?;
+        let found = repository
+            .search(&UploadFilter {
+                upload_id: Some(created.upload_id()),
+                ..UploadFilter::default()
+            })
+            .await?;
+
+        // Assert
+        let persisted = found.first().ok_or("the upload must still exist")?;
+        assert!(removed);
+        assert!(!persisted.chunk_bitmap().is_received(0)?);
+        assert!(!persisted.chunk_bitmap().is_received(1)?);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn expired_returns_only_pending_unsealed_uploads() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let mut transaction = begin_transaction().await?;
+        seed_user(&mut transaction, 1).await?;
+        let (expired_id, pending_id) = {
+            let mut repository = SqlxUploadRepository::new(&mut transaction);
+            let expired = repository.create(upload(0, 1, 8, &[], false)?).await?;
+            let pending = repository.create(upload(0, 1, 8, &[], false)?).await?;
+            (expired.upload_id(), pending.upload_id())
+        };
+        let old = chrono::Utc::now().naive_utc() - chrono::Duration::hours(2);
+        sqlx::query("UPDATE upload SET created_at = ?1 WHERE upload_id = ?2")
+            .bind(old)
+            .bind(expired_id)
+            .execute(&mut *transaction)
+            .await?;
+        let mut repository = SqlxUploadRepository::new(&mut transaction);
+        repository
+            .seal(pending_id, chrono::Utc::now().naive_utc())
+            .await?;
+
+        // Act
+        let found = repository
+            .expired(chrono::Utc::now().naive_utc(), 10)
+            .await?;
+
+        // Assert: only the pending, unsealed upload is past its expiry.
+        assert_eq!(found.len(), 1);
+        assert_eq!(found.first().map(Upload::upload_id), Some(expired_id));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn stale_seals_returns_only_seals_past_the_bound() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let mut transaction = begin_transaction().await?;
+        seed_user(&mut transaction, 1).await?;
+        let mut repository = SqlxUploadRepository::new(&mut transaction);
+        let stale = repository.create(upload(0, 1, 8, &[], false)?).await?;
+        let fresh = repository.create(upload(0, 1, 8, &[], false)?).await?;
+        let old = chrono::Utc::now().naive_utc() - chrono::Duration::hours(1);
+        repository.seal(stale.upload_id(), old).await?;
+        repository
+            .seal(fresh.upload_id(), chrono::Utc::now().naive_utc())
+            .await?;
+
+        // Act
+        let found = repository
+            .stale_seals(
+                chrono::Utc::now().naive_utc() - chrono::Duration::minutes(5),
+                10,
+            )
+            .await?;
+
+        // Assert
+        assert_eq!(found.len(), 1);
+        assert_eq!(
+            found.first().map(Upload::upload_id),
+            Some(stale.upload_id())
+        );
         Ok(())
     }
 }

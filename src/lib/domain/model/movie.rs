@@ -134,7 +134,7 @@ impl Movie {
     /// Return the identifier of the video backing the film.
     #[must_use]
     pub(crate) fn video_id(&self) -> NumericID {
-        self.video.video_id()
+        self.video.id()
     }
 }
 

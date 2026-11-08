@@ -70,6 +70,10 @@ impl CompleteUploadResponse {
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub(crate) enum CompleteUploadError {
+    /// Another completion of the upload session holds, or has released, its
+    /// verification seal.
+    #[error("another completion of the upload session is in progress")]
+    CompletionInProgress,
     /// The upload session has expired.
     #[error("the upload session has expired")]
     Expired,
@@ -79,6 +83,9 @@ pub(crate) enum CompleteUploadError {
     /// The recomputed integrity hash does not match the hash declared at init.
     #[error("the integrity hash does not match the declared one")]
     IntegrityMismatch,
+    /// The library root is absent, so the server cannot store the file.
+    #[error("the media library is unavailable")]
+    LibraryUnavailable,
     /// The authenticated caller does not exist anymore.
     #[error("the authenticated user does not exist")]
     NoSuchCaller,
@@ -88,7 +95,7 @@ pub(crate) enum CompleteUploadError {
     /// An unexpected or unmapped error occurred.
     #[error("an unknown error occurred: {0}")]
     Unknown(#[source] anyhow::Error),
-    /// The completed upload is not a supported image or video.
+    /// The completed upload is not a supported media file.
     #[error("the completed upload is not a supported media file")]
     UnsupportedMedia,
 }

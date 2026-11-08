@@ -124,6 +124,18 @@ fn merge(
             "asset.upload.max_file_size_bytes",
             &mut applied,
         ),
+        resolve(
+            partial.asset.upload.reap_batch_size,
+            || base.asset().upload().reap_batch_size(),
+            "asset.upload.reap_batch_size",
+            &mut applied,
+        ),
+        resolve(
+            partial.asset.upload.reap_interval_seconds,
+            || base.asset().upload().reap_interval_seconds(),
+            "asset.upload.reap_interval_seconds",
+            &mut applied,
+        ),
     )
     .map_err(|error| invalid("asset.upload", error))?;
     let asset = Asset::new(upload);
@@ -839,6 +851,65 @@ mod tests {
 
         // Act & Assert
         assert_rejected_naming(partial, "asset.upload").await;
+    }
+
+    #[tokio::test]
+    async fn load_configuration_zero_reap_batch_size_is_rejected() {
+        // Arrange
+        let partial = upload_settings(|upload| upload.reap_batch_size = Some(0));
+
+        // Act & Assert
+        assert_rejected_naming(partial, "asset.upload").await;
+    }
+
+    #[rstest::rstest]
+    #[case::zero(0)]
+    #[case::above_one_day(86_401)]
+    #[tokio::test]
+    async fn load_configuration_reap_interval_out_of_range_is_rejected(#[case] seconds: u64) {
+        // Arrange
+        let partial = upload_settings(|upload| upload.reap_interval_seconds = Some(seconds));
+
+        // Act & Assert
+        assert_rejected_naming(partial, "asset.upload").await;
+    }
+
+    #[tokio::test]
+    async fn load_configuration_applies_the_reaper_settings() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let partial = upload_settings(|upload| {
+            upload.reap_batch_size = Some(7);
+            upload.reap_interval_seconds = Some(60);
+        });
+        let use_case = use_case(
+            file_layer(PartialConfiguration::default(), false),
+            environment_layer(partial),
+        );
+
+        // Act
+        let response = use_case.execute().await?;
+
+        // Assert
+        assert_eq!(
+            response.applied(),
+            &[
+                "asset.upload.reap_batch_size",
+                "asset.upload.reap_interval_seconds"
+            ]
+        );
+        assert_eq!(
+            response.configuration().asset().upload().reap_batch_size(),
+            7
+        );
+        assert_eq!(
+            response
+                .configuration()
+                .asset()
+                .upload()
+                .reap_interval_seconds(),
+            60
+        );
+        Ok(())
     }
 
     #[tokio::test]

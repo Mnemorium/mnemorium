@@ -328,6 +328,8 @@ mod tests {
             IntegrityHash::try_new(DIGEST.to_owned())?,
             ChunkBitmap::from_bytes(vec![0], 2)?,
             false,
+            false,
+            None,
             NaiveDateTime::default(),
         )?)
     }

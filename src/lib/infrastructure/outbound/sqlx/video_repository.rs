@@ -123,7 +123,7 @@ impl VideoRepository for SqlxVideoRepository<'_> {
         if let Some(file_id) = filter.file_id {
             push_filter(&mut first, &mut builder, "file_id = ", file_id);
         }
-        if let Some(id) = filter.video_id {
+        if let Some(id) = filter.id {
             push_filter(&mut first, &mut builder, "video_id = ", id);
         }
         if let Some(scan_type) = filter.scan_type {
@@ -271,11 +271,11 @@ mod tests {
         // Act
         let mut repository = SqlxVideoRepository::new(&mut transaction);
         let persisted = repository.create(pending).await?;
-        let found = repository.get(persisted.video_id()).await?;
+        let found = repository.get(persisted.id()).await?;
 
         // Assert
         assert_ne!(
-            persisted.video_id(),
+            persisted.id(),
             0,
             "a new video must receive a real identifier"
         );
@@ -308,7 +308,7 @@ mod tests {
         // Act
         let mut repository = SqlxVideoRepository::new(&mut transaction);
         let persisted = repository.create(pending).await?;
-        let found = repository.get(persisted.video_id()).await?;
+        let found = repository.get(persisted.id()).await?;
 
         // Assert
         assert_eq!(persisted.scope(), Some(Scope::User));
@@ -390,8 +390,8 @@ mod tests {
         let stored = repository.create(video(0, 11, ScanType::Mbaff)?).await?;
 
         // Act
-        let deleted = repository.delete(stored.video_id()).await?;
-        let missing = repository.delete(stored.video_id()).await?;
+        let deleted = repository.delete(stored.id()).await?;
+        let missing = repository.delete(stored.id()).await?;
 
         // Assert
         assert!(deleted);

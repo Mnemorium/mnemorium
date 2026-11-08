@@ -33,6 +33,11 @@ impl From<GetUploadError> for ApiError {
 /// An expired session is reported as `404`, exactly like an unknown one, so a
 /// retried read never changes the result. As a side effect the read lazily
 /// deletes the expired session's row and staged file before answering.
+///
+/// There is no collection route: a client resumes an interrupted upload by
+/// retaining the session identifier it received when the session began and
+/// reading this session's bitmap, then sending only the chunks the bitmap does
+/// not report as received.
 #[utoipa::path(
     get,
     operation_id = "get_upload",

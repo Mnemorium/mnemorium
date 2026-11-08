@@ -47,6 +47,11 @@ STATE_PATH = "state.yaml"
 DATABASE_PATH = "mnemorium.db"
 LOG_DIRECTORY = "logs"
 
+# The library root is the operator's mount, relative to the server's working directory. The server never creates it, so
+# the harness supplies it for every case exactly as `script/e2e.sh` mounts it: the upload cases need a writable root,
+# and the remaining cases must observe a correctly deployed server rather than the absent-root refusal.
+MEDIA_DIRECTORY = "media"
+
 # Operator prose: the one home for messages asserted by the suite (TEST-057).
 MSG_CONFIG_GENERATED = "the configuration file did not exist; wrote the built-in defaults"
 MSG_ENV_OVERRIDES = "the environment overrode these configuration settings"
@@ -295,6 +300,7 @@ class Sut:
             config_yaml = yaml.safe_dump(config)
         if config_yaml is not None:
             self.write(CONFIG_PATH, config_yaml)
+        (self.dir / MEDIA_DIRECTORY).mkdir(exist_ok=True)
         for relative, content in (files or {}).items():
             self.write(relative, content)
 

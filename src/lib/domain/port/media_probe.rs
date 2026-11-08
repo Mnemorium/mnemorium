@@ -17,15 +17,16 @@ pub(crate) trait MediaProbe: Send + Sync {
     /// Probe the audio stored at `path`.
     ///
     /// A file absent at `path` is a valid outcome, reported as `Ok(None)`; a
-    /// missing file is not an error. A bit depth or block size the content does
-    /// not report is absent rather than fabricated.
+    /// missing file is not an error. A bit depth, block size, duration or sample
+    /// rate the content does not report is absent rather than fabricated.
     ///
     /// # Errors
     ///
     /// Returns [`MediaProbeError::UnsupportedMedia`] when the file is not a
-    /// supported audio file, [`MediaProbeError::Timeout`] when probing exceeds
-    /// the allowed time, and [`MediaProbeError::OperationFailed`] or
-    /// [`MediaProbeError::Unknown`] when the probe cannot complete.
+    /// supported audio file or a measurement it reports cannot be represented,
+    /// [`MediaProbeError::Timeout`] when probing exceeds the allowed time, and
+    /// [`MediaProbeError::OperationFailed`] or [`MediaProbeError::Unknown`] when
+    /// the probe cannot complete.
     fn probe_audio(
         &self,
         path: &Path,
@@ -39,9 +40,10 @@ pub(crate) trait MediaProbe: Send + Sync {
     /// # Errors
     ///
     /// Returns [`MediaProbeError::UnsupportedMedia`] when the file is not a
-    /// supported image, [`MediaProbeError::Timeout`] when probing exceeds the
-    /// allowed time, and [`MediaProbeError::OperationFailed`] or
-    /// [`MediaProbeError::Unknown`] when the probe cannot complete.
+    /// supported image or a dimension it reports cannot be represented,
+    /// [`MediaProbeError::Timeout`] when probing exceeds the allowed time, and
+    /// [`MediaProbeError::OperationFailed`] or [`MediaProbeError::Unknown`] when
+    /// the probe cannot complete.
     fn probe_image(
         &self,
         path: &Path,
@@ -55,9 +57,10 @@ pub(crate) trait MediaProbe: Send + Sync {
     /// # Errors
     ///
     /// Returns [`MediaProbeError::UnsupportedMedia`] when the file is not a
-    /// supported video, [`MediaProbeError::Timeout`] when probing exceeds the
-    /// allowed time, and [`MediaProbeError::OperationFailed`] or
-    /// [`MediaProbeError::Unknown`] when the probe cannot complete.
+    /// supported video or a measurement it reports cannot be represented,
+    /// [`MediaProbeError::Timeout`] when probing exceeds the allowed time, and
+    /// [`MediaProbeError::OperationFailed`] or [`MediaProbeError::Unknown`] when
+    /// the probe cannot complete.
     fn probe_video(
         &self,
         path: &Path,

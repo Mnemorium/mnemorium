@@ -190,6 +190,21 @@ pub(crate) fn media_ingest(
     );
 }
 
+/// A reaping run removed upload lifecycle state (`upload_reap`, `info`).
+///
+/// The record carries aggregate counts only: no file name and no path ever
+/// reaches the sink (`OBS-003`, `OBS-006`).
+pub(crate) fn upload_reap(expired: u64, orphaned: u64, unsealed: u64) {
+    info!(
+        target: "security",
+        event = "upload_reap",
+        expired,
+        orphaned,
+        unsealed,
+        "reaped upload sessions"
+    );
+}
+
 /// The change observer could not deliver every event (`ingest_fault`, `warn`).
 ///
 /// A failed watch registration or a queue overflow is reported once; neither

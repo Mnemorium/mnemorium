@@ -1,4 +1,4 @@
-use crate::domain::alias::NumericID;
+use crate::domain::alias::{NonNegativeF64, NumericID, PositiveI64};
 use crate::domain::model::scope::Scope;
 
 /// Error returned when initialising a `Video`.
@@ -45,10 +45,6 @@ pub(crate) enum ScanType {
 
 /// A video stored on the server.
 #[derive(Debug, Clone, PartialEq)]
-#[expect(
-    clippy::struct_field_names,
-    reason = "`video_id` is the primary key name mandated by the SQL section and the domain field naming"
-)]
 pub(crate) struct Video {
     /// Codec of the video.
     codec: String,
@@ -62,12 +58,12 @@ pub(crate) struct Video {
     frame_count: i64,
     /// Height of the video, in pixels.
     height: i64,
+    /// Unique identifier of the video.
+    id: NumericID,
     /// Scan type of the video.
     scan_type: ScanType,
     /// Scope fixed by the first attachment, when set.
     scope: Option<Scope>,
-    /// Unique identifier of the video.
-    video_id: NumericID,
     /// Width of the video, in pixels.
     width: i64,
 }
@@ -103,10 +99,41 @@ impl Video {
         self.frame_count
     }
 
+    /// Build a `Video` from probed metadata, which is valid by construction.
+    ///
+    /// The probed measurements carry the validated scalar types, so the
+    /// conversion has no error branch.
+    #[must_use]
+    pub(crate) fn from_probed(
+        id: NumericID,
+        probed: ProbedVideo,
+        file_id: NumericID,
+        scope: Option<Scope>,
+    ) -> Self {
+        Self {
+            codec: probed.codec,
+            color_id: probed.color_id,
+            duration_ms: probed.duration_ms.value(),
+            file_id,
+            frame_count: probed.frame_count.value(),
+            height: probed.height.value(),
+            id,
+            scan_type: probed.scan_type,
+            scope,
+            width: probed.width.value(),
+        }
+    }
+
     /// Return the height of the video, in pixels.
     #[must_use]
     pub(crate) fn height(&self) -> i64 {
         self.height
+    }
+
+    /// Return the unique identifier of the video.
+    #[must_use]
+    pub(crate) fn id(&self) -> NumericID {
+        self.id
     }
 
     /// Return the scan type of the video.
@@ -136,7 +163,7 @@ impl Video {
         reason = "try_new mirrors every video column"
     )]
     pub(crate) fn try_new(
-        video_id: NumericID,
+        id: NumericID,
         duration_ms: f64,
         codec: String,
         frame_count: i64,
@@ -166,17 +193,11 @@ impl Video {
             file_id,
             frame_count,
             height,
+            id,
             scan_type,
             scope,
-            video_id,
             width,
         })
-    }
-
-    /// Return the unique identifier of the video.
-    #[must_use]
-    pub(crate) fn video_id(&self) -> NumericID {
-        self.video_id
     }
 
     /// Return the width of the video, in pixels.
@@ -195,13 +216,13 @@ pub(crate) struct ProbedVideo {
     /// Identifier of the colour space of the video.
     pub color_id: String,
     /// Duration of the video, in milliseconds.
-    pub duration_ms: f64,
+    pub duration_ms: NonNegativeF64,
     /// Number of frames in the video.
-    pub frame_count: i64,
+    pub frame_count: PositiveI64,
     /// Height of the video, in pixels.
-    pub height: i64,
+    pub height: PositiveI64,
     /// Scan type of the video.
     pub scan_type: ScanType,
     /// Width of the video, in pixels.
-    pub width: i64,
+    pub width: PositiveI64,
 }

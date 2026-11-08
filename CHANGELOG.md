@@ -1,3 +1,9 @@
+## [0.35.0](https://github.com/Mnemorium/mnemorium/compare/v0.34.0...v0.35.0) (2026-11-07)
+
+### Features
+
+* **api:** complete the upload lifecycle ([#398](https://github.com/Mnemorium/mnemorium/issues/398)) ([1fe0932](https://github.com/Mnemorium/mnemorium/commit/1fe09324657bde5b0c1a2ccbe5c156470f9903c6))
+
 ## [0.34.0](https://github.com/Mnemorium/mnemorium/compare/v0.33.0...v0.34.0) (2026-11-06)
 
 ### Features

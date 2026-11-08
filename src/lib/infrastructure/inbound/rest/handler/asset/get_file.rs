@@ -11,7 +11,8 @@ use crate::infrastructure::inbound::rest::api_error::{ApiError, ErrorBody};
 use crate::infrastructure::inbound::rest::app_state::AppState;
 use crate::infrastructure::inbound::rest::hal::{Link, hal_json};
 use crate::infrastructure::inbound::rest::handler::asset::{
-    TIMESTAMP_FORMAT, asset_file_href, asset_image_href, format_date, parse_asset_id,
+    TIMESTAMP_FORMAT, asset_audio_href, asset_file_href, asset_image_href, format_date,
+    parse_asset_id,
 };
 use crate::infrastructure::inbound::rest::handler::user::user_self_href;
 use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
@@ -19,10 +20,13 @@ use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 /// HAL links exposed by a stored-file representation.
 ///
 /// The `self` link addresses the file; `owner` names the account that owns it,
-/// and `image` names the typed image the file backs when an image row exists.
+/// and `image` and `audio` name the typed medium the file backs when one exists.
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 #[non_exhaustive]
 struct FileLinks {
+    /// Link to the typed audio backed by the file, when one exists.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub audio: Option<Link>,
     /// Link to the typed image backed by the file, when one exists.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub image: Option<Link>,
@@ -36,8 +40,14 @@ struct FileLinks {
 impl FileLinks {
     /// Build the links of the file identified by `file_id`.
     #[must_use]
-    fn for_file(file_id: NumericID, owner_id: NumericID, image_id: Option<NumericID>) -> Self {
+    fn for_file(
+        file_id: NumericID,
+        owner_id: NumericID,
+        image_id: Option<NumericID>,
+        audio_id: Option<NumericID>,
+    ) -> Self {
         Self {
+            audio: audio_id.map(|id| Link::new(&asset_audio_href(id))),
             image: image_id.map(|id| Link::new(&asset_image_href(id))),
             owner: Link::new(&user_self_href(owner_id)),
             self_link: Link::new(&asset_file_href(file_id)),
@@ -83,7 +93,12 @@ impl FileResponse {
         Self {
             id: response.id(),
             is_public: response.is_public(),
-            links: FileLinks::for_file(response.id(), response.owner_id(), response.image_id()),
+            links: FileLinks::for_file(
+                response.id(),
+                response.owner_id(),
+                response.image_id(),
+                response.audio_id(),
+            ),
             mime_type: response.mime_type_id().to_owned(),
             modified_at: response.modified_at().format(TIMESTAMP_FORMAT).to_string(),
             origin: response.origin().as_str().to_owned(),

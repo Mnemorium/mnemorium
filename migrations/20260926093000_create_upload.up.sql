@@ -7,6 +7,8 @@ CREATE TABLE upload (
     chunk_size INTEGER NOT NULL,
     integrity_hash CHAR(64) NOT NULL,
     is_finished BOOLEAN NOT NULL DEFAULT 0,
+    is_verifying BOOLEAN NOT NULL DEFAULT 0,
+    sealed_at TEXT,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT pk_upload_upload_id PRIMARY KEY (upload_id),
     CONSTRAINT fk_upload_user FOREIGN KEY (user_id) REFERENCES user (user_id),
@@ -16,7 +18,8 @@ CREATE TABLE upload (
     CONSTRAINT chk_upload_file_size CHECK (file_size > 0),
     CONSTRAINT chk_upload_chunk_size CHECK (chunk_size > 0),
     CONSTRAINT chk_upload_integrity_hash CHECK (LENGTH(integrity_hash) = 64),
-    CONSTRAINT chk_upload_is_finished CHECK (is_finished IN (0, 1))
+    CONSTRAINT chk_upload_is_finished CHECK (is_finished IN (0, 1)),
+    CONSTRAINT chk_upload_is_verifying CHECK (is_verifying IN (0, 1))
 );
 
 CREATE TABLE upload_chunk (
@@ -31,14 +34,14 @@ CREATE TABLE upload_chunk (
     CONSTRAINT chk_upload_chunk_chunk_number CHECK (chunk_number >= 0)
 );
 
-CREATE TRIGGER tg_upload_chunk_insert_finished
+CREATE TRIGGER tg_upload_chunk_insert_not_writable
 BEFORE INSERT ON upload_chunk
 FOR EACH ROW
 WHEN (
-    SELECT upload.is_finished
+    SELECT upload.is_finished OR upload.is_verifying
     FROM upload
     WHERE upload.upload_id = new.upload_id
 ) = 1
 BEGIN
-    SELECT RAISE(ABORT, 'cannot record a chunk on a finished upload');
+    SELECT RAISE(ABORT, 'cannot record a chunk on a finished or sealed upload');
 END;
