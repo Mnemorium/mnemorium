@@ -15,7 +15,7 @@ pub(crate) mod library;
 pub(crate) mod user;
 
 use axum::extract::{FromRequest, Request};
-use axum::{Json, middleware, routing};
+use axum::middleware;
 use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
 
@@ -23,6 +23,8 @@ use serde::de::DeserializeOwned;
 use serde_json::{Number, Value};
 use tracing::warn;
 
+#[cfg(feature = "api-docs")]
+use axum::{Json, routing};
 #[cfg(feature = "api-docs")]
 use utoipa_scalar::Servable as _;
 
