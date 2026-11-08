@@ -95,6 +95,14 @@
       pass_filenames = false; # It work on a package basis
       files = "\\.rs$";
     };
+    clippy-default-features = {
+      enable = true;
+      name = "clippy (default features)";
+      entry = "cargo clippy --all-targets -- -D warnings";
+      language = "rust";
+      pass_filenames = false; # It work on a package basis
+      files = "\\.rs$";
+    };
     rule-enforcer = {
       enable = true;
       name = "Rulebook checks";
@@ -326,8 +334,8 @@
   # Linting
 
   tasks."lint:rust" = {
-    exec = "cargo clippy --all-targets -- -D warnings";
-    description = "Lint rust code";
+    exec = "cargo clippy --all-targets --all-features -- -D warnings && cargo clippy --all-targets -- -D warnings";
+    description = "Lint rust code with and without all features";
   };
 
   tasks."lint:yaml" = {
