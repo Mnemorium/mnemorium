@@ -1,3 +1,9 @@
+## [0.36.0](https://github.com/Mnemorium/mnemorium/compare/v0.35.0...v0.36.0) (2026-11-08)
+
+### Features
+
+* **api:** harden request validation and add API fuzzing ([#401](https://github.com/Mnemorium/mnemorium/issues/401)) ([6ae70ee](https://github.com/Mnemorium/mnemorium/commit/6ae70eedd6ad572e67564c5a73ed9d97af6dc822))
+
 ## [0.35.0](https://github.com/Mnemorium/mnemorium/compare/v0.34.0...v0.35.0) (2026-11-07)
 
 ### Features
