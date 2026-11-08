@@ -199,7 +199,9 @@ where
                     .map_err(|error| {
                         if matches!(
                             error,
-                            RepositoryError::AlreadyExist | RepositoryError::Conflict
+                            RepositoryError::AlreadyExist
+                                | RepositoryError::Conflict
+                                | RepositoryError::DataIntegrityViolation
                         ) {
                             UpdateMusicAlbumError::Conflict
                         } else {
@@ -330,6 +332,42 @@ mod tests {
         // Assert
         assert_eq!(response.album().genre_ids(), ["JAZZ".to_owned()]);
         assert!(harness.committed.load(Ordering::SeqCst));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn update_music_album_missing_cover_is_conflict() -> Result<(), Box<dyn Error>> {
+        // Arrange: the replacement cover does not resolve, so the update
+        // violates the cover foreign key.
+        let mut users = MockUserRepository::new();
+        expect_admin(&mut users, 1)?;
+        let stored = sample_album(7, Vec::new())?;
+        let mut albums = MockMusicAlbumRepository::new();
+        expect_album(&mut albums, stored);
+        albums
+            .expect_update()
+            .times(1)
+            .returning(|_| Box::pin(async { Err(RepositoryError::DataIntegrityViolation) }));
+        let harness = harness_with(users, albums, MockMusicGroupRepository::new());
+        let use_case: UseCase = UpdateMusicAlbum::new(Arc::clone(&harness.factory));
+
+        // Act
+        let result = use_case
+            .execute(UpdateMusicAlbumCommand::new(
+                1,
+                7,
+                None,
+                None,
+                FieldUpdate::Absent,
+                FieldUpdate::Absent,
+                None,
+                FieldUpdate::Set(9),
+            ))
+            .await;
+
+        // Assert
+        assert!(matches!(result, Err(UpdateMusicAlbumError::Conflict)));
+        assert!(harness.rolled_back.load(Ordering::SeqCst));
         Ok(())
     }
 

@@ -1,5 +1,3 @@
-use axum::Json;
-use axum::extract::rejection::JsonRejection;
 use axum::extract::{Path, State};
 use axum::response::Response;
 use serde::Deserialize;
@@ -10,6 +8,7 @@ use crate::domain::alias::NumericID;
 use crate::infrastructure::inbound::rest::api_error::{ApiError, ErrorBody};
 use crate::infrastructure::inbound::rest::app_state::AppState;
 use crate::infrastructure::inbound::rest::hal::hal_json;
+use crate::infrastructure::inbound::rest::handler::JsonObject;
 use crate::infrastructure::inbound::rest::handler::library::{PlaylistResponse, parse_playlist_id};
 use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 
@@ -94,10 +93,10 @@ pub(crate) async fn put_playlist_track(
     Path(playlist_id_value): Path<String>,
     State(state): State<AppState>,
     caller: AuthenticatedUser,
-    payload: Result<Json<ReorderPlaylistTracksRequest>, JsonRejection>,
+    payload: JsonObject<ReorderPlaylistTracksRequest>,
 ) -> Result<Response, ApiError> {
     let playlist_id = parse_playlist_id(&playlist_id_value)?;
-    let Json(request) = payload.map_err(ApiError::from)?;
+    let JsonObject(request) = payload;
     let response = state
         .library_use_case_factory()
         .reorder_playlist_tracks()
@@ -108,161 +107,4 @@ pub(crate) async fn put_playlist_track(
         ))
         .await?;
     Ok(hal_json(PlaylistResponse::new(response.playlist())))
-}
-
-#[cfg(test)]
-mod tests {
-
-    use super::*;
-    use crate::application::port::library_use_case_factory::MockLibraryUseCaseFactory;
-    use crate::application::port::reorder_playlist_tracks::{
-        MockReorderPlaylistTracksUseCase, ReorderPlaylistTracksError,
-        ReorderPlaylistTracksResponse, ReorderPlaylistTracksUseCase,
-    };
-    use crate::domain::model::music_playlist::MusicPlaylist;
-    use crate::domain::model::music_recording::{MusicRecording, TrackIndex};
-    use crate::test_helpers::*;
-    use axum::body::Body;
-    use axum::extract::Request;
-    use axum::http::{StatusCode, header};
-    use axum::routing::put;
-    use chrono::{NaiveDate, NaiveDateTime};
-    use rstest::rstest;
-    use serde_json::json;
-    use std::error::Error;
-    use std::sync::Arc;
-    use tower::ServiceExt as _;
-
-    fn ts() -> NaiveDateTime {
-        NaiveDate::from_ymd_opt(2026, 10, 6)
-            .unwrap_or_default()
-            .and_hms_opt(12, 0, 0)
-            .unwrap_or_default()
-    }
-
-    fn reordered() -> Result<ReorderPlaylistTracksResponse, Box<dyn Error>> {
-        Ok(ReorderPlaylistTracksResponse::new(MusicPlaylist::new(
-            3,
-            "Mix".to_owned(),
-            ts(),
-            ts(),
-            4,
-            false,
-            None,
-            vec![MusicRecording::try_new(
-                31,
-                Some("Second".to_owned()),
-                None,
-                31,
-                202,
-                None,
-                TrackIndex::PlaylistIndex(0),
-            )?],
-        )))
-    }
-
-    async fn send(
-        use_case: MockReorderPlaylistTracksUseCase,
-        caller_id: NumericID,
-        playlist_id: &str,
-        body: Body,
-    ) -> Result<Response, Box<dyn Error>> {
-        let mut factory = MockLibraryUseCaseFactory::new();
-        factory
-            .expect_reorder_playlist_tracks()
-            .times(0..=1)
-            .return_once(move || Arc::new(use_case) as Arc<dyn ReorderPlaylistTracksUseCase>);
-
-        let mut request = Request::builder()
-            .method("PUT")
-            .uri(format!(
-                "/api/v1/library/music/playlist/{playlist_id}/track"
-            ))
-            .header(header::CONTENT_TYPE, "application/json")
-            .body(body)?;
-        request
-            .extensions_mut()
-            .insert(AuthenticatedUser::from(caller_id));
-
-        let router = axum::Router::new()
-            .route(
-                "/api/v1/library/music/playlist/{playlist_id}/track",
-                put(put_playlist_track),
-            )
-            .with_state(app_state_with_library(Arc::new(factory))?);
-        Ok(router.oneshot(request).await?)
-    }
-
-    #[tokio::test]
-    async fn put_playlist_track_forwards_the_order() -> Result<(), Box<dyn Error>> {
-        // Arrange
-        let reordered = reordered()?;
-        let mut use_case = MockReorderPlaylistTracksUseCase::new();
-        use_case
-            .expect_execute()
-            .times(1)
-            .withf(|command| {
-                command.caller_id() == 4
-                    && command.playlist_id() == 3
-                    && command.order() == [1u32, 0u32]
-            })
-            .return_once(move |_| Box::pin(async move { Ok(reordered) }));
-
-        // Act
-        let (status, content_type, payload) = into_parts(
-            send(
-                use_case,
-                4,
-                "3",
-                Body::from(json!({ "order": [1u32, 0u32] }).to_string()),
-            )
-            .await?,
-        )
-        .await?;
-
-        // Assert
-        assert_eq!(status, StatusCode::OK);
-        assert_eq!(content_type.as_deref(), Some("application/hal+json"));
-        assert_eq!(
-            payload
-                .get("tracks")
-                .and_then(|tracks| tracks.get(0))
-                .and_then(|track| track.get("id")),
-            Some(&json!(0u32))
-        );
-        Ok(())
-    }
-
-    #[rstest]
-    #[case::invalid(
-        ReorderPlaylistTracksError::InvalidOrder,
-        StatusCode::UNPROCESSABLE_ENTITY
-    )]
-    #[case::invisible(ReorderPlaylistTracksError::NoSuchPlaylist, StatusCode::NOT_FOUND)]
-    #[case::no_caller(ReorderPlaylistTracksError::NoSuchCaller, StatusCode::UNAUTHORIZED)]
-    #[tokio::test]
-    async fn put_playlist_track_error_maps_to_status(
-        #[case] error: ReorderPlaylistTracksError,
-        #[case] status: StatusCode,
-    ) -> Result<(), Box<dyn Error>> {
-        // Arrange
-        let mut use_case = MockReorderPlaylistTracksUseCase::new();
-        use_case
-            .expect_execute()
-            .times(1)
-            .return_once(move |_| Box::pin(async { Err(error) }));
-
-        // Act
-        let response = send(
-            use_case,
-            4,
-            "3",
-            Body::from(json!({ "order": [1u32, 0u32] }).to_string()),
-        )
-        .await?;
-
-        // Assert
-        assert_eq!(response.status(), status);
-        Ok(())
-    }
 }

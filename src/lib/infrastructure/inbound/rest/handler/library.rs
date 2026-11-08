@@ -223,10 +223,55 @@ const TIMESTAMP_FORMAT: &str = "%Y-%m-%dT%H:%M:%S";
 /// Date format of the release dates the album and track representations carry.
 pub(crate) const DATE_FORMAT: &str = "%Y-%m-%d";
 
+/// A production type named by an album create or update body.
+#[derive(Debug, Clone, Copy, serde::Deserialize, utoipa::ToSchema)]
+#[non_exhaustive]
+pub(crate) enum ProductionTypeRequest {
+    /// Compilation of tracks from various sources.
+    #[serde(rename = "COMPILATION")]
+    Compilation,
+    /// Demo recording.
+    #[serde(rename = "DEMO")]
+    Demo,
+    /// Continuous DJ mix.
+    #[serde(rename = "DJMIX")]
+    DjMix,
+    /// Live recording.
+    #[serde(rename = "LIVE")]
+    Live,
+    /// Mixtape.
+    #[serde(rename = "MIXTAPE")]
+    Mixtape,
+    /// Remix.
+    #[serde(rename = "REMIX")]
+    Remix,
+    /// Soundtrack.
+    #[serde(rename = "SOUNDTRACK")]
+    Soundtrack,
+    /// Studio recording.
+    #[serde(rename = "STUDIO")]
+    Studio,
+}
+
+impl From<ProductionTypeRequest> for ProductionType {
+    fn from(production_type: ProductionTypeRequest) -> Self {
+        match production_type {
+            ProductionTypeRequest::Compilation => Self::Compilation,
+            ProductionTypeRequest::Demo => Self::Demo,
+            ProductionTypeRequest::DjMix => Self::DjMix,
+            ProductionTypeRequest::Live => Self::Live,
+            ProductionTypeRequest::Mixtape => Self::Mixtape,
+            ProductionTypeRequest::Remix => Self::Remix,
+            ProductionTypeRequest::Soundtrack => Self::Soundtrack,
+            ProductionTypeRequest::Studio => Self::Studio,
+        }
+    }
+}
+
 /// HAL links exposed by a gallery representation.
 ///
 /// The `self` link addresses the gallery; the `items` link exposes the alias
-/// path where its items are served (`API-037`).
+/// path where its items are served.
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 #[non_exhaustive]
 pub(crate) struct GalleryLinks {
@@ -485,9 +530,9 @@ impl From<GetGalleryResponseData> for GalleryResponse {
 /// HAL links exposed by a music album representation.
 ///
 /// The `self` link addresses the album; the album's mediums are embedded in the
-/// representation and each medium carries its own links (`API-037`). A cover is
-/// exposed as the `cover` link when the album stores artwork, and the group the
-/// album belongs to is exposed as the `group` link.
+/// representation and each medium carries its own links. A cover is exposed as
+/// the `cover` link when the album stores artwork, and the group the album
+/// belongs to is exposed as the `group` link.
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 #[non_exhaustive]
 pub(crate) struct AlbumLinks {
@@ -520,8 +565,7 @@ impl AlbumLinks {
 /// HAL links exposed by a music medium representation.
 ///
 /// The `self` link addresses the medium, the `album` link the album that holds
-/// it, and the `tracks` link the medium's track collection (`API-034`,
-/// `API-037`).
+/// it, and the `tracks` link the medium's track collection.
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 #[non_exhaustive]
 pub(crate) struct MediumLinks {
@@ -599,9 +643,9 @@ impl From<GetAlbumMediumResponse> for MediumResponse {
 ///
 /// The `self` link addresses the collection view the representation is about,
 /// `next` and `prev` navigate that same view when another page exists, and the
-/// templated `search` link exposes the collection filters (`API-037`,
-/// `API-042`). The active filter and the page size are carried into every link
-/// so a filtered or paginated listing stays navigable.
+/// templated `search` link exposes the collection filters. The active filter
+/// and the page size are carried into every link so a filtered or paginated
+/// listing stays navigable.
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 #[non_exhaustive]
 pub(crate) struct AlbumListLinks {
@@ -844,7 +888,7 @@ impl TrackResponse {
 /// HAL links exposed by a music group representation.
 ///
 /// The `self` link addresses the group and the `cover` link its artwork, when
-/// the group stores one (`API-034`, `API-037`).
+/// the group stores one.
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 #[non_exhaustive]
 pub(crate) struct MusicGroupLinks {
@@ -923,9 +967,9 @@ impl From<&GetMusicGroupResponseData> for MusicGroupResponse {
 ///
 /// The `self` link addresses the collection view the representation is about,
 /// `next` and `prev` navigate that same view when another page exists, and the
-/// templated `search` link exposes the collection filters (`API-037`,
-/// `API-042`). The active filter and the page size are carried into every link
-/// so a filtered or paginated listing stays navigable.
+/// templated `search` link exposes the collection filters. The active filter
+/// and the page size are carried into every link so a filtered or paginated
+/// listing stays navigable.
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 #[non_exhaustive]
 pub(crate) struct MusicGroupListLinks {
@@ -983,8 +1027,7 @@ pub(crate) struct MusicGroupListResponse {
 /// HAL links exposed by a music track representation.
 ///
 /// The `self` link addresses the track, the `album` link the album that holds
-/// it, and the `medium` link the medium that sequences it (`API-034`,
-/// `API-037`).
+/// it, and the `medium` link the medium that sequences it.
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 #[non_exhaustive]
 pub(crate) struct TrackLinks {
@@ -1161,8 +1204,8 @@ impl MusicMediumResponse {
 /// HAL links exposed by a film representation.
 ///
 /// The `self` link addresses the film; the video is embedded in the
-/// representation and carries no links of its own (`API-037`). A cover is
-/// exposed as the `cover` link when the film stores artwork.
+/// representation and carries no links of its own. A cover is exposed as the
+/// `cover` link when the film stores artwork.
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 #[non_exhaustive]
 pub(crate) struct MovieLinks {
@@ -1569,9 +1612,9 @@ impl From<&Movie> for MovieResponse {
 ///
 /// The `self` link addresses the collection view the representation is about,
 /// `next` and `prev` navigate that same view when another page exists, and the
-/// templated `search` link exposes the collection filters (`API-037`,
-/// `API-042`). The active filter and the page size are carried into every link
-/// so a filtered or paginated listing stays navigable.
+/// templated `search` link exposes the collection filters. The active filter
+/// and the page size are carried into every link so a filtered or paginated
+/// listing stays navigable.
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 #[non_exhaustive]
 pub(crate) struct MovieListLinks {
@@ -1629,8 +1672,8 @@ pub(crate) struct MovieListResponse {
 /// HAL links exposed by a show representation.
 ///
 /// The `self` link addresses the show; the seasons are embedded and each
-/// season carries its own links (`API-037`). A cover is exposed as the `cover`
-/// link when the show stores artwork.
+/// season carries its own links. A cover is exposed as the `cover` link when
+/// the show stores artwork.
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 #[non_exhaustive]
 pub(crate) struct SeriesLinks {
@@ -1656,9 +1699,8 @@ impl SeriesLinks {
 /// HAL links exposed by a season representation.
 ///
 /// The `self` link addresses the season, the `series` link the show that holds
-/// it, and the `episodes` link the season's episode collection (`API-034`,
-/// `API-037`). A cover is exposed as the `cover` link when the season stores
-/// artwork.
+/// it, and the `episodes` link the season's episode collection. A cover is
+/// exposed as the `cover` link when the season stores artwork.
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 #[non_exhaustive]
 pub(crate) struct SeriesSeasonLinks {
@@ -1698,8 +1740,7 @@ impl SeriesSeasonLinks {
 /// HAL links exposed by an episode representation.
 ///
 /// The `self` link addresses the episode, the `series` link the show that holds
-/// it, and the `season` link the season that sequences it (`API-034`,
-/// `API-037`).
+/// it, and the `season` link the season that sequences it.
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 #[non_exhaustive]
 pub(crate) struct SeriesEpisodeLinks {
@@ -1891,8 +1932,7 @@ impl From<&ListSeriesItem> for SeriesSummaryResponse {
 ///
 /// The `self` link addresses the collection view the representation is about,
 /// `next` and `prev` navigate that same view when another page exists, and the
-/// templated `search` link exposes the collection filters (`API-037`,
-/// `API-042`).
+/// templated `search` link exposes the collection filters.
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 #[non_exhaustive]
 pub(crate) struct SeriesListLinks {
@@ -2048,9 +2088,8 @@ pub(crate) struct EpisodeListResponse {
 /// HAL links exposed by a music playlist representation.
 ///
 /// The `self` link addresses the canonical playlist; the `tracks` link exposes
-/// the alias route that serves the playlist with its embedded tracks
-/// (`API-037`, `API-042`). A cover is exposed as the `cover` link when the
-/// playlist stores artwork.
+/// the alias route that serves the playlist with its embedded tracks. A cover
+/// is exposed as the `cover` link when the playlist stores artwork.
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 #[non_exhaustive]
 pub(crate) struct PlaylistLinks {
@@ -2081,7 +2120,7 @@ impl PlaylistLinks {
 /// HAL links exposed by a playlist track representation.
 ///
 /// The `self` link addresses the track, and the `playlist` link the playlist
-/// that sequences it (`API-034`, `API-037`).
+/// that sequences it.
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 #[non_exhaustive]
 pub(crate) struct PlaylistTrackLinks {
@@ -2211,9 +2250,9 @@ impl PlaylistResponse {
 ///
 /// The `self` link addresses the collection view the representation is about,
 /// `next` and `prev` navigate that same view when another page exists, and the
-/// templated `search` link exposes the collection filters (`API-037`,
-/// `API-042`). The active filters and the page size are carried into every link
-/// so a filtered or paginated listing stays navigable.
+/// templated `search` link exposes the collection filters. The active filters
+/// and the page size are carried into every link so a filtered or paginated
+/// listing stays navigable.
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 #[non_exhaustive]
 pub(crate) struct PlaylistListLinks {
@@ -3161,8 +3200,11 @@ pub(crate) fn parse_group_id(value: &str) -> Result<NumericID, ApiError> {
 }
 
 /// Parse a `u32` season index from a path segment.
+///
+/// A non-numeric segment is malformed (`400`); a numeric value outside the
+/// 32-bit range violates the declared maximum and is `422` (`API-045`).
 pub(crate) fn parse_season_index(value: &str) -> Result<u32, ApiError> {
-    value.parse::<u32>().map_err(|_| {
+    let parsed = value.parse::<u64>().map_err(|_| {
         warn!(
             target: "security",
             event = "input_validation_failed",
@@ -3171,12 +3213,25 @@ pub(crate) fn parse_season_index(value: &str) -> Result<u32, ApiError> {
             "rejected a malformed season index"
         );
         ApiError::BadRequest("invalid season index".to_owned())
+    })?;
+    u32::try_from(parsed).map_err(|_| {
+        warn!(
+            target: "security",
+            event = "input_validation_failed",
+            field = "season_index",
+            reason = "index_out_of_range",
+            "rejected an out-of-range season index"
+        );
+        ApiError::UnprocessableEntity("invalid season index".to_owned())
     })
 }
 
 /// Parse a `u32` episode index from a path segment.
+///
+/// A non-numeric segment is malformed (`400`); a numeric value outside the
+/// 32-bit range violates the declared maximum and is `422` (`API-045`).
 pub(crate) fn parse_episode_index(value: &str) -> Result<u32, ApiError> {
-    value.parse::<u32>().map_err(|_| {
+    let parsed = value.parse::<u64>().map_err(|_| {
         warn!(
             target: "security",
             event = "input_validation_failed",
@@ -3185,6 +3240,16 @@ pub(crate) fn parse_episode_index(value: &str) -> Result<u32, ApiError> {
             "rejected a malformed episode index"
         );
         ApiError::BadRequest("invalid episode index".to_owned())
+    })?;
+    u32::try_from(parsed).map_err(|_| {
+        warn!(
+            target: "security",
+            event = "input_validation_failed",
+            field = "episode_index",
+            reason = "index_out_of_range",
+            "rejected an out-of-range episode index"
+        );
+        ApiError::UnprocessableEntity("invalid episode index".to_owned())
     })
 }
 
@@ -3204,6 +3269,9 @@ pub(crate) fn parse_series_id(value: &str) -> Result<NumericID, ApiError> {
 
 /// Parse a `u8` music index from a path segment.
 ///
+/// A non-numeric segment is malformed (`400`); a numeric value outside the
+/// 8-bit range violates the declared maximum and is `422` (`API-045`).
+///
 /// `field` is the declared security-event field and `message` the stable,
 /// handler-owned rejection message; the malformed value and the parser detail
 /// never reach the log (`OBS-003`, `OBS-006`).
@@ -3212,30 +3280,7 @@ pub(crate) fn parse_index(
     field: &'static str,
     message: &'static str,
 ) -> Result<u8, ApiError> {
-    value.parse::<u8>().map_err(|_| {
-        warn!(
-            target: "security",
-            event = "input_validation_failed",
-            field = field,
-            reason = "invalid_index",
-            "rejected a malformed music index"
-        );
-        ApiError::BadRequest(message.to_owned())
-    })
-}
-
-/// Parse a `u8` music index from a path segment, reporting a value outside the
-/// 8-bit range as unprocessable rather than malformed.
-///
-/// The write routes admit an index the domain models as `u8`, so a syntactically
-/// valid index above the range is a well-formed request the server cannot
-/// process (`422`), while a non-numeric segment stays a malformed path (`400`).
-pub(crate) fn parse_write_index(
-    value: &str,
-    field: &'static str,
-    message: &'static str,
-) -> Result<u8, ApiError> {
-    let parsed = value.parse::<u32>().map_err(|_| {
+    let parsed = value.parse::<u64>().map_err(|_| {
         warn!(
             target: "security",
             event = "input_validation_failed",
@@ -3255,6 +3300,18 @@ pub(crate) fn parse_write_index(
         );
         ApiError::UnprocessableEntity(message.to_owned())
     })
+}
+
+/// Parse a `u8` music index from a path segment.
+///
+/// Write routes share the read policy: a value outside the 8-bit range violates
+/// the declared maximum and is `422`, while a non-numeric segment is `400`.
+pub(crate) fn parse_write_index(
+    value: &str,
+    field: &'static str,
+    message: &'static str,
+) -> Result<u8, ApiError> {
+    parse_index(value, field, message)
 }
 
 /// Deserialize a field that distinguishes an absent value from `null`.
@@ -3291,8 +3348,11 @@ pub(crate) fn parse_playlist_id(value: &str) -> Result<NumericID, ApiError> {
 }
 
 /// Parse a zero-based playlist track index from a path segment.
+///
+/// A non-numeric segment is malformed (`400`); a numeric value outside the
+/// 32-bit range violates the declared maximum and is `422` (`API-045`).
 pub(crate) fn parse_playlist_track_index(value: &str) -> Result<u32, ApiError> {
-    value.parse::<u32>().map_err(|_| {
+    let parsed = value.parse::<u64>().map_err(|_| {
         warn!(
             target: "security",
             event = "input_validation_failed",
@@ -3301,6 +3361,16 @@ pub(crate) fn parse_playlist_track_index(value: &str) -> Result<u32, ApiError> {
             "rejected a malformed playlist track index"
         );
         ApiError::BadRequest("invalid playlist track index".to_owned())
+    })?;
+    u32::try_from(parsed).map_err(|_| {
+        warn!(
+            target: "security",
+            event = "input_validation_failed",
+            field = "track_index",
+            reason = "index_out_of_range",
+            "rejected an out-of-range playlist track index"
+        );
+        ApiError::UnprocessableEntity("invalid playlist track index".to_owned())
     })
 }
 
@@ -3427,416 +3497,4 @@ pub(crate) fn library_routes(state: &AppState) -> OpenApiRouter<()> {
             authenticate::<JwtTokenProvider>,
         ))
         .with_state(state.clone())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::application::port::create_gallery::{
-        CreateGalleryUseCase, MockCreateGalleryUseCase,
-    };
-    use crate::application::port::delete_gallery::{
-        DeleteGalleryUseCase, MockDeleteGalleryUseCase,
-    };
-    use crate::application::port::get_gallery::{
-        GetGalleryResponse, GetGalleryUseCase, MockGetGalleryUseCase,
-    };
-    use crate::application::port::get_movie::{
-        GetMovieResponse, GetMovieUseCase, MockGetMovieUseCase,
-    };
-    use crate::application::port::get_series::{
-        GetSeriesResponse, GetSeriesUseCase, MockGetSeriesUseCase,
-    };
-    use crate::application::port::get_series_episode::{
-        GetSeriesEpisodeUseCase, MockGetSeriesEpisodeUseCase,
-    };
-    use crate::application::port::get_series_season::{
-        GetSeriesSeasonUseCase, MockGetSeriesSeasonUseCase,
-    };
-    use crate::application::port::library_use_case_factory::MockLibraryUseCaseFactory;
-    use crate::application::port::list_movies::{
-        ListMoviesResponse, ListMoviesUseCase, MockListMoviesUseCase,
-    };
-    use crate::application::port::list_series::{
-        ListSeriesResponse, ListSeriesUseCase, MockListSeriesUseCase,
-    };
-    use crate::application::port::list_series_episodes::{
-        ListSeriesEpisodesResponse, ListSeriesEpisodesUseCase, MockListSeriesEpisodesUseCase,
-    };
-    use crate::domain::port::token_provider::TokenProvider as _;
-    use crate::test_helpers::*;
-    use axum::body::Body;
-    use axum::extract::Request;
-    use axum::http::{StatusCode, header};
-    use axum::response::Response;
-    use serde_json::json;
-    use std::error::Error;
-    use std::sync::Arc;
-    use tower::ServiceExt as _;
-
-    /// A fixed instant the fixtures timestamp with.
-    fn ts() -> NaiveDateTime {
-        NaiveDate::from_ymd_opt(2026, 10, 6)
-            .unwrap_or_default()
-            .and_hms_opt(12, 0, 0)
-            .unwrap_or_default()
-    }
-
-    #[tokio::test]
-    async fn asset_image_href_addresses_the_asset_image_route() {
-        // Act
-        let href = asset_image_href(42);
-
-        // Assert
-        assert_eq!(
-            href, "/api/v1/asset/image/42",
-            "the cover link must name the Asset image route"
-        );
-    }
-
-    /// Mint a bearer token the real `authenticate` layer accepts.
-    async fn bearer() -> Result<String, Box<dyn Error>> {
-        let provider = JwtTokenProvider::new(TEST_JWT_SECRET.to_owned(), 3600);
-        Ok(provider.issue(1).await?.value().to_owned())
-    }
-
-    #[tokio::test]
-    async fn library_routes_gallery_route_reaches_handler() -> Result<(), Box<dyn Error>> {
-        // Arrange: the real router, wrapped in its `authenticate` layer.
-        let mut get_gallery = MockGetGalleryUseCase::new();
-        get_gallery.expect_execute().times(1).return_once(|_| {
-            Box::pin(async {
-                Ok(GetGalleryResponse::new(
-                    3,
-                    Some(1),
-                    "Holidays".to_owned(),
-                    false,
-                    ts(),
-                    ts(),
-                    Vec::new(),
-                ))
-            })
-        });
-        let mut factory = MockLibraryUseCaseFactory::new();
-        factory
-            .expect_get_gallery()
-            .times(0..=1)
-            .return_once(move || Arc::new(get_gallery) as Arc<dyn GetGalleryUseCase>);
-        let state = app_state_with_library(Arc::new(factory))?;
-        let request = Request::builder()
-            .method("GET")
-            .uri("/gallery/3")
-            .header(header::AUTHORIZATION, format!("Bearer {}", bearer().await?))
-            .body(Body::empty())?;
-
-        // Act
-        let response: Response = axum::Router::from(library_routes(&state))
-            .oneshot(request)
-            .await?;
-
-        // Assert
-        assert_eq!(response.status(), StatusCode::OK);
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn library_routes_create_route_reaches_handler() -> Result<(), Box<dyn Error>> {
-        // Arrange
-        let mut create_gallery = MockCreateGalleryUseCase::new();
-        create_gallery.expect_execute().times(1).return_once(|_| {
-            Box::pin(async {
-                Ok(CreateGalleryResponse::new(
-                    5,
-                    1,
-                    "Holidays".to_owned(),
-                    false,
-                    ts(),
-                    ts(),
-                ))
-            })
-        });
-        let mut factory = MockLibraryUseCaseFactory::new();
-        factory
-            .expect_create_gallery()
-            .times(0..=1)
-            .return_once(move || Arc::new(create_gallery) as Arc<dyn CreateGalleryUseCase>);
-        let state = app_state_with_library(Arc::new(factory))?;
-        let request = Request::builder()
-            .method("POST")
-            .uri("/gallery")
-            .header(header::AUTHORIZATION, format!("Bearer {}", bearer().await?))
-            .header(header::CONTENT_TYPE, "application/json")
-            .body(Body::from(json!({ "name": "Holidays" }).to_string()))?;
-
-        // Act
-        let response: Response = axum::Router::from(library_routes(&state))
-            .oneshot(request)
-            .await?;
-
-        // Assert
-        assert_eq!(response.status(), StatusCode::CREATED);
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn library_routes_delete_route_reaches_handler() -> Result<(), Box<dyn Error>> {
-        // Arrange
-        let mut delete_gallery = MockDeleteGalleryUseCase::new();
-        delete_gallery
-            .expect_execute()
-            .times(1)
-            .return_once(|_| Box::pin(async { Ok(()) }));
-        let mut factory = MockLibraryUseCaseFactory::new();
-        factory
-            .expect_delete_gallery()
-            .times(0..=1)
-            .return_once(move || Arc::new(delete_gallery) as Arc<dyn DeleteGalleryUseCase>);
-        let state = app_state_with_library(Arc::new(factory))?;
-        let request = Request::builder()
-            .method("DELETE")
-            .uri("/gallery/3")
-            .header(header::AUTHORIZATION, format!("Bearer {}", bearer().await?))
-            .body(Body::empty())?;
-
-        // Act
-        let response: Response = axum::Router::from(library_routes(&state))
-            .oneshot(request)
-            .await?;
-
-        // Assert
-        assert_eq!(response.status(), StatusCode::NO_CONTENT);
-        Ok(())
-    }
-
-    /// Drive one route through the real router and return the response.
-    async fn reach(state: &AppState, uri: &str) -> Result<Response, Box<dyn Error>> {
-        let request = Request::builder()
-            .method("GET")
-            .uri(uri)
-            .header(header::AUTHORIZATION, format!("Bearer {}", bearer().await?))
-            .body(Body::empty())?;
-        Ok(axum::Router::from(library_routes(state))
-            .oneshot(request)
-            .await?)
-    }
-
-    #[tokio::test]
-    async fn library_routes_movie_list_route_reaches_handler() -> Result<(), Box<dyn Error>> {
-        // Arrange
-        let mut use_case = MockListMoviesUseCase::new();
-        use_case
-            .expect_execute()
-            .times(1)
-            .return_once(|_| Box::pin(async { Ok(ListMoviesResponse::new(Vec::new(), 0)) }));
-        let mut factory = MockLibraryUseCaseFactory::new();
-        factory
-            .expect_list_movies()
-            .times(0..=1)
-            .return_once(move || Arc::new(use_case) as Arc<dyn ListMoviesUseCase>);
-        let state = app_state_with_library(Arc::new(factory))?;
-
-        // Act
-        let response = reach(&state, "/movie").await?;
-
-        // Assert
-        assert_eq!(
-            response.status(),
-            StatusCode::OK,
-            "the film collection route must reach its handler"
-        );
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn library_routes_movie_route_reaches_handler() -> Result<(), Box<dyn Error>> {
-        // Arrange
-        let movie = sample_movie(3)?;
-        let response_data = GetMovieResponse::new(
-            movie.id(),
-            movie.name().to_owned(),
-            movie.plot().to_owned(),
-            movie.country_of_origin().map(str::to_owned),
-            movie.release_date(),
-            movie.genre_ids().to_vec(),
-            None,
-            movie.video().clone(),
-        );
-        let mut use_case = MockGetMovieUseCase::new();
-        use_case.expect_execute().times(1).return_once(move |_| {
-            let copy = response_data.clone();
-            Box::pin(async move { Ok(copy) })
-        });
-        let mut factory = MockLibraryUseCaseFactory::new();
-        factory
-            .expect_get_movie()
-            .times(0..=1)
-            .return_once(move || Arc::new(use_case) as Arc<dyn GetMovieUseCase>);
-        let state = app_state_with_library(Arc::new(factory))?;
-
-        // Act
-        let response = reach(&state, "/movie/3").await?;
-
-        // Assert
-        assert_eq!(
-            response.status(),
-            StatusCode::OK,
-            "the film route must reach its handler"
-        );
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn library_routes_series_list_route_reaches_handler() -> Result<(), Box<dyn Error>> {
-        // Arrange
-        let mut use_case = MockListSeriesUseCase::new();
-        use_case
-            .expect_execute()
-            .times(1)
-            .return_once(|_| Box::pin(async { Ok(ListSeriesResponse::new(Vec::new(), 0)) }));
-        let mut factory = MockLibraryUseCaseFactory::new();
-        factory
-            .expect_list_series()
-            .times(0..=1)
-            .return_once(move || Arc::new(use_case) as Arc<dyn ListSeriesUseCase>);
-        let state = app_state_with_library(Arc::new(factory))?;
-
-        // Act
-        let response = reach(&state, "/series").await?;
-
-        // Assert
-        assert_eq!(
-            response.status(),
-            StatusCode::OK,
-            "the show collection route must reach its handler"
-        );
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn library_routes_series_route_reaches_handler() -> Result<(), Box<dyn Error>> {
-        // Arrange
-        let response_data = GetSeriesResponse::new(
-            3,
-            "Twin Peaks".to_owned(),
-            "A plot".to_owned(),
-            Some("US".to_owned()),
-            Some(video_date()),
-            Vec::new(),
-            None,
-            Vec::new(),
-        );
-        let mut use_case = MockGetSeriesUseCase::new();
-        use_case.expect_execute().times(1).return_once(move |_| {
-            let copy = response_data.clone();
-            Box::pin(async move { Ok(copy) })
-        });
-        let mut factory = MockLibraryUseCaseFactory::new();
-        factory
-            .expect_get_series()
-            .times(0..=1)
-            .return_once(move || Arc::new(use_case) as Arc<dyn GetSeriesUseCase>);
-        let state = app_state_with_library(Arc::new(factory))?;
-
-        // Act
-        let response = reach(&state, "/series/3").await?;
-
-        // Assert
-        assert_eq!(
-            response.status(),
-            StatusCode::OK,
-            "the show route must reach its handler"
-        );
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn library_routes_series_season_route_reaches_handler() -> Result<(), Box<dyn Error>> {
-        // Arrange
-        let mut use_case = MockGetSeriesSeasonUseCase::new();
-        use_case.expect_execute().times(1).return_once(|_| {
-            Box::pin(async { Ok(GetSeriesSeasonResponse::new(3, 1, None, 0, None)) })
-        });
-        let mut factory = MockLibraryUseCaseFactory::new();
-        factory
-            .expect_get_series_season()
-            .times(0..=1)
-            .return_once(move || Arc::new(use_case) as Arc<dyn GetSeriesSeasonUseCase>);
-        let state = app_state_with_library(Arc::new(factory))?;
-
-        // Act
-        let response = reach(&state, "/series/3/season/1").await?;
-
-        // Assert
-        assert_eq!(
-            response.status(),
-            StatusCode::OK,
-            "the season route must reach its handler"
-        );
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn library_routes_series_episode_list_route_reaches_handler() -> Result<(), Box<dyn Error>>
-    {
-        // Arrange
-        let mut use_case = MockListSeriesEpisodesUseCase::new();
-        use_case
-            .expect_execute()
-            .times(1)
-            .return_once(|_| Box::pin(async { Ok(ListSeriesEpisodesResponse::new(Vec::new())) }));
-        let mut factory = MockLibraryUseCaseFactory::new();
-        factory
-            .expect_list_series_episodes()
-            .times(0..=1)
-            .return_once(move || Arc::new(use_case) as Arc<dyn ListSeriesEpisodesUseCase>);
-        let state = app_state_with_library(Arc::new(factory))?;
-
-        // Act
-        let response = reach(&state, "/series/3/season/1/episode").await?;
-
-        // Assert
-        assert_eq!(
-            response.status(),
-            StatusCode::OK,
-            "the episode collection route must reach its handler"
-        );
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn library_routes_series_episode_route_reaches_handler() -> Result<(), Box<dyn Error>> {
-        // Arrange
-        let episode = sample_episode(1, 11)?;
-        let response_data = GetSeriesEpisodeResponse::new(
-            episode.index().value(),
-            3,
-            1,
-            episode.name().to_owned(),
-            episode.plot().to_owned(),
-            episode.air_date(),
-            episode.video().clone(),
-        );
-        let mut use_case = MockGetSeriesEpisodeUseCase::new();
-        use_case.expect_execute().times(1).return_once(move |_| {
-            let copy = response_data.clone();
-            Box::pin(async move { Ok(copy) })
-        });
-        let mut factory = MockLibraryUseCaseFactory::new();
-        factory
-            .expect_get_series_episode()
-            .times(0..=1)
-            .return_once(move || Arc::new(use_case) as Arc<dyn GetSeriesEpisodeUseCase>);
-        let state = app_state_with_library(Arc::new(factory))?;
-
-        // Act
-        let response = reach(&state, "/series/3/season/1/episode/1").await?;
-
-        // Assert
-        assert_eq!(
-            response.status(),
-            StatusCode::OK,
-            "the episode route must reach its handler"
-        );
-        Ok(())
-    }
 }

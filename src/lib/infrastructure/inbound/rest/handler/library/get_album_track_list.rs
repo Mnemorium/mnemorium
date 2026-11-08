@@ -23,7 +23,7 @@ use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
     tag = "library",
     params(
         ("album_id" = NumericID, Path, description = "Identifier of the album whose medium's tracks are listed"),
-        ("medium_index" = u8, Path, description = "Album-scoped index of the medium whose tracks are listed"),
+        ("medium_index" = u8, Path, description = "Album-scoped index of the medium whose tracks are listed", maximum = 255u8),
     ),
     responses(
         (
@@ -37,6 +37,12 @@ use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
             body = ErrorBody,
             content_type = "application/hal+json",
             description = "Invalid music album identifier or medium index"
+        ),
+        (
+            status = UNPROCESSABLE_ENTITY,
+            body = ErrorBody,
+            content_type = "application/hal+json",
+            description = "The medium index is outside the 8-bit range"
         ),
         (
             status = UNAUTHORIZED,
@@ -89,176 +95,4 @@ pub(crate) async fn get_album_track_list(
         )),
     };
     Ok(hal_json(body))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::application::port::library_use_case_factory::MockLibraryUseCaseFactory;
-    use crate::application::port::list_album_tracks::{
-        ListAlbumTracksError, ListAlbumTracksItem, ListAlbumTracksResponse, ListAlbumTracksUseCase,
-        MockListAlbumTracksUseCase,
-    };
-    use crate::infrastructure::inbound::rest::handler::library::library_routes;
-    use crate::test_helpers::*;
-    use axum::body::Body;
-    use axum::extract::Request;
-    use axum::http::StatusCode;
-    use axum::routing::get;
-    use rstest::rstest;
-    use serde_json::json;
-    use std::error::Error;
-    use std::sync::Arc;
-    use tower::ServiceExt as _;
-
-    /// Send a GET to
-    /// `/api/v1/library/music/album/{album}/medium/{medium}/track` on behalf of
-    /// `caller_id`, injecting the caller identifier the way the auth middleware
-    /// does.
-    async fn send(
-        use_case: MockListAlbumTracksUseCase,
-        caller_id: NumericID,
-        album_id: &str,
-        medium_index: &str,
-    ) -> Result<Response, Box<dyn Error>> {
-        let mut factory = MockLibraryUseCaseFactory::new();
-        factory
-            .expect_list_album_tracks()
-            .times(0..=1)
-            .return_once(move || Arc::new(use_case) as Arc<dyn ListAlbumTracksUseCase>);
-
-        let mut request = Request::builder()
-            .method("GET")
-            .uri(format!(
-                "/api/v1/library/music/album/{album_id}/medium/{medium_index}/track"
-            ))
-            .body(Body::empty())?;
-        request
-            .extensions_mut()
-            .insert(AuthenticatedUser::from(caller_id));
-
-        let router = axum::Router::new()
-            .route(
-                "/api/v1/library/music/album/{album_id}/medium/{medium_index}/track",
-                get(get_album_track_list),
-            )
-            .with_state(app_state_with_library(Arc::new(factory))?);
-        Ok(router.oneshot(request).await?)
-    }
-
-    #[tokio::test]
-    async fn get_album_track_list_returns_the_collection() -> Result<(), Box<dyn Error>> {
-        // Arrange
-        let mut use_case = MockListAlbumTracksUseCase::new();
-        use_case
-            .expect_execute()
-            .times(1)
-            .withf(|command| {
-                command.caller_id() == 1 && command.album_id() == 7 && command.medium_index() == 2
-            })
-            .return_once(|_| {
-                let item =
-                    ListAlbumTracksItem::new(7, 2, 1, 30, 201, Some("So What".to_owned()), None);
-                Box::pin(async move { Ok(ListAlbumTracksResponse::new(vec![item])) })
-            });
-
-        // Act
-        let (status, content_type, payload) =
-            into_parts(send(use_case, 1, "7", "2").await?).await?;
-
-        // Assert
-        assert_eq!(status, StatusCode::OK);
-        assert_eq!(content_type.as_deref(), Some("application/hal+json"));
-        assert_eq!(
-            payload,
-            json!({
-                "_links": {
-                    "self": {
-                        "href": "/api/v1/library/music/album/7/medium/2/track"
-                    }
-                },
-                "items": [{
-                    "_links": {
-                        "self": {
-                            "href": "/api/v1/library/music/album/7/medium/2/track/1"
-                        },
-                        "album": { "href": "/api/v1/library/music/album/7" },
-                        "medium": { "href": "/api/v1/library/music/album/7/medium/2" }
-                    },
-                    "id": 1u8,
-                    "album_id": 7i64,
-                    "medium_index": 2u8,
-                    "recording_id": 30i64,
-                    "file_id": 201i64,
-                    "name": "So What",
-                    "isrc_code": null
-                }]
-            })
-        );
-        Ok(())
-    }
-
-    #[rstest]
-    #[case::album("abc", "2", "invalid music album identifier")]
-    #[case::medium("7", "abc", "invalid music medium index")]
-    #[tokio::test]
-    async fn get_album_track_list_malformed_identifier_returns_bad_request(
-        #[case] album_id: &str,
-        #[case] medium_index: &str,
-        #[case] message: &str,
-    ) -> Result<(), Box<dyn Error>> {
-        // Arrange
-        let use_case = MockListAlbumTracksUseCase::new();
-
-        // Act
-        let response = send(use_case, 1, album_id, medium_index).await?;
-
-        // Assert
-        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
-        assert_eq!(error_message_of(&response).as_deref(), Some(message));
-        Ok(())
-    }
-
-    #[rstest]
-    #[case::unknown_album(ListAlbumTracksError::NoSuchAlbum)]
-    #[case::unknown_medium(ListAlbumTracksError::NoSuchMedium)]
-    #[tokio::test]
-    async fn get_album_track_list_not_found_returns_not_found(
-        #[case] error: ListAlbumTracksError,
-    ) -> Result<(), Box<dyn Error>> {
-        // Arrange
-        let mut use_case = MockListAlbumTracksUseCase::new();
-        use_case
-            .expect_execute()
-            .times(1)
-            .return_once(move |_| Box::pin(async move { Err(error) }));
-
-        // Act
-        let response = send(use_case, 1, "7", "2").await?;
-
-        // Assert
-        assert_eq!(response.status(), StatusCode::NOT_FOUND);
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn get_album_track_list_missing_credentials_returns_unauthorized()
-    -> Result<(), Box<dyn Error>> {
-        // Arrange: the real router, wrapped in its `authenticate` layer, with no
-        // authorization header.
-        let state = app_state_with_library(Arc::new(MockLibraryUseCaseFactory::new()))?;
-        let request = Request::builder()
-            .method("GET")
-            .uri("/music/album/7/medium/2/track")
-            .body(Body::empty())?;
-
-        // Act
-        let response: Response = axum::Router::from(library_routes(&state))
-            .oneshot(request)
-            .await?;
-
-        // Assert
-        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
-        Ok(())
-    }
 }

@@ -14,6 +14,7 @@ path = "src/bin/server.rs"
 [features]
 default = []
 api-docs = ["dep:utoipa-scalar"]
+test-seed = []
 
 [lints.clippy]
 complexity = { level = "warn", priority = -1 }

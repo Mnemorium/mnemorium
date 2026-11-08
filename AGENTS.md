@@ -26,10 +26,11 @@ first.
 | --------- | ------------------------------------------------------------------------------------------------------------------------------------ |
 | Build     | `cargo build` (server: `cargo build --bin server`)                                                                                   |
 | Run       | `cargo run --bin server` (listens on `:4080`; health `GET /health`)                                                                  |
+| Seeded run | `cargo run --features test-seed --bin server` (creates `media/` when absent; seeds dev/fixture data, prints demo credentials)     |
 | Test      | `cargo test` (unit + integration)                                                                                                    |
-| Coverage  | `cargo llvm-cov --lib --fail-under-functions 80 --fail-under-regions 80 --fail-under-lines 80` (gate ≥ 80%)                          |
+| Coverage  | `cargo llvm-cov --lib --ignore-filename-regex 'src/lib/infrastructure/inbound/rest/handler' --fail-under-functions 80 --fail-under-regions 80 --fail-under-lines 80` (gate ≥ 80%; the REST handler tree is covered by E2E and Schemathesis instead) |
 | E2E       | `script/e2e.sh` (builds and runs the container; `NO_BUILD=1` reuses the image)                                                       |
-| Lint      | `cargo clippy --all-targets --all-features -- -D warnings`; `cargo fmt --all -- --check`                                             |
+| Lint      | `cargo clippy --all-targets --all-features -- -D warnings` and `cargo clippy --all-targets -- -D warnings`; `cargo fmt --all -- --check` |
 | All rules | `script/rule_enforcer.sh check` (every registered rule; CI and the pre-commit hook run this)                                         |
 | One rule  | `script/rule_enforcer.sh check STY-RUST-001` (IDs from `script/rule_enforcer.sh list`; a bare ID works too)                          |
 | Full gate | `devenv test` (all pre-commit hooks)                                                                                                 |

@@ -161,6 +161,7 @@ document describes the source layout those rules constrain.
 | `src/lib/infrastructure/outbound/sqlx/model`                                         | SQLx row models                                                                                                                   |
 | `src/lib/infrastructure/outbound/sqlx/permission_repository.rs`                      | Permission override adapter grouping `LISTED` resources and replacing them atomically                                             |
 | `src/lib/infrastructure/outbound/sqlx/sqlite3.rs`                                    | SQLite pool initialization and migrations                                                                                         |
+| `src/lib/infrastructure/seed.rs`                                                     | Test-only seed data applied behind the `test-seed` feature                                                                        |
 | `src/lib/infrastructure/use_case_factory`                                            | Per-context factories building use cases on demand                                                                                |
 | `src/lib/infrastructure/logging.rs`                                                  | `tracing` subscriber setup driven by the configuration                                                                            |
 
@@ -179,6 +180,10 @@ An **application use case** (`port/<name>.rs` plus `use_case/<name>.rs`) is a te
 3. Install the logging subscriber and emit the first-boot lifecycle events.
 4. Initialize the Root Admin, open the SQLite datastore at `mnemorium.db`, create the storage directories, and build
    `AppState` with the immutable configuration, the immutable identity and the per-context factories.
+
+With the `test-seed` feature the composition root also applies the seed data after the Root Admin and before the storage
+check: it creates the library root when absent, materialises the demo media under it, creates the demo accounts and file
+rows, and runs the scripts through a second `sqlx` migrator. A normal start still never creates the operator's mount.
 
 The Library factory resolves the video metadata chain from the immutable configuration when its `identify_video()` or
 `resolve_video_metadata()` accessor is called: the configured links are built in index order, and an empty provider list

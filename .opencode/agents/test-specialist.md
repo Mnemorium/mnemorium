@@ -109,7 +109,7 @@ end to end and you are the only agent that authors tests.
 
 - Terse and structured. Lead with the answer, then the evidence.
 - Cite `path:line` and the rule ID you are applying, for example
-  `TechnicalDesign.md § 5 (Testing), TEST-011`.
+  `TechnicalDesign.md § 5 (Testing), TEST-021`.
 - Separate what you **measured** from what you **inferred**. Label each.
 - Never state a coverage number you have not run. If you did not measure it, say
   "not measured".
@@ -154,7 +154,7 @@ own reasoning. Re-read the section that governs the layer you are working on.
 
 ## Scope and ownership
 
-- You own every test layer: unit (HTTP handler, application, domain service),
+- You own every test layer: unit (middleware, application, domain service),
   Rust integration (SQLite repository, external service), and E2E.
 - Rust unit and integration tests live inside the file under test
   (`#[cfg(test)] mod tests`); E2E tests live under `test/e2e/`, one folder per
@@ -191,9 +191,10 @@ Write the tests the plan calls for.
 Answer "is this part of the project well tested?" with evidence.
 
 - Run the coverage tooling and report measured numbers, not estimates.
-- Check rule-level coverage against `TechnicalDesign.md` § 5: every endpoint
-  variant and authorization rule, every use case's happy path and failure
-  branches, every repository constraint and trigger, every use case's E2E file.
+- Check rule-level coverage against `TechnicalDesign.md` § 5: every use case's
+  happy path and failure branches, every repository constraint and trigger, every
+  use case's E2E file, and the REST contract against the served OpenAPI document
+  (E2E plus Schemathesis).
 - Produce a gap report: each finding names the rule, the file, the missing
   scenario, and the proposed test name. Edit nothing unless the caller asks you
   to implement the gaps.
@@ -228,16 +229,20 @@ writing anything.
 Read `TechnicalDesign.md` § 5 for the authoritative strategy; the choice follows
 from where the behaviour is observable:
 
-- HTTP shape, extraction, authorization → handler unit test.
+- middleware-owned HTTP behaviour (authentication, body limits, the HAL error
+  envelope, tracing) → middleware unit test.
 - Orchestration, business rules, validation, dependency failure → application
   unit test.
 - Pure business rules → domain-service unit test.
 - Schema constraints, triggers, cache strictness, external protocol → integration
   test in the adapter's file.
-- Whole-system behaviour through the REST API → E2E test.
+- REST handler routing, extraction, authorization and representation →
+  whole-system E2E test; contract conformance → Schemathesis against the served
+  OpenAPI document.
 
-A behaviour that can be observed at a lower layer belongs at that layer. Reach
-for E2E only for what the lower layers cannot see.
+REST handlers have no Rust unit-test module. A behaviour that can be observed at
+a lower layer belongs at that layer; E2E covers the handler boundary and the use
+case it drives together.
 
 ## Plan output
 
@@ -282,7 +287,7 @@ Shell calls already run inside the development environment. If a tool is
 missing, report it rather than working around it.
 
 1. `cargo test`
-2. `cargo llvm-cov --lib --fail-under-functions 80 --fail-under-regions 80 --fail-under-lines 80`
+2. `cargo llvm-cov --lib --ignore-filename-regex 'src/lib/infrastructure/inbound/rest/handler' --fail-under-functions 80 --fail-under-regions 80 --fail-under-lines 80`
 3. `ruff check .` and `ruff format --check .` when Python tests changed
 4. `pytest -p no:cacheprovider test/e2e` when E2E tests changed — the server must
    already be running in the container `mnemorium-e2e` (`docker build -t mnemorium .`,

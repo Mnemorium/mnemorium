@@ -1514,6 +1514,12 @@ deserialization. A value that violates a `#[schema(...)]` constraint still deser
 validates it and answers `422` (`API-045`, `API-041`, [§ Response codes](#response-codes)). A declared constraint is
 therefore a promise the handler keeps, or the attribute is not declared.
 
+A JSON request body is a JSON object: the shared `JsonObject<T>` extractor in
+`src/lib/infrastructure/inbound/rest/handler.rs` rejects a sequence with `422`, because the OpenAPI document describes
+every body DTO as an object and serde would otherwise accept a positional sequence. The extractor also normalises a
+whole-number float (`1.0`) to an integer before deserialization, because JSON Schema treats it as an integer while serde
+does not.
+
 These attributes apply identically on request/response body models through the `#[schema(...)]` attribute of the
 `ToSchema` derive:
 
@@ -1802,7 +1808,7 @@ not:
 
 ```rust
 #[must_use]
-pub fn openapi() -> OpenApi {
+pub(crate) fn openapi() -> OpenApi {
     let (_, openapi) = OpenApiRouter::with_openapi(ApiDoc::openapi())
         .routes(routes!(get_health::get_health))
         .nest("/library", library_router())
@@ -1812,10 +1818,11 @@ pub fn openapi() -> OpenApi {
 }
 ```
 
-The server assembles the document at startup from the same registration, so the reference it serves cannot drift from
-the routes. With the `api-docs` feature `setup_routes` mounts an interactive reference through `utoipa-scalar` at
-`/doc`, outside the `/api/v1` base; the feature is off by default, so a default build serves no reference UI. There is
-no generated artifact to commit — the served document is the published specification.
+The server assembles the document at startup from the same registration, so the document it serves cannot drift from the
+routes. With the `api-docs` feature `setup_routes` serves an interactive reference through `utoipa-scalar` at `/doc` and
+the same document as JSON at `/doc/openapi.json`, both outside the `/api/v1` base; the feature is off by default, so a
+default build serves neither. There is no generated artifact to commit — the served document is the published
+specification.
 
 ---
 
@@ -2532,20 +2539,11 @@ the flows the E2E suite covers come from the critical exception paths in [UseCas
 | ---------- | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------- |
 | `TEST-001` | Unit test          | The test module lives in the same file as the unit under test.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | [§ Unit test](#unit-test)                       |
 | `TEST-002` | Unit test          | Mock an external dependency with `mockall`'s `#[automock]` attribute.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | [§ Unit test](#unit-test)                       |
-| `TEST-003` | Unit test          | Unit tests cover the HTTP handler and every layer except the outbound port adapters (SQLite, configuration source), which are exercised in the [Integration test](#integration-test) section.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | [§ Unit test](#unit-test)                       |
-| `TEST-004` | Unit test          | Do not test the payload DTOs (`<Context>Request`, `<Context>Query`, `<Context>Response`) in isolation; test the handler that consumes them.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | [§ Unit test](#unit-test)                       |
+| `TEST-003` | Unit test          | Unit tests cover every layer except the outbound port adapters (SQLite, configuration source), which are exercised in the [Integration test](#integration-test) section, and the REST HTTP handler layer, which is exercised by the [E2E test](#e2e-test) suite and by Schemathesis against the served OpenAPI document.                                                                                                                                                                                                                                                                                                                                                                                      | [§ Unit test](#unit-test)                       |
+| `TEST-004` | Unit test          | Do not test the payload DTOs (`<Context>Request`, `<Context>Query`, `<Context>Response`) in isolation; the [E2E test](#e2e-test) suite and Schemathesis cover them through the endpoints that consume them.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | [§ Unit test](#unit-test)                       |
 | `TEST-005` | Unit test          | Repository query filters must be tested for strictness: the filter backs the SQLite repository and a rejected filter must surface its error unchanged.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | [§ Unit test](#unit-test)                       |
 | `TEST-006` | Unit test          | Generic tests (those whose subject is not password behavior) use the shared `SECRET_PASSWORD` from `crate::test_helpers` for any password they need.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | [§ Unit test](#unit-test)                       |
 | `TEST-007` | Unit test          | Tests whose subject is password behavior (policy validation, wrong-password rejection, change-password, hashing, verification) keep their own explicit passwords and must not use the shared secret.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | [§ Unit test](#unit-test)                       |
-| `TEST-008` | HTTP handler       | HTTP handler tests are `async`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | [§ HTTP handler](#http-handler-strategy)        |
-| `TEST-009` | HTTP handler       | Send requests through `.oneshot(Request::builder()...)` from `tower::ServiceExt`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | [§ HTTP handler](#http-handler-strategy)        |
-| `TEST-010` | HTTP handler       | Have one test per valid request variant, when the endpoint accepts several.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | [§ HTTP handler](#http-handler-strategy)        |
-| `TEST-011` | HTTP handler       | Have one test per invalid input attribute — invalid type, and invalid value depending on the type (for example, a number larger than the allowed bound).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | [§ HTTP handler](#http-handler-strategy)        |
-| `TEST-012` | HTTP handler       | Have one test per authorization rule.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | [§ HTTP handler](#http-handler-strategy)        |
-| `TEST-013` | HTTP handler       | Mock the application service / use case.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | [§ HTTP handler](#http-handler-strategy)        |
-| `TEST-014` | HTTP handler       | Build the router state with a real `AppState` wrapping a mocked per-context use-case factory (`crate::test_helpers::app_state_with_identity` / `crate::test_helpers::app_state_with_user` / `app_state_with_asset` / `app_state_with_library`), and inject the mocked use case through that factory.                                                                                                                                                                                                                                                                                                                                                                                                          | [§ HTTP handler](#http-handler-strategy)        |
-| `TEST-015` | HTTP handler       | Set the factory expectation with `times(0..=1)` when the handler can reject the request before reaching the use case.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | [§ HTTP handler](#http-handler-strategy)        |
-| `TEST-016` | HTTP handler       | When one test covers two rules at once it is acceptable, but it must be documented. Any test that falls outside the scope above (rare situation, cheap coverage) must be justified in the documentation.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | [§ HTTP handler](#http-handler-strategy)        |
 | `TEST-017` | Application        | Application tests are `async`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | [§ Application](#application-strategy)          |
 | `TEST-018` | Application        | Have one or more happy-path tests.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | [§ Application](#application-strategy)          |
 | `TEST-019` | Application        | Test the domain models here — **they have no dedicated test of their own** (domain services _do_; see [§ Domain service](#domain-service-strategy)).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | [§ Application](#application-strategy)          |
@@ -2576,7 +2574,6 @@ the flows the E2E suite covers come from the critical exception paths in [UseCas
 | `TEST-044` | Test helpers       | Shared Rust test helpers live **only** in the single `#[cfg(test)] mod test_helpers` in `src/lib/lib.rs`; never create a separate helper file or module (for example `test_helper.rs`).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | [§ Test helpers](#test-helpers)                 |
 | `TEST-045` | Test helpers       | Adding a new shared test helper, or changing the existing helper surface, requires the developer's explicit approval (their thumbs-up on the change).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | [§ Test helpers](#test-helpers)                 |
 | `TEST-046` | Factory            | Production factory structs need no dedicated test; they only wire use cases, adapters and transactions, so test the assembled parts, not the wiring.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | [§ Factory](#factory-strategy)                  |
-| `TEST-047` | HTTP handler       | An endpoint test does not assert behaviour owned by middleware — authentication, body-size limits, the HAL error envelope, or cross-origin handling. Middleware the project owns is covered by its own middleware-level test module.                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | [§ HTTP handler](#http-handler-strategy)        |
 | `TEST-048` | Shell script       | Shell scripts in the `script/` folder are tooling and CI glue and are exempt from the unit, integration and E2E test requirements; they are validated by their own gates — `shellcheck` and `shfmt` plus their pre-commit and CI execution — not by a test module.                                                                                                                                                                                                                                                                                                                                                                                                                                            | [§ Shell script](#shell-script)                 |
 | `TEST-049` | CI / prompt assets | GitHub workflow files (`.github/workflows/*`) and the opencode agent, command and skill prompts (`.opencode/agents/*`, `.opencode/commands/*`, `.opencode/skills/*/SKILL.md`, `.agents/skills/**`) are tooling and agent configuration, not application code; they are exempt from the unit, integration and E2E test requirements. A workflow's YAML is validated by `yamllint`. The triage workflow's `gh`-driven inline prompt, its `OPENCODE_CONFIG_CONTENT` shell permission allowlist, and its effect on issues are exercised only when the workflow runs; they have no automated behavioural gate and no dry-run rehearsal — an explicit residual, validated by review rather than asserted by a test. | [§ CI and prompt assets](#ci-and-prompt-assets) |
 | `TEST-050` | E2E                | A golden file or a test media file the E2E suite consumes is stored under `test/e2e/fixture/`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | [§ E2E test](#e2e-test)                         |
@@ -2595,16 +2592,17 @@ the flows the E2E suite covers come from the critical exception paths in [UseCas
 
 ### Unit test
 
-Unit tests cover everything above the outbound ports; the adapters that implement those ports are covered by the
-[Integration test](#integration-test) layer instead.
+Unit tests cover every layer above the outbound ports except the REST HTTP handler layer; the adapters that implement
+those ports are covered by the [Integration test](#integration-test) layer instead.
 
 ---
 
 #### HTTP handler strategy
 
-Handler tests drive the axum router in-process, so they exercise routing, extraction and the handler together. They do
-not re-assert middleware-owned behaviour ([TEST-047](#http-handler-strategy)); middleware the project owns is covered by
-its own middleware-level test module.
+REST handlers have no Rust unit-test module. Their routing, extraction, handler and HAL representation are exercised end
+to end by the [E2E test](#e2e-test) suite (`script/e2e.sh`) and by Schemathesis (`script/api_fuzz.sh`) against the
+served OpenAPI document. The middleware the project owns (`auth`, `hal_errors`, `rate_limit`, `trace`) keeps its own
+middleware-level unit tests, and `rest.rs` keeps its OpenAPI document tests.
 
 ---
 
@@ -2698,6 +2696,17 @@ file stays in `test/e2e/asset/`. `TEST-040` lists the folders a bounded context 
 
 ---
 
+### API fuzz test
+
+The `api-test` job in `.github/workflows/ci.yml` runs `script/api_fuzz.sh`, which boots a disposable server built with
+the `api-docs` and `test-seed` features, seeds the demo library, completes one upload, and fuzzes the served OpenAPI
+document with Schemathesis. It triggers on Rust sources, SQL, the fuzz configuration and hooks, the harness, the
+development environment, and the workflow itself. Its JUnit report is uploaded as the `schemathesis-results` artifact
+(`junit.xml`) whether the run passes or fails; the report is an untrusted review input, while the job result gates the
+pull request.
+
+---
+
 ### Configuration test
 
 Configuration tests ask one question per setting: when the operator changes it, does the server do what it promises?
@@ -2713,6 +2722,39 @@ refusals the instance state owns (a seed that differs from the persisted one, an
 
 ---
 
+### Seed data
+
+`test/seed/sql` holds the SQL scripts and `test/seed/media` the media bytes the `test-seed` Cargo feature applies to a
+developer or fixture datastore. The feature is off by default and is the only switch: a build without it neither
+compiles the seed module nor runs the scripts, so the shipped image is unaffected (`ARG CARGO_FEATURES=""` in the
+`Dockerfile`).
+
+The scripts mirror the migration mechanism: they are embedded at compile time and applied once through a second `sqlx`
+migrator whose history table is `_sqlx_seeds`. They are one-way -- no `.down.sql` -- because seeded data is disposable.
+Changing a script that already ran changes its checksum and is refused like a migration; reset by deleting
+`mnemorium.db` (with its `-wal`/`-shm` sidecars) and `media/seed`, then restart.
+
+SQL cannot reproduce an Argon2 hash bound to the live pepper or materialise media bytes, so the feature's Rust step owns
+the demo `credential`/`user` rows, the `file` rows and the bytes under `media/seed/`; the scripts own every other row
+and reference the fixed identifiers that step creates. The demo accounts are `alice` and `bobby`; their shared password
+is fixed test data and is printed on the first seeded run. The feature creates `media/` when it is absent, because the
+run owns the directory it populates; a build without the feature still never creates the operator's mount:
+
+```sh
+cargo run --features test-seed --bin server
+```
+
+The feature is exercised by its own unit tests and by `cargo llvm-cov --features test-seed`; the standard E2E image
+stays unseeded because the existing suite asserts seed-free counts. The disposable server `script/api_fuzz.sh` starts is
+built with both `api-docs` and `test-seed`, so Schemathesis fuzzes a populated library. The run takes its fixture
+identifiers from `schemathesis.toml`: reads address the fixed seed rows, and the provider-backed `apply` operations are
+deselected because the disposable server configures no metadata provider. One upload is completed before fuzzing, so the
+completion endpoint addresses a finished session. The run drops generator artifacts the served schema cannot express (a
+malformed header name, an invalid date, username or country code, and a partial season/episode pair) through
+`test/api/hooks.py`, and it accepts a `422` where a request body names a missing resource (`API-044`).
+
+---
+
 ### Test helpers
 
 Shared Rust test helpers live only in the single `#[cfg(test)] mod test_helpers` in `src/lib/lib.rs`. The module is the
@@ -2721,10 +2763,9 @@ sanctioned exception to [TEST-001](#unit-test) (a test module lives with the cod
 
 It holds the fixtures the in-crate tests share: the secrets `SECRET_PASSWORD` and `TEST_JWT_SECRET`; the unit-of-work
 double `TestUnitOfWork`/`TestUow` and its factory double `TestUnitOfWorkFactory`/`TestFactory`, wrapped by
-`AssetFactoryHarness::new` and `GalleryFactoryHarness::new`; `TEST_PEPPER` and `instance_state`; the app-state builders
-`app_state`, `app_state_with_identity`, `app_state_with_user`, `app_state_with_asset`, `app_state_with_library`; the
-album release date `album_release_date`; and the response helpers `error_message_of`, `into_parts` and
-`into_status_and_body`.
+`AssetFactoryHarness::new` and `GalleryFactoryHarness::new`; `TEST_PEPPER` and `instance_state`; the app-state builder
+`app_state`; the album release date `album_release_date`; the video date `video_date`; and the response helpers
+`error_message_of` and `into_status_and_body`.
 
 `TestUnitOfWork` implements `Default`, and a test names only the repositories it stubs —
 `TestUnitOfWork { galleries, ..TestUnitOfWork::default() }` — so adding a repository to a unit of work changes this
@@ -2950,6 +2991,7 @@ Source: `devenv.nix`.
 | [prettier](https://prettier.io/)                                  | Markdown formatter.                                                     | 3.8.3   | TODO    |
 | [Python toolchain](https://www.python.org/)                       | Python runtime for tooling and tests.                                   | 3.14.6  | TODO    |
 | [Rust toolchain](https://www.rust-lang.org/)                      | Rust compiler and standard tooling.                                     | 1.98.0  | TODO    |
+| [schemathesis](https://github.com/schemathesis/schemathesis)      | Property-based API tests against the served OpenAPI document.           | 4.33.1  | MIT     |
 | [semgrep](https://semgrep.dev/)                                   | Static-analysis (SAST) scanner; CI and the `security:semgrep` task.     | 1.172.0 | TODO    |
 | [shellcheck](https://github.com/koalaman/shellcheck)              | Shell script linter.                                                    | 0.11.0  | TODO    |
 | [shfmt](https://github.com/mvdan/sh)                              | Shell script formatter.                                                 | 3.13.1  | TODO    |
@@ -3067,66 +3109,67 @@ The set is **closed and exhaustive** over the tracked paths: every path is owned
 longest-prefix match, and every scope owns at least one path. Adding or removing a scope edits this table and the
 `scopes:` block of `.github/workflows/ci.yml` in the same change.
 
-| Group   | Scope            | Path                                      | Description                    |
-| ------- | ---------------- | ----------------------------------------- | ------------------------------ |
-| Code    | `domain`         | `src/lib/domain.rs`                       | Domain module root             |
-| Code    | `domain`         | `src/lib/domain/**`                       | Domain layer                   |
-| Code    | `application`    | `src/lib/application.rs`                  | Application module root        |
-| Code    | `application`    | `src/lib/application/**`                  | Application layer              |
-| Code    | `application`    | `src/lib/lib.rs`                          | Crate root and test helpers    |
-| Code    | `infrastructure` | `src/lib/infrastructure.rs`               | Infrastructure module root     |
-| Code    | `infrastructure` | `src/lib/infrastructure/**`               | Infrastructure layer           |
-| Code    | `api`            | `src/lib/infrastructure/inbound/rest.rs`  | REST module root               |
-| Code    | `api`            | `src/lib/infrastructure/inbound/rest/**`  | REST adapter                   |
-| Code    | `persistence`    | `migrations/**`                           | Migrations                     |
-| Code    | `persistence`    | `src/lib/infrastructure/outbound/sqlx.rs` | SQLx module root               |
-| Code    | `persistence`    | `src/lib/infrastructure/outbound/sqlx/**` | SQLx SQLite layer              |
-| Code    | `server`         | `src/bin/**`                              | Server binaries                |
-| Code    | `server`         | `src/lib/app.rs`                          | Composition root               |
-| Tests   | `test-e2e`       | `test/**`                                 | Tests                          |
-| Tests   | `test-config`    | `test/configuration/**`                   | Configuration tests            |
-| Docs    | `user`           | `README.md`                               | Repository README              |
-| Docs    | `user`           | `docs/index.md`                           | Documentation home page        |
-| Docs    | `user`           | `docs/Permissions.md`                     | Permissions guide              |
-| Docs    | `user`           | `docs/assets/**`                          | Documentation theme assets     |
-| Docs    | `user`           | `mkdocs.yml`                              | MkDocs site configuration      |
-| Docs    | `development`    | `docs/development/**`                     | Development documentation      |
-| Repo    | `repo`           | `LICENSE`                                 | License                        |
-| Repo    | `repo`           | `THIRD_PARTY_NOTICES.txt`                 | Third-party notices            |
-| Repo    | `repo`           | `about.toml`                              | cargo-about configuration      |
-| Repo    | `repo`           | `about.hbs`                               | cargo-about notices template   |
-| Tooling | `config`         | `Cargo.toml`                              | Rust manifest                  |
-| Tooling | `config`         | `Cargo.lock`                              | Rust lockfile                  |
-| Tooling | `config`         | `.betterleaks.toml`                       | Secret-scan configuration      |
-| Tooling | `config`         | `.gitignore`                              | Git ignore rules               |
-| Tooling | `config`         | `.ls-lint.yml`                            | Naming linter configuration    |
-| Tooling | `config`         | `.markdownlint-cli2.jsonc`                | Markdown lint configuration    |
-| Tooling | `config`         | `.prettierrc`                             | Prettier configuration         |
-| Tooling | `config`         | `.prettierignore`                         | Prettier ignore rules          |
-| Tooling | `config`         | `.releaserc.json`                         | semantic-release configuration |
-| Tooling | `config`         | `.sqlfluff`                               | SQL linter configuration       |
-| Tooling | `config`         | `.taplo.toml`                             | TOML linter configuration      |
-| Tooling | `config`         | `.yamllint`                               | YAML linter configuration      |
-| Tooling | `config`         | `clippy.toml`                             | Clippy configuration           |
-| Tooling | `config`         | `deny.toml`                               | cargo-deny configuration       |
-| Tooling | `config`         | `pytest.ini`                              | pytest configuration           |
-| Tooling | `config`         | `requirements.txt`                        | Python dependencies            |
-| Tooling | `config`         | `ruff.toml`                               | Ruff configuration             |
-| Tooling | `config`         | `rule_enforcer.yaml`                      | Rule enforcer configuration    |
-| Tooling | `config`         | `rule/**`                                 | ast-grep rule definitions      |
-| Tooling | `config`         | `sgconfig.yaml`                           | ast-grep project configuration |
-| Tooling | `agent`          | `.opencode/**`                            | opencode configuration         |
-| Tooling | `agent`          | `.agents/**`                              | Agent skills                   |
-| Tooling | `agent`          | `AGENTS.md`                               | Repository router              |
-| Tooling | `agent`          | `opencode.json`                           | opencode project configuration |
-| Tooling | `agent`          | `skills-lock.json`                        | Skill lockfile                 |
-| Tooling | `github`         | `.github/**`                              | GitHub workflows and assets    |
-| Tooling | `devenv`         | `devenv.nix`                              | devenv environment             |
-| Tooling | `devenv`         | `devenv.yaml`                             | devenv inputs                  |
-| Tooling | `devenv`         | `devenv.lock`                             | devenv lockfile                |
-| Tooling | `devops`         | `Dockerfile`                              | Container build                |
-| Tooling | `devops`         | `.dockerignore`                           | Build-context ignore rules     |
-| Tooling | `devops`         | `script/**`                               | Repository scripts             |
+| Group   | Scope            | Path                                      | Description                     |
+| ------- | ---------------- | ----------------------------------------- | ------------------------------- |
+| Code    | `domain`         | `src/lib/domain.rs`                       | Domain module root              |
+| Code    | `domain`         | `src/lib/domain/**`                       | Domain layer                    |
+| Code    | `application`    | `src/lib/application.rs`                  | Application module root         |
+| Code    | `application`    | `src/lib/application/**`                  | Application layer               |
+| Code    | `application`    | `src/lib/lib.rs`                          | Crate root and test helpers     |
+| Code    | `infrastructure` | `src/lib/infrastructure.rs`               | Infrastructure module root      |
+| Code    | `infrastructure` | `src/lib/infrastructure/**`               | Infrastructure layer            |
+| Code    | `api`            | `src/lib/infrastructure/inbound/rest.rs`  | REST module root                |
+| Code    | `api`            | `src/lib/infrastructure/inbound/rest/**`  | REST adapter                    |
+| Code    | `persistence`    | `migrations/**`                           | Migrations                      |
+| Code    | `persistence`    | `src/lib/infrastructure/outbound/sqlx.rs` | SQLx module root                |
+| Code    | `persistence`    | `src/lib/infrastructure/outbound/sqlx/**` | SQLx SQLite layer               |
+| Code    | `server`         | `src/bin/**`                              | Server binaries                 |
+| Code    | `server`         | `src/lib/app.rs`                          | Composition root                |
+| Tests   | `test-e2e`       | `test/**`                                 | Tests                           |
+| Tests   | `test-config`    | `test/configuration/**`                   | Configuration tests             |
+| Docs    | `user`           | `README.md`                               | Repository README               |
+| Docs    | `user`           | `docs/index.md`                           | Documentation home page         |
+| Docs    | `user`           | `docs/Permissions.md`                     | Permissions guide               |
+| Docs    | `user`           | `docs/assets/**`                          | Documentation theme assets      |
+| Docs    | `user`           | `mkdocs.yml`                              | MkDocs site configuration       |
+| Docs    | `development`    | `docs/development/**`                     | Development documentation       |
+| Repo    | `repo`           | `LICENSE`                                 | License                         |
+| Repo    | `repo`           | `THIRD_PARTY_NOTICES.txt`                 | Third-party notices             |
+| Repo    | `repo`           | `about.toml`                              | cargo-about configuration       |
+| Repo    | `repo`           | `about.hbs`                               | cargo-about notices template    |
+| Tooling | `config`         | `Cargo.toml`                              | Rust manifest                   |
+| Tooling | `config`         | `Cargo.lock`                              | Rust lockfile                   |
+| Tooling | `config`         | `.betterleaks.toml`                       | Secret-scan configuration       |
+| Tooling | `config`         | `.gitignore`                              | Git ignore rules                |
+| Tooling | `config`         | `.ls-lint.yml`                            | Naming linter configuration     |
+| Tooling | `config`         | `.markdownlint-cli2.jsonc`                | Markdown lint configuration     |
+| Tooling | `config`         | `.prettierrc`                             | Prettier configuration          |
+| Tooling | `config`         | `.prettierignore`                         | Prettier ignore rules           |
+| Tooling | `config`         | `.releaserc.json`                         | semantic-release configuration  |
+| Tooling | `config`         | `.sqlfluff`                               | SQL linter configuration        |
+| Tooling | `config`         | `.taplo.toml`                             | TOML linter configuration       |
+| Tooling | `config`         | `.yamllint`                               | YAML linter configuration       |
+| Tooling | `config`         | `clippy.toml`                             | Clippy configuration            |
+| Tooling | `config`         | `deny.toml`                               | cargo-deny configuration        |
+| Tooling | `config`         | `pytest.ini`                              | pytest configuration            |
+| Tooling | `config`         | `requirements.txt`                        | Python dependencies             |
+| Tooling | `config`         | `ruff.toml`                               | Ruff configuration              |
+| Tooling | `config`         | `rule_enforcer.yaml`                      | Rule enforcer configuration     |
+| Tooling | `config`         | `rule/**`                                 | ast-grep rule definitions       |
+| Tooling | `config`         | `schemathesis.toml`                       | Schemathesis fuzz configuration |
+| Tooling | `config`         | `sgconfig.yaml`                           | ast-grep project configuration  |
+| Tooling | `agent`          | `.opencode/**`                            | opencode configuration          |
+| Tooling | `agent`          | `.agents/**`                              | Agent skills                    |
+| Tooling | `agent`          | `AGENTS.md`                               | Repository router               |
+| Tooling | `agent`          | `opencode.json`                           | opencode project configuration  |
+| Tooling | `agent`          | `skills-lock.json`                        | Skill lockfile                  |
+| Tooling | `github`         | `.github/**`                              | GitHub workflows and assets     |
+| Tooling | `devenv`         | `devenv.nix`                              | devenv environment              |
+| Tooling | `devenv`         | `devenv.yaml`                             | devenv inputs                   |
+| Tooling | `devenv`         | `devenv.lock`                             | devenv lockfile                 |
+| Tooling | `devops`         | `Dockerfile`                              | Container build                 |
+| Tooling | `devops`         | `.dockerignore`                           | Build-context ignore rules      |
+| Tooling | `devops`         | `script/**`                               | Repository scripts              |
 
 Two things are exempt because the release tooling generates them and they bypass the pull-request gate: a bot commit
 (semantic-release, `github-actions[bot]`) and the generated `CHANGELOG.md`. Neither carries a scope.

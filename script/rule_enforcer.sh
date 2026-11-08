@@ -144,11 +144,6 @@ RULES=(
 	"TEST-002:check_test_002"
 	"TEST-004:check_test_004"
 	"TEST-007:check_test_007"
-	"TEST-008:check_test_008"
-	"TEST-009:check_test_009"
-	"TEST-013:check_test_013"
-	"TEST-014:check_test_014"
-	"TEST-015:check_test_015"
 	"TEST-017:check_test_017"
 	"TEST-019:check_test_019"
 	"TEST-022:check_test_022"
@@ -167,7 +162,6 @@ RULES=(
 	"TEST-043:check_test_043"
 	"TEST-044:check_test_044"
 	"TEST-046:check_test_046"
-	"TEST-047:check_test_047"
 	"TEST-050:check_test_050"
 	"TEST-051:check_test_051"
 	"TEST-052:check_test_052"
@@ -3442,113 +3436,6 @@ check_test_007() {
 	scan_short TEST-007 src
 }
 
-check_test_008() { scan_short TEST-008 src; }
-
-check_test_009() {
-	local id="TEST-009"
-	local surface="src/lib/infrastructure/inbound/rest/handler"
-	local module="src/lib/infrastructure/inbound/rest/handler.rs"
-	local matches file kind result=0
-	local -A has_oneshot=()
-	local -A has_builder=()
-
-	for file in "$surface" "$module"; do
-		if [ ! -e "$file" ]; then
-			printf 'error: %s: missing %s\n' "$id" "$file" >&2
-			return 1
-		fi
-	done
-
-	# test-009 extracts the two syntactic facts the rule names — a request built with `Request::builder()` and a dispatch through `.oneshot(...)`.
-	matches="$(scan_json "$id" src)" || return 1
-
-	while IFS=$'\t' read -r file kind; do
-		[ -n "$file" ] || continue
-		case "$kind" in
-		oneshot) has_oneshot["$file"]=1 ;;
-		builder) has_builder["$file"]=1 ;;
-		esac
-	done < <(printf '%s\n' "$matches" |
-		jq -r '[.file, (if .metaVariables.single.RECV then "oneshot" else "builder" end)] | @tsv')
-
-	# Every handler file that declares a test module must drive the router: a request built with `Request::builder()`, sent through `.oneshot(...)` from `tower::ServiceExt`.
-	while IFS= read -r file; do
-		[ -n "$file" ] || continue
-		if [ -z "${has_oneshot[$file]+set}" ]; then
-			printf 'error: %s: %s: handler test sends no request through .oneshot(...) from tower::ServiceExt\n' \
-				"$id" "$file" >&2
-			result=1
-		fi
-		if [ -z "${has_builder[$file]+set}" ]; then
-			printf 'error: %s: %s: handler test builds no request with Request::builder()\n' \
-				"$id" "$file" >&2
-			result=1
-		fi
-	done < <(grep -rl --include='*.rs' '#\[cfg(test)\]' "$surface" "$module" 2>/dev/null | sort)
-
-	return "$result"
-}
-
-check_test_013() {
-	local id="TEST-013"
-	local handler_dir="src/lib/infrastructure/inbound/rest/handler"
-	local matches file accessor expected result=0
-
-	need_dir "$id" "$handler_dir" || return 1
-
-	# test-013 extracts the application use-case accessor each endpoint handler drives (`state.<context>_use_case_factory().<accessor>().execute(...)`).
-	matches="$(scan_json "$id" --globs 'src/lib/infrastructure/inbound/rest/handler/*/*.rs' src)" || return 1
-	require_matches "$id" "use-case-driven endpoint handler from $handler_dir" "$matches" || return 1
-
-	while IFS=$'\t' read -r file accessor; do
-		[ -n "$accessor" ] || continue
-		expected="Mock$(printf '%s' "$accessor" |
-			awk -F_ '{ for (i = 1; i <= NF; i++) printf "%s%s", toupper(substr($i, 1, 1)), substr($i, 2) }')UseCase"
-		if ! grep -qF "$expected" "$file"; then
-			printf 'error: %s: %s: handler test must mock the %s use case (expected %s)\n' \
-				"$id" "$file" "$accessor" "$expected" >&2
-			result=1
-		fi
-	done < <(printf '%s\n' "$matches" |
-		jq -r '[.file, .metaVariables.single.ACCESSOR.text] | @tsv')
-
-	return "$result"
-}
-
-check_test_014() {
-	local id="TEST-014"
-	local handler_dir="src/lib/infrastructure/inbound/rest/handler"
-	local matches file line call rel context expected result=0
-
-	need_dir "$id" "$handler_dir" || return 1
-
-	# test-014 extracts every router-state construction inside a `#[cfg(test)]` module of the handler tree: the per-context helper, the all-mock helper and a hand-built `AppState`.
-	matches="$(scan_json "$id" "$handler_dir")" || return 1
-	require_matches "$id" "router-state construction from $handler_dir" "$matches" || return 1
-
-	while IFS=$'\t' read -r file line call; do
-		[ -n "$call" ] || continue
-		rel="${file#"$handler_dir"/}"
-		context="${rel%%/*}"
-		context="${context%.rs}"
-		expected="app_state_with_${context}"
-		if [ "$call" != "$expected" ]; then
-			printf 'error: %s: %s:%s: the router state must be built with crate::test_helpers::%s (found %s)\n' \
-				"$id" "$file" "$line" "$expected" "$call" >&2
-			result=1
-		fi
-	done < <(printf '%s\n' "$matches" |
-		jq -r '[.file, ((.range.start.line + 1) | tostring),
-			(.text | split("(")[0])] | @tsv')
-
-	return "$result"
-}
-
-check_test_015() {
-	# test-015 flags a per-context use-case factory expectation whose `times(...)` argument is not `0..=1`: the handler can reject the request (invalid path id, malformed body) before the factory is reached, so the expectation must tolerate zero calls.
-	scan_short TEST-015 src
-}
-
 # check_test_017 — an application test is `async` (TEST-017).
 check_test_017() { need_dir "TEST-017" "src/lib/application" && scan_short TEST-017 "src/lib/application"; }
 
@@ -4801,9 +4688,6 @@ check_test_046() {
 	need_file "TEST-046" "src/lib/infrastructure/outbound/sqlx/unit_of_work.rs" || return 1
 	scan_short TEST-046 "src/lib/infrastructure/use_case_factory" "src/lib/infrastructure/outbound/sqlx/unit_of_work.rs"
 }
-
-# check_test_047 — an endpoint test does not assert behaviour owned by middleware (TEST-047): authentication, body-size limits, the HAL error envelope, or cross-origin handling.
-check_test_047() { need_dir "TEST-047" "src/lib/infrastructure/inbound/rest/handler" && scan_short TEST-047 "src/lib/infrastructure/inbound/rest/handler"; }
 
 # check_test_050 — a golden file or a test media file the E2E suite consumes is stored under test/e2e/fixture/ (TEST-050).
 check_test_050() {

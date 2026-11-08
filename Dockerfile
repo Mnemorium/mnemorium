@@ -9,12 +9,15 @@ RUN cargo chef prepare --recipe-path recipe.json
 
 FROM chef AS builder
 
+# Compile-time feature set; an empty default keeps the shipped image unseeded.
+ARG CARGO_FEATURES=""
+
 COPY --from=planner /app/recipe.json recipe.json
 # Build dependencies - this is the caching Docker layer!
-RUN cargo chef cook --release --recipe-path recipe.json
+RUN cargo chef cook --release --recipe-path recipe.json ${CARGO_FEATURES:+--features "$CARGO_FEATURES"}
 # Build application
 COPY . .
-RUN cargo build --release --bin server
+RUN cargo build --release --bin server ${CARGO_FEATURES:+--features "$CARGO_FEATURES"}
 
 
 FROM alpine:3.21 AS runtime

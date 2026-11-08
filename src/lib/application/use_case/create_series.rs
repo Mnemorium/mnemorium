@@ -138,7 +138,9 @@ where
                     .map_err(|error| {
                         if matches!(
                             error,
-                            RepositoryError::AlreadyExist | RepositoryError::Conflict
+                            RepositoryError::AlreadyExist
+                                | RepositoryError::Conflict
+                                | RepositoryError::DataIntegrityViolation
                         ) {
                             CreateSeriesError::Conflict
                         } else {
@@ -441,6 +443,38 @@ mod tests {
             .expect_create()
             .times(1)
             .returning(|_| Box::pin(async { Err(RepositoryError::Conflict) }));
+        let harness = harness_with(users, no_permissions(), series);
+        let use_case: UseCase = CreateSeries::new(Arc::clone(&harness.factory));
+
+        // Act
+        let result = use_case
+            .execute(CreateSeriesCommand::new(
+                1,
+                "Twin Peaks".to_owned(),
+                None,
+                None,
+                None,
+                Vec::new(),
+                Some(9),
+            ))
+            .await;
+
+        // Assert
+        assert!(matches!(result, Err(CreateSeriesError::Conflict)));
+        assert!(harness.rolled_back.load(Ordering::SeqCst));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn create_series_missing_cover_is_conflict() -> Result<(), Box<dyn Error>> {
+        // Arrange: the repository rejects the cover through the scope trigger.
+        let mut users = MockUserRepository::new();
+        expect_admin(&mut users, 1)?;
+        let mut series = MockSeriesRepository::new();
+        series
+            .expect_create()
+            .times(1)
+            .returning(|_| Box::pin(async { Err(RepositoryError::DataIntegrityViolation) }));
         let harness = harness_with(users, no_permissions(), series);
         let use_case: UseCase = CreateSeries::new(Arc::clone(&harness.factory));
 

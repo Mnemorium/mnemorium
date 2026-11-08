@@ -27,23 +27,15 @@ mod test_helpers {
     use std::sync::{Arc, Mutex};
 
     use axum::body::to_bytes;
-    use axum::http::{StatusCode, header};
+    use axum::http::StatusCode;
     use axum::response::Response;
     use chrono::NaiveDate;
     use serde_json::Value;
 
-    use crate::application::port::asset_use_case_factory::{
-        AssetUseCaseFactory, MockAssetUseCaseFactory,
-    };
-    use crate::application::port::identity_use_case_factory::{
-        IdentityUseCaseFactory, MockIdentityUseCaseFactory,
-    };
-    use crate::application::port::library_use_case_factory::{
-        LibraryUseCaseFactory, MockLibraryUseCaseFactory,
-    };
-    use crate::application::port::user_use_case_factory::{
-        MockUserUseCaseFactory, UserUseCaseFactory,
-    };
+    use crate::application::port::asset_use_case_factory::MockAssetUseCaseFactory;
+    use crate::application::port::identity_use_case_factory::MockIdentityUseCaseFactory;
+    use crate::application::port::library_use_case_factory::MockLibraryUseCaseFactory;
+    use crate::application::port::user_use_case_factory::MockUserUseCaseFactory;
     use crate::domain::alias::NumericID;
     use crate::domain::model::configuration::Configuration;
     use crate::domain::model::episode::{Episode, EpisodeIndex};
@@ -422,92 +414,11 @@ mod test_helpers {
         ))
     }
 
-    /// Build an application state around a mocked Identity use-case factory.
-    ///
-    /// The Library and User factories are mocks the callers never reach.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error when the fixed identity cannot be built.
-    pub(crate) fn app_state_with_identity(
-        identity_use_case_factory: Arc<dyn IdentityUseCaseFactory>,
-    ) -> Result<AppState, Box<dyn Error>> {
-        Ok(AppState::new(
-            Arc::new(MockAssetUseCaseFactory::new()),
-            Arc::new(Configuration::default()),
-            identity_use_case_factory,
-            Arc::new(instance_state()?),
-            Arc::new(MockLibraryUseCaseFactory::new()),
-            Arc::new(MockUserUseCaseFactory::new()),
-        ))
-    }
-
-    /// Build an application state around a mocked User use-case factory.
-    ///
-    /// The Identity and Library factories are mocks the callers never reach.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error when the fixed identity cannot be built.
-    pub(crate) fn app_state_with_user(
-        user_use_case_factory: Arc<dyn UserUseCaseFactory>,
-    ) -> Result<AppState, Box<dyn Error>> {
-        Ok(AppState::new(
-            Arc::new(MockAssetUseCaseFactory::new()),
-            Arc::new(Configuration::default()),
-            Arc::new(MockIdentityUseCaseFactory::new()),
-            Arc::new(instance_state()?),
-            Arc::new(MockLibraryUseCaseFactory::new()),
-            user_use_case_factory,
-        ))
-    }
-
-    /// Build an application state around a mocked Library use-case factory.
-    ///
-    /// The Identity and User factories are mocks the callers never reach.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error when the fixed identity cannot be built.
-    pub(crate) fn app_state_with_library(
-        library_use_case_factory: Arc<dyn LibraryUseCaseFactory>,
-    ) -> Result<AppState, Box<dyn Error>> {
-        Ok(AppState::new(
-            Arc::new(MockAssetUseCaseFactory::new()),
-            Arc::new(Configuration::default()),
-            Arc::new(MockIdentityUseCaseFactory::new()),
-            Arc::new(instance_state()?),
-            library_use_case_factory,
-            Arc::new(MockUserUseCaseFactory::new()),
-        ))
-    }
-
-    /// Build an application state around a mocked Asset use-case factory.
-    ///
-    /// The Identity, Library and User factories are mocks the callers never
-    /// reach.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error when the fixed identity cannot be built.
-    pub(crate) fn app_state_with_asset(
-        asset_use_case_factory: Arc<dyn AssetUseCaseFactory>,
-    ) -> Result<AppState, Box<dyn Error>> {
-        Ok(AppState::new(
-            asset_use_case_factory,
-            Arc::new(Configuration::default()),
-            Arc::new(MockIdentityUseCaseFactory::new()),
-            Arc::new(instance_state()?),
-            Arc::new(MockLibraryUseCaseFactory::new()),
-            Arc::new(MockUserUseCaseFactory::new()),
-        ))
-    }
-
     /// Return the message an `ApiError` attached to `response`.
     ///
-    /// The message travels in a response extension, so a handler test can assert
-    /// the handler-owned message without depending on the HAL error envelope
-    /// that the root middleware builds (`TEST-047`).
+    /// The message travels in a response extension, so a test can assert the
+    /// handler-owned message without depending on the HAL error envelope that
+    /// the root middleware builds.
     #[must_use]
     pub(crate) fn error_message_of(response: &Response) -> Option<String> {
         response
@@ -702,26 +613,6 @@ mod test_helpers {
             .expect_search()
             .returning(|_| Box::pin(async { Ok(Vec::new()) }));
         permissions
-    }
-
-    /// Split `response` into its status, `Content-Type` header and decoded JSON
-    /// body.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error when the body cannot be read or is not JSON.
-    pub(crate) async fn into_parts(
-        response: Response,
-    ) -> Result<(StatusCode, Option<String>, Value), Box<dyn Error>> {
-        let status = response.status();
-        let content_type = response
-            .headers()
-            .get(header::CONTENT_TYPE)
-            .and_then(|value| value.to_str().ok())
-            .map(str::to_owned);
-        let bytes = to_bytes(response.into_body(), usize::MAX).await?;
-        let body = serde_json::from_slice(&bytes)?;
-        Ok((status, content_type, body))
     }
 
     /// Split `response` into its status and decoded JSON body.

@@ -119,8 +119,9 @@ one:
    `routes!(...)` registration supplies each handler's path item and schemas,
    and `ApiDoc` carries the document-scoped members (`info`, `servers`,
    `tags`, `modifiers`).
-5. **Served spec** — `rest.rs::openapi`, mounted at `/doc` by `setup_routes`
-   under the `api-docs` feature; it is generated, never hand-edited.
+5. **Served spec** — `rest.rs::openapi`, served as HTML at `/doc` and as JSON
+   at `/doc/openapi.json` by `setup_routes` under the `api-docs` feature; it is
+   generated, never hand-edited.
 
 The aggregation also carries document-scoped members that do not change when an
 endpoint is added — notably `modifiers(&SecurityAddon)`, which registers the

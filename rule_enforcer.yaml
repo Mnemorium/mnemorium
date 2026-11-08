@@ -4,7 +4,16 @@ rules:
     # The number of single-call helpers the tree may hold: a production function
     # whose name is called exactly once. Adding one is a reviewed decision — inline
     # it, or raise this budget in the same change.
-    max_single_call_functions: 67
+    # Raised from 67 when the REST handler endpoint tests were removed: the count
+    # is textual across `src` (test code included), and those tests supplied call
+    # sites for handler and router helpers that production still calls once.
+    # Raised from 71 for the shared `JsonObject` request-body extractor's
+    # `FromRequest::from_request`, which the framework calls rather than a
+    # textual call site (API-045 request-body hardening).
+    # Raised from 72 when origin/main's complete-upload lifecycle merged in: its
+    # new helpers lost the textual call sites the removed REST endpoint tests
+    # used to supply.
+    max_single_call_functions: 75
   STY-RUST-002:
     bounded_contexts: &bounded_contexts
       - asset

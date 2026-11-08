@@ -23,7 +23,7 @@ use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
     tag = "library",
     params(
         ("playlist_id" = NumericID, Path, description = "Identifier of the playlist the track belongs to"),
-        ("track_index" = u32, Path, description = "Zero-based index of the track within the playlist"),
+        ("track_index" = u64, Path, description = "Zero-based index of the track within the playlist", maximum = 4_294_967_295u64),
     ),
     responses(
         (
@@ -37,6 +37,12 @@ use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
             body = ErrorBody,
             content_type = "application/hal+json",
             description = "Invalid playlist identifier or track index"
+        ),
+        (
+            status = UNPROCESSABLE_ENTITY,
+            body = ErrorBody,
+            content_type = "application/hal+json",
+            description = "The track index is outside the 32-bit range"
         ),
         (
             status = UNAUTHORIZED,
@@ -82,170 +88,4 @@ pub(crate) async fn get_playlist_track(
         response.playlist_id(),
         response.track(),
     )))
-}
-
-#[cfg(test)]
-mod tests {
-
-    use super::*;
-    use crate::application::port::get_playlist_track::{
-        GetPlaylistTrackError, GetPlaylistTrackResponse, GetPlaylistTrackUseCase,
-        MockGetPlaylistTrackUseCase,
-    };
-    use crate::application::port::library_use_case_factory::MockLibraryUseCaseFactory;
-    use crate::domain::model::music_recording::{MusicRecording, TrackIndex};
-    use crate::test_helpers::*;
-    use axum::body::Body;
-    use axum::extract::Request;
-    use axum::http::StatusCode;
-    use axum::routing::get;
-    use rstest::rstest;
-    use serde_json::json;
-    use std::error::Error;
-    use std::sync::Arc;
-    use tower::ServiceExt as _;
-
-    fn fetched() -> Result<GetPlaylistTrackResponse, Box<dyn Error>> {
-        Ok(GetPlaylistTrackResponse::new(
-            3,
-            MusicRecording::try_new(
-                30,
-                Some("Third".to_owned()),
-                Some("USRC17607839".to_owned()),
-                30,
-                201,
-                None,
-                TrackIndex::PlaylistIndex(2),
-            )?,
-        ))
-    }
-
-    async fn send(
-        use_case: MockGetPlaylistTrackUseCase,
-        caller_id: NumericID,
-        playlist_id: &str,
-        track_index: &str,
-    ) -> Result<Response, Box<dyn Error>> {
-        let mut factory = MockLibraryUseCaseFactory::new();
-        factory
-            .expect_get_playlist_track()
-            .times(0..=1)
-            .return_once(move || Arc::new(use_case) as Arc<dyn GetPlaylistTrackUseCase>);
-
-        let mut request = Request::builder()
-            .method("GET")
-            .uri(format!(
-                "/api/v1/library/music/playlist/{playlist_id}/track/{track_index}"
-            ))
-            .body(Body::empty())?;
-        request
-            .extensions_mut()
-            .insert(AuthenticatedUser::from(caller_id));
-
-        let router = axum::Router::new()
-            .route(
-                "/api/v1/library/music/playlist/{playlist_id}/track/{track_index}",
-                get(get_playlist_track),
-            )
-            .with_state(app_state_with_library(Arc::new(factory))?);
-        Ok(router.oneshot(request).await?)
-    }
-
-    #[tokio::test]
-    async fn get_playlist_track_returns_the_track() -> Result<(), Box<dyn Error>> {
-        // Arrange
-        let fetched = fetched()?;
-        let mut use_case = MockGetPlaylistTrackUseCase::new();
-        use_case
-            .expect_execute()
-            .times(1)
-            .withf(|command| {
-                command.caller_id() == 4 && command.playlist_id() == 3 && command.track_index() == 2
-            })
-            .return_once(move |_| Box::pin(async move { Ok(fetched) }));
-
-        // Act
-        let (status, content_type, payload) =
-            into_parts(send(use_case, 4, "3", "2").await?).await?;
-
-        // Assert
-        assert_eq!(status, StatusCode::OK);
-        assert_eq!(content_type.as_deref(), Some("application/hal+json"));
-        assert_eq!(
-            payload,
-            json!({
-                "_links": {
-                    "self": { "href": "/api/v1/library/music/playlist/3/track/2" },
-                    "playlist": { "href": "/api/v1/library/music/playlist/3" }
-                },
-                "id": 2u32,
-                "recording_id": 30i64,
-                "file_id": 201i64,
-                "name": "Third",
-                "isrc_code": "USRC17607839"
-            })
-        );
-        Ok(())
-    }
-
-    #[rstest]
-    #[case::playlist("abc", "0", "invalid music playlist identifier")]
-    #[case::index("3", "abc", "invalid playlist track index")]
-    #[tokio::test]
-    async fn get_playlist_track_malformed_identifier_returns_bad_request(
-        #[case] playlist_id: &str,
-        #[case] track_index: &str,
-        #[case] message: &str,
-    ) -> Result<(), Box<dyn Error>> {
-        // Arrange
-        let use_case = MockGetPlaylistTrackUseCase::new();
-
-        // Act
-        let response = send(use_case, 1, playlist_id, track_index).await?;
-
-        // Assert
-        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
-        assert_eq!(error_message_of(&response).as_deref(), Some(message));
-        Ok(())
-    }
-
-    #[rstest]
-    #[case::unknown_playlist(GetPlaylistTrackError::NoSuchPlaylist)]
-    #[case::unknown_track(GetPlaylistTrackError::NoSuchTrack)]
-    #[tokio::test]
-    async fn get_playlist_track_not_found_returns_not_found(
-        #[case] error: GetPlaylistTrackError,
-    ) -> Result<(), Box<dyn Error>> {
-        // Arrange
-        let mut use_case = MockGetPlaylistTrackUseCase::new();
-        use_case
-            .expect_execute()
-            .times(1)
-            .return_once(move |_| Box::pin(async move { Err(error) }));
-
-        // Act
-        let response = send(use_case, 4, "3", "2").await?;
-
-        // Assert
-        assert_eq!(response.status(), StatusCode::NOT_FOUND);
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn get_playlist_track_unknown_caller_returns_unauthorized() -> Result<(), Box<dyn Error>>
-    {
-        // Arrange
-        let mut use_case = MockGetPlaylistTrackUseCase::new();
-        use_case
-            .expect_execute()
-            .times(1)
-            .return_once(|_| Box::pin(async { Err(GetPlaylistTrackError::NoSuchCaller) }));
-
-        // Act
-        let response = send(use_case, 999, "3", "2").await?;
-
-        // Assert
-        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
-        Ok(())
-    }
 }

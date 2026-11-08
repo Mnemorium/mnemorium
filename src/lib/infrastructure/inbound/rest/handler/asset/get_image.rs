@@ -19,7 +19,7 @@ use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 /// HAL links exposed by a typed-image representation.
 ///
 /// The `self` link addresses the image and `file` names the stored file it
-/// backs (`API-032`, `API-034`, `API-037`).
+/// backs.
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 #[non_exhaustive]
 struct ImageLinks {
@@ -97,8 +97,7 @@ impl From<GetImageError> for ApiError {
 /// Fetch one typed image by its identifier.
 ///
 /// The image follows the read rule of the resource that owns its file. An
-/// unknown image and an unreadable image are one outcome, `404 Not Found`
-/// (`API-044`).
+/// unknown image and an unreadable image answer the same `404 Not Found`.
 #[utoipa::path(
     get,
     operation_id = "get_image",
@@ -156,129 +155,4 @@ pub(crate) async fn get_image(
         .execute(GetImageCommand::new(caller.user_id(), image_id))
         .await?;
     Ok(hal_json(ImageResponse::from_response(&response)))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::application::port::asset_use_case_factory::MockAssetUseCaseFactory;
-    use crate::application::port::get_image::{GetImageUseCase, MockGetImageUseCase};
-    use crate::test_helpers::*;
-    use axum::body::Body;
-    use axum::extract::Request;
-    use axum::http::StatusCode;
-    use axum::routing::get;
-    use chrono::NaiveDate;
-    use mockall::predicate::eq;
-    use serde_json::json;
-    use std::error::Error;
-    use std::sync::Arc;
-    use tower::ServiceExt as _;
-
-    /// Send a GET to `/api/v1/asset/image/{image_id}` on behalf of `caller_id`.
-    async fn send(
-        use_case: MockGetImageUseCase,
-        caller_id: NumericID,
-        image_id: &str,
-    ) -> Result<Response, Box<dyn Error>> {
-        let mut factory = MockAssetUseCaseFactory::new();
-        factory
-            .expect_get_image()
-            .times(0..=1)
-            .return_once(move || Arc::new(use_case) as Arc<dyn GetImageUseCase>);
-
-        let mut request = Request::builder()
-            .method("GET")
-            .uri(format!("/api/v1/asset/image/{image_id}"))
-            .body(Body::empty())?;
-        request
-            .extensions_mut()
-            .insert(AuthenticatedUser::from(caller_id));
-
-        let router = axum::Router::new()
-            .route("/api/v1/asset/image/{image_id}", get(get_image))
-            .with_state(app_state_with_asset(Arc::new(factory))?);
-        Ok(router.oneshot(request).await?)
-    }
-
-    #[tokio::test]
-    async fn get_image_returns_the_representation_and_links() -> Result<(), Box<dyn Error>> {
-        // Arrange
-        let mut use_case = MockGetImageUseCase::new();
-        use_case
-            .expect_execute()
-            .times(1)
-            .with(eq(GetImageCommand::new(3, 19)))
-            .return_once(|_| {
-                Box::pin(async {
-                    Ok(GetImageResponseData::new(
-                        19,
-                        "cover.png".to_owned(),
-                        10,
-                        20,
-                        Orientation::Portrait,
-                        NaiveDate::default(),
-                        100,
-                    ))
-                })
-            });
-
-        // Act
-        let response = send(use_case, 3, "19").await?;
-        let (status, payload) = into_status_and_body(response).await?;
-
-        // Assert
-        assert_eq!(status, StatusCode::OK);
-        assert_eq!(
-            payload,
-            json!({
-                "id": 19i64,
-                "name": "cover.png",
-                "width_px": 10i64,
-                "height_px": 20i64,
-                "orientation": "PORTRAIT",
-                "created_at": "1970-01-01",
-                "file_id": 100i64,
-                "_links": {
-                    "self": { "href": "/api/v1/asset/image/19" },
-                    "file": { "href": "/api/v1/asset/file/100" },
-                },
-            })
-        );
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn get_image_unknown_image_returns_not_found() -> Result<(), Box<dyn Error>> {
-        // Arrange
-        let mut use_case = MockGetImageUseCase::new();
-        use_case
-            .expect_execute()
-            .times(1)
-            .return_once(|_| Box::pin(async { Err(GetImageError::NoSuchImage) }));
-
-        // Act
-        let response = send(use_case, 3, "19").await?;
-
-        // Assert
-        assert_eq!(response.status(), StatusCode::NOT_FOUND);
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn get_image_malformed_identifier_returns_bad_request() -> Result<(), Box<dyn Error>> {
-        // Arrange
-        let use_case = MockGetImageUseCase::new();
-
-        // Act
-        let response = send(use_case, 3, "abc").await?;
-
-        // Assert
-        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
-        assert_eq!(
-            error_message_of(&response).as_deref(),
-            Some("invalid image identifier")
-        );
-        Ok(())
-    }
 }

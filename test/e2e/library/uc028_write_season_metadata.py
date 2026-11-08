@@ -138,4 +138,4 @@ def test_putting_an_out_of_range_season_index_is_rejected(
         timeout=10,
     )
 
-    assert_error_body(response, 400)
+    assert_error_body(response, 422)

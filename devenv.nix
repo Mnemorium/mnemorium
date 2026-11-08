@@ -16,12 +16,14 @@
     # npm global installs go to a user-writable prefix inside the devenv state
     # directory, so `npm install -g` never needs sudo and is not wiped by nix.
     NPM_CONFIG_PREFIX = "${config.devenv.state}/npm";
+    # `uv tool install` binaries go to the same user-writable state directory.
+    UV_TOOL_BIN_DIR = "${config.devenv.state}/uv/bin";
   };
 
-  # Put the npm global prefix's binaries on PATH so the task-installed CLIs
-  # (e.g. openspec) are runnable directly.
+  # Put the npm and uv tool prefixes' binaries on PATH so the task-installed
+  # CLIs (e.g. openspec, schemathesis) are runnable directly.
   enterShell = ''
-    export PATH="$NPM_CONFIG_PREFIX/bin:$PATH"
+    export PATH="$UV_TOOL_BIN_DIR:$NPM_CONFIG_PREFIX/bin:$PATH"
   '';
 
   # https://devenv.sh/packages/
@@ -41,6 +43,7 @@
     pkgs.sqlx-cli
     pkgs.sqlfluff
     pkgs.ast-grep
+    pkgs.uv
     pkgs.jq
     pkgs.yq
     multiverse.ffmpeg-headless."6.1.2"
@@ -88,6 +91,14 @@
       enable = true;
       name = "clippy";
       entry = "cargo clippy --all-targets --all-features -- -D warnings";
+      language = "rust";
+      pass_filenames = false; # It work on a package basis
+      files = "\\.rs$";
+    };
+    clippy-default-features = {
+      enable = true;
+      name = "clippy (default features)";
+      entry = "cargo clippy --all-targets -- -D warnings";
       language = "rust";
       pass_filenames = false; # It work on a package basis
       files = "\\.rs$";
@@ -143,7 +154,7 @@
     coverage = {
       enable = true;
       name = "Coverage >= 80%";
-      entry = "cargo llvm-cov --lib --fail-under-functions 80 --fail-under-regions 80 --fail-under-lines 80";
+      entry = "cargo llvm-cov --lib --features test-seed --ignore-filename-regex 'src/lib/infrastructure/inbound/rest/handler' --fail-under-functions 80 --fail-under-regions 80 --fail-under-lines 80";
       pass_filenames = false;
       files = "\\.rs$";
       language = "rust";
@@ -155,7 +166,7 @@
       enable = true;
       name = "sqlfluff";
       entry = "sqlfluff lint --dialect sqlite";
-      files = "migrations/.*\\.sql$";
+      files = "(migrations|test/seed/sql)/.*\\.sql$";
     };
 
     cargo-deny = {
@@ -247,18 +258,23 @@
   };
 
   tasks."docs:html-coverage" = {
-    exec = "cargo llvm-cov --lib --html && xdg-open target/llvm-cov/html/index.html";
+    exec = "cargo llvm-cov --lib --ignore-filename-regex 'src/lib/infrastructure/inbound/rest/handler' --html && xdg-open target/llvm-cov/html/index.html";
     description = "Generate HTML coverage report and open it in the browser";
   };
 
   tasks."test:coverage" = {
-    exec = "cargo llvm-cov --lib";
+    exec = "cargo llvm-cov --lib --ignore-filename-regex 'src/lib/infrastructure/inbound/rest/handler'";
     description = "Generate test coverage report";
   };
 
   tasks."test:e2e" = {
     exec = "pytest test/e2e";
     description = "Run the E2E tests against a running server";
+  };
+
+  tasks."test:api" = {
+    exec = "script/api_fuzz.sh";
+    description = "Fuzz the API with Schemathesis against a disposable, seeded server";
   };
 
   tasks."test:configuration" = {
@@ -271,6 +287,11 @@
   tasks."setup:openspec" = {
     exec = "npm install -g --prefix \"$NPM_CONFIG_PREFIX\" @fission-ai/openspec@latest";
     description = "Install the OpenSpec CLI globally into the devenv state prefix";
+  };
+
+  tasks."setup:schemathesis" = {
+    exec = "uv tool install schemathesis==4.33.1";
+    description = "Install the Schemathesis CLI as a uv tool";
   };
 
   # Formatting tasks
@@ -306,15 +327,15 @@
   };
 
   tasks."fmt:sql" = {
-    exec = "sqlfluff format --dialect sqlite migrations";
+    exec = "sqlfluff format --dialect sqlite migrations test/seed/sql";
     description = "Format sql file";
   };
 
   # Linting
 
   tasks."lint:rust" = {
-    exec = "cargo clippy --all-targets -- -D warnings";
-    description = "Lint rust code";
+    exec = "cargo clippy --all-targets --all-features -- -D warnings && cargo clippy --all-targets -- -D warnings";
+    description = "Lint rust code with and without all features";
   };
 
   tasks."lint:yaml" = {
@@ -323,7 +344,7 @@
   };
 
   tasks."lint:sql" = {
-    exec = "sqlfluff lint --dialect sqlite migrations";
+    exec = "sqlfluff lint --dialect sqlite migrations test/seed/sql";
     description = "Lint sql file";
   };
 

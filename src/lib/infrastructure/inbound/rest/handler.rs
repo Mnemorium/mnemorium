@@ -14,13 +14,21 @@ pub(crate) mod library;
 /// The User context endpoints.
 pub(crate) mod user;
 
+use axum::extract::{FromRequest, Request};
 use axum::middleware;
 use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
 
+use serde::de::DeserializeOwned;
+use serde_json::{Number, Value};
+use tracing::warn;
+
+#[cfg(feature = "api-docs")]
+use axum::{Json, routing};
 #[cfg(feature = "api-docs")]
 use utoipa_scalar::Servable as _;
 
+use crate::infrastructure::inbound::rest::api_error::ApiError;
 use crate::infrastructure::inbound::rest::app_state::AppState;
 use crate::infrastructure::inbound::rest::handler::asset::asset_routes;
 use crate::infrastructure::inbound::rest::handler::identity::identity_routes;
@@ -31,6 +39,107 @@ use crate::infrastructure::inbound::rest::middleware::rate_limit::LoginRateLimit
 use crate::infrastructure::inbound::rest::middleware::trace::tracing;
 #[cfg(feature = "api-docs")]
 use crate::infrastructure::inbound::rest::openapi;
+
+/// A JSON request body that must be a JSON object.
+///
+/// JSON Schema describes every body DTO as an object, so a sequence is not a
+/// valid representation (serde would otherwise accept one as a positional
+/// struct). JSON Schema also treats a whole-number float such as `1.0` as an
+/// integer, while serde rejects it for an integer field; the extractor
+/// normalises those floats before deserializing.
+#[expect(
+    clippy::field_scoped_visibility_modifiers,
+    reason = "handlers destructure the crate-private tuple; no public surface is exposed"
+)]
+pub(crate) struct JsonObject<T>(pub(crate) T);
+
+impl<T, S> FromRequest<S> for JsonObject<T>
+where
+    T: DeserializeOwned,
+    S: Send + Sync,
+{
+    type Rejection = ApiError;
+
+    async fn from_request(req: Request, state: &S) -> Result<Self, Self::Rejection> {
+        let axum::Json(value) = axum::Json::<Value>::from_request(req, state)
+            .await
+            .map_err(ApiError::from)?;
+        let normalised = normalise_numbers(value);
+        if !normalised.is_object() {
+            warn!(
+                target: "security",
+                event = "input_validation_failed",
+                field = "body",
+                reason = "not_object",
+                "rejected a request body"
+            );
+            return Err(ApiError::UnprocessableEntity(
+                "the request body must be a JSON object".to_owned(),
+            ));
+        }
+        serde_json::from_value(normalised).map(Self).map_err(|_| {
+            warn!(
+                target: "security",
+                event = "deserialization_failed",
+                source = "json_body",
+                reason = "schema_mismatch",
+                "rejected a request body"
+            );
+            ApiError::UnprocessableEntity(
+                "the request body does not match the expected schema".to_owned(),
+            )
+        })
+    }
+}
+
+/// Convert whole-number floats into integers, recursively.
+///
+/// The conversion only applies when the value is finite, integral and inside
+/// the target range, so a genuinely fractional or out-of-range value still
+/// fails deserialization.
+#[expect(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    reason = "the value is finite, integral and range-checked before the cast, so neither truncation nor sign loss can occur"
+)]
+fn normalise_numbers(value: Value) -> Value {
+    match value {
+        Value::Number(number) => {
+            if number.is_i64() || number.is_u64() {
+                return Value::Number(number);
+            }
+            let Some(float) = number.as_f64() else {
+                return Value::Number(number);
+            };
+            if !float.is_finite() || float.fract() != 0.0 {
+                return Value::Number(number);
+            }
+            // Strict bounds: an integer literal just outside `i64` is parsed as
+            // `f64` and rounds to -2^63 or 2^63. Converting that boundary value
+            // would turn an out-of-range integer into a valid one, so leave it
+            // for serde to reject. An integral `f64` inside these bounds is
+            // exactly representable as its target integer.
+            let i64_bound = 2.0f64.powi(63);
+            if float > -i64_bound && float < i64_bound {
+                return Value::Number(Number::from(float as i64));
+            }
+            // 2^64 is the exclusive upper bound.
+            let u64_bound = 2.0f64.powi(64);
+            if float > 0.0 && float < u64_bound {
+                return Value::Number(Number::from(float as u64));
+            }
+            Value::Number(number)
+        }
+        Value::Array(items) => Value::Array(items.into_iter().map(normalise_numbers).collect()),
+        Value::Object(entries) => Value::Object(
+            entries
+                .into_iter()
+                .map(|(key, nested)| (key, normalise_numbers(nested)))
+                .collect(),
+        ),
+        other @ (Value::Null | Value::Bool(_) | Value::String(_)) => other,
+    }
+}
 
 /// Build the application router.
 ///
@@ -49,9 +158,9 @@ use crate::infrastructure::inbound::rest::openapi;
 /// cannot drift. [`crate::infrastructure::inbound::rest::openapi`] assembles
 /// the document from the same registration.
 ///
-/// With the `api-docs` feature the interactive documentation is mounted at
-/// `/doc`, outside the `/api/v1` API base; it serves the document
-/// `rest::openapi` assembles.
+/// With the `api-docs` feature the documentation is mounted outside the
+/// `/api/v1` API base: the interactive reference at `/doc` and the document
+/// `rest::openapi` assembles, as JSON, at `/doc/openapi.json`.
 pub(crate) fn setup_routes(state: &AppState, limiter: &LoginRateLimiter) -> axum::Router {
     #[cfg_attr(
         not(feature = "api-docs"),
@@ -70,8 +179,17 @@ pub(crate) fn setup_routes(state: &AppState, limiter: &LoginRateLimiter) -> axum
 
     #[cfg(feature = "api-docs")]
     {
-        let documentation: axum::Router = utoipa_scalar::Scalar::with_url("/doc", openapi()).into();
-        api = api.merge(OpenApiRouter::from(documentation));
+        let document = openapi();
+        let json_document = document.clone();
+        let documentation: axum::Router = utoipa_scalar::Scalar::with_url("/doc", document).into();
+        let specification: axum::Router = axum::Router::new().route(
+            "/doc/openapi.json",
+            routing::get(move || {
+                let response_document = json_document.clone();
+                async move { Json(response_document) }
+            }),
+        );
+        api = api.merge(OpenApiRouter::from(documentation.merge(specification)));
     }
 
     api.layer(middleware::from_fn(tracing))
@@ -82,300 +200,49 @@ pub(crate) fn setup_routes(state: &AppState, limiter: &LoginRateLimiter) -> axum
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::application::port::identity_use_case_factory::MockIdentityUseCaseFactory;
-    use crate::application::port::login_user::{
-        LoginUserError, LoginUserResponse, LoginUserUseCase, MockLoginUserUseCase,
-    };
-    use crate::test_helpers::*;
-    use axum::body::{Body, to_bytes};
-    use axum::extract::{ConnectInfo, Request};
-    use axum::http::{StatusCode, header};
-    use axum::response::Response;
-    use serde_json::{Value, json};
+    use serde::Deserialize;
     use std::error::Error;
-    use std::net::SocketAddr;
-    use std::sync::Arc;
-    use tower::ServiceExt as _;
 
-    /// Build a request with `method` and `uri`, optionally carrying a JSON body.
-    ///
-    /// The request always carries a `ConnectInfo` peer address, so the login
-    /// rate limiter can extract a client key under the default (peer IP)
-    /// configuration.
-    fn request(method: &str, uri: &str, body: Option<&str>) -> Result<Request, Box<dyn Error>> {
-        let mut builder = Request::builder()
-            .method(method)
-            .uri(uri)
-            .extension(ConnectInfo(SocketAddr::from(([127, 0, 0, 1], 0))));
-        if body.is_some() {
-            builder = builder.header(header::CONTENT_TYPE, "application/json");
-        }
-        let request_body = body.map_or_else(Body::empty, |text| Body::from(text.to_owned()));
-        Ok(builder.body(request_body)?)
+    /// A body whose integer fields must accept the schema's whole-number floats.
+    #[derive(Debug, Deserialize, PartialEq)]
+    struct Body {
+        id: i64,
+        nested: Vec<u64>,
     }
 
-    /// Assert `response` is the HAL error envelope for `status` at `href` and
-    /// return the error message, so the caller can assert it.
-    async fn assert_envelope(
-        response: Response,
-        status: StatusCode,
-        href: &str,
-    ) -> Result<String, Box<dyn Error>> {
-        assert_eq!(response.status(), status);
-        assert_eq!(
-            response
-                .headers()
-                .get(header::CONTENT_TYPE)
-                .and_then(|value| value.to_str().ok()),
-            Some("application/hal+json"),
-            "every error must be served as the HAL media type (`API-031`)"
-        );
-        let bytes = to_bytes(response.into_body(), usize::MAX).await?;
-        let payload: Value = serde_json::from_slice(&bytes)?;
-        let object = payload
-            .as_object()
-            .ok_or_else(|| anyhow::anyhow!("the error envelope must be a JSON object"))?;
-        let mut keys: Vec<&str> = object.keys().map(String::as_str).collect();
-        keys.sort_unstable();
-        assert_eq!(
-            keys,
-            vec!["_links", "error"],
-            "the envelope must carry exactly `error` and `_links`"
-        );
-        let message = payload
-            .get("error")
-            .and_then(Value::as_str)
-            .unwrap_or_default();
-        assert!(
-            !message.is_empty(),
-            "the envelope must carry a non-empty message"
-        );
-        let actual_href = payload
-            .get("_links")
-            .and_then(|links| links.get("self"))
-            .and_then(|self_link| self_link.get("href"))
-            .and_then(Value::as_str);
-        assert_eq!(actual_href, Some(href));
-        Ok(message.to_owned())
-    }
-
-    /// A router whose token provider is built from the fixture configuration.
-    fn plain_router() -> Result<axum::Router, Box<dyn Error>> {
-        let state = app_state()?;
-        let limiter = LoginRateLimiter::new(state.configuration().security().rate_limit());
-        Ok(setup_routes(&state, &limiter))
-    }
-
-    #[tokio::test]
-    async fn unknown_route_is_wrapped_and_drops_the_query_string() -> Result<(), Box<dyn Error>> {
-        // Act
-        let response = plain_router()?
-            .oneshot(request("GET", "/api/v1/does-not-exist?x=1", None)?)
-            .await?;
-
-        // Assert
-        assert_eq!(
-            assert_envelope(response, StatusCode::NOT_FOUND, "/api/v1/does-not-exist").await?,
-            "Not Found"
-        );
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn method_not_allowed_is_wrapped_and_keeps_allow() -> Result<(), Box<dyn Error>> {
-        // Act
-        let response = plain_router()?
-            .oneshot(request("DELETE", "/health", None)?)
-            .await?;
-
-        // Assert
-        assert!(
-            response.headers().get(header::ALLOW).is_some(),
-            "the Allow header must survive the rewrite"
-        );
-        assert_envelope(response, StatusCode::METHOD_NOT_ALLOWED, "/health").await?;
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn extractor_rejection_is_wrapped() -> Result<(), Box<dyn Error>> {
-        // Act
-        let response = plain_router()?
-            .oneshot(request("POST", "/api/v1/identity/login", Some("not json"))?)
-            .await?;
-
-        // Assert
-        assert_envelope(response, StatusCode::BAD_REQUEST, "/api/v1/identity/login").await?;
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn authentication_failure_is_wrapped() -> Result<(), Box<dyn Error>> {
-        // Act
-        let response = plain_router()?
-            .oneshot(request("GET", "/api/v1/user/me", None)?)
-            .await?;
-
-        // Assert
-        assert_eq!(
-            assert_envelope(response, StatusCode::UNAUTHORIZED, "/api/v1/user/me").await?,
-            "missing or malformed authorization header"
-        );
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn use_case_error_is_wrapped() -> Result<(), Box<dyn Error>> {
+    #[test]
+    fn whole_number_floats_become_integers() -> Result<(), Box<dyn Error>> {
         // Arrange
-        let mut login_use_case = MockLoginUserUseCase::new();
-        login_use_case
-            .expect_execute()
-            .times(1)
-            .return_once(|_| Box::pin(async { Err(LoginUserError::InvalidPassword) }));
-        let mut factory = MockIdentityUseCaseFactory::new();
-        factory
-            .expect_login_user()
-            .times(0..=1)
-            .return_once(move || Arc::new(login_use_case) as Arc<dyn LoginUserUseCase>);
-        let state = app_state_with_identity(Arc::new(factory))?;
-        let limiter = LoginRateLimiter::new(state.configuration().security().rate_limit());
-
+        let value: Value = serde_json::from_str(
+            r#"{"id":-1435657098873592.0,"nested":[1.0,9223372036854775808.0]}"#,
+        )?;
         // Act
-        let body = json!({
-            "username": "alice",
-            "password": SECRET_PASSWORD,
-        })
-        .to_string();
-        let response = setup_routes(&state, &limiter)
-            .oneshot(request("POST", "/api/v1/identity/login", Some(&body))?)
-            .await?;
-
+        let body: Body = serde_json::from_value(normalise_numbers(value))?;
         // Assert
-        assert_eq!(
-            assert_envelope(response, StatusCode::UNAUTHORIZED, "/api/v1/identity/login").await?,
-            "invalid credentials"
-        );
+        assert_eq!(body.id, -1_435_657_098_873_592);
+        assert_eq!(body.nested, [1, 9_223_372_036_854_775_808]);
         Ok(())
     }
 
-    #[tokio::test]
-    async fn login_rate_limit_rejects_after_the_burst() -> Result<(), Box<dyn Error>> {
-        // Arrange: every call succeeds, so only the rate limiter can reject.
-        let mut factory = MockIdentityUseCaseFactory::new();
-        factory.expect_login_user().times(5).returning(|| {
-            let mut login_use_case = MockLoginUserUseCase::new();
-            login_use_case.expect_execute().returning(|_| {
-                Box::pin(async { Ok(LoginUserResponse::new("jwt-token".to_owned(), 3600)) })
-            });
-            Arc::new(login_use_case) as Arc<dyn LoginUserUseCase>
-        });
-        let state = app_state_with_identity(Arc::new(factory))?;
-        let limiter = LoginRateLimiter::new(state.configuration().security().rate_limit());
-        let router = setup_routes(&state, &limiter);
-        let body = json!({ "username": "alice", "password": SECRET_PASSWORD }).to_string();
-
-        // Act: spend the default burst of five, then one more.
-        let first = router
-            .clone()
-            .oneshot(request("POST", "/api/v1/identity/login", Some(&body))?)
-            .await?;
-        assert_eq!(
-            first.status(),
-            StatusCode::OK,
-            "a request within the burst must succeed"
-        );
-        let second = router
-            .clone()
-            .oneshot(request("POST", "/api/v1/identity/login", Some(&body))?)
-            .await?;
-        assert_eq!(
-            second.status(),
-            StatusCode::OK,
-            "a request within the burst must succeed"
-        );
-        let third = router
-            .clone()
-            .oneshot(request("POST", "/api/v1/identity/login", Some(&body))?)
-            .await?;
-        assert_eq!(
-            third.status(),
-            StatusCode::OK,
-            "a request within the burst must succeed"
-        );
-        let fourth = router
-            .clone()
-            .oneshot(request("POST", "/api/v1/identity/login", Some(&body))?)
-            .await?;
-        assert_eq!(
-            fourth.status(),
-            StatusCode::OK,
-            "a request within the burst must succeed"
-        );
-        let fifth = router
-            .clone()
-            .oneshot(request("POST", "/api/v1/identity/login", Some(&body))?)
-            .await?;
-        assert_eq!(
-            fifth.status(),
-            StatusCode::OK,
-            "a request within the burst must succeed"
-        );
-        let rejected = router
-            .oneshot(request("POST", "/api/v1/identity/login", Some(&body))?)
-            .await?;
-
+    #[test]
+    fn fractional_floats_are_left_for_serde_to_reject() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let value: Value = serde_json::from_str(r#"{"id":1.5,"nested":[]}"#)?;
+        // Act
+        let result = serde_json::from_value::<Body>(normalise_numbers(value));
         // Assert
-        assert!(
-            rejected.headers().get(header::RETRY_AFTER).is_some(),
-            "a rate-limited response must carry Retry-After (`API-027`)"
-        );
-        assert_eq!(
-            assert_envelope(
-                rejected,
-                StatusCode::TOO_MANY_REQUESTS,
-                "/api/v1/identity/login",
-            )
-            .await?,
-            "too many requests"
-        );
+        assert!(result.is_err());
         Ok(())
     }
 
-    #[cfg(feature = "api-docs")]
-    #[tokio::test]
-    async fn documentation_is_mounted_at_the_root_doc_path() -> Result<(), Box<dyn Error>> {
+    #[test]
+    fn an_integer_outside_i64_stays_a_float() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let value: Value = serde_json::from_str(r#"{"id":-9223372036854775809,"nested":[]}"#)?;
         // Act
-        let response = plain_router()?
-            .oneshot(request("GET", "/doc", None)?)
-            .await?;
-
-        // Assert: the reference sits outside the `/api/v1` API base.
-        assert_eq!(response.status(), StatusCode::OK);
-        assert_eq!(
-            response
-                .headers()
-                .get(header::CONTENT_TYPE)
-                .and_then(|value| value.to_str().ok()),
-            Some("text/html; charset=utf-8"),
-            "the reference must be served as HTML"
-        );
-        Ok(())
-    }
-
-    #[cfg(feature = "api-docs")]
-    #[tokio::test]
-    async fn documentation_is_not_nested_under_the_api_base() -> Result<(), Box<dyn Error>> {
-        // Act
-        let response = plain_router()?
-            .oneshot(request("GET", "/api/v1/doc", None)?)
-            .await?;
-
+        let result = serde_json::from_value::<Body>(normalise_numbers(value));
         // Assert
-        assert_eq!(
-            response.status(),
-            StatusCode::NOT_FOUND,
-            "the reference must not be reachable under `/api/v1`"
-        );
+        assert!(result.is_err());
         Ok(())
     }
 }

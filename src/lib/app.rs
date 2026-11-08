@@ -23,6 +23,8 @@ use crate::application::use_case::ensure_storage_directories::EnsureStorageDirec
 use crate::application::use_case::initialize_root_admin::InitializeRootAdmin;
 use crate::application::use_case::load_configuration::LoadConfiguration;
 use crate::application::use_case::load_state::LoadState;
+#[cfg(feature = "test-seed")]
+use crate::application::use_case::upload_layout::media_root;
 use crate::infrastructure::inbound::media_ingest::MediaIngestRunner;
 use crate::infrastructure::inbound::rest::app_state::AppState;
 use crate::infrastructure::inbound::rest::handler;
@@ -40,6 +42,8 @@ use crate::infrastructure::outbound::random::password_generator::RandomPasswordG
 use crate::infrastructure::outbound::random::secret_generator::ChaChaSecretGenerator;
 use crate::infrastructure::outbound::sqlx::sqlite3::init_db;
 use crate::infrastructure::outbound::sqlx::unit_of_work::SqlxUnitOfWorkFactory;
+#[cfg(feature = "test-seed")]
+use crate::infrastructure::seed;
 use crate::infrastructure::use_case_factory::asset::RuntimeAssetUseCaseFactory;
 use crate::infrastructure::use_case_factory::identity::RuntimeIdentityUseCaseFactory;
 use crate::infrastructure::use_case_factory::library::RuntimeLibraryUseCaseFactory;
@@ -108,6 +112,9 @@ pub async fn run() -> anyhow::Result<()> {
     )
     .await?;
 
+    #[cfg(feature = "test-seed")]
+    let seed_pool = pool.clone();
+
     let unit_of_work_factory = Arc::new(SqlxUnitOfWorkFactory::new(pool));
 
     let password_hasher = Arc::new(Argon2PasswordHasher::new(
@@ -153,6 +160,9 @@ pub async fn run() -> anyhow::Result<()> {
             Arc::clone(&probe_permits),
             Arc::clone(&configuration),
         ));
+
+    #[cfg(feature = "test-seed")]
+    seed::apply(&seed_pool, instance_state.pepper(), &media_root()).await?;
 
     let file_storage = Arc::new(FileSystemStorage::new());
     let storage_directories = EnsureStorageDirectories::new(Arc::clone(&file_storage))

@@ -1,5 +1,3 @@
-use axum::Json;
-use axum::extract::rejection::JsonRejection;
 use axum::extract::{Path, State};
 use axum::http::{HeaderValue, StatusCode, header};
 use axum::response::Response;
@@ -11,6 +9,7 @@ use crate::domain::alias::NumericID;
 use crate::infrastructure::inbound::rest::api_error::{ApiError, ErrorBody};
 use crate::infrastructure::inbound::rest::app_state::AppState;
 use crate::infrastructure::inbound::rest::hal::hal_json;
+use crate::infrastructure::inbound::rest::handler::JsonObject;
 use crate::infrastructure::inbound::rest::handler::library::{
     MediumResponse, parse_album_id, parse_write_index,
 };
@@ -21,7 +20,7 @@ use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 #[non_exhaustive]
 pub(crate) struct PutAlbumMediumRequest {
     /// Medium type (`CD` or `DIGITAL`).
-    #[schema(example = "CD")]
+    #[schema(example = "CD", pattern = "^(CD|DIGITAL)$")]
     #[serde(rename = "type")]
     pub medium_type: String,
 }
@@ -38,7 +37,7 @@ pub(crate) struct PutAlbumMediumRequest {
     tag = "library",
     params(
         ("album_id" = NumericID, Path, description = "Identifier of the album"),
-        ("medium_index" = u8, Path, description = "Album-scoped index of the medium"),
+        ("medium_index" = u8, Path, description = "Album-scoped index of the medium", maximum = 255u8),
     ),
     request_body = PutAlbumMediumRequest,
     responses(
@@ -121,7 +120,7 @@ pub(crate) async fn put_album_medium(
     Path((album_id_value, medium_index_value)): Path<(String, String)>,
     State(state): State<AppState>,
     caller: AuthenticatedUser,
-    payload: Result<Json<PutAlbumMediumRequest>, JsonRejection>,
+    payload: JsonObject<PutAlbumMediumRequest>,
 ) -> Result<Response, ApiError> {
     let album_id = parse_album_id(&album_id_value)?;
     let medium_index = parse_write_index(
@@ -129,7 +128,7 @@ pub(crate) async fn put_album_medium(
         "medium_index",
         "invalid music medium index",
     )?;
-    let Json(request) = payload.map_err(ApiError::from)?;
+    let JsonObject(request) = payload;
     let response = state
         .library_use_case_factory()
         .put_album_medium()
@@ -152,192 +151,4 @@ pub(crate) async fn put_album_medium(
         );
     }
     Ok(http_response)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::application::port::library_use_case_factory::MockLibraryUseCaseFactory;
-    use crate::application::port::put_album_medium::{
-        MockPutAlbumMediumUseCase, PutAlbumMediumError, PutAlbumMediumResponse,
-        PutAlbumMediumUseCase,
-    };
-    use crate::domain::model::music_album::MusicAlbum;
-    use crate::domain::model::music_medium::{MediumIndex, MusicMedium};
-    use crate::infrastructure::inbound::rest::handler::library::library_routes;
-    use crate::test_helpers::*;
-    use axum::body::Body;
-    use axum::extract::Request;
-    use axum::routing::put;
-    use rstest::rstest;
-    use serde_json::json;
-    use std::error::Error;
-    use std::sync::Arc;
-    use tower::ServiceExt as _;
-
-    /// Send a PUT to the medium route on behalf of `caller_id`.
-    async fn send(
-        use_case: MockPutAlbumMediumUseCase,
-        caller_id: NumericID,
-        album_id: &str,
-        medium_index: &str,
-        body: &str,
-    ) -> Result<Response, Box<dyn Error>> {
-        let mut factory = MockLibraryUseCaseFactory::new();
-        factory
-            .expect_put_album_medium()
-            .times(0..=1)
-            .return_once(move || Arc::new(use_case) as Arc<dyn PutAlbumMediumUseCase>);
-
-        let mut request = Request::builder()
-            .method("PUT")
-            .uri(format!(
-                "/api/v1/library/music/album/{album_id}/medium/{medium_index}"
-            ))
-            .header(header::CONTENT_TYPE, "application/json")
-            .body(Body::from(body.to_owned()))?;
-        request
-            .extensions_mut()
-            .insert(AuthenticatedUser::from(caller_id));
-
-        let router = axum::Router::new()
-            .route(
-                "/api/v1/library/music/album/{album_id}/medium/{medium_index}",
-                put(put_album_medium),
-            )
-            .with_state(app_state_with_library(Arc::new(factory))?);
-        Ok(router.oneshot(request).await?)
-    }
-
-    /// The album holding one empty `CD` medium at index 1.
-    fn album() -> Result<MusicAlbum, Box<dyn Error>> {
-        sample_album(7, vec![MusicMedium::new(MediumIndex::Cd(1), Vec::new())])
-    }
-
-    #[tokio::test]
-    async fn put_album_medium_creates_the_medium() -> Result<(), Box<dyn Error>> {
-        // Arrange
-        let stored = album()?;
-        let mut use_case = MockPutAlbumMediumUseCase::new();
-        use_case
-            .expect_execute()
-            .times(1)
-            .withf(|command| {
-                command.album_id() == 7
-                    && command.medium_index() == 1
-                    && command.medium_type() == "CD"
-            })
-            .return_once(move |_| {
-                let response = PutAlbumMediumResponse::new(stored.clone(), 1, true);
-                Box::pin(async move { Ok(response) })
-            });
-
-        // Act
-        let (status, _, payload) =
-            into_parts(send(use_case, 1, "7", "1", r#"{"type":"CD"}"#).await?).await?;
-
-        // Assert
-        assert_eq!(status, StatusCode::CREATED);
-        assert_eq!(payload.get("type"), Some(&json!("CD")));
-        assert_eq!(
-            payload.pointer("/_links/self/href"),
-            Some(&json!("/api/v1/library/music/album/7/medium/1"))
-        );
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn put_album_medium_retypes_the_medium() -> Result<(), Box<dyn Error>> {
-        // Arrange
-        let stored = album()?;
-        let mut use_case = MockPutAlbumMediumUseCase::new();
-        use_case.expect_execute().times(1).return_once(move |_| {
-            let response = PutAlbumMediumResponse::new(stored.clone(), 1, false);
-            Box::pin(async move { Ok(response) })
-        });
-
-        // Act
-        let response = send(use_case, 1, "7", "1", r#"{"type":"CD"}"#).await?;
-
-        // Assert
-        assert_eq!(response.status(), StatusCode::OK);
-        Ok(())
-    }
-
-    #[rstest]
-    #[case::invalid_type(
-        PutAlbumMediumError::InvalidMediumType,
-        StatusCode::UNPROCESSABLE_ENTITY,
-        "the medium type must be CD or DIGITAL"
-    )]
-    #[case::default_album(
-        PutAlbumMediumError::DefaultAlbum,
-        StatusCode::UNPROCESSABLE_ENTITY,
-        "the default music album cannot be written"
-    )]
-    #[case::unknown_album(
-        PutAlbumMediumError::NoSuchAlbum,
-        StatusCode::NOT_FOUND,
-        "a music album with this identifier does not exist"
-    )]
-    #[case::conflict(
-        PutAlbumMediumError::Conflict,
-        StatusCode::CONFLICT,
-        "the music medium cannot be written"
-    )]
-    #[tokio::test]
-    async fn put_album_medium_error_maps_to_status(
-        #[case] error: PutAlbumMediumError,
-        #[case] status: StatusCode,
-        #[case] message: &str,
-    ) -> Result<(), Box<dyn Error>> {
-        // Arrange
-        let mut use_case = MockPutAlbumMediumUseCase::new();
-        use_case
-            .expect_execute()
-            .times(1)
-            .return_once(move |_| Box::pin(async { Err(error) }));
-
-        // Act
-        let response = send(use_case, 1, "7", "1", r#"{"type":"VINYL"}"#).await?;
-
-        // Assert
-        assert_eq!(response.status(), status);
-        assert_eq!(error_message_of(&response).as_deref(), Some(message));
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn put_album_medium_out_of_range_index_is_unprocessable() -> Result<(), Box<dyn Error>> {
-        // Arrange
-        let use_case = MockPutAlbumMediumUseCase::new();
-
-        // Act
-        let response = send(use_case, 1, "7", "256", r#"{"type":"CD"}"#).await?;
-
-        // Assert
-        assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn put_album_medium_missing_credentials_returns_unauthorized()
-    -> Result<(), Box<dyn Error>> {
-        // Arrange
-        let state = app_state_with_library(Arc::new(MockLibraryUseCaseFactory::new()))?;
-        let request = Request::builder()
-            .method("PUT")
-            .uri("/music/album/7/medium/1")
-            .header(header::CONTENT_TYPE, "application/json")
-            .body(Body::from(r#"{"type":"CD"}"#))?;
-
-        // Act
-        let response: Response = axum::Router::from(library_routes(&state))
-            .oneshot(request)
-            .await?;
-
-        // Assert
-        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
-        Ok(())
-    }
 }

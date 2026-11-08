@@ -15,6 +15,9 @@ target/
 # Generated site
 site/
 
+# Local library root
+/media/
+
 # Local databases
 dev.db*
 mnemorium.db*
@@ -36,6 +39,9 @@ events.ndjson
 
 # Security scan artifacts
 .artifacts/
+
+# Schemathesis local storage
+.schemathesis/
 
 # Personal plans
 .opencode/plan/

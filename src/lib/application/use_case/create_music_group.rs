@@ -132,7 +132,9 @@ where
                         // A concurrent insert won the race for the unique name
                         // (`STY-RUST-015`).
                         RepositoryError::AlreadyExist => CreateMusicGroupError::NameAlreadyExists,
-                        RepositoryError::Conflict => CreateMusicGroupError::InvalidCover,
+                        RepositoryError::Conflict | RepositoryError::DataIntegrityViolation => {
+                            CreateMusicGroupError::InvalidCover
+                        }
                         other => CreateMusicGroupError::Unknown(other.into()),
                     })?;
 
@@ -358,6 +360,39 @@ mod tests {
             .expect_create()
             .times(1)
             .returning(|_| Box::pin(async { Err(RepositoryError::Conflict) }));
+        let harness = harness_with(users, groups);
+        let use_case: UseCase = CreateMusicGroup::new(Arc::clone(&harness.factory));
+
+        // Act
+        let result = use_case
+            .execute(CreateMusicGroupCommand::new(
+                1,
+                "The Group".to_owned(),
+                Some(19),
+            ))
+            .await;
+
+        // Assert
+        assert!(matches!(result, Err(CreateMusicGroupError::InvalidCover)));
+        assert!(harness.rolled_back.load(Ordering::SeqCst));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn create_music_group_missing_cover_returns_invalid_cover() -> Result<(), Box<dyn Error>>
+    {
+        // Arrange: the repository reports the USER image as a trigger conflict.
+        let mut users = MockUserRepository::new();
+        expect_admin(&mut users, 1)?;
+        let mut groups = MockMusicGroupRepository::new();
+        groups
+            .expect_search()
+            .times(1)
+            .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+        groups
+            .expect_create()
+            .times(1)
+            .returning(|_| Box::pin(async { Err(RepositoryError::DataIntegrityViolation) }));
         let harness = harness_with(users, groups);
         let use_case: UseCase = CreateMusicGroup::new(Arc::clone(&harness.factory));
 

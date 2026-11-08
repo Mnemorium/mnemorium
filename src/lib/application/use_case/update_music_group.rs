@@ -160,7 +160,9 @@ where
                     .update(updated)
                     .await
                     .map_err(|error| match error {
-                        RepositoryError::Conflict => UpdateMusicGroupError::Conflict,
+                        RepositoryError::Conflict | RepositoryError::DataIntegrityViolation => {
+                            UpdateMusicGroupError::Conflict
+                        }
                         other => UpdateMusicGroupError::Unknown(other.into()),
                     })?
                     .ok_or(UpdateMusicGroupError::NoSuchGroup)?;
@@ -446,6 +448,45 @@ mod tests {
             .expect_update()
             .times(1)
             .returning(|_| Box::pin(async { Err(RepositoryError::Conflict) }));
+        let harness = harness_with(users, groups);
+        let use_case: UseCase = UpdateMusicGroup::new(Arc::clone(&harness.factory));
+
+        // Act
+        let result = use_case
+            .execute(UpdateMusicGroupCommand::new(
+                1,
+                0,
+                Some("Renamed".to_owned()),
+                None,
+            ))
+            .await;
+
+        // Assert
+        assert!(matches!(result, Err(UpdateMusicGroupError::Conflict)));
+        assert!(harness.rolled_back.load(Ordering::SeqCst));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn update_music_group_integrity_violation_returns_conflict() -> Result<(), Box<dyn Error>>
+    {
+        // Arrange: group 0 is protected by its update trigger.
+        let mut users = MockUserRepository::new();
+        expect_admin(&mut users, 1)?;
+        let mut groups = MockMusicGroupRepository::new();
+        let stored = group(0, "Unknown", None)?;
+        groups.expect_get().times(1).return_once(move |_| {
+            let found = stored.clone();
+            Box::pin(async move { Ok(Some(found)) })
+        });
+        groups
+            .expect_search()
+            .times(1)
+            .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+        groups
+            .expect_update()
+            .times(1)
+            .returning(|_| Box::pin(async { Err(RepositoryError::DataIntegrityViolation) }));
         let harness = harness_with(users, groups);
         let use_case: UseCase = UpdateMusicGroup::new(Arc::clone(&harness.factory));
 

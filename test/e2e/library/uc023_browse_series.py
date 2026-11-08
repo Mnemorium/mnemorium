@@ -195,7 +195,7 @@ def test_a_season_index_above_the_u32_range_is_rejected(
 ) -> None:
     response = get_series_season(standard_user_token, 1, OUT_OF_RANGE_INDEX)
 
-    assert_error_body(response, 400)
+    assert_error_body(response, 422)
 
 
 def test_the_largest_u32_episode_index_is_addressed_but_unknown(

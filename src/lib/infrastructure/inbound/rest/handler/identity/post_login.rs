@@ -2,13 +2,13 @@ use std::fmt::{Debug, Formatter, Result as FmtResult};
 
 use axum::Json;
 use axum::extract::State;
-use axum::extract::rejection::JsonRejection;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
 use crate::application::port::login_user::{LoginUserCommand, LoginUserError, LoginUserResponse};
 use crate::infrastructure::inbound::rest::api_error::{ApiError, ErrorBody};
 use crate::infrastructure::inbound::rest::app_state::AppState;
+use crate::infrastructure::inbound::rest::handler::JsonObject;
 
 /// Payload to authenticate a user.
 #[derive(Deserialize, ToSchema)]
@@ -149,234 +149,13 @@ impl From<LoginUserError> for ApiError {
 )]
 pub(crate) async fn post_login(
     State(state): State<AppState>,
-    payload: Result<Json<LoginRequest>, JsonRejection>,
+    payload: JsonObject<LoginRequest>,
 ) -> Result<Json<LoginResponse>, ApiError> {
-    let Json(request) = payload.map_err(ApiError::from)?;
+    let JsonObject(request) = payload;
     let response = state
         .identity_use_case_factory()
         .login_user()
         .execute(LoginUserCommand::new(request.username, request.password))
         .await?;
     Ok(Json(LoginResponse::from(response)))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::application::port::identity_use_case_factory::MockIdentityUseCaseFactory;
-    use crate::application::port::login_user::{LoginUserUseCase, MockLoginUserUseCase};
-    use crate::test_helpers::*;
-    use axum::body::Body;
-    use axum::extract::Request;
-    use axum::http::{StatusCode, header};
-    use axum::response::Response;
-    use axum::routing::post;
-    use mockall::predicate::eq;
-    use rstest::rstest;
-    use serde_json::{Value, json};
-    use std::error::Error;
-    use std::sync::Arc;
-    use tower::ServiceExt as _;
-
-    /// Send `body` through the endpoint router.
-    async fn send(
-        login_use_case: MockLoginUserUseCase,
-        body: Body,
-    ) -> Result<Response, Box<dyn Error>> {
-        let mut factory = MockIdentityUseCaseFactory::new();
-        factory
-            .expect_login_user()
-            .times(0..=1)
-            .return_once(move || Arc::new(login_use_case) as Arc<dyn LoginUserUseCase>);
-
-        let request = Request::builder()
-            .method("POST")
-            .uri("/api/v1/identity/login")
-            .header(header::CONTENT_TYPE, "application/json")
-            .body(body)?;
-
-        let router = axum::Router::new()
-            .route("/api/v1/identity/login", post(post_login))
-            .with_state(app_state_with_identity(Arc::new(factory))?);
-        Ok(router.oneshot(request).await?)
-    }
-
-    /// Build a valid JSON request body for a login.
-    fn request_body(username: &str, password: &str) -> Value {
-        json!({
-            "username": username,
-            "password": password,
-        })
-    }
-
-    /// Make the mocked use case fail with `error`.
-    fn expect_error(login_use_case: &mut MockLoginUserUseCase, error: LoginUserError) {
-        login_use_case
-            .expect_execute()
-            .times(1)
-            .return_once(move |_| Box::pin(async { Err(error) }));
-    }
-
-    #[tokio::test]
-    async fn post_login_valid_credentials_returns_ok() -> Result<(), Box<dyn Error>> {
-        // Arrange
-        let expected_command =
-            LoginUserCommand::new("alice".to_owned(), SECRET_PASSWORD.to_owned());
-        let issued_token = LoginUserResponse::new("jwt-token".to_owned(), 3600);
-        let mut login_use_case = MockLoginUserUseCase::new();
-        login_use_case
-            .expect_execute()
-            .times(1)
-            .with(eq(expected_command))
-            .return_once(|_| Box::pin(async { Ok(issued_token) }));
-
-        // Act
-        let (status, content_type, payload) = into_parts(
-            send(
-                login_use_case,
-                Body::from(request_body("alice", SECRET_PASSWORD).to_string()),
-            )
-            .await?,
-        )
-        .await?;
-
-        // Assert
-        assert_eq!(status, StatusCode::OK);
-        assert_eq!(content_type.as_deref(), Some("application/json"));
-        assert_eq!(
-            payload,
-            json!({
-                "access_token": "jwt-token",
-                "expires_in": 3600u64,
-                "token_type": "bearer",
-            })
-        );
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn post_login_missing_required_field_returns_unprocessable_entity()
-    -> Result<(), Box<dyn Error>> {
-        // Arrange
-        let login_use_case = MockLoginUserUseCase::new();
-
-        // Act
-        let response = send(
-            login_use_case,
-            Body::from(
-                json!({
-                    "username": "alice",
-                })
-                .to_string(),
-            ),
-        )
-        .await?;
-
-        // Assert
-        assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
-        assert!(
-            error_message_of(&response).is_some(),
-            "an unprocessable entity must carry an error message"
-        );
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn post_login_wrong_type_returns_unprocessable_entity() -> Result<(), Box<dyn Error>> {
-        // Arrange
-        let login_use_case = MockLoginUserUseCase::new();
-
-        // Act
-        let response = send(
-            login_use_case,
-            Body::from(
-                json!({
-                    "username": "alice",
-                    "password": 123i64,
-                })
-                .to_string(),
-            ),
-        )
-        .await?;
-
-        // Assert
-        assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
-        assert!(
-            error_message_of(&response).is_some(),
-            "an unprocessable entity must carry an error message"
-        );
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn post_login_malformed_body_returns_bad_request() -> Result<(), Box<dyn Error>> {
-        // Arrange
-        let login_use_case = MockLoginUserUseCase::new();
-
-        // Act
-        let response = send(login_use_case, Body::from("not json")).await?;
-
-        // Assert
-        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
-        assert!(
-            error_message_of(&response).is_some(),
-            "a bad request must carry an error message"
-        );
-        Ok(())
-    }
-
-    #[rstest]
-    #[case::unknown_username(LoginUserError::InvalidUsername, "ghost", SECRET_PASSWORD)]
-    #[case::wrong_password(LoginUserError::InvalidPassword, "alice", "wrong-password")]
-    #[tokio::test]
-    async fn post_login_invalid_credentials_returns_uniform_unauthorized(
-        #[case] error: LoginUserError,
-        #[case] username: &str,
-        #[case] password: &str,
-    ) -> Result<(), Box<dyn Error>> {
-        // Arrange
-        let mut login_use_case = MockLoginUserUseCase::new();
-        expect_error(&mut login_use_case, error);
-
-        // Act
-        let response = send(
-            login_use_case,
-            Body::from(request_body(username, password).to_string()),
-        )
-        .await?;
-
-        // Assert
-        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
-        assert_eq!(
-            error_message_of(&response).as_deref(),
-            Some("invalid credentials")
-        );
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn post_login_dependency_failure_returns_internal_server_error()
-    -> Result<(), Box<dyn Error>> {
-        // Arrange
-        let mut login_use_case = MockLoginUserUseCase::new();
-        expect_error(
-            &mut login_use_case,
-            LoginUserError::Unknown(anyhow::anyhow!("boom")),
-        );
-
-        // Act
-        let response = send(
-            login_use_case,
-            Body::from(request_body("alice", SECRET_PASSWORD).to_string()),
-        )
-        .await?;
-
-        // Assert
-        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
-        assert_eq!(
-            error_message_of(&response).as_deref(),
-            Some("an unexpected error occurred")
-        );
-        Ok(())
-    }
 }
