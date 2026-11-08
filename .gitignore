@@ -16,7 +16,7 @@ target/
 site/
 
 # Local library root
-media/
+/media/
 
 # Local databases
 dev.db*
