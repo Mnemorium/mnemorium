@@ -1,6 +1,4 @@
-use axum::Json;
 use axum::extract::State;
-use axum::extract::rejection::JsonRejection;
 use axum::http::{HeaderValue, StatusCode, header};
 use axum::response::Response;
 use chrono::NaiveDate;
@@ -13,6 +11,7 @@ use crate::domain::alias::NumericID;
 use crate::infrastructure::inbound::rest::api_error::{ApiError, ErrorBody};
 use crate::infrastructure::inbound::rest::app_state::AppState;
 use crate::infrastructure::inbound::rest::hal::hal_json;
+use crate::infrastructure::inbound::rest::handler::JsonObject;
 use crate::infrastructure::inbound::rest::handler::library::{DATE_FORMAT, MovieResponse};
 use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 
@@ -21,12 +20,13 @@ use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 #[non_exhaustive]
 pub(crate) struct PostMovieRequest {
     /// Country of origin as an ISO 3166-1 alpha-2 code, when known.
-    #[schema(example = "US")]
+    #[schema(example = "US", pattern = "^[A-Za-z]{2}$")]
     pub country_of_origin: Option<String>,
     /// Identifier of the image holding the film's artwork, when set.
     #[schema(example = 1)]
     pub cover_image_id: Option<NumericID>,
     /// Genres of the film.
+    #[schema(min_length = 1)]
     pub genres: Option<Vec<String>>,
     /// Name of the film.
     #[schema(min_length = 1, max_length = 100)]
@@ -34,7 +34,7 @@ pub(crate) struct PostMovieRequest {
     /// Plot of the film, when known.
     pub plot: Option<String>,
     /// Date of the release, in `YYYY-MM-DD` form, when known.
-    #[schema(example = "1959-08-17")]
+    #[schema(format = "date", example = "1959-08-17")]
     pub release_date: Option<String>,
     /// Identifier of the video backing the film.
     #[schema(example = 1)]
@@ -125,9 +125,9 @@ pub(crate) struct PostMovieRequest {
 pub(crate) async fn post_movie(
     State(state): State<AppState>,
     caller: AuthenticatedUser,
-    payload: Result<Json<PostMovieRequest>, JsonRejection>,
+    payload: JsonObject<PostMovieRequest>,
 ) -> Result<Response, ApiError> {
-    let Json(request) = payload.map_err(ApiError::from)?;
+    let JsonObject(request) = payload;
     let release_date = match request.release_date.as_deref() {
         Some(value) => Some(NaiveDate::parse_from_str(value, DATE_FORMAT).map_err(|_| {
             warn!(

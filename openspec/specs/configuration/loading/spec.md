@@ -2,17 +2,16 @@
 
 ## Purpose
 
-Resolves a complete configuration from built-in defaults, an optional configuration file and the environment, without
-reading the datastore, and writes a complete default file when none exists. The environment overrides the file; the
-identity seeds are creation input rather than settings.
+Resolves a complete configuration from built-in defaults, an optional configuration file and the environment, and writes
+a complete default file when none exists. The environment overrides the file.
 
 ## Requirements
 
-### Requirement: Configuration resolves without the datastore
+### Requirement: Configuration resolves in layers
 
 The system SHALL resolve configuration from built-in defaults, then the configuration file, then the environment, in
-that order of increasing precedence, before the datastore is opened. It SHALL NOT read or write the datastore to obtain
-configuration.
+that order of increasing precedence. A value the configuration file names SHALL replace the built-in default, and a
+value the environment names SHALL replace both.
 
 #### Scenario: Defaults when nothing is supplied
 
@@ -28,11 +27,6 @@ configuration.
 
 - **WHEN** the configuration file and the environment both set a setting
 - **THEN** the environment value is effective
-
-#### Scenario: Resolution does not need the datastore
-
-- **WHEN** the datastore is absent or unreachable at startup
-- **THEN** configuration resolution still produces a complete configuration
 
 ### Requirement: Every setting has a default
 
@@ -74,22 +68,10 @@ NOT rewrite a file that already exists, including an empty or partial one.
 - **WHEN** the configuration file is absent and cannot be written
 - **THEN** startup fails naming the path
 
-### Requirement: The generated file contains defaults only
-
-The generated configuration file SHALL contain the built-in defaults. It SHALL NOT contain the site pepper or the token
-signing secret.
-
-#### Scenario: No secrets in the generated file
-
-- **WHEN** the configuration file is generated
-- **THEN** it contains neither the pepper nor the signing secret
-
 ### Requirement: The environment overrides the file for the settings it names
 
 The environment SHALL supply a configuration setting only through a variable carrying the server prefix followed by the
-setting path. A prefixed variable that names no setting SHALL be discarded without failing startup, and a variable that
-names a setting but does not hold a value that setting accepts SHALL fail startup naming the variable. The identity seed
-names SHALL NOT be settings and SHALL apply only when identity is created.
+setting path.
 
 #### Scenario: A variable overrides the file
 
@@ -110,26 +92,6 @@ names SHALL NOT be settings and SHALL apply only when identity is created.
 
 - **WHEN** the environment overrides one or more settings
 - **THEN** startup reports which settings it overrode
-
-#### Scenario: A seed changes no setting
-
-- **WHEN** only the identity seed variables are set and no configuration file exists
-- **THEN** every configuration setting takes its built-in default and startup proceeds
-
-### Requirement: Secrets and the datastore path are not configuration
-
-The site pepper and the token signing secret SHALL come only from the instance identity. The datastore path SHALL be
-fixed at `mnemorium.db` relative to the working directory and SHALL NOT be configurable.
-
-#### Scenario: Identity is authoritative for secrets
-
-- **WHEN** the server starts
-- **THEN** the effective pepper and signing secret are the persisted identity's
-
-#### Scenario: The datastore path is fixed
-
-- **WHEN** the server starts
-- **THEN** the datastore is opened at `mnemorium.db` and no setting can change that path
 
 ### Requirement: Resolved configuration is immutable for the process
 

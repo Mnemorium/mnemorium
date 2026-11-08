@@ -1,5 +1,3 @@
-use axum::Json;
-use axum::extract::rejection::JsonRejection;
 use axum::extract::{Path, State};
 use axum::response::Response;
 use serde::Deserialize;
@@ -11,6 +9,7 @@ use crate::domain::alias::NumericID;
 use crate::infrastructure::inbound::rest::api_error::{ApiError, ErrorBody};
 use crate::infrastructure::inbound::rest::app_state::AppState;
 use crate::infrastructure::inbound::rest::hal::hal_json;
+use crate::infrastructure::inbound::rest::handler::JsonObject;
 use crate::infrastructure::inbound::rest::handler::library::{
     TrackResponse, deserialize_field_update, parse_album_id, parse_write_index,
 };
@@ -24,11 +23,11 @@ use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 pub(crate) struct PatchAlbumTrackRequest {
     /// ISRC code of the recording; `null` clears it.
     #[serde(default, deserialize_with = "deserialize_field_update")]
-    #[schema(value_type = Option<String>, nullable = true)]
+    #[schema(value_type = Option<String>, nullable = true, min_length = 12, max_length = 12)]
     pub isrc_code: FieldUpdate<String>,
     /// Name of the recording; `null` clears it.
     #[serde(default, deserialize_with = "deserialize_field_update")]
-    #[schema(value_type = Option<String>, nullable = true)]
+    #[schema(value_type = Option<String>, nullable = true, min_length = 1)]
     pub name: FieldUpdate<String>,
 }
 
@@ -44,8 +43,8 @@ pub(crate) struct PatchAlbumTrackRequest {
     tag = "library",
     params(
         ("album_id" = NumericID, Path, description = "Identifier of the album"),
-        ("medium_index" = u8, Path, description = "Album-scoped index of the medium"),
-        ("track_index" = u8, Path, description = "Index of the track within the medium"),
+        ("medium_index" = u8, Path, description = "Album-scoped index of the medium", maximum = 255u8),
+        ("track_index" = u8, Path, description = "Index of the track within the medium", maximum = 255u8),
     ),
     request_body = PatchAlbumTrackRequest,
     responses(
@@ -119,7 +118,7 @@ pub(crate) async fn patch_album_track(
     Path((album_id_value, medium_index_value, track_index_value)): Path<(String, String, String)>,
     State(state): State<AppState>,
     caller: AuthenticatedUser,
-    payload: Result<Json<PatchAlbumTrackRequest>, JsonRejection>,
+    payload: JsonObject<PatchAlbumTrackRequest>,
 ) -> Result<Response, ApiError> {
     let album_id = parse_album_id(&album_id_value)?;
     let medium_index = parse_write_index(
@@ -132,7 +131,7 @@ pub(crate) async fn patch_album_track(
         "track_index",
         "invalid music track index",
     )?;
-    let Json(request) = payload.map_err(ApiError::from)?;
+    let JsonObject(request) = payload;
     let response = state
         .library_use_case_factory()
         .patch_album_track()

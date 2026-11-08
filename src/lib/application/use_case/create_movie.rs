@@ -165,7 +165,9 @@ where
                 let stored = unit_of_work.movies().create(movie).await.map_err(|error| {
                     if matches!(
                         error,
-                        RepositoryError::AlreadyExist | RepositoryError::Conflict
+                        RepositoryError::AlreadyExist
+                            | RepositoryError::Conflict
+                            | RepositoryError::DataIntegrityViolation
                     ) {
                         CreateMovieError::Conflict
                     } else {
@@ -555,6 +557,53 @@ mod tests {
             .expect_create()
             .times(1)
             .returning(|_| Box::pin(async { Err(RepositoryError::Conflict) }));
+        let mut series = MockSeriesRepository::new();
+        series
+            .expect_find_episode_by_video()
+            .times(1)
+            .returning(|_| Box::pin(async { Ok(None) }));
+        let harness = harness_with(users, no_permissions(), movies, series, videos);
+        let use_case: UseCase = CreateMovie::new(Arc::clone(&harness.factory));
+
+        // Act
+        let result = use_case
+            .execute(CreateMovieCommand::new(
+                1,
+                5,
+                "Some Like It Hot".to_owned(),
+                None,
+                None,
+                None,
+                Vec::new(),
+                Some(9),
+            ))
+            .await;
+
+        // Assert
+        assert!(matches!(result, Err(CreateMovieError::Conflict)));
+        assert!(harness.rolled_back.load(Ordering::SeqCst));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn create_movie_missing_cover_is_conflict() -> Result<(), Box<dyn Error>> {
+        // Arrange: the repository rejects the cover through the scope trigger.
+        let mut users = MockUserRepository::new();
+        expect_admin(&mut users, 1)?;
+        let mut videos = MockVideoRepository::new();
+        videos.expect_get().times(1).return_once(|_| {
+            let video = sample_video(5, 5).ok();
+            Box::pin(async move { Ok(video) })
+        });
+        let mut movies = MockMovieRepository::new();
+        movies
+            .expect_search()
+            .times(1)
+            .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+        movies
+            .expect_create()
+            .times(1)
+            .returning(|_| Box::pin(async { Err(RepositoryError::DataIntegrityViolation) }));
         let mut series = MockSeriesRepository::new();
         series
             .expect_find_episode_by_video()

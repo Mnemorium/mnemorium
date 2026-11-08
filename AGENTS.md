@@ -26,6 +26,7 @@ first.
 | --------- | ------------------------------------------------------------------------------------------------------------------------------------ |
 | Build     | `cargo build` (server: `cargo build --bin server`)                                                                                   |
 | Run       | `cargo run --bin server` (listens on `:4080`; health `GET /health`)                                                                  |
+| Seeded run | `cargo run --features test-seed --bin server` (creates `media/` when absent; seeds dev/fixture data, prints demo credentials)     |
 | Test      | `cargo test` (unit + integration)                                                                                                    |
 | Coverage  | `cargo llvm-cov --lib --ignore-filename-regex 'src/lib/infrastructure/inbound/rest/handler' --fail-under-functions 80 --fail-under-regions 80 --fail-under-lines 80` (gate ≥ 80%; the REST handler tree is covered by E2E and Schemathesis instead) |
 | E2E       | `script/e2e.sh` (builds and runs the container; `NO_BUILD=1` reuses the image)                                                       |

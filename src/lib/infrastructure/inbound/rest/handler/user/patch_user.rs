@@ -1,5 +1,3 @@
-use axum::Json;
-use axum::extract::rejection::JsonRejection;
 use axum::extract::{Path, State};
 use axum::response::Response;
 use serde::{Deserialize, Serialize};
@@ -13,6 +11,7 @@ use crate::domain::model::user::Role;
 use crate::infrastructure::inbound::rest::api_error::{ApiError, ErrorBody};
 use crate::infrastructure::inbound::rest::app_state::AppState;
 use crate::infrastructure::inbound::rest::hal::{SelfLinks, hal_json};
+use crate::infrastructure::inbound::rest::handler::JsonObject;
 use crate::infrastructure::inbound::rest::handler::user::{parse_user_id, user_self_href};
 use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 
@@ -24,7 +23,7 @@ use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 #[non_exhaustive]
 pub(crate) struct PatchUserRequest {
     /// New email address.
-    #[schema(format = "email")]
+    #[schema(format = "email", min_length = 1)]
     pub email: Option<String>,
     /// New role. Only the Root Admin may change the role of a user.
     // The raw wire value is validated by the handler so a value outside the
@@ -170,10 +169,10 @@ pub(crate) async fn patch_user(
     State(state): State<AppState>,
     caller: AuthenticatedUser,
     Path(id): Path<String>,
-    payload: Result<Json<PatchUserRequest>, JsonRejection>,
+    payload: JsonObject<PatchUserRequest>,
 ) -> Result<Response, ApiError> {
     let user_id = parse_user_id(&id)?;
-    let Json(request) = payload.map_err(ApiError::from)?;
+    let JsonObject(request) = payload;
     let role = request
         .role
         .as_deref()

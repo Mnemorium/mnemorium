@@ -1,6 +1,5 @@
 use axum::Json;
 use axum::extract::State;
-use axum::extract::rejection::JsonRejection;
 use axum::http::{HeaderValue, StatusCode, header};
 use axum::response::{IntoResponse as _, Response};
 use serde::{Deserialize, Serialize};
@@ -14,6 +13,7 @@ use crate::domain::model::integrity_hash::{DIGEST_HEX_LENGTH, IntegrityHash};
 use crate::infrastructure::inbound::rest::api_error::{ApiError, ErrorBody};
 use crate::infrastructure::inbound::rest::app_state::AppState;
 use crate::infrastructure::inbound::rest::hal::HAL_CONTENT_TYPE;
+use crate::infrastructure::inbound::rest::handler::JsonObject;
 use crate::infrastructure::inbound::rest::handler::asset::UploadSessionLinks;
 use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 
@@ -22,7 +22,10 @@ use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 #[non_exhaustive]
 pub(crate) struct PostUploadRequest {
     /// Declared media type of the file content.
-    #[schema(example = json!("video/mp4"))]
+    #[schema(
+        example = json!("video/mp4"),
+        pattern = "^[A-Za-z0-9!#$&^_.+-]+/[A-Za-z0-9!#$&^_.+-]+$"
+    )]
     pub content_type: String,
     /// Name of the file being uploaded.
     #[schema(min_length = 1, example = json!("clip.mp4"))]
@@ -167,9 +170,9 @@ impl From<BeginUploadError> for ApiError {
 pub(crate) async fn post_upload(
     State(state): State<AppState>,
     caller: AuthenticatedUser,
-    payload: Result<Json<PostUploadRequest>, JsonRejection>,
+    payload: JsonObject<PostUploadRequest>,
 ) -> Result<Response, ApiError> {
-    let Json(request) = payload.map_err(ApiError::from)?;
+    let JsonObject(request) = payload;
     // The handler is where the wire form is parsed into the domain value object:
     // a malformed digest never reaches the use case.
     let integrity_hash = IntegrityHash::<DIGEST_HEX_LENGTH>::try_new(request.integrity_hash)

@@ -1,5 +1,3 @@
-use axum::Json;
-use axum::extract::rejection::JsonRejection;
 use axum::extract::{Path, State};
 use axum::response::Response;
 use chrono::NaiveDate;
@@ -13,6 +11,7 @@ use crate::domain::alias::NumericID;
 use crate::infrastructure::inbound::rest::api_error::{ApiError, ErrorBody};
 use crate::infrastructure::inbound::rest::app_state::AppState;
 use crate::infrastructure::inbound::rest::hal::hal_json;
+use crate::infrastructure::inbound::rest::handler::JsonObject;
 use crate::infrastructure::inbound::rest::handler::library::{
     DATE_FORMAT, EpisodeResponse, deserialize_field_update, parse_episode_index,
     parse_season_index, parse_series_id,
@@ -28,7 +27,7 @@ use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 pub(crate) struct PatchSeriesEpisodeRequest {
     /// Date of the first airing in `YYYY-MM-DD` form; `null` clears it.
     #[serde(default, deserialize_with = "deserialize_field_update")]
-    #[schema(value_type = Option<String>, nullable = true)]
+    #[schema(value_type = Option<String>, nullable = true, format = "date")]
     pub air_date: FieldUpdate<String>,
     /// Name of the episode.
     #[schema(min_length = 1, max_length = 100)]
@@ -47,8 +46,8 @@ pub(crate) struct PatchSeriesEpisodeRequest {
     tag = "library",
     params(
         ("series_id" = NumericID, Path, description = "Identifier of the show holding the episode"),
-        ("season_index" = u32, Path, description = "Series-scoped index of the season"),
-        ("episode_index" = u32, Path, description = "Season-scoped index of the episode"),
+        ("season_index" = u64, Path, description = "Series-scoped index of the season", maximum = 4_294_967_295u64),
+        ("episode_index" = u64, Path, description = "Season-scoped index of the episode", maximum = 4_294_967_295u64),
     ),
     request_body = PatchSeriesEpisodeRequest,
     responses(
@@ -120,12 +119,12 @@ pub(crate) async fn patch_series_episode(
     )>,
     State(state): State<AppState>,
     caller: AuthenticatedUser,
-    payload: Result<Json<PatchSeriesEpisodeRequest>, JsonRejection>,
+    payload: JsonObject<PatchSeriesEpisodeRequest>,
 ) -> Result<Response, ApiError> {
     let series_id = parse_series_id(&series_id_value)?;
     let season_index = parse_season_index(&season_index_value)?;
     let episode_index = parse_episode_index(&episode_index_value)?;
-    let Json(request) = payload.map_err(ApiError::from)?;
+    let JsonObject(request) = payload;
     let air_date = request.air_date.try_map(|value| {
         NaiveDate::parse_from_str(&value, DATE_FORMAT).map_err(|_| {
             warn!(

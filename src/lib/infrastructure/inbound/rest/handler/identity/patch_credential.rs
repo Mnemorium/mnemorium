@@ -1,5 +1,4 @@
-use axum::Json;
-use axum::extract::rejection::{JsonRejection, PathRejection};
+use axum::extract::rejection::PathRejection;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
@@ -10,6 +9,7 @@ use crate::application::port::patch_credential::{PatchCredentialCommand, PatchCr
 use crate::domain::alias::NumericID;
 use crate::infrastructure::inbound::rest::api_error::{ApiError, ErrorBody};
 use crate::infrastructure::inbound::rest::app_state::AppState;
+use crate::infrastructure::inbound::rest::handler::JsonObject;
 use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 
 /// Payload to change the password behind a credential.
@@ -116,10 +116,10 @@ pub(crate) async fn patch_credential(
     State(state): State<AppState>,
     caller: AuthenticatedUser,
     credential_path: Result<Path<NumericID>, PathRejection>,
-    payload: Result<Json<PatchCredentialRequest>, JsonRejection>,
+    payload: JsonObject<PatchCredentialRequest>,
 ) -> Result<impl IntoResponse, ApiError> {
     let Path(credential_id) = credential_path.map_err(ApiError::from)?;
-    let Json(request) = payload.map_err(ApiError::from)?;
+    let JsonObject(request) = payload;
     state
         .identity_use_case_factory()
         .patch_credential()

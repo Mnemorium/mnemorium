@@ -180,7 +180,9 @@ where
                     .map_err(|error| {
                         if matches!(
                             error,
-                            RepositoryError::AlreadyExist | RepositoryError::Conflict
+                            RepositoryError::AlreadyExist
+                                | RepositoryError::Conflict
+                                | RepositoryError::DataIntegrityViolation
                         ) {
                             UpdateMovieError::Conflict
                         } else {
@@ -482,6 +484,41 @@ mod tests {
             .expect_update()
             .times(1)
             .returning(|_| Box::pin(async { Err(RepositoryError::Conflict) }));
+        let harness = harness_with(users, no_permissions(), movies);
+        let use_case: UseCase = UpdateMovie::new(Arc::clone(&harness.factory));
+
+        // Act
+        let result = use_case
+            .execute(UpdateMovieCommand::new(
+                1,
+                7,
+                None,
+                None,
+                FieldUpdate::Absent,
+                FieldUpdate::Absent,
+                None,
+                FieldUpdate::Set(9),
+            ))
+            .await;
+
+        // Assert
+        assert!(matches!(result, Err(UpdateMovieError::Conflict)));
+        assert!(harness.rolled_back.load(Ordering::SeqCst));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn update_movie_missing_cover_is_conflict() -> Result<(), Box<dyn Error>> {
+        // Arrange: the repository rejects the cover through the scope trigger.
+        let mut users = MockUserRepository::new();
+        expect_admin(&mut users, 1)?;
+        let stored = sample_movie(7)?;
+        let mut movies = MockMovieRepository::new();
+        expect_movie(&mut movies, stored);
+        movies
+            .expect_update()
+            .times(1)
+            .returning(|_| Box::pin(async { Err(RepositoryError::DataIntegrityViolation) }));
         let harness = harness_with(users, no_permissions(), movies);
         let use_case: UseCase = UpdateMovie::new(Arc::clone(&harness.factory));
 

@@ -1,5 +1,3 @@
-use axum::Json;
-use axum::extract::rejection::JsonRejection;
 use axum::extract::{Path, State};
 use axum::response::Response;
 use tracing::warn;
@@ -11,6 +9,7 @@ use crate::domain::model::external_ref::ExternalRef;
 use crate::infrastructure::inbound::rest::api_error::{ApiError, ErrorBody};
 use crate::infrastructure::inbound::rest::app_state::AppState;
 use crate::infrastructure::inbound::rest::hal::hal_json;
+use crate::infrastructure::inbound::rest::handler::JsonObject;
 use crate::infrastructure::inbound::rest::handler::library::{MovieResponse, VideoApplyRequest};
 use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 
@@ -100,7 +99,7 @@ pub(crate) async fn post_movie_apply(
     Path(movie_id_value): Path<String>,
     State(state): State<AppState>,
     caller: AuthenticatedUser,
-    payload: Result<Json<VideoApplyRequest>, JsonRejection>,
+    payload: JsonObject<VideoApplyRequest>,
 ) -> Result<Response, ApiError> {
     let movie_id = movie_id_value.parse::<NumericID>().map_err(|_| {
         warn!(
@@ -112,7 +111,7 @@ pub(crate) async fn post_movie_apply(
         );
         ApiError::BadRequest("invalid film identifier".to_owned())
     })?;
-    let Json(request) = payload.map_err(ApiError::from)?;
+    let JsonObject(request) = payload;
     let provider = ProviderId::parse(&request.reference.provider)
         .filter(|provider| provider.serves_video())
         .ok_or_else(|| ApiError::reject_enum("provider"))?;

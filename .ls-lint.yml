@@ -6,6 +6,8 @@ ls:
   migrations:
     .*: exists:0  # any non-sql scripts aren't allowed
     .sql: snake_case
+  test/seed/sql:
+    .sql: snake_case
 
   .rs: snake_case
   .py: snake_case

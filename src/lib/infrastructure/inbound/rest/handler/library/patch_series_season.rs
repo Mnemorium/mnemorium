@@ -1,5 +1,3 @@
-use axum::Json;
-use axum::extract::rejection::JsonRejection;
 use axum::extract::{Path, State};
 use axum::response::Response;
 use serde::Deserialize;
@@ -11,6 +9,7 @@ use crate::domain::alias::NumericID;
 use crate::infrastructure::inbound::rest::api_error::{ApiError, ErrorBody};
 use crate::infrastructure::inbound::rest::app_state::AppState;
 use crate::infrastructure::inbound::rest::hal::hal_json;
+use crate::infrastructure::inbound::rest::handler::JsonObject;
 use crate::infrastructure::inbound::rest::handler::library::{
     SeasonResponse, deserialize_field_update, parse_season_index, parse_series_id,
 };
@@ -43,7 +42,7 @@ pub(crate) struct PatchSeriesSeasonRequest {
     tag = "library",
     params(
         ("series_id" = NumericID, Path, description = "Identifier of the show holding the season"),
-        ("season_index" = u32, Path, description = "Series-scoped index of the season"),
+        ("season_index" = u64, Path, description = "Series-scoped index of the season", maximum = 4_294_967_295u64),
     ),
     request_body = PatchSeriesSeasonRequest,
     responses(
@@ -117,11 +116,11 @@ pub(crate) async fn patch_series_season(
     Path((series_id_value, season_index_value)): Path<(String, String)>,
     State(state): State<AppState>,
     caller: AuthenticatedUser,
-    payload: Result<Json<PatchSeriesSeasonRequest>, JsonRejection>,
+    payload: JsonObject<PatchSeriesSeasonRequest>,
 ) -> Result<Response, ApiError> {
     let series_id = parse_series_id(&series_id_value)?;
     let season_index = parse_season_index(&season_index_value)?;
-    let Json(request) = payload.map_err(ApiError::from)?;
+    let JsonObject(request) = payload;
     let response = state
         .library_use_case_factory()
         .update_series_season()

@@ -1,6 +1,4 @@
-use axum::Json;
 use axum::extract::State;
-use axum::extract::rejection::JsonRejection;
 use axum::http::{HeaderValue, StatusCode, header};
 use axum::response::Response;
 use serde::Deserialize;
@@ -10,6 +8,7 @@ use crate::application::port::create_gallery::{CreateGalleryCommand, CreateGalle
 use crate::infrastructure::inbound::rest::api_error::{ApiError, ErrorBody};
 use crate::infrastructure::inbound::rest::app_state::AppState;
 use crate::infrastructure::inbound::rest::hal::hal_json;
+use crate::infrastructure::inbound::rest::handler::JsonObject;
 use crate::infrastructure::inbound::rest::handler::library::GalleryResponse;
 use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 
@@ -110,9 +109,9 @@ impl From<CreateGalleryError> for ApiError {
 pub(crate) async fn post_gallery(
     State(state): State<AppState>,
     caller: AuthenticatedUser,
-    payload: Result<Json<PostGalleryRequest>, JsonRejection>,
+    payload: JsonObject<PostGalleryRequest>,
 ) -> Result<Response, ApiError> {
-    let Json(request) = payload.map_err(ApiError::from)?;
+    let JsonObject(request) = payload;
     let response = state
         .library_use_case_factory()
         .create_gallery()

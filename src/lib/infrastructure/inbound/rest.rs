@@ -92,7 +92,8 @@ struct ApiDoc;
 /// The paths are relative to the `/api/v1` base the document's `servers`
 /// entry declares, so the contexts are nested here without it; the server
 /// router adds that prefix at runtime. With the `api-docs` feature
-/// [`handler::setup_routes`] mounts this document at `/doc`.
+/// [`handler::setup_routes`] serves this document as HTML at `/doc` and as
+/// JSON at `/doc/openapi.json`.
 #[must_use]
 #[cfg(any(feature = "api-docs", test))]
 pub(crate) fn openapi() -> OpenApi {

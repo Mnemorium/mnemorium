@@ -1,0 +1,391 @@
+# The hook drops cases whose generated header name is not a valid HTTP token.
+hooks = "test/api/hooks.py"
+
+# Schemathesis 4.x auto-detects a sign-up flow from `post_register` and
+# `post_login` in the served OpenAPI document. `POST /api/v1/identity/register`
+# is authenticated, so a bootstrapped sign-up can never succeed, and its `$ref`
+# request body makes the detector raise `StopIteration`.
+[auth]
+auto-signup = false
+
+# Fixture catalogue for the disposable, seeded server `script/api_fuzz.sh`
+# starts. The identifiers are the fixed ones `src/lib/infrastructure/seed.rs`
+# and `test/seed/sql` create, so the fuzzer reaches existing rows instead of
+# 404ing on generated identifiers.
+#
+# A single `[[operations]]` entry ORs its include filters, so an operation that
+# shares a path with another method is selected by `include-operation-id`.
+
+[[operations]]
+include-path = "/asset/file/{file_id}"
+parameters = { file_id = 9001 }
+
+[[operations]]
+include-path = "/asset/file/{file_id}/content"
+parameters = { file_id = 9001 }
+
+[[operations]]
+include-operation-id = "get_image"
+parameters = { image_id = 9001 }
+
+[[operations]]
+include-operation-id = "get_image_content"
+parameters = { image_id = 9001 }
+
+[[operations]]
+include-operation-id = "get_image_file"
+parameters = { image_id = 9001 }
+
+# Generated login bodies cannot carry the real credentials, so every positive
+# login case answers 401; the dynamic auth flow proves the endpoint works.
+[[operations]]
+include-operation-id = "post_login"
+warnings = false
+
+[[operations]]
+include-operation-id = "post_upload"
+parameters = { "body.content_type" = "video/mp4" }
+checks = { positive_data_acceptance = { expected-statuses = [
+  "2xx",
+  "3xx",
+  401,
+  403,
+  404,
+  409,
+  413,
+  422,
+  429,
+  "5xx",
+] }, negative_data_rejection = { expected-statuses = [
+  400,
+  401,
+  403,
+  404,
+  405,
+  406,
+  409,
+  413,
+  415,
+  422,
+  428,
+  429,
+  "5xx",
+] } }
+
+[[operations]]
+include-operation-id = "update_user"
+parameters = { id = 9001 }
+
+[[operations]]
+include-operation-id = "patch_credential"
+parameters = { id = 9001 }
+
+[[operations]]
+include-operation-id = "get_permission"
+parameters = { user_id = 9001 }
+
+# A body or query value naming a resource rather than the URI is a body value
+# under `API-044`, so a missing reference is a `422`, not a `404`.
+[[operations]]
+include-operation-id = "put_permission"
+warnings = { display = ["missing_test_data"] }
+checks = { positive_data_acceptance = { expected-statuses = [
+  "2xx",
+  "3xx",
+  401,
+  403,
+  404,
+  409,
+  422,
+  429,
+  "5xx",
+] } }
+
+# No metadata provider is configured in the fixture server, so a known provider
+# name reaches the "available: false" answer instead of an unknown-provider 404.
+[[operations]]
+include-path = "/library/movie/identify/{provider}/{reference}"
+parameters = { provider = "tmdb", reference = "1" }
+
+[[operations]]
+include-path = "/library/series/identify/{provider}/{reference}"
+parameters = { provider = "tmdb", reference = "1" }
+
+[[operations]]
+include-path = "/library/music/identify/{provider}/{kind}/{reference}"
+parameters = { provider = "musicbrainz", kind = "release", reference = "1" }
+
+# The position pair is supplied together; the query schema cannot express the
+# dependency between the two optional parameters.
+[[operations]]
+include-operation-id = "identify_video_series_metadata"
+parameters = { season = 1, episode = 1 }
+
+[[operations]]
+include-operation-id = "list_series_episodes"
+parameters = { series_id = 9001, season_index = 1 }
+
+[[operations]]
+include-operation-id = "get_series_season"
+parameters = { series_id = 9001, season_index = 1 }
+
+[[operations]]
+include-operation-id = "patch_series_season"
+parameters = { series_id = 9001, season_index = 1 }
+
+[[operations]]
+include-operation-id = "get_series_episode"
+parameters = { series_id = 9001, season_index = 1, episode_index = 1 }
+
+[[operations]]
+include-operation-id = "put_series_season"
+parameters = { series_id = 9001, season_index = 2 }
+checks = { positive_data_acceptance = { expected-statuses = [
+  "2xx",
+  "3xx",
+  401,
+  403,
+  404,
+  409,
+  422,
+  429,
+  "5xx",
+] } }
+
+[[operations]]
+include-operation-id = "put_series_episode"
+warnings = { display = ["missing_test_data"] }
+parameters = { series_id = 9001, season_index = 1, episode_index = 2 }
+checks = { positive_data_acceptance = { expected-statuses = [
+  "2xx",
+  "3xx",
+  401,
+  403,
+  404,
+  409,
+  422,
+  429,
+  "5xx",
+] } }
+
+[[operations]]
+include-operation-id = "patch_series_episode"
+parameters = { series_id = 9001, season_index = 1, episode_index = 1 }
+
+# The read and the delete address different galleries and gallery items, so
+# deleting one never strands the read.
+[[operations]]
+include-operation-id = "get_gallery"
+parameters = { id = 9001 }
+
+# The destructive operations run only in fuzzing: the coverage phase would
+# consume the row before the first positive fuzzing case can.
+[[operations]]
+include-operation-id = "delete_gallery"
+parameters = { id = 9002 }
+phases = { examples = { enabled = false }, coverage = { enabled = false } }
+
+[[operations]]
+include-operation-id = "get_gallery_item_list"
+parameters = { id = 9001 }
+
+[[operations]]
+include-operation-id = "get_gallery_item"
+parameters = { id = 9001, item_id = 9002 }
+
+[[operations]]
+include-operation-id = "delete_gallery_item"
+parameters = { id = 9001, item_id = 9001 }
+phases = { examples = { enabled = false }, coverage = { enabled = false } }
+
+# A chunk write needs a coherent body, range and digest; a generated request
+# with a malformed header is a `400` the schema's positive case may still hit.
+[[operations]]
+include-operation-id = "put_upload_chunk"
+phases = { stateful = { enabled = false } }
+warnings = { display = ["missing_test_data"] }
+checks = { positive_data_acceptance = { expected-statuses = [
+  400,
+  "2xx",
+  "3xx",
+  401,
+  403,
+  404,
+  409,
+  422,
+  429,
+  "5xx",
+] } }
+
+[[operations]]
+include-operation-id = "get_album_medium"
+parameters = { album_id = 9001, medium_index = 1 }
+
+[[operations]]
+include-operation-id = "put_album_medium"
+parameters = { album_id = 9001, medium_index = 1 }
+
+[[operations]]
+include-operation-id = "get_album_track_list"
+parameters = { album_id = 9001, medium_index = 1 }
+
+[[operations]]
+include-operation-id = "get_album_track"
+parameters = { album_id = 9001, medium_index = 1, track_index = 1 }
+
+[[operations]]
+include-operation-id = "patch_album_track"
+parameters = { album_id = 9001, medium_index = 1, track_index = 1 }
+
+[[operations]]
+include-operation-id = "put_album_track"
+warnings = { display = ["missing_test_data"] }
+parameters = { album_id = 9001, medium_index = 1, track_index = 1 }
+checks = { positive_data_acceptance = { expected-statuses = [
+  "2xx",
+  "3xx",
+  401,
+  403,
+  404,
+  409,
+  422,
+  429,
+  "5xx",
+] } }
+
+[[operations]]
+include-operation-id = "post_gallery_item"
+warnings = { display = ["missing_test_data"] }
+parameters = { id = 9001 }
+checks = { positive_data_acceptance = { expected-statuses = [
+  "2xx",
+  "3xx",
+  401,
+  403,
+  404,
+  409,
+  422,
+  429,
+  "5xx",
+] } }
+
+[[operations]]
+include-operation-id = "post_movie"
+warnings = { display = ["missing_test_data"] }
+checks = { positive_data_acceptance = { expected-statuses = [
+  "2xx",
+  "3xx",
+  401,
+  403,
+  404,
+  409,
+  422,
+  429,
+  "5xx",
+] } }
+
+[[operations]]
+include-operation-id = "post_album"
+checks = { positive_data_acceptance = { expected-statuses = [
+  "2xx",
+  "3xx",
+  401,
+  403,
+  404,
+  409,
+  422,
+  429,
+  "5xx",
+] } }
+
+[[operations]]
+include-operation-id = "patch_album"
+checks = { positive_data_acceptance = { expected-statuses = [
+  "2xx",
+  "3xx",
+  401,
+  403,
+  404,
+  409,
+  422,
+  429,
+  "5xx",
+] } }
+
+# Likewise, the read and the delete address different seeded playlists.
+[[operations]]
+include-operation-id = "get_playlist_track"
+parameters = { playlist_id = 9001, track_index = 1 }
+
+[[operations]]
+include-operation-id = "delete_playlist"
+parameters = { playlist_id = 9003 }
+phases = { examples = { enabled = false }, coverage = { enabled = false } }
+
+[[operations]]
+include-operation-id = "delete_playlist_track"
+parameters = { playlist_id = 9002, track_index = 1 }
+phases = { examples = { enabled = false }, coverage = { enabled = false } }
+
+[[operations]]
+include-operation-id = "patch_playlist"
+checks = { positive_data_acceptance = { expected-statuses = [
+  "2xx",
+  "3xx",
+  401,
+  403,
+  404,
+  409,
+  422,
+  429,
+  "5xx",
+] } }
+
+# The order must be a permutation of the current tracks; that rule depends on
+# the stored playlist, so the schema cannot express it.
+[[operations]]
+include-operation-id = "put_playlist_track"
+checks = { positive_data_acceptance = { expected-statuses = [
+  "2xx",
+  "3xx",
+  401,
+  403,
+  404,
+  409,
+  422,
+  429,
+  "5xx",
+] } }
+
+# Provider-backed writes cannot pass on a server that configures no metadata
+# provider: they need a live TMDB or MusicBrainz response. They stay specified
+# and are covered by the adapter tests, not by this fixture run.
+[[operations]]
+include-path = "/library/movie/{movie_id}/apply"
+enabled = false
+
+[[operations]]
+include-path = "/library/series/{series_id}/apply"
+enabled = false
+
+[[operations]]
+include-path = "/library/series/{series_id}/season/{season_index}/episode/{episode_index}/apply"
+enabled = false
+
+[[operations]]
+include-path = "/library/music/album/{album_id}/apply"
+enabled = false
+
+# The inference assumes a created gallery or playlist has items/tracks, so it
+# reports a child delete as unavailable. The fixture run is not a stateful
+# create-then-delete flow.
+[checks.ensure_resource_availability]
+enabled = false
+
+# To test authenticated operations, obtain a bearer token from a real account.
+# Export LOGIN_USERNAME and LOGIN_PASSWORD, then uncomment this table:
+#
+# [auth.dynamic.openapi.bearer_auth]
+# path = "/identity/login"
+# payload = { username = "${LOGIN_USERNAME}", password = "${LOGIN_PASSWORD}" }
+# extract_selector = "/access_token"

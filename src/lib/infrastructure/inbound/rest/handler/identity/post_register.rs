@@ -1,6 +1,4 @@
-use axum::Json;
 use axum::extract::State;
-use axum::extract::rejection::JsonRejection;
 use axum::http::{HeaderValue, StatusCode, header};
 use axum::response::Response;
 use serde::{Deserialize, Serialize};
@@ -14,6 +12,7 @@ use crate::domain::model::user::Role;
 use crate::infrastructure::inbound::rest::api_error::{ApiError, ErrorBody};
 use crate::infrastructure::inbound::rest::app_state::AppState;
 use crate::infrastructure::inbound::rest::hal::{SelfLinks, hal_json};
+use crate::infrastructure::inbound::rest::handler::JsonObject;
 use crate::infrastructure::inbound::rest::handler::user::user_self_href;
 use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 
@@ -28,7 +27,7 @@ use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 #[non_exhaustive]
 pub(crate) struct RegisterRequest {
     /// Email address of the new user, when provided.
-    #[schema(format = "email")]
+    #[schema(format = "email", min_length = 1)]
     pub email: Option<String>,
     /// Password of the new user; never returned by the API.
     ///
@@ -176,9 +175,9 @@ impl From<RegisterUserError> for ApiError {
 pub(crate) async fn post_register(
     State(state): State<AppState>,
     caller: AuthenticatedUser,
-    payload: Result<Json<RegisterRequest>, JsonRejection>,
+    payload: JsonObject<RegisterRequest>,
 ) -> Result<Response, ApiError> {
-    let Json(request) = payload.map_err(ApiError::from)?;
+    let JsonObject(request) = payload;
     let role = Role::from_wire(&request.role).ok_or_else(|| ApiError::reject_enum("role"))?;
     let response = state
         .identity_use_case_factory()

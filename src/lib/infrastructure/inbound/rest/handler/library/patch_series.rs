@@ -1,5 +1,3 @@
-use axum::Json;
-use axum::extract::rejection::JsonRejection;
 use axum::extract::{Path, State};
 use axum::response::Response;
 use chrono::NaiveDate;
@@ -13,6 +11,7 @@ use crate::domain::alias::NumericID;
 use crate::infrastructure::inbound::rest::api_error::{ApiError, ErrorBody};
 use crate::infrastructure::inbound::rest::app_state::AppState;
 use crate::infrastructure::inbound::rest::hal::hal_json;
+use crate::infrastructure::inbound::rest::handler::JsonObject;
 use crate::infrastructure::inbound::rest::handler::library::{
     DATE_FORMAT, SeriesResponse, deserialize_field_update, parse_series_id,
 };
@@ -27,7 +26,7 @@ use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 pub(crate) struct PatchSeriesRequest {
     /// Country of origin as an ISO 3166-1 alpha-2 code; `null` clears it.
     #[serde(default, deserialize_with = "deserialize_field_update")]
-    #[schema(value_type = Option<String>, nullable = true)]
+    #[schema(value_type = Option<String>, nullable = true, pattern = "^[A-Za-z]{2}$")]
     pub country_of_origin: FieldUpdate<String>,
     /// Identifier of the image holding the show's artwork; `null` clears it.
     #[serde(default, deserialize_with = "deserialize_field_update")]
@@ -35,9 +34,10 @@ pub(crate) struct PatchSeriesRequest {
     pub cover_image_id: FieldUpdate<NumericID>,
     /// Date of the first airing in `YYYY-MM-DD` form; `null` clears it.
     #[serde(default, deserialize_with = "deserialize_field_update")]
-    #[schema(value_type = Option<String>, nullable = true)]
+    #[schema(value_type = Option<String>, nullable = true, format = "date")]
     pub first_air_date: FieldUpdate<String>,
     /// Genres of the show; omit to keep them.
+    #[schema(min_length = 1)]
     pub genres: Option<Vec<String>>,
     /// Name of the show.
     #[schema(min_length = 1, max_length = 100)]
@@ -130,10 +130,10 @@ pub(crate) async fn patch_series(
     Path(series_id_value): Path<String>,
     State(state): State<AppState>,
     caller: AuthenticatedUser,
-    payload: Result<Json<PatchSeriesRequest>, JsonRejection>,
+    payload: JsonObject<PatchSeriesRequest>,
 ) -> Result<Response, ApiError> {
     let series_id = parse_series_id(&series_id_value)?;
-    let Json(request) = payload.map_err(ApiError::from)?;
+    let JsonObject(request) = payload;
     let first_air_date = request.first_air_date.try_map(|value| {
         NaiveDate::parse_from_str(&value, DATE_FORMAT).map_err(|_| {
             warn!(

@@ -1,5 +1,3 @@
-use axum::Json;
-use axum::extract::rejection::JsonRejection;
 use axum::extract::{Path, State};
 use axum::response::Response;
 use serde::Deserialize;
@@ -10,6 +8,7 @@ use crate::domain::alias::NumericID;
 use crate::infrastructure::inbound::rest::api_error::{ApiError, ErrorBody};
 use crate::infrastructure::inbound::rest::app_state::AppState;
 use crate::infrastructure::inbound::rest::hal::hal_json;
+use crate::infrastructure::inbound::rest::handler::JsonObject;
 use crate::infrastructure::inbound::rest::handler::library::{MusicGroupResponse, parse_group_id};
 use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 
@@ -113,10 +112,10 @@ pub(crate) async fn patch_music_group(
     Path(group_id_value): Path<String>,
     State(state): State<AppState>,
     caller: AuthenticatedUser,
-    payload: Result<Json<PatchMusicGroupRequest>, JsonRejection>,
+    payload: JsonObject<PatchMusicGroupRequest>,
 ) -> Result<Response, ApiError> {
     let group_id = parse_group_id(&group_id_value)?;
-    let Json(request) = payload.map_err(ApiError::from)?;
+    let JsonObject(request) = payload;
     let response = state
         .library_use_case_factory()
         .update_music_group()

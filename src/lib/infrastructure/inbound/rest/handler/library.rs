@@ -223,6 +223,51 @@ const TIMESTAMP_FORMAT: &str = "%Y-%m-%dT%H:%M:%S";
 /// Date format of the release dates the album and track representations carry.
 pub(crate) const DATE_FORMAT: &str = "%Y-%m-%d";
 
+/// A production type named by an album create or update body.
+#[derive(Debug, Clone, Copy, serde::Deserialize, utoipa::ToSchema)]
+#[non_exhaustive]
+pub(crate) enum ProductionTypeRequest {
+    /// Compilation of tracks from various sources.
+    #[serde(rename = "COMPILATION")]
+    Compilation,
+    /// Demo recording.
+    #[serde(rename = "DEMO")]
+    Demo,
+    /// Continuous DJ mix.
+    #[serde(rename = "DJMIX")]
+    DjMix,
+    /// Live recording.
+    #[serde(rename = "LIVE")]
+    Live,
+    /// Mixtape.
+    #[serde(rename = "MIXTAPE")]
+    Mixtape,
+    /// Remix.
+    #[serde(rename = "REMIX")]
+    Remix,
+    /// Soundtrack.
+    #[serde(rename = "SOUNDTRACK")]
+    Soundtrack,
+    /// Studio recording.
+    #[serde(rename = "STUDIO")]
+    Studio,
+}
+
+impl From<ProductionTypeRequest> for ProductionType {
+    fn from(production_type: ProductionTypeRequest) -> Self {
+        match production_type {
+            ProductionTypeRequest::Compilation => Self::Compilation,
+            ProductionTypeRequest::Demo => Self::Demo,
+            ProductionTypeRequest::DjMix => Self::DjMix,
+            ProductionTypeRequest::Live => Self::Live,
+            ProductionTypeRequest::Mixtape => Self::Mixtape,
+            ProductionTypeRequest::Remix => Self::Remix,
+            ProductionTypeRequest::Soundtrack => Self::Soundtrack,
+            ProductionTypeRequest::Studio => Self::Studio,
+        }
+    }
+}
+
 /// HAL links exposed by a gallery representation.
 ///
 /// The `self` link addresses the gallery; the `items` link exposes the alias
@@ -3155,8 +3200,11 @@ pub(crate) fn parse_group_id(value: &str) -> Result<NumericID, ApiError> {
 }
 
 /// Parse a `u32` season index from a path segment.
+///
+/// A non-numeric segment is malformed (`400`); a numeric value outside the
+/// 32-bit range violates the declared maximum and is `422` (`API-045`).
 pub(crate) fn parse_season_index(value: &str) -> Result<u32, ApiError> {
-    value.parse::<u32>().map_err(|_| {
+    let parsed = value.parse::<u64>().map_err(|_| {
         warn!(
             target: "security",
             event = "input_validation_failed",
@@ -3165,12 +3213,25 @@ pub(crate) fn parse_season_index(value: &str) -> Result<u32, ApiError> {
             "rejected a malformed season index"
         );
         ApiError::BadRequest("invalid season index".to_owned())
+    })?;
+    u32::try_from(parsed).map_err(|_| {
+        warn!(
+            target: "security",
+            event = "input_validation_failed",
+            field = "season_index",
+            reason = "index_out_of_range",
+            "rejected an out-of-range season index"
+        );
+        ApiError::UnprocessableEntity("invalid season index".to_owned())
     })
 }
 
 /// Parse a `u32` episode index from a path segment.
+///
+/// A non-numeric segment is malformed (`400`); a numeric value outside the
+/// 32-bit range violates the declared maximum and is `422` (`API-045`).
 pub(crate) fn parse_episode_index(value: &str) -> Result<u32, ApiError> {
-    value.parse::<u32>().map_err(|_| {
+    let parsed = value.parse::<u64>().map_err(|_| {
         warn!(
             target: "security",
             event = "input_validation_failed",
@@ -3179,6 +3240,16 @@ pub(crate) fn parse_episode_index(value: &str) -> Result<u32, ApiError> {
             "rejected a malformed episode index"
         );
         ApiError::BadRequest("invalid episode index".to_owned())
+    })?;
+    u32::try_from(parsed).map_err(|_| {
+        warn!(
+            target: "security",
+            event = "input_validation_failed",
+            field = "episode_index",
+            reason = "index_out_of_range",
+            "rejected an out-of-range episode index"
+        );
+        ApiError::UnprocessableEntity("invalid episode index".to_owned())
     })
 }
 
@@ -3198,6 +3269,9 @@ pub(crate) fn parse_series_id(value: &str) -> Result<NumericID, ApiError> {
 
 /// Parse a `u8` music index from a path segment.
 ///
+/// A non-numeric segment is malformed (`400`); a numeric value outside the
+/// 8-bit range violates the declared maximum and is `422` (`API-045`).
+///
 /// `field` is the declared security-event field and `message` the stable,
 /// handler-owned rejection message; the malformed value and the parser detail
 /// never reach the log (`OBS-003`, `OBS-006`).
@@ -3206,30 +3280,7 @@ pub(crate) fn parse_index(
     field: &'static str,
     message: &'static str,
 ) -> Result<u8, ApiError> {
-    value.parse::<u8>().map_err(|_| {
-        warn!(
-            target: "security",
-            event = "input_validation_failed",
-            field = field,
-            reason = "invalid_index",
-            "rejected a malformed music index"
-        );
-        ApiError::BadRequest(message.to_owned())
-    })
-}
-
-/// Parse a `u8` music index from a path segment, reporting a value outside the
-/// 8-bit range as unprocessable rather than malformed.
-///
-/// The write routes admit an index the domain models as `u8`, so a syntactically
-/// valid index above the range is a well-formed request the server cannot
-/// process (`422`), while a non-numeric segment stays a malformed path (`400`).
-pub(crate) fn parse_write_index(
-    value: &str,
-    field: &'static str,
-    message: &'static str,
-) -> Result<u8, ApiError> {
-    let parsed = value.parse::<u32>().map_err(|_| {
+    let parsed = value.parse::<u64>().map_err(|_| {
         warn!(
             target: "security",
             event = "input_validation_failed",
@@ -3249,6 +3300,18 @@ pub(crate) fn parse_write_index(
         );
         ApiError::UnprocessableEntity(message.to_owned())
     })
+}
+
+/// Parse a `u8` music index from a path segment.
+///
+/// Write routes share the read policy: a value outside the 8-bit range violates
+/// the declared maximum and is `422`, while a non-numeric segment is `400`.
+pub(crate) fn parse_write_index(
+    value: &str,
+    field: &'static str,
+    message: &'static str,
+) -> Result<u8, ApiError> {
+    parse_index(value, field, message)
 }
 
 /// Deserialize a field that distinguishes an absent value from `null`.
@@ -3285,8 +3348,11 @@ pub(crate) fn parse_playlist_id(value: &str) -> Result<NumericID, ApiError> {
 }
 
 /// Parse a zero-based playlist track index from a path segment.
+///
+/// A non-numeric segment is malformed (`400`); a numeric value outside the
+/// 32-bit range violates the declared maximum and is `422` (`API-045`).
 pub(crate) fn parse_playlist_track_index(value: &str) -> Result<u32, ApiError> {
-    value.parse::<u32>().map_err(|_| {
+    let parsed = value.parse::<u64>().map_err(|_| {
         warn!(
             target: "security",
             event = "input_validation_failed",
@@ -3295,6 +3361,16 @@ pub(crate) fn parse_playlist_track_index(value: &str) -> Result<u32, ApiError> {
             "rejected a malformed playlist track index"
         );
         ApiError::BadRequest("invalid playlist track index".to_owned())
+    })?;
+    u32::try_from(parsed).map_err(|_| {
+        warn!(
+            target: "security",
+            event = "input_validation_failed",
+            field = "track_index",
+            reason = "index_out_of_range",
+            "rejected an out-of-range playlist track index"
+        );
+        ApiError::UnprocessableEntity("invalid playlist track index".to_owned())
     })
 }
 

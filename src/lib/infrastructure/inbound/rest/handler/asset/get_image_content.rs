@@ -26,7 +26,7 @@ use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
         (
             status = OK,
             body = Vec<u8>,
-            content_type = "application/octet-stream",
+            content_type = "*/*",
             description = "Stored bytes of the image"
         ),
         (

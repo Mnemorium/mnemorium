@@ -1,5 +1,3 @@
-use axum::Json;
-use axum::extract::rejection::JsonRejection;
 use axum::extract::{Path, State};
 use axum::response::Response;
 
@@ -10,6 +8,7 @@ use crate::domain::model::external_ref::ExternalRef;
 use crate::infrastructure::inbound::rest::api_error::{ApiError, ErrorBody};
 use crate::infrastructure::inbound::rest::app_state::AppState;
 use crate::infrastructure::inbound::rest::hal::hal_json;
+use crate::infrastructure::inbound::rest::handler::JsonObject;
 use crate::infrastructure::inbound::rest::handler::library::{
     SeriesResponse, VideoApplyRequest, parse_series_id,
 };
@@ -102,10 +101,10 @@ pub(crate) async fn post_series_apply(
     Path(series_id_value): Path<String>,
     State(state): State<AppState>,
     caller: AuthenticatedUser,
-    payload: Result<Json<VideoApplyRequest>, JsonRejection>,
+    payload: JsonObject<VideoApplyRequest>,
 ) -> Result<Response, ApiError> {
     let series_id = parse_series_id(&series_id_value)?;
-    let Json(request) = payload.map_err(ApiError::from)?;
+    let JsonObject(request) = payload;
     let provider = ProviderId::parse(&request.reference.provider)
         .filter(|provider| provider.serves_video())
         .ok_or_else(|| ApiError::reject_enum("provider"))?;

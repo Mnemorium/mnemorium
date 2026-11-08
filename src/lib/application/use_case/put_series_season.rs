@@ -118,7 +118,10 @@ where
                     .put_season(series.id(), season)
                     .await
                     .map_err(|error| {
-                        if matches!(error, RepositoryError::Conflict) {
+                        if matches!(
+                            error,
+                            RepositoryError::Conflict | RepositoryError::DataIntegrityViolation
+                        ) {
                             PutSeriesSeasonError::Conflict
                         } else {
                             PutSeriesSeasonError::Unknown(error.into())
@@ -356,6 +359,30 @@ mod tests {
             .expect_put_season()
             .times(1)
             .returning(|_, _| Box::pin(async { Err(RepositoryError::Conflict) }));
+        let harness = harness_with(users, no_permissions(), series);
+        let use_case: UseCase = PutSeriesSeason::new(Arc::clone(&harness.factory));
+
+        // Act
+        let result = use_case.execute(command()).await;
+
+        // Assert
+        assert!(matches!(result, Err(PutSeriesSeasonError::Conflict)));
+        assert!(harness.rolled_back.load(Ordering::SeqCst));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn put_series_season_missing_cover_is_conflict() -> Result<(), Box<dyn Error>> {
+        // Arrange: the repository rejects the cover through the scope trigger.
+        let mut users = MockUserRepository::new();
+        expect_admin(&mut users, 1)?;
+        let stored = sample_series(7, Vec::new())?;
+        let mut series = MockSeriesRepository::new();
+        expect_series(&mut series, stored);
+        series
+            .expect_put_season()
+            .times(1)
+            .returning(|_, _| Box::pin(async { Err(RepositoryError::DataIntegrityViolation) }));
         let harness = harness_with(users, no_permissions(), series);
         let use_case: UseCase = PutSeriesSeason::new(Arc::clone(&harness.factory));
 

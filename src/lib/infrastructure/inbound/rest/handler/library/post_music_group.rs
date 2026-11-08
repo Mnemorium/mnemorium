@@ -1,6 +1,4 @@
-use axum::Json;
 use axum::extract::State;
-use axum::extract::rejection::JsonRejection;
 use axum::http::{HeaderValue, StatusCode, header};
 use axum::response::Response;
 use serde::Deserialize;
@@ -11,6 +9,7 @@ use crate::domain::alias::NumericID;
 use crate::infrastructure::inbound::rest::api_error::{ApiError, ErrorBody};
 use crate::infrastructure::inbound::rest::app_state::AppState;
 use crate::infrastructure::inbound::rest::hal::hal_json;
+use crate::infrastructure::inbound::rest::handler::JsonObject;
 use crate::infrastructure::inbound::rest::handler::library::MusicGroupResponse;
 use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 
@@ -104,9 +103,9 @@ pub(crate) struct PostMusicGroupRequest {
 pub(crate) async fn post_music_group(
     State(state): State<AppState>,
     caller: AuthenticatedUser,
-    payload: Result<Json<PostMusicGroupRequest>, JsonRejection>,
+    payload: JsonObject<PostMusicGroupRequest>,
 ) -> Result<Response, ApiError> {
-    let Json(request) = payload.map_err(ApiError::from)?;
+    let JsonObject(request) = payload;
     let response = state
         .library_use_case_factory()
         .create_music_group()

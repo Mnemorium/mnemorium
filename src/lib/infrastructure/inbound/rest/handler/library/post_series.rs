@@ -1,6 +1,4 @@
-use axum::Json;
 use axum::extract::State;
-use axum::extract::rejection::JsonRejection;
 use axum::http::{HeaderValue, StatusCode, header};
 use axum::response::Response;
 use chrono::NaiveDate;
@@ -13,6 +11,7 @@ use crate::domain::alias::NumericID;
 use crate::infrastructure::inbound::rest::api_error::{ApiError, ErrorBody};
 use crate::infrastructure::inbound::rest::app_state::AppState;
 use crate::infrastructure::inbound::rest::hal::hal_json;
+use crate::infrastructure::inbound::rest::handler::JsonObject;
 use crate::infrastructure::inbound::rest::handler::library::{DATE_FORMAT, SeriesResponse};
 use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 
@@ -21,15 +20,16 @@ use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 #[non_exhaustive]
 pub(crate) struct PostSeriesRequest {
     /// Country of origin as an ISO 3166-1 alpha-2 code, when known.
-    #[schema(example = "US")]
+    #[schema(example = "US", pattern = "^[A-Za-z]{2}$")]
     pub country_of_origin: Option<String>,
     /// Identifier of the image holding the show's artwork, when set.
     #[schema(example = 1)]
     pub cover_image_id: Option<NumericID>,
     /// Date of the first airing, in `YYYY-MM-DD` form, when known.
-    #[schema(example = "1990-04-08")]
+    #[schema(format = "date", example = "1990-04-08")]
     pub first_air_date: Option<String>,
     /// Genres of the show.
+    #[schema(min_length = 1)]
     pub genres: Option<Vec<String>>,
     /// Name of the show.
     #[schema(min_length = 1, max_length = 100)]
@@ -116,9 +116,9 @@ pub(crate) struct PostSeriesRequest {
 pub(crate) async fn post_series(
     State(state): State<AppState>,
     caller: AuthenticatedUser,
-    payload: Result<Json<PostSeriesRequest>, JsonRejection>,
+    payload: JsonObject<PostSeriesRequest>,
 ) -> Result<Response, ApiError> {
-    let Json(request) = payload.map_err(ApiError::from)?;
+    let JsonObject(request) = payload;
     let first_air_date = match request.first_air_date.as_deref() {
         Some(value) => Some(NaiveDate::parse_from_str(value, DATE_FORMAT).map_err(|_| {
             warn!(

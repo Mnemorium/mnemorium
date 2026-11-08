@@ -2,13 +2,13 @@ use std::fmt::{Debug, Formatter, Result as FmtResult};
 
 use axum::Json;
 use axum::extract::State;
-use axum::extract::rejection::JsonRejection;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
 use crate::application::port::login_user::{LoginUserCommand, LoginUserError, LoginUserResponse};
 use crate::infrastructure::inbound::rest::api_error::{ApiError, ErrorBody};
 use crate::infrastructure::inbound::rest::app_state::AppState;
+use crate::infrastructure::inbound::rest::handler::JsonObject;
 
 /// Payload to authenticate a user.
 #[derive(Deserialize, ToSchema)]
@@ -149,9 +149,9 @@ impl From<LoginUserError> for ApiError {
 )]
 pub(crate) async fn post_login(
     State(state): State<AppState>,
-    payload: Result<Json<LoginRequest>, JsonRejection>,
+    payload: JsonObject<LoginRequest>,
 ) -> Result<Json<LoginResponse>, ApiError> {
-    let Json(request) = payload.map_err(ApiError::from)?;
+    let JsonObject(request) = payload;
     let response = state
         .identity_use_case_factory()
         .login_user()

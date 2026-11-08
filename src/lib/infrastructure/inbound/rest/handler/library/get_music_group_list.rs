@@ -29,7 +29,7 @@ pub(crate) struct ListMusicGroupsQuery {
     /// Only return groups whose name matches this value.
     pub name: Option<String>,
     /// Number of matching groups to skip before returning the page.
-    #[param(default = 0)]
+    #[param(default = 0, maximum = 18_446_744_073_709_551_615usize)]
     pub offset: Option<usize>,
 }
 

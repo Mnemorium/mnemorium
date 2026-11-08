@@ -39,7 +39,7 @@ impl From<GetAssetContentError> for ApiError {
         (
             status = OK,
             body = Vec<u8>,
-            content_type = "application/octet-stream",
+            content_type = "*/*",
             description = "Stored bytes of the file"
         ),
         (

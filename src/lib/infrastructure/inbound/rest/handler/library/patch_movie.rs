@@ -1,5 +1,3 @@
-use axum::Json;
-use axum::extract::rejection::JsonRejection;
 use axum::extract::{Path, State};
 use axum::response::Response;
 use chrono::NaiveDate;
@@ -13,6 +11,7 @@ use crate::domain::alias::NumericID;
 use crate::infrastructure::inbound::rest::api_error::{ApiError, ErrorBody};
 use crate::infrastructure::inbound::rest::app_state::AppState;
 use crate::infrastructure::inbound::rest::hal::hal_json;
+use crate::infrastructure::inbound::rest::handler::JsonObject;
 use crate::infrastructure::inbound::rest::handler::library::{
     DATE_FORMAT, MovieResponse, deserialize_field_update,
 };
@@ -27,13 +26,14 @@ use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 pub(crate) struct PatchMovieRequest {
     /// Country of origin as an ISO 3166-1 alpha-2 code; `null` clears it.
     #[serde(default, deserialize_with = "deserialize_field_update")]
-    #[schema(value_type = Option<String>, nullable = true)]
+    #[schema(value_type = Option<String>, nullable = true, pattern = "^[A-Za-z]{2}$")]
     pub country_of_origin: FieldUpdate<String>,
     /// Identifier of the image holding the film's artwork; `null` clears it.
     #[serde(default, deserialize_with = "deserialize_field_update")]
     #[schema(value_type = Option<NumericID>, nullable = true)]
     pub cover_image_id: FieldUpdate<NumericID>,
     /// Genres of the film; omit to keep them.
+    #[schema(min_length = 1)]
     pub genres: Option<Vec<String>>,
     /// Name of the film.
     #[schema(min_length = 1, max_length = 100)]
@@ -42,7 +42,7 @@ pub(crate) struct PatchMovieRequest {
     pub plot: Option<String>,
     /// Date of the release in `YYYY-MM-DD` form; `null` clears it.
     #[serde(default, deserialize_with = "deserialize_field_update")]
-    #[schema(value_type = Option<String>, nullable = true)]
+    #[schema(value_type = Option<String>, nullable = true, format = "date")]
     pub release_date: FieldUpdate<String>,
 }
 
@@ -130,7 +130,7 @@ pub(crate) async fn patch_movie(
     Path(movie_id_value): Path<String>,
     State(state): State<AppState>,
     caller: AuthenticatedUser,
-    payload: Result<Json<PatchMovieRequest>, JsonRejection>,
+    payload: JsonObject<PatchMovieRequest>,
 ) -> Result<Response, ApiError> {
     let movie_id = movie_id_value.parse::<NumericID>().map_err(|_| {
         warn!(
@@ -142,7 +142,7 @@ pub(crate) async fn patch_movie(
         );
         ApiError::BadRequest("invalid film identifier".to_owned())
     })?;
-    let Json(request) = payload.map_err(ApiError::from)?;
+    let JsonObject(request) = payload;
     let release_date = request.release_date.try_map(|value| {
         NaiveDate::parse_from_str(&value, DATE_FORMAT).map_err(|_| {
             warn!(

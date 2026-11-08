@@ -16,6 +16,29 @@ use crate::infrastructure::inbound::rest::handler::library::{
 };
 use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 
+/// Kind of music work to search for.
+#[derive(Debug, Clone, Copy, Deserialize, ToSchema)]
+#[serde(rename_all = "lowercase")]
+#[non_exhaustive]
+pub(crate) enum MusicKindRequest {
+    /// The abstract album, independent of any one edition.
+    Album,
+    /// One performance, independent of the release it appears on.
+    Recording,
+    /// One edition of an album.
+    Release,
+}
+
+impl From<MusicKindRequest> for MusicKind {
+    fn from(kind: MusicKindRequest) -> Self {
+        match kind {
+            MusicKindRequest::Album => Self::Album,
+            MusicKindRequest::Recording => Self::Recording,
+            MusicKindRequest::Release => Self::Release,
+        }
+    }
+}
+
 /// Evidence a caller knows about the music work it wants identified.
 #[derive(Debug, Deserialize, IntoParams)]
 #[into_params(parameter_in = Query)]
@@ -24,11 +47,14 @@ pub(crate) struct IdentifyMusicQuery {
     /// Group the caller knows, when any.
     pub group: Option<String>,
     /// Kind of work to search for: `album`, `release` or `recording`.
-    pub kind: String,
+    #[param(inline)]
+    pub kind: MusicKindRequest,
     /// Title to search for; never empty.
+    #[param(min_length = 1)]
     pub title: String,
     /// Release or first-release year, when the caller knows one.
-    pub year: Option<u32>,
+    #[param(maximum = 4_294_967_295u64)]
+    pub year: Option<u64>,
 }
 
 /// One candidate the provider reported, shaped by the kind of work it denotes.
@@ -231,18 +257,32 @@ pub(crate) async fn get_music_identify(
     State(state): State<AppState>,
 ) -> Result<Response, ApiError> {
     let Query(query) = raw_query.map_err(ApiError::from)?;
-    let kind = MusicKind::parse(&query.kind).ok_or_else(|| ApiError::reject_enum("kind"))?;
-    let music_query =
-        MusicQuery::try_new(kind, query.title, query.group, query.year).map_err(|_| {
-            warn!(
-                target: "security",
-                event = "input_validation_failed",
-                field = "title",
-                reason = "empty",
-                "rejected an empty music query title"
-            );
-            ApiError::UnprocessableEntity("the title must not be empty".to_owned())
-        })?;
+    let kind = MusicKind::from(query.kind);
+    let year = query
+        .year
+        .map(|value| {
+            u32::try_from(value).map_err(|_| {
+                warn!(
+                    target: "security",
+                    event = "input_validation_failed",
+                    field = "year",
+                    reason = "index_out_of_range",
+                    "rejected an out-of-range music query year"
+                );
+                ApiError::UnprocessableEntity("the year is out of range".to_owned())
+            })
+        })
+        .transpose()?;
+    let music_query = MusicQuery::try_new(kind, query.title, query.group, year).map_err(|_| {
+        warn!(
+            target: "security",
+            event = "input_validation_failed",
+            field = "title",
+            reason = "empty",
+            "rejected an empty music query title"
+        );
+        ApiError::UnprocessableEntity("the title must not be empty".to_owned())
+    })?;
     // The representation is the answer to the search view, so its `self` link
     // addresses the surface rather than repeating the caller's filters.
     let href = "/api/v1/library/music/identify";

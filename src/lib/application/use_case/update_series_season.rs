@@ -138,7 +138,10 @@ where
                     .update_season(series.id(), updated)
                     .await
                     .map_err(|error| {
-                        if matches!(error, RepositoryError::Conflict) {
+                        if matches!(
+                            error,
+                            RepositoryError::Conflict | RepositoryError::DataIntegrityViolation
+                        ) {
                             UpdateSeriesSeasonError::Conflict
                         } else {
                             UpdateSeriesSeasonError::Unknown(error.into())
@@ -453,6 +456,37 @@ mod tests {
             .expect_update_season()
             .times(1)
             .returning(|_, _| Box::pin(async { Err(RepositoryError::Conflict) }));
+        let harness = harness_with(users, no_permissions(), series);
+        let use_case: UseCase = UpdateSeriesSeason::new(Arc::clone(&harness.factory));
+
+        // Act
+        let result = use_case
+            .execute(UpdateSeriesSeasonCommand::new(
+                1,
+                7,
+                1,
+                FieldUpdate::Absent,
+                FieldUpdate::Set(11),
+            ))
+            .await;
+
+        // Assert
+        assert!(matches!(result, Err(UpdateSeriesSeasonError::Conflict)));
+        assert!(harness.rolled_back.load(Ordering::SeqCst));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn update_series_season_missing_cover_is_conflict() -> Result<(), Box<dyn Error>> {
+        // Arrange: the repository rejects the cover through the scope trigger.
+        let mut users = MockUserRepository::new();
+        expect_admin(&mut users, 1)?;
+        let mut series = MockSeriesRepository::new();
+        expect_series(&mut series, series_with_season()?);
+        series
+            .expect_update_season()
+            .times(1)
+            .returning(|_, _| Box::pin(async { Err(RepositoryError::DataIntegrityViolation) }));
         let harness = harness_with(users, no_permissions(), series);
         let use_case: UseCase = UpdateSeriesSeason::new(Arc::clone(&harness.factory));
 

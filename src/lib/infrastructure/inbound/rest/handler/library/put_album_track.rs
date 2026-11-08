@@ -1,5 +1,3 @@
-use axum::Json;
-use axum::extract::rejection::JsonRejection;
 use axum::extract::{Path, State};
 use axum::http::{HeaderValue, StatusCode, header};
 use axum::response::Response;
@@ -11,6 +9,7 @@ use crate::domain::alias::NumericID;
 use crate::infrastructure::inbound::rest::api_error::{ApiError, ErrorBody};
 use crate::infrastructure::inbound::rest::app_state::AppState;
 use crate::infrastructure::inbound::rest::hal::hal_json;
+use crate::infrastructure::inbound::rest::handler::JsonObject;
 use crate::infrastructure::inbound::rest::handler::library::{
     TrackResponse, parse_album_id, parse_write_index,
 };
@@ -37,8 +36,8 @@ pub(crate) struct PutAlbumTrackRequest {
     tag = "library",
     params(
         ("album_id" = NumericID, Path, description = "Identifier of the album"),
-        ("medium_index" = u8, Path, description = "Album-scoped index of the medium"),
-        ("track_index" = u8, Path, description = "Index of the track within the medium"),
+        ("medium_index" = u8, Path, description = "Album-scoped index of the medium", maximum = 255u8),
+        ("track_index" = u8, Path, description = "Index of the track within the medium", maximum = 255u8),
     ),
     request_body = PutAlbumTrackRequest,
     responses(
@@ -121,7 +120,7 @@ pub(crate) async fn put_album_track(
     Path((album_id_value, medium_index_value, track_index_value)): Path<(String, String, String)>,
     State(state): State<AppState>,
     caller: AuthenticatedUser,
-    payload: Result<Json<PutAlbumTrackRequest>, JsonRejection>,
+    payload: JsonObject<PutAlbumTrackRequest>,
 ) -> Result<Response, ApiError> {
     let album_id = parse_album_id(&album_id_value)?;
     let medium_index = parse_write_index(
@@ -134,7 +133,7 @@ pub(crate) async fn put_album_track(
         "track_index",
         "invalid music track index",
     )?;
-    let Json(request) = payload.map_err(ApiError::from)?;
+    let JsonObject(request) = payload;
     let response = state
         .library_use_case_factory()
         .put_album_track()

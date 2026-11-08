@@ -19,6 +19,7 @@ use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 #[non_exhaustive]
 pub(crate) struct IdentifyMovieQuery {
     /// Media name to search for; never empty.
+    #[param(min_length = 1)]
     name: String,
 }
 

@@ -23,7 +23,7 @@ use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
     tag = "library",
     params(
         ("album_id" = NumericID, Path, description = "Identifier of the album the medium belongs to"),
-        ("medium_index" = u8, Path, description = "Album-scoped index of the medium to fetch"),
+        ("medium_index" = u8, Path, description = "Album-scoped index of the medium to fetch", maximum = 255u8),
     ),
     responses(
         (
@@ -37,6 +37,12 @@ use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
             body = ErrorBody,
             content_type = "application/hal+json",
             description = "Invalid music album identifier or medium index"
+        ),
+        (
+            status = UNPROCESSABLE_ENTITY,
+            body = ErrorBody,
+            content_type = "application/hal+json",
+            description = "The index is outside the 8-bit range"
         ),
         (
             status = UNAUTHORIZED,

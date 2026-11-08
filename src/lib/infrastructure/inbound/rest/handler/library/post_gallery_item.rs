@@ -1,5 +1,3 @@
-use axum::Json;
-use axum::extract::rejection::JsonRejection;
 use axum::extract::{Path, State};
 use axum::http::{HeaderValue, StatusCode, header};
 use axum::response::Response;
@@ -11,6 +9,7 @@ use crate::domain::alias::NumericID;
 use crate::infrastructure::inbound::rest::api_error::{ApiError, ErrorBody};
 use crate::infrastructure::inbound::rest::app_state::AppState;
 use crate::infrastructure::inbound::rest::hal::hal_json;
+use crate::infrastructure::inbound::rest::handler::JsonObject;
 use crate::infrastructure::inbound::rest::handler::library::{
     GalleryItemDetailResponse, GalleryItemType, parse_gallery_id,
 };
@@ -152,10 +151,10 @@ pub(crate) async fn post_gallery_item(
     State(state): State<AppState>,
     caller: AuthenticatedUser,
     Path(id): Path<String>,
-    payload: Result<Json<PostGalleryItemRequest>, JsonRejection>,
+    payload: JsonObject<PostGalleryItemRequest>,
 ) -> Result<Response, ApiError> {
     let gallery_id = parse_gallery_id(&id)?;
-    let Json(request) = payload.map_err(ApiError::from)?;
+    let JsonObject(request) = payload;
     let media_type = GalleryItemType::from_wire(&request.media_type)
         .ok_or_else(|| ApiError::reject_enum("type"))?;
     let media = media_type.media(request.media_id);

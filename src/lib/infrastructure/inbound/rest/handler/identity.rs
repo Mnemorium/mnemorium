@@ -28,6 +28,188 @@ use crate::infrastructure::inbound::rest::middleware::auth::authenticate;
 use crate::infrastructure::inbound::rest::middleware::rate_limit::LoginRateLimiter;
 use crate::infrastructure::outbound::jwt::token_provider::JwtTokenProvider;
 
+/// Kind of an aggregate a `LISTED` scope names.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, ToSchema)]
+#[non_exhaustive]
+pub(crate) enum PermissionResourceKind {
+    /// A stored file.
+    #[serde(rename = "FILE")]
+    File,
+    /// A gallery.
+    #[serde(rename = "GALLERY")]
+    Gallery,
+    /// A film.
+    #[serde(rename = "MOVIE")]
+    Movie,
+    /// A music album.
+    #[serde(rename = "MUSIC_ALBUM")]
+    MusicAlbum,
+    /// A music playlist.
+    #[serde(rename = "MUSIC_PLAYLIST")]
+    MusicPlaylist,
+    /// A show.
+    #[serde(rename = "SERIES")]
+    Series,
+    /// An upload session.
+    #[serde(rename = "UPLOAD")]
+    Upload,
+    /// A user account.
+    #[serde(rename = "USER")]
+    User,
+}
+
+impl From<PermissionResourceKind> for ResourceKind {
+    fn from(kind: PermissionResourceKind) -> Self {
+        match kind {
+            PermissionResourceKind::File => Self::File,
+            PermissionResourceKind::Gallery => Self::Gallery,
+            PermissionResourceKind::Movie => Self::Movie,
+            PermissionResourceKind::MusicAlbum => Self::MusicAlbum,
+            PermissionResourceKind::MusicPlaylist => Self::MusicPlaylist,
+            PermissionResourceKind::Series => Self::Series,
+            PermissionResourceKind::Upload => Self::Upload,
+            PermissionResourceKind::User => Self::User,
+        }
+    }
+}
+
+impl From<ResourceKind> for PermissionResourceKind {
+    fn from(kind: ResourceKind) -> Self {
+        match kind {
+            ResourceKind::File => Self::File,
+            ResourceKind::Gallery => Self::Gallery,
+            ResourceKind::Movie => Self::Movie,
+            ResourceKind::MusicAlbum => Self::MusicAlbum,
+            ResourceKind::MusicPlaylist => Self::MusicPlaylist,
+            ResourceKind::Series => Self::Series,
+            ResourceKind::Upload => Self::Upload,
+            ResourceKind::User => Self::User,
+        }
+    }
+}
+
+/// Action a permission override names.
+#[derive(Debug, Clone, Copy, Deserialize, ToSchema)]
+#[non_exhaustive]
+pub(crate) enum PermissionAction {
+    /// Replace the password behind a credential.
+    #[serde(rename = "credential.patch")]
+    CredentialPatch,
+    /// Read a stored file.
+    #[serde(rename = "file.read")]
+    FileRead,
+    /// Reference a stored file from a library resource.
+    #[serde(rename = "file.use")]
+    FileUse,
+    /// Manage a gallery.
+    #[serde(rename = "gallery.manage")]
+    GalleryManage,
+    /// Moderate gallery items.
+    #[serde(rename = "gallery.moderate")]
+    GalleryModerate,
+    /// Read a gallery and its items.
+    #[serde(rename = "gallery.read")]
+    GalleryRead,
+    /// Write a film, show or album catalogue item.
+    #[serde(rename = "library.manage")]
+    LibraryManage,
+    /// Read the film, show and album catalogue.
+    #[serde(rename = "library.read")]
+    LibraryRead,
+    /// Read, replace and reset permission overrides.
+    #[serde(rename = "permission.manage")]
+    PermissionManage,
+    /// Manage a playlist.
+    #[serde(rename = "playlist.manage")]
+    PlaylistManage,
+    /// Moderate playlist tracks.
+    #[serde(rename = "playlist.moderate")]
+    PlaylistModerate,
+    /// Read a playlist and its tracks.
+    #[serde(rename = "playlist.read")]
+    PlaylistRead,
+    /// Read an upload session.
+    #[serde(rename = "upload.read")]
+    UploadRead,
+    /// Write an upload session.
+    #[serde(rename = "upload.write")]
+    UploadWrite,
+    /// Create a Standard user account.
+    #[serde(rename = "user.create")]
+    UserCreate,
+    /// Create an Admin user account.
+    #[serde(rename = "user.create_admin")]
+    UserCreateAdmin,
+    /// Read a user account.
+    #[serde(rename = "user.read")]
+    UserRead,
+    /// Change a user's role.
+    #[serde(rename = "user.role_change")]
+    UserRoleChange,
+    /// Update a user account.
+    #[serde(rename = "user.update")]
+    UserUpdate,
+}
+
+impl From<PermissionAction> for Action {
+    fn from(action: PermissionAction) -> Self {
+        match action {
+            PermissionAction::CredentialPatch => Self::CredentialPatch,
+            PermissionAction::FileRead => Self::FileRead,
+            PermissionAction::FileUse => Self::FileUse,
+            PermissionAction::GalleryManage => Self::GalleryManage,
+            PermissionAction::GalleryModerate => Self::GalleryModerate,
+            PermissionAction::GalleryRead => Self::GalleryRead,
+            PermissionAction::LibraryManage => Self::LibraryManage,
+            PermissionAction::LibraryRead => Self::LibraryRead,
+            PermissionAction::PermissionManage => Self::PermissionManage,
+            PermissionAction::PlaylistManage => Self::PlaylistManage,
+            PermissionAction::PlaylistModerate => Self::PlaylistModerate,
+            PermissionAction::PlaylistRead => Self::PlaylistRead,
+            PermissionAction::UploadRead => Self::UploadRead,
+            PermissionAction::UploadWrite => Self::UploadWrite,
+            PermissionAction::UserCreate => Self::UserCreate,
+            PermissionAction::UserCreateAdmin => Self::UserCreateAdmin,
+            PermissionAction::UserRead => Self::UserRead,
+            PermissionAction::UserRoleChange => Self::UserRoleChange,
+            PermissionAction::UserUpdate => Self::UserUpdate,
+        }
+    }
+}
+
+/// Scope a permission override requests.
+#[derive(Debug, Clone, Copy, Deserialize, ToSchema)]
+#[non_exhaustive]
+pub(crate) enum PermissionScope {
+    /// Every aggregate.
+    #[serde(rename = "ALL")]
+    All,
+    /// The named aggregates.
+    #[serde(rename = "LISTED")]
+    Listed,
+    /// No aggregate.
+    #[serde(rename = "NONE")]
+    None,
+    /// Aggregates the caller owns.
+    #[serde(rename = "OWNED")]
+    Owned,
+    /// Public aggregates and the caller's own.
+    #[serde(rename = "PUBLIC_OR_OWNED")]
+    PublicOrOwned,
+}
+
+impl From<PermissionScope> for Scope {
+    fn from(scope: PermissionScope) -> Self {
+        match scope {
+            PermissionScope::All => Self::All,
+            PermissionScope::Listed => Self::Listed(Vec::new()),
+            PermissionScope::None => Self::None,
+            PermissionScope::Owned => Self::Owned,
+            PermissionScope::PublicOrOwned => Self::PublicOrOwned,
+        }
+    }
+}
+
 /// One named aggregate of a `LISTED` scope in a permission representation.
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 #[non_exhaustive]
@@ -35,7 +217,7 @@ pub(crate) struct PermissionResource {
     /// Identifier of the aggregate.
     pub id: NumericID,
     /// Kind of the aggregate (`GALLERY`, `MUSIC_PLAYLIST`, ...).
-    pub kind: String,
+    pub kind: PermissionResourceKind,
 }
 
 /// One action's scope in a permission representation.
@@ -72,12 +254,12 @@ pub(crate) struct PermissionResponse {
 #[non_exhaustive]
 pub(crate) struct PermissionOverrideRequest {
     /// Action the override names (`playlist.read`).
-    pub action: String,
+    pub action: PermissionAction,
     /// Aggregates a `LISTED` scope names; empty otherwise.
     #[serde(default)]
     pub resources: Vec<PermissionResource>,
     /// Requested scope (`ALL`, `PUBLIC_OR_OWNED`, `OWNED`, `LISTED`, `NONE`).
-    pub scope: String,
+    pub scope: PermissionScope,
 }
 
 /// Complete override set a user must end with.
@@ -115,21 +297,17 @@ impl TryFrom<PermissionOverrideRequest> for PermissionRequestData {
     type Error = ApiError;
 
     fn try_from(request: PermissionOverrideRequest) -> Result<Self, Self::Error> {
-        let action =
-            Action::from_wire(&request.action).ok_or_else(|| ApiError::reject_enum("action"))?;
-        let stored_scope =
-            Scope::from_wire(&request.scope).ok_or_else(|| ApiError::reject_enum("scope"))?;
+        let action = Action::from(request.action);
+        let stored_scope = Scope::from(request.scope);
         let resolved_scope = match stored_scope {
             Scope::Listed(_) => {
                 let references = request
                     .resources
                     .iter()
                     .map(|resource| {
-                        let kind = ResourceKind::from_wire(&resource.kind)
-                            .ok_or_else(|| ApiError::reject_enum("resource.kind"))?;
-                        Ok(ResourceRef::new(kind, resource.id))
+                        ResourceRef::new(ResourceKind::from(resource.kind), resource.id)
                     })
-                    .collect::<Result<Vec<_>, ApiError>>()?;
+                    .collect::<Vec<_>>();
                 Scope::Listed(references)
             }
             Scope::All | Scope::None | Scope::Owned | Scope::PublicOrOwned => {
@@ -157,7 +335,7 @@ fn grant_response(action: Action, scope: &Scope) -> PermissionGrantResponse {
             .iter()
             .map(|reference| PermissionResource {
                 id: reference.id(),
-                kind: reference.kind().as_wire().to_owned(),
+                kind: PermissionResourceKind::from(reference.kind()),
             })
             .collect(),
         Scope::All | Scope::None | Scope::Owned | Scope::PublicOrOwned => Vec::new(),

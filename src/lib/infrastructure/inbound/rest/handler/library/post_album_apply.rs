@@ -1,5 +1,3 @@
-use axum::Json;
-use axum::extract::rejection::JsonRejection;
 use axum::extract::{Path, State};
 use axum::response::Response;
 use serde::Deserialize;
@@ -12,6 +10,7 @@ use crate::domain::model::external_ref::ExternalRef;
 use crate::infrastructure::inbound::rest::api_error::{ApiError, ErrorBody};
 use crate::infrastructure::inbound::rest::app_state::AppState;
 use crate::infrastructure::inbound::rest::hal::hal_json;
+use crate::infrastructure::inbound::rest::handler::JsonObject;
 use crate::infrastructure::inbound::rest::handler::library::{AlbumResponse, parse_album_id};
 use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 
@@ -138,10 +137,10 @@ pub(crate) async fn post_album_apply(
     Path(album_id_value): Path<String>,
     State(state): State<AppState>,
     caller: AuthenticatedUser,
-    payload: Result<Json<ApplyAlbumRequest>, JsonRejection>,
+    payload: JsonObject<ApplyAlbumRequest>,
 ) -> Result<Response, ApiError> {
     let album_id = parse_album_id(&album_id_value)?;
-    let Json(request) = payload.map_err(ApiError::from)?;
+    let JsonObject(request) = payload;
     let provider = ProviderId::parse(&request.reference.provider)
         .filter(|provider| provider.serves_music())
         .ok_or_else(|| ApiError::reject_enum("provider"))?;

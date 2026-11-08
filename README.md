@@ -148,6 +148,15 @@ devenv shell
 cargo run --bin server
 ```
 
+To start with the test seed — demo accounts, media bytes and library rows — enable the `test-seed` feature:
+
+```sh
+cargo run --features test-seed --bin server
+```
+
+The first seeded run prints the shared demo password; the accounts are `alice` and `bobby`. This is test data only: a
+default build and the shipped image are unseeded.
+
 ### Configuration
 
 Configuration is layered: built-in defaults, then the optional `config.yaml` file, then the environment. Every setting
@@ -184,7 +193,7 @@ default password is revealed only by the start that creates the account; change 
 TODO: add a realistic end-to-end usage example.
 
 The API is served under `/api/v1`. With the `api-docs` feature the server also serves an interactive OpenAPI reference
-at `/doc`.
+at `/doc` and the raw document as JSON at `/doc/openapi.json`.
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
@@ -199,6 +208,7 @@ Enter the environment first: `devenv shell`.
 | Test      | `cargo test` (unit + integration)                                                                                                                                                |
 | Coverage  | `cargo llvm-cov --lib --ignore-filename-regex 'src/lib/infrastructure/inbound/rest/handler'` (gate ≥ 80% lines/regions/functions; REST handlers are covered by E2E/Schemathesis) |
 | E2E       | `script/e2e.sh` (builds and runs the container; `NO_BUILD=1` reuses the image)                                                                                                   |
+| API fuzz  | `script/api_fuzz.sh` (disposable local server; extra arguments go to Schemathesis)                                                                                               |
 | Lint      | `cargo clippy --all-targets --all-features -- -D warnings`; `cargo fmt --all -- --check`                                                                                         |
 | Full gate | `devenv test` (all pre-commit hooks)                                                                                                                                             |
 

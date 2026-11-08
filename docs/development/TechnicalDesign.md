@@ -1513,6 +1513,12 @@ deserialization. A value that violates a `#[schema(...)]` constraint still deser
 validates it and answers `422` (`API-045`, `API-041`, [§ Response codes](#response-codes)). A declared constraint is
 therefore a promise the handler keeps, or the attribute is not declared.
 
+A JSON request body is a JSON object: the shared `JsonObject<T>` extractor in
+`src/lib/infrastructure/inbound/rest/handler.rs` rejects a sequence with `422`, because the OpenAPI document describes
+every body DTO as an object and serde would otherwise accept a positional sequence. The extractor also normalises a
+whole-number float (`1.0`) to an integer before deserialization, because JSON Schema treats it as an integer while serde
+does not.
+
 These attributes apply identically on request/response body models through the `#[schema(...)]` attribute of the
 `ToSchema` derive:
 
@@ -1801,7 +1807,7 @@ not:
 
 ```rust
 #[must_use]
-pub fn openapi() -> OpenApi {
+pub(crate) fn openapi() -> OpenApi {
     let (_, openapi) = OpenApiRouter::with_openapi(ApiDoc::openapi())
         .routes(routes!(get_health::get_health))
         .nest("/library", library_router())
@@ -1811,10 +1817,11 @@ pub fn openapi() -> OpenApi {
 }
 ```
 
-The server assembles the document at startup from the same registration, so the reference it serves cannot drift from
-the routes. With the `api-docs` feature `setup_routes` mounts an interactive reference through `utoipa-scalar` at
-`/doc`, outside the `/api/v1` base; the feature is off by default, so a default build serves no reference UI. There is
-no generated artifact to commit — the served document is the published specification.
+The server assembles the document at startup from the same registration, so the document it serves cannot drift from the
+routes. With the `api-docs` feature `setup_routes` serves an interactive reference through `utoipa-scalar` at `/doc` and
+the same document as JSON at `/doc/openapi.json`, both outside the `/api/v1` base; the feature is off by default, so a
+default build serves neither. There is no generated artifact to commit — the served document is the published
+specification.
 
 ---
 
@@ -2688,6 +2695,17 @@ file stays in `test/e2e/asset/`. `TEST-040` lists the folders a bounded context 
 
 ---
 
+### API fuzz test
+
+The `api-test` job in `.github/workflows/ci.yml` runs `script/api_fuzz.sh`, which boots a disposable server built with
+the `api-docs` and `test-seed` features, seeds the demo library, completes one upload, and fuzzes the served OpenAPI
+document with Schemathesis. It triggers on Rust sources, SQL, the fuzz configuration and hooks, the harness, the
+development environment, and the workflow itself. Its JUnit report is uploaded as the `schemathesis-results` artifact
+(`junit.xml`) whether the run passes or fails; the report is an untrusted review input, while the job result gates the
+pull request.
+
+---
+
 ### Configuration test
 
 Configuration tests ask one question per setting: when the operator changes it, does the server do what it promises?
@@ -2700,6 +2718,39 @@ malformed environment value, a malformed seed and a domain-invalid value all fai
 [§ 10 (Configuration)](#10-configuration); those cases are covered by the Rust application and integration tests that
 own the loader and the domain constructors. The suite asserts the effect of a **valid** value, plus the two semantic
 refusals the instance state owns (a seed that differs from the persisted one, and a datastore without an identity).
+
+---
+
+### Seed data
+
+`test/seed/sql` holds the SQL scripts and `test/seed/media` the media bytes the `test-seed` Cargo feature applies to a
+developer or fixture datastore. The feature is off by default and is the only switch: a build without it neither
+compiles the seed module nor runs the scripts, so the shipped image is unaffected (`ARG CARGO_FEATURES=""` in the
+`Dockerfile`).
+
+The scripts mirror the migration mechanism: they are embedded at compile time and applied once through a second `sqlx`
+migrator whose history table is `_sqlx_seeds`. They are one-way -- no `.down.sql` -- because seeded data is disposable.
+Changing a script that already ran changes its checksum and is refused like a migration; reset by deleting
+`mnemorium.db` (with its `-wal`/`-shm` sidecars) and `media/seed`, then restart.
+
+SQL cannot reproduce an Argon2 hash bound to the live pepper or materialise media bytes, so the feature's Rust step owns
+the demo `credential`/`user` rows, the `file` rows and the bytes under `media/seed/`; the scripts own every other row
+and reference the fixed identifiers that step creates. The demo accounts are `alice` and `bobby`; their shared password
+is fixed test data and is printed on the first seeded run. The feature creates `media/` when it is absent, because the
+run owns the directory it populates; a build without the feature still never creates the operator's mount:
+
+```sh
+cargo run --features test-seed --bin server
+```
+
+The feature is exercised by its own unit tests and by `cargo llvm-cov --features test-seed`; the standard E2E image
+stays unseeded because the existing suite asserts seed-free counts. The disposable server `script/api_fuzz.sh` starts is
+built with both `api-docs` and `test-seed`, so Schemathesis fuzzes a populated library. The run takes its fixture
+identifiers from `schemathesis.toml`: reads address the fixed seed rows, and the provider-backed `apply` operations are
+deselected because the disposable server configures no metadata provider. One upload is completed before fuzzing, so the
+completion endpoint addresses a finished session. The run drops generator artifacts the served schema cannot express (a
+malformed header name, an invalid date, username or country code, and a partial season/episode pair) through
+`test/api/hooks.py`, and it accepts a `422` where a request body names a missing resource (`API-044`).
 
 ---
 
@@ -2939,6 +2990,7 @@ Source: `devenv.nix`.
 | [prettier](https://prettier.io/)                                  | Markdown formatter.                                                     | 3.8.3   | TODO    |
 | [Python toolchain](https://www.python.org/)                       | Python runtime for tooling and tests.                                   | 3.14.6  | TODO    |
 | [Rust toolchain](https://www.rust-lang.org/)                      | Rust compiler and standard tooling.                                     | 1.98.0  | TODO    |
+| [schemathesis](https://github.com/schemathesis/schemathesis)      | Property-based API tests against the served OpenAPI document.           | 4.33.1  | MIT     |
 | [semgrep](https://semgrep.dev/)                                   | Static-analysis (SAST) scanner; CI and the `security:semgrep` task.     | 1.172.0 | TODO    |
 | [shellcheck](https://github.com/koalaman/shellcheck)              | Shell script linter.                                                    | 0.11.0  | TODO    |
 | [shfmt](https://github.com/mvdan/sh)                              | Shell script formatter.                                                 | 3.13.1  | TODO    |
@@ -3056,66 +3108,67 @@ The set is **closed and exhaustive** over the tracked paths: every path is owned
 longest-prefix match, and every scope owns at least one path. Adding or removing a scope edits this table and the
 `scopes:` block of `.github/workflows/ci.yml` in the same change.
 
-| Group   | Scope            | Path                                      | Description                    |
-| ------- | ---------------- | ----------------------------------------- | ------------------------------ |
-| Code    | `domain`         | `src/lib/domain.rs`                       | Domain module root             |
-| Code    | `domain`         | `src/lib/domain/**`                       | Domain layer                   |
-| Code    | `application`    | `src/lib/application.rs`                  | Application module root        |
-| Code    | `application`    | `src/lib/application/**`                  | Application layer              |
-| Code    | `application`    | `src/lib/lib.rs`                          | Crate root and test helpers    |
-| Code    | `infrastructure` | `src/lib/infrastructure.rs`               | Infrastructure module root     |
-| Code    | `infrastructure` | `src/lib/infrastructure/**`               | Infrastructure layer           |
-| Code    | `api`            | `src/lib/infrastructure/inbound/rest.rs`  | REST module root               |
-| Code    | `api`            | `src/lib/infrastructure/inbound/rest/**`  | REST adapter                   |
-| Code    | `persistence`    | `migrations/**`                           | Migrations                     |
-| Code    | `persistence`    | `src/lib/infrastructure/outbound/sqlx.rs` | SQLx module root               |
-| Code    | `persistence`    | `src/lib/infrastructure/outbound/sqlx/**` | SQLx SQLite layer              |
-| Code    | `server`         | `src/bin/**`                              | Server binaries                |
-| Code    | `server`         | `src/lib/app.rs`                          | Composition root               |
-| Tests   | `test-e2e`       | `test/**`                                 | Tests                          |
-| Tests   | `test-config`    | `test/configuration/**`                   | Configuration tests            |
-| Docs    | `user`           | `README.md`                               | Repository README              |
-| Docs    | `user`           | `docs/index.md`                           | Documentation home page        |
-| Docs    | `user`           | `docs/Permissions.md`                     | Permissions guide              |
-| Docs    | `user`           | `docs/assets/**`                          | Documentation theme assets     |
-| Docs    | `user`           | `mkdocs.yml`                              | MkDocs site configuration      |
-| Docs    | `development`    | `docs/development/**`                     | Development documentation      |
-| Repo    | `repo`           | `LICENSE`                                 | License                        |
-| Repo    | `repo`           | `THIRD_PARTY_NOTICES.txt`                 | Third-party notices            |
-| Repo    | `repo`           | `about.toml`                              | cargo-about configuration      |
-| Repo    | `repo`           | `about.hbs`                               | cargo-about notices template   |
-| Tooling | `config`         | `Cargo.toml`                              | Rust manifest                  |
-| Tooling | `config`         | `Cargo.lock`                              | Rust lockfile                  |
-| Tooling | `config`         | `.betterleaks.toml`                       | Secret-scan configuration      |
-| Tooling | `config`         | `.gitignore`                              | Git ignore rules               |
-| Tooling | `config`         | `.ls-lint.yml`                            | Naming linter configuration    |
-| Tooling | `config`         | `.markdownlint-cli2.jsonc`                | Markdown lint configuration    |
-| Tooling | `config`         | `.prettierrc`                             | Prettier configuration         |
-| Tooling | `config`         | `.prettierignore`                         | Prettier ignore rules          |
-| Tooling | `config`         | `.releaserc.json`                         | semantic-release configuration |
-| Tooling | `config`         | `.sqlfluff`                               | SQL linter configuration       |
-| Tooling | `config`         | `.taplo.toml`                             | TOML linter configuration      |
-| Tooling | `config`         | `.yamllint`                               | YAML linter configuration      |
-| Tooling | `config`         | `clippy.toml`                             | Clippy configuration           |
-| Tooling | `config`         | `deny.toml`                               | cargo-deny configuration       |
-| Tooling | `config`         | `pytest.ini`                              | pytest configuration           |
-| Tooling | `config`         | `requirements.txt`                        | Python dependencies            |
-| Tooling | `config`         | `ruff.toml`                               | Ruff configuration             |
-| Tooling | `config`         | `rule_enforcer.yaml`                      | Rule enforcer configuration    |
-| Tooling | `config`         | `rule/**`                                 | ast-grep rule definitions      |
-| Tooling | `config`         | `sgconfig.yaml`                           | ast-grep project configuration |
-| Tooling | `agent`          | `.opencode/**`                            | opencode configuration         |
-| Tooling | `agent`          | `.agents/**`                              | Agent skills                   |
-| Tooling | `agent`          | `AGENTS.md`                               | Repository router              |
-| Tooling | `agent`          | `opencode.json`                           | opencode project configuration |
-| Tooling | `agent`          | `skills-lock.json`                        | Skill lockfile                 |
-| Tooling | `github`         | `.github/**`                              | GitHub workflows and assets    |
-| Tooling | `devenv`         | `devenv.nix`                              | devenv environment             |
-| Tooling | `devenv`         | `devenv.yaml`                             | devenv inputs                  |
-| Tooling | `devenv`         | `devenv.lock`                             | devenv lockfile                |
-| Tooling | `devops`         | `Dockerfile`                              | Container build                |
-| Tooling | `devops`         | `.dockerignore`                           | Build-context ignore rules     |
-| Tooling | `devops`         | `script/**`                               | Repository scripts             |
+| Group   | Scope            | Path                                      | Description                     |
+| ------- | ---------------- | ----------------------------------------- | ------------------------------- |
+| Code    | `domain`         | `src/lib/domain.rs`                       | Domain module root              |
+| Code    | `domain`         | `src/lib/domain/**`                       | Domain layer                    |
+| Code    | `application`    | `src/lib/application.rs`                  | Application module root         |
+| Code    | `application`    | `src/lib/application/**`                  | Application layer               |
+| Code    | `application`    | `src/lib/lib.rs`                          | Crate root and test helpers     |
+| Code    | `infrastructure` | `src/lib/infrastructure.rs`               | Infrastructure module root      |
+| Code    | `infrastructure` | `src/lib/infrastructure/**`               | Infrastructure layer            |
+| Code    | `api`            | `src/lib/infrastructure/inbound/rest.rs`  | REST module root                |
+| Code    | `api`            | `src/lib/infrastructure/inbound/rest/**`  | REST adapter                    |
+| Code    | `persistence`    | `migrations/**`                           | Migrations                      |
+| Code    | `persistence`    | `src/lib/infrastructure/outbound/sqlx.rs` | SQLx module root                |
+| Code    | `persistence`    | `src/lib/infrastructure/outbound/sqlx/**` | SQLx SQLite layer               |
+| Code    | `server`         | `src/bin/**`                              | Server binaries                 |
+| Code    | `server`         | `src/lib/app.rs`                          | Composition root                |
+| Tests   | `test-e2e`       | `test/**`                                 | Tests                           |
+| Tests   | `test-config`    | `test/configuration/**`                   | Configuration tests             |
+| Docs    | `user`           | `README.md`                               | Repository README               |
+| Docs    | `user`           | `docs/index.md`                           | Documentation home page         |
+| Docs    | `user`           | `docs/Permissions.md`                     | Permissions guide               |
+| Docs    | `user`           | `docs/assets/**`                          | Documentation theme assets      |
+| Docs    | `user`           | `mkdocs.yml`                              | MkDocs site configuration       |
+| Docs    | `development`    | `docs/development/**`                     | Development documentation       |
+| Repo    | `repo`           | `LICENSE`                                 | License                         |
+| Repo    | `repo`           | `THIRD_PARTY_NOTICES.txt`                 | Third-party notices             |
+| Repo    | `repo`           | `about.toml`                              | cargo-about configuration       |
+| Repo    | `repo`           | `about.hbs`                               | cargo-about notices template    |
+| Tooling | `config`         | `Cargo.toml`                              | Rust manifest                   |
+| Tooling | `config`         | `Cargo.lock`                              | Rust lockfile                   |
+| Tooling | `config`         | `.betterleaks.toml`                       | Secret-scan configuration       |
+| Tooling | `config`         | `.gitignore`                              | Git ignore rules                |
+| Tooling | `config`         | `.ls-lint.yml`                            | Naming linter configuration     |
+| Tooling | `config`         | `.markdownlint-cli2.jsonc`                | Markdown lint configuration     |
+| Tooling | `config`         | `.prettierrc`                             | Prettier configuration          |
+| Tooling | `config`         | `.prettierignore`                         | Prettier ignore rules           |
+| Tooling | `config`         | `.releaserc.json`                         | semantic-release configuration  |
+| Tooling | `config`         | `.sqlfluff`                               | SQL linter configuration        |
+| Tooling | `config`         | `.taplo.toml`                             | TOML linter configuration       |
+| Tooling | `config`         | `.yamllint`                               | YAML linter configuration       |
+| Tooling | `config`         | `clippy.toml`                             | Clippy configuration            |
+| Tooling | `config`         | `deny.toml`                               | cargo-deny configuration        |
+| Tooling | `config`         | `pytest.ini`                              | pytest configuration            |
+| Tooling | `config`         | `requirements.txt`                        | Python dependencies             |
+| Tooling | `config`         | `ruff.toml`                               | Ruff configuration              |
+| Tooling | `config`         | `rule_enforcer.yaml`                      | Rule enforcer configuration     |
+| Tooling | `config`         | `rule/**`                                 | ast-grep rule definitions       |
+| Tooling | `config`         | `schemathesis.toml`                       | Schemathesis fuzz configuration |
+| Tooling | `config`         | `sgconfig.yaml`                           | ast-grep project configuration  |
+| Tooling | `agent`          | `.opencode/**`                            | opencode configuration          |
+| Tooling | `agent`          | `.agents/**`                              | Agent skills                    |
+| Tooling | `agent`          | `AGENTS.md`                               | Repository router               |
+| Tooling | `agent`          | `opencode.json`                           | opencode project configuration  |
+| Tooling | `agent`          | `skills-lock.json`                        | Skill lockfile                  |
+| Tooling | `github`         | `.github/**`                              | GitHub workflows and assets     |
+| Tooling | `devenv`         | `devenv.nix`                              | devenv environment              |
+| Tooling | `devenv`         | `devenv.yaml`                             | devenv inputs                   |
+| Tooling | `devenv`         | `devenv.lock`                             | devenv lockfile                 |
+| Tooling | `devops`         | `Dockerfile`                              | Container build                 |
+| Tooling | `devops`         | `.dockerignore`                           | Build-context ignore rules      |
+| Tooling | `devops`         | `script/**`                               | Repository scripts              |
 
 Two things are exempt because the release tooling generates them and they bypass the pull-request gate: a bot commit
 (semantic-release, `github-actions[bot]`) and the generated `CHANGELOG.md`. Neither carries a scope.

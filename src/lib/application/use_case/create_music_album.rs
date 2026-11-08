@@ -161,7 +161,9 @@ where
                     .map_err(|error| {
                         if matches!(
                             error,
-                            RepositoryError::AlreadyExist | RepositoryError::Conflict
+                            RepositoryError::AlreadyExist
+                                | RepositoryError::Conflict
+                                | RepositoryError::DataIntegrityViolation
                         ) {
                             CreateMusicAlbumError::Conflict
                         } else {
@@ -302,6 +304,45 @@ mod tests {
         assert!(response.created());
         assert_eq!(response.album().id(), 7);
         assert!(harness.committed.load(Ordering::SeqCst));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn create_music_album_missing_cover_is_conflict() -> Result<(), Box<dyn Error>> {
+        // Arrange: the cover identifier does not resolve, so the insert violates
+        // the cover foreign key.
+        let mut users = MockUserRepository::new();
+        expect_admin(&mut users, 1)?;
+        let mut groups = MockMusicGroupRepository::new();
+        expect_group(&mut groups)?;
+        let mut albums = MockMusicAlbumRepository::new();
+        albums
+            .expect_search()
+            .times(1)
+            .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+        albums
+            .expect_create()
+            .times(1)
+            .returning(|_| Box::pin(async { Err(RepositoryError::DataIntegrityViolation) }));
+        let harness = harness_with(users, albums, groups);
+        let use_case: UseCase = CreateMusicAlbum::new(Arc::clone(&harness.factory));
+
+        // Act
+        let result = use_case
+            .execute(CreateMusicAlbumCommand::new(
+                1,
+                "Kind of Blue".to_owned(),
+                0,
+                None,
+                None,
+                Vec::new(),
+                Some(9),
+            ))
+            .await;
+
+        // Assert
+        assert!(matches!(result, Err(CreateMusicAlbumError::Conflict)));
+        assert!(harness.rolled_back.load(Ordering::SeqCst));
         Ok(())
     }
 

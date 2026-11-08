@@ -83,7 +83,7 @@ impl From<WriteUploadChunkError> for ApiError {
     ),
     params(
         ("upload_id" = NumericID, Path, description = "Identifier of the upload session"),
-        ("chunk_number" = u64, Path, description = "Zero-based number of the chunk"),
+        ("chunk_number" = u64, Path, description = "Zero-based number of the chunk", maximum = 9_223_372_036_854_775_807u64),
         ("Content-Range" = String, Header, description = "Inclusive byte range, `bytes {start}-{end}/{total}`"),
         (
             "Content-Digest" = String,

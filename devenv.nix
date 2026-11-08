@@ -16,12 +16,14 @@
     # npm global installs go to a user-writable prefix inside the devenv state
     # directory, so `npm install -g` never needs sudo and is not wiped by nix.
     NPM_CONFIG_PREFIX = "${config.devenv.state}/npm";
+    # `uv tool install` binaries go to the same user-writable state directory.
+    UV_TOOL_BIN_DIR = "${config.devenv.state}/uv/bin";
   };
 
-  # Put the npm global prefix's binaries on PATH so the task-installed CLIs
-  # (e.g. openspec) are runnable directly.
+  # Put the npm and uv tool prefixes' binaries on PATH so the task-installed
+  # CLIs (e.g. openspec, schemathesis) are runnable directly.
   enterShell = ''
-    export PATH="$NPM_CONFIG_PREFIX/bin:$PATH"
+    export PATH="$UV_TOOL_BIN_DIR:$NPM_CONFIG_PREFIX/bin:$PATH"
   '';
 
   # https://devenv.sh/packages/
@@ -41,6 +43,7 @@
     pkgs.sqlx-cli
     pkgs.sqlfluff
     pkgs.ast-grep
+    pkgs.uv
     pkgs.jq
     pkgs.yq
     multiverse.ffmpeg-headless."6.1.2"
@@ -143,7 +146,7 @@
     coverage = {
       enable = true;
       name = "Coverage >= 80%";
-      entry = "cargo llvm-cov --lib --ignore-filename-regex 'src/lib/infrastructure/inbound/rest/handler' --fail-under-functions 80 --fail-under-regions 80 --fail-under-lines 80";
+      entry = "cargo llvm-cov --lib --features test-seed --ignore-filename-regex 'src/lib/infrastructure/inbound/rest/handler' --fail-under-functions 80 --fail-under-regions 80 --fail-under-lines 80";
       pass_filenames = false;
       files = "\\.rs$";
       language = "rust";
@@ -155,7 +158,7 @@
       enable = true;
       name = "sqlfluff";
       entry = "sqlfluff lint --dialect sqlite";
-      files = "migrations/.*\\.sql$";
+      files = "(migrations|test/seed/sql)/.*\\.sql$";
     };
 
     cargo-deny = {
@@ -261,6 +264,11 @@
     description = "Run the E2E tests against a running server";
   };
 
+  tasks."test:api" = {
+    exec = "script/api_fuzz.sh";
+    description = "Fuzz the API with Schemathesis against a disposable, seeded server";
+  };
+
   tasks."test:configuration" = {
     exec = "script/configuration.sh";
     description = "Run the configuration tests against the mnemorium image";
@@ -271,6 +279,11 @@
   tasks."setup:openspec" = {
     exec = "npm install -g --prefix \"$NPM_CONFIG_PREFIX\" @fission-ai/openspec@latest";
     description = "Install the OpenSpec CLI globally into the devenv state prefix";
+  };
+
+  tasks."setup:schemathesis" = {
+    exec = "uv tool install schemathesis==4.33.1";
+    description = "Install the Schemathesis CLI as a uv tool";
   };
 
   # Formatting tasks
@@ -306,7 +319,7 @@
   };
 
   tasks."fmt:sql" = {
-    exec = "sqlfluff format --dialect sqlite migrations";
+    exec = "sqlfluff format --dialect sqlite migrations test/seed/sql";
     description = "Format sql file";
   };
 
@@ -323,7 +336,7 @@
   };
 
   tasks."lint:sql" = {
-    exec = "sqlfluff lint --dialect sqlite migrations";
+    exec = "sqlfluff lint --dialect sqlite migrations test/seed/sql";
     description = "Lint sql file";
   };
 

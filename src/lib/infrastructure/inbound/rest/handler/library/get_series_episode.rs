@@ -24,8 +24,8 @@ use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
     tag = "library",
     params(
         ("series_id" = NumericID, Path, description = "Identifier of the show holding the episode"),
-        ("season_index" = u32, Path, description = "Series-scoped index of the season holding the episode"),
-        ("episode_index" = u32, Path, description = "Season-scoped index of the episode"),
+        ("season_index" = u64, Path, description = "Series-scoped index of the season holding the episode", maximum = 4_294_967_295u64),
+        ("episode_index" = u64, Path, description = "Season-scoped index of the episode", maximum = 4_294_967_295u64),
     ),
     responses(
         (
@@ -39,6 +39,12 @@ use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
             body = ErrorBody,
             content_type = "application/hal+json",
             description = "Invalid show identifier or season or episode index"
+        ),
+        (
+            status = UNPROCESSABLE_ENTITY,
+            body = ErrorBody,
+            content_type = "application/hal+json",
+            description = "An index is outside the 32-bit range"
         ),
         (
             status = UNAUTHORIZED,

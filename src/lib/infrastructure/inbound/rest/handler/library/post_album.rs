@@ -1,6 +1,4 @@
-use axum::Json;
 use axum::extract::State;
-use axum::extract::rejection::JsonRejection;
 use axum::http::{HeaderValue, StatusCode, header};
 use axum::response::Response;
 use chrono::NaiveDate;
@@ -14,7 +12,10 @@ use crate::domain::model::music_album::ProductionType;
 use crate::infrastructure::inbound::rest::api_error::{ApiError, ErrorBody};
 use crate::infrastructure::inbound::rest::app_state::AppState;
 use crate::infrastructure::inbound::rest::hal::hal_json;
-use crate::infrastructure::inbound::rest::handler::library::{AlbumResponse, DATE_FORMAT};
+use crate::infrastructure::inbound::rest::handler::JsonObject;
+use crate::infrastructure::inbound::rest::handler::library::{
+    AlbumResponse, DATE_FORMAT, ProductionTypeRequest,
+};
 use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 
 /// Payload to create a music album.
@@ -25,6 +26,7 @@ pub(crate) struct PostAlbumRequest {
     #[schema(example = 1)]
     pub cover_image_id: Option<NumericID>,
     /// Genres of the album; omit to store the `UNKNOWN` genre.
+    #[schema(min_length = 1)]
     pub genres: Option<Vec<String>>,
     /// Identifier of the music group the album belongs to.
     #[schema(example = 1)]
@@ -33,9 +35,9 @@ pub(crate) struct PostAlbumRequest {
     #[schema(min_length = 1, max_length = 100)]
     pub name: String,
     /// Production type of the album (`STUDIO`, `LIVE`, …), when set.
-    pub production_type: Option<String>,
+    pub production_type: Option<ProductionTypeRequest>,
     /// Date of the release, in `YYYY-MM-DD` form, when known.
-    #[schema(example = "1959-08-17")]
+    #[schema(format = "date", example = "1959-08-17")]
     pub release_date: Option<String>,
 }
 
@@ -123,16 +125,10 @@ pub(crate) struct PostAlbumRequest {
 pub(crate) async fn post_album(
     State(state): State<AppState>,
     caller: AuthenticatedUser,
-    payload: Result<Json<PostAlbumRequest>, JsonRejection>,
+    payload: JsonObject<PostAlbumRequest>,
 ) -> Result<Response, ApiError> {
-    let Json(request) = payload.map_err(ApiError::from)?;
-    let production_type = match request.production_type.as_deref() {
-        Some(value) => Some(
-            ProductionType::from_wire(value)
-                .ok_or_else(|| ApiError::reject_enum("production_type"))?,
-        ),
-        None => None,
-    };
+    let JsonObject(request) = payload;
+    let production_type = request.production_type.map(ProductionType::from);
     let release_date = match request.release_date.as_deref() {
         Some(value) => Some(NaiveDate::parse_from_str(value, DATE_FORMAT).map_err(|_| {
             warn!(

@@ -1,5 +1,3 @@
-use axum::Json;
-use axum::extract::rejection::JsonRejection;
 use axum::extract::{Path, State};
 use axum::response::Response;
 use chrono::NaiveDate;
@@ -14,8 +12,9 @@ use crate::domain::model::music_album::ProductionType;
 use crate::infrastructure::inbound::rest::api_error::{ApiError, ErrorBody};
 use crate::infrastructure::inbound::rest::app_state::AppState;
 use crate::infrastructure::inbound::rest::hal::hal_json;
+use crate::infrastructure::inbound::rest::handler::JsonObject;
 use crate::infrastructure::inbound::rest::handler::library::{
-    AlbumResponse, DATE_FORMAT, deserialize_field_update, parse_album_id,
+    AlbumResponse, DATE_FORMAT, ProductionTypeRequest, deserialize_field_update, parse_album_id,
 };
 use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 
@@ -30,6 +29,7 @@ pub(crate) struct PatchAlbumRequest {
     #[schema(value_type = Option<NumericID>, nullable = true)]
     pub cover_image_id: FieldUpdate<NumericID>,
     /// Genres of the album; omit to keep them.
+    #[schema(min_length = 1)]
     pub genres: Option<Vec<String>>,
     /// Identifier of the music group the album belongs to.
     #[schema(example = 1)]
@@ -39,11 +39,11 @@ pub(crate) struct PatchAlbumRequest {
     pub name: Option<String>,
     /// Production type of the album; `null` clears it.
     #[serde(default, deserialize_with = "deserialize_field_update")]
-    #[schema(value_type = Option<String>, nullable = true)]
-    pub production_type: FieldUpdate<String>,
+    #[schema(value_type = Option<ProductionTypeRequest>, nullable = true)]
+    pub production_type: FieldUpdate<ProductionTypeRequest>,
     /// Date of the release in `YYYY-MM-DD` form; `null` clears it.
     #[serde(default, deserialize_with = "deserialize_field_update")]
-    #[schema(value_type = Option<String>, nullable = true)]
+    #[schema(value_type = Option<String>, nullable = true, format = "date")]
     pub release_date: FieldUpdate<String>,
 }
 
@@ -131,13 +131,15 @@ pub(crate) async fn patch_album(
     Path(album_id_value): Path<String>,
     State(state): State<AppState>,
     caller: AuthenticatedUser,
-    payload: Result<Json<PatchAlbumRequest>, JsonRejection>,
+    payload: JsonObject<PatchAlbumRequest>,
 ) -> Result<Response, ApiError> {
     let album_id = parse_album_id(&album_id_value)?;
-    let Json(request) = payload.map_err(ApiError::from)?;
-    let production_type = request.production_type.try_map(|value| {
-        ProductionType::from_wire(&value).ok_or_else(|| ApiError::reject_enum("production_type"))
-    })?;
+    let JsonObject(request) = payload;
+    let production_type = match request.production_type {
+        FieldUpdate::Absent => FieldUpdate::Absent,
+        FieldUpdate::Clear => FieldUpdate::Clear,
+        FieldUpdate::Set(value) => FieldUpdate::Set(ProductionType::from(value)),
+    };
     let release_date = request.release_date.try_map(|value| {
         NaiveDate::parse_from_str(&value, DATE_FORMAT).map_err(|_| {
             warn!(

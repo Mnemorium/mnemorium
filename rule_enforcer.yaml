@@ -7,7 +7,10 @@ rules:
     # Raised from 67 when the REST handler endpoint tests were removed: the count
     # is textual across `src` (test code included), and those tests supplied call
     # sites for handler and router helpers that production still calls once.
-    max_single_call_functions: 71
+    # Raised from 71 for the shared `JsonObject` request-body extractor's
+    # `FromRequest::from_request`, which the framework calls rather than a
+    # textual call site (API-045 request-body hardening).
+    max_single_call_functions: 72
   STY-RUST-002:
     bounded_contexts: &bounded_contexts
       - asset

@@ -19,6 +19,7 @@ use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 #[non_exhaustive]
 pub(crate) struct IdentifySeriesQuery {
     /// Media name to search for; never empty.
+    #[param(min_length = 1)]
     name: String,
 }
 

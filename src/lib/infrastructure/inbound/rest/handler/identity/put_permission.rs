@@ -1,5 +1,3 @@
-use axum::Json;
-use axum::extract::rejection::JsonRejection;
 use axum::extract::{Path, State};
 use axum::response::Response;
 
@@ -10,6 +8,7 @@ use crate::domain::alias::NumericID;
 use crate::infrastructure::inbound::rest::api_error::{ApiError, ErrorBody};
 use crate::infrastructure::inbound::rest::app_state::AppState;
 use crate::infrastructure::inbound::rest::hal::hal_json;
+use crate::infrastructure::inbound::rest::handler::JsonObject;
 use crate::infrastructure::inbound::rest::handler::identity::{
     PermissionRequest, PermissionResponse,
 };
@@ -105,10 +104,10 @@ pub(crate) async fn put_permission(
     Path(user_id_value): Path<String>,
     State(state): State<AppState>,
     caller: AuthenticatedUser,
-    payload: Result<Json<PermissionRequest>, JsonRejection>,
+    payload: JsonObject<PermissionRequest>,
 ) -> Result<Response, ApiError> {
     let user_id = parse_user_id(&user_id_value)?;
-    let Json(request) = payload.map_err(ApiError::from)?;
+    let JsonObject(request) = payload;
     let permissions = request
         .permissions
         .into_iter()

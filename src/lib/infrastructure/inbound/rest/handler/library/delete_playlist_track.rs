@@ -23,7 +23,7 @@ use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
     tag = "library",
     params(
         ("playlist_id" = NumericID, Path, description = "Identifier of the playlist the track belongs to"),
-        ("track_index" = u32, Path, description = "Zero-based index of the track within the playlist"),
+        ("track_index" = u64, Path, description = "Zero-based index of the track within the playlist", maximum = 4_294_967_295u64),
     ),
     responses(
         (
@@ -35,6 +35,12 @@ use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
             body = ErrorBody,
             content_type = "application/hal+json",
             description = "Invalid playlist identifier or track index"
+        ),
+        (
+            status = UNPROCESSABLE_ENTITY,
+            body = ErrorBody,
+            content_type = "application/hal+json",
+            description = "The track index is outside the 32-bit range"
         ),
         (
             status = UNAUTHORIZED,
