@@ -179,6 +179,70 @@ impl MusicAlbumRepository for SqlxMusicAlbumRepository<'_> {
         .ok_or(RepositoryError::OperationFailed)
     }
 
+    async fn delete_recording_by_audio(
+        &mut self,
+        audio_id: NumericID,
+    ) -> Result<bool, RepositoryError> {
+        let recording = sqlx::query_scalar::<_, NumericID>(
+            "SELECT music_recording_id FROM music_recording WHERE audio_id = ?",
+        )
+        .bind(audio_id)
+        .fetch_optional(&mut **self.transaction)
+        .await?;
+        let Some(found_recording) = recording else {
+            return Ok(false);
+        };
+
+        sqlx::query("DELETE FROM music_recording_group WHERE music_recording_id = ?")
+            .bind(found_recording)
+            .execute(&mut **self.transaction)
+            .await?;
+        sqlx::query("DELETE FROM music_recording_genre WHERE music_recording_id = ?")
+            .bind(found_recording)
+            .execute(&mut **self.transaction)
+            .await?;
+        sqlx::query("DELETE FROM music_track WHERE music_recording_id = ?")
+            .bind(found_recording)
+            .execute(&mut **self.transaction)
+            .await?;
+        sqlx::query("DELETE FROM music_recording WHERE music_recording_id = ?")
+            .bind(found_recording)
+            .execute(&mut **self.transaction)
+            .await?;
+        Ok(true)
+    }
+
+    async fn find_album_by_audio(
+        &mut self,
+        audio_id: NumericID,
+    ) -> Result<Option<MusicAlbum>, RepositoryError> {
+        let album = sqlx::query_scalar::<_, NumericID>(
+            "SELECT music_album.music_album_id
+             FROM music_album
+             INNER JOIN music_medium
+                 ON music_medium.music_album_id = music_album.music_album_id
+             INNER JOIN music_track
+                 ON music_track.music_medium_id = music_medium.music_medium_id
+             INNER JOIN music_recording
+                 ON music_recording.music_recording_id = music_track.music_recording_id
+             WHERE music_recording.audio_id = ?",
+        )
+        .bind(audio_id)
+        .fetch_optional(&mut **self.transaction)
+        .await?;
+        let Some(found_album) = album else {
+            return Ok(None);
+        };
+        Ok(self
+            .search(&MusicAlbumFilter {
+                id: Some(found_album),
+                ..MusicAlbumFilter::default()
+            })
+            .await?
+            .into_iter()
+            .next())
+    }
+
     async fn has_medium_placement(
         &mut self,
         recording_id: NumericID,
@@ -1920,6 +1984,62 @@ mod tests {
         // Assert
         assert_eq!(albums.len(), 1);
         assert_eq!(albums.first().map(MusicAlbum::id), Some(2));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn find_album_by_audio_follows_the_recording_placement() -> Result<(), Box<dyn Error>> {
+        // Arrange: recording 50 on audio 30 is placed in album 7's medium.
+        let mut transaction = begin_transaction().await?;
+        seed_user(&mut transaction, 1).await?;
+        seed_file(&mut transaction, 10, 1, "10.mp3").await?;
+        seed_audio(&mut transaction, 30, 10, "Track").await?;
+        seed_recording(&mut transaction, 50, Some("Track"), 30).await?;
+        seed_album(&mut transaction, 7, "Album", None).await?;
+        seed_medium(&mut transaction, 70, 7, 0).await?;
+        seed_track(&mut transaction, 90, 70, 50, 0).await?;
+        let mut repository = SqlxMusicAlbumRepository::new(&mut transaction);
+
+        // Act
+        let found = repository.find_album_by_audio(30).await?;
+        let missing = repository.find_album_by_audio(31).await?;
+
+        // Assert
+        assert_eq!(found.as_ref().map(MusicAlbum::id), Some(7));
+        assert!(missing.is_none());
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn delete_recording_by_audio_removes_its_placements() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let mut transaction = begin_transaction().await?;
+        seed_user(&mut transaction, 1).await?;
+        seed_file(&mut transaction, 10, 1, "10.mp3").await?;
+        seed_audio(&mut transaction, 30, 10, "Track").await?;
+        seed_recording(&mut transaction, 50, Some("Track"), 30).await?;
+        seed_album(&mut transaction, 7, "Album", None).await?;
+        seed_medium(&mut transaction, 70, 7, 0).await?;
+        seed_track(&mut transaction, 90, 70, 50, 0).await?;
+        // Act
+        let (removed, missing) = {
+            let mut repository = SqlxMusicAlbumRepository::new(&mut transaction);
+            let removed = repository.delete_recording_by_audio(30).await?;
+            let missing = repository.delete_recording_by_audio(31).await?;
+            (removed, missing)
+        };
+        let tracks = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM music_track")
+            .fetch_one(&mut *transaction)
+            .await?;
+        let recordings = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM music_recording")
+            .fetch_one(&mut *transaction)
+            .await?;
+
+        // Assert
+        assert!(removed);
+        assert!(!missing);
+        assert_eq!(tracks, 0, "the recording's placements are removed");
+        assert_eq!(recordings, 0);
         Ok(())
     }
 }

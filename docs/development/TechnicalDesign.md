@@ -1006,16 +1006,18 @@ A few settings are read once while the process starts — because the component 
 change to their value has no effect until the server restarts. They are the **startup-only settings**; this table is
 their registry.
 
-| Setting                                | Consumed at startup by                                                                                                                                                                                                | Restart feedback                     |
-| -------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------ |
-| `persistence.sqlite3.max_connections`  | The pool sizing in `init_db`, called from the composition root.                                                                                                                                                       | None.                                |
-| `asset.upload.chunk_size_bytes`        | The axum body limit fixed when the router is built (`src/lib/infrastructure/inbound/rest/handler/asset.rs`), and the value the Asset use-case factory snapshots (`src/lib/infrastructure/use_case_factory/asset.rs`). | A new value applies after a restart. |
-| `asset.upload.reap_interval_seconds`   | The upload reaper's tick interval, fixed when the runner is built in the composition root (`src/lib/app.rs`).                                                                                                         | A new value applies after a restart. |
-| `logging.level`                        | `logging::setup` (`src/lib/infrastructure/logging.rs`) when the `tracing` subscriber is installed.                                                                                                                    | None.                                |
-| `security.rate_limit.trusted_proxies`  | The login limiter built in the composition root (`src/lib/app.rs`) when the router is built.                                                                                                                          | None.                                |
-| `security.rate_limit.client_ip_header` | The login limiter built in the composition root (`src/lib/app.rs`) when the router is built.                                                                                                                          | None.                                |
-| `security.rate_limit.burst_size`       | The login limiter built in the composition root (`src/lib/app.rs`) when the router is built.                                                                                                                          | None.                                |
-| `security.rate_limit.period_seconds`   | The login limiter built in the composition root (`src/lib/app.rs`) when the router is built.                                                                                                                          | None.                                |
+| Setting                                   | Consumed at startup by                                                                                                                                                                                                | Restart feedback                     |
+| ----------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------ |
+| `persistence.sqlite3.max_connections`     | The pool sizing in `init_db`, called from the composition root.                                                                                                                                                       | None.                                |
+| `asset.upload.chunk_size_bytes`           | The axum body limit fixed when the router is built (`src/lib/infrastructure/inbound/rest/handler/asset.rs`), and the value the Asset use-case factory snapshots (`src/lib/infrastructure/use_case_factory/asset.rs`). | A new value applies after a restart. |
+| `asset.upload.reap_interval_seconds`      | The upload reaper's tick interval, fixed when the runner is built in the composition root (`src/lib/app.rs`).                                                                                                         | A new value applies after a restart. |
+| `library.startup.media_root_wait_seconds` | The bounded wait for an absent library root in the composition root (`src/lib/app.rs`) and the ingest runner.                                                                                                         | A new value applies after a restart. |
+| `library.startup.fail_without_media_root` | The startup decision in the composition root (`src/lib/app.rs`): refuse startup, or start and reconcile the library as empty.                                                                                         | A new value applies after a restart. |
+| `logging.level`                           | `logging::setup` (`src/lib/infrastructure/logging.rs`) when the `tracing` subscriber is installed.                                                                                                                    | None.                                |
+| `security.rate_limit.trusted_proxies`     | The login limiter built in the composition root (`src/lib/app.rs`) when the router is built.                                                                                                                          | None.                                |
+| `security.rate_limit.client_ip_header`    | The login limiter built in the composition root (`src/lib/app.rs`) when the router is built.                                                                                                                          | None.                                |
+| `security.rate_limit.burst_size`          | The login limiter built in the composition root (`src/lib/app.rs`) when the router is built.                                                                                                                          | None.                                |
+| `security.rate_limit.period_seconds`      | The login limiter built in the composition root (`src/lib/app.rs`) when the router is built.                                                                                                                          | None.                                |
 
 The registry is **extensible**: a setting becomes startup-only by being added here. Adding one records, in the same
 change, how a change to its value is surfaced to the operator (a startup warning, or an explicit `None`).
@@ -2022,6 +2024,37 @@ See the [HAL] specification for details.
 
 ---
 
+#### Asset content retrieval
+
+The content routes — `/asset/file/{file_id}/content`, `/asset/image/{image_id}/content`,
+`/asset/audio/{audio_id}/content` and `/asset/video/{video_id}/content` — share one serving path. It streams from an
+opened file in bounded chunks, advertises `Accept-Ranges: bytes`, and answers one `Range: bytes=` value:
+
+| Request                                    | Answer                                                                 |
+| ------------------------------------------ | ---------------------------------------------------------------------- |
+| No range, an unknown unit or a multi-range | `200 OK` with the whole content                                        |
+| A closed, open-ended or suffix range       | `206 Partial Content` with `Content-Range: bytes <start>-<end>/<size>` |
+| A range starting past the end              | `416 Range Not Satisfiable` with `Content-Range: bytes */<size>`       |
+| `HEAD`                                     | The same headers as `GET`, with no body                                |
+
+The response carries the stored media type, `Content-Length`, `ETag` from the stored whole-file digest when one exists,
+and `Last-Modified` from `modified_at` always. A matching `If-None-Match` answers `304 Not Modified`; an `If-Range` that
+does not match answers the whole content instead of a range. The opened handle's metadata, not `file.size_bytes`,
+governs the response.
+
+Every file, image, audio and video representation carries `_links.content`, whose `href` is the content route plus `exp`
+and `sig`. `sig` is an `HS256` credential over a domain-separated message (audience `media-link`, the file identifier
+and the expiry), signed with the instance signing secret; its lifetime is twelve hours. A content request accepts either
+the `Authorization` header or that credential, rejects both together with `400 Bad Request`, and rejects an invalid or
+expired credential with `401 Unauthorized`. Representations that mint a link answer `Cache-Control: no-store`. The trace
+middleware logs the path and not the query string (`OBS-003`), so the credential never reaches a log sink.
+
+Content outcomes are distinguishable: an unknown or unreadable asset is `404 Not Found` and reads no bytes; an absent
+library root is `503 Service Unavailable` without an authorization read; a registered file whose bytes are absent while
+the root exists is `500 Internal Server Error`, which the next scan reconciles.
+
+---
+
 ## Persistence
 
 Mnemorium uses a single datastore: **SQLite3**, accessed through `sqlx`. The schema is versioned by migrations in
@@ -2513,6 +2546,24 @@ referrer: `uq_gallery_item_image_id`, `uq_music_playlist_cover_image_id` and the
 item, a second playlist cover, or a gallery item and a playlist cover sharing the image, while a `LIBRARY` image is
 shared freely by catalogue covers. `ON DELETE CASCADE` is limited to one bounded context (`PERS-020`); the cross-context
 `file` foreign keys on `image` and `video` do not cascade.
+
+#### Removal cascade
+
+When the scan no longer finds a registered file it reconciles the removal in one unit of work, ordered so every foreign
+key holds:
+
+```text
+image -> cover_image_id set to NULL on music_group, music_album, music_playlist, movie, series and season;
+         gallery_item rows of the image; the image row
+video -> stream rows (and their audio/subtitle descriptors); the movie or the episode that requires it;
+         gallery_item rows of the video; the video row
+audio -> music_recording (with its group/genre links and its music_track placements); audio_stream rows; the audio row
+then  -> the file row
+```
+
+The aggregate report counts a completed removal as `removed`; a removal that fails rolls the unit of work back, keeps
+the record, reports the file as `missing` and lets the scan continue. A file that reappears after its removal is
+registered as a new record rather than restoring the removed one. Content under the library root is never changed.
 
 ---
 
@@ -3688,39 +3739,39 @@ the same way.
 These events are normative: each is emitted at its declared level with its declared fields, and a `security`-target
 event must be one this catalog declares. A field is an identifier, a code or a classification — never a value.
 
-| Event                            | Level   | Fields                                                                  | Emitted when                                                                                |
-| -------------------------------- | ------- | ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| `input_validation_failed`        | `warn`  | `field`, `reason`                                                       | a client-supplied value fails validation in a handler or use case                           |
-| `enum_validation_failed`         | `warn`  | `field`, `reason`                                                       | a discrete, finite list (for example `Role`) rejects a value                                |
-| `output_validation_failed`       | `warn`  | `reason`                                                                | stored data fails to decode, or an integrity check fails                                    |
-| `authn_succeeded`                | `info`  | `actor`                                                                 | a credential is accepted                                                                    |
-| `authn_failed`                   | `warn`  | `claimed_identity`, `reason`                                            | a credential is rejected; one reason, never distinguishing a bad identity from a bad secret |
-| `authz_failed`                   | `warn`  | `actor`, `action`, `target`                                             | an authorization decision denies an action                                                  |
-| `session_validation_failed`      | `warn`  | `reason`                                                                | a token is missing, invalid or expired                                                      |
-| `rate_limit_exceeded`            | `warn`  | `route`, `reason`                                                       | a request is rejected by a rate limiter                                                     |
-| `limit_exceeded`                 | `warn`  | `source`, `reason`                                                      | a request body or query string exceeds a configured size limit                              |
-| `metadata_provider_fallback`     | `warn`  | `provider`, `classification`                                            | a metadata provider is skipped because of a classified failure                              |
-| `metadata_provider_unconfigured` | `warn`  | `provider`                                                              | a lookup names a metadata provider that is not configured                                   |
-| `metadata_genre_unmatched`       | `debug` | `count`                                                                 | a metadata provider reports a genre outside the shared vocabulary                           |
-| `metadata_artwork_failed`        | `warn`  | `provider`, `reason`                                                    | artwork a provider reports cannot be downloaded or accepted                                 |
-| `deserialization_failed`         | `warn`  | `source`, `reason`                                                      | a JSON body or the configuration fails to deserialize                                       |
-| `extractor_fault`                | `error` | `reason`                                                                | an inbound extractor rejects a request for a server-side fault                              |
-| `ingest`                         | `info`  | `registered`, `completed`, `untouched`, `changed`, `missing`, `skipped` | a library ingest operation (scan or observed change) finishes; never a file name or path    |
-| `ingest_fault`                   | `warn`  | `kind`, `operation`                                                     | the change observer degraded (a failed watch registration, a watcher error or overflow)     |
-| `application_error`              | `error` | `operation`                                                             | a use case originates an internal `Unknown`                                                 |
-| `port_fault`                     | `error` | `kind`, `operation`                                                     | an outbound adapter maps a dependency failure                                               |
-| `constraint_rejected`            | `warn`  | `kind`, `operation`                                                     | an outbound adapter maps an expected constraint to a business result                        |
-| `token_provider_fault`           | `error` | `kind`                                                                  | the inbound token boundary receives an operational fault from the token provider            |
-| `lifecycle`                      | `info`  | `component`, `outcome`                                                  | startup, shutdown or logging initialization                                                 |
-| `user_admin`                     | `info`  | `actor`, `action`, `target`                                             | a user is created or updated, a role or credential changes                                  |
-| `secret_initialized`             | `info`  | `component`                                                             | the pepper or the signing secret is generated when the instance identity is created         |
-| `credential_rotated`             | `info`  | `actor`                                                                 | a password is replaced or rehashed                                                          |
-| `upload`                         | `info`  | `actor`, `upload`, `outcome`                                            | an upload is accepted, a chunk written, an upload completed or cancelled                    |
-| `upload_reap`                    | `info`  | `expired`, `orphaned`, `unsealed`                                       | an upload reaping run finishes; aggregate counts only, never a file name or path            |
-| `suspicious_business_logic`      | `warn`  | `actor`, `action`, `reason`                                             | an action is out of order, nonsensical in context, or exceeds a limit                       |
-| `sensitive_data_access`          | `debug` | `actor`, `object`                                                       | a request reads personal data                                                               |
-| `system_object`                  | `info`  | `object`, `action`                                                      | a system-level object is created (the instance identity, the Root Admin)                    |
-| `unexpected_http_method`         | `warn`  | `method`, `path`                                                        | a request uses a method the route does not support                                          |
+| Event                            | Level   | Fields                                                                             | Emitted when                                                                                |
+| -------------------------------- | ------- | ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| `input_validation_failed`        | `warn`  | `field`, `reason`                                                                  | a client-supplied value fails validation in a handler or use case                           |
+| `enum_validation_failed`         | `warn`  | `field`, `reason`                                                                  | a discrete, finite list (for example `Role`) rejects a value                                |
+| `output_validation_failed`       | `warn`  | `reason`                                                                           | stored data fails to decode, or an integrity check fails                                    |
+| `authn_succeeded`                | `info`  | `actor`                                                                            | a credential is accepted                                                                    |
+| `authn_failed`                   | `warn`  | `claimed_identity`, `reason`                                                       | a credential is rejected; one reason, never distinguishing a bad identity from a bad secret |
+| `authz_failed`                   | `warn`  | `actor`, `action`, `target`                                                        | an authorization decision denies an action                                                  |
+| `session_validation_failed`      | `warn`  | `reason`                                                                           | a token is missing, invalid or expired                                                      |
+| `rate_limit_exceeded`            | `warn`  | `route`, `reason`                                                                  | a request is rejected by a rate limiter                                                     |
+| `limit_exceeded`                 | `warn`  | `source`, `reason`                                                                 | a request body or query string exceeds a configured size limit                              |
+| `metadata_provider_fallback`     | `warn`  | `provider`, `classification`                                                       | a metadata provider is skipped because of a classified failure                              |
+| `metadata_provider_unconfigured` | `warn`  | `provider`                                                                         | a lookup names a metadata provider that is not configured                                   |
+| `metadata_genre_unmatched`       | `debug` | `count`                                                                            | a metadata provider reports a genre outside the shared vocabulary                           |
+| `metadata_artwork_failed`        | `warn`  | `provider`, `reason`                                                               | artwork a provider reports cannot be downloaded or accepted                                 |
+| `deserialization_failed`         | `warn`  | `source`, `reason`                                                                 | a JSON body or the configuration fails to deserialize                                       |
+| `extractor_fault`                | `error` | `reason`                                                                           | an inbound extractor rejects a request for a server-side fault                              |
+| `ingest`                         | `info`  | `registered`, `completed`, `untouched`, `changed`, `missing`, `removed`, `skipped` | a library ingest operation (scan or observed change) finishes; never a file name or path    |
+| `ingest_fault`                   | `warn`  | `kind`, `operation`                                                                | the change observer degraded (a failed watch registration, a watcher error or overflow)     |
+| `application_error`              | `error` | `operation`                                                                        | a use case originates an internal `Unknown`                                                 |
+| `port_fault`                     | `error` | `kind`, `operation`                                                                | an outbound adapter maps a dependency failure                                               |
+| `constraint_rejected`            | `warn`  | `kind`, `operation`                                                                | an outbound adapter maps an expected constraint to a business result                        |
+| `token_provider_fault`           | `error` | `kind`                                                                             | the inbound token boundary receives an operational fault from the token provider            |
+| `lifecycle`                      | `info`  | `component`, `outcome`                                                             | startup, shutdown or logging initialization                                                 |
+| `user_admin`                     | `info`  | `actor`, `action`, `target`                                                        | a user is created or updated, a role or credential changes                                  |
+| `secret_initialized`             | `info`  | `component`                                                                        | the pepper or the signing secret is generated when the instance identity is created         |
+| `credential_rotated`             | `info`  | `actor`                                                                            | a password is replaced or rehashed                                                          |
+| `upload`                         | `info`  | `actor`, `upload`, `outcome`                                                       | an upload is accepted, a chunk written, an upload completed or cancelled                    |
+| `upload_reap`                    | `info`  | `expired`, `orphaned`, `unsealed`                                                  | an upload reaping run finishes; aggregate counts only, never a file name or path            |
+| `suspicious_business_logic`      | `warn`  | `actor`, `action`, `reason`                                                        | an action is out of order, nonsensical in context, or exceeds a limit                       |
+| `sensitive_data_access`          | `debug` | `actor`, `object`                                                                  | a request reads personal data                                                               |
+| `system_object`                  | `info`  | `object`, `action`                                                                 | a system-level object is created (the instance identity, the Root Admin)                    |
+| `unexpected_http_method`         | `warn`  | `method`, `path`                                                                   | a request uses a method the route does not support                                          |
 
 The `authz_failed` fields are a closed vocabulary shared with the permission catalog (`docs/Permissions.md`). `action`
 is the denied action's verb, one of `read`, `moderate`, `manage`, `use`, `write`, `update`, `update_role`, `create` or

@@ -5,6 +5,7 @@ use chrono::{NaiveDate, NaiveDateTime};
 
 use crate::domain::alias::NumericID;
 use crate::domain::model::file::Origin;
+use crate::domain::port::content_link::ContentLink;
 
 /// Command to fetch one stored file.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -42,6 +43,8 @@ impl GetFileCommand {
 pub(crate) struct GetFileResponse {
     /// Identifier of the audio row backing the file, when one exists.
     audio_id: Option<NumericID>,
+    /// Playback credential scoped to the file.
+    content_link: ContentLink,
     /// Identifier of the file.
     id: NumericID,
     /// Identifier of the image row backing the file, when one exists.
@@ -71,6 +74,12 @@ impl GetFileResponse {
     #[must_use]
     pub(crate) fn audio_id(&self) -> Option<NumericID> {
         self.audio_id
+    }
+
+    /// Return the playback credential scoped to the file.
+    #[must_use]
+    pub(crate) fn content_link(&self) -> &ContentLink {
+        &self.content_link
     }
 
     /// Return the identifier of the file.
@@ -122,9 +131,11 @@ impl GetFileResponse {
         image_id: Option<NumericID>,
         audio_id: Option<NumericID>,
         video_id: Option<NumericID>,
+        content_link: ContentLink,
     ) -> Self {
         Self {
             audio_id,
+            content_link,
             id,
             image_id,
             is_public,
@@ -171,10 +182,6 @@ impl GetFileResponse {
 
     /// Return the identifier of the video backing the file, if any.
     #[must_use]
-    #[expect(
-        dead_code,
-        reason = "part of the type's declared contract; no caller exercises it yet"
-    )]
     pub(crate) fn video_id(&self) -> Option<NumericID> {
         self.video_id
     }

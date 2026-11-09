@@ -163,6 +163,7 @@ envy = "0.4.2"
 notify = "8.2.1"
 utoipa-axum = "0.3.0"
 utoipa-scalar = { version = "0.4", features = ["axum"], optional = true }
+tokio-util = { version = "0.7.20", features = ["io"] }
 
 [dev-dependencies]
 mockall = "0.15.0"

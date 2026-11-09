@@ -22,6 +22,16 @@ pub(crate) struct ImageFilter {
 /// Port for persisting and querying `Image`.
 #[cfg_attr(test, mockall::automock)]
 pub(crate) trait ImageRepository: Send + Sync {
+    /// Clear every cover reference that names `id`.
+    ///
+    /// The resources carrying the cover are retained; only their artwork is
+    /// forgotten, so an image removal never deletes a music group, album,
+    /// playlist, film, show or season.
+    fn clear_cover_references(
+        &mut self,
+        id: NumericID,
+    ) -> impl Future<Output = Result<(), RepositoryError>> + Send;
+
     /// Insert a new `image`, returning the persisted image with its final
     /// identifier.
     ///
@@ -69,6 +79,13 @@ pub(crate) trait ImageRepository: Send + Sync {
 
 #[cfg(test)]
 impl<T: ImageRepository + ?Sized> ImageRepository for &mut T {
+    fn clear_cover_references(
+        &mut self,
+        id: NumericID,
+    ) -> impl Future<Output = Result<(), RepositoryError>> + Send {
+        (**self).clear_cover_references(id)
+    }
+
     fn create(
         &mut self,
         image: Image,

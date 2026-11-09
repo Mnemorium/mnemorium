@@ -199,6 +199,28 @@ pub(crate) enum TokenProviderError {
     Unknown(#[source] anyhow::Error),
 }
 
+/// Error returned when minting or verifying a content link fails.
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
+pub(crate) enum ContentLinkError {
+    /// The credential has expired.
+    #[error("the content credential has expired")]
+    Expired,
+    /// The credential is malformed, tampered with, or names another file.
+    #[error("the content credential is invalid")]
+    Invalid,
+    /// The provider could not complete the requested operation.
+    #[error("the content credential could not be produced")]
+    OperationFailed,
+    /// An unexpected or unmapped error occurred.
+    #[error("an unexpected or unmapped error occurred: {0}")]
+    #[expect(
+        dead_code,
+        reason = "the error enum keeps the catch-all variant the rulebook's error shape declares; no caller constructs it yet"
+    )]
+    Unknown(#[source] anyhow::Error),
+}
+
 /// Error returned when a unit of work operation fails.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]

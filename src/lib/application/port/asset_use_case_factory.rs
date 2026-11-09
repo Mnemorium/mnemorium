@@ -4,9 +4,11 @@ use crate::application::port::begin_upload::BeginUploadUseCase;
 use crate::application::port::cancel_upload::CancelUploadUseCase;
 use crate::application::port::complete_upload::CompleteUploadUseCase;
 use crate::application::port::get_asset_content::GetAssetContentUseCase;
+use crate::application::port::get_audio::GetAudioUseCase;
 use crate::application::port::get_file::GetFileUseCase;
 use crate::application::port::get_image::GetImageUseCase;
 use crate::application::port::get_upload::GetUploadUseCase;
+use crate::application::port::get_video::GetVideoUseCase;
 use crate::application::port::reap_uploads::ReapUploadsUseCase;
 use crate::application::port::write_upload_chunk::WriteUploadChunkUseCase;
 
@@ -28,6 +30,9 @@ pub(crate) trait AssetUseCaseFactory: Send + Sync {
     /// Build the use case reading the content of one asset.
     fn get_asset_content(&self) -> Arc<dyn GetAssetContentUseCase>;
 
+    /// Build the use case fetching one typed audio.
+    fn get_audio(&self) -> Arc<dyn GetAudioUseCase>;
+
     /// Build the use case fetching one stored file.
     fn get_file(&self) -> Arc<dyn GetFileUseCase>;
 
@@ -36,6 +41,9 @@ pub(crate) trait AssetUseCaseFactory: Send + Sync {
 
     /// Build the use case fetching the state of an upload session.
     fn get_upload(&self) -> Arc<dyn GetUploadUseCase>;
+
+    /// Build the use case fetching one typed video.
+    fn get_video(&self) -> Arc<dyn GetVideoUseCase>;
 
     /// Build the use case reaping expired, stale and orphaned upload sessions.
     fn reap_uploads(&self) -> Arc<dyn ReapUploadsUseCase>;

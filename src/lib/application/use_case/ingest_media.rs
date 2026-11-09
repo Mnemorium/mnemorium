@@ -14,6 +14,7 @@ use crate::application::use_case::upload_layout::media_path;
 use crate::domain::alias::NumericID;
 use crate::domain::model::audio::{Audio, ProbedAudio};
 use crate::domain::model::file::File;
+use crate::domain::model::gallery_item::GalleryItemMedia;
 use crate::domain::model::image::{Image, ProbedImage};
 use crate::domain::model::video::{ProbedVideo, Video};
 use crate::domain::port::asset_unit_of_work::AssetUnitOfWork;
@@ -21,11 +22,15 @@ use crate::domain::port::audio_repository::{AudioFilter, AudioRepository as _};
 use crate::domain::port::content_type_sniffer::ContentTypeSniffer;
 use crate::domain::port::error::RepositoryError;
 use crate::domain::port::file_repository::{FileFilter, FileRepository as _};
+use crate::domain::port::gallery_repository::GalleryRepository as _;
 use crate::domain::port::image_repository::{ImageFilter, ImageRepository as _};
 use crate::domain::port::library_unit_of_work::LibraryUnitOfWork;
 use crate::domain::port::media_probe::MediaProbe;
 use crate::domain::port::media_source::{MediaEntry, MediaSource};
 use crate::domain::port::mime_type_repository::MimeTypeRepository as _;
+use crate::domain::port::movie_repository::MovieRepository as _;
+use crate::domain::port::music_album_repository::MusicAlbumRepository as _;
+use crate::domain::port::series_repository::SeriesRepository as _;
 use crate::domain::port::unit_of_work::{UnitOfWork, UnitOfWorkFactory};
 use crate::domain::port::user_repository::{UserFilter, UserRepository as _};
 use crate::domain::port::user_unit_of_work::UserUnitOfWork;
@@ -44,6 +49,8 @@ enum Verdict {
     Missing,
     /// The file and its media row were recorded.
     Registered,
+    /// The registered file and everything depending on it were removed.
+    Removed,
     /// The file was not registered; the ingest treats it as a non-failure.
     Skipped,
     /// The registered file matches its record.
@@ -61,6 +68,8 @@ struct Counts {
     missing: u64,
     /// Files registered.
     registered: u64,
+    /// Registered files whose record and dependents were removed.
+    removed: u64,
     /// Files skipped.
     skipped: u64,
     /// Registered files that matched.
@@ -76,6 +85,7 @@ impl Counts {
             self.untouched,
             self.changed,
             self.missing,
+            self.removed,
             self.skipped,
         )
     }
@@ -88,6 +98,7 @@ impl Counts {
             Verdict::Untouched => &mut self.untouched,
             Verdict::Changed => &mut self.changed,
             Verdict::Missing => &mut self.missing,
+            Verdict::Removed => &mut self.removed,
             Verdict::Skipped => &mut self.skipped,
         };
         *counter = counter.saturating_add(1);
@@ -239,7 +250,7 @@ where
                 )
                 .await
             }
-            None => self.report_absent(path).await,
+            None => self.remove_file(path).await,
         }
     }
 
@@ -552,6 +563,101 @@ where
         }
     }
 
+    /// Remove a recorded path and its dependents, or report it as missing when
+    /// the removal fails.
+    async fn remove_file(&self, path: &str) -> Result<Verdict, IngestMediaError> {
+        let Some(file) = self.find(path).await? else {
+            return Ok(Verdict::Skipped);
+        };
+        Ok(self
+            .remove_registered(&file)
+            .await
+            .unwrap_or(Verdict::Missing))
+    }
+
+    /// Remove an already-loaded record and its dependents in one unit of work.
+    async fn remove_registered(&self, file: &File) -> Result<Verdict, IngestMediaError> {
+        let mut unit_of_work = self.begin_write().await?;
+        let cascade = async {
+            let image_row = unit_of_work
+                .images()
+                .search(&ImageFilter {
+                    file_id: Some(file.id()),
+                    ..ImageFilter::default()
+                })
+                .await?
+                .into_iter()
+                .next();
+            if let Some(image) = image_row {
+                unit_of_work
+                    .images()
+                    .clear_cover_references(image.image_id())
+                    .await?;
+                unit_of_work
+                    .galleries()
+                    .delete_items_by_media(GalleryItemMedia::Image(image.image_id()))
+                    .await?;
+                let _deleted = unit_of_work.images().delete(image.image_id()).await?;
+            }
+
+            let video_row = unit_of_work
+                .videos()
+                .search(&VideoFilter {
+                    file_id: Some(file.id()),
+                    ..VideoFilter::default()
+                })
+                .await?
+                .into_iter()
+                .next();
+            if let Some(video) = video_row {
+                unit_of_work.videos().delete_streams(video.id()).await?;
+                let movie_row = unit_of_work.movies().find_by_video(video.id()).await?;
+                if let Some(movie) = movie_row {
+                    let _movie_removed = unit_of_work.movies().delete(movie.id()).await?;
+                }
+                let _episode_removed = unit_of_work
+                    .series()
+                    .delete_episode_by_video(video.id())
+                    .await?;
+                unit_of_work
+                    .galleries()
+                    .delete_items_by_media(GalleryItemMedia::Video(video.id()))
+                    .await?;
+                let _video_removed = unit_of_work.videos().delete(video.id()).await?;
+            }
+
+            let audio_row = unit_of_work
+                .audios()
+                .search(&AudioFilter {
+                    file_id: Some(file.id()),
+                    ..AudioFilter::default()
+                })
+                .await?
+                .into_iter()
+                .next();
+            if let Some(audio) = audio_row {
+                let _recording_removed = unit_of_work
+                    .music_albums()
+                    .delete_recording_by_audio(audio.id())
+                    .await?;
+                let _audio_removed = unit_of_work.audios().delete(audio.id()).await?;
+            }
+
+            let _file_removed = unit_of_work.files().delete(file.id()).await?;
+            Ok::<(), RepositoryError>(())
+        }
+        .await;
+        if cascade.is_err() {
+            discard(unit_of_work).await;
+            return Ok(Verdict::Missing);
+        }
+        unit_of_work
+            .commit()
+            .await
+            .map_err(|error| IngestMediaError::Unknown(error.into()))?;
+        Ok(Verdict::Removed)
+    }
+
     /// Move a recorded location, preserving the media row.
     async fn rename(&self, from: &str, to: &str) -> Result<Verdict, IngestMediaError> {
         let Some(file) = self.find(from).await? else {
@@ -594,14 +700,6 @@ where
             }
         }
     }
-
-    /// Report a path that no longer resolves as missing when it was recorded.
-    async fn report_absent(&self, path: &str) -> Result<Verdict, IngestMediaError> {
-        Ok(match self.find(path).await? {
-            Some(_file) => Verdict::Missing,
-            None => Verdict::Skipped,
-        })
-    }
 }
 
 impl<F, N, P, S> IngestMediaUseCase for IngestMedia<F, N, P, S>
@@ -622,17 +720,15 @@ where
             let request = command.request().clone();
             match request {
                 IngestRequest::Scan => {
-                    let Some(entries) = self
+                    // An absent root walks nothing: the library is reconciled
+                    // as empty, so every registered file is removed. The runner
+                    // first waits the configured window for the mount.
+                    let entries = self
                         .media_source
                         .walk()
                         .await
                         .map_err(|error| IngestMediaError::Unknown(error.into()))?
-                    else {
-                        // An absent root registers nothing; the caller warns.
-                        let report = counts.finish();
-                        report_counts(&report);
-                        return Ok(report);
-                    };
+                        .unwrap_or_default();
                     let (registered, supported) = self.load_snapshot().await?;
                     let mut walked = HashSet::new();
                     for entry in &entries {
@@ -643,11 +739,15 @@ where
                                 .await?,
                         );
                     }
-                    let missing = registered
-                        .keys()
-                        .filter(|path| !walked.contains(*path))
-                        .count();
-                    counts.missing = u64::try_from(missing).unwrap_or(u64::MAX);
+                    for (path, file) in &registered {
+                        if !walked.contains(path) {
+                            let verdict = self
+                                .remove_registered(file)
+                                .await
+                                .unwrap_or(Verdict::Missing);
+                            counts.record(&verdict);
+                        }
+                    }
                 }
                 IngestRequest::Path(path) => {
                     let supported = self.load_supported_mime_types().await?;
@@ -657,7 +757,7 @@ where
                     counts.record(&self.rename(&from, &to).await?);
                 }
                 IngestRequest::Remove(path) => {
-                    counts.record(&self.report_absent(&path).await?);
+                    counts.record(&self.remove_file(&path).await?);
                 }
             }
             let report = counts.finish();
@@ -675,6 +775,7 @@ fn report_counts(report: &IngestMediaResponse) {
         report.untouched(),
         report.changed(),
         report.missing(),
+        report.removed(),
         report.skipped(),
     );
 }
@@ -1350,13 +1451,35 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn scan_reports_a_registered_file_that_is_gone() -> Result<(), Box<dyn Error>> {
+    async fn scan_removes_a_registered_file_that_is_gone() -> Result<(), Box<dyn Error>> {
         // Arrange: the root no longer holds the file the record names.
         let file = registered_file("gone.png", "image/png", 3)?;
         let mut source = MockMediaSource::new();
         expect_walk(&mut source, Vec::new());
+        let mut removing = TestUow::default();
+        removing
+            .images
+            .expect_search()
+            .times(1)
+            .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+        removing
+            .videos
+            .expect_search()
+            .times(1)
+            .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+        removing
+            .audios
+            .expect_search()
+            .times(1)
+            .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+        removing
+            .files
+            .expect_delete()
+            .times(1)
+            .returning(|_| Box::pin(async { Ok(true) }));
+        let committed = Arc::clone(&removing.committed);
         let use_case = use_case(
-            factory(vec![snapshot_uow(vec![file])]),
+            factory(vec![snapshot_uow(vec![file]), removing]),
             source,
             MockContentTypeSniffer::new(),
             MockMediaProbe::new(),
@@ -1367,8 +1490,10 @@ mod tests {
             .execute(IngestMediaCommand::new(IngestRequest::Scan))
             .await?;
 
-        // Assert: the record is retained and reported, not deleted.
-        assert_eq!(report.missing(), 1);
+        // Assert: the record and its dependents are removed.
+        assert_eq!(report.removed(), 1);
+        assert_eq!(report.missing(), 0);
+        assert!(committed.load(Ordering::SeqCst));
         Ok(())
     }
 
@@ -1493,11 +1618,19 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn remove_reports_missing_and_retains_the_record() -> Result<(), Box<dyn Error>> {
-        // Arrange: a removal event names a registered file.
+    async fn a_failed_removal_retains_the_record_and_reports_missing() -> Result<(), Box<dyn Error>>
+    {
+        // Arrange: a removal event names a registered file, but the cascade
+        // fails while looking up its media row.
         let file = registered_file("gone.png", "image/png", 3)?;
+        let mut failing = TestUow::default();
+        failing
+            .images
+            .expect_search()
+            .times(1)
+            .returning(|_| Box::pin(async { Err(RepositoryError::OperationFailed) }));
         let use_case = use_case(
-            factory(vec![reading_uow(vec![file])]),
+            factory(vec![reading_uow(vec![file]), failing]),
             MockMediaSource::new(),
             MockContentTypeSniffer::new(),
             MockMediaProbe::new(),
@@ -1510,8 +1643,9 @@ mod tests {
             )))
             .await?;
 
-        // Assert: the row is retained (no write unit of work was available).
+        // Assert: the failure keeps the record and is reported as missing.
         assert_eq!(report.missing(), 1);
+        assert_eq!(report.removed(), 0);
         Ok(())
     }
 

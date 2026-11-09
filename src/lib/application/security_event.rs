@@ -175,6 +175,7 @@ pub(crate) fn media_ingest(
     untouched: u64,
     changed: u64,
     missing: u64,
+    removed: u64,
     skipped: u64,
 ) {
     info!(
@@ -185,6 +186,7 @@ pub(crate) fn media_ingest(
         untouched,
         changed,
         missing,
+        removed,
         skipped,
         "reconciled the library root"
     );

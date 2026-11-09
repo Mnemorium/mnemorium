@@ -67,5 +67,5 @@ if [[ ${healthy} -ne 1 ]]; then
 fi
 
 echo "==> Running E2E tests"
-MNEMORIUM_E2E_BASE_URL="${BASE_URL}" PYTHONPATH="test/e2e" \
+MNEMORIUM_E2E_BASE_URL="${BASE_URL}" MNEMORIUM_E2E_MEDIA_DIR="${MEDIA_DIR}" PYTHONPATH="test/e2e" \
 	pytest -p no:cacheprovider -ra --tb=short --junitxml="${JUNIT_XML}" test/e2e

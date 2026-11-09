@@ -32,6 +32,15 @@ pub(crate) trait SeriesRepository: Send + Sync {
         series: Series,
     ) -> impl Future<Output = Result<Series, RepositoryError>> + Send;
 
+    /// Delete the episode backed by `video_id`.
+    ///
+    /// The season and the show are retained; an unattached video is a valid
+    /// outcome reported as `Ok(false)`.
+    fn delete_episode_by_video(
+        &mut self,
+        video_id: NumericID,
+    ) -> impl Future<Output = Result<bool, RepositoryError>> + Send;
+
     /// Return the episode backed by `video_id`, if any.
     ///
     /// A video backs at most one film or episode; a video the catalogue does
@@ -122,6 +131,13 @@ impl<T: SeriesRepository + ?Sized> SeriesRepository for &mut T {
         series: Series,
     ) -> impl Future<Output = Result<Series, RepositoryError>> + Send {
         (**self).create(series)
+    }
+
+    fn delete_episode_by_video(
+        &mut self,
+        video_id: NumericID,
+    ) -> impl Future<Output = Result<bool, RepositoryError>> + Send {
+        (**self).delete_episode_by_video(video_id)
     }
 
     fn find_episode_by_video(

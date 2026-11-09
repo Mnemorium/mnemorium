@@ -38,6 +38,8 @@ pub(crate) struct IngestMediaResponse {
     missing: u64,
     /// Files whose record and media row were written.
     registered: u64,
+    /// Files whose record and dependents were removed.
+    removed: u64,
     /// Files not registered, for any reason the ingest does not treat as a
     /// failure.
     skipped: u64,
@@ -72,6 +74,7 @@ impl IngestMediaResponse {
         untouched: u64,
         changed: u64,
         missing: u64,
+        removed: u64,
         skipped: u64,
     ) -> Self {
         Self {
@@ -79,6 +82,7 @@ impl IngestMediaResponse {
             completed,
             missing,
             registered,
+            removed,
             skipped,
             untouched,
         }
@@ -88,6 +92,12 @@ impl IngestMediaResponse {
     #[must_use]
     pub(crate) fn registered(&self) -> u64 {
         self.registered
+    }
+
+    /// Return the number of removed files.
+    #[must_use]
+    pub(crate) fn removed(&self) -> u64 {
+        self.removed
     }
 
     /// Return the number of skipped files.

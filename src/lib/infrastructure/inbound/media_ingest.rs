@@ -3,6 +3,7 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Duration;
 
+use tokio::fs;
 use tokio::sync::{Mutex, watch};
 use tokio::task::JoinHandle;
 use tokio::time::{Instant, sleep};
@@ -203,15 +204,22 @@ pub(crate) struct MediaIngestRunner {
     factory: Arc<dyn LibraryUseCaseFactory>,
     /// Whether the library root exists at startup.
     media_root_present: bool,
+    /// Bound on how long the scan waits for an absent root, in seconds.
+    media_root_wait: Duration,
 }
 
 impl MediaIngestRunner {
     /// Create a runner over the Library use-case factory.
     #[must_use]
-    pub(crate) fn new(factory: Arc<dyn LibraryUseCaseFactory>, media_root_present: bool) -> Self {
+    pub(crate) fn new(
+        factory: Arc<dyn LibraryUseCaseFactory>,
+        media_root_present: bool,
+        media_root_wait: Duration,
+    ) -> Self {
         Self {
             factory,
             media_root_present,
+            media_root_wait,
         }
     }
 
@@ -243,7 +251,30 @@ impl MediaIngestRunner {
         let (shutdown, _receiver) = watch::channel(false);
         let scan_runtime = Arc::clone(&runtime);
         let scan_shutdown = shutdown.subscribe();
-        let scan = tokio::spawn(async move { scan_runtime.scan(scan_shutdown).await });
+        let media_root_present = self.media_root_present;
+        let media_root_wait = self.media_root_wait;
+        let scan = tokio::spawn(async move {
+            // A root that may still be mounting is given the configured window
+            // before the reconciliation treats the library as empty. The wait
+            // runs in this background task, so readiness never depends on it.
+            // The window is bounded by the domain; `checked_add` degrades an
+            // unrepresentable deadline to "scan now".
+            if !media_root_present
+                && let Some(deadline) = Instant::now().checked_add(media_root_wait)
+            {
+                loop {
+                    if fs::metadata(media_root())
+                        .await
+                        .is_ok_and(|metadata| metadata.is_dir())
+                        || Instant::now() >= deadline
+                    {
+                        break;
+                    }
+                    sleep(Duration::from_secs(1)).await;
+                }
+            }
+            scan_runtime.scan(scan_shutdown).await;
+        });
         let observer = observer_available.then(|| {
             let observer_shutdown = shutdown.subscribe();
             tokio::spawn(async move { runtime.observe(observer_shutdown).await })
@@ -654,7 +685,7 @@ mod tests {
             .returning(|_| Box::pin(async { Ok(IngestMediaResponse::default()) }));
 
         // Act: the runner starts, the scan finishes, and the mount is absent.
-        let tasks = super::MediaIngestRunner::new(factory(ingest), false).start();
+        let tasks = super::MediaIngestRunner::new(factory(ingest), false, Duration::ZERO).start();
         tasks.wait().await;
 
         // Assert: exactly one warning names the absent root. The watcher is

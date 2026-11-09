@@ -6,6 +6,8 @@ pub(crate) mod audio_repository;
 pub(crate) mod configuration_source;
 /// The content hasher port.
 pub(crate) mod content_hasher;
+/// The content link port.
+pub(crate) mod content_link;
 pub(crate) mod content_type_sniffer;
 /// The credential repository port.
 pub(crate) mod credential_repository;

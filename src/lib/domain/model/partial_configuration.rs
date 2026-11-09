@@ -64,6 +64,19 @@ pub(crate) struct PartialAssetUpload {
 pub(crate) struct PartialLibrary {
     /// Metadata settings named by the layer.
     pub metadata: PartialLibraryMetadata,
+    /// Startup policy named by the layer.
+    pub startup: PartialLibraryStartup,
+}
+
+/// Startup policy named by the layer.
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Deserialize)]
+#[serde(default, deny_unknown_fields)]
+#[non_exhaustive]
+pub(crate) struct PartialLibraryStartup {
+    /// Whether startup refuses to run without the library root.
+    pub fail_without_media_root: Option<bool>,
+    /// Seconds startup waits for the library root to appear.
+    pub media_root_wait_seconds: Option<u64>,
 }
 
 /// Metadata settings named by the layer.

@@ -25,6 +25,23 @@ impl<'transaction> SqlxImageRepository<'transaction> {
 }
 
 impl ImageRepository for SqlxImageRepository<'_> {
+    async fn clear_cover_references(&mut self, id: NumericID) -> Result<(), RepositoryError> {
+        for statement in [
+            "UPDATE music_group SET cover_image_id = NULL WHERE cover_image_id = ?",
+            "UPDATE music_album SET cover_image_id = NULL WHERE cover_image_id = ?",
+            "UPDATE music_playlist SET cover_image_id = NULL WHERE cover_image_id = ?",
+            "UPDATE movie SET cover_image_id = NULL WHERE cover_image_id = ?",
+            "UPDATE series SET cover_image_id = NULL WHERE cover_image_id = ?",
+            "UPDATE season SET cover_image_id = NULL WHERE cover_image_id = ?",
+        ] {
+            sqlx::query(statement)
+                .bind(id)
+                .execute(&mut **self.transaction)
+                .await?;
+        }
+        Ok(())
+    }
+
     async fn create(&mut self, image: Image) -> Result<Image, RepositoryError> {
         let row = sqlx::query_as::<_, SqlxImage>(
             "INSERT INTO image (name, width_px, height_px, orientation, created_at, file_id, scope)
@@ -411,6 +428,49 @@ mod tests {
         assert_eq!(by_name.first().map(Image::name), Some("tall.png"));
         assert_eq!(by_orientation.len(), 1);
         assert_eq!(all.len(), 2);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn clear_cover_references_nulls_the_cover_and_keeps_the_owner()
+    -> Result<(), Box<dyn Error>> {
+        // Arrange: one music group uses the image as its cover.
+        let mut transaction = begin_transaction().await?;
+        seed_user(&mut transaction, 1).await?;
+        seed_file(&mut transaction, 10, 1, "files/cover.png", "image/png").await?;
+        let stored = {
+            let mut repository = SqlxImageRepository::new(&mut transaction);
+            repository
+                .create(image(0, 10, "cover.png", Orientation::Square)?)
+                .await?
+        };
+        sqlx::query(
+            "INSERT INTO music_group (music_group_id, stage_name, cover_image_id)
+             VALUES (1, 'Band', ?)",
+        )
+        .bind(stored.image_id())
+        .execute(&mut *transaction)
+        .await?;
+
+        // Act
+        {
+            let mut repository = SqlxImageRepository::new(&mut transaction);
+            repository.clear_cover_references(stored.image_id()).await?;
+        }
+
+        // Assert
+        let cover = sqlx::query_scalar::<_, Option<i64>>(
+            "SELECT cover_image_id FROM music_group WHERE music_group_id = 1",
+        )
+        .fetch_one(&mut *transaction)
+        .await?;
+        let groups = sqlx::query_scalar::<_, i64>(
+            "SELECT COUNT(*) FROM music_group WHERE music_group_id = 1",
+        )
+        .fetch_one(&mut *transaction)
+        .await?;
+        assert_eq!(cover, None);
+        assert_eq!(groups, 1, "the resource carrying the cover is retained");
         Ok(())
     }
 

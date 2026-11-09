@@ -1,4 +1,5 @@
 use axum::extract::{Path, State};
+use axum::http::{HeaderValue, header};
 use axum::response::Response;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
@@ -11,8 +12,8 @@ use crate::infrastructure::inbound::rest::api_error::{ApiError, ErrorBody};
 use crate::infrastructure::inbound::rest::app_state::AppState;
 use crate::infrastructure::inbound::rest::hal::{Link, hal_json};
 use crate::infrastructure::inbound::rest::handler::asset::{
-    TIMESTAMP_FORMAT, asset_audio_href, asset_file_href, asset_image_href, format_date,
-    parse_asset_id,
+    TIMESTAMP_FORMAT, asset_audio_href, asset_file_href, asset_image_href, asset_video_href,
+    content_href, format_date, parse_asset_id,
 };
 use crate::infrastructure::inbound::rest::handler::user::user_self_href;
 use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
@@ -27,6 +28,8 @@ struct FileLinks {
     /// Link to the typed audio backed by the file, when one exists.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub audio: Option<Link>,
+    /// Link to the file's playable content.
+    pub content: Link,
     /// Link to the typed image backed by the file, when one exists.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub image: Option<Link>,
@@ -35,24 +38,9 @@ struct FileLinks {
     /// Link to the stored file itself.
     #[serde(rename = "self")]
     pub self_link: Link,
-}
-
-impl FileLinks {
-    /// Build the links of the file identified by `file_id`.
-    #[must_use]
-    fn for_file(
-        file_id: NumericID,
-        owner_id: NumericID,
-        image_id: Option<NumericID>,
-        audio_id: Option<NumericID>,
-    ) -> Self {
-        Self {
-            audio: audio_id.map(|id| Link::new(&asset_audio_href(id))),
-            image: image_id.map(|id| Link::new(&asset_image_href(id))),
-            owner: Link::new(&user_self_href(owner_id)),
-            self_link: Link::new(&asset_file_href(file_id)),
-        }
-    }
+    /// Link to the typed video backed by the file, when one exists.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub video: Option<Link>,
 }
 
 /// Representation of a stored file.
@@ -93,12 +81,23 @@ impl FileResponse {
         Self {
             id: response.id(),
             is_public: response.is_public(),
-            links: FileLinks::for_file(
-                response.id(),
-                response.owner_id(),
-                response.image_id(),
-                response.audio_id(),
-            ),
+            links: FileLinks {
+                audio: response
+                    .audio_id()
+                    .map(|id| Link::new(&asset_audio_href(id))),
+                content: Link::new(&content_href(
+                    &format!("/api/v1/asset/file/{}/content", response.id()),
+                    response.content_link(),
+                )),
+                image: response
+                    .image_id()
+                    .map(|id| Link::new(&asset_image_href(id))),
+                owner: Link::new(&user_self_href(response.owner_id())),
+                self_link: Link::new(&asset_file_href(response.id())),
+                video: response
+                    .video_id()
+                    .map(|id| Link::new(&asset_video_href(id))),
+            },
             mime_type: response.mime_type_id().to_owned(),
             modified_at: response.modified_at().format(TIMESTAMP_FORMAT).to_string(),
             origin: response.origin().as_str().to_owned(),
@@ -139,7 +138,8 @@ impl From<GetFileError> for ApiError {
             status = OK,
             body = FileResponse,
             content_type = "application/hal+json",
-            description = "File found"
+            description = "File found",
+            headers(("Cache-Control" = String, description = "Always `no-store`"))
         ),
         (
             status = BAD_REQUEST,
@@ -182,5 +182,9 @@ pub(crate) async fn get_file(
         .get_file()
         .execute(GetFileCommand::new(caller.user_id(), file_id))
         .await?;
-    Ok(hal_json(FileResponse::from_response(&response)))
+    let mut representation = hal_json(FileResponse::from_response(&response));
+    representation
+        .headers_mut()
+        .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    Ok(representation)
 }

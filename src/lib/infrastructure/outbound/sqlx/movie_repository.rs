@@ -87,6 +87,32 @@ impl MovieRepository for SqlxMovieRepository<'_> {
         .ok_or(RepositoryError::OperationFailed)
     }
 
+    async fn delete(&mut self, id: NumericID) -> Result<bool, RepositoryError> {
+        sqlx::query("DELETE FROM movie_genre WHERE movie_id = ?")
+            .bind(id)
+            .execute(&mut **self.transaction)
+            .await?;
+        let result = sqlx::query("DELETE FROM movie WHERE movie_id = ?")
+            .bind(id)
+            .execute(&mut **self.transaction)
+            .await?;
+        Ok(result.rows_affected() > 0)
+    }
+
+    async fn find_by_video(
+        &mut self,
+        video_id: NumericID,
+    ) -> Result<Option<Movie>, RepositoryError> {
+        Ok(self
+            .search(&MovieFilter {
+                video_id: Some(video_id),
+                ..MovieFilter::default()
+            })
+            .await?
+            .into_iter()
+            .next())
+    }
+
     async fn search(&mut self, filter: &MovieFilter) -> Result<Vec<Movie>, RepositoryError> {
         let mut builder = QueryBuilder::<Sqlite>::new(
             "SELECT
@@ -982,6 +1008,53 @@ mod tests {
 
         // Assert
         assert!(stored.is_none(), "an absent film must read as none");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn find_by_video_returns_the_attached_film_only() -> Result<(), Box<dyn Error>> {
+        // Arrange: video 20 backs a film, video 21 is unattached.
+        let mut transaction = begin_transaction().await?;
+        seed_user(&mut transaction).await?;
+        seed_video_file(&mut transaction, 10).await?;
+        seed_video(&mut transaction, 20, 10, 10).await?;
+        seed_video_file(&mut transaction, 11).await?;
+        seed_video(&mut transaction, 21, 11, 10).await?;
+        seed_movie(&mut transaction, 5, "Vertigo", 20).await?;
+        let mut repository = SqlxMovieRepository::new(&mut transaction);
+
+        // Act
+        let found = repository.find_by_video(20).await?;
+        let missing = repository.find_by_video(21).await?;
+
+        // Assert
+        assert_eq!(found.as_ref().map(Movie::id), Some(5));
+        assert!(missing.is_none());
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn delete_removes_the_film_and_its_genres() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let mut transaction = begin_transaction().await?;
+        seed_user(&mut transaction).await?;
+        seed_video_file(&mut transaction, 10).await?;
+        seed_video(&mut transaction, 20, 10, 10).await?;
+        seed_movie(&mut transaction, 5, "Vertigo", 20).await?;
+        seed_genre(&mut transaction, "DRAMA").await?;
+        seed_movie_genre(&mut transaction, 5, "DRAMA").await?;
+        // Act
+        let removed = {
+            let mut repository = SqlxMovieRepository::new(&mut transaction);
+            repository.delete(5).await?
+        };
+        let genres = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM movie_genre")
+            .fetch_one(&mut *transaction)
+            .await?;
+
+        // Assert
+        assert!(removed);
+        assert_eq!(genres, 0, "the film's genre links are removed with it");
         Ok(())
     }
 }

@@ -181,6 +181,17 @@ impl SeriesRepository for SqlxSeriesRepository<'_> {
         .ok_or(RepositoryError::OperationFailed)
     }
 
+    async fn delete_episode_by_video(
+        &mut self,
+        video_id: NumericID,
+    ) -> Result<bool, RepositoryError> {
+        let result = sqlx::query("DELETE FROM episode WHERE video_id = ?")
+            .bind(video_id)
+            .execute(&mut **self.transaction)
+            .await?;
+        Ok(result.rows_affected() > 0)
+    }
+
     async fn find_episode_by_video(
         &mut self,
         video_id: NumericID,
@@ -1675,6 +1686,38 @@ mod tests {
             unattached.is_none(),
             "a video the catalogue does not attach must read as none"
         );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn delete_episode_by_video_removes_only_the_episode() -> Result<(), Box<dyn Error>> {
+        // Arrange: video 20 backs the episode, video 21 is unattached.
+        let mut transaction = begin_transaction().await?;
+        seed_user(&mut transaction).await?;
+        seed_video_file(&mut transaction, 10).await?;
+        seed_video(&mut transaction, 20, 10, 1920).await?;
+        sqlx::query(
+            "INSERT INTO series (series_id, name, plot) VALUES (1, 'Twin Peaks', 'A plot')",
+        )
+        .execute(&mut *transaction)
+        .await?;
+        seed_season(&mut transaction, 40, 1, 1, None).await?;
+        seed_episode(&mut transaction, 60, 40, 1, "Pilot", 20).await?;
+        // Act
+        let (removed, missing) = {
+            let mut repository = SqlxSeriesRepository::new(&mut transaction);
+            let removed = repository.delete_episode_by_video(20).await?;
+            let missing = repository.delete_episode_by_video(21).await?;
+            (removed, missing)
+        };
+        let seasons = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM season")
+            .fetch_one(&mut *transaction)
+            .await?;
+
+        // Assert
+        assert!(removed);
+        assert!(!missing);
+        assert_eq!(seasons, 1, "the season and its show are retained");
         Ok(())
     }
 }

@@ -1,4 +1,5 @@
 use axum::extract::{Path, State};
+use axum::http::{HeaderValue, header};
 use axum::response::Response;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
@@ -12,7 +13,7 @@ use crate::infrastructure::inbound::rest::api_error::{ApiError, ErrorBody};
 use crate::infrastructure::inbound::rest::app_state::AppState;
 use crate::infrastructure::inbound::rest::hal::{Link, hal_json};
 use crate::infrastructure::inbound::rest::handler::asset::{
-    asset_file_href, asset_image_href, format_date, parse_asset_id,
+    asset_file_href, asset_image_href, content_href, format_date, parse_asset_id,
 };
 use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 
@@ -23,22 +24,13 @@ use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 #[non_exhaustive]
 struct ImageLinks {
+    /// Link to the image's playable content.
+    pub content: Link,
     /// Link to the stored file backing the image.
     pub file: Link,
     /// Link to the image resource itself.
     #[serde(rename = "self")]
     pub self_link: Link,
-}
-
-impl ImageLinks {
-    /// Build the links of the image identified by `image_id`.
-    #[must_use]
-    fn for_image(image_id: NumericID, file_id: NumericID) -> Self {
-        Self {
-            file: Link::new(&asset_file_href(file_id)),
-            self_link: Link::new(&asset_image_href(image_id)),
-        }
-    }
 }
 
 /// Representation of a typed image.
@@ -75,7 +67,14 @@ impl ImageResponse {
             file_id: response.file_id(),
             height_px: response.height_px(),
             id: response.id(),
-            links: ImageLinks::for_image(response.id(), response.file_id()),
+            links: ImageLinks {
+                content: Link::new(&content_href(
+                    &format!("/api/v1/asset/image/{}/content", response.id()),
+                    response.content_link(),
+                )),
+                file: Link::new(&asset_file_href(response.file_id())),
+                self_link: Link::new(&asset_image_href(response.id())),
+            },
             name: response.name().to_owned(),
             orientation: response.orientation(),
             width_px: response.width_px(),
@@ -111,7 +110,8 @@ impl From<GetImageError> for ApiError {
             status = OK,
             body = ImageResponse,
             content_type = "application/hal+json",
-            description = "Image found"
+            description = "Image found",
+            headers(("Cache-Control" = String, description = "Always `no-store`"))
         ),
         (
             status = BAD_REQUEST,
@@ -154,5 +154,9 @@ pub(crate) async fn get_image(
         .get_image()
         .execute(GetImageCommand::new(caller.user_id(), image_id))
         .await?;
-    Ok(hal_json(ImageResponse::from_response(&response)))
+    let mut representation = hal_json(ImageResponse::from_response(&response));
+    representation
+        .headers_mut()
+        .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    Ok(representation)
 }
