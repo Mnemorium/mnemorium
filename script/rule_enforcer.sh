@@ -4215,14 +4215,21 @@ check_test_027() {
 # check_test_028 — an integration test module lives in the same file as the code under test (TEST-028).
 check_test_028() { need_dir "TEST-028" "src/lib/infrastructure/outbound" && scan_short TEST-028 src; }
 
-# check_test_033 — the SQLite repository is exercised against an in-memory database, one `:memory:` connection per test so each test runs against a fresh database (TEST-033).
+# check_test_033 — the SQLite repository is exercised against an in-memory database, one `:memory:` connection per test so each test runs against a fresh database (TEST-033). The surfaces come from rule_enforcer.yaml (TEST-033.surfaces): the adapter family directory and the module root that holds the fixtures its tests share.
 check_test_033() {
 	local id="TEST-033"
-	local surface="src/lib/infrastructure/outbound/sqlx"
-	local matches file line arg helper result=0 modules=0
+	local matches file line arg helper result=0 modules=0 surface
+	local -a surfaces=()
 	local -A in_memory=()
 
-	need_dir "$id" "$surface" || return 1
+	config_list "$id" surfaces surfaces || return 2
+	for surface in "${surfaces[@]}"; do
+		if [ ! -e "$surface" ]; then
+			printf 'error: %s: configured surface %s does not exist\n' \
+				"$id" "$surface" >&2
+			return 1
+		fi
+	done
 
 	matches="$(scan_json "$id" src)" || return 1
 
@@ -4246,7 +4253,7 @@ check_test_033() {
 		 (.metaVariables.single.ARG.text // ""),
 		 (.metaVariables.single.HELPER.text // "")] | @tsv')
 
-	# Every test module that builds a SQLite pool must open an in-memory connection; a module with none runs against an on-disk file.
+	# Every test module on a configured surface that builds a SQLite pool must open an in-memory connection; a module with none runs against an on-disk file.
 	while IFS= read -r file; do
 		[ -n "$file" ] || continue
 		grep -qE 'SqlitePool|SqlitePoolOptions|init_db|sqlx::migrate!' "$file" || continue
@@ -4256,10 +4263,10 @@ check_test_033() {
 				"$id" "$file" >&2
 			result=1
 		fi
-	done < <(grep -rl '#\[cfg(test)\]' "$surface" --include='*.rs' | sort)
+	done < <(grep -rl '#\[cfg(test)\]' "${surfaces[@]}" --include='*.rs' | sort)
 
 	if [ "$modules" -eq 0 ]; then
-		printf 'error: %s: extracted no SQLite test module from %s\n' "$id" "$surface" >&2
+		printf 'error: %s: extracted no SQLite test module from %s\n' "$id" "${surfaces[*]}" >&2
 		return 1
 	fi
 
@@ -4267,7 +4274,11 @@ check_test_033() {
 }
 
 # check_test_034 — a SQLite repository integration test caps its in-memory pool at one connection (TEST-034).
-check_test_034() { need_dir "TEST-034" "src/lib/infrastructure/outbound/sqlx" && scan_short TEST-034 "src/lib/infrastructure/outbound/sqlx"; }
+check_test_034() {
+	need_dir "TEST-034" "src/lib/infrastructure/outbound/sqlx" || return 1
+	need_file "TEST-034" "src/lib/infrastructure/outbound/sqlx.rs" || return 1
+	scan_short TEST-034 "src/lib/infrastructure/outbound/sqlx" "src/lib/infrastructure/outbound/sqlx.rs"
+}
 
 # check_test_035 — an external-service test stubs the service with `wiremock` and loads its canned responses from golden files (TEST-035).
 check_test_035() {
@@ -4601,16 +4612,29 @@ check_test_043() {
 	return "$result"
 }
 
-# check_test_044 — shared Rust test helpers live only in the single `#[cfg(test)] mod test_helpers` in src/lib/lib.rs (TEST-044); a separate helper file or module is forbidden.
+# check_test_044 — a helper a test module shares lives in an inline, #[cfg(test)]-gated mod test_helpers, declared once per root file: crate-wide helpers in src/lib/lib.rs, helpers shared only by the descendants of one module in that module's own root (rule_enforcer.yaml, TEST-044.module_scoped_helper_roots). A separate helper file or module is forbidden.
 check_test_044() {
 	local id="TEST-044"
 	local module="src/lib/lib.rs"
 	local src_dir="src"
-	local file line inline gated result=0 count=0
-	local -a files=()
+	local file line inline gated root allowed count_value result=0
+	local -a files=() roots=() allowed_roots=()
+	local -A counts=()
 
 	need_dir "$id" "$src_dir" || return 1
 	need_file "$id" "$module" || return 1
+	config_list "$id" module_scoped_helper_roots roots || return 2
+
+	# An allowlist entry that rots is an error: every configured root must exist.
+	allowed_roots=("$module" "${roots[@]}")
+	for root in "${allowed_roots[@]}"; do
+		if [ ! -f "$root" ]; then
+			printf 'error: %s: configured helper root %s does not exist\n' \
+				"$id" "$root" >&2
+			result=1
+		fi
+	done
+	[ "$result" -eq 0 ] || return 1
 
 	# Clause A: no separate helper file anywhere under src/ — the named failure mode is a `test_helper.rs` beside the code under test, which is the file form of the helper module.
 	while IFS= read -r file; do
@@ -4628,13 +4652,20 @@ check_test_044() {
 	fi
 	while IFS=$'\t' read -r file line inline gated; do
 		[ -n "$file" ] || continue
-		count=$((count + 1))
-		if [ "$file" != "$module" ]; then
-			printf 'error: %s: %s:%s: test helpers must live only in the single #[cfg(test)] mod test_helpers in %s\n' \
+		allowed=0
+		for root in "${allowed_roots[@]}"; do
+			if [ "$file" = "$root" ]; then
+				allowed=1
+			fi
+		done
+		if [ "$allowed" -eq 0 ]; then
+			printf 'error: %s: %s:%s: test helpers must live only in the #[cfg(test)] mod test_helpers of %s or of a module root listed under TEST-044.module_scoped_helper_roots\n' \
 				"$id" "$file" "$line" "$module" >&2
 			result=1
 			continue
 		fi
+		count_value="${counts["$file"]:-0}"
+		counts["$file"]=$((count_value + 1))
 		if [ "$inline" != "inline" ]; then
 			printf 'error: %s: %s:%s: mod test_helpers must be declared inline; a file module (mod test_helpers;) is a separate helper file\n' \
 				"$id" "$file" "$line" >&2
@@ -4674,15 +4705,16 @@ check_test_044() {
 			}
 		' "${files[@]}")
 
-	if [ "$count" -eq 0 ]; then
-		printf 'error: %s: %s declares no mod test_helpers; shared helpers live in the single #[cfg(test)] mod test_helpers there\n' \
-			"$id" "$module" >&2
-		result=1
-	elif [ "$count" -gt 1 ]; then
-		printf 'error: %s: found %s mod test_helpers declarations; there must be exactly one\n' \
-			"$id" "$count" >&2
-		result=1
-	fi
+	# Each allowed root declares exactly one such module: the crate-wide helpers
+	# in the crate root, and the module-scoped helpers beside their descendants.
+	for root in "${allowed_roots[@]}"; do
+		count_value="${counts["$root"]:-0}"
+		if [ "$count_value" -ne 1 ]; then
+			printf 'error: %s: %s declares %s mod test_helpers declarations; the root must declare exactly one\n' \
+				"$id" "$root" "$count_value" >&2
+			result=1
+		fi
+	done
 
 	return "$result"
 }

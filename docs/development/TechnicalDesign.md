@@ -2069,7 +2069,7 @@ the root exists is `500 Internal Server Error`, which the next scan reconciles.
 
 Mnemorium uses a single datastore: **SQLite3**, accessed through `sqlx`. The schema is versioned by migrations in
 `migrations/` (one `.up.sql`/`.down.sql` pair per change) and applied at startup by `sqlx::migrate!` in
-`src/lib/infrastructure/outbound/sqlx/sqlite3.rs`.
+`src/lib/infrastructure/outbound/sqlx.rs`.
 
 Migrations run at boot inside `init_db`; besides the table schema they seed reference data and install triggers that
 enforce invariants.
@@ -2078,7 +2078,7 @@ enforce invariants.
 | ---------- | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------- |
 | `PERS-001` | Datastore & migrations      | Use a single datastore: **SQLite3**, accessed through `sqlx`.                                                                                                                                                                                                                                                       |                                           |
 | `PERS-002` | Datastore & migrations      | Version the schema with migrations in `migrations/`, one `.up.sql`/`.down.sql` pair per change.                                                                                                                                                                                                                     |                                           |
-| `PERS-003` | Datastore & migrations      | Apply the migrations at startup with `sqlx::migrate!` in `src/lib/infrastructure/outbound/sqlx/sqlite3.rs`.                                                                                                                                                                                                         |                                           |
+| `PERS-003` | Datastore & migrations      | Apply the migrations at startup with `sqlx::migrate!` in `src/lib/infrastructure/outbound/sqlx.rs`.                                                                                                                                                                                                                 |                                           |
 | `PERS-004` | Datastore & migrations      | Run the migrations at boot inside `init_db`.                                                                                                                                                                                                                                                                        |                                           |
 | `PERS-005` | Seeds                       | Seed the reference data (`color`, `gallery`, `language`, `mime_type`) and the music bucket (`genre('UNKNOWN')`, `music_group` 0, `music_album` 0 and its `DIGITAL` medium) from the migrations.                                                                                                                     |                                           |
 | `PERS-006` | Invariants                  | A `user` row with `user_id = 0` (the Root Admin) cannot be deleted or modified.                                                                                                                                                                                                                                     |                                           |
@@ -2632,7 +2632,7 @@ the flows the E2E suite covers come from the critical exception paths in [UseCas
 | `TEST-041` | E2E                | Generic tests (those whose subject is not password behavior) use the shared `SECRET_PASSWORD` from `test/e2e/conftest.py` for any user they provision or register.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | [§ E2E test](#e2e-test)                         |
 | `TEST-042` | E2E                | Tests whose subject is password behavior (password policy validation, change-password flows, wrong-password login) pick their own explicit passwords and must not use the shared secret.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | [§ E2E test](#e2e-test)                         |
 | `TEST-043` | E2E                | The Root Admin's password is random per container and obtained through the `default_password` fixture; the shared secret never applies to it.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | [§ E2E test](#e2e-test)                         |
-| `TEST-044` | Test helpers       | Shared Rust test helpers live **only** in the single `#[cfg(test)] mod test_helpers` in `src/lib/lib.rs`; never create a separate helper file or module (for example `test_helper.rs`).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | [§ Test helpers](#test-helpers)                 |
+| `TEST-044` | Test helpers       | A helper a test module shares lives in an inline, `#[cfg(test)]`-gated `mod test_helpers`, declared once per root file: crate-wide helpers in `src/lib/lib.rs`, helpers shared only by the descendants of one module in that module's own root (for example `src/lib/infrastructure/outbound/sqlx.rs`); never a separate helper file or module.                                                                                                                                                                                                                                                                                                                                                               | [§ Test helpers](#test-helpers)                 |
 | `TEST-045` | Test helpers       | Adding a new shared test helper, or changing the existing helper surface, requires the developer's explicit approval (their thumbs-up on the change).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | [§ Test helpers](#test-helpers)                 |
 | `TEST-046` | Factory            | Production factory structs need no dedicated test; they only wire use cases, adapters and transactions, so test the assembled parts, not the wiring.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | [§ Factory](#factory-strategy)                  |
 | `TEST-048` | Shell script       | Shell scripts in the `script/` folder are tooling and CI glue and are exempt from the unit, integration and E2E test requirements; they are validated by their own gates — `shellcheck` and `shfmt` plus their pre-commit and CI execution — not by a test module.                                                                                                                                                                                                                                                                                                                                                                                                                                            | [§ Shell script](#shell-script)                 |
@@ -2818,14 +2818,19 @@ malformed header name, an invalid date, username or country code, and a partial 
 
 ### Test helpers
 
-Shared Rust test helpers live only in the single `#[cfg(test)] mod test_helpers` in `src/lib/lib.rs`. The module is the
-sanctioned exception to [TEST-001](#unit-test) (a test module lives with the code under test) and to `STY-RUST-001`
-(shared test fixtures are exempt from the extract-function rule).
+Shared Rust test helpers live in an inline, `#[cfg(test)]`-gated `mod test_helpers`, declared once per root file, at one
+of two scopes. The crate-wide module lives in `src/lib/lib.rs` and is the sanctioned exception to [TEST-001](#unit-test)
+(a test module lives with the code under test) and to `STY-RUST-001` (shared test fixtures are exempt from the
+extract-function rule). A module-scoped helper module lives in the root file of the module whose descendants share the
+helper — for example `src/lib/infrastructure/outbound/sqlx.rs` for the SQLite adapters — and every user must sit inside
+that module's subtree; a helper that escapes it moves to `src/lib/lib.rs`. The module-scoped roots are listed in
+`rule_enforcer.yaml` under `TEST-044.module_scoped_helper_roots`, so the set cannot grow or rot silently. Both scopes
+declare the module inline (never `mod test_helpers;`) and gate it with `#[cfg(test)]`.
 
-It holds the fixtures the in-crate tests share: the secrets `SECRET_PASSWORD` and `TEST_JWT_SECRET`; the unit-of-work
-double `TestUnitOfWork`/`TestUow` and its factory double `TestUnitOfWorkFactory`/`TestFactory`, wrapped by
-`AssetFactoryHarness::new` and `GalleryFactoryHarness::new`; `TEST_PEPPER` and `instance_state`; the app-state builder
-`app_state`; the album release date `album_release_date`; the video date `video_date`; and the response helpers
+The crate-wide module holds the fixtures the in-crate tests share: the secrets `SECRET_PASSWORD` and `TEST_JWT_SECRET`;
+the unit-of-work double `TestUnitOfWork`/`TestUow` and its factory double `TestUnitOfWorkFactory`/`TestFactory`, wrapped
+by `AssetFactoryHarness::new` and `GalleryFactoryHarness::new`; `TEST_PEPPER` and `instance_state`; the app-state
+builder `app_state`; the album release date `album_release_date`; the video date `video_date`; and the response helpers
 `error_message_of` and `into_status_and_body`.
 
 `TestUnitOfWork` implements `Default`, and a test names only the repositories it stubs —
@@ -2834,8 +2839,11 @@ module, the context's `UnitOfWork` implementation, and the tests of the use case
 of the other use cases.
 
 Helpers are never scattered into per-module files — for example a `test_helper.rs` beside the code under test, or a
-second helper module. A new shared helper is added to this single module, and only with the developer's explicit
-approval.
+second helper module in the same file. A new shared helper is added to one of these modules, and only with the
+developer's explicit approval.
+
+The module-scoped root of the SQLite adapters holds `begin_transaction`, the migrated in-memory transaction their
+repository tests run in ([TEST-033](#sqlite3), [TEST-034](#sqlite3)).
 
 ---
 

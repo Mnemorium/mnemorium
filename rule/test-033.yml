@@ -4,6 +4,7 @@ language: Rust
 severity: hint
 message: extract SQLite connection calls from a test module for TEST-033
 files:
+  - src/lib/infrastructure/outbound/sqlx.rs
   - src/lib/infrastructure/outbound/sqlx/**/*.rs
 rule:
   any:

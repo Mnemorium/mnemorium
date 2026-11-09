@@ -184,20 +184,11 @@ fn domain_video(row: SqlxVideo) -> Result<Video, RepositoryError> {
 mod tests {
     use super::*;
     use crate::domain::model::scope::Scope;
+    use crate::infrastructure::outbound::sqlx::test_helpers::begin_transaction;
     use rstest::rstest;
-    use sqlx::sqlite::SqlitePoolOptions;
     use std::error::Error;
 
     /// Open a migrated in-memory database and begin one transaction.
-    async fn begin_transaction() -> Result<Transaction<'static, Sqlite>, sqlx::Error> {
-        let pool = SqlitePoolOptions::new()
-            .max_connections(1)
-            .connect("sqlite::memory:")
-            .await?;
-        sqlx::migrate!("./migrations").run(&pool).await?;
-        pool.begin().await
-    }
-
     /// Seed a credential and a standard user so foreign keys resolve.
     async fn seed_user(
         transaction: &mut Transaction<'static, Sqlite>,

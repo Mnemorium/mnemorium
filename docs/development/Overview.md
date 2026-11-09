@@ -59,8 +59,7 @@ document describes the source layout those rules constrain.
             │   ├── random
             │   ├── sha2
             │   └── sqlx
-            │       ├── model
-            │       └── sqlite3.rs
+            │       └── model
             └── use_case_factory
 ```
 
@@ -157,10 +156,9 @@ document describes the source layout those rules constrain.
 | `src/lib/infrastructure/outbound/reqwest/tmdb.rs`                                    | TMDB adapter: search and detail mapping, bearer or query-key authentication                                                       |
 | `src/lib/infrastructure/outbound/reqwest/omdb.rs`                                    | `OMDb` adapter: search and detail mapping, `Response:"False"` and invalid-key handling                                            |
 | `src/lib/infrastructure/outbound/sha2`                                               | SHA-256 content hasher adapter                                                                                                    |
-| `src/lib/infrastructure/outbound/sqlx`                                               | SQLx/SQLite repository adapters                                                                                                   |
+| `src/lib/infrastructure/outbound/sqlx`                                               | SQLx/SQLite repository adapters, the pool initialiser and migrations, and the fixtures their tests share                          |
 | `src/lib/infrastructure/outbound/sqlx/model`                                         | SQLx row models                                                                                                                   |
 | `src/lib/infrastructure/outbound/sqlx/permission_repository.rs`                      | Permission override adapter grouping `LISTED` resources and replacing them atomically                                             |
-| `src/lib/infrastructure/outbound/sqlx/sqlite3.rs`                                    | SQLite pool initialization and migrations                                                                                         |
 | `src/lib/infrastructure/seed.rs`                                                     | Test-only seed data applied behind the `test-seed` feature                                                                        |
 | `src/lib/infrastructure/use_case_factory`                                            | Per-context factories building use cases on demand                                                                                |
 | `src/lib/infrastructure/logging.rs`                                                  | `tracing` subscriber setup driven by the configuration                                                                            |

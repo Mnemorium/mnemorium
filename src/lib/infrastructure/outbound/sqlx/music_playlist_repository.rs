@@ -300,8 +300,8 @@ fn domain_playlist(row: MusicPlaylistRow, tracks: Vec<MusicRecording>) -> MusicP
 mod tests {
 
     use super::*;
+    use crate::infrastructure::outbound::sqlx::test_helpers::begin_transaction;
     use chrono::NaiveDateTime;
-    use sqlx::sqlite::SqlitePoolOptions;
     use std::error::Error;
     use tracing_test::traced_test;
 
@@ -338,15 +338,6 @@ mod tests {
     }
 
     /// Open a migrated in-memory database and begin one transaction.
-    async fn begin_transaction() -> Result<Transaction<'static, Sqlite>, sqlx::Error> {
-        let pool = SqlitePoolOptions::new()
-            .max_connections(1)
-            .connect("sqlite::memory:")
-            .await?;
-        sqlx::migrate!("./migrations").run(&pool).await?;
-        pool.begin().await
-    }
-
     /// Seed a credential and a standard user so foreign keys resolve.
     async fn seed_user(
         transaction: &mut Transaction<'static, Sqlite>,

@@ -100,6 +100,20 @@ rules:
       - src/lib/infrastructure/outbound/file_system/configuration_source.rs
       - src/lib/infrastructure/outbound/file_system/instance_state_store.rs
 
+  TEST-033:
+    # The surfaces whose test modules open their own `:memory:` connection: the
+    # adapter family directory and the module root holding its shared fixtures.
+    surfaces:
+      - src/lib/infrastructure/outbound/sqlx
+      - src/lib/infrastructure/outbound/sqlx.rs
+  TEST-044:
+    # Module roots that may declare their own inline #[cfg(test)] mod
+    # test_helpers for helpers used only inside that module's subtree. The
+    # crate-wide module in src/lib/lib.rs is implicit. Each entry must exist and
+    # declare exactly one such module.
+    module_scoped_helper_roots:
+      - src/lib/infrastructure/outbound/sqlx.rs
+
   TEST-039:
     # Business use cases excepted from the one-file-per-use-case rule, each a
     # catalogued use case id (`UC-<seq>`, as written in

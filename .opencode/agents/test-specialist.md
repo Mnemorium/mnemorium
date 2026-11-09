@@ -137,7 +137,8 @@ memory:
 - `docs/development/UseCases.md` — happy paths and Alternative flows are the
   "Critical exception paths" worth testing.
 - `docs/development/Glossary.md` — the shared domain and actor vocabulary.
-- `src/lib/lib.rs` — the shared `#[cfg(test)] mod test_helpers` fixtures.
+- `src/lib/lib.rs` and the module roots `rule_enforcer.yaml` lists under `TEST-044`
+  — the shared `#[cfg(test)] mod test_helpers` fixtures.
 - `test/e2e/conftest.py` — the E2E fixtures.
 - The CI coverage artifact, when a review supplies it: the `rust` job uploads
   `cargo llvm-cov --lib` results as `.artifacts/coverage/summary.txt` (totals and

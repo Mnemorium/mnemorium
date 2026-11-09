@@ -95,8 +95,8 @@ fn domain_credential(row: SqlxCredential) -> Result<Credential, RepositoryError>
 mod tests {
     use super::*;
     use crate::domain::model::credential::CredentialError;
+    use crate::infrastructure::outbound::sqlx::test_helpers::begin_transaction;
     use chrono::NaiveDateTime;
-    use sqlx::sqlite::SqlitePoolOptions;
     use std::error::Error;
 
     fn updated_at(value: &str) -> Result<NaiveDateTime, Box<dyn Error>> {
@@ -109,15 +109,6 @@ mod tests {
         updated_at: NaiveDateTime,
     ) -> Result<Credential, CredentialError> {
         Credential::try_new(id, password_hash.to_owned(), updated_at)
-    }
-
-    async fn begin_transaction() -> Result<Transaction<'static, Sqlite>, sqlx::Error> {
-        let pool = SqlitePoolOptions::new()
-            .max_connections(1)
-            .connect("sqlite::memory:")
-            .await?;
-        sqlx::migrate!("./migrations").run(&pool).await?;
-        pool.begin().await
     }
 
     async fn seed_credential(

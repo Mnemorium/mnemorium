@@ -110,19 +110,10 @@ fn domain_group(row: MusicGroupRow) -> Result<MusicGroup, RepositoryError> {
 mod tests {
     use super::*;
     use crate::domain::alias::NumericID;
-    use sqlx::sqlite::SqlitePoolOptions;
+    use crate::infrastructure::outbound::sqlx::test_helpers::begin_transaction;
     use std::error::Error;
 
     /// Open a migrated in-memory database and begin one transaction.
-    async fn begin_transaction() -> Result<Transaction<'static, Sqlite>, sqlx::Error> {
-        let pool = SqlitePoolOptions::new()
-            .max_connections(1)
-            .connect("sqlite::memory:")
-            .await?;
-        sqlx::migrate!("./migrations").run(&pool).await?;
-        pool.begin().await
-    }
-
     /// Seed a credential and a standard user so the image's file resolves.
     async fn seed_user(
         transaction: &mut Transaction<'static, Sqlite>,

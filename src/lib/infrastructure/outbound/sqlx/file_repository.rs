@@ -211,20 +211,11 @@ fn domain_file(row: SqlxFile) -> Result<File, RepositoryError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::infrastructure::outbound::sqlx::test_helpers::begin_transaction;
     use crate::test_helpers::*;
     use chrono::{NaiveDate, NaiveDateTime};
     use rstest::rstest;
-    use sqlx::sqlite::SqlitePoolOptions;
     use std::error::Error;
-
-    async fn begin_transaction() -> Result<Transaction<'static, Sqlite>, sqlx::Error> {
-        let pool = SqlitePoolOptions::new()
-            .max_connections(1)
-            .connect("sqlite::memory:")
-            .await?;
-        sqlx::migrate!("./migrations").run(&pool).await?;
-        pool.begin().await
-    }
 
     /// Seed a credential and a user so foreign keys resolve.
     async fn seed_user(

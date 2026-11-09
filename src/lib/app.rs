@@ -41,7 +41,7 @@ use crate::infrastructure::outbound::file_system::instance_state_store::FileInst
 use crate::infrastructure::outbound::media_probe::LocalMediaProbe;
 use crate::infrastructure::outbound::random::password_generator::RandomPasswordGenerator;
 use crate::infrastructure::outbound::random::secret_generator::ChaChaSecretGenerator;
-use crate::infrastructure::outbound::sqlx::sqlite3::init_db;
+use crate::infrastructure::outbound::sqlx::init_db;
 use crate::infrastructure::outbound::sqlx::unit_of_work::SqlxUnitOfWorkFactory;
 #[cfg(feature = "test-seed")]
 use crate::infrastructure::seed;

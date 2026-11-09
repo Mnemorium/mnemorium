@@ -558,9 +558,9 @@ fn episode_from_row(row: &SeriesRow) -> Result<Option<Episode>, RepositoryError>
 mod tests {
     use super::*;
     use crate::domain::model::video::ScanType;
+    use crate::infrastructure::outbound::sqlx::test_helpers::begin_transaction;
     use crate::test_helpers::*;
     use chrono::NaiveDate;
-    use sqlx::sqlite::SqlitePoolOptions;
     use std::error::Error;
     use tracing_test::traced_test;
 
@@ -598,15 +598,6 @@ mod tests {
     }
 
     /// Open a migrated in-memory database and begin one transaction.
-    async fn begin_transaction() -> Result<Transaction<'static, Sqlite>, sqlx::Error> {
-        let pool = SqlitePoolOptions::new()
-            .max_connections(1)
-            .connect("sqlite::memory:")
-            .await?;
-        sqlx::migrate!("./migrations").run(&pool).await?;
-        pool.begin().await
-    }
-
     /// Seed a credential and a standard user so foreign keys resolve.
     async fn seed_user(transaction: &mut Transaction<'static, Sqlite>) -> Result<(), sqlx::Error> {
         sqlx::query("INSERT INTO credential (credential_id, password_hash) VALUES (1, 'hash')")
