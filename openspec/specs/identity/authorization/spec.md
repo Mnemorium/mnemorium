@@ -43,11 +43,15 @@ action's family; `PUBLIC_OR_OWNED` covers public resources and the caller's own;
 - **WHEN** a caller whose `gallery.read` override is `OWNED` requests another user's public gallery
 - **THEN** the system returns `404 Not Found`
 
-#### Scenario: LISTED covers exactly the named aggregates
+#### Scenario: LISTED covers the named aggregate
 
-- **WHEN** a caller whose `gallery.read` override is `LISTED` naming one gallery requests that gallery and another
-  gallery
-- **THEN** the system returns `200 OK` for the named gallery and `404 Not Found` for the other
+- **WHEN** a caller whose `gallery.read` override is `LISTED` naming one gallery requests that gallery
+- **THEN** the system returns `200 OK`
+
+#### Scenario: LISTED excludes unnamed aggregates
+
+- **WHEN** a caller whose `gallery.read` override is `LISTED` naming one gallery requests another gallery
+- **THEN** the system returns `404 Not Found`
 
 #### Scenario: ALL covers a private resource
 
@@ -107,10 +111,15 @@ The system SHALL authorize every film, show and album write through `library.man
 - **WHEN** an Admin with no override submits a write to an album
 - **THEN** the system applies the write
 
-#### Scenario: LISTED grants one aggregate
+#### Scenario: LISTED grants the named aggregate
 
-- **WHEN** an Admin whose `library.manage` override is `LISTED` naming one album writes that album and another album
-- **THEN** the system applies the write to the named album and returns `403 Forbidden` for the other
+- **WHEN** an Admin whose `library.manage` override is `LISTED` naming one album writes that album
+- **THEN** the system applies the write
+
+#### Scenario: LISTED refuses an unnamed aggregate
+
+- **WHEN** an Admin whose `library.manage` override is `LISTED` naming one album writes another album
+- **THEN** the system returns `403 Forbidden`
 
 #### Scenario: An owner scope is rejected
 
