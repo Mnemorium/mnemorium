@@ -22,7 +22,17 @@ parameters = { file_id = 9001 }
 
 [[operations]]
 include-path = "/asset/file/{file_id}/content"
-parameters = { file_id = 9001 }
+parameters = { file_id = 9001, Range = "bytes=0-1" }
+checks = { positive_data_acceptance = { expected-statuses = [
+  200,
+  206,
+  304,
+  416,
+  401,
+  403,
+  404,
+  503,
+] } }
 
 [[operations]]
 include-operation-id = "get_image"
@@ -30,11 +40,65 @@ parameters = { image_id = 9001 }
 
 [[operations]]
 include-operation-id = "get_image_content"
-parameters = { image_id = 9001 }
+parameters = { image_id = 9001, Range = "bytes=0-1" }
+checks = { positive_data_acceptance = { expected-statuses = [
+  200,
+  206,
+  304,
+  416,
+  401,
+  403,
+  404,
+  503,
+] } }
 
 [[operations]]
 include-operation-id = "get_image_file"
 parameters = { image_id = 9001 }
+
+[[operations]]
+include-operation-id = "get_audio"
+parameters = { audio_id = 9001 }
+
+[[operations]]
+include-operation-id = "get_audio_content"
+parameters = { audio_id = 9001, Range = "bytes=0-1" }
+checks = { positive_data_acceptance = { expected-statuses = [
+  200,
+  206,
+  304,
+  416,
+  401,
+  403,
+  404,
+  503,
+] } }
+
+[[operations]]
+include-operation-id = "get_audio_file"
+parameters = { audio_id = 9001 }
+
+[[operations]]
+include-operation-id = "get_video"
+parameters = { video_id = 9001 }
+
+[[operations]]
+include-operation-id = "get_video_content"
+parameters = { video_id = 9001, Range = "bytes=0-1" }
+checks = { positive_data_acceptance = { expected-statuses = [
+  200,
+  206,
+  304,
+  416,
+  401,
+  403,
+  404,
+  503,
+] } }
+
+[[operations]]
+include-operation-id = "get_video_file"
+parameters = { video_id = 9001 }
 
 # Generated login bodies cannot carry the real credentials, so every positive
 # login case answers 401; the dynamic auth flow proves the endpoint works.

@@ -29,7 +29,7 @@ mod test_helpers {
     use axum::body::to_bytes;
     use axum::http::StatusCode;
     use axum::response::Response;
-    use chrono::NaiveDate;
+    use chrono::{NaiveDate, NaiveDateTime};
     use serde_json::Value;
 
     use crate::application::port::asset_use_case_factory::MockAssetUseCaseFactory;
@@ -39,6 +39,7 @@ mod test_helpers {
     use crate::domain::alias::NumericID;
     use crate::domain::model::configuration::Configuration;
     use crate::domain::model::episode::{Episode, EpisodeIndex};
+    use crate::domain::model::file::File;
     use crate::domain::model::instance_state::InstanceState;
     use crate::domain::model::movie::Movie;
     use crate::domain::model::music_album::MusicAlbum;
@@ -437,6 +438,30 @@ mod test_helpers {
     #[must_use]
     pub(crate) fn video_date() -> NaiveDate {
         NaiveDate::from_ymd_opt(1990, 4, 8).unwrap_or_default()
+    }
+
+    /// Build a file of `mime_type_id` owned by `owner_id`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the fixture path is empty.
+    pub(crate) fn sample_file(
+        id: NumericID,
+        owner_id: NumericID,
+        mime_type_id: &str,
+    ) -> Result<File, Box<dyn Error>> {
+        Ok(File::try_new(
+            id,
+            format!("{id}"),
+            owner_id,
+            false,
+            mime_type_id.to_owned(),
+            NaiveDate::default(),
+            10,
+            NaiveDateTime::default(),
+            None,
+            None,
+        )?)
     }
 
     /// Build a progressive video backed by `file_id`.

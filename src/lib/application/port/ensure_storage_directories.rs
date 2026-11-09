@@ -2,15 +2,43 @@ use std::future::Future;
 use std::pin::Pin;
 
 /// Command for ensuring the storage folders exist.
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 #[non_exhaustive]
-pub(crate) struct EnsureStorageDirectoriesCommand;
+pub(crate) struct EnsureStorageDirectoriesCommand {
+    /// Whether startup must wait for the library root before serving.
+    required: bool,
+    /// Seconds startup waits for the library root to appear.
+    wait_seconds: u64,
+}
 
 impl EnsureStorageDirectoriesCommand {
-    /// Create a new command.
+    /// Create a new command deciding immediately.
     #[must_use]
     pub(crate) fn new() -> Self {
-        Self
+        Self::default()
+    }
+
+    /// Return whether startup must wait for the library root.
+    #[must_use]
+    pub(crate) fn required(&self) -> bool {
+        self.required
+    }
+
+    /// Return the seconds startup waits for the library root to appear.
+    #[must_use]
+    pub(crate) fn wait_seconds(&self) -> u64 {
+        self.wait_seconds
+    }
+
+    /// Wait up to `wait_seconds` for the root when `required` is set.
+    ///
+    /// The wait delays startup only when the root is required; otherwise the
+    /// decision is immediate so readiness never waits for a mount.
+    #[must_use]
+    pub(crate) fn waiting(mut self, wait_seconds: u64, required: bool) -> Self {
+        self.required = required;
+        self.wait_seconds = wait_seconds;
+        self
     }
 }
 

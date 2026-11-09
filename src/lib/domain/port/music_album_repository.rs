@@ -35,6 +35,26 @@ pub(crate) trait MusicAlbumRepository: Send + Sync {
         album: MusicAlbum,
     ) -> impl Future<Output = Result<MusicAlbum, RepositoryError>> + Send;
 
+    /// Delete the recording backed by `audio_id`, its links and every track
+    /// placement of it.
+    ///
+    /// Returns `Ok(true)` when a recording matched `audio_id` and was deleted,
+    /// and `Ok(false)` when the audio has no recording.
+    fn delete_recording_by_audio(
+        &mut self,
+        audio_id: NumericID,
+    ) -> impl Future<Output = Result<bool, RepositoryError>> + Send;
+
+    /// Return the album that sequences the recording backed by `audio_id`, if
+    /// any.
+    ///
+    /// An audio no recording places has no album and is `Ok(None)`, not an
+    /// error.
+    fn find_album_by_audio(
+        &mut self,
+        audio_id: NumericID,
+    ) -> impl Future<Output = Result<Option<MusicAlbum>, RepositoryError>> + Send;
+
     /// Return whether `recording_id` currently holds a medium placement.
     ///
     /// A recording holds one medium placement at most, so the answer tells a
@@ -137,6 +157,20 @@ impl<T: MusicAlbumRepository + ?Sized> MusicAlbumRepository for &mut T {
         album: MusicAlbum,
     ) -> impl Future<Output = Result<MusicAlbum, RepositoryError>> + Send {
         (**self).create(album)
+    }
+
+    fn delete_recording_by_audio(
+        &mut self,
+        audio_id: NumericID,
+    ) -> impl Future<Output = Result<bool, RepositoryError>> + Send {
+        (**self).delete_recording_by_audio(audio_id)
+    }
+
+    fn find_album_by_audio(
+        &mut self,
+        audio_id: NumericID,
+    ) -> impl Future<Output = Result<Option<MusicAlbum>, RepositoryError>> + Send {
+        (**self).find_album_by_audio(audio_id)
     }
 
     fn has_medium_placement(

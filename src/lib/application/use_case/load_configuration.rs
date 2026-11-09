@@ -6,9 +6,9 @@ use crate::application::port::load_configuration::{
     LoadConfigurationError, LoadConfigurationResponse, LoadConfigurationUseCase,
 };
 use crate::domain::model::configuration::{
-    Asset, AssetUpload, ClientIpHeader, Configuration, Jwt, Library, LibraryMetadata, Logging,
-    MusicProvider, MusicProviders, Persistence, RateLimit, RateLimitError, Security, Sqlite3,
-    VideoProvider, VideoProviders, parse_trusted_proxies,
+    Asset, AssetUpload, ClientIpHeader, Configuration, Jwt, Library, LibraryMetadata,
+    LibraryStartup, Logging, MusicProvider, MusicProviders, Persistence, RateLimit, RateLimitError,
+    Security, Sqlite3, VideoProvider, VideoProviders, parse_trusted_proxies,
 };
 use crate::domain::model::partial_configuration::PartialConfiguration;
 use crate::domain::port::configuration_source::{ConfigurationSource, EnvironmentConfiguration};
@@ -175,7 +175,25 @@ fn merge(
         }
         None => base.library().metadata().video().clone(),
     };
-    let library = Library::new(LibraryMetadata::new(music_providers, video_metadata));
+    let startup = LibraryStartup::try_new(
+        resolve(
+            partial.library.startup.media_root_wait_seconds,
+            || base.library().startup().media_root_wait_seconds(),
+            "library.startup.media_root_wait_seconds",
+            &mut applied,
+        ),
+        resolve(
+            partial.library.startup.fail_without_media_root,
+            || base.library().startup().fail_without_media_root(),
+            "library.startup.fail_without_media_root",
+            &mut applied,
+        ),
+    )
+    .map_err(|error| invalid("library.startup", error))?;
+    let library = Library::new(
+        LibraryMetadata::new(music_providers, video_metadata),
+        startup,
+    );
 
     let logging = Logging::try_new(
         resolve(
@@ -313,8 +331,8 @@ mod tests {
     use crate::domain::model::configuration::{ProviderId, Rotation};
     use crate::domain::model::partial_configuration::{
         PartialAsset, PartialAssetUpload, PartialJwt, PartialLibrary, PartialLibraryMetadata,
-        PartialLogging, PartialMusicProvider, PartialMusicProviders, PartialRateLimit,
-        PartialSecurity, PartialVideoMetadata, PartialVideoProvider,
+        PartialLibraryStartup, PartialLogging, PartialMusicProvider, PartialMusicProviders,
+        PartialRateLimit, PartialSecurity, PartialVideoMetadata, PartialVideoProvider,
     };
     use crate::domain::port::configuration_source::{
         LoadedFileConfiguration, MockConfigurationSource, MockEnvironmentConfiguration,
@@ -407,6 +425,7 @@ mod tests {
                         providers: Some(entries),
                     },
                 },
+                startup: PartialLibraryStartup::default(),
             },
             ..PartialConfiguration::default()
         }
@@ -430,6 +449,7 @@ mod tests {
                     },
                     video: PartialVideoMetadata::default(),
                 },
+                startup: PartialLibraryStartup::default(),
             },
             ..PartialConfiguration::default()
         }
@@ -1244,6 +1264,70 @@ mod tests {
 
         // Act & Assert
         assert_rejected_naming(partial, "library.metadata.music.providers").await;
+    }
+
+    #[tokio::test]
+    async fn load_configuration_startup_defaults() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let use_case = use_case(
+            file_layer(PartialConfiguration::default(), false),
+            environment_layer(PartialConfiguration::default()),
+        );
+
+        // Act
+        let response = use_case.execute().await?;
+
+        // Assert
+        let startup = response.configuration().library().startup();
+        assert_eq!(startup.media_root_wait_seconds(), 30);
+        assert!(!startup.fail_without_media_root());
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn load_configuration_startup_override_and_zero_wait() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let partial = PartialConfiguration {
+            library: PartialLibrary {
+                metadata: PartialLibraryMetadata::default(),
+                startup: PartialLibraryStartup {
+                    fail_without_media_root: Some(true),
+                    media_root_wait_seconds: Some(0),
+                },
+            },
+            ..PartialConfiguration::default()
+        };
+        let use_case = use_case(
+            file_layer(partial, false),
+            environment_layer(PartialConfiguration::default()),
+        );
+
+        // Act
+        let response = use_case.execute().await?;
+
+        // Assert
+        let startup = response.configuration().library().startup();
+        assert_eq!(startup.media_root_wait_seconds(), 0);
+        assert!(startup.fail_without_media_root());
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn load_configuration_startup_rejects_an_oversized_wait() {
+        // Arrange: the wait exceeds the one-day bound the domain enforces.
+        let partial = PartialConfiguration {
+            library: PartialLibrary {
+                metadata: PartialLibraryMetadata::default(),
+                startup: PartialLibraryStartup {
+                    fail_without_media_root: Some(false),
+                    media_root_wait_seconds: Some(86_401),
+                },
+            },
+            ..PartialConfiguration::default()
+        };
+
+        // Act & Assert
+        assert_rejected_naming(partial, "library.startup").await;
     }
 
     #[tokio::test]

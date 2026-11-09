@@ -43,6 +43,8 @@ pub(crate) mod get_album_medium;
 pub(crate) mod get_album_track;
 /// The get asset content use case implementation.
 pub(crate) mod get_asset_content;
+/// The get audio use case implementation.
+pub(crate) mod get_audio;
 /// The get current user use case implementation.
 pub(crate) mod get_current_user;
 /// The get file use case implementation.
@@ -73,6 +75,8 @@ pub(crate) mod get_series_season;
 pub(crate) mod get_upload;
 /// The get user use case implementation.
 pub(crate) mod get_user;
+/// The get video use case implementation.
+pub(crate) mod get_video;
 /// The identify music use case implementation.
 pub(crate) mod identify_music;
 /// The identify video use case implementation.

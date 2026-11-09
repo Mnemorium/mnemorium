@@ -41,6 +41,12 @@ const DEFAULT_LOG_MAX_FILES: u32 = 7;
 /// Default value for [`Logging::rotation`].
 const DEFAULT_LOG_ROTATION: Rotation = Rotation::Daily;
 
+/// Default wait for an absent library root at startup, in seconds.
+const DEFAULT_MEDIA_ROOT_WAIT_SECONDS: u64 = 30;
+
+/// Largest accepted wait for the library root, in seconds (one day).
+const MAX_MEDIA_ROOT_WAIT_SECONDS: u64 = 86_400;
+
 /// Default value for [`Jwt::ttl`], in seconds.
 const DEFAULT_JWT_TTL_SECONDS: u64 = 3600;
 
@@ -1391,12 +1397,78 @@ impl LibraryMetadata {
     }
 }
 
+/// Error returned when initialising a [`LibraryStartup`] value object.
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
+pub(crate) enum LibraryStartupError {
+    /// The wait is longer than one day.
+    #[error("library startup media_root_wait_seconds must be at most 86400")]
+    MediaRootWaitOutOfRange,
+}
+
+/// Startup policy for an absent library root.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[non_exhaustive]
+pub(crate) struct LibraryStartup {
+    /// Whether startup refuses to run without the library root.
+    fail_without_media_root: bool,
+    /// Seconds startup waits for the library root to appear.
+    media_root_wait_seconds: u64,
+}
+
+impl Default for LibraryStartup {
+    fn default() -> Self {
+        Self {
+            fail_without_media_root: false,
+            media_root_wait_seconds: DEFAULT_MEDIA_ROOT_WAIT_SECONDS,
+        }
+    }
+}
+
+impl LibraryStartup {
+    /// Return whether startup refuses to run without the library root.
+    #[must_use]
+    pub(crate) fn fail_without_media_root(&self) -> bool {
+        self.fail_without_media_root
+    }
+
+    /// Return the seconds startup waits for the library root to appear.
+    #[must_use]
+    pub(crate) fn media_root_wait_seconds(&self) -> u64 {
+        self.media_root_wait_seconds
+    }
+
+    /// Initialise a new `LibraryStartup`.
+    ///
+    /// A zero wait is valid: it decides immediately.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`LibraryStartupError::MediaRootWaitOutOfRange`] when
+    /// `media_root_wait_seconds` exceeds one day, so the startup deadline stays
+    /// representable as an `Instant`.
+    pub(crate) fn try_new(
+        media_root_wait_seconds: u64,
+        fail_without_media_root: bool,
+    ) -> Result<Self, LibraryStartupError> {
+        if media_root_wait_seconds > MAX_MEDIA_ROOT_WAIT_SECONDS {
+            return Err(LibraryStartupError::MediaRootWaitOutOfRange);
+        }
+        Ok(Self {
+            fail_without_media_root,
+            media_root_wait_seconds,
+        })
+    }
+}
+
 /// Library-related settings.
 #[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize)]
 #[non_exhaustive]
 pub(crate) struct Library {
     /// Metadata settings.
     metadata: LibraryMetadata,
+    /// Startup policy for an absent library root.
+    startup: LibraryStartup,
 }
 
 impl Library {
@@ -1408,8 +1480,14 @@ impl Library {
 
     /// Initialise a new `Library`.
     #[must_use]
-    pub(crate) fn new(metadata: LibraryMetadata) -> Self {
-        Self { metadata }
+    pub(crate) fn new(metadata: LibraryMetadata, startup: LibraryStartup) -> Self {
+        Self { metadata, startup }
+    }
+
+    /// Return the startup policy for an absent library root.
+    #[must_use]
+    pub(crate) fn startup(&self) -> &LibraryStartup {
+        &self.startup
     }
 }
 

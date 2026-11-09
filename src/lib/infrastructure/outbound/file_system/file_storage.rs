@@ -10,7 +10,7 @@ use tracing::error;
 use crate::domain::model::integrity_hash::{DIGEST_HEX_LENGTH, IntegrityHash};
 use crate::domain::port::content_hasher::ContentHasher as _;
 use crate::domain::port::error::StorageError;
-use crate::domain::port::file_storage::{FileStorage, PromotedFile};
+use crate::domain::port::file_storage::{FileStorage, OpenedFile, PromotedFile};
 use crate::infrastructure::outbound::sha2::content_hasher::Sha2ContentHasher;
 
 /// Size of the buffer used to stream a file, in bytes.
@@ -201,6 +201,21 @@ impl FileStorage for FileSystemStorage {
         }
     }
 
+    fn file_size(
+        &self,
+        path: &Path,
+    ) -> impl Future<Output = Result<Option<u64>, StorageError>> + Send {
+        let owned_path = path.to_path_buf();
+
+        async move {
+            match fs::metadata(&owned_path).await {
+                Ok(metadata) => Ok(Some(metadata.len())),
+                Err(err) if err.kind() == ErrorKind::NotFound => Ok(None),
+                Err(err) => Err(Self::map_io_error(err, "file_size")),
+            }
+        }
+    }
+
     fn integrity_hash(
         &self,
         path: &Path,
@@ -286,6 +301,44 @@ impl FileStorage for FileSystemStorage {
         }
     }
 
+    fn open_range(
+        &self,
+        path: &Path,
+        start: u64,
+        length: Option<u64>,
+    ) -> impl Future<Output = Result<Option<OpenedFile>, StorageError>> + Send {
+        let owned_path = path.to_path_buf();
+
+        async move {
+            let mut file = match fs::File::open(&owned_path).await {
+                Ok(file) => file,
+                Err(err) if err.kind() == ErrorKind::NotFound => return Ok(None),
+                Err(err) => return Err(Self::map_io_error(err, "open_range")),
+            };
+            let metadata = file
+                .metadata()
+                .await
+                .map_err(|error| Self::map_io_error(error, "open_range"))?;
+            if !metadata.is_file() {
+                return Err(Self::map_io_error(
+                    Error::new(ErrorKind::InvalidInput, "content is not a regular file"),
+                    "open_range",
+                ));
+            }
+            let size_bytes = metadata.len();
+            let offset = start.min(size_bytes);
+            file.seek(SeekFrom::Start(offset))
+                .await
+                .map_err(|error| Self::map_io_error(error, "open_range"))?;
+            let available = size_bytes.saturating_sub(offset);
+            let bounded = length.map_or(available, |requested| requested.min(available));
+            Ok(Some(OpenedFile {
+                reader: Box::pin(file.take(bounded)),
+                size_bytes,
+            }))
+        }
+    }
+
     fn promote(
         &self,
         staged: &Path,
@@ -330,21 +383,6 @@ impl FileStorage for FileSystemStorage {
         }
     }
 
-    fn read(
-        &self,
-        path: &Path,
-    ) -> impl Future<Output = Result<Option<Vec<u8>>, StorageError>> + Send {
-        let owned_path = path.to_path_buf();
-
-        async move {
-            match fs::read(&owned_path).await {
-                Ok(bytes) => Ok(Some(bytes)),
-                Err(err) if err.kind() == ErrorKind::NotFound => Ok(None),
-                Err(err) => Err(Self::map_io_error(err, "read")),
-            }
-        }
-    }
-
     fn restore(
         &self,
         final_path: &Path,
@@ -375,6 +413,7 @@ async fn open_new(path: &Path) -> Result<fs::File, Error> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::port::file_storage::FileReader;
     use std::error::Error;
     use tempfile::{Builder, tempdir};
     use tracing_test::traced_test;
@@ -534,36 +573,180 @@ mod tests {
         Ok(())
     }
 
+    /// Read every byte of `reader` into a vector.
+    async fn read_all(mut reader: FileReader) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        let _read = reader.read_to_end(&mut bytes).await;
+        bytes
+    }
+
     #[tokio::test]
-    async fn read_returns_the_whole_stored_content() -> Result<(), Box<dyn Error>> {
+    async fn open_range_reads_an_exact_span() -> Result<(), Box<dyn Error>> {
         // Arrange
         let tmp = tempdir()?;
         let storage = FileSystemStorage::new();
         let path = tmp.path().join("covers").join("12.png");
         let covers = tmp.path().join("covers");
         storage.create_directory(&covers).await?;
-        fs::write(&path, b"PNG").await?;
+        fs::write(&path, b"12345").await?;
 
         // Act
-        let content = storage.read(&path).await?;
+        let opened = storage
+            .open_range(&path, 1, Some(2))
+            .await?
+            .ok_or("the file should exist")?;
 
         // Assert
-        assert_eq!(content.as_deref(), Some(b"PNG".as_slice()));
+        assert_eq!(opened.size_bytes, 5);
+        assert_eq!(read_all(opened.reader).await, b"23");
         Ok(())
     }
 
     #[tokio::test]
-    async fn read_missing_file_returns_none() -> Result<(), Box<dyn Error>> {
+    async fn open_range_reads_an_open_ended_span() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let tmp = tempdir()?;
+        let storage = FileSystemStorage::new();
+        let path = tmp.path().join("covers").join("12.png");
+        let covers = tmp.path().join("covers");
+        storage.create_directory(&covers).await?;
+        fs::write(&path, b"12345").await?;
+
+        // Act
+        let opened = storage
+            .open_range(&path, 2, None)
+            .await?
+            .ok_or("the file should exist")?;
+
+        // Assert
+        assert_eq!(read_all(opened.reader).await, b"345");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn open_range_reads_a_suffix_span() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let tmp = tempdir()?;
+        let storage = FileSystemStorage::new();
+        let path = tmp.path().join("covers").join("12.png");
+        let covers = tmp.path().join("covers");
+        storage.create_directory(&covers).await?;
+        fs::write(&path, b"12345").await?;
+
+        // Act: the application resolves `bytes=-2` to this span.
+        let opened = storage
+            .open_range(&path, 3, Some(2))
+            .await?
+            .ok_or("the file should exist")?;
+
+        // Assert
+        assert_eq!(read_all(opened.reader).await, b"45");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn open_range_reads_a_zero_length_span() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let tmp = tempdir()?;
+        let storage = FileSystemStorage::new();
+        let path = tmp.path().join("covers").join("12.png");
+        let covers = tmp.path().join("covers");
+        storage.create_directory(&covers).await?;
+        fs::write(&path, b"12345").await?;
+
+        // Act
+        let opened = storage
+            .open_range(&path, 2, Some(0))
+            .await?
+            .ok_or("the file should exist")?;
+
+        // Assert
+        assert!(read_all(opened.reader).await.is_empty());
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn open_range_span_past_eof_reads_nothing() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let tmp = tempdir()?;
+        let storage = FileSystemStorage::new();
+        let path = tmp.path().join("covers").join("12.png");
+        let covers = tmp.path().join("covers");
+        storage.create_directory(&covers).await?;
+        fs::write(&path, b"12345").await?;
+
+        // Act
+        let opened = storage
+            .open_range(&path, 99, Some(2))
+            .await?
+            .ok_or("the file should exist")?;
+
+        // Assert
+        assert_eq!(opened.size_bytes, 5);
+        assert!(read_all(opened.reader).await.is_empty());
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn open_range_missing_file_returns_none() -> Result<(), Box<dyn Error>> {
         // Arrange
         let tmp = tempdir()?;
         let storage = FileSystemStorage::new();
         let path = tmp.path().join("covers").join("12.png");
 
         // Act
-        let result = storage.read(&path).await;
+        let result = storage.open_range(&path, 0, None).await;
 
         // Assert
         assert!(result?.is_none());
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn open_range_unreadable_file_is_an_error() -> Result<(), Box<dyn Error>> {
+        // Arrange: a directory is not a readable file.
+        let tmp = tempdir()?;
+        let storage = FileSystemStorage::new();
+        let directory = tmp.path().join("covers");
+        storage.create_directory(&directory).await?;
+
+        // Act
+        let result = storage.open_range(&directory, 0, None).await;
+
+        // Assert: stored content is a regular file, so a directory is unreadable.
+        assert!(result.is_err());
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn file_size_reports_the_content_length() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let tmp = tempdir()?;
+        let storage = FileSystemStorage::new();
+        let path = tmp.path().join("covers").join("12.png");
+        storage.create_directory(&tmp.path().join("covers")).await?;
+        fs::write(&path, b"12345").await?;
+
+        // Act
+        let size = storage.file_size(&path).await?;
+
+        // Assert
+        assert_eq!(size, Some(5));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn file_size_missing_file_returns_none() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let tmp = tempdir()?;
+        let storage = FileSystemStorage::new();
+        let path = tmp.path().join("covers").join("12.png");
+
+        // Act
+        let size = storage.file_size(&path).await?;
+
+        // Assert
+        assert_eq!(size, None);
         Ok(())
     }
 

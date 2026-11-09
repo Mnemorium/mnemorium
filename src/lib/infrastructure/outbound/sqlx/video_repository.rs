@@ -74,6 +74,28 @@ impl VideoRepository for SqlxVideoRepository<'_> {
         Ok(result.rows_affected() > 0)
     }
 
+    async fn delete_streams(&mut self, video_id: NumericID) -> Result<bool, RepositoryError> {
+        sqlx::query(
+            "DELETE FROM subtitle_stream
+             WHERE stream_id IN (SELECT stream_id FROM stream WHERE video_id = ?)",
+        )
+        .bind(video_id)
+        .execute(&mut **self.transaction)
+        .await?;
+        sqlx::query(
+            "DELETE FROM audio_stream
+             WHERE stream_id IN (SELECT stream_id FROM stream WHERE video_id = ?)",
+        )
+        .bind(video_id)
+        .execute(&mut **self.transaction)
+        .await?;
+        let result = sqlx::query("DELETE FROM stream WHERE video_id = ?")
+            .bind(video_id)
+            .execute(&mut **self.transaction)
+            .await?;
+        Ok(result.rows_affected() > 0)
+    }
+
     async fn get(&mut self, id: NumericID) -> Result<Option<Video>, RepositoryError> {
         let row = sqlx::query_as::<_, SqlxVideo>(
             "SELECT
@@ -493,6 +515,52 @@ mod tests {
             matches!(result, Err(RepositoryError::DataIntegrityViolation)),
             "statement must violate a check or foreign key: {statement}"
         );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn delete_streams_removes_only_the_video_streams() -> Result<(), Box<dyn Error>> {
+        // Arrange: two videos, each with one stream.
+        let mut transaction = begin_transaction().await?;
+        seed_user(&mut transaction, 1).await?;
+        seed_file(&mut transaction, 10, 1, "a.mp4", "video/mp4").await?;
+        seed_file(&mut transaction, 11, 1, "b.mp4", "video/mp4").await?;
+        let (first, second) = {
+            let mut repository = SqlxVideoRepository::new(&mut transaction);
+            let first = repository
+                .create(video(0, 10, ScanType::Progressive)?)
+                .await?;
+            let second = repository
+                .create(video(0, 11, ScanType::Progressive)?)
+                .await?;
+            (first, second)
+        };
+        sqlx::query(
+            "INSERT INTO stream (stream_id, stream_index, name, is_default, video_id)
+             VALUES (1, 0, 'Main', 1, ?1)",
+        )
+        .bind(first.id())
+        .execute(&mut *transaction)
+        .await?;
+        sqlx::query(
+            "INSERT INTO stream (stream_id, stream_index, name, is_default, video_id)
+             VALUES (2, 0, 'Main', 1, ?1)",
+        )
+        .bind(second.id())
+        .execute(&mut *transaction)
+        .await?;
+
+        // Act
+        {
+            let mut repository = SqlxVideoRepository::new(&mut transaction);
+            repository.delete_streams(first.id()).await?;
+        }
+        let streams = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM stream")
+            .fetch_one(&mut *transaction)
+            .await?;
+
+        // Assert
+        assert_eq!(streams, 1, "only the removed video's stream is gone");
         Ok(())
     }
 }

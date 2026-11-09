@@ -55,3 +55,69 @@ def test_the_configuration_file_is_never_rewritten(sut):
     sut.stop()
 
     assert sut.read(CONFIG_PATH) == yaml.safe_dump(CONFIGURED_PROVIDERS)
+
+
+REQUIRED_ROOT = {
+    "library": {
+        "startup": {
+            "fail_without_media_root": True,
+            "media_root_wait_seconds": 0,
+        }
+    }
+}
+OPTIONAL_ROOT = {
+    "library": {
+        "startup": {
+            "fail_without_media_root": False,
+            "media_root_wait_seconds": 0,
+        }
+    }
+}
+
+
+def test_a_required_absent_root_refuses_startup(sut):
+    """The required root is absent, so startup is refused with the root named."""
+    failure = sut.start_expecting_failure(create_media=False, config=REQUIRED_ROOT)
+
+    assert failure.exit_code != 0
+    assert "media" in failure.output.lower()
+    assert "fail_without_media_root" in failure.output
+    assert not (sut.dir / "media").exists(), "the server must never create the library root"
+
+
+def test_a_wait_beyond_one_day_is_rejected_before_startup(sut):
+    """An unbounded wait would overflow the startup deadline, so configuration refuses it."""
+    failure = sut.start_expecting_failure(
+        create_media=False,
+        config={"library": {"startup": {"media_root_wait_seconds": 86_401}}},
+    )
+
+    assert failure.exit_code != 0
+    assert "media_root_wait_seconds" in failure.output
+    assert "86400" in failure.output
+    assert not (sut.dir / "media").exists(), "the server must never create the library root"
+
+
+def test_an_optional_absent_root_starts_without_creating_it(sut):
+    """The optional root is absent, so the server starts and reconciles the library as empty."""
+    sut.start(create_media=False, config=OPTIONAL_ROOT)
+
+    assert sut.request("GET", HEALTH_PATH).status_code == 200
+    sut.stop()
+    assert not (sut.dir / "media").exists(), "the server must never create the library root"
+
+
+def test_a_present_root_starts_without_waiting(sut):
+    """A present root is decided immediately, even with a non-zero window."""
+    sut.start(
+        config={
+            "library": {
+                "startup": {
+                    "fail_without_media_root": True,
+                    "media_root_wait_seconds": 30,
+                }
+            }
+        }
+    )
+
+    assert sut.request("GET", HEALTH_PATH).status_code == 200

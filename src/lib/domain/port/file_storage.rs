@@ -1,10 +1,24 @@
 use std::future::Future;
 use std::path::{Path, PathBuf};
+use std::pin::Pin;
 
 use chrono::NaiveDateTime;
+use tokio::io::AsyncRead;
 
 use crate::domain::model::integrity_hash::{DIGEST_HEX_LENGTH, IntegrityHash};
 use crate::domain::port::error::StorageError;
+
+/// A bounded reader over stored content.
+pub(crate) type FileReader = Pin<Box<dyn AsyncRead + Send>>;
+
+/// An opened file, with the size its opened handle reports.
+#[non_exhaustive]
+pub(crate) struct OpenedFile {
+    /// Reader starting at the requested offset, bounded to the requested span.
+    pub reader: FileReader,
+    /// Size of the opened file, in bytes.
+    pub size_bytes: u64,
+}
 
 /// Metadata of a file promoted into the media library.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -80,6 +94,15 @@ pub(crate) trait FileStorage: Send + Sync {
         path: &Path,
     ) -> impl Future<Output = Result<bool, StorageError>> + Send;
 
+    /// Return the size of the file at `path`, in bytes.
+    ///
+    /// A file that does not exist at `path` is a valid outcome, reported as
+    /// `Ok(None)`.
+    fn file_size(
+        &self,
+        path: &Path,
+    ) -> impl Future<Output = Result<Option<u64>, StorageError>> + Send;
+
     /// Stream the file at `path` and return its integrity hash.
     ///
     /// The adapter reads the file in bounded chunks; the whole content is never
@@ -101,6 +124,19 @@ pub(crate) trait FileStorage: Send + Sync {
         path: &Path,
     ) -> impl Future<Output = Result<Vec<PathBuf>, StorageError>> + Send;
 
+    /// Open a bounded reader over the file at `path`.
+    ///
+    /// The reader starts at `start` and yields at most `length` bytes, or every
+    /// byte to the end when `length` is `None`. The whole content never enters
+    /// memory. A file that does not exist at `path` is a valid outcome, reported
+    /// as `Ok(None)`; the returned size is the opened handle's own size.
+    fn open_range(
+        &self,
+        path: &Path,
+        start: u64,
+        length: Option<u64>,
+    ) -> impl Future<Output = Result<Option<OpenedFile>, StorageError>> + Send;
+
     /// Move the file at `staged` to `final_path`, returning the promoted
     /// content's size and modification instant.
     ///
@@ -113,16 +149,6 @@ pub(crate) trait FileStorage: Send + Sync {
         staged: &Path,
         final_path: &Path,
     ) -> impl Future<Output = Result<Option<PromotedFile>, StorageError>> + Send;
-
-    /// Read the whole content of the file at `path`.
-    ///
-    /// A file that does not exist at `path` is a valid outcome, reported as
-    /// `Ok(None)`. The content is served whole; a later change can add bounded
-    /// streaming.
-    fn read(
-        &self,
-        path: &Path,
-    ) -> impl Future<Output = Result<Option<Vec<u8>>, StorageError>> + Send;
 
     /// Move the file at `final_path` back to `staged`.
     ///

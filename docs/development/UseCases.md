@@ -1696,9 +1696,11 @@ actor "Standard User" as StandardUser
 
 package "Asset" {
   usecase "UC-006 - Upload a media file" as UC006
+  usecase "UC-031 - Read an asset's content" as UC031
 }
 
 StandardUser --> UC006
+StandardUser --> UC031
 @enduml
 ```
 
@@ -1769,3 +1771,60 @@ is authoritative: the system confirms the content belongs to it and never reclas
   the content does not report is absent rather than fabricated.
 - A finished upload keeps its identity: completing it again returns the caller's file.
 - An abandoned or expired upload leaves neither a session nor staged content behind.
+
+### UC-031 - Read an asset's content
+
+#### Description
+
+Allow a caller to read the content of one stored item. The caller may address the stored item directly or one of its
+typed views, and may ask for the whole content or one portion of it. The playback link a representation carries is
+itself sufficient authority to read that one item, so the asset can be played without a session.
+
+#### Primary actor
+
+- Standard User
+
+#### Parameters
+
+- asset — the stored item whose content is read; required.
+- range — the portion requested, from a starting and ending position or to the end; optional.
+- condition — the version the caller already holds; optional.
+
+#### Pre condition(s)
+
+- The caller is authenticated, or holds a valid playback link for the addressed item.
+- The media library is available.
+
+#### Trigger
+
+- The caller requests the content of an asset.
+
+#### Happy path
+
+1. The caller requests the content of an asset, optionally naming a portion and a version it already holds.
+2. The system authorizes the read through the resource that owns the asset, or accepts the playback link scoped to that
+   item.
+3. The system reads the stored content in bounded pieces without holding it whole.
+4. The system returns the whole content, or the requested portion.
+5. The system reports the stored media kind, its length and the version details the item carries.
+6. A request for the details only returns them without the content.
+
+#### Alternative flow
+
+- 1a. The caller names the version it already holds; the system reports the content unchanged and returns no content.
+- 1b. The caller names a portion conditioned on a different version; the system returns the whole content instead of the
+  portion.
+- 2a. The asset does not exist, or the caller may not read it; the system reports it as unavailable and reads no
+  content.
+- 2b. The playback link names another item, has been altered, or has expired; the system refuses the read.
+- 2c. The request presents both a session and a playback link; the system refuses the ambiguous request.
+- 3a. The media library is absent; the system reports the storage as unavailable without an authorization read.
+- 3b. The record exists but its content is absent while the library is present; the system reports an internal failure
+  and the next reconciliation removes the record.
+- 4a. The requested portion starts past the end of the content; the system reports the portion as unsatisfiable.
+
+#### Post condition(s)
+
+- The caller receives the requested content, or an outcome that tells unchanged, unsatisfiable, gone and
+  storage-unavailable apart.
+- No content is assembled whole in memory.

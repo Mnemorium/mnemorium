@@ -11,6 +11,8 @@ use crate::domain::port::error::RepositoryError;
 pub(crate) struct AudioFilter {
     /// Filter on the identifier of the backing file.
     pub file_id: Option<NumericID>,
+    /// Filter on the audio identifier.
+    pub id: Option<NumericID>,
 }
 
 /// Port for persisting and querying `Audio`.
@@ -25,6 +27,15 @@ pub(crate) trait AudioRepository: Send + Sync {
         &mut self,
         audio: Audio,
     ) -> impl Future<Output = Result<Audio, RepositoryError>> + Send;
+
+    /// Delete the audio identified by `id` and its stream descriptors.
+    ///
+    /// Returns `Ok(true)` when an audio matched `id` and was deleted, and
+    /// `Ok(false)` when no audio matched. A missing audio is a valid outcome.
+    fn delete(
+        &mut self,
+        id: NumericID,
+    ) -> impl Future<Output = Result<bool, RepositoryError>> + Send;
 
     /// Search audio rows matching `filter`, returned as `Vec<Audio>`.
     ///
@@ -43,6 +54,13 @@ impl<T: AudioRepository + ?Sized> AudioRepository for &mut T {
         audio: Audio,
     ) -> impl Future<Output = Result<Audio, RepositoryError>> + Send {
         (**self).create(audio)
+    }
+
+    fn delete(
+        &mut self,
+        id: NumericID,
+    ) -> impl Future<Output = Result<bool, RepositoryError>> + Send {
+        (**self).delete(id)
     }
 
     fn search(

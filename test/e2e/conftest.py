@@ -16,6 +16,7 @@ import requests
 
 _BASE_URL = "http://127.0.0.1:4080"
 _BASE_URL_ENV = "MNEMORIUM_E2E_BASE_URL"
+_MEDIA_DIR_ENV = "MNEMORIUM_E2E_MEDIA_DIR"
 _CONTAINER = "mnemorium-e2e"
 _HEALTH_PATH = "/health"
 _HEALTH_TIMEOUT_S = 60
@@ -208,6 +209,20 @@ def server_url() -> str:
     raise RuntimeError(
         f"server not healthy within {_HEALTH_TIMEOUT_S}s at {base_url}; start it first, e.g. with `devenv server`"
     )
+
+
+@pytest.fixture(scope="session")
+def media_dir() -> Path:
+    """Return the host directory the container mounts as its library root.
+
+    `script/e2e.sh` exports it, so a test can remove a registered file from the
+    host and watch the reconciliation land. A suite run without the variable
+    skips the tests that need host-side access.
+    """
+    value = os.environ.get(_MEDIA_DIR_ENV)
+    if not value:
+        pytest.skip(f"{_MEDIA_DIR_ENV} is not set; run the suite through script/e2e.sh")
+    return Path(value)
 
 
 @pytest.fixture(scope="session")

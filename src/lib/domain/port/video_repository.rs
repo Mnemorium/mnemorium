@@ -44,6 +44,16 @@ pub(crate) trait VideoRepository: Send + Sync {
         id: NumericID,
     ) -> impl Future<Output = Result<bool, RepositoryError>> + Send;
 
+    /// Delete the streams of the video identified by `video_id`.
+    ///
+    /// The stream rows and their audio and subtitle descriptors are removed.
+    /// Returns `Ok(true)` when a stream matched `video_id` and was deleted, and
+    /// `Ok(false)` when the video had no stream.
+    fn delete_streams(
+        &mut self,
+        video_id: NumericID,
+    ) -> impl Future<Output = Result<bool, RepositoryError>> + Send;
+
     /// Return the video identified by `id`, if any.
     ///
     /// A missing video is `Ok(None)`, not an error.
@@ -76,6 +86,13 @@ impl<T: VideoRepository + ?Sized> VideoRepository for &mut T {
         id: NumericID,
     ) -> impl Future<Output = Result<bool, RepositoryError>> + Send {
         (**self).delete(id)
+    }
+
+    fn delete_streams(
+        &mut self,
+        video_id: NumericID,
+    ) -> impl Future<Output = Result<bool, RepositoryError>> + Send {
+        (**self).delete_streams(video_id)
     }
 
     fn get(

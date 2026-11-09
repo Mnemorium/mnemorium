@@ -8,31 +8,36 @@ use crate::application::port::get_image::{
 use crate::application::use_case::asset_access;
 use crate::application::use_case::asset_access::AssetAccessError;
 use crate::domain::port::asset_unit_of_work::AssetUnitOfWork;
+use crate::domain::port::content_link::ContentLinkProvider;
 use crate::domain::port::identity_unit_of_work::IdentityUnitOfWork;
 use crate::domain::port::library_unit_of_work::LibraryUnitOfWork;
 use crate::domain::port::unit_of_work::{UnitOfWork as _, UnitOfWorkFactory};
 use crate::domain::port::user_unit_of_work::UserUnitOfWork;
 
 /// Use case implementation for fetching one typed image.
-pub(crate) struct GetImage<F> {
+pub(crate) struct GetImage<F, L> {
+    /// Adapter minting the playback credential.
+    content_link: Arc<L>,
     /// Factory opening the unit of work wrapping the read.
     unit_of_work_factory: Arc<F>,
 }
 
-impl<F: UnitOfWorkFactory> GetImage<F> {
+impl<F: UnitOfWorkFactory, L: ContentLinkProvider> GetImage<F, L> {
     /// Create a new use case.
     #[must_use]
-    pub(crate) fn new(unit_of_work_factory: Arc<F>) -> Self {
+    pub(crate) fn new(unit_of_work_factory: Arc<F>, content_link: Arc<L>) -> Self {
         Self {
+            content_link,
             unit_of_work_factory,
         }
     }
 }
 
-impl<F> GetImageUseCase for GetImage<F>
+impl<F, L> GetImageUseCase for GetImage<F, L>
 where
     F: UnitOfWorkFactory,
     F::Uow: AssetUnitOfWork + IdentityUnitOfWork + LibraryUnitOfWork + UserUnitOfWork,
+    L: ContentLinkProvider,
 {
     fn execute<'future>(
         &'future self,
@@ -40,6 +45,7 @@ where
     ) -> Pin<Box<dyn Future<Output = Result<GetImageResponse, GetImageError>> + Send + 'future>>
     {
         let unit_of_work_factory = Arc::clone(&self.unit_of_work_factory);
+        let content_link = Arc::clone(&self.content_link);
 
         Box::pin(async move {
             let mut unit_of_work = unit_of_work_factory
@@ -59,6 +65,10 @@ where
                     AssetAccessError::NoSuchCaller => GetImageError::NoSuchCaller,
                     AssetAccessError::Unknown(source) => GetImageError::Unknown(source),
                 })?;
+                let link = content_link
+                    .mint(image.file_id())
+                    .await
+                    .map_err(|error| GetImageError::Unknown(error.into()))?;
                 Ok(GetImageResponse::new(
                     image.image_id(),
                     image.name().to_owned(),
@@ -67,6 +77,7 @@ where
                     image.orientation(),
                     image.created_at(),
                     image.file_id(),
+                    link,
                 ))
             }
             .await;
@@ -99,6 +110,7 @@ mod tests {
     use crate::domain::model::image::{Image, Orientation};
     use crate::domain::model::scope::Scope as AssetScope;
     use crate::domain::port::audio_repository::MockAudioRepository;
+    use crate::domain::port::content_link::{ContentLink, MockContentLinkProvider};
     use crate::domain::port::error::RepositoryError;
     use crate::domain::port::file_repository::MockFileRepository;
     use crate::domain::port::gallery_repository::{GalleryItemDetail, MockGalleryRepository};
@@ -111,7 +123,16 @@ mod tests {
     use std::error::Error;
     use std::sync::atomic::Ordering;
 
-    type UseCase = GetImage<TestFactory>;
+    type UseCase = GetImage<TestFactory, MockContentLinkProvider>;
+
+    /// A signer accepting any number of mints.
+    fn signer() -> MockContentLinkProvider {
+        let mut signer = MockContentLinkProvider::new();
+        signer.expect_mint().times(0..).returning(|_| {
+            Box::pin(async { Ok(ContentLink::new(4_102_444_800, "signature".to_owned())) })
+        });
+        signer
+    }
 
     fn file(id: NumericID, owner_id: NumericID) -> Result<File, Box<dyn Error>> {
         Ok(File::try_new(
@@ -233,7 +254,7 @@ mod tests {
         let mut playlists = MockMusicPlaylistRepository::new();
         playlists.expect_search().times(0);
         let harness = harness(users, files, images, audios, videos, galleries, playlists);
-        let use_case: UseCase = GetImage::new(Arc::clone(&harness.factory));
+        let use_case: UseCase = GetImage::new(Arc::clone(&harness.factory), Arc::new(signer()));
 
         // Act
         let response = use_case.execute(GetImageCommand::new(9, 19)).await?;
@@ -265,7 +286,7 @@ mod tests {
             MockGalleryRepository::new(),
             MockMusicPlaylistRepository::new(),
         );
-        let use_case: UseCase = GetImage::new(Arc::clone(&harness.factory));
+        let use_case: UseCase = GetImage::new(Arc::clone(&harness.factory), Arc::new(signer()));
 
         // Act
         let result = use_case.execute(GetImageCommand::new(9, 999)).await;
@@ -309,7 +330,7 @@ mod tests {
         let mut playlists = MockMusicPlaylistRepository::new();
         playlists.expect_search().times(0);
         let harness = harness(users, files, images, audios, videos, galleries, playlists);
-        let use_case: UseCase = GetImage::new(Arc::clone(&harness.factory));
+        let use_case: UseCase = GetImage::new(Arc::clone(&harness.factory), Arc::new(signer()));
 
         // Act
         let result = use_case.execute(GetImageCommand::new(9, 19)).await;
@@ -343,7 +364,7 @@ mod tests {
             MockGalleryRepository::new(),
             MockMusicPlaylistRepository::new(),
         );
-        let use_case: UseCase = GetImage::new(Arc::clone(&harness.factory));
+        let use_case: UseCase = GetImage::new(Arc::clone(&harness.factory), Arc::new(signer()));
 
         // Act
         let result = use_case.execute(GetImageCommand::new(9, 19)).await;
@@ -375,7 +396,7 @@ mod tests {
             MockGalleryRepository::new(),
             MockMusicPlaylistRepository::new(),
         );
-        let use_case: UseCase = GetImage::new(Arc::clone(&harness.factory));
+        let use_case: UseCase = GetImage::new(Arc::clone(&harness.factory), Arc::new(signer()));
 
         // Act
         let result = use_case.execute(GetImageCommand::new(9, 19)).await;

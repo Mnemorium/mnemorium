@@ -41,6 +41,13 @@ library:
       #     index: 2
       #     api_key: "..."
       providers: []
+  startup:
+    # Seconds startup waits for an absent library root to appear, between 0 and
+    # 86400; `0` decides immediately. This is a startup-only setting.
+    media_root_wait_seconds: 30
+    # Whether startup refuses to run while the library root is still absent
+    # after the wait. `false` starts and reconciles the library as empty.
+    fail_without_media_root: false
 logging:
   ansi: false
   level: "debug,sqlx=warn"

@@ -76,6 +76,15 @@ pub(crate) trait GalleryRepository: Send + Sync {
         id: NumericID,
     ) -> impl Future<Output = Result<bool, RepositoryError>> + Send;
 
+    /// Delete every gallery item that uses `media` as its medium.
+    ///
+    /// Returns `Ok(true)` when an item matched `media` and was deleted, and
+    /// `Ok(false)` when no gallery used the medium.
+    fn delete_items_by_media(
+        &mut self,
+        media: GalleryItemMedia,
+    ) -> impl Future<Output = Result<bool, RepositoryError>> + Send;
+
     /// Return the index the next item added to gallery `gallery_id` would take,
     /// that is one past the highest index currently used, or zero when the
     /// gallery is empty.
@@ -184,6 +193,13 @@ impl<T: GalleryRepository + ?Sized> GalleryRepository for &mut T {
         id: NumericID,
     ) -> impl Future<Output = Result<bool, RepositoryError>> + Send {
         (**self).delete_item(id)
+    }
+
+    fn delete_items_by_media(
+        &mut self,
+        media: GalleryItemMedia,
+    ) -> impl Future<Output = Result<bool, RepositoryError>> + Send {
+        (**self).delete_items_by_media(media)
     }
 
     fn next_item_index(

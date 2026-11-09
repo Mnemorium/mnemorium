@@ -112,9 +112,16 @@ class Sut:
         config: dict | None = None,
         config_yaml: str | None = None,
         files: dict[str, str | bytes] | None = None,
+        create_media: bool = True,
     ) -> Sut:
         """Write the pre-start state, run the container and wait until `/health` answers."""
-        self._prepare(env=env, config=config, config_yaml=config_yaml, files=files)
+        self._prepare(
+            env=env,
+            config=config,
+            config_yaml=config_yaml,
+            files=files,
+            create_media=create_media,
+        )
         reason = self._run(env)
         if reason is not None:
             raise StartupFailed(self._exit_code(), self.logs(), reason)
@@ -140,9 +147,16 @@ class Sut:
         config: dict | None = None,
         config_yaml: str | None = None,
         files: dict[str, str | bytes] | None = None,
+        create_media: bool = True,
     ) -> StartupFailure:
         """Run the container, wait for it to exit and return how it failed."""
-        self._prepare(env=env, config=config, config_yaml=config_yaml, files=files)
+        self._prepare(
+            env=env,
+            config=config,
+            config_yaml=config_yaml,
+            files=files,
+            create_media=create_media,
+        )
         self._run(env)
 
         deadline = time.monotonic() + STARTUP_TIMEOUT_S
@@ -293,6 +307,7 @@ class Sut:
         config: dict | None,
         config_yaml: str | None,
         files: dict[str, str | bytes] | None,
+        create_media: bool,
     ) -> None:
         if config is not None and config_yaml is not None:
             raise ValueError("pass either `config` or `config_yaml`, not both")
@@ -300,7 +315,8 @@ class Sut:
             config_yaml = yaml.safe_dump(config)
         if config_yaml is not None:
             self.write(CONFIG_PATH, config_yaml)
-        (self.dir / MEDIA_DIRECTORY).mkdir(exist_ok=True)
+        if create_media:
+            (self.dir / MEDIA_DIRECTORY).mkdir(exist_ok=True)
         for relative, content in (files or {}).items():
             self.write(relative, content)
 

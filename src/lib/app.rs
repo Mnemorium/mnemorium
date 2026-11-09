@@ -23,6 +23,7 @@ use crate::application::use_case::ensure_storage_directories::EnsureStorageDirec
 use crate::application::use_case::initialize_root_admin::InitializeRootAdmin;
 use crate::application::use_case::load_configuration::LoadConfiguration;
 use crate::application::use_case::load_state::LoadState;
+use crate::application::use_case::upload_layout::MEDIA_ROOT;
 #[cfg(feature = "test-seed")]
 use crate::application::use_case::upload_layout::media_root;
 use crate::infrastructure::inbound::media_ingest::MediaIngestRunner;
@@ -165,12 +166,23 @@ pub async fn run() -> anyhow::Result<()> {
     seed::apply(&seed_pool, instance_state.pepper(), &media_root()).await?;
 
     let file_storage = Arc::new(FileSystemStorage::new());
+    let startup = configuration.library().startup();
+    let media_root_wait = Duration::from_secs(startup.media_root_wait_seconds());
     let storage_directories = EnsureStorageDirectories::new(Arc::clone(&file_storage))
-        .execute(EnsureStorageDirectoriesCommand::new())
+        .execute(EnsureStorageDirectoriesCommand::new().waiting(
+            startup.media_root_wait_seconds(),
+            startup.fail_without_media_root(),
+        ))
         .await?;
+    if startup.fail_without_media_root() && !storage_directories.media_root_present() {
+        return Err(anyhow::anyhow!(
+            "the library root '{MEDIA_ROOT}' is absent; startup refuses to run while library.startup.fail_without_media_root is set"
+        ));
+    }
 
     let asset_use_case_factory = Arc::new(RuntimeAssetUseCaseFactory::new(
         Arc::clone(&configuration),
+        Arc::clone(&instance_state),
         Arc::clone(&unit_of_work_factory),
         Arc::clone(&probe_permits),
     ));
@@ -201,6 +213,7 @@ pub async fn run() -> anyhow::Result<()> {
         MediaIngestRunner::new(
             library_use_case_factory,
             storage_directories.media_root_present(),
+            media_root_wait,
         )
         .start(),
     );

@@ -103,6 +103,27 @@ impl GalleryRepository for SqlxGalleryRepository<'_> {
         Ok(result.rows_affected() > 0)
     }
 
+    async fn delete_items_by_media(
+        &mut self,
+        media: GalleryItemMedia,
+    ) -> Result<bool, RepositoryError> {
+        let result = match media {
+            GalleryItemMedia::Image(id) => {
+                sqlx::query("DELETE FROM gallery_item WHERE image_id = ?")
+                    .bind(id)
+                    .execute(&mut **self.transaction)
+                    .await?
+            }
+            GalleryItemMedia::Video(id) => {
+                sqlx::query("DELETE FROM gallery_item WHERE video_id = ?")
+                    .bind(id)
+                    .execute(&mut **self.transaction)
+                    .await?
+            }
+        };
+        Ok(result.rows_affected() > 0)
+    }
+
     async fn next_item_index(&mut self, gallery_id: NumericID) -> Result<i64, RepositoryError> {
         let next = sqlx::query_scalar::<_, i64>(
             "SELECT COALESCE(MAX(item_index) + 1, 0)
@@ -1257,6 +1278,52 @@ mod tests {
             result,
             Err(RepositoryError::DataIntegrityViolation)
         ));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn delete_items_by_media_removes_only_the_matching_items() -> Result<(), Box<dyn Error>> {
+        // Arrange: two galleries, one holding image 5 and one holding image 6.
+        let mut transaction = begin_transaction().await?;
+        seed_user(&mut transaction, 1).await?;
+        seed_file(&mut transaction, 10, 1, "a.png", "image/png").await?;
+        seed_file(&mut transaction, 11, 1, "b.png", "image/png").await?;
+        seed_image(&mut transaction, 5, 10, "a.png").await?;
+        seed_image(&mut transaction, 6, 11, "b.png").await?;
+        let first = {
+            let mut repository = SqlxGalleryRepository::new(&mut transaction);
+            repository
+                .create(gallery(0, Some(1), "First", false))
+                .await?
+        };
+        let second = {
+            let mut repository = SqlxGalleryRepository::new(&mut transaction);
+            repository
+                .create(gallery(0, Some(1), "Second", false))
+                .await?
+        };
+        let mut repository = SqlxGalleryRepository::new(&mut transaction);
+        let _first_item = repository
+            .add_item(item(0, first.gallery_id(), GalleryItemMedia::Image(5), 0)?)
+            .await?;
+        let _second_item = repository
+            .add_item(item(0, second.gallery_id(), GalleryItemMedia::Image(6), 0)?)
+            .await?;
+
+        // Act
+        repository
+            .delete_items_by_media(GalleryItemMedia::Image(5))
+            .await?;
+        let items = repository
+            .search_items(&GalleryItemFilter::default())
+            .await?;
+
+        // Assert
+        assert_eq!(items.len(), 1);
+        assert_eq!(
+            items.first().map(|detail| detail.item().media()),
+            Some(GalleryItemMedia::Image(6))
+        );
         Ok(())
     }
 }

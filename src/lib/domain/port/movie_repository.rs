@@ -33,6 +33,24 @@ pub(crate) trait MovieRepository: Send + Sync {
         movie: Movie,
     ) -> impl Future<Output = Result<Movie, RepositoryError>> + Send;
 
+    /// Delete the film identified by `id` together with its genre links.
+    ///
+    /// Returns `Ok(true)` when a film matched `id` and was deleted, and
+    /// `Ok(false)` when no film matched. The backing video is never removed
+    /// here: the caller reconciles it separately.
+    fn delete(
+        &mut self,
+        id: NumericID,
+    ) -> impl Future<Output = Result<bool, RepositoryError>> + Send;
+
+    /// Return the film backed by `video_id`, if any.
+    ///
+    /// A missing attachment is `Ok(None)`, not an error.
+    fn find_by_video(
+        &mut self,
+        video_id: NumericID,
+    ) -> impl Future<Output = Result<Option<Movie>, RepositoryError>> + Send;
+
     /// Search the films matching `filter`, returned as `Vec<Movie>`.
     ///
     /// Each film carries its genres and the video that backs it, so the caller
@@ -64,6 +82,20 @@ impl<T: MovieRepository + ?Sized> MovieRepository for &mut T {
         movie: Movie,
     ) -> impl Future<Output = Result<Movie, RepositoryError>> + Send {
         (**self).create(movie)
+    }
+
+    fn delete(
+        &mut self,
+        id: NumericID,
+    ) -> impl Future<Output = Result<bool, RepositoryError>> + Send {
+        (**self).delete(id)
+    }
+
+    fn find_by_video(
+        &mut self,
+        video_id: NumericID,
+    ) -> impl Future<Output = Result<Option<Movie>, RepositoryError>> + Send {
+        (**self).find_by_video(video_id)
     }
 
     fn search(
