@@ -8576,7 +8576,7 @@ SOFTWARE.
 MIT License (MIT)
 
 Used by:
-  - mnemorium 0.36.0 ()
+  - mnemorium 0.37.0 ()
 MIT License
 
 Copyright (c) 2026 Mnemorium

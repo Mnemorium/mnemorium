@@ -1,3 +1,9 @@
+## [0.37.0](https://github.com/Mnemorium/mnemorium/compare/v0.36.0...v0.37.0) (2026-11-09)
+
+### Features
+
+* **api:** finalise asset retrieval ([#402](https://github.com/Mnemorium/mnemorium/issues/402)) ([d717226](https://github.com/Mnemorium/mnemorium/commit/d71722637097590376912ca350c8fa6930b48c45))
+
 ## [0.36.0](https://github.com/Mnemorium/mnemorium/compare/v0.35.0...v0.36.0) (2026-11-08)
 
 ### Features
