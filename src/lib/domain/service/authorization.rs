@@ -25,11 +25,7 @@ pub(crate) enum Decision {
 impl Decision {
     /// Return whether the decision allows the action.
     #[must_use]
-    #[expect(
-        clippy::trivially_copy_pass_by_ref,
-        reason = "STY-RUST-019 fixes the getter receiver as `&self`"
-    )]
-    pub(crate) fn is_allowed(&self) -> bool {
+    pub(crate) fn is_allowed(self) -> bool {
         matches!(self, Self::Allow)
     }
 }
@@ -46,11 +42,7 @@ pub(crate) struct Denial {
 impl Denial {
     /// Return the denied action.
     #[must_use]
-    #[expect(
-        clippy::trivially_copy_pass_by_ref,
-        reason = "STY-RUST-019 fixes the getter receiver as `&self`"
-    )]
-    pub(crate) fn action(&self) -> Action {
+    pub(crate) fn action(self) -> Action {
         self.action
     }
 
@@ -59,11 +51,7 @@ impl Denial {
     /// A concealed denial answers `404 Not Found`, indistinguishable from a
     /// missing resource; a revealed denial answers `403 Forbidden`.
     #[must_use]
-    #[expect(
-        clippy::trivially_copy_pass_by_ref,
-        reason = "STY-RUST-019 fixes the getter receiver as `&self`"
-    )]
-    pub(crate) fn conceals(&self) -> bool {
+    pub(crate) fn conceals(self) -> bool {
         self.conceal
     }
 }

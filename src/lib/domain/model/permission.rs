@@ -206,12 +206,8 @@ impl Scope {
     ///
     /// The names are the values the `chk_permission_scope` constraint admits.
     #[must_use]
-    #[expect(
-        clippy::pattern_type_mismatch,
-        reason = "the scope owns its listed resources, so its methods match a reference"
-    )]
     pub(crate) fn as_wire(&self) -> &'static str {
-        match self {
+        match *self {
             Self::All => "ALL",
             Self::Listed(_) => "LISTED",
             Self::None => "NONE",

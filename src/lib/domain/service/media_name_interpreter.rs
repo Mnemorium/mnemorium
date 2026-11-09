@@ -1,8 +1,3 @@
-#![allow(
-    dead_code,
-    reason = "the file-name interpreter serves the internal video-identification path, which has no REST caller yet"
-)]
-
 use std::mem::take;
 
 use crate::domain::model::media_query::{EpisodePosition, MediaQuery, VideoKind};

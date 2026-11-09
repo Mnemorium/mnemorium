@@ -1,8 +1,4 @@
 //! Ordered failover chain over the configured metadata providers.
-#![allow(
-    dead_code,
-    reason = "the provider failover serves the internal video-identification path, which has no REST caller yet"
-)]
 
 use crate::application::security_event;
 use crate::domain::model::configuration::ProviderId;

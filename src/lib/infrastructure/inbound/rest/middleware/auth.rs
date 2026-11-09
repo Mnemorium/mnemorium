@@ -20,11 +20,7 @@ pub(crate) struct AuthenticatedUser(NumericID);
 impl AuthenticatedUser {
     /// Return the authenticated user identifier.
     #[must_use]
-    #[expect(
-        clippy::trivially_copy_pass_by_ref,
-        reason = "STY-RUST-019 fixes the getter receiver as `&self`"
-    )]
-    pub(crate) fn user_id(&self) -> NumericID {
+    pub(crate) fn user_id(self) -> NumericID {
         self.0
     }
 }

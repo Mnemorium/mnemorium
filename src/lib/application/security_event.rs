@@ -11,10 +11,6 @@
 //! identity available when authentication fails, and no other field can stand
 //! in for it. The field escapes control characters and bounds its length, so a
 //! client cannot forge a log record through it (`OBS-003`).
-#![allow(
-    dead_code,
-    reason = "the security-event catalog declares the metadata-provider and genre constructors; the video identification path that emits them has no caller yet"
-)]
 
 use tracing::{debug, error, info, warn};
 

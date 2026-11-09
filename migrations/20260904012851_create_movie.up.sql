@@ -10,8 +10,8 @@ CREATE TABLE movie (
     CONSTRAINT uq_movie_video_id UNIQUE (video_id),
     CONSTRAINT fk_movie_video FOREIGN KEY (video_id) REFERENCES video (
         video_id
-    ),
+    ) ON DELETE CASCADE,
     CONSTRAINT fk_movie_cover_image FOREIGN KEY (
         cover_image_id
-    ) REFERENCES image (image_id)
+    ) REFERENCES image (image_id) ON DELETE SET NULL
 );

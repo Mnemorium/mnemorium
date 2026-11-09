@@ -87,9 +87,14 @@ where
 
                 let group = unit_of_work
                     .music_groups()
-                    .get(command.group_id())
+                    .search(&MusicGroupFilter {
+                        id: Some(command.group_id()),
+                        ..MusicGroupFilter::default()
+                    })
                     .await
                     .map_err(|error| UpdateMusicGroupError::Unknown(error.into()))?
+                    .into_iter()
+                    .next()
                     .ok_or(UpdateMusicGroupError::NoSuchGroup)?;
 
                 if let Decision::Deny(denial) =
@@ -155,17 +160,15 @@ where
                 let updated = MusicGroup::try_new(group.id(), name, cover_image_id)
                     .map_err(|_| UpdateMusicGroupError::InvalidName)?;
 
-                let stored = unit_of_work
-                    .music_groups()
-                    .update(updated)
-                    .await
-                    .map_err(|error| match error {
-                        RepositoryError::Conflict | RepositoryError::DataIntegrityViolation => {
-                            UpdateMusicGroupError::Conflict
-                        }
-                        other => UpdateMusicGroupError::Unknown(other.into()),
-                    })?
-                    .ok_or(UpdateMusicGroupError::NoSuchGroup)?;
+                let stored =
+                    unit_of_work.music_groups().save(updated).await.map_err(
+                        |error| match error {
+                            RepositoryError::Conflict | RepositoryError::DataIntegrityViolation => {
+                                UpdateMusicGroupError::Conflict
+                            }
+                            other => UpdateMusicGroupError::Unknown(other.into()),
+                        },
+                    )?;
 
                 Ok(UpdateMusicGroupResponse::new(stored))
             }
@@ -250,12 +253,12 @@ mod tests {
         let mut groups = MockMusicGroupRepository::new();
         let stored = group(7, "The Group", Some(19))?;
         groups
-            .expect_get()
+            .expect_search()
             .times(1)
-            .withf(|group_id| *group_id == 7)
+            .withf(|filter| filter.id == Some(7))
             .return_once(move |_| {
                 let found = stored.clone();
-                Box::pin(async move { Ok(Some(found)) })
+                Box::pin(async move { Ok(vec![found]) })
             });
         groups
             .expect_search()
@@ -264,7 +267,7 @@ mod tests {
             .returning(|_| Box::pin(async { Ok(Vec::new()) }));
         let renamed = group(7, "The Renamed", Some(19))?;
         groups
-            .expect_update()
+            .expect_save()
             .times(1)
             .withf(|group| {
                 group.id() == 7
@@ -273,7 +276,7 @@ mod tests {
             })
             .return_once(move |_| {
                 let saved = renamed.clone();
-                Box::pin(async move { Ok(Some(saved)) })
+                Box::pin(async move { Ok(saved) })
             });
         let harness = harness_with(users, groups);
         let use_case: UseCase = UpdateMusicGroup::new(Arc::clone(&harness.factory));
@@ -306,18 +309,18 @@ mod tests {
         expect_admin(&mut users, 1)?;
         let mut groups = MockMusicGroupRepository::new();
         let stored = group(7, "The Group", None)?;
-        groups.expect_get().times(1).return_once(move |_| {
+        groups.expect_search().times(1).return_once(move |_| {
             let found = stored.clone();
-            Box::pin(async move { Ok(Some(found)) })
+            Box::pin(async move { Ok(vec![found]) })
         });
         let covered = group(7, "The Group", Some(19))?;
         groups
-            .expect_update()
+            .expect_save()
             .times(1)
             .withf(|group| group.stage_name() == "The Group" && group.cover_image_id() == Some(19))
             .return_once(move |_| {
                 let saved = covered.clone();
-                Box::pin(async move { Ok(Some(saved)) })
+                Box::pin(async move { Ok(saved) })
             });
         let harness = harness_with(users, groups);
         let use_case: UseCase = UpdateMusicGroup::new(Arc::clone(&harness.factory));
@@ -339,9 +342,9 @@ mod tests {
         expect_caller(&mut users, 1)?;
         let mut groups = MockMusicGroupRepository::new();
         let stored = group(7, "The Group", None)?;
-        groups.expect_get().times(1).return_once(move |_| {
+        groups.expect_search().times(1).return_once(move |_| {
             let found = stored.clone();
-            Box::pin(async move { Ok(Some(found)) })
+            Box::pin(async move { Ok(vec![found]) })
         });
         let harness = harness_with(users, groups);
         let use_case: UseCase = UpdateMusicGroup::new(Arc::clone(&harness.factory));
@@ -370,9 +373,9 @@ mod tests {
         expect_admin(&mut users, 1)?;
         let mut groups = MockMusicGroupRepository::new();
         let stored = group(7, "The Group", None)?;
-        groups.expect_get().times(1).return_once(move |_| {
+        groups.expect_search().times(1).return_once(move |_| {
             let found = stored.clone();
-            Box::pin(async move { Ok(Some(found)) })
+            Box::pin(async move { Ok(vec![found]) })
         });
         let collision = group(8, "The Renamed", None)?;
         groups.expect_search().times(1).return_once(move |_| {
@@ -407,9 +410,9 @@ mod tests {
         expect_admin(&mut users, 1)?;
         let mut groups = MockMusicGroupRepository::new();
         let stored = group(7, "The Group", None)?;
-        groups.expect_get().times(1).return_once(move |_| {
+        groups.expect_search().times(1).return_once(move |_| {
             let found = stored.clone();
-            Box::pin(async move { Ok(Some(found)) })
+            Box::pin(async move { Ok(vec![found]) })
         });
         let harness = harness_with(users, groups);
         let use_case: UseCase = UpdateMusicGroup::new(Arc::clone(&harness.factory));
@@ -436,16 +439,16 @@ mod tests {
         expect_admin(&mut users, 1)?;
         let mut groups = MockMusicGroupRepository::new();
         let stored = group(0, "Unknown", None)?;
-        groups.expect_get().times(1).return_once(move |_| {
+        groups.expect_search().times(1).return_once(move |_| {
             let found = stored.clone();
-            Box::pin(async move { Ok(Some(found)) })
+            Box::pin(async move { Ok(vec![found]) })
         });
         groups
             .expect_search()
             .times(1)
             .returning(|_| Box::pin(async { Ok(Vec::new()) }));
         groups
-            .expect_update()
+            .expect_save()
             .times(1)
             .returning(|_| Box::pin(async { Err(RepositoryError::Conflict) }));
         let harness = harness_with(users, groups);
@@ -475,16 +478,16 @@ mod tests {
         expect_admin(&mut users, 1)?;
         let mut groups = MockMusicGroupRepository::new();
         let stored = group(0, "Unknown", None)?;
-        groups.expect_get().times(1).return_once(move |_| {
+        groups.expect_search().times(1).return_once(move |_| {
             let found = stored.clone();
-            Box::pin(async move { Ok(Some(found)) })
+            Box::pin(async move { Ok(vec![found]) })
         });
         groups
             .expect_search()
             .times(1)
             .returning(|_| Box::pin(async { Ok(Vec::new()) }));
         groups
-            .expect_update()
+            .expect_save()
             .times(1)
             .returning(|_| Box::pin(async { Err(RepositoryError::DataIntegrityViolation) }));
         let harness = harness_with(users, groups);
@@ -514,9 +517,9 @@ mod tests {
         expect_admin(&mut users, 1)?;
         let mut groups = MockMusicGroupRepository::new();
         groups
-            .expect_get()
+            .expect_search()
             .times(1)
-            .returning(|_| Box::pin(async { Ok(None) }));
+            .returning(|_| Box::pin(async { Ok(Vec::new()) }));
         let harness = harness_with(users, groups);
         let use_case: UseCase = UpdateMusicGroup::new(Arc::clone(&harness.factory));
 
@@ -538,9 +541,9 @@ mod tests {
         expect_caller(&mut users, 1)?;
         let mut groups = MockMusicGroupRepository::new();
         let hidden = group(7, "The Group", None)?;
-        groups.expect_get().times(1).return_once(move |_| {
+        groups.expect_search().times(1).return_once(move |_| {
             let found = hidden.clone();
-            Box::pin(async move { Ok(Some(found)) })
+            Box::pin(async move { Ok(vec![found]) })
         });
         let mut permissions = MockPermissionRepository::new();
         expect_permissions(
@@ -601,14 +604,14 @@ mod tests {
         expect_admin(&mut users, 1)?;
         let mut groups = MockMusicGroupRepository::new();
         let stored = group(7, "The Group", None)?;
-        groups.expect_get().times(1).return_once(move |_| {
+        groups.expect_search().times(1).return_once(move |_| {
             let found = stored.clone();
-            Box::pin(async move { Ok(Some(found)) })
+            Box::pin(async move { Ok(vec![found]) })
         });
         let saved = group(7, "The Group", None)?;
-        groups.expect_update().times(1).return_once(move |_| {
+        groups.expect_save().times(1).return_once(move |_| {
             let updated = saved.clone();
-            Box::pin(async move { Ok(Some(updated)) })
+            Box::pin(async move { Ok(updated) })
         });
         let harness = harness_with(users, groups);
         harness.commit_fails.store(true, Ordering::SeqCst);

@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use chrono::NaiveDateTime;
 
 use crate::domain::alias::NumericID;
-use crate::domain::model::music_recording::MusicRecording;
+use crate::domain::model::music_recording::{MusicRecording, TrackIndex};
 use crate::domain::model::permission::{Protected, ResourceKind, ResourceRef};
 
 /// Error returned when initialising or updating a `MusicPlaylist`.
@@ -48,6 +48,58 @@ pub(crate) struct MusicPlaylist {
 }
 
 impl MusicPlaylist {
+    /// Append `recording` to the playlist's track sequence.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MusicPlaylistError::RecordingAlreadyPresent`] when the playlist
+    /// already sequences the recording.
+    pub(crate) fn add_track(
+        &mut self,
+        recording: MusicRecording,
+    ) -> Result<(), MusicPlaylistError> {
+        self.ensure_recording_absent(recording.id())?;
+        self.tracks.push(recording);
+        Ok(())
+    }
+
+    /// Apply a validated `order` to the playlist's track sequence.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MusicPlaylistError::InvalidOrder`] when `order` names a
+    /// recording the playlist does not hold.
+    pub(crate) fn apply_order(
+        &mut self,
+        order: &[(u32, NumericID)],
+    ) -> Result<(), MusicPlaylistError> {
+        let mut by_id: HashMap<NumericID, MusicRecording> = self
+            .tracks
+            .drain(..)
+            .map(|track| (track.id(), track))
+            .collect();
+        let mut reordered = Vec::with_capacity(order.len());
+        for &(new_index, recording_id) in order {
+            let track = by_id
+                .remove(&recording_id)
+                .ok_or(MusicPlaylistError::InvalidOrder)?;
+            reordered.push(
+                MusicRecording::try_new(
+                    track.id(),
+                    track.name().map(str::to_owned),
+                    track.isrc_code().map(str::to_owned),
+                    track.audio_id(),
+                    track.file_id(),
+                    track.music_group_ids().map(<[_]>::to_vec),
+                    TrackIndex::PlaylistIndex(new_index),
+                )
+                .map_err(|_| MusicPlaylistError::InvalidOrder)?,
+            );
+        }
+        self.tracks = reordered;
+        Ok(())
+    }
+
     /// Return the identifier of the image holding the playlist's artwork, if any.
     #[must_use]
     pub(crate) fn cover_image_id(&self) -> Option<NumericID> {
@@ -139,6 +191,16 @@ impl MusicPlaylist {
             tracks,
             user_id,
         }
+    }
+
+    /// Remove the placement at `track_index`.
+    ///
+    /// Returns `true` when a placement matched the index and was removed.
+    pub(crate) fn remove_track(&mut self, track_index: u32) -> bool {
+        let before = self.tracks.len();
+        self.tracks
+            .retain(|track| track.index().playlist_index() != Some(track_index));
+        self.tracks.len() != before
     }
 
     /// Update whether the playlist is visible to every user.

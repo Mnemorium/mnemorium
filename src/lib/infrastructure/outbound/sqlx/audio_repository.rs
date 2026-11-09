@@ -1,6 +1,5 @@
 use sqlx::{QueryBuilder, Sqlite, Transaction};
 
-use crate::domain::alias::NumericID;
 use crate::domain::model::audio::Audio;
 use crate::domain::port::audio_repository::{AudioFilter, AudioRepository};
 use crate::domain::port::error::RepositoryError;
@@ -52,15 +51,18 @@ impl AudioRepository for SqlxAudioRepository<'_> {
         domain_audio(row)
     }
 
-    async fn delete(&mut self, id: NumericID) -> Result<bool, RepositoryError> {
-        sqlx::query("DELETE FROM audio_stream WHERE audio_id = ?")
-            .bind(id)
-            .execute(&mut **self.transaction)
-            .await?;
-        let result = sqlx::query("DELETE FROM audio WHERE audio_id = ?")
-            .bind(id)
-            .execute(&mut **self.transaction)
-            .await?;
+    async fn delete(&mut self, filter: &AudioFilter) -> Result<bool, RepositoryError> {
+        let mut builder = QueryBuilder::<Sqlite>::new("DELETE FROM audio");
+        let mut first = true;
+
+        if let Some(file_id) = filter.file_id {
+            push_filter(&mut first, &mut builder, "file_id = ", file_id);
+        }
+        if let Some(id) = filter.id {
+            push_filter(&mut first, &mut builder, "audio_id = ", id);
+        }
+
+        let result = builder.build().execute(&mut **self.transaction).await?;
         Ok(result.rows_affected() > 0)
     }
 
@@ -334,7 +336,12 @@ mod tests {
         let stored = repository.create(audio(10, None, None)?).await?;
 
         // Act
-        let removed = repository.delete(stored.id()).await?;
+        let removed = repository
+            .delete(&AudioFilter {
+                id: Some(stored.id()),
+                ..AudioFilter::default()
+            })
+            .await?;
         let found = repository
             .search(&AudioFilter {
                 id: Some(stored.id()),

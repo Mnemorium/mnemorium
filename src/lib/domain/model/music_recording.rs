@@ -34,6 +34,8 @@ pub(crate) enum TrackIndex {
     MediumIndex(u8),
     /// The recording is placed in a playlist, at this index.
     PlaylistIndex(u32),
+    /// The recording holds no placement.
+    Unplaced,
 }
 
 impl TrackIndex {
@@ -42,7 +44,7 @@ impl TrackIndex {
     pub(crate) fn medium_index(self) -> Option<u8> {
         match self {
             Self::MediumIndex(index) => Some(index),
-            Self::PlaylistIndex(_) => None,
+            Self::PlaylistIndex(_) | Self::Unplaced => None,
         }
     }
 
@@ -51,7 +53,7 @@ impl TrackIndex {
     pub(crate) fn playlist_index(self) -> Option<u32> {
         match self {
             Self::PlaylistIndex(index) => Some(index),
-            Self::MediumIndex(_) => None,
+            Self::MediumIndex(_) | Self::Unplaced => None,
         }
     }
 }
@@ -78,10 +80,6 @@ pub(crate) struct MusicRecording {
 impl MusicRecording {
     /// Return the identifier of the backing audio.
     #[must_use]
-    #[expect(
-        dead_code,
-        reason = "part of the type's declared contract; no caller exercises it yet"
-    )]
     pub(crate) fn audio_id(&self) -> NumericID {
         self.audio_id
     }
@@ -112,10 +110,6 @@ impl MusicRecording {
 
     /// Return the identifiers of the associated music groups, if any.
     #[must_use]
-    #[expect(
-        dead_code,
-        reason = "part of the type's declared contract; no caller exercises it yet"
-    )]
     pub(crate) fn music_group_ids(&self) -> Option<&[NumericID]> {
         self.music_group_ids.as_deref()
     }

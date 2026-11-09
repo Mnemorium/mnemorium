@@ -18,32 +18,15 @@ pub(crate) struct PermissionFilter {
 /// Port for persisting and querying `Permission` overrides.
 #[cfg_attr(test, mockall::automock)]
 pub(crate) trait PermissionRepository: Send + Sync {
-    /// Delete the permission identified by `(user_id, action)`.
+    /// Delete every permission matching `filter`.
     ///
-    /// Returns `Ok(true)` when a permission matched and was deleted, and
-    /// `Ok(false)` when none matched. A missing permission is a valid outcome,
-    /// not an error.
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "part of the type's declared contract; no caller exercises it yet"
-        )
-    )]
+    /// Returns `Ok(true)` when at least one permission was deleted, and
+    /// `Ok(false)` when none matched. An all-`None` filter deletes every
+    /// permission; a filter naming only `user_id` deletes every permission of
+    /// that user, and naming `(user_id, action)` deletes that one override.
     fn delete(
         &mut self,
-        user_id: NumericID,
-        action: Action,
-    ) -> impl Future<Output = Result<bool, RepositoryError>> + Send;
-
-    /// Delete every permission of `user_id`.
-    ///
-    /// Returns `Ok(true)` when at least one permission was deleted and
-    /// `Ok(false)` when the user held none. A user without a permission is a
-    /// valid outcome, not an error.
-    fn delete_all(
-        &mut self,
-        user_id: NumericID,
+        filter: &PermissionFilter,
     ) -> impl Future<Output = Result<bool, RepositoryError>> + Send;
 
     /// Insert or replace `permission`, returning the persisted permission.
@@ -69,17 +52,9 @@ pub(crate) trait PermissionRepository: Send + Sync {
 impl<T: PermissionRepository + ?Sized> PermissionRepository for &mut T {
     fn delete(
         &mut self,
-        user_id: NumericID,
-        action: Action,
+        filter: &PermissionFilter,
     ) -> impl Future<Output = Result<bool, RepositoryError>> + Send {
-        (**self).delete(user_id, action)
-    }
-
-    fn delete_all(
-        &mut self,
-        user_id: NumericID,
-    ) -> impl Future<Output = Result<bool, RepositoryError>> + Send {
-        (**self).delete_all(user_id)
+        (**self).delete(filter)
     }
 
     fn save(

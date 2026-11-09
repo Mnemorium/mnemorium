@@ -434,25 +434,11 @@ impl MediaProbe for LocalMediaProbe {
 /// The pool bounds probe concurrency only: a probe acquires its permit inside
 /// the adapter, after the test body has written its stub, so the pool orders a
 /// spawn against a spawn and never a spawn against a stub write. Isolating the
-/// stub file is [`spawn_gate`]'s job (`TEST-052`).
+/// stub file is [`tests::spawn_gate`]'s job (`TEST-052`).
 #[cfg(test)]
 fn test_permits() -> Arc<Semaphore> {
     static PERMITS: OnceLock<Arc<Semaphore>> = OnceLock::new();
     Arc::clone(PERMITS.get_or_init(|| Arc::new(Semaphore::new(MAX_CONCURRENT_PROBES))))
-}
-
-/// Test-only process-wide gate held across a stub write and the probe that runs it.
-///
-/// One permit excludes every other spawning test in this binary, so no child is
-/// forked while any stub write descriptor can exist: a child forked in that
-/// window inherits a duplicate of the descriptor, and the stub author's `exec`
-/// then fails with `ETXTBSY` (`TEST-052`). The permit is acquired as the first
-/// Arrange step and held to the end of the test body, because the `exec` is not
-/// observable from the test side.
-#[cfg(test)]
-fn spawn_gate() -> Arc<Semaphore> {
-    static GATE: OnceLock<Arc<Semaphore>> = OnceLock::new();
-    Arc::clone(GATE.get_or_init(|| Arc::new(Semaphore::new(1))))
 }
 
 /// Classify an image decode error and log the matching security event.
@@ -690,6 +676,19 @@ mod tests {
 
     /// A generous probe timeout so a loaded test runner cannot starve a stub.
     const STUB_TIMEOUT: Duration = Duration::from_secs(10);
+
+    /// Test-only process-wide gate held across a stub write and the probe that runs it.
+    ///
+    /// One permit excludes every other spawning test in this binary, so no child is
+    /// forked while any stub write descriptor can exist: a child forked in that
+    /// window inherits a duplicate of the descriptor, and the stub author's `exec`
+    /// then fails with `ETXTBSY` (`TEST-052`). The permit is acquired as the first
+    /// Arrange step and held to the end of the test body, because the `exec` is not
+    /// observable from the test side.
+    fn spawn_gate() -> Arc<Semaphore> {
+        static GATE: OnceLock<Arc<Semaphore>> = OnceLock::new();
+        Arc::clone(GATE.get_or_init(|| Arc::new(Semaphore::new(1))))
+    }
 
     /// Write an executable `script` into `dir` and return its path.
     fn stub(dir: &Path, name: &str, body: &str) -> Result<PathBuf, Box<dyn Error>> {

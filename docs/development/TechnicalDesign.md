@@ -133,7 +133,7 @@ material. The `#[utoipa::path(...)]` declaration contract lives in the [API sect
 | `STY-RUST-042` | Unit of Work      | Declare the `UnitOfWork` trait first in `domain/port/unit_of_work.rs`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | [§ 7.4](#74-declaration-order-in-the-unit-of-work-port-file)     |
 | `STY-RUST-043` | Unit of Work      | Declare the `UnitOfWorkFactory` trait second in `domain/port/unit_of_work.rs`.                                                                                                                                                                                                                                                                                                                                                                                                                                                         | [§ 7.4](#74-declaration-order-in-the-unit-of-work-port-file)     |
 | `STY-RUST-044` | Repository        | `create` inserts a new aggregate and never binds identity columns: the datastore auto-increments them and `create` returns the aggregate with its final identifier.                                                                                                                                                                                                                                                                                                                                                                    | [§ 8.1](#81-repository-port)                                     |
-| `STY-RUST-045` | Repository        | `save` upserts an existing aggregate targeted by its identifier.                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | [§ 8.1](#81-repository-port)                                     |
+| `STY-RUST-045` | Repository        | `save` upserts an existing aggregate targeted by its identifier, and writes the child collections the aggregate carries.                                                                                                                                                                                                                                                                                                                                                                                                               | [§ 8.1](#81-repository-port)                                     |
 | `STY-RUST-046` | Repository        | `delete` returns `Ok(false)` when no row matched; a missing entity is not an error.                                                                                                                                                                                                                                                                                                                                                                                                                                                    | [§ 8.1](#81-repository-port)                                     |
 | `STY-RUST-047` | Repository        | `search` returns an empty collection when nothing matches.                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | [§ 8.1](#81-repository-port)                                     |
 | `STY-RUST-048` | Repository        | Missing entities are never errors (see [Port error](#26-port-errors)).                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | [§ 8.1](#81-repository-port)                                     |
@@ -167,7 +167,7 @@ material. The `#[utoipa::path(...)]` declaration contract lives in the [API sect
 | `STY-RUST-077` | Domain models     | **Validated deserialization**: a domain model that validates in `try_new` must not derive a `Deserialize` that bypasses it. Route serde through the validating constructor (`#[serde(try_from = "…")]` plus `TryFrom`, or a custom `Deserialize`) so every construction path enforces the same invariant.                                                                                                                                                                                                                              | [§ 3.2](#32-validated-deserialization)                           |
 | `STY-RUST-078` | Configuration     | A configuration value that is **present but malformed or out of range** fails startup: a reader falls back to a default only when the key is absent, and propagates every other read or validation error.                                                                                                                                                                                                                                                                                                                              | [§ 10](#10-configuration)                                        |
 | `STY-RUST-079` | Repository        | A repository persists and queries exactly one aggregate; a port that spans two aggregates is split per aggregate.                                                                                                                                                                                                                                                                                                                                                                                                                      | [§ 8](#8-repository)                                             |
-| `STY-RUST-080` | Repository        | A filter field is named after the aggregate field it constrains, e.g. `UserFilter.id` for `User::id()`.                                                                                                                                                                                                                                                                                                                                                                                                                                |                                                                  |
+| `STY-RUST-080` | Repository        | A filter field is named after the aggregate field it constrains, e.g. `UserFilter.id` for `User::id()`. A join constraint on a child collection is the documented exception (`MusicAlbumFilter.audio_id`).                                                                                                                                                                                                                                                                                                                             |                                                                  |
 | `STY-RUST-081` | Repository        | The classic `search` returns the aggregate, never a summary or a detail the port declares; the application assembles the representation.                                                                                                                                                                                                                                                                                                                                                                                               |                                                                  |
 | `STY-RUST-082` | REST handlers     | Shared representations, links and helpers live in the bounded context module file (`<context>.rs`); a context folder holds only endpoint files, and an endpoint file imports no `<context>::<operation>` submodule — it takes shared items from the `<context>.rs` module file and `hal`.                                                                                                                                                                                                                                              |                                                                  |
 | `STY-RUST-083` | REST handlers     | `rest/` holds only the known REST infrastructure (`api_error.rs`, `app_state.rs`, `hal.rs`, `handler.rs`, `handler`, `middleware.rs`, `middleware`); `handler/` holds only `get_health.rs` plus each bounded context's `<context>.rs` module file and `<context>/` endpoint folder.                                                                                                                                                                                                                                                    |                                                                  |
@@ -859,22 +859,28 @@ pub trait UserRepository: Send + Sync {
 }
 ```
 
-| Name                                   | Action                                      |
-| -------------------------------------- | ------------------------------------------- |
-| `create(domain: DomainSpecificObject)` | Insert (identity assigned by the datastore) |
-| `save(domain: DomainSpecificObject)`   | Insert/Update (upsert by identity)          |
-| `delete(id: DomainSpecificId)`         | Delete                                      |
-| `search(filter: &SomeFilter)`          | Query                                       |
+| Name                                   | Action                                               |
+| -------------------------------------- | ---------------------------------------------------- |
+| `create(domain: DomainSpecificObject)` | Insert (identity assigned by the datastore)          |
+| `save(domain: DomainSpecificObject)`   | Insert/Update (upsert by identity), writing children |
+| `delete(filter: &SomeFilter)`          | Delete every aggregate matching the filter           |
+| `search(filter: &SomeFilter)`          | Query the aggregates matching the filter             |
 
-`save` is the default mutation when an aggregate is stored as one row. An aggregate may instead expose narrowly-scoped
-explicit mutators when a whole-row upsert would be wrong — for example `UploadRepository` records each received chunk as
-a child row (`record_chunk`) and transitions the upload to finished under a guard (`finish`), so no method rewrites a
-stale copy of the whole aggregate.
+`save` is the default mutation when an aggregate is stored as one row, and it persists the child collections the
+aggregate carries (a playlist's tracks, an album's mediums and placements, a show's seasons and episodes). An aggregate
+may instead expose narrowly-scoped child mutators named `<verb>_<child>` — for example `SeriesRepository::save_episode`,
+`MusicAlbumRepository::save_medium` and `MusicPlaylistRepository::delete_track` — when a whole-row write would be wrong.
+
+`delete` takes a filter rather than an identity: an all-`None` filter deletes every aggregate the repository owns, and a
+filter naming one or more fields deletes the matches. It returns `Ok(false)` when nothing matched (`STY-RUST-046`).
+There is no per-identity `get`, `find` or `exists`: `search` with the identity in the filter is the read, and an empty
+result is the not-found answer.
 
 The classic `search` is the aggregate query: it returns the aggregate (`STY-RUST-081`). The port declares no read model
 for it — a summary or a detail the representation needs is assembled by the application from the aggregate, never
 returned by the port and never stitched from per-aggregate lookups. A query that reads an aggregate's child collection
-is named for the child (`GalleryRepository::search_items`), which is what distinguishes it from the classic query.
+is named for the child (`GalleryRepository::search_items`, `SeriesRepository::search_episodes`,
+`MusicAlbumRepository::search_recordings`), which is what distinguishes it from the classic query.
 
 ---
 
@@ -1117,10 +1123,14 @@ crate-private surface turns them on, and each finding is settled here rather tha
   adding one is a reviewed change to that budget rather than an accident.
 - `clippy::missing_docs_in_private_items` is satisfied, not allowed: every module declaration carries a `///` doc and
   every private field and variant carries one.
-- `dead_code` reports the contract the crate declares but no caller exercises yet — the internal video-identification
-  path, which has no REST caller, and the error variants, repository methods and setters another rule mandates. Each
-  cluster carries an `#![allow(dead_code, reason = "…")]` or an `#[expect(dead_code, reason = "…")]` naming why the item
-  stays. The attribute is a record, not an exemption from this rule: the declaration still follows the ladder.
+- `dead_code` reports the contract the crate declares but no caller exercises yet — the port error variants and the
+  getters another rule mandates. There is no module-level allow: a `#![allow(dead_code, …)]` or
+  `#![expect(dead_code, …)]` would absolve dead code added to the module later, and the `allow` form never expires. The
+  exemption is item-scoped and self-expiring instead: a dead item that must stay carries
+  `#[expect(dead_code, reason = "…")]`, and an item only test code exercises carries
+  `#[cfg_attr(not(test), expect(dead_code, reason = "…"))]` (drawn from `src/lib/domain/model/artwork.rs` and
+  `src/lib/infrastructure/outbound/envy/state_seeds.rs`). An item with no contract behind it is deleted, not annotated.
+  The attribute is a record, not an exemption from this rule: the declaration still follows the ladder.
 
 **Before and after.** The `after` lines of both examples are the source today, drawn from
 `src/lib/domain/model/movie.rs` and `src/lib/infrastructure/inbound/rest/handler/library/get_movie.rs`:

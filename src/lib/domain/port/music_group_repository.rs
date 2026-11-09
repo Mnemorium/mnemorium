@@ -28,12 +28,28 @@ pub(crate) trait MusicGroupRepository: Send + Sync {
         group: MusicGroup,
     ) -> impl Future<Output = Result<MusicGroup, RepositoryError>> + Send;
 
-    /// Return the group identified by `id`, or `None` when no group matches.
-    fn get(
+    /// Delete every group matching `filter`.
+    ///
+    /// Returns `Ok(true)` when at least one group was deleted, and `Ok(false)`
+    /// when none matched. An all-`None` filter deletes every group; the
+    /// default group is never deleted and is reported as
+    /// [`RepositoryError::Conflict`].
+    #[expect(
+        dead_code,
+        reason = "part of the type's declared contract; no caller exercises it yet"
+    )]
+    fn delete(
         &mut self,
-        id: NumericID,
-    ) -> impl Future<Output = Result<Option<MusicGroup>, RepositoryError>> + Send;
+        filter: &MusicGroupFilter,
+    ) -> impl Future<Output = Result<bool, RepositoryError>> + Send;
 
+    /// Persist `group` over the stored group carrying its identifier and return
+    /// the stored value. The group is inserted when no row carries its
+    /// identifier.
+    fn save(
+        &mut self,
+        group: MusicGroup,
+    ) -> impl Future<Output = Result<MusicGroup, RepositoryError>> + Send;
     /// Search the groups matching `filter`, returned as `Vec<MusicGroup>`.
     ///
     /// Returns an empty list when no group matches; a missing match is a valid
@@ -42,13 +58,6 @@ pub(crate) trait MusicGroupRepository: Send + Sync {
         &mut self,
         filter: &MusicGroupFilter,
     ) -> impl Future<Output = Result<Vec<MusicGroup>, RepositoryError>> + Send;
-
-    /// Persist `group` over the stored group carrying its identifier and return
-    /// the stored value, or `None` when no group matches.
-    fn update(
-        &mut self,
-        group: MusicGroup,
-    ) -> impl Future<Output = Result<Option<MusicGroup>, RepositoryError>> + Send;
 }
 
 #[cfg(test)]
@@ -60,11 +69,18 @@ impl<T: MusicGroupRepository + ?Sized> MusicGroupRepository for &mut T {
         (**self).create(group)
     }
 
-    fn get(
+    fn delete(
         &mut self,
-        id: NumericID,
-    ) -> impl Future<Output = Result<Option<MusicGroup>, RepositoryError>> + Send {
-        (**self).get(id)
+        filter: &MusicGroupFilter,
+    ) -> impl Future<Output = Result<bool, RepositoryError>> + Send {
+        (**self).delete(filter)
+    }
+
+    fn save(
+        &mut self,
+        group: MusicGroup,
+    ) -> impl Future<Output = Result<MusicGroup, RepositoryError>> + Send {
+        (**self).save(group)
     }
 
     fn search(
@@ -72,12 +88,5 @@ impl<T: MusicGroupRepository + ?Sized> MusicGroupRepository for &mut T {
         filter: &MusicGroupFilter,
     ) -> impl Future<Output = Result<Vec<MusicGroup>, RepositoryError>> + Send {
         (**self).search(filter)
-    }
-
-    fn update(
-        &mut self,
-        group: MusicGroup,
-    ) -> impl Future<Output = Result<Option<MusicGroup>, RepositoryError>> + Send {
-        (**self).update(group)
     }
 }

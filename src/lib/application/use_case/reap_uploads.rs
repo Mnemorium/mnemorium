@@ -96,14 +96,22 @@ where
                 .map_err(|error| ReapUploadsError::Unknown(error.into()))?;
             let sessions = expired_unit_of_work
                 .uploads()
-                .expired(expired_before, batch_size)
+                .search(&UploadFilter {
+                    created_at: Some(expired_before),
+                    is_finished: Some(false),
+                    is_verifying: Some(false),
+                    ..UploadFilter::default()
+                })
                 .await
                 .map_err(|error| ReapUploadsError::Unknown(error.into()))?;
-            for session in &sessions {
+            for session in sessions.iter().take(batch_size) {
                 discard_staged(&file_storage, session.upload_id()).await;
                 let deleted = expired_unit_of_work
                     .uploads()
-                    .delete(session.upload_id())
+                    .delete(&UploadFilter {
+                        upload_id: Some(session.upload_id()),
+                        ..UploadFilter::default()
+                    })
                     .await
                     .map_err(|error| ReapUploadsError::Unknown(error.into()))?;
                 if deleted {
@@ -125,18 +133,22 @@ where
                 .map_err(|error| ReapUploadsError::Unknown(error.into()))?;
             let stale = seal_unit_of_work
                 .uploads()
-                .stale_seals(stale_before, batch_size)
+                .search(&UploadFilter {
+                    is_verifying: Some(true),
+                    sealed_at: Some(stale_before),
+                    ..UploadFilter::default()
+                })
                 .await
                 .map_err(|error| ReapUploadsError::Unknown(error.into()))?;
-            for session in &stale {
-                let cleared = seal_unit_of_work
+            for session in stale.iter().take(batch_size) {
+                let mut released = session.clone();
+                released.unseal();
+                seal_unit_of_work
                     .uploads()
-                    .unseal(session.upload_id())
+                    .save(released)
                     .await
                     .map_err(|error| ReapUploadsError::Unknown(error.into()))?;
-                if cleared {
-                    unsealed = unsealed.saturating_add(1);
-                }
+                unsealed = unsealed.saturating_add(1);
             }
             seal_unit_of_work
                 .commit()
@@ -296,13 +308,13 @@ mod tests {
         phase_two: &mut MockUploadRepository,
     ) {
         phase_one
-            .expect_expired()
+            .expect_search()
             .times(1)
-            .returning(|_, _| Box::pin(async { Ok(Vec::new()) }));
+            .returning(|_| Box::pin(async { Ok(Vec::new()) }));
         phase_two
-            .expect_stale_seals()
+            .expect_search()
             .times(1)
-            .returning(|_, _| Box::pin(async { Ok(Vec::new()) }));
+            .returning(|_| Box::pin(async { Ok(Vec::new()) }));
     }
 
     /// Expect the staging listing to be empty.
@@ -319,18 +331,19 @@ mod tests {
         // Arrange
         let mut phase_one_uploads = MockUploadRepository::new();
         phase_one_uploads
-            .expect_expired()
+            .expect_search()
             .times(1)
-            .returning(|_, _| Box::pin(async { Ok(vec![upload(7, false)?]) }));
+            .returning(|_| Box::pin(async { Ok(vec![upload(7, false)?]) }));
         phase_one_uploads
             .expect_delete()
             .times(1)
+            .withf(|filter| filter.upload_id == Some(7))
             .returning(|_| Box::pin(async { Ok(true) }));
         let mut phase_two_uploads = MockUploadRepository::new();
         phase_two_uploads
-            .expect_stale_seals()
+            .expect_search()
             .times(1)
-            .returning(|_, _| Box::pin(async { Ok(Vec::new()) }));
+            .returning(|_| Box::pin(async { Ok(Vec::new()) }));
         let mut file_storage = MockFileStorage::new();
         file_storage
             .expect_delete_upload_file()
@@ -367,18 +380,18 @@ mod tests {
         // Arrange
         let mut phase_one_uploads = MockUploadRepository::new();
         phase_one_uploads
-            .expect_expired()
+            .expect_search()
             .times(1)
-            .returning(|_, _| Box::pin(async { Ok(Vec::new()) }));
+            .returning(|_| Box::pin(async { Ok(Vec::new()) }));
         let mut phase_two_uploads = MockUploadRepository::new();
         phase_two_uploads
-            .expect_stale_seals()
+            .expect_search()
             .times(1)
-            .returning(|_, _| Box::pin(async { Ok(vec![upload(7, true)?]) }));
+            .returning(|_| Box::pin(async { Ok(vec![upload(7, true)?]) }));
         phase_two_uploads
-            .expect_unseal()
+            .expect_save()
             .times(1)
-            .returning(|_| Box::pin(async { Ok(true) }));
+            .returning(|released| Box::pin(async move { Ok(released) }));
         let mut file_storage = MockFileStorage::new();
         expect_no_staged_content(&mut file_storage);
         let harness = use_case_with(
@@ -408,14 +421,14 @@ mod tests {
         // Arrange
         let mut phase_one_uploads = MockUploadRepository::new();
         phase_one_uploads
-            .expect_expired()
+            .expect_search()
             .times(1)
-            .returning(|_, _| Box::pin(async { Ok(Vec::new()) }));
+            .returning(|_| Box::pin(async { Ok(Vec::new()) }));
         let mut phase_two_uploads = MockUploadRepository::new();
         phase_two_uploads
-            .expect_stale_seals()
+            .expect_search()
             .times(1)
-            .returning(|_, _| Box::pin(async { Ok(Vec::new()) }));
+            .returning(|_| Box::pin(async { Ok(Vec::new()) }));
         let mut phase_three_uploads = MockUploadRepository::new();
         phase_three_uploads
             .expect_search()
@@ -460,14 +473,14 @@ mod tests {
         // Arrange
         let mut phase_one_uploads = MockUploadRepository::new();
         phase_one_uploads
-            .expect_expired()
+            .expect_search()
             .times(1)
-            .returning(|_, _| Box::pin(async { Ok(Vec::new()) }));
+            .returning(|_| Box::pin(async { Ok(Vec::new()) }));
         let mut phase_two_uploads = MockUploadRepository::new();
         phase_two_uploads
-            .expect_stale_seals()
+            .expect_search()
             .times(1)
-            .returning(|_, _| Box::pin(async { Ok(Vec::new()) }));
+            .returning(|_| Box::pin(async { Ok(Vec::new()) }));
         let mut phase_three_uploads = MockUploadRepository::new();
         phase_three_uploads
             .expect_search()
@@ -508,14 +521,14 @@ mod tests {
         // Arrange
         let mut phase_one_uploads = MockUploadRepository::new();
         phase_one_uploads
-            .expect_expired()
+            .expect_search()
             .times(1)
-            .returning(|_, _| Box::pin(async { Ok(Vec::new()) }));
+            .returning(|_| Box::pin(async { Ok(Vec::new()) }));
         let mut phase_two_uploads = MockUploadRepository::new();
         phase_two_uploads
-            .expect_stale_seals()
+            .expect_search()
             .times(1)
-            .returning(|_, _| Box::pin(async { Ok(Vec::new()) }));
+            .returning(|_| Box::pin(async { Ok(Vec::new()) }));
         let mut file_storage = MockFileStorage::new();
         file_storage
             .expect_list_staged()
@@ -551,9 +564,9 @@ mod tests {
         // Arrange
         let mut phase_one_uploads = MockUploadRepository::new();
         phase_one_uploads
-            .expect_expired()
+            .expect_search()
             .times(1)
-            .returning(|_, _| Box::pin(async { Err(RepositoryError::OperationFailed) }));
+            .returning(|_| Box::pin(async { Err(RepositoryError::OperationFailed) }));
         let harness = use_case_with(
             TestUnitOfWork {
                 uploads: phase_one_uploads,

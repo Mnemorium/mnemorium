@@ -30,6 +30,8 @@ pub(crate) mod integrity_hash;
 pub(crate) mod media_metadata;
 /// The media query domain model.
 pub(crate) mod media_query;
+/// The mime type domain model.
+pub(crate) mod mime_type;
 /// The movie domain model.
 pub(crate) mod movie;
 /// The music album domain model.

@@ -2367,8 +2367,7 @@ impl From<GetPlaylistTrackError> for ApiError {
 impl From<UpdatePlaylistError> for ApiError {
     fn from(err: UpdatePlaylistError) -> Self {
         match err {
-            UpdatePlaylistError::Conflict
-            | UpdatePlaylistError::NameAlreadyExists
+            UpdatePlaylistError::NameAlreadyExists
             | UpdatePlaylistError::RecordingAlreadyPresent => Self::Conflict(err.to_string()),
             UpdatePlaylistError::Forbidden => Self::Forbidden(err.to_string()),
             UpdatePlaylistError::InvalidName

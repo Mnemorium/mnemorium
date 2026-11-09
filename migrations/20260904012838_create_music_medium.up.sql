@@ -14,5 +14,5 @@ CREATE TABLE music_medium (
     CONSTRAINT chk_music_medium_type CHECK (type IN ('CD', 'DIGITAL')),
     CONSTRAINT fk_music_medium_music_album FOREIGN KEY (
         music_album_id
-    ) REFERENCES music_album (music_album_id)
+    ) REFERENCES music_album (music_album_id) ON DELETE CASCADE
 );

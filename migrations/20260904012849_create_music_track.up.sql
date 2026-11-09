@@ -10,10 +10,10 @@ CREATE TABLE music_track (
     ) REFERENCES music_playlist (music_playlist_id) ON DELETE CASCADE,
     CONSTRAINT fk_music_track_medium FOREIGN KEY (
         music_medium_id
-    ) REFERENCES music_medium (music_medium_id),
+    ) REFERENCES music_medium (music_medium_id) ON DELETE CASCADE,
     CONSTRAINT fk_music_track_recording FOREIGN KEY (
         music_recording_id
-    ) REFERENCES music_recording (music_recording_id),
+    ) REFERENCES music_recording (music_recording_id) ON DELETE CASCADE,
     CONSTRAINT chk_music_track_track_index CHECK (track_index >= 0),
     CONSTRAINT chk_music_track_one_container CHECK (
         (music_medium_id IS NOT NULL) <> (music_playlist_id IS NOT NULL)

@@ -8,9 +8,21 @@ use crate::domain::port::error::RepositoryError;
 
 /// Search filters for [`UploadRepository::search`]. Every field is optional;
 /// an all-`None` filter returns every upload.
+///
+/// The time fields bound a comparison rather than name an exact value:
+/// `created_at` selects uploads created at or before it, and `sealed_at`
+/// selects uploads sealed at or before it.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 #[non_exhaustive]
 pub(crate) struct UploadFilter {
+    /// Filter on the creation instant.
+    pub created_at: Option<NaiveDateTime>,
+    /// Filter on whether the upload has finished.
+    pub is_finished: Option<bool>,
+    /// Filter on whether a completion is verifying the upload.
+    pub is_verifying: Option<bool>,
+    /// Filter on the verification seal instant.
+    pub sealed_at: Option<NaiveDateTime>,
     /// Filter on the upload identifier.
     pub upload_id: Option<NumericID>,
     /// Filter on the owning user identifier.
@@ -30,36 +42,15 @@ pub(crate) trait UploadRepository: Send + Sync {
         upload: Upload,
     ) -> impl Future<Output = Result<Upload, RepositoryError>> + Send;
 
-    /// Delete the upload identified by `id`.
+    /// Delete every upload matching `filter`.
     ///
-    /// Returns `Ok(true)` when an upload matched `id` and was deleted, and
-    /// `Ok(false)` when no upload matched. A missing upload is a valid outcome,
-    /// not an error.
+    /// Returns `Ok(true)` when at least one upload was deleted, and `Ok(false)`
+    /// when none matched. An all-`None` filter deletes every upload; chunk rows
+    /// cascade.
     fn delete(
         &mut self,
-        id: NumericID,
+        filter: &UploadFilter,
     ) -> impl Future<Output = Result<bool, RepositoryError>> + Send;
-
-    /// Delete every recorded chunk row of the upload identified by `id`.
-    ///
-    /// Returns `Ok(true)` when at least one chunk row was deleted, and
-    /// `Ok(false)` when the upload recorded none. A missing upload is a valid
-    /// outcome, not an error.
-    fn delete_chunks(
-        &mut self,
-        id: NumericID,
-    ) -> impl Future<Output = Result<bool, RepositoryError>> + Send;
-
-    /// Return pending, unsealed uploads created before `instant`, oldest first,
-    /// at most `limit` of them.
-    ///
-    /// Returns an empty list when nothing matches; a missing match is a valid
-    /// outcome, not an error.
-    fn expired(
-        &mut self,
-        instant: NaiveDateTime,
-        limit: usize,
-    ) -> impl Future<Output = Result<Vec<Upload>, RepositoryError>> + Send;
 
     /// Mark the upload identified by `id` finished under a guard on its pending
     /// state.
@@ -78,28 +69,17 @@ pub(crate) trait UploadRepository: Send + Sync {
         id: NumericID,
     ) -> impl Future<Output = Result<Option<Upload>, RepositoryError>> + Send;
 
-    /// Record `chunk_number` as received for the upload identified by `id`.
+    /// Persist `upload` over the stored upload carrying its identifier,
+    /// replacing its chunk rows with the bitmap it records and its verification
+    /// seal.
     ///
-    /// Recording an already recorded chunk is a no-op (idempotent). Fails with
-    /// [`RepositoryError::Conflict`] when the upload is finished or sealed: its
-    /// chunks are sealed once a completion verifies it.
-    fn record_chunk(
+    /// Returns the persisted upload. A missing target is reported as
+    /// [`RepositoryError::OperationFailed`]: the upload lifecycle only updates
+    /// a row it created in the same session.
+    fn save(
         &mut self,
-        id: NumericID,
-        chunk_number: u64,
-    ) -> impl Future<Output = Result<(), RepositoryError>> + Send;
-
-    /// Seal the upload identified by `id` for verification at `sealed_at`.
-    ///
-    /// Returns `Ok(true)` when a pending, unsealed upload transitioned to
-    /// sealed, and `Ok(false)` when the guard matched no row: the upload is
-    /// missing, is already finished, or another verification holds the seal. A
-    /// missing upload is a valid outcome, not an error.
-    fn seal(
-        &mut self,
-        id: NumericID,
-        sealed_at: NaiveDateTime,
-    ) -> impl Future<Output = Result<bool, RepositoryError>> + Send;
+        upload: Upload,
+    ) -> impl Future<Output = Result<Upload, RepositoryError>> + Send;
 
     /// Search uploads matching `filter`, returned as `Vec<Upload>`.
     ///
@@ -109,26 +89,6 @@ pub(crate) trait UploadRepository: Send + Sync {
         &mut self,
         filter: &UploadFilter,
     ) -> impl Future<Output = Result<Vec<Upload>, RepositoryError>> + Send;
-
-    /// Return uploads whose verification seal started before `instant`, at most
-    /// `limit` of them.
-    ///
-    /// Returns an empty list when nothing matches; a missing match is a valid
-    /// outcome, not an error.
-    fn stale_seals(
-        &mut self,
-        instant: NaiveDateTime,
-        limit: usize,
-    ) -> impl Future<Output = Result<Vec<Upload>, RepositoryError>> + Send;
-
-    /// Clear the verification seal of the upload identified by `id`.
-    ///
-    /// Unsealing an upload that is not sealed is a no-op. Returns `Ok(true)` when
-    /// a sealed upload was unsealed and `Ok(false)` when no upload matched.
-    fn unseal(
-        &mut self,
-        id: NumericID,
-    ) -> impl Future<Output = Result<bool, RepositoryError>> + Send;
 }
 
 #[cfg(test)]
@@ -142,24 +102,9 @@ impl<T: UploadRepository + ?Sized> UploadRepository for &mut T {
 
     fn delete(
         &mut self,
-        id: NumericID,
+        filter: &UploadFilter,
     ) -> impl Future<Output = Result<bool, RepositoryError>> + Send {
-        (**self).delete(id)
-    }
-
-    fn delete_chunks(
-        &mut self,
-        id: NumericID,
-    ) -> impl Future<Output = Result<bool, RepositoryError>> + Send {
-        (**self).delete_chunks(id)
-    }
-
-    fn expired(
-        &mut self,
-        instant: NaiveDateTime,
-        limit: usize,
-    ) -> impl Future<Output = Result<Vec<Upload>, RepositoryError>> + Send {
-        (**self).expired(instant, limit)
+        (**self).delete(filter)
     }
 
     fn finish(
@@ -169,20 +114,11 @@ impl<T: UploadRepository + ?Sized> UploadRepository for &mut T {
         (**self).finish(id)
     }
 
-    fn record_chunk(
+    fn save(
         &mut self,
-        id: NumericID,
-        chunk_number: u64,
-    ) -> impl Future<Output = Result<(), RepositoryError>> + Send {
-        (**self).record_chunk(id, chunk_number)
-    }
-
-    fn seal(
-        &mut self,
-        id: NumericID,
-        sealed_at: NaiveDateTime,
-    ) -> impl Future<Output = Result<bool, RepositoryError>> + Send {
-        (**self).seal(id, sealed_at)
+        upload: Upload,
+    ) -> impl Future<Output = Result<Upload, RepositoryError>> + Send {
+        (**self).save(upload)
     }
 
     fn search(
@@ -190,20 +126,5 @@ impl<T: UploadRepository + ?Sized> UploadRepository for &mut T {
         filter: &UploadFilter,
     ) -> impl Future<Output = Result<Vec<Upload>, RepositoryError>> + Send {
         (**self).search(filter)
-    }
-
-    fn stale_seals(
-        &mut self,
-        instant: NaiveDateTime,
-        limit: usize,
-    ) -> impl Future<Output = Result<Vec<Upload>, RepositoryError>> + Send {
-        (**self).stale_seals(instant, limit)
-    }
-
-    fn unseal(
-        &mut self,
-        id: NumericID,
-    ) -> impl Future<Output = Result<bool, RepositoryError>> + Send {
-        (**self).unseal(id)
     }
 }

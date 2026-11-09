@@ -6,5 +6,5 @@ CREATE TABLE music_group (
     CONSTRAINT uq_music_group_stage_name UNIQUE (stage_name),
     CONSTRAINT fk_music_group_cover_image FOREIGN KEY (
         cover_image_id
-    ) REFERENCES image (image_id)
+    ) REFERENCES image (image_id) ON DELETE SET NULL
 );

@@ -68,13 +68,11 @@ where
     /// Wait until `path`'s size and modification instant stop changing.
     ///
     /// Returns the stable entry, or `None` when the file vanished or kept
-    /// changing past [`MediaIngestRuntime::stability_timeout`].
-    #[expect(
-        clippy::arithmetic_side_effects,
-        reason = "a monotonic deadline built from two bounded durations cannot overflow"
-    )]
+    /// changing past [`MediaIngestRuntime::stability_timeout`]. A deadline the
+    /// clock cannot represent also yields `None`, so the gate gives up on the
+    /// path rather than panicking.
     async fn await_stable(&self, path: &str) -> Option<MediaEntry> {
-        let deadline = Instant::now() + self.stability_timeout;
+        let deadline = Instant::now().checked_add(self.stability_timeout)?;
         let mut previous: Option<MediaEntry> = None;
         loop {
             if Instant::now() >= deadline {
@@ -391,17 +389,13 @@ mod tests {
     }
 
     /// A source whose file keeps growing for two samples before settling.
-    #[expect(
-        clippy::arithmetic_side_effects,
-        reason = "the fixture size is a small bounded multiple"
-    )]
     fn changing_sizes_source() -> MockMediaSource {
         let mut source = MockMediaSource::new();
         let mut samples = 0u32;
         source.expect_stat().returning(move |_| {
             samples = samples.saturating_add(1);
             let size = if samples < 3 {
-                i64::from(samples) * 3
+                i64::from(samples).saturating_mul(3)
             } else {
                 9
             };

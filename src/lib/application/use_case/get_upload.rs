@@ -147,7 +147,10 @@ where
                     }
                     if unit_of_work
                         .uploads()
-                        .delete(command.upload_id())
+                        .delete(&UploadFilter {
+                            upload_id: Some(command.upload_id()),
+                            ..UploadFilter::default()
+                        })
                         .await
                         .is_err()
                     {

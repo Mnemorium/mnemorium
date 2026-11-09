@@ -27,13 +27,13 @@ use crate::domain::port::gallery_repository::{
 use crate::domain::port::identity_unit_of_work::IdentityUnitOfWork;
 use crate::domain::port::image_repository::{ImageFilter, ImageRepository as _};
 use crate::domain::port::library_unit_of_work::LibraryUnitOfWork;
-use crate::domain::port::movie_repository::MovieRepository as _;
-use crate::domain::port::music_album_repository::MusicAlbumRepository as _;
+use crate::domain::port::movie_repository::{MovieFilter, MovieRepository as _};
+use crate::domain::port::music_album_repository::{MusicAlbumFilter, MusicAlbumRepository as _};
 use crate::domain::port::music_playlist_repository::{
     MusicPlaylistFilter, MusicPlaylistRepository as _,
 };
 use crate::domain::port::permission_repository::{PermissionFilter, PermissionRepository as _};
-use crate::domain::port::series_repository::SeriesRepository as _;
+use crate::domain::port::series_repository::{EpisodeFilter, SeriesRepository as _};
 use crate::domain::port::user_repository::{UserFilter, UserRepository as _};
 use crate::domain::port::user_unit_of_work::UserUnitOfWork;
 use crate::domain::port::video_repository::{VideoFilter, VideoRepository as _};
@@ -203,9 +203,14 @@ where
             None => {
                 let movie = unit_of_work
                     .movies()
-                    .find_by_video(video_row.id())
+                    .search(&MovieFilter {
+                        video_id: Some(video_row.id()),
+                        ..MovieFilter::default()
+                    })
                     .await
-                    .map_err(AssetAccessError::repository)?;
+                    .map_err(AssetAccessError::repository)?
+                    .into_iter()
+                    .next();
                 if let Some(attached_movie) = movie {
                     Authorization::decide(
                         &caller,
@@ -213,12 +218,15 @@ where
                         Action::LibraryRead,
                         &attached_movie,
                     )
-                } else if unit_of_work
+                } else if !unit_of_work
                     .series()
-                    .find_episode_by_video(video_row.id())
+                    .search_episodes(&EpisodeFilter {
+                        video_id: Some(video_row.id()),
+                        ..EpisodeFilter::default()
+                    })
                     .await
                     .map_err(AssetAccessError::repository)?
-                    .is_some()
+                    .is_empty()
                 {
                     Authorization::decide_library_surface(&caller, &permissions)
                 } else {
@@ -229,9 +237,14 @@ where
         (None, None, Some(audio_row)) => {
             let album = unit_of_work
                 .music_albums()
-                .find_album_by_audio(audio_row.id())
+                .search(&MusicAlbumFilter {
+                    audio_id: Some(audio_row.id()),
+                    ..MusicAlbumFilter::default()
+                })
                 .await
-                .map_err(AssetAccessError::repository)?;
+                .map_err(AssetAccessError::repository)?
+                .into_iter()
+                .next();
             match album {
                 Some(attached_album) => Authorization::decide(
                     &caller,
@@ -470,9 +483,9 @@ mod tests {
         let mut movies = MockMovieRepository::new();
         let movie = sample_movie(5)?;
         movies
-            .expect_find_by_video()
+            .expect_search()
             .times(1)
-            .return_once(move |_| Box::pin(async move { Ok(Some(movie)) }));
+            .return_once(move |_| Box::pin(async move { Ok(vec![movie]) }));
         let mut uow = uow_with(
             users,
             permissions,
@@ -530,9 +543,9 @@ mod tests {
         let mut movies = MockMovieRepository::new();
         let movie = sample_movie(5)?;
         movies
-            .expect_find_by_video()
+            .expect_search()
             .times(1)
-            .return_once(move |_| Box::pin(async move { Ok(Some(movie)) }));
+            .return_once(move |_| Box::pin(async move { Ok(vec![movie]) }));
         let mut uow = uow_with(
             users,
             permissions,
@@ -637,9 +650,9 @@ mod tests {
             .returning(|_| Box::pin(async { Ok(Vec::new()) }));
         let mut albums = MockMusicAlbumRepository::new();
         albums
-            .expect_find_album_by_audio()
+            .expect_search()
             .times(1)
-            .returning(|_| Box::pin(async { Ok(None) }));
+            .returning(|_| Box::pin(async { Ok(Vec::new()) }));
         let mut uow = uow_with(
             users,
             permissions,

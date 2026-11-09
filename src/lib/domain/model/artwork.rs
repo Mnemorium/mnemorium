@@ -1,8 +1,3 @@
-#![allow(
-    dead_code,
-    reason = "downloaded artwork belongs to the internal video-identification path, which has no REST caller yet"
-)]
-
 /// Artwork a provider reports, as image content.
 ///
 /// The bytes are the downloaded image and the media type is the one sniffed
@@ -20,12 +15,26 @@ pub(crate) struct Artwork {
 impl Artwork {
     /// Return the content of the image.
     #[must_use]
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "the downloaded artwork keeps the read surface its contract declares; only tests read the payload"
+        )
+    )]
     pub(crate) fn bytes(&self) -> &[u8] {
         &self.bytes
     }
 
     /// Return the media type sniffed from the content.
     #[must_use]
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "the downloaded artwork keeps the read surface its contract declares; only tests read the media type"
+        )
+    )]
     pub(crate) fn media_type(&self) -> &str {
         &self.media_type
     }

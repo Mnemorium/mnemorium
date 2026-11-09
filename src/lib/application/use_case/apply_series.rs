@@ -161,21 +161,16 @@ where
                 )
                 .map_err(|_| ApplySeriesError::InvalidReference)?;
 
-                let stored = unit_of_work
-                    .series()
-                    .update(updated)
-                    .await
-                    .map_err(|error| {
-                        if matches!(
-                            error,
-                            RepositoryError::AlreadyExist | RepositoryError::Conflict
-                        ) {
-                            ApplySeriesError::Conflict
-                        } else {
-                            ApplySeriesError::Unknown(error.into())
-                        }
-                    })?
-                    .ok_or(ApplySeriesError::NoSuchSeries)?;
+                let stored = unit_of_work.series().save(updated).await.map_err(|error| {
+                    if matches!(
+                        error,
+                        RepositoryError::AlreadyExist | RepositoryError::Conflict
+                    ) {
+                        ApplySeriesError::Conflict
+                    } else {
+                        ApplySeriesError::Unknown(error.into())
+                    }
+                })?;
 
                 Ok(ApplySeriesResponse::new(stored))
             }
@@ -283,9 +278,9 @@ mod tests {
         let mut series = MockSeriesRepository::new();
         loaded(&mut series, stored);
         series
-            .expect_update()
+            .expect_save()
             .times(1)
-            .returning(|show| Box::pin(async move { Ok(Some(show)) }));
+            .returning(|show| Box::pin(async move { Ok(show) }));
         let mut provider = MockVideoMetadataProvider::new();
         provider
             .expect_lookup()
@@ -321,9 +316,9 @@ mod tests {
         let mut series = MockSeriesRepository::new();
         loaded(&mut series, sample_series(7, Vec::new())?);
         series
-            .expect_update()
+            .expect_save()
             .times(1)
-            .returning(|show| Box::pin(async move { Ok(Some(show)) }));
+            .returning(|show| Box::pin(async move { Ok(show) }));
         let mut provider = MockVideoMetadataProvider::new();
         provider.expect_lookup().times(1).return_once(|_| {
             Box::pin(async {

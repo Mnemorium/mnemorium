@@ -17,5 +17,5 @@ CREATE TABLE season (
     ) ON DELETE CASCADE,
     CONSTRAINT fk_season_cover_image FOREIGN KEY (
         cover_image_id
-    ) REFERENCES image (image_id)
+    ) REFERENCES image (image_id) ON DELETE SET NULL
 );

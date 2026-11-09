@@ -34,33 +34,14 @@ pub(crate) trait VideoRepository: Send + Sync {
         video: Video,
     ) -> impl Future<Output = Result<Video, RepositoryError>> + Send;
 
-    /// Delete the video identified by `id`.
+    /// Delete every video matching `filter`, together with its streams.
     ///
-    /// Returns `Ok(true)` when a video matched `id` and was deleted, and
-    /// `Ok(false)` when no video matched. A missing video is a valid outcome,
-    /// not an error.
+    /// Returns `Ok(true)` when at least one video was deleted, and `Ok(false)`
+    /// when none matched. An all-`None` filter deletes every video.
     fn delete(
         &mut self,
-        id: NumericID,
+        filter: &VideoFilter,
     ) -> impl Future<Output = Result<bool, RepositoryError>> + Send;
-
-    /// Delete the streams of the video identified by `video_id`.
-    ///
-    /// The stream rows and their audio and subtitle descriptors are removed.
-    /// Returns `Ok(true)` when a stream matched `video_id` and was deleted, and
-    /// `Ok(false)` when the video had no stream.
-    fn delete_streams(
-        &mut self,
-        video_id: NumericID,
-    ) -> impl Future<Output = Result<bool, RepositoryError>> + Send;
-
-    /// Return the video identified by `id`, if any.
-    ///
-    /// A missing video is `Ok(None)`, not an error.
-    fn get(
-        &mut self,
-        id: NumericID,
-    ) -> impl Future<Output = Result<Option<Video>, RepositoryError>> + Send;
 
     /// Search videos matching `filter`, returned as `Vec<Video>`.
     ///
@@ -83,23 +64,9 @@ impl<T: VideoRepository + ?Sized> VideoRepository for &mut T {
 
     fn delete(
         &mut self,
-        id: NumericID,
+        filter: &VideoFilter,
     ) -> impl Future<Output = Result<bool, RepositoryError>> + Send {
-        (**self).delete(id)
-    }
-
-    fn delete_streams(
-        &mut self,
-        video_id: NumericID,
-    ) -> impl Future<Output = Result<bool, RepositoryError>> + Send {
-        (**self).delete_streams(video_id)
-    }
-
-    fn get(
-        &mut self,
-        id: NumericID,
-    ) -> impl Future<Output = Result<Option<Video>, RepositoryError>> + Send {
-        (**self).get(id)
+        (**self).delete(filter)
     }
 
     fn search(

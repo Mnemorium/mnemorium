@@ -1986,12 +1986,8 @@ mod tests {
     }
 
     /// Return the kind of work a resolved document reports.
-    #[expect(
-        clippy::pattern_type_mismatch,
-        reason = "the arms borrow the metadata out of a non-Copy enum matched by reference"
-    )]
     fn metadata_kind(metadata: &MusicMetadata) -> MusicKind {
-        match metadata {
+        match *metadata {
             MusicMetadata::Album { .. } => MusicKind::Album,
             MusicMetadata::Recording { .. } => MusicKind::Recording,
             MusicMetadata::Release { .. } => MusicKind::Release,

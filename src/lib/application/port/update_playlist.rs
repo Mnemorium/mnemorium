@@ -96,9 +96,6 @@ impl UpdatePlaylistResponse {
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub(crate) enum UpdatePlaylistError {
-    /// A concurrent change conflicts with the requested one.
-    #[error("the playlist update conflicts with its current state")]
-    Conflict,
     /// The caller may read the playlist but does not own it.
     #[error("only the owner may change a playlist's metadata")]
     Forbidden,

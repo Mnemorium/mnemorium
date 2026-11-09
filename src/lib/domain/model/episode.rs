@@ -1,5 +1,6 @@
 use chrono::NaiveDate;
 
+use crate::domain::alias::NumericID;
 use crate::domain::model::video::Video;
 
 /// The season-scoped identity of an episode.
@@ -107,5 +108,11 @@ impl Episode {
     #[must_use]
     pub(crate) fn video(&self) -> &Video {
         &self.video
+    }
+
+    /// Return the identifier of the video backing the episode.
+    #[must_use]
+    pub(crate) fn video_id(&self) -> NumericID {
+        self.video.id()
     }
 }

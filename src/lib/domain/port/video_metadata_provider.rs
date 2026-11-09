@@ -1,8 +1,3 @@
-#![allow(
-    dead_code,
-    reason = "the video metadata provider port belongs to the internal video-identification path, which has no REST caller yet"
-)]
-
 use std::future::Future;
 
 use crate::domain::model::media_metadata::MediaMetadata;

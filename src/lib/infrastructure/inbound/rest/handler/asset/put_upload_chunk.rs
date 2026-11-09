@@ -20,12 +20,9 @@ use crate::infrastructure::inbound::rest::hal::HAL_CONTENT_TYPE;
 use crate::infrastructure::inbound::rest::handler::asset::UploadSessionResponse;
 use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
 
-/// Number of raw bytes a content digest carries.
-#[expect(
-    clippy::integer_division,
-    reason = "two hexadecimal characters encode one byte"
-)]
-const DIGEST_BYTES: usize = DIGEST_HEX_LENGTH / 2;
+/// Number of raw bytes a content digest carries: two hexadecimal characters
+/// encode one byte.
+const DIGEST_BYTES: usize = DIGEST_HEX_LENGTH >> 1;
 
 /// Raw bytes of one chunk.
 ///

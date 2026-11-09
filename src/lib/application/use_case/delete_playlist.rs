@@ -102,7 +102,10 @@ where
 
                 let deleted = unit_of_work
                     .music_playlists()
-                    .delete(command.playlist_id())
+                    .delete(&MusicPlaylistFilter {
+                        id: Some(command.playlist_id()),
+                        ..MusicPlaylistFilter::default()
+                    })
                     .await
                     .map_err(|error| DeletePlaylistError::Unknown(error.into()))?;
                 if !deleted {
@@ -201,7 +204,7 @@ mod tests {
         playlists
             .expect_delete()
             .times(1)
-            .withf(|id| *id == 3)
+            .withf(|filter| filter.id == Some(3))
             .returning(|_| Box::pin(async { Ok(true) }));
         let harness = harness_with(users, playlists);
         let use_case: UseCase = DeletePlaylist::new(Arc::clone(&harness.factory));
@@ -226,7 +229,7 @@ mod tests {
         playlists
             .expect_delete()
             .times(1)
-            .withf(|id| *id == 3)
+            .withf(|filter| filter.id == Some(3))
             .returning(|_| Box::pin(async { Ok(true) }));
         let harness = harness_with(users, playlists);
         let use_case: UseCase = DeletePlaylist::new(Arc::clone(&harness.factory));

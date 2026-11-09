@@ -28,13 +28,14 @@ pub(crate) trait AudioRepository: Send + Sync {
         audio: Audio,
     ) -> impl Future<Output = Result<Audio, RepositoryError>> + Send;
 
-    /// Delete the audio identified by `id` and its stream descriptors.
+    /// Delete every audio matching `filter`, together with its stream
+    /// descriptors.
     ///
-    /// Returns `Ok(true)` when an audio matched `id` and was deleted, and
-    /// `Ok(false)` when no audio matched. A missing audio is a valid outcome.
+    /// Returns `Ok(true)` when at least one audio was deleted, and `Ok(false)`
+    /// when none matched. An all-`None` filter deletes every audio.
     fn delete(
         &mut self,
-        id: NumericID,
+        filter: &AudioFilter,
     ) -> impl Future<Output = Result<bool, RepositoryError>> + Send;
 
     /// Search audio rows matching `filter`, returned as `Vec<Audio>`.
@@ -58,9 +59,9 @@ impl<T: AudioRepository + ?Sized> AudioRepository for &mut T {
 
     fn delete(
         &mut self,
-        id: NumericID,
+        filter: &AudioFilter,
     ) -> impl Future<Output = Result<bool, RepositoryError>> + Send {
-        (**self).delete(id)
+        (**self).delete(filter)
     }
 
     fn search(

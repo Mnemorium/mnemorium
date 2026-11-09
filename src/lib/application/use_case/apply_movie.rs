@@ -161,21 +161,16 @@ where
                 )
                 .map_err(|_| ApplyMovieError::InvalidReference)?;
 
-                let stored = unit_of_work
-                    .movies()
-                    .update(updated)
-                    .await
-                    .map_err(|error| {
-                        if matches!(
-                            error,
-                            RepositoryError::AlreadyExist | RepositoryError::Conflict
-                        ) {
-                            ApplyMovieError::Conflict
-                        } else {
-                            ApplyMovieError::Unknown(error.into())
-                        }
-                    })?
-                    .ok_or(ApplyMovieError::NoSuchMovie)?;
+                let stored = unit_of_work.movies().save(updated).await.map_err(|error| {
+                    if matches!(
+                        error,
+                        RepositoryError::AlreadyExist | RepositoryError::Conflict
+                    ) {
+                        ApplyMovieError::Conflict
+                    } else {
+                        ApplyMovieError::Unknown(error.into())
+                    }
+                })?;
 
                 Ok(ApplyMovieResponse::new(stored))
             }
@@ -283,9 +278,9 @@ mod tests {
         let mut movies = MockMovieRepository::new();
         loaded(&mut movies, sample_movie(7)?);
         movies
-            .expect_update()
+            .expect_save()
             .times(1)
-            .returning(|movie| Box::pin(async move { Ok(Some(movie)) }));
+            .returning(|movie| Box::pin(async move { Ok(movie) }));
         let mut provider = MockVideoMetadataProvider::new();
         provider
             .expect_lookup()
@@ -319,9 +314,9 @@ mod tests {
         let mut movies = MockMovieRepository::new();
         loaded(&mut movies, sample_movie(7)?);
         movies
-            .expect_update()
+            .expect_save()
             .times(1)
-            .returning(|movie| Box::pin(async move { Ok(Some(movie)) }));
+            .returning(|movie| Box::pin(async move { Ok(movie) }));
         let mut provider = MockVideoMetadataProvider::new();
         provider.expect_lookup().times(1).return_once(|_| {
             Box::pin(async {
@@ -486,7 +481,7 @@ mod tests {
         let mut movies = MockMovieRepository::new();
         loaded(&mut movies, sample_movie(7)?);
         movies
-            .expect_update()
+            .expect_save()
             .times(1)
             .returning(|_| Box::pin(async { Err(RepositoryError::Conflict) }));
         let mut provider = MockVideoMetadataProvider::new();

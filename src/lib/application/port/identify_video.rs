@@ -1,8 +1,3 @@
-#![allow(
-    dead_code,
-    reason = "the internal video-identification path has no REST caller yet, so its port is reachable only from tests"
-)]
-
 use std::future::Future;
 use std::pin::Pin;
 

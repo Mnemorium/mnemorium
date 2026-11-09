@@ -185,7 +185,7 @@ where
 
                 let written = unit_of_work
                     .series()
-                    .update_episode(command.series_id(), command.season_index(), updated)
+                    .save_episode(command.series_id(), command.season_index(), updated)
                     .await
                     .map_err(|error| {
                         if matches!(
@@ -317,7 +317,7 @@ mod tests {
             sample_series(7, vec![sample_season(1, vec![sample_episode(1, 20)?])])?,
         );
         series
-            .expect_update_episode()
+            .expect_save_episode()
             .times(1)
             .returning(|_, _, episode| Box::pin(async move { Ok(Some(episode)) }));
         let mut provider = MockVideoMetadataProvider::new();

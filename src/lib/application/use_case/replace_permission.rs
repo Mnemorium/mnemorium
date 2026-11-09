@@ -124,7 +124,10 @@ where
 
                 unit_of_work
                     .permissions()
-                    .delete_all(target.id())
+                    .delete(&PermissionFilter {
+                        user_id: Some(target.id()),
+                        ..PermissionFilter::default()
+                    })
                     .await
                     .map_err(|error| ReplacePermissionError::Unknown(error.into()))?;
                 for permission in permissions {
@@ -178,10 +181,6 @@ where
 }
 
 /// Map a permission validation failure onto the replacement error.
-#[expect(
-    clippy::needless_pass_by_value,
-    reason = "the validation error is mapped by value like every other error in the use case"
-)]
 fn map_permission_error(error: PermissionError) -> ReplacePermissionError {
     match error {
         PermissionError::DuplicateAction => ReplacePermissionError::DuplicateAction,
@@ -189,8 +188,8 @@ fn map_permission_error(error: PermissionError) -> ReplacePermissionError {
         | PermissionError::EmptyListed
         | PermissionError::NotConfigurable
         | PermissionError::UnsupportedResourceKind
-        | PermissionError::UnsupportedScope
-        | PermissionError::Unknown(_) => ReplacePermissionError::InvalidPermission,
+        | PermissionError::UnsupportedScope => ReplacePermissionError::InvalidPermission,
+        PermissionError::Unknown(source) => ReplacePermissionError::Unknown(source),
     }
 }
 
@@ -266,9 +265,9 @@ mod tests {
         let mut permissions = MockPermissionRepository::new();
         caller_permission_load(&mut permissions);
         permissions
-            .expect_delete_all()
+            .expect_delete()
             .times(1)
-            .withf(|user_id| *user_id == 5)
+            .withf(|filter| filter.user_id == Some(5))
             .returning(|_| Box::pin(async { Ok(false) }));
         permissions
             .expect_save()
@@ -322,9 +321,9 @@ mod tests {
         let mut permissions = MockPermissionRepository::new();
         caller_permission_load(&mut permissions);
         permissions
-            .expect_delete_all()
+            .expect_delete()
             .times(1)
-            .withf(|user_id| *user_id == 5)
+            .withf(|filter| filter.user_id == Some(5))
             .returning(|_| Box::pin(async { Ok(true) }));
         permissions
             .expect_search()
@@ -626,7 +625,7 @@ mod tests {
             .expect_search()
             .times(1)
             .returning(|_| Box::pin(async { Ok(Vec::new()) }));
-        permissions.expect_delete_all().times(0);
+        permissions.expect_delete().times(0);
         permissions.expect_save().times(0);
         let unit_of_work = TestUnitOfWork {
             permissions,

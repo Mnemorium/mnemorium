@@ -36,16 +36,6 @@ pub(crate) struct GalleryItemFilter {
 /// Port for persisting and querying `Gallery` and its `GalleryItem`s.
 #[cfg_attr(test, mockall::automock)]
 pub(crate) trait GalleryRepository: Send + Sync {
-    /// Insert a new `item` into its gallery, returning the persisted item with
-    /// its final identifier.
-    ///
-    /// The identifier of `item` is ignored: the repository assigns a fresh
-    /// identity.
-    fn add_item(
-        &mut self,
-        item: GalleryItem,
-    ) -> impl Future<Output = Result<GalleryItem, RepositoryError>> + Send;
-
     /// Insert a new `gallery`, returning the persisted gallery with its final
     /// identifier.
     ///
@@ -56,42 +46,25 @@ pub(crate) trait GalleryRepository: Send + Sync {
         gallery: Gallery,
     ) -> impl Future<Output = Result<Gallery, RepositoryError>> + Send;
 
-    /// Delete the gallery identified by `id`.
+    /// Delete every gallery matching `filter`.
     ///
-    /// Returns `Ok(true)` when a gallery matched `id` and was deleted, and
-    /// `Ok(false)` when no gallery matched. A missing gallery is a valid
-    /// outcome, not an error.
+    /// Returns `Ok(true)` when at least one gallery was deleted, and `Ok(false)`
+    /// when none matched. An all-`None` filter deletes every gallery; the
+    /// default gallery is never deleted and is reported as
+    /// [`RepositoryError::Conflict`].
     fn delete(
         &mut self,
-        id: NumericID,
+        filter: &GalleryFilter,
     ) -> impl Future<Output = Result<bool, RepositoryError>> + Send;
 
-    /// Delete the gallery item identified by `id`.
+    /// Delete every gallery item matching `filter`.
     ///
-    /// Returns `Ok(true)` when an item matched `id` and was deleted, and
-    /// `Ok(false)` when no item matched. A missing item is a valid outcome, not
-    /// an error.
+    /// Returns `Ok(true)` when at least one item was deleted, and `Ok(false)`
+    /// when none matched. An all-`None` filter deletes every item.
     fn delete_item(
         &mut self,
-        id: NumericID,
+        filter: &GalleryItemFilter,
     ) -> impl Future<Output = Result<bool, RepositoryError>> + Send;
-
-    /// Delete every gallery item that uses `media` as its medium.
-    ///
-    /// Returns `Ok(true)` when an item matched `media` and was deleted, and
-    /// `Ok(false)` when no gallery used the medium.
-    fn delete_items_by_media(
-        &mut self,
-        media: GalleryItemMedia,
-    ) -> impl Future<Output = Result<bool, RepositoryError>> + Send;
-
-    /// Return the index the next item added to gallery `gallery_id` would take,
-    /// that is one past the highest index currently used, or zero when the
-    /// gallery is empty.
-    fn next_item_index(
-        &mut self,
-        gallery_id: NumericID,
-    ) -> impl Future<Output = Result<i64, RepositoryError>> + Send;
 
     /// Insert or update an existing `gallery` targeted by its identifier,
     /// returning the persisted gallery.
@@ -99,6 +72,13 @@ pub(crate) trait GalleryRepository: Send + Sync {
         &mut self,
         gallery: Gallery,
     ) -> impl Future<Output = Result<Gallery, RepositoryError>> + Send;
+
+    /// Insert `item` into its gallery, returning the persisted item with its
+    /// final identifier, or update it when it already carries one.
+    fn save_item(
+        &mut self,
+        item: GalleryItem,
+    ) -> impl Future<Output = Result<GalleryItem, RepositoryError>> + Send;
 
     /// Search galleries matching `filter`, returned as `Vec<Gallery>`.
     ///
@@ -167,13 +147,6 @@ impl GalleryItemDetail {
 
 #[cfg(test)]
 impl<T: GalleryRepository + ?Sized> GalleryRepository for &mut T {
-    fn add_item(
-        &mut self,
-        item: GalleryItem,
-    ) -> impl Future<Output = Result<GalleryItem, RepositoryError>> + Send {
-        (**self).add_item(item)
-    }
-
     fn create(
         &mut self,
         gallery: Gallery,
@@ -183,30 +156,16 @@ impl<T: GalleryRepository + ?Sized> GalleryRepository for &mut T {
 
     fn delete(
         &mut self,
-        id: NumericID,
+        filter: &GalleryFilter,
     ) -> impl Future<Output = Result<bool, RepositoryError>> + Send {
-        (**self).delete(id)
+        (**self).delete(filter)
     }
 
     fn delete_item(
         &mut self,
-        id: NumericID,
+        filter: &GalleryItemFilter,
     ) -> impl Future<Output = Result<bool, RepositoryError>> + Send {
-        (**self).delete_item(id)
-    }
-
-    fn delete_items_by_media(
-        &mut self,
-        media: GalleryItemMedia,
-    ) -> impl Future<Output = Result<bool, RepositoryError>> + Send {
-        (**self).delete_items_by_media(media)
-    }
-
-    fn next_item_index(
-        &mut self,
-        gallery_id: NumericID,
-    ) -> impl Future<Output = Result<i64, RepositoryError>> + Send {
-        (**self).next_item_index(gallery_id)
+        (**self).delete_item(filter)
     }
 
     fn save(
@@ -214,6 +173,13 @@ impl<T: GalleryRepository + ?Sized> GalleryRepository for &mut T {
         gallery: Gallery,
     ) -> impl Future<Output = Result<Gallery, RepositoryError>> + Send {
         (**self).save(gallery)
+    }
+
+    fn save_item(
+        &mut self,
+        item: GalleryItem,
+    ) -> impl Future<Output = Result<GalleryItem, RepositoryError>> + Send {
+        (**self).save_item(item)
     }
 
     fn search(

@@ -1,6 +1,5 @@
 use sqlx::{QueryBuilder, Sqlite, Transaction};
 
-use crate::domain::alias::NumericID;
 use crate::domain::model::file::{File, Origin};
 use crate::domain::model::integrity_hash::IntegrityHash;
 use crate::domain::port::error::RepositoryError;
@@ -64,11 +63,29 @@ impl FileRepository for SqlxFileRepository<'_> {
         domain_file(row)
     }
 
-    async fn delete(&mut self, id: NumericID) -> Result<bool, RepositoryError> {
-        let result = sqlx::query("DELETE FROM file WHERE file_id = ?")
-            .bind(id)
-            .execute(&mut **self.transaction)
-            .await?;
+    async fn delete(&mut self, filter: &FileFilter) -> Result<bool, RepositoryError> {
+        let mut builder = QueryBuilder::<Sqlite>::new("DELETE FROM file");
+        let mut first = true;
+
+        if let Some(id) = filter.id {
+            push_filter(&mut first, &mut builder, "file_id = ", id);
+        }
+        if let Some(integrity_hash) = filter.integrity_hash.as_deref() {
+            push_filter(
+                &mut first,
+                &mut builder,
+                "integrity_hash = ",
+                integrity_hash,
+            );
+        }
+        if let Some(path) = filter.path.as_deref() {
+            push_filter(&mut first, &mut builder, "path = ", path);
+        }
+        if let Some(user_id) = filter.user_id {
+            push_filter(&mut first, &mut builder, "user_id = ", user_id);
+        }
+
+        let result = builder.build().execute(&mut **self.transaction).await?;
         Ok(result.rows_affected() > 0)
     }
 
@@ -364,8 +381,18 @@ mod tests {
             .await?;
 
         // Act
-        let deleted = repository.delete(stored.id()).await?;
-        let missing = repository.delete(stored.id()).await?;
+        let deleted = repository
+            .delete(&FileFilter {
+                id: Some(stored.id()),
+                ..FileFilter::default()
+            })
+            .await?;
+        let missing = repository
+            .delete(&FileFilter {
+                id: Some(stored.id()),
+                ..FileFilter::default()
+            })
+            .await?;
 
         // Assert
         assert!(deleted);
@@ -399,7 +426,12 @@ mod tests {
 
         // Act
         let mut repository = SqlxFileRepository::new(&mut transaction);
-        let result = repository.delete(10).await;
+        let result = repository
+            .delete(&FileFilter {
+                id: Some(10),
+                ..FileFilter::default()
+            })
+            .await;
 
         // Assert: `fk_image_file` crosses a bounded-context boundary and does
         // not cascade (`ARCH-004`, `PERS-020`), so the delete is rejected.

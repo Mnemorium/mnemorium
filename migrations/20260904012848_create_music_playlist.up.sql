@@ -14,7 +14,7 @@ CREATE TABLE music_playlist (
     ) REFERENCES user (user_id),
     CONSTRAINT fk_music_playlist_cover_image FOREIGN KEY (
         cover_image_id
-    ) REFERENCES image (image_id),
+    ) REFERENCES image (image_id) ON DELETE SET NULL,
     CONSTRAINT chk_music_playlist_is_public CHECK (is_public IN (0, 1)),
     CONSTRAINT uq_music_playlist_user_id_name UNIQUE (user_id, name)
 );

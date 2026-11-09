@@ -9,5 +9,5 @@ CREATE TABLE music_recording (
     CONSTRAINT uq_music_recording_isrc_code UNIQUE (isrc_code),
     CONSTRAINT fk_music_recording_audio FOREIGN KEY (
         audio_id
-    ) REFERENCES audio (audio_id)
+    ) REFERENCES audio (audio_id) ON DELETE CASCADE
 );

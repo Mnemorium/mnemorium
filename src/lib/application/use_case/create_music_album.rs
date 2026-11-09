@@ -12,7 +12,7 @@ use crate::domain::port::error::RepositoryError;
 use crate::domain::port::identity_unit_of_work::IdentityUnitOfWork;
 use crate::domain::port::library_unit_of_work::LibraryUnitOfWork;
 use crate::domain::port::music_album_repository::{MusicAlbumFilter, MusicAlbumRepository as _};
-use crate::domain::port::music_group_repository::MusicGroupRepository as _;
+use crate::domain::port::music_group_repository::{MusicGroupFilter, MusicGroupRepository as _};
 use crate::domain::port::permission_repository::{PermissionFilter, PermissionRepository as _};
 use crate::domain::port::unit_of_work::{UnitOfWork as _, UnitOfWorkFactory};
 use crate::domain::port::user_repository::{UserFilter, UserRepository as _};
@@ -119,12 +119,18 @@ where
                     command.genres().to_vec()
                 };
 
-                unit_of_work
+                if unit_of_work
                     .music_groups()
-                    .get(command.music_group_id())
+                    .search(&MusicGroupFilter {
+                        id: Some(command.music_group_id()),
+                        ..MusicGroupFilter::default()
+                    })
                     .await
                     .map_err(|error| CreateMusicAlbumError::Unknown(error.into()))?
-                    .ok_or(CreateMusicAlbumError::NoSuchGroup)?;
+                    .is_empty()
+                {
+                    return Err(CreateMusicAlbumError::NoSuchGroup);
+                }
 
                 let existing = unit_of_work
                     .music_albums()
@@ -245,12 +251,12 @@ mod tests {
     fn expect_group(groups: &mut MockMusicGroupRepository) -> Result<(), Box<dyn Error>> {
         let group = MusicGroup::try_new(0, "Unknown".to_owned(), None)?;
         groups
-            .expect_get()
+            .expect_search()
             .times(1)
-            .withf(|group_id| *group_id == 0)
+            .withf(|filter| filter.id == Some(0))
             .return_once(move |_| {
                 let found = group.clone();
-                Box::pin(async move { Ok(Some(found)) })
+                Box::pin(async move { Ok(vec![found]) })
             });
         Ok(())
     }
@@ -389,9 +395,9 @@ mod tests {
         expect_admin(&mut users, 1)?;
         let mut groups = MockMusicGroupRepository::new();
         groups
-            .expect_get()
+            .expect_search()
             .times(1)
-            .returning(|_| Box::pin(async { Ok(None) }));
+            .returning(|_| Box::pin(async { Ok(Vec::new()) }));
         let harness = harness_with(users, MockMusicAlbumRepository::new(), groups);
         let use_case: UseCase = CreateMusicAlbum::new(Arc::clone(&harness.factory));
 
@@ -546,7 +552,7 @@ mod tests {
         expect_admin(&mut users, 1)?;
         let mut groups = MockMusicGroupRepository::new();
         groups
-            .expect_get()
+            .expect_search()
             .times(1)
             .returning(|_| Box::pin(async { Err(RepositoryError::Unavailable) }));
         let harness = harness_with(users, MockMusicAlbumRepository::new(), groups);

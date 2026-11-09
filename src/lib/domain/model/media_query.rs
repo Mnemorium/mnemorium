@@ -1,8 +1,3 @@
-#![allow(
-    dead_code,
-    reason = "the video media query belongs to the internal video-identification path, which has no REST caller yet"
-)]
-
 /// Error returned when initialising a `MediaQuery`.
 #[derive(Debug, PartialEq, Eq, thiserror::Error)]
 #[non_exhaustive]
@@ -36,10 +31,10 @@ impl EpisodePosition {
     /// Return the index of the episode within its season.
     #[must_use]
     #[expect(
-        clippy::trivially_copy_pass_by_ref,
-        reason = "STY-RUST-019 fixes the getter receiver as `&self`"
+        dead_code,
+        reason = "the episode position keeps the getter its contract declares; no caller reads it yet"
     )]
-    pub(crate) fn episode(&self) -> u32 {
+    pub(crate) fn episode(self) -> u32 {
         self.episode
     }
 
@@ -52,10 +47,10 @@ impl EpisodePosition {
     /// Return the index of the season within the show.
     #[must_use]
     #[expect(
-        clippy::trivially_copy_pass_by_ref,
-        reason = "STY-RUST-019 fixes the getter receiver as `&self`"
+        dead_code,
+        reason = "the episode position keeps the getter its contract declares; no caller reads it yet"
     )]
-    pub(crate) fn season(&self) -> u32 {
+    pub(crate) fn season(self) -> u32 {
         self.season
     }
 }
@@ -82,6 +77,13 @@ pub(crate) struct MediaQuery {
 impl MediaQuery {
     /// Return the episode position, when the name supports one.
     #[must_use]
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "the media query keeps the getter its contract declares; only tests read it"
+        )
+    )]
     pub(crate) fn episode(&self) -> Option<EpisodePosition> {
         self.episode
     }

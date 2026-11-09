@@ -2,7 +2,7 @@ use std::future::Future;
 
 use crate::domain::alias::NumericID;
 use crate::domain::model::music_album::MusicAlbum;
-use crate::domain::model::music_medium::{MediumIndex, MusicMedium};
+use crate::domain::model::music_medium::MusicMedium;
 use crate::domain::model::music_recording::MusicRecording;
 use crate::domain::port::error::RepositoryError;
 
@@ -11,11 +11,29 @@ use crate::domain::port::error::RepositoryError;
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 #[non_exhaustive]
 pub(crate) struct MusicAlbumFilter {
+    /// Filter on the identifier of an audio sequenced by one of the album's
+    /// recordings. This is a join constraint rather than an album field.
+    pub audio_id: Option<NumericID>,
     /// Filter on the album identifier.
     pub id: Option<NumericID>,
     /// Filter on the identifier of the music group the album belongs to.
     pub music_group_id: Option<NumericID>,
     /// Filter on the album name.
+    pub name: Option<String>,
+}
+
+/// Search filters for [`MusicAlbumRepository::search_recordings`]. Every field
+/// is optional; an all-`None` filter returns every recording.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[non_exhaustive]
+pub(crate) struct MusicRecordingFilter {
+    /// Filter on the identifier of the audio backing the recording.
+    pub audio_id: Option<NumericID>,
+    /// Filter on the recording identifier.
+    pub id: Option<NumericID>,
+    /// Filter on the recording ISRC code.
+    pub isrc_code: Option<String>,
+    /// Filter on the recording name.
     pub name: Option<String>,
 }
 
@@ -35,84 +53,51 @@ pub(crate) trait MusicAlbumRepository: Send + Sync {
         album: MusicAlbum,
     ) -> impl Future<Output = Result<MusicAlbum, RepositoryError>> + Send;
 
-    /// Delete the recording backed by `audio_id`, its links and every track
+    /// Delete every album matching `filter`.
+    ///
+    /// Returns `Ok(true)` when at least one album was deleted, and `Ok(false)`
+    /// when none matched. An all-`None` filter deletes every album; mediums,
+    /// recordings and track placements cascade.
+    #[expect(
+        dead_code,
+        reason = "part of the type's declared contract; no caller exercises it yet"
+    )]
+    fn delete(
+        &mut self,
+        filter: &MusicAlbumFilter,
+    ) -> impl Future<Output = Result<bool, RepositoryError>> + Send;
+
+    /// Delete every recording matching `filter`, its links and every track
     /// placement of it.
     ///
-    /// Returns `Ok(true)` when a recording matched `audio_id` and was deleted,
-    /// and `Ok(false)` when the audio has no recording.
-    fn delete_recording_by_audio(
+    /// Returns `Ok(true)` when at least one recording was deleted, and
+    /// `Ok(false)` when none matched. An all-`None` filter deletes every
+    /// recording.
+    fn delete_recording(
         &mut self,
-        audio_id: NumericID,
+        filter: &MusicRecordingFilter,
     ) -> impl Future<Output = Result<bool, RepositoryError>> + Send;
 
-    /// Return the album that sequences the recording backed by `audio_id`, if
-    /// any.
+    /// Persist `album` over the stored album carrying its identifier, replacing
+    /// its genre links, mediums and track placements.
     ///
-    /// An audio no recording places has no album and is `Ok(None)`, not an
-    /// error.
-    fn find_album_by_audio(
+    /// The album is inserted when no row carries its identifier. A duplicate
+    /// `(name, music_group_id)` is reported as [`RepositoryError::AlreadyExist`].
+    fn save(
         &mut self,
-        audio_id: NumericID,
-    ) -> impl Future<Output = Result<Option<MusicAlbum>, RepositoryError>> + Send;
+        album: MusicAlbum,
+    ) -> impl Future<Output = Result<MusicAlbum, RepositoryError>> + Send;
 
-    /// Return whether `recording_id` currently holds a medium placement.
-    ///
-    /// A recording holds one medium placement at most, so the answer tells a
-    /// placement apart from a move. A recording the catalogue does not know has
-    /// no placement.
-    fn has_medium_placement(
-        &mut self,
-        recording_id: NumericID,
-    ) -> impl Future<Output = Result<bool, RepositoryError>> + Send;
-
-    /// Place `recording_id` at `(medium_index, track_index)` of `album_id`,
-    /// removing the recording's previous medium placement in the same
-    /// transaction.
-    ///
-    /// Returns the placed recording at its destination address, or `Ok(None)`
-    /// when the recording, the album or the medium does not exist, so a missing
-    /// target is a valid outcome, not an error. An occupied destination is
-    /// reported as [`RepositoryError::Conflict`].
-    fn place_track(
-        &mut self,
-        album_id: NumericID,
-        medium_index: u8,
-        track_index: u8,
-        recording_id: NumericID,
-    ) -> impl Future<Output = Result<Option<MusicRecording>, RepositoryError>> + Send;
-
-    /// Place every `(medium_index, track_index, recording_id)` in `placements`
-    /// after removing the named recordings' previous medium placements.
-    ///
-    /// The whole set is applied in one transaction, so a swap of two recordings
-    /// does not collide with itself.
-    fn place_tracks(
-        &mut self,
-        album_id: NumericID,
-        placements: &[(u8, u8, NumericID)],
-    ) -> impl Future<Output = Result<(), RepositoryError>> + Send;
-
-    /// Create or retype the medium at `medium.index()` of `album_id`, keeping the
-    /// tracks it already sequences.
+    /// Create or retype the medium at `medium.index()` of `album_id`, replacing
+    /// the recordings it sequences with `medium.tracks()`.
     ///
     /// Returns the stored medium, or `Ok(None)` when no album matches
     /// `album_id`; a missing album is a valid outcome, not an error.
-    fn put_medium(
+    fn save_medium(
         &mut self,
         album_id: NumericID,
-        medium: MediumIndex,
+        medium: MusicMedium,
     ) -> impl Future<Output = Result<Option<MusicMedium>, RepositoryError>> + Send;
-
-    /// Replace the medium structure of `album_id` with `mediums`.
-    ///
-    /// Every named medium is created or retyped; a stored medium outside the set
-    /// is removed only when it sequences no recording, so an apply never
-    /// discards a track placement.
-    fn replace_mediums(
-        &mut self,
-        album_id: NumericID,
-        mediums: &[MediumIndex],
-    ) -> impl Future<Output = Result<(), RepositoryError>> + Send;
 
     /// Persist the name and ISRC of `recording` over the stored recording
     /// carrying its identifier.
@@ -138,16 +123,14 @@ pub(crate) trait MusicAlbumRepository: Send + Sync {
         filter: &MusicAlbumFilter,
     ) -> impl Future<Output = Result<Vec<MusicAlbum>, RepositoryError>> + Send;
 
-    /// Persist `album` over the stored album carrying its identifier, replacing
-    /// its genre links.
+    /// Search the recordings matching `filter`, returned as `Vec<MusicRecording>`.
     ///
-    /// Returns `Ok(None)` when no album matches; a missing album is a valid
-    /// outcome, not an error. A duplicate `(name, music_group_id)` is reported as
-    /// [`RepositoryError::AlreadyExist`].
-    fn update(
+    /// Returns an empty list when no recording matches; a missing match is a
+    /// valid outcome, not an error.
+    fn search_recordings(
         &mut self,
-        album: MusicAlbum,
-    ) -> impl Future<Output = Result<Option<MusicAlbum>, RepositoryError>> + Send;
+        filter: &MusicRecordingFilter,
+    ) -> impl Future<Output = Result<Vec<MusicRecording>, RepositoryError>> + Send;
 }
 
 #[cfg(test)]
@@ -159,59 +142,33 @@ impl<T: MusicAlbumRepository + ?Sized> MusicAlbumRepository for &mut T {
         (**self).create(album)
     }
 
-    fn delete_recording_by_audio(
+    fn delete(
         &mut self,
-        audio_id: NumericID,
+        filter: &MusicAlbumFilter,
     ) -> impl Future<Output = Result<bool, RepositoryError>> + Send {
-        (**self).delete_recording_by_audio(audio_id)
+        (**self).delete(filter)
     }
 
-    fn find_album_by_audio(
+    fn delete_recording(
         &mut self,
-        audio_id: NumericID,
-    ) -> impl Future<Output = Result<Option<MusicAlbum>, RepositoryError>> + Send {
-        (**self).find_album_by_audio(audio_id)
-    }
-
-    fn has_medium_placement(
-        &mut self,
-        recording_id: NumericID,
+        filter: &MusicRecordingFilter,
     ) -> impl Future<Output = Result<bool, RepositoryError>> + Send {
-        (**self).has_medium_placement(recording_id)
+        (**self).delete_recording(filter)
     }
 
-    fn place_track(
+    fn save(
         &mut self,
-        album_id: NumericID,
-        medium_index: u8,
-        track_index: u8,
-        recording_id: NumericID,
-    ) -> impl Future<Output = Result<Option<MusicRecording>, RepositoryError>> + Send {
-        (**self).place_track(album_id, medium_index, track_index, recording_id)
+        album: MusicAlbum,
+    ) -> impl Future<Output = Result<MusicAlbum, RepositoryError>> + Send {
+        (**self).save(album)
     }
 
-    fn place_tracks(
+    fn save_medium(
         &mut self,
         album_id: NumericID,
-        placements: &[(u8, u8, NumericID)],
-    ) -> impl Future<Output = Result<(), RepositoryError>> + Send {
-        (**self).place_tracks(album_id, placements)
-    }
-
-    fn put_medium(
-        &mut self,
-        album_id: NumericID,
-        medium: MediumIndex,
+        medium: MusicMedium,
     ) -> impl Future<Output = Result<Option<MusicMedium>, RepositoryError>> + Send {
-        (**self).put_medium(album_id, medium)
-    }
-
-    fn replace_mediums(
-        &mut self,
-        album_id: NumericID,
-        mediums: &[MediumIndex],
-    ) -> impl Future<Output = Result<(), RepositoryError>> + Send {
-        (**self).replace_mediums(album_id, mediums)
+        (**self).save_medium(album_id, medium)
     }
 
     fn save_recording(
@@ -228,10 +185,10 @@ impl<T: MusicAlbumRepository + ?Sized> MusicAlbumRepository for &mut T {
         (**self).search(filter)
     }
 
-    fn update(
+    fn search_recordings(
         &mut self,
-        album: MusicAlbum,
-    ) -> impl Future<Output = Result<Option<MusicAlbum>, RepositoryError>> + Send {
-        (**self).update(album)
+        filter: &MusicRecordingFilter,
+    ) -> impl Future<Output = Result<Vec<MusicRecording>, RepositoryError>> + Send {
+        (**self).search_recordings(filter)
     }
 }

@@ -7,7 +7,9 @@ use crate::domain::model::music_album::{MusicAlbum, ProductionType};
 use crate::domain::model::music_medium::{MediumIndex, MusicMedium};
 use crate::domain::model::music_recording::{MusicRecording, TrackIndex};
 use crate::domain::port::error::RepositoryError;
-use crate::domain::port::music_album_repository::{MusicAlbumFilter, MusicAlbumRepository};
+use crate::domain::port::music_album_repository::{
+    MusicAlbumFilter, MusicAlbumRepository, MusicRecordingFilter,
+};
 
 use super::error_mapping::stored_data_invalid;
 use super::model::music_album::MusicAlbumRow;
@@ -54,49 +56,6 @@ impl SqlxMusicAlbumRepository<'_> {
                 .find(|medium| medium.index().index() == medium_index)
                 .cloned()
         }))
-    }
-
-    /// Read the recording placed at `(medium_id, track_index)`.
-    async fn recording_at(
-        &mut self,
-        medium_id: NumericID,
-        track_index: u8,
-        recording_id: NumericID,
-    ) -> Result<MusicRecording, RepositoryError> {
-        let row = sqlx::query_as::<_, RecordingRow>(
-            "SELECT
-                music_recording.music_recording_id,
-                music_recording.name,
-                music_recording.isrc_code,
-                music_recording.audio_id,
-                file.file_id
-             FROM music_recording
-             JOIN audio ON audio.audio_id = music_recording.audio_id
-             JOIN file ON file.file_id = audio.file_id
-             WHERE music_recording.music_recording_id = ?1
-               AND music_recording.music_recording_id IN (
-                   SELECT music_recording_id
-                   FROM music_track
-                   WHERE music_medium_id = ?2 AND track_index = ?3
-               )",
-        )
-        .bind(recording_id)
-        .bind(medium_id)
-        .bind(i64::from(track_index))
-        .fetch_optional(&mut **self.transaction)
-        .await?
-        .ok_or_else(|| stored_data_invalid("missing_recording"))?;
-
-        MusicRecording::try_new(
-            row.music_recording_id,
-            row.name,
-            row.isrc_code,
-            row.audio_id,
-            row.file_id,
-            None,
-            TrackIndex::MediumIndex(track_index),
-        )
-        .map_err(|_| stored_data_invalid("invalid_recording"))
     }
 
     /// Remove every genre link of `album_id` and link `genre_ids` instead.
@@ -179,208 +138,151 @@ impl MusicAlbumRepository for SqlxMusicAlbumRepository<'_> {
         .ok_or(RepositoryError::OperationFailed)
     }
 
-    async fn delete_recording_by_audio(
-        &mut self,
-        audio_id: NumericID,
-    ) -> Result<bool, RepositoryError> {
-        let recording = sqlx::query_scalar::<_, NumericID>(
-            "SELECT music_recording_id FROM music_recording WHERE audio_id = ?",
-        )
-        .bind(audio_id)
-        .fetch_optional(&mut **self.transaction)
-        .await?;
-        let Some(found_recording) = recording else {
-            return Ok(false);
-        };
+    async fn delete(&mut self, filter: &MusicAlbumFilter) -> Result<bool, RepositoryError> {
+        let mut builder = QueryBuilder::<Sqlite>::new("DELETE FROM music_album");
+        let mut first = true;
 
-        sqlx::query("DELETE FROM music_recording_group WHERE music_recording_id = ?")
-            .bind(found_recording)
-            .execute(&mut **self.transaction)
-            .await?;
-        sqlx::query("DELETE FROM music_recording_genre WHERE music_recording_id = ?")
-            .bind(found_recording)
-            .execute(&mut **self.transaction)
-            .await?;
-        sqlx::query("DELETE FROM music_track WHERE music_recording_id = ?")
-            .bind(found_recording)
-            .execute(&mut **self.transaction)
-            .await?;
-        sqlx::query("DELETE FROM music_recording WHERE music_recording_id = ?")
-            .bind(found_recording)
-            .execute(&mut **self.transaction)
-            .await?;
-        Ok(true)
-    }
-
-    async fn find_album_by_audio(
-        &mut self,
-        audio_id: NumericID,
-    ) -> Result<Option<MusicAlbum>, RepositoryError> {
-        let album = sqlx::query_scalar::<_, NumericID>(
-            "SELECT music_album.music_album_id
-             FROM music_album
-             INNER JOIN music_medium
-                 ON music_medium.music_album_id = music_album.music_album_id
-             INNER JOIN music_track
-                 ON music_track.music_medium_id = music_medium.music_medium_id
-             INNER JOIN music_recording
-                 ON music_recording.music_recording_id = music_track.music_recording_id
-             WHERE music_recording.audio_id = ?",
-        )
-        .bind(audio_id)
-        .fetch_optional(&mut **self.transaction)
-        .await?;
-        let Some(found_album) = album else {
-            return Ok(None);
-        };
-        Ok(self
-            .search(&MusicAlbumFilter {
-                id: Some(found_album),
-                ..MusicAlbumFilter::default()
-            })
-            .await?
-            .into_iter()
-            .next())
-    }
-
-    async fn has_medium_placement(
-        &mut self,
-        recording_id: NumericID,
-    ) -> Result<bool, RepositoryError> {
-        Ok(sqlx::query_scalar::<_, i64>(
-            "SELECT 1
-             FROM music_track
-             WHERE music_recording_id = ? AND music_medium_id IS NOT NULL",
-        )
-        .bind(recording_id)
-        .fetch_optional(&mut **self.transaction)
-        .await?
-        .is_some())
-    }
-
-    async fn place_track(
-        &mut self,
-        album_id: NumericID,
-        medium_index: u8,
-        track_index: u8,
-        recording_id: NumericID,
-    ) -> Result<Option<MusicRecording>, RepositoryError> {
-        let medium_id = sqlx::query_scalar::<_, NumericID>(
-            "SELECT music_medium_id
-             FROM music_medium
-             WHERE music_album_id = ?1 AND medium_index = ?2",
-        )
-        .bind(album_id)
-        .bind(i64::from(medium_index))
-        .fetch_optional(&mut **self.transaction)
-        .await?;
-        let Some(destination_medium_id) = medium_id else {
-            return Ok(None);
-        };
-
-        let recording_exists = sqlx::query_scalar::<_, i64>(
-            "SELECT 1 FROM music_recording WHERE music_recording_id = ?",
-        )
-        .bind(recording_id)
-        .fetch_optional(&mut **self.transaction)
-        .await?
-        .is_some();
-        if !recording_exists {
-            return Ok(None);
+        if let Some(id) = filter.id {
+            push_filter(&mut first, &mut builder, "music_album_id = ", id);
+        }
+        if let Some(music_group_id) = filter.music_group_id {
+            push_filter(
+                &mut first,
+                &mut builder,
+                "music_group_id = ",
+                music_group_id,
+            );
+        }
+        if let Some(name) = filter.name.as_deref() {
+            push_filter(&mut first, &mut builder, "name = ", name);
+        }
+        if let Some(audio_id) = filter.audio_id {
+            builder.push(
+                " AND music_album_id IN (
+                    SELECT music_album.music_album_id
+                    FROM music_album
+                    INNER JOIN music_medium
+                        ON music_medium.music_album_id = music_album.music_album_id
+                    INNER JOIN music_track
+                        ON music_track.music_medium_id = music_medium.music_medium_id
+                    INNER JOIN music_recording
+                        ON music_recording.music_recording_id = music_track.music_recording_id
+                    WHERE music_recording.audio_id = ",
+            );
+            builder.push_bind(audio_id);
+            builder.push(")");
         }
 
-        let occupant = sqlx::query_scalar::<_, NumericID>(
-            "SELECT music_recording_id
-             FROM music_track
-             WHERE music_medium_id = ?1 AND track_index = ?2",
-        )
-        .bind(destination_medium_id)
-        .bind(i64::from(track_index))
-        .fetch_optional(&mut **self.transaction)
-        .await?;
-        if let Some(occupying_recording) = occupant {
-            if occupying_recording == recording_id {
-                let recording = self
-                    .recording_at(destination_medium_id, track_index, recording_id)
-                    .await?;
-                return Ok(Some(recording));
-            }
-            return Err(RepositoryError::Conflict);
+        let result = builder.build().execute(&mut **self.transaction).await?;
+        Ok(result.rows_affected() > 0)
+    }
+
+    async fn delete_recording(
+        &mut self,
+        filter: &MusicRecordingFilter,
+    ) -> Result<bool, RepositoryError> {
+        let mut builder = QueryBuilder::<Sqlite>::new("DELETE FROM music_recording");
+        let mut first = true;
+
+        if let Some(audio_id) = filter.audio_id {
+            push_filter(&mut first, &mut builder, "audio_id = ", audio_id);
+        }
+        if let Some(isrc_code) = filter.isrc_code.as_deref() {
+            push_filter(&mut first, &mut builder, "isrc_code = ", isrc_code);
+        }
+        if let Some(name) = filter.name.as_deref() {
+            push_filter(&mut first, &mut builder, "name = ", name);
         }
 
+        let result = builder.build().execute(&mut **self.transaction).await?;
+        Ok(result.rows_affected() > 0)
+    }
+
+    async fn save(&mut self, album: MusicAlbum) -> Result<MusicAlbum, RepositoryError> {
         sqlx::query(
-            "DELETE FROM music_track
-             WHERE music_recording_id = ? AND music_medium_id IS NOT NULL",
+            "INSERT INTO music_album (
+                music_album_id, name, release_date, production_type,
+                cover_image_id, music_group_id
+             )
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+             ON CONFLICT (music_album_id) DO UPDATE SET
+                name = excluded.name,
+                release_date = excluded.release_date,
+                production_type = excluded.production_type,
+                cover_image_id = excluded.cover_image_id,
+                music_group_id = excluded.music_group_id",
         )
-        .bind(recording_id)
-        .execute(&mut **self.transaction)
-        .await?;
-        sqlx::query(
-            "INSERT INTO music_track (track_index, music_medium_id, music_recording_id)
-             VALUES (?1, ?2, ?3)",
-        )
-        .bind(i64::from(track_index))
-        .bind(destination_medium_id)
-        .bind(recording_id)
+        .bind(album.id())
+        .bind(album.name())
+        .bind(album.release_date())
+        .bind(album.production_type().map(ProductionType::as_wire))
+        .bind(album.cover_image_id())
+        .bind(album.music_group_id())
         .execute(&mut **self.transaction)
         .await?;
 
-        let recording = self
-            .recording_at(destination_medium_id, track_index, recording_id)
+        self.replace_genres(album.id(), album.genre_ids()).await?;
+
+        // `save` writes the whole aggregate: the stored medium and track
+        // collections are replaced by the ones the caller holds.
+        sqlx::query("DELETE FROM music_medium WHERE music_album_id = ?")
+            .bind(album.id())
+            .execute(&mut **self.transaction)
             .await?;
-        Ok(Some(recording))
-    }
 
-    async fn place_tracks(
-        &mut self,
-        album_id: NumericID,
-        placements: &[(u8, u8, NumericID)],
-    ) -> Result<(), RepositoryError> {
-        if placements.is_empty() {
-            return Ok(());
-        }
-
-        // Removing every named recording's previous placement first lets two
-        // recordings swap addresses without colliding with each other.
-        let mut delete = QueryBuilder::<Sqlite>::new(
-            "DELETE FROM music_track
-             WHERE music_medium_id IS NOT NULL AND music_recording_id IN (",
-        );
-        let mut separated = delete.separated(", ");
-        for &(_, _, recording_id) in placements {
-            separated.push_bind(recording_id);
-        }
-        separated.push_unseparated(")");
-        delete.build().execute(&mut **self.transaction).await?;
-
-        for &(medium_index, track_index, recording_id) in placements {
+        for medium in album.mediums() {
+            self.upsert_medium(album.id(), medium.index()).await?;
             let medium_id = sqlx::query_scalar::<_, NumericID>(
                 "SELECT music_medium_id
                  FROM music_medium
                  WHERE music_album_id = ?1 AND medium_index = ?2",
             )
-            .bind(album_id)
-            .bind(i64::from(medium_index))
-            .fetch_optional(&mut **self.transaction)
-            .await?
-            .ok_or_else(|| stored_data_invalid("missing_medium"))?;
-            sqlx::query(
-                "INSERT INTO music_track (track_index, music_medium_id, music_recording_id)
-                 VALUES (?1, ?2, ?3)",
-            )
-            .bind(i64::from(track_index))
-            .bind(medium_id)
-            .bind(recording_id)
-            .execute(&mut **self.transaction)
+            .bind(album.id())
+            .bind(i64::from(medium.index().index()))
+            .fetch_one(&mut **self.transaction)
             .await?;
+
+            for recording in medium.tracks() {
+                let track_index = recording
+                    .index()
+                    .medium_index()
+                    .ok_or_else(|| stored_data_invalid("missing_medium_index"))?;
+                sqlx::query(
+                    "UPDATE music_recording
+                     SET name = ?1, isrc_code = ?2
+                     WHERE music_recording_id = ?3",
+                )
+                .bind(recording.name())
+                .bind(recording.isrc_code())
+                .bind(recording.id())
+                .execute(&mut **self.transaction)
+                .await?;
+                sqlx::query(
+                    "INSERT INTO music_track (track_index, music_medium_id, music_recording_id)
+                     VALUES (?1, ?2, ?3)",
+                )
+                .bind(i64::from(track_index))
+                .bind(medium_id)
+                .bind(recording.id())
+                .execute(&mut **self.transaction)
+                .await?;
+            }
         }
-        Ok(())
+
+        self.search(&MusicAlbumFilter {
+            id: Some(album.id()),
+            ..MusicAlbumFilter::default()
+        })
+        .await?
+        .into_iter()
+        .next()
+        .ok_or(RepositoryError::OperationFailed)
     }
 
-    async fn put_medium(
+    async fn save_medium(
         &mut self,
         album_id: NumericID,
-        medium: MediumIndex,
+        medium: MusicMedium,
     ) -> Result<Option<MusicMedium>, RepositoryError> {
         let album_exists =
             sqlx::query_scalar::<_, i64>("SELECT 1 FROM music_album WHERE music_album_id = ?")
@@ -392,43 +294,49 @@ impl MusicAlbumRepository for SqlxMusicAlbumRepository<'_> {
             return Ok(None);
         }
 
-        self.upsert_medium(album_id, medium).await?;
-        self.album_medium(album_id, medium.index()).await
-    }
+        self.upsert_medium(album_id, medium.index()).await?;
+        let medium_id = sqlx::query_scalar::<_, NumericID>(
+            "SELECT music_medium_id
+             FROM music_medium
+             WHERE music_album_id = ?1 AND medium_index = ?2",
+        )
+        .bind(album_id)
+        .bind(i64::from(medium.index().index()))
+        .fetch_one(&mut **self.transaction)
+        .await?;
 
-    async fn replace_mediums(
-        &mut self,
-        album_id: NumericID,
-        mediums: &[MediumIndex],
-    ) -> Result<(), RepositoryError> {
-        for medium in mediums {
-            self.upsert_medium(album_id, *medium).await?;
-        }
-
-        // A stored medium outside the requested structure is removed only when it
-        // sequences nothing, so an apply never discards a track placement.
-        let mut delete = QueryBuilder::<Sqlite>::new(
-            "DELETE FROM music_medium
-             WHERE music_album_id = ",
-        );
-        delete.push_bind(album_id);
-        if !mediums.is_empty() {
-            delete.push(" AND medium_index NOT IN (");
+        // Removing the named recordings' previous medium placements first lets
+        // a recording move between mediums without colliding with itself.
+        if !medium.tracks().is_empty() {
+            let mut delete = QueryBuilder::<Sqlite>::new(
+                "DELETE FROM music_track
+                 WHERE music_medium_id IS NOT NULL AND music_recording_id IN (",
+            );
             let mut separated = delete.separated(", ");
-            for medium in mediums {
-                separated.push_bind(i64::from(medium.index()));
+            for recording in medium.tracks() {
+                separated.push_bind(recording.id());
             }
             separated.push_unseparated(")");
+            delete.build().execute(&mut **self.transaction).await?;
         }
-        delete.push(
-            " AND NOT EXISTS (
-                SELECT 1
-                FROM music_track
-                WHERE music_track.music_medium_id = music_medium.music_medium_id
-             )",
-        );
-        delete.build().execute(&mut **self.transaction).await?;
-        Ok(())
+
+        for recording in medium.tracks() {
+            let track_index = recording
+                .index()
+                .medium_index()
+                .ok_or_else(|| stored_data_invalid("missing_medium_index"))?;
+            sqlx::query(
+                "INSERT INTO music_track (track_index, music_medium_id, music_recording_id)
+                 VALUES (?1, ?2, ?3)",
+            )
+            .bind(i64::from(track_index))
+            .bind(medium_id)
+            .bind(recording.id())
+            .execute(&mut **self.transaction)
+            .await?;
+        }
+
+        self.album_medium(album_id, medium.index().index()).await
     }
 
     async fn save_recording(
@@ -511,6 +419,14 @@ impl MusicAlbumRepository for SqlxMusicAlbumRepository<'_> {
         }
         if let Some(name) = filter.name.as_deref() {
             push_filter(&mut first, &mut builder, "music_album.name = ", name);
+        }
+        if let Some(audio_id) = filter.audio_id {
+            push_filter(
+                &mut first,
+                &mut builder,
+                "music_recording.audio_id = ",
+                audio_id,
+            );
         }
 
         // The album, its mediums and their recording occurrences make one
@@ -620,44 +536,89 @@ impl MusicAlbumRepository for SqlxMusicAlbumRepository<'_> {
         Ok(albums)
     }
 
-    async fn update(&mut self, album: MusicAlbum) -> Result<Option<MusicAlbum>, RepositoryError> {
-        let result = sqlx::query(
-            "UPDATE music_album
-             SET name = ?1,
-                 release_date = ?2,
-                 production_type = ?3,
-                 cover_image_id = ?4,
-                 music_group_id = ?5
-             WHERE music_album_id = ?6",
-        )
-        .bind(album.name())
-        .bind(album.release_date())
-        .bind(album.production_type().map(ProductionType::as_wire))
-        .bind(album.cover_image_id())
-        .bind(album.music_group_id())
-        .bind(album.id())
-        .execute(&mut **self.transaction)
-        .await?;
-        if result.rows_affected() == 0 {
-            return Ok(None);
-        }
+    async fn search_recordings(
+        &mut self,
+        filter: &MusicRecordingFilter,
+    ) -> Result<Vec<MusicRecording>, RepositoryError> {
+        let mut builder = QueryBuilder::<Sqlite>::new(
+            "SELECT
+                music_recording.music_recording_id,
+                music_recording.name,
+                music_recording.isrc_code,
+                music_recording.audio_id,
+                file.file_id,
+                music_track.track_index
+            FROM music_recording
+            INNER JOIN audio ON audio.audio_id = music_recording.audio_id
+            INNER JOIN file ON file.file_id = audio.file_id
+            LEFT JOIN music_track
+                ON music_track.music_recording_id = music_recording.music_recording_id
+                AND music_track.music_medium_id IS NOT NULL",
+        );
+        let mut first = true;
 
-        self.replace_genres(album.id(), album.genre_ids()).await?;
-        self.search(&MusicAlbumFilter {
-            id: Some(album.id()),
-            ..MusicAlbumFilter::default()
-        })
-        .await?
-        .into_iter()
-        .next()
-        .map(Some)
-        .ok_or(RepositoryError::OperationFailed)
+        if let Some(audio_id) = filter.audio_id {
+            push_filter(
+                &mut first,
+                &mut builder,
+                "music_recording.audio_id = ",
+                audio_id,
+            );
+        }
+        if let Some(id) = filter.id {
+            push_filter(
+                &mut first,
+                &mut builder,
+                "music_recording.music_recording_id = ",
+                id,
+            );
+        }
+        if let Some(isrc_code) = filter.isrc_code.as_deref() {
+            push_filter(
+                &mut first,
+                &mut builder,
+                "music_recording.isrc_code = ",
+                isrc_code,
+            );
+        }
+        if let Some(name) = filter.name.as_deref() {
+            push_filter(&mut first, &mut builder, "music_recording.name = ", name);
+        }
+        builder.push(" ORDER BY music_recording.music_recording_id");
+
+        let rows = builder
+            .build_query_as::<RecordingSearchRow>()
+            .fetch_all(&mut **self.transaction)
+            .await?;
+
+        rows.into_iter()
+            .map(|row| {
+                let index = match row.track_index {
+                    Some(raw) => TrackIndex::MediumIndex(
+                        u8::try_from(raw)
+                            .map_err(|_| stored_data_invalid("track_index_out_of_range"))?,
+                    ),
+                    None => TrackIndex::Unplaced,
+                };
+                MusicRecording::try_new(
+                    row.music_recording_id,
+                    row.name,
+                    row.isrc_code,
+                    row.audio_id,
+                    row.file_id,
+                    None,
+                    index,
+                )
+                .map_err(|_| stored_data_invalid("invalid_recording"))
+            })
+            .collect()
     }
 }
 
-/// One recording and the file backing its audio.
+/// One recording together with the medium placement it holds, when it holds
+/// one.
 #[derive(Debug, sqlx::FromRow)]
-struct RecordingRow {
+struct RecordingSearchRow {
     /// Identifier of the backing audio.
     audio_id: NumericID,
     /// Identifier of the backing file.
@@ -668,6 +629,8 @@ struct RecordingRow {
     music_recording_id: NumericID,
     /// Name of the recording, when set.
     name: Option<String>,
+    /// Medium-scoped track index, absent when the recording is not placed.
+    track_index: Option<i64>,
 }
 
 #[cfg(test)]
@@ -928,6 +891,72 @@ mod tests {
     /// The medium index of a recording expected to be placed in a medium.
     fn medium_index(recording: &MusicRecording) -> Option<u8> {
         recording.index().medium_index()
+    }
+
+    /// Re-read the album identified by `id`.
+    async fn load_album(
+        repository: &mut SqlxMusicAlbumRepository<'_>,
+        id: i64,
+    ) -> Result<MusicAlbum, Box<dyn Error>> {
+        repository
+            .search(&MusicAlbumFilter {
+                id: Some(id),
+                ..MusicAlbumFilter::default()
+            })
+            .await?
+            .into_iter()
+            .next()
+            .ok_or_else(|| "the album must still exist".into())
+    }
+
+    /// Re-read the recording identified by `id`.
+    async fn load_recording(
+        repository: &mut SqlxMusicAlbumRepository<'_>,
+        id: i64,
+    ) -> Result<MusicRecording, Box<dyn Error>> {
+        repository
+            .search_recordings(&MusicRecordingFilter {
+                id: Some(id),
+                ..MusicRecordingFilter::default()
+            })
+            .await?
+            .into_iter()
+            .next()
+            .ok_or_else(|| "the recording must still exist".into())
+    }
+
+    /// Rebuild `recording` placed at `track_index` of its medium.
+    fn placed(
+        recording: &MusicRecording,
+        track_index: u8,
+    ) -> Result<MusicRecording, Box<dyn Error>> {
+        Ok(MusicRecording::try_new(
+            recording.id(),
+            recording.name().map(str::to_owned),
+            recording.isrc_code().map(str::to_owned),
+            recording.audio_id(),
+            recording.file_id(),
+            recording.music_group_ids().map(<[_]>::to_vec),
+            TrackIndex::MediumIndex(track_index),
+        )?)
+    }
+
+    /// Rebuild `album` with `mediums` replacing its own medium collection.
+    fn with_mediums(
+        album: &MusicAlbum,
+        mediums: Vec<MusicMedium>,
+    ) -> Result<MusicAlbum, Box<dyn Error>> {
+        Ok(MusicAlbum::try_new(
+            album.id(),
+            album.name().to_owned(),
+            album.release_date(),
+            album.production_type(),
+            album.genre_ids().to_vec(),
+            album.music_group_id(),
+            album.music_group_ids().map(<[_]>::to_vec),
+            album.cover_image_id(),
+            mediums,
+        )?)
     }
 
     #[tokio::test]
@@ -1686,23 +1715,22 @@ mod tests {
         )?;
 
         // Act
-        let found = repository.update(updated).await?;
+        let stored = repository.save(updated).await?;
 
         // Assert
-        let stored = found.ok_or("the album must be found")?;
         assert_eq!(stored.name(), "Kind of Blue (Remastered)");
         assert_eq!(stored.genre_ids(), ["BLUES"]);
         Ok(())
     }
 
     #[tokio::test]
-    async fn save_reports_an_unknown_album_as_none() -> Result<(), Box<dyn Error>> {
+    async fn save_inserts_an_unknown_album() -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut transaction = begin_transaction().await?;
         let mut repository = SqlxMusicAlbumRepository::new(&mut transaction);
         let album = MusicAlbum::try_new(
             404,
-            "Unknown".to_owned(),
+            "Absent Album".to_owned(),
             None,
             None,
             Vec::new(),
@@ -1713,15 +1741,16 @@ mod tests {
         )?;
 
         // Act
-        let stored = repository.update(album).await?;
+        let stored = repository.save(album).await?;
 
-        // Assert
-        assert!(stored.is_none());
+        // Assert: save upserts, so an unknown identifier is inserted.
+        assert_eq!(stored.id(), 404);
+        assert_eq!(stored.name(), "Absent Album");
         Ok(())
     }
 
     #[tokio::test]
-    async fn put_medium_creates_then_retypes_and_keeps_the_tracks() -> Result<(), Box<dyn Error>> {
+    async fn save_medium_creates_then_retypes_and_keeps_the_tracks() -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut transaction = begin_transaction().await?;
         seed_user(&mut transaction, 1).await?;
@@ -1733,7 +1762,9 @@ mod tests {
         // Act: create the medium, then retype it.
         let created = {
             let mut repository = SqlxMusicAlbumRepository::new(&mut transaction);
-            repository.put_medium(1, MediumIndex::Cd(1)).await?
+            repository
+                .save_medium(1, MusicMedium::new(MediumIndex::Cd(1), Vec::new()))
+                .await?
         };
         let medium_id = sqlx::query_scalar::<_, i64>(
             "SELECT music_medium_id
@@ -1744,7 +1775,9 @@ mod tests {
         .await?;
         seed_track(&mut transaction, 50, medium_id, 30, 1).await?;
         let mut repository = SqlxMusicAlbumRepository::new(&mut transaction);
-        let retyped = repository.put_medium(1, MediumIndex::Digital(1)).await?;
+        let retyped = repository
+            .save_medium(1, MusicMedium::new(MediumIndex::Digital(1), Vec::new()))
+            .await?;
 
         // Assert
         let stored_created = created.ok_or("the album must be found")?;
@@ -1756,13 +1789,15 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn put_medium_reports_an_unknown_album_as_none() -> Result<(), Box<dyn Error>> {
+    async fn save_medium_reports_an_unknown_album_as_none() -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut transaction = begin_transaction().await?;
         let mut repository = SqlxMusicAlbumRepository::new(&mut transaction);
 
         // Act
-        let written = repository.put_medium(404, MediumIndex::Cd(1)).await?;
+        let written = repository
+            .save_medium(404, MusicMedium::new(MediumIndex::Cd(1), Vec::new()))
+            .await?;
 
         // Assert
         assert!(written.is_none());
@@ -1770,7 +1805,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn place_track_moves_the_recording_between_mediums() -> Result<(), Box<dyn Error>> {
+    async fn save_medium_moves_the_recording_between_mediums() -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut transaction = begin_transaction().await?;
         seed_user(&mut transaction, 1).await?;
@@ -1781,30 +1816,72 @@ mod tests {
         seed_medium(&mut transaction, 40, 1, 1).await?;
         seed_medium(&mut transaction, 41, 1, 2).await?;
         let mut repository = SqlxMusicAlbumRepository::new(&mut transaction);
+        let recording = load_recording(&mut repository, 30).await?;
 
         // Act
-        let placed = repository.place_track(1, 1, 1, 30).await?;
-        let placed_elsewhere = repository.has_medium_placement(30).await?;
-        let moved = repository.place_track(1, 2, 1, 30).await?;
-        let unchanged = repository.place_track(1, 2, 1, 30).await?;
+        let first = repository
+            .save_medium(
+                1,
+                MusicMedium::new(MediumIndex::Cd(1), vec![placed(&recording, 1)?]),
+            )
+            .await?;
+        let placed_elsewhere = repository
+            .search_recordings(&MusicRecordingFilter {
+                id: Some(30),
+                ..MusicRecordingFilter::default()
+            })
+            .await?
+            .into_iter()
+            .next()
+            .map(|found| found.index());
+        let moved = repository
+            .save_medium(
+                1,
+                MusicMedium::new(MediumIndex::Cd(2), vec![placed(&recording, 1)?]),
+            )
+            .await?;
+        let unchanged = repository
+            .save_medium(
+                1,
+                MusicMedium::new(MediumIndex::Cd(2), vec![placed(&recording, 1)?]),
+            )
+            .await?;
+        let moved_medium: i64 = sqlx::query_scalar(
+            "SELECT music_medium_id FROM music_track WHERE music_recording_id = 30",
+        )
+        .fetch_one(&mut *transaction)
+        .await?;
 
         // Assert
         assert_eq!(
-            placed.as_ref().map(MusicRecording::index),
+            first
+                .as_ref()
+                .and_then(|medium| medium.tracks().first())
+                .map(MusicRecording::index),
             Some(TrackIndex::MediumIndex(1))
         );
-        assert!(placed_elsewhere);
+        assert_eq!(placed_elsewhere, Some(TrackIndex::MediumIndex(1)));
         assert_eq!(
-            moved.as_ref().map(MusicRecording::index),
+            moved
+                .as_ref()
+                .and_then(|medium| medium.tracks().first())
+                .map(MusicRecording::index),
             Some(TrackIndex::MediumIndex(1))
         );
-        assert_eq!(unchanged.as_ref().map(MusicRecording::id), Some(30));
+        assert_eq!(
+            unchanged
+                .as_ref()
+                .and_then(|medium| medium.tracks().first())
+                .map(MusicRecording::id),
+            Some(30)
+        );
+        assert_eq!(moved_medium, 41, "the recording moved to the second medium");
         Ok(())
     }
 
     #[tokio::test]
-    async fn place_track_reports_an_occupied_destination_as_conflict() -> Result<(), Box<dyn Error>>
-    {
+    async fn save_medium_reports_an_occupied_destination_as_already_exist()
+    -> Result<(), Box<dyn Error>> {
         // Arrange: the destination already holds another recording.
         let mut transaction = begin_transaction().await?;
         seed_user(&mut transaction, 1).await?;
@@ -1818,33 +1895,53 @@ mod tests {
         seed_medium(&mut transaction, 40, 1, 1).await?;
         seed_track(&mut transaction, 50, 40, 30, 1).await?;
         let mut repository = SqlxMusicAlbumRepository::new(&mut transaction);
+        let recording = load_recording(&mut repository, 31).await?;
 
         // Act
-        let result = repository.place_track(1, 1, 1, 31).await;
+        let result = repository
+            .save_medium(
+                1,
+                MusicMedium::new(MediumIndex::Cd(1), vec![placed(&recording, 1)?]),
+            )
+            .await;
 
-        // Assert
-        assert!(matches!(result, Err(RepositoryError::Conflict)));
+        // Assert: the medium/track-index unique key rejects the occupied slot.
+        assert!(matches!(result, Err(RepositoryError::AlreadyExist)));
         Ok(())
     }
 
     #[tokio::test]
-    async fn place_track_reports_an_unknown_recording_as_none() -> Result<(), Box<dyn Error>> {
+    async fn save_medium_rejects_an_unknown_recording() -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut transaction = begin_transaction().await?;
         seed_album(&mut transaction, 1, "Kind of Blue", None).await?;
         seed_medium(&mut transaction, 40, 1, 1).await?;
         let mut repository = SqlxMusicAlbumRepository::new(&mut transaction);
+        let missing = MusicRecording::try_new(
+            404,
+            Some("Missing".to_owned()),
+            None,
+            404,
+            404,
+            None,
+            TrackIndex::MediumIndex(1),
+        )?;
 
-        // Act
-        let placed = repository.place_track(1, 1, 1, 404).await?;
+        // Act: the missing recording violates `fk_music_track_recording`.
+        let result = repository
+            .save_medium(1, MusicMedium::new(MediumIndex::Cd(1), vec![missing]))
+            .await;
 
         // Assert
-        assert!(placed.is_none());
+        assert!(matches!(
+            result,
+            Err(RepositoryError::DataIntegrityViolation)
+        ));
         Ok(())
     }
 
     #[tokio::test]
-    async fn place_tracks_swaps_two_recordings() -> Result<(), Box<dyn Error>> {
+    async fn save_medium_swaps_two_recordings() -> Result<(), Box<dyn Error>> {
         // Arrange: each recording already holds the other's destination.
         let mut transaction = begin_transaction().await?;
         seed_user(&mut transaction, 1).await?;
@@ -1859,10 +1956,18 @@ mod tests {
         seed_track(&mut transaction, 50, 40, 30, 1).await?;
         seed_track(&mut transaction, 51, 40, 31, 2).await?;
         let mut repository = SqlxMusicAlbumRepository::new(&mut transaction);
+        let first = load_recording(&mut repository, 30).await?;
+        let second = load_recording(&mut repository, 31).await?;
 
         // Act
         repository
-            .place_tracks(1, &[(1, 1, 31), (1, 2, 30)])
+            .save_medium(
+                1,
+                MusicMedium::new(
+                    MediumIndex::Cd(1),
+                    vec![placed(&second, 1)?, placed(&first, 2)?],
+                ),
+            )
             .await?;
 
         // Assert
@@ -1878,8 +1983,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn replace_mediums_keeps_a_medium_that_sequences_a_recording()
-    -> Result<(), Box<dyn Error>> {
+    async fn save_keeps_a_medium_that_sequences_a_recording() -> Result<(), Box<dyn Error>> {
         // Arrange: medium 2 holds a recording and is outside the new structure.
         let mut transaction = begin_transaction().await?;
         seed_user(&mut transaction, 1).await?;
@@ -1891,39 +1995,52 @@ mod tests {
         seed_medium(&mut transaction, 41, 1, 2).await?;
         seed_track(&mut transaction, 50, 41, 30, 1).await?;
         let mut repository = SqlxMusicAlbumRepository::new(&mut transaction);
+        let album = load_album(&mut repository, 1).await?;
+        let kept = album
+            .mediums()
+            .iter()
+            .find(|medium| medium.index() == MediumIndex::Cd(2))
+            .cloned()
+            .ok_or("the kept medium must be hydrated")?;
 
         // Act
         repository
-            .replace_mediums(1, &[MediumIndex::Digital(1)])
+            .save(with_mediums(
+                &album,
+                vec![MusicMedium::new(MediumIndex::Digital(1), Vec::new()), kept],
+            )?)
             .await?;
 
         // Assert
         let albums = search_seeded(&mut repository, &MusicAlbumFilter::default()).await?;
-        let album = albums.first().ok_or("the album must be found")?;
-        let indices: Vec<_> = album.mediums().iter().map(MusicMedium::index).collect();
+        let reloaded = albums.first().ok_or("the album must be found")?;
+        let indices: Vec<_> = reloaded.mediums().iter().map(MusicMedium::index).collect();
         assert_eq!(indices, [MediumIndex::Digital(1), MediumIndex::Cd(2)]);
         Ok(())
     }
 
     #[tokio::test]
-    async fn replace_mediums_removes_an_empty_medium_outside_the_structure()
-    -> Result<(), Box<dyn Error>> {
+    async fn save_removes_an_empty_medium_outside_the_structure() -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut transaction = begin_transaction().await?;
         seed_album(&mut transaction, 1, "Kind of Blue", None).await?;
         seed_medium(&mut transaction, 40, 1, 1).await?;
         seed_medium(&mut transaction, 41, 1, 2).await?;
         let mut repository = SqlxMusicAlbumRepository::new(&mut transaction);
+        let album = load_album(&mut repository, 1).await?;
 
         // Act
         repository
-            .replace_mediums(1, &[MediumIndex::Digital(1)])
+            .save(with_mediums(
+                &album,
+                vec![MusicMedium::new(MediumIndex::Digital(1), Vec::new())],
+            )?)
             .await?;
 
         // Assert
         let albums = search_seeded(&mut repository, &MusicAlbumFilter::default()).await?;
-        let album = albums.first().ok_or("the album must be found")?;
-        let indices: Vec<_> = album.mediums().iter().map(MusicMedium::index).collect();
+        let reloaded = albums.first().ok_or("the album must be found")?;
+        let indices: Vec<_> = reloaded.mediums().iter().map(MusicMedium::index).collect();
         assert_eq!(indices, [MediumIndex::Digital(1)]);
         Ok(())
     }
@@ -1988,7 +2105,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn find_album_by_audio_follows_the_recording_placement() -> Result<(), Box<dyn Error>> {
+    async fn search_filters_by_audio_placement() -> Result<(), Box<dyn Error>> {
         // Arrange: recording 50 on audio 30 is placed in album 7's medium.
         let mut transaction = begin_transaction().await?;
         seed_user(&mut transaction, 1).await?;
@@ -2001,8 +2118,22 @@ mod tests {
         let mut repository = SqlxMusicAlbumRepository::new(&mut transaction);
 
         // Act
-        let found = repository.find_album_by_audio(30).await?;
-        let missing = repository.find_album_by_audio(31).await?;
+        let found = repository
+            .search(&MusicAlbumFilter {
+                audio_id: Some(30),
+                ..MusicAlbumFilter::default()
+            })
+            .await?
+            .into_iter()
+            .next();
+        let missing = repository
+            .search(&MusicAlbumFilter {
+                audio_id: Some(31),
+                ..MusicAlbumFilter::default()
+            })
+            .await?
+            .into_iter()
+            .next();
 
         // Assert
         assert_eq!(found.as_ref().map(MusicAlbum::id), Some(7));
@@ -2011,7 +2142,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn delete_recording_by_audio_removes_its_placements() -> Result<(), Box<dyn Error>> {
+    async fn delete_recording_removes_its_placements() -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut transaction = begin_transaction().await?;
         seed_user(&mut transaction, 1).await?;
@@ -2024,8 +2155,18 @@ mod tests {
         // Act
         let (removed, missing) = {
             let mut repository = SqlxMusicAlbumRepository::new(&mut transaction);
-            let removed = repository.delete_recording_by_audio(30).await?;
-            let missing = repository.delete_recording_by_audio(31).await?;
+            let removed = repository
+                .delete_recording(&MusicRecordingFilter {
+                    audio_id: Some(30),
+                    ..MusicRecordingFilter::default()
+                })
+                .await?;
+            let missing = repository
+                .delete_recording(&MusicRecordingFilter {
+                    audio_id: Some(31),
+                    ..MusicRecordingFilter::default()
+                })
+                .await?;
             (removed, missing)
         };
         let tracks = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM music_track")

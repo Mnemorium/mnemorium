@@ -2027,6 +2027,11 @@ check_sty_rust_080() {
 		*Filter) ;;
 		*) continue ;;
 		esac
+		# A join constraint names a child field rather than an aggregate field
+		# (`STY-RUST-080`'s documented exception).
+		if [ "$filter" = "MusicAlbumFilter" ] && [ "$field" = "audio_id" ]; then
+			continue
+		fi
 		aggregate="${filter%Filter}"
 		if [ -z "${accessors["${aggregate}:${field}"]+set}" ]; then
 			printf 'error: %s: %s: field %s is not named after a field of %s (no %s::%s())\n' \

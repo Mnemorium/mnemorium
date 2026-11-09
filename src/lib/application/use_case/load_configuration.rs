@@ -283,7 +283,7 @@ fn merge(
         invalid(setting, error)
     })?;
 
-    let security = Security::try_new(
+    let security = Security::new(
         jwt,
         resolve(
             partial.security.log_root_admin_password,
@@ -292,8 +292,7 @@ fn merge(
             &mut applied,
         ),
         rate_limit,
-    )
-    .map_err(|error| invalid("security", error))?;
+    );
 
     applied.sort_unstable();
     applied.dedup();

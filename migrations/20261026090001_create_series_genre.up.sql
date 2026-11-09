@@ -6,7 +6,7 @@ CREATE TABLE series_genre (
         series_id
     ) REFERENCES series (
         series_id
-    ),
+    ) ON DELETE CASCADE,
     CONSTRAINT fk_series_genre_genre FOREIGN KEY (genre_id) REFERENCES genre (
         genre_id
     )

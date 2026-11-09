@@ -128,10 +128,8 @@ where
                             _ => ReorderPlaylistTracksError::Unknown(anyhow::Error::new(error)),
                         })?;
 
-                unit_of_work
-                    .music_playlists()
-                    .replace_tracks(command.playlist_id(), &order)
-                    .await
+                playlist
+                    .apply_order(&order)
                     .map_err(|error| ReorderPlaylistTracksError::Unknown(error.into()))?;
 
                 playlist.touch(Utc::now().naive_utc());
@@ -255,18 +253,18 @@ mod tests {
         let loaded_at = stored.last_modified_at();
         expect_playlist(&mut playlists, stored.clone());
         playlists
-            .expect_replace_tracks()
-            .times(1)
-            .withf(|playlist_id, order| *playlist_id == 3 && order == [(0, 31), (1, 30)])
-            .returning(|_, _| Box::pin(async { Ok(()) }));
-        playlists
             .expect_save()
             .times(1)
-            .withf(move |saved| saved.last_modified_at() > loaded_at)
-            .return_once(move |_| {
-                let found = stored.clone();
-                Box::pin(async move { Ok(found) })
-            });
+            .withf(move |saved| {
+                saved.last_modified_at() > loaded_at
+                    && saved
+                        .tracks()
+                        .iter()
+                        .map(MusicRecording::id)
+                        .collect::<Vec<_>>()
+                        == [31, 30]
+            })
+            .returning(|saved| Box::pin(async move { Ok(saved) }));
         let harness = harness_with(users, playlists);
         let use_case: UseCase = ReorderPlaylistTracks::new(Arc::clone(&harness.factory));
 
@@ -291,18 +289,10 @@ mod tests {
         let loaded_at = stored.last_modified_at();
         expect_playlist(&mut playlists, stored.clone());
         playlists
-            .expect_replace_tracks()
-            .times(1)
-            .withf(|_, order| order.is_empty())
-            .returning(|_, _| Box::pin(async { Ok(()) }));
-        playlists
             .expect_save()
             .times(1)
-            .withf(move |saved| saved.last_modified_at() > loaded_at)
-            .return_once(move |_| {
-                let found = stored.clone();
-                Box::pin(async move { Ok(found) })
-            });
+            .withf(move |saved| saved.last_modified_at() > loaded_at && saved.tracks().is_empty())
+            .returning(|saved| Box::pin(async move { Ok(saved) }));
         let harness = harness_with(users, playlists);
         let use_case: UseCase = ReorderPlaylistTracks::new(Arc::clone(&harness.factory));
 
@@ -327,7 +317,7 @@ mod tests {
             &mut playlists,
             playlist(3, 4, false, vec![track(30, 0)?, track(31, 1)?]),
         );
-        playlists.expect_replace_tracks().times(0);
+        playlists.expect_save().times(0);
         let harness = harness_with(users, playlists);
         let use_case: UseCase = ReorderPlaylistTracks::new(Arc::clone(&harness.factory));
 
@@ -356,7 +346,7 @@ mod tests {
             &mut playlists,
             playlist(3, 4, false, vec![track(30, 0)?, track(31, 1)?]),
         );
-        playlists.expect_replace_tracks().times(0);
+        playlists.expect_save().times(0);
         let harness = harness_with(users, playlists);
         let use_case: UseCase = ReorderPlaylistTracks::new(Arc::clone(&harness.factory));
 
@@ -384,7 +374,7 @@ mod tests {
             &mut playlists,
             playlist(3, 4, false, vec![track(30, 0)?, track(31, 1)?]),
         );
-        playlists.expect_replace_tracks().times(0);
+        playlists.expect_save().times(0);
         let harness = harness_with(users, playlists);
         let use_case: UseCase = ReorderPlaylistTracks::new(Arc::clone(&harness.factory));
 
@@ -409,7 +399,7 @@ mod tests {
         expect_caller(&mut users, 9, Role::Standard)?;
         let mut playlists = MockMusicPlaylistRepository::new();
         expect_playlist(&mut playlists, playlist(3, 4, false, vec![track(30, 0)?]));
-        playlists.expect_replace_tracks().times(0);
+        playlists.expect_save().times(0);
         let harness = harness_with(users, playlists);
         let use_case: UseCase = ReorderPlaylistTracks::new(Arc::clone(&harness.factory));
 
@@ -437,10 +427,9 @@ mod tests {
             playlist(3, 4, false, vec![track(30, 0)?, track(31, 1)?]),
         );
         playlists
-            .expect_replace_tracks()
+            .expect_save()
             .times(1)
-            .returning(|_, _| Box::pin(async { Err(RepositoryError::OperationFailed) }));
-        playlists.expect_save().times(0);
+            .returning(|_| Box::pin(async { Err(RepositoryError::OperationFailed) }));
         let harness = harness_with(users, playlists);
         let use_case: UseCase = ReorderPlaylistTracks::new(Arc::clone(&harness.factory));
 

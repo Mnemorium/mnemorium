@@ -33,24 +33,23 @@ pub(crate) trait MovieRepository: Send + Sync {
         movie: Movie,
     ) -> impl Future<Output = Result<Movie, RepositoryError>> + Send;
 
-    /// Delete the film identified by `id` together with its genre links.
+    /// Delete every film matching `filter`, together with its genre links.
     ///
-    /// Returns `Ok(true)` when a film matched `id` and was deleted, and
-    /// `Ok(false)` when no film matched. The backing video is never removed
-    /// here: the caller reconciles it separately.
+    /// Returns `Ok(true)` when at least one film was deleted, and `Ok(false)`
+    /// when none matched. An all-`None` filter deletes every film. The backing
+    /// video is never removed here: the caller reconciles it separately.
     fn delete(
         &mut self,
-        id: NumericID,
+        filter: &MovieFilter,
     ) -> impl Future<Output = Result<bool, RepositoryError>> + Send;
 
-    /// Return the film backed by `video_id`, if any.
+    /// Persist the metadata and cover of `movie` over the stored film carrying
+    /// its identifier, replacing its genre links.
     ///
-    /// A missing attachment is `Ok(None)`, not an error.
-    fn find_by_video(
-        &mut self,
-        video_id: NumericID,
-    ) -> impl Future<Output = Result<Option<Movie>, RepositoryError>> + Send;
-
+    /// The backing video is never rewritten. The film is inserted when no row
+    /// carries its identifier.
+    fn save(&mut self, movie: Movie)
+    -> impl Future<Output = Result<Movie, RepositoryError>> + Send;
     /// Search the films matching `filter`, returned as `Vec<Movie>`.
     ///
     /// Each film carries its genres and the video that backs it, so the caller
@@ -63,16 +62,6 @@ pub(crate) trait MovieRepository: Send + Sync {
         &mut self,
         filter: &MovieFilter,
     ) -> impl Future<Output = Result<Vec<Movie>, RepositoryError>> + Send;
-
-    /// Persist the metadata and cover of `movie` over the stored film carrying
-    /// its identifier, replacing its genre links.
-    ///
-    /// The backing video is never rewritten. Returns `Ok(None)` when no film
-    /// matches; a missing film is a valid outcome, not an error.
-    fn update(
-        &mut self,
-        movie: Movie,
-    ) -> impl Future<Output = Result<Option<Movie>, RepositoryError>> + Send;
 }
 
 #[cfg(test)]
@@ -86,16 +75,16 @@ impl<T: MovieRepository + ?Sized> MovieRepository for &mut T {
 
     fn delete(
         &mut self,
-        id: NumericID,
+        filter: &MovieFilter,
     ) -> impl Future<Output = Result<bool, RepositoryError>> + Send {
-        (**self).delete(id)
+        (**self).delete(filter)
     }
 
-    fn find_by_video(
+    fn save(
         &mut self,
-        video_id: NumericID,
-    ) -> impl Future<Output = Result<Option<Movie>, RepositoryError>> + Send {
-        (**self).find_by_video(video_id)
+        movie: Movie,
+    ) -> impl Future<Output = Result<Movie, RepositoryError>> + Send {
+        (**self).save(movie)
     }
 
     fn search(
@@ -103,12 +92,5 @@ impl<T: MovieRepository + ?Sized> MovieRepository for &mut T {
         filter: &MovieFilter,
     ) -> impl Future<Output = Result<Vec<Movie>, RepositoryError>> + Send {
         (**self).search(filter)
-    }
-
-    fn update(
-        &mut self,
-        movie: Movie,
-    ) -> impl Future<Output = Result<Option<Movie>, RepositoryError>> + Send {
-        (**self).update(movie)
     }
 }

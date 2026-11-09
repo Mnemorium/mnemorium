@@ -25,24 +25,18 @@ impl<'transaction> SqlxPermissionRepository<'transaction> {
 }
 
 impl PermissionRepository for SqlxPermissionRepository<'_> {
-    async fn delete(
-        &mut self,
-        user_id: NumericID,
-        action: Action,
-    ) -> Result<bool, RepositoryError> {
-        let result = sqlx::query("DELETE FROM permission WHERE user_id = ?1 AND action_name = ?2")
-            .bind(user_id)
-            .bind(action.as_wire())
-            .execute(&mut **self.transaction)
-            .await?;
-        Ok(result.rows_affected() > 0)
-    }
+    async fn delete(&mut self, filter: &PermissionFilter) -> Result<bool, RepositoryError> {
+        let mut builder = QueryBuilder::<Sqlite>::new("DELETE FROM permission");
+        let mut first = true;
 
-    async fn delete_all(&mut self, user_id: NumericID) -> Result<bool, RepositoryError> {
-        let result = sqlx::query("DELETE FROM permission WHERE user_id = ?")
-            .bind(user_id)
-            .execute(&mut **self.transaction)
-            .await?;
+        if let Some(action) = filter.action {
+            push_filter(&mut first, &mut builder, "action_name = ", action.as_wire());
+        }
+        if let Some(user_id) = filter.user_id {
+            push_filter(&mut first, &mut builder, "user_id = ", user_id);
+        }
+
+        let result = builder.build().execute(&mut **self.transaction).await?;
         Ok(result.rows_affected() > 0)
     }
 
@@ -324,8 +318,20 @@ mod tests {
             .await?;
 
         // Act
-        let deleted = repository.delete(5, Action::PlaylistRead).await?;
-        let missing = repository.delete(5, Action::PlaylistRead).await?;
+        let deleted = repository
+            .delete(&PermissionFilter {
+                user_id: Some(5),
+                action: Some(Action::PlaylistRead),
+                ..PermissionFilter::default()
+            })
+            .await?;
+        let missing = repository
+            .delete(&PermissionFilter {
+                user_id: Some(5),
+                action: Some(Action::PlaylistRead),
+                ..PermissionFilter::default()
+            })
+            .await?;
         let stored_children: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM permission_resource")
             .fetch_one(&mut *transaction)
             .await?;
@@ -355,7 +361,12 @@ mod tests {
             .await?;
 
         // Act
-        let deleted = repository.delete_all(5).await?;
+        let deleted = repository
+            .delete(&PermissionFilter {
+                user_id: Some(5),
+                ..PermissionFilter::default()
+            })
+            .await?;
         let remaining = repository.search(&PermissionFilter::default()).await?;
 
         // Assert

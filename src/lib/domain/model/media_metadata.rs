@@ -1,8 +1,3 @@
-#![allow(
-    dead_code,
-    reason = "the provider-independent video metadata belongs to the internal video-identification path, which has no REST caller yet"
-)]
-
 use chrono::NaiveDate;
 
 use crate::domain::model::artwork::Artwork;

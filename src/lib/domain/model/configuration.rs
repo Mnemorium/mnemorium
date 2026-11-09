@@ -1,8 +1,3 @@
-#![allow(
-    dead_code,
-    reason = "the configuration value objects keep the provider accessors, setters and mutators their contract declares; several have no caller yet"
-)]
-
 use std::fmt::{Debug, Formatter, Result as FmtResult};
 use std::net::IpAddr;
 use std::str::FromStr as _;
@@ -215,60 +210,6 @@ impl AssetUpload {
         self.reap_interval_seconds
     }
 
-    /// Update the size of every chunk except the last, in bytes.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`AssetError::ChunkSizeZero`] when `chunk_size_bytes` is zero.
-    fn set_chunk_size_bytes(&mut self, chunk_size_bytes: u64) -> Result<(), AssetError> {
-        self.chunk_size_bytes = Self::validate_chunk_size_bytes(chunk_size_bytes)?;
-        Ok(())
-    }
-
-    /// Update the lifetime of an upload session, in seconds.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`AssetError::ExpiryZero`] when `expiry_seconds` is zero.
-    fn set_expiry_seconds(&mut self, expiry_seconds: u64) -> Result<(), AssetError> {
-        self.expiry_seconds = Self::validate_expiry_seconds(expiry_seconds)?;
-        Ok(())
-    }
-
-    /// Update the maximum size of a single uploaded file, in bytes.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`AssetError::MaxFileSizeZero`] when `max_file_size_bytes` is
-    /// zero, and [`AssetError::MaxFileSizeTooLarge`] when it exceeds
-    /// [`i64::MAX`].
-    fn set_max_file_size_bytes(&mut self, max_file_size_bytes: u64) -> Result<(), AssetError> {
-        self.max_file_size_bytes = Self::validate_max_file_size_bytes(max_file_size_bytes)?;
-        Ok(())
-    }
-
-    /// Update the maximum number of upload sessions the reaper handles per
-    /// phase.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`AssetError::ReapBatchSizeZero`] when `reap_batch_size` is zero.
-    fn set_reap_batch_size(&mut self, reap_batch_size: usize) -> Result<(), AssetError> {
-        self.reap_batch_size = Self::validate_reap_batch_size(reap_batch_size)?;
-        Ok(())
-    }
-
-    /// Update the interval between two upload-reaper runs, in seconds.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`AssetError::ReapIntervalOutOfRange`] when
-    /// `reap_interval_seconds` is zero or exceeds one day.
-    fn set_reap_interval_seconds(&mut self, reap_interval_seconds: u64) -> Result<(), AssetError> {
-        self.reap_interval_seconds = Self::validate_reap_interval_seconds(reap_interval_seconds)?;
-        Ok(())
-    }
-
     /// Initialise a new `AssetUpload`, validating every setting.
     ///
     /// # Errors
@@ -287,84 +228,31 @@ impl AssetUpload {
         reap_batch_size: usize,
         reap_interval_seconds: u64,
     ) -> Result<Self, AssetError> {
-        let validated_chunk_size = Self::validate_chunk_size_bytes(chunk_size_bytes)?;
-        let validated_expiry = Self::validate_expiry_seconds(expiry_seconds)?;
-        let validated_max_file_size = Self::validate_max_file_size_bytes(max_file_size_bytes)?;
-        let validated_reap_batch_size = Self::validate_reap_batch_size(reap_batch_size)?;
-        let validated_reap_interval = Self::validate_reap_interval_seconds(reap_interval_seconds)?;
-        Ok(Self {
-            chunk_size_bytes: validated_chunk_size,
-            expiry_seconds: validated_expiry,
-            max_file_size_bytes: validated_max_file_size,
-            reap_batch_size: validated_reap_batch_size,
-            reap_interval_seconds: validated_reap_interval,
-        })
-    }
-
-    /// Validate `chunk_size_bytes`.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`AssetError::ChunkSizeZero`] when `chunk_size_bytes` is zero.
-    fn validate_chunk_size_bytes(chunk_size_bytes: u64) -> Result<u64, AssetError> {
         if chunk_size_bytes == 0 {
             return Err(AssetError::ChunkSizeZero);
         }
-        Ok(chunk_size_bytes)
-    }
-
-    /// Validate `expiry_seconds`.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`AssetError::ExpiryZero`] when `expiry_seconds` is zero.
-    fn validate_expiry_seconds(expiry_seconds: u64) -> Result<u64, AssetError> {
         if expiry_seconds == 0 {
             return Err(AssetError::ExpiryZero);
         }
-        Ok(expiry_seconds)
-    }
-
-    /// Validate `max_file_size_bytes`.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`AssetError::MaxFileSizeZero`] when `max_file_size_bytes` is
-    /// zero, and [`AssetError::MaxFileSizeTooLarge`] when it exceeds
-    /// [`i64::MAX`].
-    fn validate_max_file_size_bytes(max_file_size_bytes: u64) -> Result<u64, AssetError> {
         if max_file_size_bytes == 0 {
             return Err(AssetError::MaxFileSizeZero);
         }
         if max_file_size_bytes > i64::MAX as u64 {
             return Err(AssetError::MaxFileSizeTooLarge);
         }
-        Ok(max_file_size_bytes)
-    }
-
-    /// Validate `reap_batch_size`.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`AssetError::ReapBatchSizeZero`] when `reap_batch_size` is zero.
-    fn validate_reap_batch_size(reap_batch_size: usize) -> Result<usize, AssetError> {
         if reap_batch_size == 0 {
             return Err(AssetError::ReapBatchSizeZero);
         }
-        Ok(reap_batch_size)
-    }
-
-    /// Validate `reap_interval_seconds`.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`AssetError::ReapIntervalOutOfRange`] when
-    /// `reap_interval_seconds` is zero or exceeds one day.
-    fn validate_reap_interval_seconds(reap_interval_seconds: u64) -> Result<u64, AssetError> {
         if reap_interval_seconds == 0 || reap_interval_seconds > MAX_REAP_INTERVAL_SECONDS {
             return Err(AssetError::ReapIntervalOutOfRange);
         }
-        Ok(reap_interval_seconds)
+        Ok(Self {
+            chunk_size_bytes,
+            expiry_seconds,
+            max_file_size_bytes,
+            reap_batch_size,
+            reap_interval_seconds,
+        })
     }
 }
 
@@ -561,17 +449,6 @@ impl Sqlite3 {
         self.max_connections
     }
 
-    /// Update the maximum number of connections to the database.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`Sqlite3Error::InvalidMaxConnections`] when `max_connections`
-    /// is zero.
-    fn set_max_connections(&mut self, max_connections: u32) -> Result<(), Sqlite3Error> {
-        self.max_connections = Self::validate_max_connections(max_connections)?;
-        Ok(())
-    }
-
     /// Initialise a new `Sqlite3`, validating `max_connections`.
     ///
     /// # Errors
@@ -579,23 +456,10 @@ impl Sqlite3 {
     /// Returns [`Sqlite3Error::InvalidMaxConnections`] when `max_connections`
     /// is zero.
     pub(crate) fn try_new(max_connections: u32) -> Result<Self, Sqlite3Error> {
-        let validated_max_connections = Self::validate_max_connections(max_connections)?;
-        Ok(Self {
-            max_connections: validated_max_connections,
-        })
-    }
-
-    /// Validate `max_connections`.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`Sqlite3Error::InvalidMaxConnections`] when `max_connections`
-    /// is zero.
-    fn validate_max_connections(max_connections: u32) -> Result<u32, Sqlite3Error> {
         if max_connections == 0 {
             return Err(Sqlite3Error::InvalidMaxConnections);
         }
-        Ok(max_connections)
+        Ok(Self { max_connections })
     }
 }
 
@@ -626,12 +490,6 @@ impl Persistence {
     #[must_use]
     pub(crate) fn sqlite3(&self) -> &Sqlite3 {
         &self.sqlite3
-    }
-
-    /// Return a mutable reference to the `SQLite3` datastore settings.
-    #[must_use]
-    fn sqlite3_mut(&mut self) -> &mut Sqlite3 {
-        &mut self.sqlite3
     }
 }
 
@@ -665,42 +523,22 @@ impl Default for Jwt {
 }
 
 impl Jwt {
-    /// Update the lifetime of a token, in seconds.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`JwtError::InvalidTtl`] when `ttl` is zero.
-    fn set_ttl(&mut self, ttl: u64) -> Result<(), JwtError> {
-        self.ttl = Self::validate_ttl(ttl)?;
-        Ok(())
-    }
-
     /// Initialise a new `Jwt`, validating `ttl`.
     ///
     /// # Errors
     ///
     /// Returns [`JwtError::InvalidTtl`] when `ttl` is zero.
     pub(crate) fn try_new(ttl: u64) -> Result<Self, JwtError> {
-        let validated_ttl = Self::validate_ttl(ttl)?;
-        Ok(Self { ttl: validated_ttl })
+        if ttl == 0 {
+            return Err(JwtError::InvalidTtl);
+        }
+        Ok(Self { ttl })
     }
 
     /// Return the lifetime of a token, in seconds.
     #[must_use]
     pub(crate) fn ttl(&self) -> u64 {
         self.ttl
-    }
-
-    /// Validate `ttl`.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`JwtError::InvalidTtl`] when `ttl` is zero.
-    fn validate_ttl(ttl: u64) -> Result<u64, JwtError> {
-        if ttl == 0 {
-            return Err(JwtError::InvalidTtl);
-        }
-        Ok(ttl)
     }
 }
 
@@ -746,12 +584,8 @@ pub(crate) enum ClientIpHeader {
 impl ClientIpHeader {
     /// Return the header name as it appears on the wire.
     #[must_use]
-    #[expect(
-        clippy::trivially_copy_pass_by_ref,
-        reason = "STY-RUST-019 fixes the getter receiver as `&self`"
-    )]
-    pub(crate) fn as_str(&self) -> &'static str {
-        match *self {
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
             Self::Forwarded => "forwarded",
             Self::XForwardedFor => "x-forwarded-for",
             Self::XRealIp => "x-real-ip",
@@ -861,38 +695,6 @@ impl RateLimit {
         self.period_seconds
     }
 
-    /// Update the number of requests a client address may spend before
-    /// throttling.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`RateLimitError::InvalidBurstSize`] when `burst_size` is zero.
-    fn set_burst_size(&mut self, burst_size: u32) -> Result<(), RateLimitError> {
-        self.burst_size = Self::validate_burst_size(burst_size)?;
-        Ok(())
-    }
-
-    /// Update the header the trusted proxy overwrites with the client address.
-    fn set_client_ip_header(&mut self, client_ip_header: ClientIpHeader) {
-        self.client_ip_header = client_ip_header;
-    }
-
-    /// Update the seconds after which one element of the quota is replenished.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`RateLimitError::InvalidPeriodSeconds`] when `period_seconds`
-    /// is zero.
-    fn set_period_seconds(&mut self, period_seconds: u64) -> Result<(), RateLimitError> {
-        self.period_seconds = Self::validate_period_seconds(period_seconds)?;
-        Ok(())
-    }
-
-    /// Update the addresses of the trusted reverse proxies.
-    fn set_trusted_proxies(&mut self, trusted_proxies: Vec<IpAddr>) {
-        self.trusted_proxies = trusted_proxies;
-    }
-
     /// Return the addresses of the trusted reverse proxies.
     #[must_use]
     pub(crate) fn trusted_proxies(&self) -> &[IpAddr] {
@@ -924,56 +726,27 @@ impl RateLimit {
         period_seconds: u64,
         trusted_proxies: Vec<IpAddr>,
     ) -> Result<Self, RateLimitError> {
-        let validated_burst_size = Self::validate_burst_size(burst_size)?;
-        let validated_period_seconds = Self::validate_period_seconds(period_seconds)?;
-        Ok(Self {
-            burst_size: validated_burst_size,
-            client_ip_header,
-            period_seconds: validated_period_seconds,
-            trusted_proxies,
-        })
-    }
-
-    /// Validate `burst_size`.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`RateLimitError::InvalidBurstSize`] when `burst_size` is zero.
-    fn validate_burst_size(burst_size: u32) -> Result<u32, RateLimitError> {
         if burst_size == 0 {
             return Err(RateLimitError::InvalidBurstSize);
         }
-        Ok(burst_size)
-    }
-
-    /// Validate `period_seconds`.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`RateLimitError::InvalidPeriodSeconds`] when `period_seconds`
-    /// is zero.
-    fn validate_period_seconds(period_seconds: u64) -> Result<u64, RateLimitError> {
         if period_seconds == 0 {
             return Err(RateLimitError::InvalidPeriodSeconds);
         }
-        Ok(period_seconds)
+        Ok(Self {
+            burst_size,
+            client_ip_header,
+            period_seconds,
+            trusted_proxies,
+        })
     }
-}
-
-/// Error returned when initialising or updating a `Security` value object.
-#[derive(Debug, thiserror::Error)]
-#[non_exhaustive]
-pub(crate) enum SecurityError {
-    /// The `JWT` settings are invalid.
-    #[error("invalid jwt configuration")]
-    InvalidJwt(#[from] JwtError),
 }
 
 /// Security-related settings.
 ///
-/// Constructed through [`Security::try_new`], which validates the `JWT`
-/// settings; the configuration adapters merge their layer into the resolved
-/// value and rebuild it, so no layer can bypass the validation.
+/// Constructed through [`Security::new`] from a [`Jwt`] that
+/// [`Jwt::try_new`] has already validated; the configuration adapters merge
+/// their layer into the resolved value and rebuild it, so no layer can bypass
+/// that validation.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 #[non_exhaustive]
 pub(crate) struct Security {
@@ -1003,12 +776,6 @@ impl Security {
         &self.jwt
     }
 
-    /// Return a mutable reference to the `JWT` settings.
-    #[must_use]
-    fn jwt_mut(&mut self) -> &mut Jwt {
-        &mut self.jwt
-    }
-
     /// Return whether the Root Admin default password is still logged to
     /// standard output on runtime start.
     #[must_use]
@@ -1018,11 +785,11 @@ impl Security {
 
     /// Initialise a new `Security`.
     #[must_use]
-    pub(crate) fn new(jwt: Jwt, log_root_admin_password: bool) -> Self {
+    pub(crate) fn new(jwt: Jwt, log_root_admin_password: bool, rate_limit: RateLimit) -> Self {
         Self {
             jwt,
             log_root_admin_password,
-            rate_limit: RateLimit::default(),
+            rate_limit,
         }
     }
 
@@ -1030,39 +797,6 @@ impl Security {
     #[must_use]
     pub(crate) fn rate_limit(&self) -> &RateLimit {
         &self.rate_limit
-    }
-
-    /// Update whether the Root Admin default password is logged to standard
-    /// output on runtime start.
-    fn set_log_root_admin_password(&mut self, log_root_admin_password: bool) {
-        self.log_root_admin_password = log_root_admin_password;
-    }
-
-    /// Update the login rate-limiting settings.
-    fn set_rate_limit(&mut self, rate_limit: RateLimit) {
-        self.rate_limit = rate_limit;
-    }
-
-    /// Initialise a new `Security`, validating the `JWT` settings.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`SecurityError::InvalidJwt`] when the `JWT` settings are
-    /// invalid.
-    #[expect(
-        clippy::unnecessary_wraps,
-        reason = "STY-RUST-018 keeps the fallible constructor named `try_new`; `Security` mirrors its sibling configuration value objects and the JWT validation it reports stays fallible at the call site"
-    )]
-    pub(crate) fn try_new(
-        jwt: Jwt,
-        log_root_admin_password: bool,
-        rate_limit: RateLimit,
-    ) -> Result<Self, SecurityError> {
-        Ok(Self {
-            jwt,
-            log_root_admin_password,
-            rate_limit,
-        })
     }
 }
 
@@ -1550,22 +1284,10 @@ impl Configuration {
         &self.persistence
     }
 
-    /// Return a mutable reference to the persistence-related settings.
-    #[must_use]
-    fn persistence_mut(&mut self) -> &mut Persistence {
-        &mut self.persistence
-    }
-
     /// Return the security-related settings.
     #[must_use]
     pub(crate) fn security(&self) -> &Security {
         &self.security
-    }
-
-    /// Return a mutable reference to the security-related settings.
-    #[must_use]
-    fn security_mut(&mut self) -> &mut Security {
-        &mut self.security
     }
 }
 

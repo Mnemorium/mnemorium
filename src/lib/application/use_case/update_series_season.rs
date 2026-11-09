@@ -135,7 +135,7 @@ where
 
                 let stored = unit_of_work
                     .series()
-                    .update_season(series.id(), updated)
+                    .save_season(series.id(), updated)
                     .await
                     .map_err(|error| {
                         if matches!(
@@ -258,7 +258,7 @@ mod tests {
             vec![sample_episode(1, 20)?],
         );
         series
-            .expect_update_season()
+            .expect_save_season()
             .times(1)
             .withf(|series_id, season| {
                 *series_id == 7
@@ -301,7 +301,7 @@ mod tests {
         expect_series(&mut series, series_with_season()?);
         let written = Season::new(SeasonIndex::new(1), None, None, Vec::new());
         series
-            .expect_update_season()
+            .expect_save_season()
             .times(1)
             .withf(|_, season| season.name().is_none() && season.cover_image_id().is_none())
             .return_once(move |_, _| {
@@ -453,7 +453,7 @@ mod tests {
         let mut series = MockSeriesRepository::new();
         expect_series(&mut series, series_with_season()?);
         series
-            .expect_update_season()
+            .expect_save_season()
             .times(1)
             .returning(|_, _| Box::pin(async { Err(RepositoryError::Conflict) }));
         let harness = harness_with(users, no_permissions(), series);
@@ -484,7 +484,7 @@ mod tests {
         let mut series = MockSeriesRepository::new();
         expect_series(&mut series, series_with_season()?);
         series
-            .expect_update_season()
+            .expect_save_season()
             .times(1)
             .returning(|_, _| Box::pin(async { Err(RepositoryError::DataIntegrityViolation) }));
         let harness = harness_with(users, no_permissions(), series);
@@ -516,7 +516,7 @@ mod tests {
         let mut series = MockSeriesRepository::new();
         expect_series(&mut series, series_with_season()?);
         series
-            .expect_update_season()
+            .expect_save_season()
             .times(1)
             .returning(|_, _| Box::pin(async { Ok(None) }));
         let harness = harness_with(users, no_permissions(), series);

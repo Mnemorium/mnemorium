@@ -95,7 +95,7 @@ where
                     .next()
                     .ok_or(AttemptError::Business(WriteUploadChunkError::NoSuchCaller))?;
 
-                let upload = unit_of_work
+                let mut upload = unit_of_work
                     .uploads()
                     .search(&UploadFilter {
                         upload_id: Some(command.upload_id()),
@@ -141,7 +141,10 @@ where
                     }
                     if unit_of_work
                         .uploads()
-                        .delete(upload.upload_id())
+                        .delete(&UploadFilter {
+                            upload_id: Some(upload.upload_id()),
+                            ..UploadFilter::default()
+                        })
                         .await
                         .is_err()
                     {
@@ -249,12 +252,13 @@ where
                     }
                 }
 
-                match unit_of_work
-                    .uploads()
-                    .record_chunk(upload.upload_id(), command.chunk_number())
-                    .await
-                {
-                    Ok(()) => {}
+                upload.record_chunk(chunk_number).map_err(|_| {
+                    AttemptError::Business(WriteUploadChunkError::InvalidChunkNumber)
+                })?;
+                let saved = match unit_of_work.uploads().save(upload).await {
+                    Ok(saved) => saved,
+                    // The insert trigger rejects a chunk on a session another
+                    // completion finished or sealed first.
                     Err(RepositoryError::Conflict) => {
                         return Err(AttemptError::Business(
                             WriteUploadChunkError::AlreadyFinished,
@@ -265,24 +269,7 @@ where
                             error.into(),
                         )));
                     }
-                }
-
-                // Re-read the upload inside the same transaction so the response
-                // reports the authoritative bitmap, chunk count and status, including a
-                // concurrent completion that landed after the upload was read above.
-                let saved = unit_of_work
-                    .uploads()
-                    .search(&UploadFilter {
-                        upload_id: Some(upload.upload_id()),
-                        ..UploadFilter::default()
-                    })
-                    .await
-                    .map_err(|error| {
-                        AttemptError::Business(WriteUploadChunkError::Unknown(error.into()))
-                    })?
-                    .into_iter()
-                    .next()
-                    .ok_or(AttemptError::Business(WriteUploadChunkError::NoSuchUpload))?;
+                };
 
                 let bitmap = received_bitmap(&saved);
                 let chunk_count = saved.total_chunks();
@@ -369,10 +356,9 @@ enum AttemptError {
 mod tests {
     use super::*;
     use crate::application::use_case::test_fixtures::TTL_SECONDS;
-    use crate::domain::model::integrity_hash::IntegrityHash;
     use crate::domain::model::upload::{ChunkBitmap, Upload};
     use crate::domain::port::content_hasher::{MockContentHasher, MockContentHasherSession};
-    use crate::domain::port::error::{ContentHasherError, StorageError};
+    use crate::domain::port::error::{ContentHasherError, RepositoryError, StorageError};
     use crate::domain::port::file_repository::MockFileRepository;
     use crate::domain::port::file_storage::MockFileStorage;
     use crate::domain::port::upload_repository::MockUploadRepository;
@@ -390,15 +376,6 @@ mod tests {
         "f8638b979b2f4f793ddb6dbd197e0ee25a7a6ea32b0ae22f5e3c5d119d839e75";
     const WRONG_CHUNK_DIGEST: &str =
         "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff";
-
-    /// Build an [`IntegrityHash`] from a literal digest.
-    #[expect(
-        clippy::expect_used,
-        reason = "the test literals are valid 64-character hexadecimal digests"
-    )]
-    fn hash(digest: &str) -> IntegrityHash<64> {
-        IntegrityHash::try_new(digest.to_owned()).expect("the fixture digest is valid")
-    }
 
     fn timestamp() -> chrono::NaiveDateTime {
         chrono::Utc::now().naive_utc()
@@ -482,10 +459,11 @@ mod tests {
                 vec![upload(5, 3, 8, &[0], false)?],
             ],
         );
-        uploads
-            .expect_record_chunk()
-            .times(1)
-            .returning(|_, _| Box::pin(async { Ok(()) }));
+        let saved = upload(5, 3, 8, &[0], false)?;
+        uploads.expect_save().times(1).returning(move |_| {
+            let stored = saved.clone();
+            Box::pin(async move { Ok(stored) })
+        });
         let mut file_repository = MockFileRepository::new();
         file_repository
             .expect_search()
@@ -534,8 +512,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn write_upload_chunk_vanished_upload_returns_no_such_upload()
-    -> Result<(), Box<dyn Error>> {
+    async fn write_upload_chunk_vanished_upload_returns_unknown() -> Result<(), Box<dyn Error>> {
         let mut hasher = MockContentHasher::new();
         hasher.expect_hasher().times(1).returning(|| {
             let mut session = MockContentHasherSession::new();
@@ -552,14 +529,13 @@ mod tests {
         });
         // Arrange
         let mut uploads = MockUploadRepository::new();
-        expect_search_results(
-            &mut uploads,
-            vec![vec![upload(5, 3, 8, &[], false)?], Vec::new()],
-        );
+        expect_search_results(&mut uploads, vec![vec![upload(5, 3, 8, &[], false)?]]);
+        // The upload row vanished between the read and the write, so the
+        // repository reports a missing target.
         uploads
-            .expect_record_chunk()
+            .expect_save()
             .times(1)
-            .returning(|_, _| Box::pin(async { Ok(()) }));
+            .returning(|_| Box::pin(async { Err(RepositoryError::OperationFailed) }));
         let mut file_storage = MockFileStorage::new();
         file_storage
             .expect_add_chunk()
@@ -586,7 +562,7 @@ mod tests {
         let result = use_case.execute(command).await;
 
         // Assert
-        assert!(matches!(result, Err(WriteUploadChunkError::NoSuchUpload)));
+        assert!(matches!(result, Err(WriteUploadChunkError::Unknown(_))));
         assert!(rolled_back.load(Ordering::SeqCst));
         Ok(())
     }
@@ -723,6 +699,7 @@ mod tests {
         uploads
             .expect_delete()
             .times(1)
+            .withf(|filter| filter.upload_id == Some(5))
             .returning(|_| Box::pin(async { Ok(true) }));
         let unit_of_work = TestUnitOfWork {
             users: any_caller(),
@@ -791,6 +768,7 @@ mod tests {
         uploads
             .expect_delete()
             .times(1)
+            .withf(|filter| filter.upload_id == Some(5))
             .returning(|_| Box::pin(async { Ok(true) }));
         let mut file_storage = MockFileStorage::new();
         file_storage
@@ -1193,9 +1171,9 @@ mod tests {
         let mut uploads = MockUploadRepository::new();
         expect_upload(&mut uploads, upload(5, 3, 8, &[], false)?);
         uploads
-            .expect_record_chunk()
+            .expect_save()
             .times(1)
-            .returning(|_, _| Box::pin(async { Err(RepositoryError::Conflict) }));
+            .returning(|_| Box::pin(async { Err(RepositoryError::Conflict) }));
         let mut file_storage = MockFileStorage::new();
         file_storage
             .expect_add_chunk()

@@ -7,6 +7,6 @@ CREATE TABLE stream (
     CONSTRAINT pk_stream_stream_id PRIMARY KEY (stream_id),
     CONSTRAINT fk_stream_video FOREIGN KEY (video_id) REFERENCES video (
         video_id
-    ),
+    ) ON DELETE CASCADE,
     CONSTRAINT chk_stream_is_default CHECK (is_default IN (0, 1))
 );

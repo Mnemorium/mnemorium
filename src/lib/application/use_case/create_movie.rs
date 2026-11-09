@@ -12,11 +12,11 @@ use crate::domain::port::identity_unit_of_work::IdentityUnitOfWork;
 use crate::domain::port::library_unit_of_work::LibraryUnitOfWork;
 use crate::domain::port::movie_repository::{MovieFilter, MovieRepository as _};
 use crate::domain::port::permission_repository::{PermissionFilter, PermissionRepository as _};
-use crate::domain::port::series_repository::SeriesRepository as _;
+use crate::domain::port::series_repository::{EpisodeFilter, SeriesRepository as _};
 use crate::domain::port::unit_of_work::{UnitOfWork as _, UnitOfWorkFactory};
 use crate::domain::port::user_repository::{UserFilter, UserRepository as _};
 use crate::domain::port::user_unit_of_work::UserUnitOfWork;
-use crate::domain::port::video_repository::VideoRepository as _;
+use crate::domain::port::video_repository::{VideoFilter, VideoRepository as _};
 use crate::domain::service::authorization::{Authorization, Decision};
 use crate::domain::service::country_code::CountryCode;
 use crate::domain::service::name_policy::{NamePolicy, NamePolicyError};
@@ -122,9 +122,14 @@ where
 
                 let video = unit_of_work
                     .videos()
-                    .get(command.video_id())
+                    .search(&VideoFilter {
+                        id: Some(command.video_id()),
+                        ..VideoFilter::default()
+                    })
                     .await
                     .map_err(|error| CreateMovieError::Unknown(error.into()))?
+                    .into_iter()
+                    .next()
                     .ok_or(CreateMovieError::NoSuchVideo)?;
 
                 let existing = unit_of_work
@@ -143,10 +148,13 @@ where
 
                 let attached = unit_of_work
                     .series()
-                    .find_episode_by_video(command.video_id())
+                    .search_episodes(&EpisodeFilter {
+                        video_id: Some(command.video_id()),
+                        ..EpisodeFilter::default()
+                    })
                     .await
                     .map_err(|error| CreateMovieError::Unknown(error.into()))?;
-                if attached.is_some() {
+                if !attached.is_empty() {
                     return Err(CreateMovieError::Conflict);
                 }
 
@@ -268,13 +276,14 @@ mod tests {
         let mut users = MockUserRepository::new();
         expect_admin(&mut users, 1)?;
         let mut videos = MockVideoRepository::new();
+        let video = sample_video(5, 5)?;
         videos
-            .expect_get()
+            .expect_search()
             .times(1)
-            .withf(|video_id| *video_id == 5)
-            .return_once(|_| {
-                let video = sample_video(5, 5).ok();
-                Box::pin(async move { Ok(video) })
+            .withf(|filter| filter.id == Some(5))
+            .return_once(move |_| {
+                let found = video.clone();
+                Box::pin(async move { Ok(vec![found]) })
             });
         let mut movies = MockMovieRepository::new();
         movies
@@ -299,10 +308,10 @@ mod tests {
             });
         let mut series = MockSeriesRepository::new();
         series
-            .expect_find_episode_by_video()
+            .expect_search_episodes()
             .times(1)
-            .withf(|video_id| *video_id == 5)
-            .returning(|_| Box::pin(async { Ok(None) }));
+            .withf(|filter| filter.video_id == Some(5))
+            .returning(|_| Box::pin(async { Ok(Vec::new()) }));
         let harness = harness_with(users, no_permissions(), movies, series, videos);
         let use_case: UseCase = CreateMovie::new(Arc::clone(&harness.factory));
 
@@ -322,9 +331,10 @@ mod tests {
         let mut users = MockUserRepository::new();
         expect_admin(&mut users, 1)?;
         let mut videos = MockVideoRepository::new();
-        videos.expect_get().times(1).return_once(|_| {
-            let video = sample_video(5, 5).ok();
-            Box::pin(async move { Ok(video) })
+        let video = sample_video(5, 5)?;
+        videos.expect_search().times(1).return_once(move |_| {
+            let found = video.clone();
+            Box::pin(async move { Ok(vec![found]) })
         });
         let existing = sample_movie(7)?;
         let mut movies = MockMovieRepository::new();
@@ -334,7 +344,7 @@ mod tests {
         });
         movies.expect_create().times(0);
         let mut series = MockSeriesRepository::new();
-        series.expect_find_episode_by_video().times(0);
+        series.expect_search_episodes().times(0);
         let harness = harness_with(users, no_permissions(), movies, series, videos);
         let use_case: UseCase = CreateMovie::new(Arc::clone(&harness.factory));
 
@@ -381,9 +391,9 @@ mod tests {
         expect_admin(&mut users, 1)?;
         let mut videos = MockVideoRepository::new();
         videos
-            .expect_get()
+            .expect_search()
             .times(1)
-            .returning(|_| Box::pin(async { Ok(None) }));
+            .returning(|_| Box::pin(async { Ok(Vec::new()) }));
         let harness = harness_with(
             users,
             no_permissions(),
@@ -507,9 +517,10 @@ mod tests {
         let mut users = MockUserRepository::new();
         expect_admin(&mut users, 1)?;
         let mut videos = MockVideoRepository::new();
-        videos.expect_get().times(1).return_once(|_| {
-            let video = sample_video(5, 5).ok();
-            Box::pin(async move { Ok(video) })
+        let video = sample_video(5, 5)?;
+        videos.expect_search().times(1).return_once(move |_| {
+            let found = video.clone();
+            Box::pin(async move { Ok(vec![found]) })
         });
         let mut movies = MockMovieRepository::new();
         movies
@@ -520,11 +531,11 @@ mod tests {
         let attached = sample_episode(1, 5)?;
         let mut series = MockSeriesRepository::new();
         series
-            .expect_find_episode_by_video()
+            .expect_search_episodes()
             .times(1)
             .return_once(move |_| {
                 let found = attached.clone();
-                Box::pin(async move { Ok(Some(found)) })
+                Box::pin(async move { Ok(vec![found]) })
             });
         let harness = harness_with(users, no_permissions(), movies, series, videos);
         let use_case: UseCase = CreateMovie::new(Arc::clone(&harness.factory));
@@ -544,9 +555,10 @@ mod tests {
         let mut users = MockUserRepository::new();
         expect_admin(&mut users, 1)?;
         let mut videos = MockVideoRepository::new();
-        videos.expect_get().times(1).return_once(|_| {
-            let video = sample_video(5, 5).ok();
-            Box::pin(async move { Ok(video) })
+        let video = sample_video(5, 5)?;
+        videos.expect_search().times(1).return_once(move |_| {
+            let found = video.clone();
+            Box::pin(async move { Ok(vec![found]) })
         });
         let mut movies = MockMovieRepository::new();
         movies
@@ -559,9 +571,9 @@ mod tests {
             .returning(|_| Box::pin(async { Err(RepositoryError::Conflict) }));
         let mut series = MockSeriesRepository::new();
         series
-            .expect_find_episode_by_video()
+            .expect_search_episodes()
             .times(1)
-            .returning(|_| Box::pin(async { Ok(None) }));
+            .returning(|_| Box::pin(async { Ok(Vec::new()) }));
         let harness = harness_with(users, no_permissions(), movies, series, videos);
         let use_case: UseCase = CreateMovie::new(Arc::clone(&harness.factory));
 
@@ -591,9 +603,10 @@ mod tests {
         let mut users = MockUserRepository::new();
         expect_admin(&mut users, 1)?;
         let mut videos = MockVideoRepository::new();
-        videos.expect_get().times(1).return_once(|_| {
-            let video = sample_video(5, 5).ok();
-            Box::pin(async move { Ok(video) })
+        let video = sample_video(5, 5)?;
+        videos.expect_search().times(1).return_once(move |_| {
+            let found = video.clone();
+            Box::pin(async move { Ok(vec![found]) })
         });
         let mut movies = MockMovieRepository::new();
         movies
@@ -606,9 +619,9 @@ mod tests {
             .returning(|_| Box::pin(async { Err(RepositoryError::DataIntegrityViolation) }));
         let mut series = MockSeriesRepository::new();
         series
-            .expect_find_episode_by_video()
+            .expect_search_episodes()
             .times(1)
-            .returning(|_| Box::pin(async { Ok(None) }));
+            .returning(|_| Box::pin(async { Ok(Vec::new()) }));
         let harness = harness_with(users, no_permissions(), movies, series, videos);
         let use_case: UseCase = CreateMovie::new(Arc::clone(&harness.factory));
 
@@ -664,7 +677,7 @@ mod tests {
         expect_admin(&mut users, 1)?;
         let mut videos = MockVideoRepository::new();
         videos
-            .expect_get()
+            .expect_search()
             .times(1)
             .returning(|_| Box::pin(async { Err(RepositoryError::Unavailable) }));
         let harness = harness_with(

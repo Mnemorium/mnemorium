@@ -139,7 +139,10 @@ where
                     discard_staged(&file_storage, command.upload_id()).await;
                     if unit_of_work
                         .uploads()
-                        .delete(command.upload_id())
+                        .delete(&UploadFilter {
+                            upload_id: Some(command.upload_id()),
+                            ..UploadFilter::default()
+                        })
                         .await
                         .is_err()
                     {
@@ -159,7 +162,14 @@ where
                 // ever points at a file that is already gone; a failed deletion
                 // is best-effort and the reaper removes the orphan later.
                 discard_staged(&file_storage, upload.upload_id()).await;
-                match unit_of_work.uploads().delete(upload.upload_id()).await {
+                match unit_of_work
+                    .uploads()
+                    .delete(&UploadFilter {
+                        upload_id: Some(upload.upload_id()),
+                        ..UploadFilter::default()
+                    })
+                    .await
+                {
                     Ok(true) => Flow::Succeeded(()),
                     Ok(false) => Flow::Failed(CancelUploadError::NoSuchUpload),
                     Err(error) => Flow::Failed(CancelUploadError::Unknown(error.into())),

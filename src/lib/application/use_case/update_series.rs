@@ -174,23 +174,18 @@ where
                 )
                 .map_err(|_| UpdateSeriesError::InvalidName)?;
 
-                let stored = unit_of_work
-                    .series()
-                    .update(updated)
-                    .await
-                    .map_err(|error| {
-                        if matches!(
-                            error,
-                            RepositoryError::AlreadyExist
-                                | RepositoryError::Conflict
-                                | RepositoryError::DataIntegrityViolation
-                        ) {
-                            UpdateSeriesError::Conflict
-                        } else {
-                            UpdateSeriesError::Unknown(error.into())
-                        }
-                    })?
-                    .ok_or(UpdateSeriesError::NoSuchSeries)?;
+                let stored = unit_of_work.series().save(updated).await.map_err(|error| {
+                    if matches!(
+                        error,
+                        RepositoryError::AlreadyExist
+                            | RepositoryError::Conflict
+                            | RepositoryError::DataIntegrityViolation
+                    ) {
+                        UpdateSeriesError::Conflict
+                    } else {
+                        UpdateSeriesError::Unknown(error.into())
+                    }
+                })?;
 
                 Ok(UpdateSeriesResponse::new(stored))
             }
@@ -297,7 +292,7 @@ mod tests {
         let mut series = MockSeriesRepository::new();
         expect_series(&mut series, stored);
         series
-            .expect_update()
+            .expect_save()
             .times(1)
             .withf(|candidate| {
                 candidate.id() == 7
@@ -311,7 +306,7 @@ mod tests {
                         .first()
                         .is_some_and(|season| season.episodes().len() == 1)
             })
-            .returning(|candidate| Box::pin(async move { Ok(Some(candidate)) }));
+            .returning(|candidate| Box::pin(async move { Ok(candidate) }));
         let harness = harness_with(users, no_permissions(), series);
         let use_case: UseCase = UpdateSeries::new(Arc::clone(&harness.factory));
 
@@ -346,14 +341,14 @@ mod tests {
         let mut series = MockSeriesRepository::new();
         expect_series(&mut series, stored);
         series
-            .expect_update()
+            .expect_save()
             .times(1)
             .withf(|candidate| {
                 candidate.country_of_origin().is_none()
                     && candidate.first_air_date().is_none()
                     && candidate.cover_image_id().is_none()
             })
-            .returning(|candidate| Box::pin(async move { Ok(Some(candidate)) }));
+            .returning(|candidate| Box::pin(async move { Ok(candidate) }));
         let harness = harness_with(users, no_permissions(), series);
         let use_case: UseCase = UpdateSeries::new(Arc::clone(&harness.factory));
 
@@ -455,7 +450,7 @@ mod tests {
         let mut series = MockSeriesRepository::new();
         expect_series(&mut series, stored);
         series
-            .expect_update()
+            .expect_save()
             .times(1)
             .returning(|_| Box::pin(async { Err(RepositoryError::Conflict) }));
         let harness = harness_with(users, no_permissions(), series);
@@ -490,7 +485,7 @@ mod tests {
         let mut series = MockSeriesRepository::new();
         expect_series(&mut series, stored);
         series
-            .expect_update()
+            .expect_save()
             .times(1)
             .returning(|_| Box::pin(async { Err(RepositoryError::DataIntegrityViolation) }));
         let harness = harness_with(users, no_permissions(), series);
@@ -543,29 +538,6 @@ mod tests {
 
         // Assert
         assert!(matches!(result, Err(UpdateSeriesError::InvalidName)));
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn update_series_absent_at_write_returns_no_such_series() -> Result<(), Box<dyn Error>> {
-        // Arrange: the show disappears between the read and the write.
-        let mut users = MockUserRepository::new();
-        expect_admin(&mut users, 1)?;
-        let stored = sample_series(7, Vec::new())?;
-        let mut series = MockSeriesRepository::new();
-        expect_series(&mut series, stored);
-        series
-            .expect_update()
-            .times(1)
-            .returning(|_| Box::pin(async { Ok(None) }));
-        let harness = harness_with(users, no_permissions(), series);
-        let use_case: UseCase = UpdateSeries::new(Arc::clone(&harness.factory));
-
-        // Act
-        let result = use_case.execute(empty_command()).await;
-
-        // Assert
-        assert!(matches!(result, Err(UpdateSeriesError::NoSuchSeries)));
         Ok(())
     }
 }

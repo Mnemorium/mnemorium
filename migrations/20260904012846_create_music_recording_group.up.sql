@@ -6,8 +6,8 @@ CREATE TABLE music_recording_group (
     ),
     CONSTRAINT fk_music_recording_group_recording FOREIGN KEY (
         music_recording_id
-    ) REFERENCES music_recording (music_recording_id),
+    ) REFERENCES music_recording (music_recording_id) ON DELETE CASCADE,
     CONSTRAINT fk_music_recording_group_group FOREIGN KEY (
         music_group_id
-    ) REFERENCES music_group (music_group_id)
+    ) REFERENCES music_group (music_group_id) ON DELETE CASCADE
 );

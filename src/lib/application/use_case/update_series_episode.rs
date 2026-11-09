@@ -160,7 +160,7 @@ where
 
                 let stored = unit_of_work
                     .series()
-                    .update_episode(series.id(), command.season_index(), updated)
+                    .save_episode(series.id(), command.season_index(), updated)
                     .await
                     .map_err(|error| UpdateSeriesEpisodeError::Unknown(error.into()))?
                     .ok_or(UpdateSeriesEpisodeError::NoSuchEpisode)?;
@@ -279,7 +279,7 @@ mod tests {
             sample_video(20, 20)?,
         )?;
         series
-            .expect_update_episode()
+            .expect_save_episode()
             .times(1)
             .withf(|series_id, season_index, episode| {
                 *series_id == 7
@@ -326,7 +326,7 @@ mod tests {
             series_with_episodes(vec![sample_episode(1, 20)?])?,
         );
         series
-            .expect_update_episode()
+            .expect_save_episode()
             .times(1)
             .withf(|_, _, episode| {
                 episode.name() == "Episode 1"
@@ -360,7 +360,7 @@ mod tests {
             series_with_episodes(vec![sample_episode(1, 20)?])?,
         );
         series
-            .expect_update_episode()
+            .expect_save_episode()
             .times(1)
             .withf(|_, _, episode| episode.air_date().is_none())
             .returning(|_, _, episode| Box::pin(async move { Ok(Some(episode)) }));
@@ -550,7 +550,7 @@ mod tests {
             series_with_episodes(vec![sample_episode(1, 20)?])?,
         );
         series
-            .expect_update_episode()
+            .expect_save_episode()
             .times(1)
             .returning(|_, _, _| Box::pin(async { Ok(None) }));
         let harness = harness_with(users, no_permissions(), series);

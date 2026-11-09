@@ -29,11 +29,12 @@ pub(crate) trait UserRepository: Send + Sync {
     /// identity.
     fn create(&mut self, user: User) -> impl Future<Output = Result<User, RepositoryError>> + Send;
 
-    /// Delete the user identified by `id`.
+    /// Delete every user matching `filter`.
     ///
-    /// Returns `Ok(true)` when a user matched `id` and was deleted, and
-    /// `Ok(false)` when no user matched. A missing user is a valid outcome,
-    /// not an error.
+    /// Returns `Ok(true)` when at least one user was deleted, and `Ok(false)`
+    /// when none matched. An all-`None` filter deletes every user; the root
+    /// administrator is never deleted and is reported as
+    /// [`RepositoryError::Conflict`].
     #[cfg_attr(
         not(test),
         expect(
@@ -43,7 +44,7 @@ pub(crate) trait UserRepository: Send + Sync {
     )]
     fn delete(
         &mut self,
-        id: NumericID,
+        filter: &UserFilter,
     ) -> impl Future<Output = Result<bool, RepositoryError>> + Send;
 
     /// Insert or update an existing `user` targeted by its identifier,
@@ -68,9 +69,9 @@ impl<T: UserRepository + ?Sized> UserRepository for &mut T {
 
     fn delete(
         &mut self,
-        id: NumericID,
+        filter: &UserFilter,
     ) -> impl Future<Output = Result<bool, RepositoryError>> + Send {
-        (**self).delete(id)
+        (**self).delete(filter)
     }
 
     fn save(&mut self, user: User) -> impl Future<Output = Result<User, RepositoryError>> + Send {

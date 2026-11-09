@@ -13,7 +13,7 @@ use crate::domain::alias::NumericID;
 use crate::domain::model::upload::{ChunkBitmap, MAX_TOTAL_CHUNKS, Upload, UploadError};
 use crate::domain::port::asset_unit_of_work::AssetUnitOfWork;
 use crate::domain::port::file_storage::FileStorage;
-use crate::domain::port::mime_type_repository::MimeTypeRepository as _;
+use crate::domain::port::mime_type_repository::{MimeTypeFilter, MimeTypeRepository as _};
 use crate::domain::port::unit_of_work::{UnitOfWork as _, UnitOfWorkFactory};
 use crate::domain::port::upload_repository::UploadRepository as _;
 use crate::domain::port::user_repository::{UserFilter, UserRepository as _};
@@ -136,11 +136,14 @@ where
                     .next()
                     .ok_or(BeginUploadError::NoSuchCaller)?;
 
-                let content_type_supported = unit_of_work
+                let content_type_supported = !unit_of_work
                     .mime_types()
-                    .exists(command.content_type())
+                    .search(&MimeTypeFilter {
+                        mime_type_id: Some(command.content_type().to_owned()),
+                    })
                     .await
-                    .map_err(|error| BeginUploadError::Unknown(error.into()))?;
+                    .map_err(|error| BeginUploadError::Unknown(error.into()))?
+                    .is_empty();
                 if !content_type_supported {
                     return Err(BeginUploadError::UnsupportedMediaType);
                 }
@@ -274,6 +277,7 @@ mod tests {
     use super::*;
     use crate::application::use_case::test_fixtures::TTL_SECONDS;
     use crate::domain::model::integrity_hash::IntegrityHash;
+    use crate::domain::model::mime_type::MimeType;
     use crate::domain::port::error::{RepositoryError, StorageError};
     use crate::domain::port::file_storage::MockFileStorage;
     use crate::domain::port::mime_type_repository::MockMimeTypeRepository;
@@ -382,20 +386,18 @@ mod tests {
         )
     }
 
-    /// Build an [`IntegrityHash`] from a literal digest.
-    #[expect(
-        clippy::expect_used,
-        reason = "the test literal is a valid 64-character hexadecimal digest"
-    )]
-    fn hash(digest: &str) -> IntegrityHash<64> {
-        IntegrityHash::try_new(digest.to_owned()).expect("the fixture digest is valid")
-    }
-
     fn expect_mime_type(mime_types: &mut MockMimeTypeRepository, exists: bool) {
-        mime_types
-            .expect_exists()
-            .times(1)
-            .returning(move |_| Box::pin(async move { Ok(exists) }));
+        mime_types.expect_search().times(1).returning(move |_| {
+            let found: Vec<MimeType> = if exists {
+                MimeType::try_new("video/mp4".to_owned())
+                    .ok()
+                    .into_iter()
+                    .collect()
+            } else {
+                Vec::new()
+            };
+            Box::pin(async move { Ok(found) })
+        });
     }
 
     fn stored_upload(command: &BeginUploadCommand) -> Result<Upload, RepositoryError> {

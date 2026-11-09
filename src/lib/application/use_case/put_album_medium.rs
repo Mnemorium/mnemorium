@@ -6,7 +6,7 @@ use crate::application::port::put_album_medium::{
     PutAlbumMediumCommand, PutAlbumMediumError, PutAlbumMediumResponse, PutAlbumMediumUseCase,
 };
 use crate::application::security_event;
-use crate::domain::model::music_medium::MediumIndex;
+use crate::domain::model::music_medium::{MediumIndex, MusicMedium};
 use crate::domain::model::permission::Action;
 use crate::domain::port::error::RepositoryError;
 use crate::domain::port::identity_unit_of_work::IdentityUnitOfWork;
@@ -131,9 +131,15 @@ where
                     .iter()
                     .any(|stored| stored.index().index() == command.medium_index());
 
+                let tracks = album
+                    .mediums()
+                    .iter()
+                    .find(|stored| stored.index() == medium)
+                    .map(|stored| stored.tracks().to_vec())
+                    .unwrap_or_default();
                 let stored_medium = unit_of_work
                     .music_albums()
-                    .put_medium(album.id(), medium)
+                    .save_medium(album.id(), MusicMedium::new(medium, tracks))
                     .await
                     .map_err(|error| {
                         if matches!(error, RepositoryError::Conflict) {
@@ -252,13 +258,10 @@ mod tests {
         let mut albums = MockMusicAlbumRepository::new();
         expect_album(&mut albums, sample_album(7, Vec::new())?);
         albums
-            .expect_put_medium()
+            .expect_save_medium()
             .times(1)
-            .withf(|album_id, medium| *album_id == 7 && *medium == MediumIndex::Cd(1))
-            .returning(|_, medium| {
-                let written = MusicMedium::new(medium, Vec::new());
-                Box::pin(async move { Ok(Some(written)) })
-            });
+            .withf(|album_id, medium| *album_id == 7 && medium.index() == MediumIndex::Cd(1))
+            .returning(|_, medium| Box::pin(async move { Ok(Some(medium)) }));
         let stored = album_with_cd(7)?;
         albums.expect_search().times(1).return_once(move |_| {
             let found = stored.clone();
@@ -286,10 +289,10 @@ mod tests {
         expect_admin(&mut users, 1)?;
         let mut albums = MockMusicAlbumRepository::new();
         expect_album(&mut albums, album_with_cd(7)?);
-        albums.expect_put_medium().times(1).returning(|_, medium| {
-            let written = MusicMedium::new(medium, Vec::new());
-            Box::pin(async move { Ok(Some(written)) })
-        });
+        albums
+            .expect_save_medium()
+            .times(1)
+            .returning(|_, medium| Box::pin(async move { Ok(Some(medium)) }));
         let stored = sample_album(
             7,
             vec![MusicMedium::new(MediumIndex::Digital(1), Vec::new())],
@@ -386,7 +389,7 @@ mod tests {
         let mut albums = MockMusicAlbumRepository::new();
         expect_album(&mut albums, sample_album(7, Vec::new())?);
         albums
-            .expect_put_medium()
+            .expect_save_medium()
             .times(1)
             .returning(|_, _| Box::pin(async { Err(RepositoryError::Conflict) }));
         let harness = harness_with(users, albums);

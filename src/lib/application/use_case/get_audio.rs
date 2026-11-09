@@ -179,9 +179,9 @@ mod tests {
             .times(1)
             .returning(|_| Box::pin(async { Ok(Vec::new()) }));
         let mut albums = MockMusicAlbumRepository::new();
-        albums.expect_find_album_by_audio().times(1).returning(|_| {
+        albums.expect_search().times(1).returning(|_| {
             let album = sample_album(5, Vec::new()).map_err(|_| RepositoryError::OperationFailed);
-            Box::pin(async move { album.map(Some) })
+            Box::pin(async move { album.map(|found| vec![found]) })
         });
         let harness = harness(users, files, images, audios, videos, albums);
         let mut content_link = MockContentLinkProvider::new();

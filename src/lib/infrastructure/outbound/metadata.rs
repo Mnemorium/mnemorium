@@ -4,10 +4,6 @@
 //! implementations and has no transport of its own: it tries the configured
 //! providers in ascending index order, records each fallback as a catalogued
 //! event, and routes a lookup to the provider that issued the reference.
-#![allow(
-    dead_code,
-    reason = "the provider chain serves the internal video-identification path, which has no REST caller yet"
-)]
 
 pub(crate) mod failover;
 

@@ -115,7 +115,7 @@ where
 
                 let stored = unit_of_work
                     .series()
-                    .put_season(series.id(), season)
+                    .save_season(series.id(), season)
                     .await
                     .map_err(|error| {
                         if matches!(
@@ -229,7 +229,7 @@ mod tests {
             Vec::new(),
         );
         series
-            .expect_put_season()
+            .expect_save_season()
             .times(1)
             .withf(|series_id, season| {
                 *series_id == 7 && season.index().value() == 1 && season.episodes().is_empty()
@@ -263,7 +263,7 @@ mod tests {
         expect_series(&mut series, stored);
         let written = sample_season(1, vec![sample_episode(1, 20)?]);
         series
-            .expect_put_season()
+            .expect_save_season()
             .times(1)
             .return_once(move |_, _| {
                 let copy = written.clone();
@@ -316,7 +316,7 @@ mod tests {
         let mut series = MockSeriesRepository::new();
         expect_series(&mut series, stored);
         series
-            .expect_put_season()
+            .expect_save_season()
             .times(1)
             .returning(|_, _| Box::pin(async { Ok(None) }));
         let harness = harness_with(users, no_permissions(), series);
@@ -356,7 +356,7 @@ mod tests {
         let mut series = MockSeriesRepository::new();
         expect_series(&mut series, stored);
         series
-            .expect_put_season()
+            .expect_save_season()
             .times(1)
             .returning(|_, _| Box::pin(async { Err(RepositoryError::Conflict) }));
         let harness = harness_with(users, no_permissions(), series);
@@ -380,7 +380,7 @@ mod tests {
         let mut series = MockSeriesRepository::new();
         expect_series(&mut series, stored);
         series
-            .expect_put_season()
+            .expect_save_season()
             .times(1)
             .returning(|_, _| Box::pin(async { Err(RepositoryError::DataIntegrityViolation) }));
         let harness = harness_with(users, no_permissions(), series);
@@ -405,7 +405,7 @@ mod tests {
         expect_series(&mut series, stored);
         let written = Season::new(SeasonIndex::new(1), None, None, Vec::new());
         series
-            .expect_put_season()
+            .expect_save_season()
             .times(1)
             .withf(|_, season| season.name().is_none() && season.cover_image_id().is_none())
             .return_once(move |_, _| {

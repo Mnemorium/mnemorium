@@ -8,10 +8,10 @@ CREATE TABLE audio_stream (
     CONSTRAINT uq_audio_stream_stream_id UNIQUE (stream_id),
     CONSTRAINT fk_audio_stream_stream FOREIGN KEY (
         stream_id
-    ) REFERENCES stream (stream_id),
+    ) REFERENCES stream (stream_id) ON DELETE CASCADE,
     CONSTRAINT fk_audio_stream_audio FOREIGN KEY (audio_id) REFERENCES audio (
         audio_id
-    ),
+    ) ON DELETE CASCADE,
     CONSTRAINT fk_audio_stream_language FOREIGN KEY (
         language_id
     ) REFERENCES language (language_id),

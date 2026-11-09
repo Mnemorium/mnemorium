@@ -131,7 +131,10 @@ where
 
                 let deleted = unit_of_work
                     .galleries()
-                    .delete_item(detail.item().gallery_item_id())
+                    .delete_item(&GalleryItemFilter {
+                        gallery_item_id: Some(detail.item().gallery_item_id()),
+                        ..GalleryItemFilter::default()
+                    })
                     .await
                     .map_err(|error| DeleteGalleryItemError::Unknown(error.into()))?;
                 if !deleted {
@@ -139,10 +142,22 @@ where
                 }
                 let deleted_media = match media {
                     GalleryItemMedia::Image(image_id) => {
-                        unit_of_work.images().delete(image_id).await
+                        unit_of_work
+                            .images()
+                            .delete(&ImageFilter {
+                                image_id: Some(image_id),
+                                ..ImageFilter::default()
+                            })
+                            .await
                     }
                     GalleryItemMedia::Video(video_id) => {
-                        unit_of_work.videos().delete(video_id).await
+                        unit_of_work
+                            .videos()
+                            .delete(&VideoFilter {
+                                id: Some(video_id),
+                                ..VideoFilter::default()
+                            })
+                            .await
                     }
                 }
                 .map_err(|error| DeleteGalleryItemError::Unknown(error.into()))?;
@@ -203,7 +218,14 @@ where
                         if still_referenced {
                             None
                         } else {
-                            match unit_of_work.files().delete(file.id()).await {
+                            match unit_of_work
+                                .files()
+                                .delete(&FileFilter {
+                                    id: Some(file.id()),
+                                    ..FileFilter::default()
+                                })
+                                .await
+                            {
                                 Ok(true) => Some(PathBuf::from(file.path())),
                                 // The row was already gone — the removal that
                                 // deleted it owns the bytes — or the datastore
@@ -386,7 +408,7 @@ mod tests {
         files
             .expect_delete()
             .times(1)
-            .withf(|id| *id == 100)
+            .withf(|filter| filter.id == Some(100))
             .returning(|_| Box::pin(async { Ok(true) }));
         Ok(())
     }
@@ -438,7 +460,7 @@ mod tests {
         galleries
             .expect_delete_item()
             .times(1)
-            .withf(|id| *id == 42)
+            .withf(|filter| filter.gallery_item_id == Some(42))
             .returning(|_| Box::pin(async { Ok(true) }));
         galleries
             .expect_save()
@@ -449,7 +471,7 @@ mod tests {
         images
             .expect_delete()
             .times(1)
-            .withf(|id| *id == 7)
+            .withf(|filter| filter.image_id == Some(7))
             .returning(|_| Box::pin(async { Ok(true) }));
         let mut videos = MockVideoRepository::new();
         let mut files = MockFileRepository::new();
@@ -548,7 +570,7 @@ mod tests {
         videos
             .expect_delete()
             .times(1)
-            .withf(|id| *id == 8)
+            .withf(|filter| filter.id == Some(8))
             .returning(|_| Box::pin(async { Ok(true) }));
         let mut images = MockImageRepository::new();
         let mut files = MockFileRepository::new();
@@ -599,7 +621,7 @@ mod tests {
         images
             .expect_delete()
             .times(1)
-            .withf(|id| *id == 7)
+            .withf(|filter| filter.image_id == Some(7))
             .returning(|_| Box::pin(async { Ok(true) }));
         // The file is not the caller's, so the reference guard never runs.
         images.expect_search().times(0);
@@ -663,7 +685,7 @@ mod tests {
         images
             .expect_delete()
             .times(1)
-            .withf(|id| *id == 7)
+            .withf(|filter| filter.image_id == Some(7))
             .returning(|_| Box::pin(async { Ok(true) }));
         let mut videos = MockVideoRepository::new();
         let mut files = MockFileRepository::new();
@@ -775,7 +797,7 @@ mod tests {
         images
             .expect_delete()
             .times(1)
-            .withf(|id| *id == 7)
+            .withf(|filter| filter.image_id == Some(7))
             .returning(|_| Box::pin(async { Ok(true) }));
         let referencing = Image::try_new(
             1,
@@ -847,7 +869,7 @@ mod tests {
         images
             .expect_delete()
             .times(1)
-            .withf(|id| *id == 7)
+            .withf(|filter| filter.image_id == Some(7))
             .returning(|_| Box::pin(async { Ok(true) }));
         images
             .expect_search()

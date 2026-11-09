@@ -1,6 +1,5 @@
 use sqlx::{QueryBuilder, Sqlite, Transaction};
 
-use crate::domain::alias::NumericID;
 use crate::domain::model::user::{Role, User};
 use crate::domain::port::error::RepositoryError;
 use crate::domain::port::user_repository::{UserFilter, UserRepository};
@@ -43,11 +42,24 @@ impl UserRepository for SqlxUserRepository<'_> {
         domain_user(row)
     }
 
-    async fn delete(&mut self, id: NumericID) -> Result<bool, RepositoryError> {
-        let result = sqlx::query("DELETE FROM user WHERE user_id = ?")
-            .bind(id)
-            .execute(&mut **self.transaction)
-            .await?;
+    async fn delete(&mut self, filter: &UserFilter) -> Result<bool, RepositoryError> {
+        let mut builder = QueryBuilder::<Sqlite>::new("DELETE FROM user");
+        let mut first = true;
+
+        if let Some(id) = filter.id {
+            push_filter(&mut first, &mut builder, "user_id = ", id);
+        }
+        if let Some(role) = filter.role {
+            push_filter(&mut first, &mut builder, "role = ", sqlx_role(role));
+        }
+        if let Some(username) = filter.username.as_deref() {
+            push_filter(&mut first, &mut builder, "username = ", username);
+        }
+        if let Some(email) = filter.email.as_deref() {
+            push_filter(&mut first, &mut builder, "email = ", email);
+        }
+
+        let result = builder.build().execute(&mut **self.transaction).await?;
         Ok(result.rows_affected() > 0)
     }
 
@@ -399,7 +411,12 @@ mod tests {
 
         // Act
         let mut repository = SqlxUserRepository::new(&mut transaction);
-        let deleted = repository.delete(404).await?;
+        let deleted = repository
+            .delete(&UserFilter {
+                id: Some(404),
+                ..UserFilter::default()
+            })
+            .await?;
 
         // Assert
         assert!(!deleted);
@@ -417,7 +434,12 @@ mod tests {
             .await?;
 
         // Act
-        let deleted = repository.delete(7).await?;
+        let deleted = repository
+            .delete(&UserFilter {
+                id: Some(7),
+                ..UserFilter::default()
+            })
+            .await?;
 
         // Assert
         assert!(deleted);
@@ -435,7 +457,12 @@ mod tests {
             .await?;
 
         // Act
-        let result = repository.delete(0).await;
+        let result = repository
+            .delete(&UserFilter {
+                id: Some(0),
+                ..UserFilter::default()
+            })
+            .await;
 
         // Assert
         assert!(matches!(result, Err(RepositoryError::Conflict)));

@@ -173,23 +173,18 @@ where
                 )
                 .map_err(|_| UpdateMovieError::InvalidName)?;
 
-                let stored = unit_of_work
-                    .movies()
-                    .update(updated)
-                    .await
-                    .map_err(|error| {
-                        if matches!(
-                            error,
-                            RepositoryError::AlreadyExist
-                                | RepositoryError::Conflict
-                                | RepositoryError::DataIntegrityViolation
-                        ) {
-                            UpdateMovieError::Conflict
-                        } else {
-                            UpdateMovieError::Unknown(error.into())
-                        }
-                    })?
-                    .ok_or(UpdateMovieError::NoSuchMovie)?;
+                let stored = unit_of_work.movies().save(updated).await.map_err(|error| {
+                    if matches!(
+                        error,
+                        RepositoryError::AlreadyExist
+                            | RepositoryError::Conflict
+                            | RepositoryError::DataIntegrityViolation
+                    ) {
+                        UpdateMovieError::Conflict
+                    } else {
+                        UpdateMovieError::Unknown(error.into())
+                    }
+                })?;
 
                 Ok(UpdateMovieResponse::new(stored))
             }
@@ -295,7 +290,7 @@ mod tests {
         let mut movies = MockMovieRepository::new();
         expect_movie(&mut movies, stored);
         movies
-            .expect_update()
+            .expect_save()
             .times(1)
             .withf(|movie| {
                 movie.id() == 7
@@ -306,7 +301,7 @@ mod tests {
                     && movie.cover_image_id() == Some(9)
                     && movie.video_id() == 7
             })
-            .returning(|movie| Box::pin(async move { Ok(Some(movie)) }));
+            .returning(|movie| Box::pin(async move { Ok(movie) }));
         let harness = harness_with(users, no_permissions(), movies);
         let use_case: UseCase = UpdateMovie::new(Arc::clone(&harness.factory));
 
@@ -341,7 +336,7 @@ mod tests {
         let mut movies = MockMovieRepository::new();
         expect_movie(&mut movies, stored);
         movies
-            .expect_update()
+            .expect_save()
             .times(1)
             .withf(|movie| {
                 movie.name() == "Movie 7"
@@ -351,7 +346,7 @@ mod tests {
                     && movie.cover_image_id().is_none()
                     && movie.release_date().is_some()
             })
-            .returning(|movie| Box::pin(async move { Ok(Some(movie)) }));
+            .returning(|movie| Box::pin(async move { Ok(movie) }));
         let harness = harness_with(users, no_permissions(), movies);
         let use_case: UseCase = UpdateMovie::new(Arc::clone(&harness.factory));
 
@@ -373,14 +368,14 @@ mod tests {
         let mut movies = MockMovieRepository::new();
         expect_movie(&mut movies, stored);
         movies
-            .expect_update()
+            .expect_save()
             .times(1)
             .withf(|movie| {
                 movie.country_of_origin().is_none()
                     && movie.release_date().is_none()
                     && movie.cover_image_id().is_none()
             })
-            .returning(|movie| Box::pin(async move { Ok(Some(movie)) }));
+            .returning(|movie| Box::pin(async move { Ok(movie) }));
         let harness = harness_with(users, no_permissions(), movies);
         let use_case: UseCase = UpdateMovie::new(Arc::clone(&harness.factory));
 
@@ -481,7 +476,7 @@ mod tests {
         let mut movies = MockMovieRepository::new();
         expect_movie(&mut movies, stored);
         movies
-            .expect_update()
+            .expect_save()
             .times(1)
             .returning(|_| Box::pin(async { Err(RepositoryError::Conflict) }));
         let harness = harness_with(users, no_permissions(), movies);
@@ -516,7 +511,7 @@ mod tests {
         let mut movies = MockMovieRepository::new();
         expect_movie(&mut movies, stored);
         movies
-            .expect_update()
+            .expect_save()
             .times(1)
             .returning(|_| Box::pin(async { Err(RepositoryError::DataIntegrityViolation) }));
         let harness = harness_with(users, no_permissions(), movies);
@@ -629,29 +624,6 @@ mod tests {
 
         // Assert
         assert!(matches!(result, Err(UpdateMovieError::InvalidGenre)));
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn update_movie_absent_at_write_returns_no_such_movie() -> Result<(), Box<dyn Error>> {
-        // Arrange: the film disappears between the read and the write.
-        let mut users = MockUserRepository::new();
-        expect_admin(&mut users, 1)?;
-        let stored = sample_movie(7)?;
-        let mut movies = MockMovieRepository::new();
-        expect_movie(&mut movies, stored);
-        movies
-            .expect_update()
-            .times(1)
-            .returning(|_| Box::pin(async { Ok(None) }));
-        let harness = harness_with(users, no_permissions(), movies);
-        let use_case: UseCase = UpdateMovie::new(Arc::clone(&harness.factory));
-
-        // Act
-        let result = use_case.execute(empty_command()).await;
-
-        // Assert
-        assert!(matches!(result, Err(UpdateMovieError::NoSuchMovie)));
         Ok(())
     }
 }

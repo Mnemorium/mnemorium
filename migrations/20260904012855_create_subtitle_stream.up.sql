@@ -9,7 +9,7 @@ CREATE TABLE subtitle_stream (
     CONSTRAINT uq_subtitle_stream_stream_id UNIQUE (stream_id),
     CONSTRAINT fk_subtitle_stream_stream FOREIGN KEY (
         stream_id
-    ) REFERENCES stream (stream_id),
+    ) REFERENCES stream (stream_id) ON DELETE CASCADE,
     CONSTRAINT fk_subtitle_stream_language FOREIGN KEY (
         language_id
     ) REFERENCES language (language_id),

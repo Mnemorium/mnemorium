@@ -51,10 +51,6 @@ where
     F::Uow: IdentityUnitOfWork + UserUnitOfWork,
     P: VideoMetadataProvider,
 {
-    #[expect(
-        clippy::pattern_type_mismatch,
-        reason = "the arms borrow the target and the metadata out of non-Copy enums matched by reference"
-    )]
     fn execute<'future>(
         &'future self,
         command: ResolveVideoMetadataCommand,
@@ -126,19 +122,19 @@ where
                     return Ok(None);
                 };
                 match (command.target(), &metadata) {
-                    (Target::Movie(_), MediaMetadata::Movie { .. })
-                    | (Target::Series(_), MediaMetadata::Series { .. }) => {}
+                    (&Target::Movie(_), &MediaMetadata::Movie { .. })
+                    | (&Target::Series(_), &MediaMetadata::Series { .. }) => {}
                     (
-                        Target::Episode {
+                        &Target::Episode {
                             episode: requested_episode,
                             season: requested_season,
                             ..
                         },
-                        MediaMetadata::Episode {
+                        &MediaMetadata::Episode {
                             episode, season, ..
                         },
                     ) if episode == requested_episode && season == requested_season => {}
-                    (Target::Episode { .. }, MediaMetadata::Episode { .. }) => {
+                    (&Target::Episode { .. }, &MediaMetadata::Episode { .. }) => {
                         return Err(ResolveVideoMetadataError::PositionMismatch);
                     }
                     _ => return Err(ResolveVideoMetadataError::KindMismatch),

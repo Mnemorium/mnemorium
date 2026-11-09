@@ -54,11 +54,7 @@ pub(crate) struct EnsureStorageDirectoriesResponse {
 impl EnsureStorageDirectoriesResponse {
     /// Return whether the library root exists.
     #[must_use]
-    #[expect(
-        clippy::trivially_copy_pass_by_ref,
-        reason = "STY-RUST-019 fixes the getter receiver as `&self`"
-    )]
-    pub(crate) fn media_root_present(&self) -> bool {
+    pub(crate) fn media_root_present(self) -> bool {
         self.media_root_present
     }
 
