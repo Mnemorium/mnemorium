@@ -39,6 +39,8 @@ mod delete_gallery;
 mod delete_gallery_item;
 /// The delete playlist use-case port.
 mod delete_playlist;
+/// The delete user use-case port.
+mod delete_user;
 /// The ensure storage directories use-case port.
 mod ensure_storage_directories;
 /// The get album use-case port.
@@ -224,6 +226,7 @@ pub(crate) use self::delete_gallery_item::{
 pub(crate) use self::delete_playlist::{
     DeletePlaylistCommand, DeletePlaylistError, DeletePlaylistUseCase,
 };
+pub(crate) use self::delete_user::{DeleteUserCommand, DeleteUserError, DeleteUserUseCase};
 pub(crate) use self::ensure_storage_directories::{
     EnsureStorageDirectoriesCommand, EnsureStorageDirectoriesError,
     EnsureStorageDirectoriesResponse, EnsureStorageDirectoriesUseCase,

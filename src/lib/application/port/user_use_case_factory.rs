@@ -9,7 +9,7 @@
 use std::sync::Arc;
 
 use crate::application::port::{
-    GetCurrentUserUseCase, GetUserUseCase, ListUsersUseCase, UpdateUserUseCase,
+    DeleteUserUseCase, GetCurrentUserUseCase, GetUserUseCase, ListUsersUseCase, UpdateUserUseCase,
 };
 
 /// Builds the use cases of the User bounded context on demand.
@@ -18,6 +18,9 @@ use crate::application::port::{
 /// that every request gets a use case bound to the current dependencies.
 #[cfg_attr(test, mockall::automock)]
 pub(crate) trait UserUseCaseFactory: Send + Sync {
+    /// Build the use case deleting a user account and the data it owns.
+    fn delete_user(&self) -> Arc<dyn DeleteUserUseCase>;
+
     /// Build the use case fetching the current user.
     fn get_current_user(&self) -> Arc<dyn GetCurrentUserUseCase>;
 

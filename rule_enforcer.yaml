@@ -134,8 +134,6 @@ rules:
     exempt_use_cases:
       - UC-003
       - UC-004
-      # TODO: remove UC-005 once its E2E file (Delete User Account) lands.
-      - UC-005
   API-031:
     # The response bodies § HAL payload guidelines names as non-representations:
     # the token issue and the liveness probe. They keep their plain

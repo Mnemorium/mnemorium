@@ -170,6 +170,20 @@ mod tests {
     }
 
     #[test]
+    fn openapi_collects_the_user_delete_operation() {
+        // Act
+        let document = openapi();
+        let item = document.paths.paths.get("/user/{id}");
+
+        // Assert: deleting an account is part of the declared surface, so a
+        // client can discover it from the served specification.
+        assert!(
+            item.is_some_and(|path_item| path_item.delete.is_some()),
+            "the document must declare DELETE /user/{{id}}"
+        );
+    }
+
+    #[test]
     fn openapi_collects_the_upload_cancel_operation() {
         // Act
         let document = openapi();

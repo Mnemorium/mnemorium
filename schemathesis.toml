@@ -262,6 +262,15 @@ include-operation-id = "delete_gallery_item"
 parameters = { id = 9001, item_id = 9001 }
 phases = { examples = { enabled = false }, coverage = { enabled = false } }
 
+# Deletion cascades across every fixture the deleted user owns, so the target
+# must own none of them: bobby (9002) does. Stateful is disabled because an
+# inferred link would otherwise pick alice (9001) from a read and delete the
+# galleries and playlists the rest of the run addresses.
+[[operations]]
+include-operation-id = "delete_user"
+parameters = { id = 9002 }
+phases = { examples = { enabled = false }, coverage = { enabled = false }, stateful = { enabled = false } }
+
 # A chunk write needs a coherent body, range and digest; a generated request
 # with a malformed header is a `400` the schema's positive case may still hit.
 [[operations]]

@@ -307,7 +307,7 @@ mod tests {
         let response = use_case.execute(command).await?;
 
         // Assert
-        assert_eq!(response.defaults().len(), 15);
+        assert_eq!(response.defaults().len(), 16);
         assert!(
             response
                 .defaults()

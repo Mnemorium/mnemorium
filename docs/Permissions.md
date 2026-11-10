@@ -38,6 +38,7 @@ Every authorizable operation has exactly one action name, and the catalog is fix
 | `user.update`       | User                      | `NONE`            | `ALL`             | All        | yes          |
 | `user.create`       | Global                    | `NONE`            | `ALL`             | All        | yes          |
 | `user.create_admin` | Global                    | `NONE`            | `NONE`            | All        | yes          |
+| `user.delete`       | User                      | `NONE`            | `ALL`             | All        | yes          |
 | `user.role_change`  | User                      | `NONE`            | `NONE`            | All        | yes          |
 | `credential.patch`  | Global                    | `NONE`            | `NONE`            | All        | yes          |
 | `permission.manage` | Global                    | `NONE`            | `NONE`            | All        | no           |
@@ -110,15 +111,19 @@ For each action, the effective scope is resolved in this order:
 Two rules run alongside the scope:
 
 - **Relation guard.** `user.update` refuses another Admin account unless the caller is the Root Admin, whatever the
-  scope says. This keeps a non-root Admin from editing a peer.
+  scope says. This keeps a non-root Admin from editing a peer. `user.delete` refuses every Admin target unless the
+  caller is the Root Admin, including an Admin's own account: an Admin may delete only a Standard account. The Root
+  Admin's own account is never deleted by any caller.
 - **Fixed uploads.** `upload.read` and `upload.write` always resolve to `OWNED` for every caller, including the Root
   Admin.
 
 ## Root Admin and uploads
 
 The Root Admin is a universal allow: it reads every gallery and playlist, manages another user's playlist or gallery,
-writes the library, reads and creates user accounts, and administers permissions. The one exception is uploads: an
-upload session is readable, writable and completable only by its owner.
+writes the library, reads, creates and deletes user accounts, and administers permissions. The one exception is uploads:
+an upload session is readable, writable and completable only by its owner. Deleting an Admin account is the one
+administration operation the role presets grant to the Root Admin alone; a non-root Admin deletes Standard accounts
+only.
 
 The Root Admin has no overrides, and none can be given to it: the API refuses the Root Admin as a target, and any
 override recorded for it is ignored.

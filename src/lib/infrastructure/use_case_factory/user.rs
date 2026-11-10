@@ -1,9 +1,11 @@
 use std::sync::Arc;
 
 use crate::application::port::{
-    GetCurrentUserUseCase, GetUserUseCase, ListUsersUseCase, UpdateUserUseCase, UserUseCaseFactory,
+    DeleteUserUseCase, GetCurrentUserUseCase, GetUserUseCase, ListUsersUseCase, UpdateUserUseCase,
+    UserUseCaseFactory,
 };
-use crate::application::use_case::{GetCurrentUser, GetUser, ListUsers, UpdateUser};
+use crate::application::use_case::{DeleteUser, GetCurrentUser, GetUser, ListUsers, UpdateUser};
+use crate::infrastructure::outbound::file_system::FileSystemStorage;
 use crate::infrastructure::outbound::sqlx::SqlxUnitOfWorkFactory;
 
 /// Builds the User use cases over the shared unit of work factory.
@@ -23,6 +25,14 @@ impl RuntimeUserUseCaseFactory {
 }
 
 impl UserUseCaseFactory for RuntimeUserUseCaseFactory {
+    fn delete_user(&self) -> Arc<dyn DeleteUserUseCase> {
+        // The file storage adapter is stateless and rebuilt per accessor.
+        Arc::new(DeleteUser::new(
+            Arc::clone(&self.unit_of_work_factory),
+            Arc::new(FileSystemStorage::new()),
+        ))
+    }
+
     fn get_current_user(&self) -> Arc<dyn GetCurrentUserUseCase> {
         Arc::new(GetCurrentUser::new(Arc::clone(&self.unit_of_work_factory)))
     }

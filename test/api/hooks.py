@@ -2,9 +2,9 @@
 
 The generator can produce values the served schema does not describe precisely
 enough: a header *name* that is not an HTTP token, a date that is not a calendar
-date, a username that breaks the lowercase rule, or one half of the paired
-season/episode query. The server correctly rejects each one; drop those cases so
-the run reports only requests the schema actually models.
+date, a username that breaks the lowercase rule, a blank resource name, or one
+half of the paired season/episode query. The server correctly rejects each one;
+drop those cases so the run reports only requests the schema actually models.
 """
 
 import datetime
@@ -34,6 +34,21 @@ def _valid_username(value):
     return value == value.strip() and not any(character.isupper() for character in value)
 
 
+def _valid_name(value):
+    """Return whether `value` is the trimmed name the resource name policy keeps.
+
+    The policy trims surrounding whitespace, rejects a value that is then
+    empty, and applies the maximum length to the trimmed value, while the
+    schema's `minLength`/`maxLength` count the raw value. A surrounding
+    whitespace name is therefore a blank `422` or a `maxLength` deviation the
+    server correctly accepts, so only a value that is already trimmed can be
+    compared with the schema.
+    """
+    if not isinstance(value, str):
+        return True
+    return value != "" and value == value.strip()
+
+
 def _valid_body(value):
     """Return whether a JSON value carries no value the server must reject."""
     if isinstance(value, dict):
@@ -47,6 +62,8 @@ def _valid_body(value):
             ):
                 return False
             if key == "username" and not _valid_username(item):
+                return False
+            if key in ("name", "stage_name") and not _valid_name(item):
                 return False
             if not _valid_body(item):
                 return False

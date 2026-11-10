@@ -32,6 +32,8 @@ mod delete_gallery;
 mod delete_gallery_item;
 /// The delete playlist use case implementation.
 mod delete_playlist;
+/// The delete user use case implementation.
+mod delete_user;
 /// The ensure storage directories use case implementation.
 mod ensure_storage_directories;
 /// The get album use case implementation.
@@ -172,6 +174,7 @@ pub(crate) use self::create_series::CreateSeries;
 pub(crate) use self::delete_gallery::DeleteGallery;
 pub(crate) use self::delete_gallery_item::DeleteGalleryItem;
 pub(crate) use self::delete_playlist::DeletePlaylist;
+pub(crate) use self::delete_user::DeleteUser;
 pub(crate) use self::ensure_storage_directories::EnsureStorageDirectories;
 pub(crate) use self::get_album::GetAlbum;
 pub(crate) use self::get_album_medium::GetAlbumMedium;

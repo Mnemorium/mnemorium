@@ -1,4 +1,6 @@
 /// The user context endpoints.
+mod delete_user;
+/// The user context endpoints.
 mod get_me;
 /// The user context endpoints.
 mod get_user;
@@ -88,7 +90,11 @@ pub(crate) fn parse_user_id(value: &str) -> Result<NumericID, ApiError> {
 pub(crate) fn user_router() -> OpenApiRouter<AppState> {
     OpenApiRouter::new()
         .routes(routes!(get_me::get_me))
-        .routes(routes!(get_user::get_user, patch_user::patch_user))
+        .routes(routes!(
+            get_user::get_user,
+            patch_user::patch_user,
+            delete_user::delete_user
+        ))
         .routes(routes!(get_user_list::get_user_list))
         .routes(routes!(get_permission, put_permission))
 }

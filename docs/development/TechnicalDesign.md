@@ -3835,7 +3835,7 @@ verifies every emission site against it.
 | `constraint_rejected`            | `warn`  | `kind`, `operation`                                                                | an outbound adapter maps an expected constraint to a business result                        |
 | `token_provider_fault`           | `error` | `kind`                                                                             | the inbound token boundary receives an operational fault from the token provider            |
 | `lifecycle`                      | `info`  | `component`, `outcome`                                                             | startup, shutdown or logging initialization                                                 |
-| `user_admin`                     | `info`  | `actor`, `action`, `target`                                                        | a user is created or updated, a role or credential changes                                  |
+| `user_admin`                     | `info`  | `actor`, `action`, `target`                                                        | a user is created, updated or deleted, a role or credential changes                         |
 | `secret_initialized`             | `info`  | `component`                                                                        | the pepper or the signing secret is generated when the instance identity is created         |
 | `credential_rotated`             | `info`  | `actor`                                                                            | a password is replaced or rehashed                                                          |
 | `upload`                         | `info`  | `actor`, `upload`, `outcome`                                                       | an upload is accepted, a chunk written, an upload completed or cancelled                    |
@@ -3846,11 +3846,11 @@ verifies every emission site against it.
 | `unexpected_http_method`         | `warn`  | `method`, `path`                                                                   | a request uses a method the route does not support                                          |
 
 The `authz_failed` fields are a closed vocabulary shared with the permission catalog (`docs/Permissions.md`). `action`
-is the denied action's verb, one of `read`, `moderate`, `manage`, `use`, `write`, `update`, `update_role`, `create` or
-`patch_credential`; `target` is its target, one of `library`, `gallery`, `playlist`, `file`, `upload` or `user`. The
-`Authorization` domain service names both, and the application use case that loads the caller, the caller's permissions
-and the resource emits exactly one event per denied decision before mapping the denial. A collection filter that drops
-an item by asking the same service is a negative decision, not a denial, so it emits no event.
+is the denied action's verb, one of `read`, `moderate`, `manage`, `use`, `write`, `update`, `update_role`, `create`,
+`delete` or `patch_credential`; `target` is its target, one of `library`, `gallery`, `playlist`, `file`, `upload` or
+`user`. The `Authorization` domain service names both, and the application use case that loads the caller, the caller's
+permissions and the resource emits exactly one event per denied decision before mapping the denial. A collection filter
+that drops an item by asking the same service is a negative decision, not a denial, so it emits no event.
 
 An explicit, narrow exception to the field rule above: `authn_failed.claimed_identity` is the submitted username,
 because it is the only identity available when authentication fails and no identifier can stand in for it. The field

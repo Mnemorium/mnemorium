@@ -312,20 +312,32 @@ accessing the system.
 1. The Admin submits a user-deletion request.
 2. The system verifies the target user exists.
 3. The system verifies the target user is not the Root Admin.
-4. The system deletes the data owned by the user and then the account with its credential.
-5. The system stops accepting the tokens issued to the deleted user.
-6. The system confirms the deletion.
+4. The system verifies the caller may delete the target account: deleting an Admin account needs the Root Admin's
+   authority, and an Admin may delete only a Standard account.
+5. The system deletes the galleries, playlists and unfinished upload sessions owned by the user, together with their
+   dependent records.
+6. The system removes every media record private to the user and the stored content behind it.
+7. The system keeps media another user's resource or the shared catalogue still references and places it under the Root
+   Admin's ownership.
+8. The system deletes the account with its credential.
+9. The system stops accepting the tokens issued to the deleted user.
+10. The system confirms the deletion.
 
 #### Alternative flow
 
 - 1a. The caller is not an Admin; the system rejects the request.
 - 2a. No user exists for the requested account; the system rejects the request.
 - 3a. The target user is the Root Admin; the system rejects the request.
+- 4a. The target is an Admin account and the caller is not the Root Admin; the system rejects the request.
+- 4b. An Admin targets its own account; the system rejects the request, because that account is an Admin account.
 
 #### Post condition(s)
 
 - The user account and its credential no longer exist.
-- Every file, playlist, and dependent media record owned by the user no longer exists.
+- Every gallery, playlist, unfinished upload session and dependent record owned by the user no longer exists.
+- Every media record private to the user and the stored content behind it no longer exists.
+- Media another user's resource or the shared catalogue still references remains available under the Root Admin's
+  ownership.
 - The deleted user cannot authenticate and any token it held is rejected.
 
 ## Library

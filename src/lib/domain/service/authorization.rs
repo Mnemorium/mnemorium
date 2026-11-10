@@ -82,6 +82,15 @@ impl Authorization {
         {
             return false;
         }
+        // A non-root caller may delete only a non-Admin account. Unlike the
+        // update guard, this one has no self exception: an Admin deleting
+        // itself is still deleting an Admin account (`design.md`, decision 2).
+        if action == Action::UserDelete
+            && resource.is_privileged_account()
+            && !caller.is_root_admin()
+        {
+            return false;
+        }
         Self::effective_scope(caller, permissions, action).covers(caller.id(), resource)
     }
 
@@ -624,6 +633,88 @@ mod tests {
         // Assert
         assert!(decision.is_allowed());
         Ok(())
+    }
+
+    #[test]
+    fn admin_cannot_delete_another_admin() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let caller = user(7, Role::Admin)?;
+        let target = user(8, Role::Admin)?;
+
+        // Act
+        let decision = Authorization::decide(&caller, &[], Action::UserDelete, &target);
+
+        // Assert
+        assert!(matches!(decision, Decision::Deny(denial) if !denial.conceals()));
+        Ok(())
+    }
+
+    #[test]
+    fn admin_cannot_delete_itself() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let caller = user(7, Role::Admin)?;
+        let target = user(7, Role::Admin)?;
+
+        // Act
+        let decision = Authorization::decide(&caller, &[], Action::UserDelete, &target);
+
+        // Assert: the deletion guard has no self exception.
+        assert!(matches!(decision, Decision::Deny(denial) if !denial.conceals()));
+        Ok(())
+    }
+
+    #[test]
+    fn admin_deletes_a_standard_user() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let caller = user(7, Role::Admin)?;
+        let target = user(8, Role::Standard)?;
+
+        // Act
+        let decision = Authorization::decide(&caller, &[], Action::UserDelete, &target);
+
+        // Assert
+        assert!(decision.is_allowed());
+        Ok(())
+    }
+
+    #[test]
+    fn root_admin_deletes_another_admin() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let caller = user(0, Role::Admin)?;
+        let target = user(8, Role::Admin)?;
+
+        // Act
+        let decision = Authorization::decide(&caller, &[], Action::UserDelete, &target);
+
+        // Assert
+        assert!(decision.is_allowed());
+        Ok(())
+    }
+
+    #[test]
+    fn root_admin_delete_of_its_own_account_reaches_the_policy() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let caller = user(0, Role::Admin)?;
+        let target = user(0, Role::Admin)?;
+
+        // Act
+        let decision = Authorization::decide(&caller, &[], Action::UserDelete, &target);
+
+        // Assert: the Root Admin short-circuits every policy check, so the
+        // refusal of target `0` belongs to the use case and its datastore
+        // trigger, not to this service (`design.md`, decision 2).
+        assert!(decision.is_allowed());
+        Ok(())
+    }
+
+    #[test]
+    fn user_delete_action_round_trips_and_names_its_presets() {
+        // Act & Assert
+        assert_eq!(Action::from_wire("user.delete"), Some(Action::UserDelete));
+        assert_eq!(Action::UserDelete.role_scope(Role::Standard), Scope::None);
+        assert_eq!(Action::UserDelete.role_scope(Role::Admin), Scope::All);
+        assert_eq!(Action::UserDelete.resource_kinds(), &[ResourceKind::User]);
+        assert!(Action::UserDelete.is_configurable());
     }
 
     #[test]

@@ -31,13 +31,6 @@ pub(crate) trait CredentialRepository: Send + Sync {
     /// Returns `Ok(true)` when at least one credential was deleted, and
     /// `Ok(false)` when none matched. An all-`None` filter deletes every
     /// credential.
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "part of the type's declared contract; no caller exercises it yet"
-        )
-    )]
     fn delete(
         &mut self,
         filter: &CredentialFilter,
