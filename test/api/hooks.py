@@ -35,15 +35,18 @@ def _valid_username(value):
 
 
 def _valid_name(value):
-    """Return whether `value` satisfies the resource name policy's blank rule.
+    """Return whether `value` is the trimmed name the resource name policy keeps.
 
-    The name policy trims surrounding whitespace and rejects a value that is
-    then empty, so an all-whitespace name such as a non-breaking space is a
-    business-rule `422` the schema's `min_length` cannot express.
+    The policy trims surrounding whitespace, rejects a value that is then
+    empty, and applies the maximum length to the trimmed value, while the
+    schema's `minLength`/`maxLength` count the raw value. A surrounding
+    whitespace name is therefore a blank `422` or a `maxLength` deviation the
+    server correctly accepts, so only a value that is already trimmed can be
+    compared with the schema.
     """
     if not isinstance(value, str):
         return True
-    return value.strip() != ""
+    return value != "" and value == value.strip()
 
 
 def _valid_body(value):

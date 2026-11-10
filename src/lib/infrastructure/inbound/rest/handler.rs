@@ -225,6 +225,21 @@ mod tests {
     }
 
     #[test]
+    fn a_whole_float_is_read_exactly_before_normalisation() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        // `2251799813685247.0` is exactly representable, but without the
+        // `float_roundtrip` feature the JSON parser reads it as
+        // `2251799813685247.25`, so the normaliser sees a fraction and serde
+        // rejects the integer field.
+        let value: Value = serde_json::from_str(r#"{"id":2251799813685247.0,"nested":[]}"#)?;
+        // Act
+        let body: Body = serde_json::from_value(normalise_numbers(value))?;
+        // Assert
+        assert_eq!(body.id, 2_251_799_813_685_247);
+        Ok(())
+    }
+
+    #[test]
     fn fractional_floats_are_left_for_serde_to_reject() -> Result<(), Box<dyn Error>> {
         // Arrange
         let value: Value = serde_json::from_str(r#"{"id":1.5,"nested":[]}"#)?;
