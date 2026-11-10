@@ -21,7 +21,9 @@ rules:
     # accounting: it now skips the declaration line by position, so a generic
     # declaration is no longer subtracted as if it were a call site and a generic
     # helper with a single caller is counted.
-    max_single_call_functions: 62
+    # Lowered to 55 when the security-event catalog was inlined: its constructors
+    # were single-call helpers, and the module that held them is gone.
+    max_single_call_functions: 55
   STY-RUST-002:
     bounded_contexts: &bounded_contexts
       - asset

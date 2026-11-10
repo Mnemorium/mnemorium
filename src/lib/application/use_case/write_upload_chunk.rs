@@ -4,11 +4,12 @@ use std::sync::Arc;
 
 use chrono::Utc;
 
+use tracing::{error, info, warn};
+
 use crate::application::port::{
     WriteUploadChunkCommand, WriteUploadChunkError, WriteUploadChunkResponse,
     WriteUploadChunkUseCase,
 };
-use crate::application::security_event;
 use crate::application::use_case::{caller_file_id, expiry, received_bitmap, staged_path};
 use crate::domain::model::Action;
 use crate::domain::port::{
@@ -112,10 +113,13 @@ where
                 if let Decision::Deny(denial) =
                     Authorization::decide(&caller, &[], Action::UploadWrite, &upload)
                 {
-                    security_event::authorization_failed(
-                        caller.id(),
-                        denial.action().verb(),
-                        denial.action().target(),
+                    warn!(
+                        target: "security",
+                        event = "authz_failed",
+                        actor = caller.id(),
+                        action = %denial.action().verb(),
+                        target = %denial.action().target(),
+                        "denied an action"
                     );
                     return Err(AttemptError::Business(WriteUploadChunkError::NoSuchUpload));
                 }
@@ -166,7 +170,12 @@ where
 
                 let total_chunks = upload.total_chunks();
                 let chunk_number = usize::try_from(command.chunk_number()).map_err(|error| {
-                    security_event::application_error("write_upload_chunk");
+                    error!(
+                        target: "security",
+                        event = "application_error",
+                        operation = %"write_upload_chunk",
+                        "a use case originated an internal error"
+                    );
                     AttemptError::Business(WriteUploadChunkError::Unknown(anyhow::anyhow!(error)))
                 })?;
                 if chunk_number >= total_chunks {
@@ -176,7 +185,12 @@ where
                 }
 
                 let chunk_size = usize::try_from(upload.chunk_size()).map_err(|error| {
-                    security_event::application_error("write_upload_chunk");
+                    error!(
+                        target: "security",
+                        event = "application_error",
+                        operation = %"write_upload_chunk",
+                        "a use case originated an internal error"
+                    );
                     AttemptError::Business(WriteUploadChunkError::Unknown(anyhow::anyhow!(error)))
                 })?;
                 let remaining = upload
@@ -184,7 +198,12 @@ where
                     .saturating_sub(command.chunk_number().saturating_mul(upload.chunk_size()));
                 let expected_len = remaining.min(upload.chunk_size());
                 let chunk_len = u64::try_from(command.chunk().len()).map_err(|error| {
-                    security_event::application_error("write_upload_chunk");
+                    error!(
+                        target: "security",
+                        event = "application_error",
+                        operation = %"write_upload_chunk",
+                        "a use case originated an internal error"
+                    );
                     AttemptError::Business(WriteUploadChunkError::Unknown(anyhow::anyhow!(error)))
                 })?;
                 if chunk_len != expected_len {
@@ -291,10 +310,13 @@ where
                         .commit()
                         .await
                         .map_err(|error| WriteUploadChunkError::Unknown(error.into()))?;
-                    security_event::upload(
-                        command.user_id(),
-                        &command.upload_id().to_string(),
-                        "chunk_written",
+                    info!(
+                        target: "security",
+                        event = "upload",
+                        actor = command.user_id(),
+                        upload = %command.upload_id().to_string(),
+                        outcome = %"chunk_written",
+                        "upload activity"
                     );
                     Ok(value)
                 }
@@ -303,10 +325,13 @@ where
                         .commit()
                         .await
                         .map_err(|error| WriteUploadChunkError::Unknown(error.into()))?;
-                    security_event::suspicious_business_logic(
-                        command.user_id(),
-                        "write_chunk",
-                        "expired",
+                    warn!(
+                        target: "security",
+                        event = "suspicious_business_logic",
+                        actor = command.user_id(),
+                        action = %"write_chunk",
+                        reason = %"expired",
+                        "an action was out of order or exceeded a limit"
                     );
                     Err(WriteUploadChunkError::Expired)
                 }
@@ -326,10 +351,13 @@ where
                         | WriteUploadChunkError::Unknown(_) => None,
                     };
                     if let Some(code) = reason {
-                        security_event::suspicious_business_logic(
-                            command.user_id(),
-                            "write_chunk",
-                            code,
+                        warn!(
+                            target: "security",
+                            event = "suspicious_business_logic",
+                            actor = command.user_id(),
+                            action = %"write_chunk",
+                            reason = %code,
+                            "an action was out of order or exceeded a limit"
                         );
                     }
                     Err(error)

@@ -4,8 +4,9 @@ use std::sync::Arc;
 
 use chrono::Utc;
 
+use tracing::{info, warn};
+
 use crate::application::port::{CancelUploadCommand, CancelUploadError, CancelUploadUseCase};
-use crate::application::security_event;
 use crate::application::use_case::{expiry, staged_path};
 use crate::domain::NumericID;
 use crate::domain::model::Action;
@@ -114,10 +115,13 @@ where
                 if let Decision::Deny(denial) =
                     Authorization::decide(&caller, &[], Action::UploadWrite, &upload)
                 {
-                    security_event::authorization_failed(
-                        caller.id(),
-                        denial.action().verb(),
-                        denial.action().target(),
+                    warn!(
+                        target: "security",
+                        event = "authz_failed",
+                        actor = caller.id(),
+                        action = %denial.action().verb(),
+                        target = %denial.action().target(),
+                        "denied an action"
                     );
                     return Flow::Failed(CancelUploadError::NoSuchUpload);
                 }
@@ -178,10 +182,13 @@ where
                         .commit()
                         .await
                         .map_err(|error| CancelUploadError::Unknown(error.into()))?;
-                    security_event::upload(
-                        command.user_id(),
-                        &command.upload_id().to_string(),
-                        "cancelled",
+                    info!(
+                        target: "security",
+                        event = "upload",
+                        actor = command.user_id(),
+                        upload = %command.upload_id().to_string(),
+                        outcome = %"cancelled",
+                        "upload activity"
                     );
                     Ok(())
                 }

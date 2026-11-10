@@ -4,10 +4,11 @@ use std::sync::Arc;
 
 use chrono::Utc;
 
+use tracing::warn;
+
 use crate::application::port::{
     CreateGalleryCommand, CreateGalleryError, CreateGalleryResponse, CreateGalleryUseCase,
 };
-use crate::application::security_event;
 use crate::domain::model::Gallery;
 use crate::domain::port::{
     GalleryFilter, GalleryRepository as _, LibraryUnitOfWork, RepositoryError, UnitOfWork as _,
@@ -73,11 +74,23 @@ where
                     let name = NamePolicy::validate(command.name().to_owned()).map_err(
                         |error| match error {
                             NamePolicyError::Empty => {
-                                security_event::input_validation_failed("name", "empty");
+                                warn!(
+                                    target: "security",
+                                    event = "input_validation_failed",
+                                    field = %"name",
+                                    reason = %"empty",
+                                    "rejected a client-supplied value"
+                                );
                                 CreateGalleryError::InvalidName
                             }
                             NamePolicyError::TooLong => {
-                                security_event::input_validation_failed("name", "too_long");
+                                warn!(
+                                    target: "security",
+                                    event = "input_validation_failed",
+                                    field = %"name",
+                                    reason = %"too_long",
+                                    "rejected a client-supplied value"
+                                );
                                 CreateGalleryError::NameTooLong
                             }
                         },

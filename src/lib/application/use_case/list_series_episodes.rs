@@ -2,11 +2,12 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
+use tracing::warn;
+
 use crate::application::port::{
     ListSeriesEpisodesCommand, ListSeriesEpisodesError, ListSeriesEpisodesItem,
     ListSeriesEpisodesResponse, ListSeriesEpisodesUseCase,
 };
-use crate::application::security_event;
 use crate::domain::model::Action;
 use crate::domain::port::{
     IdentityUnitOfWork, LibraryUnitOfWork, PermissionFilter, PermissionRepository as _,
@@ -90,10 +91,13 @@ where
                 if let Decision::Deny(denial) =
                     Authorization::decide(&caller, &permissions, Action::LibraryRead, &shown)
                 {
-                    security_event::authorization_failed(
-                        caller.id(),
-                        denial.action().verb(),
-                        denial.action().target(),
+                    warn!(
+                        target: "security",
+                        event = "authz_failed",
+                        actor = caller.id(),
+                        action = %denial.action().verb(),
+                        target = %denial.action().target(),
+                        "denied an action"
                     );
                     return Err(ListSeriesEpisodesError::NoSuchSeries);
                 }

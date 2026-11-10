@@ -27,9 +27,8 @@ use std::time::Duration;
 use reqwest::redirect::Policy;
 use reqwest::{Client, Response, StatusCode, Url};
 use serde::de::DeserializeOwned;
-use tracing::error;
+use tracing::{error, warn};
 
-use crate::application::security_event;
 use crate::domain::model::{Artwork, ProviderId};
 use crate::domain::port::ExternalServiceError;
 
@@ -212,7 +211,13 @@ impl ArtworkClient {
 
     /// Emit the artwork-failure event for `provider` and yield no artwork.
     fn reject<T>(provider: ProviderId, reason: &str) -> Option<T> {
-        security_event::metadata_artwork_failed(provider.as_str(), reason);
+        warn!(
+            target: "security",
+            event = "metadata_artwork_failed",
+            provider = %provider.as_str(),
+            reason = %reason,
+            "a provider artwork download failed"
+        );
         None
     }
 }

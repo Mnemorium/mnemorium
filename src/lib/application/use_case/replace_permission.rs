@@ -2,11 +2,12 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
+use tracing::warn;
+
 use crate::application::port::{
     GetPermissionResponse, ReplacePermissionCommand, ReplacePermissionError,
     ReplacePermissionUseCase,
 };
-use crate::application::security_event;
 use crate::domain::model::{
     ACTIONS, Action, Global, Permission, PermissionError, PermissionPreset,
 };
@@ -83,10 +84,13 @@ where
                     Action::PermissionManage,
                     &Global,
                 ) {
-                    security_event::authorization_failed(
-                        caller.id(),
-                        denial.action().verb(),
-                        denial.action().target(),
+                    warn!(
+                        target: "security",
+                        event = "authz_failed",
+                        actor = caller.id(),
+                        action = %denial.action().verb(),
+                        target = %denial.action().target(),
+                        "denied an action"
                     );
                     return Err(ReplacePermissionError::Forbidden);
                 }
@@ -104,10 +108,13 @@ where
                     .ok_or(ReplacePermissionError::NoSuchUser)?;
 
                 if target.is_root_admin() {
-                    security_event::authorization_failed(
-                        caller.id(),
-                        Action::PermissionManage.verb(),
-                        Action::PermissionManage.target(),
+                    warn!(
+                        target: "security",
+                        event = "authz_failed",
+                        actor = caller.id(),
+                        action = %Action::PermissionManage.verb(),
+                        target = %Action::PermissionManage.target(),
+                        "denied an action"
                     );
                     return Err(ReplacePermissionError::Forbidden);
                 }

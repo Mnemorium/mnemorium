@@ -12,13 +12,12 @@ use crate::application::port::{
     IngestMediaCommand, IngestRequest, LibraryUseCaseFactory, MediaChange, MediaChangeSource,
     MediaChangeSourceError,
 };
-use crate::application::security_event;
+use tracing::{error, warn};
+
 use crate::application::use_case::{MEDIA_ROOT, media_root};
 use crate::domain::port::{MediaEntry, MediaSource};
 use crate::infrastructure::outbound::file_system::LocalMediaSource;
 use crate::infrastructure::outbound::notify::NotifyMediaChangeSource;
-
-use tracing::warn;
 
 /// How long a path must keep the same size and modification instant before it is
 /// processed.
@@ -61,7 +60,12 @@ where
             .await
             .is_err()
         {
-            security_event::application_error("media_ingest_change");
+            error!(
+                target: "security",
+                event = "application_error",
+                operation = %"media_ingest_change",
+                "a use case originated an internal error"
+            );
         }
     }
 
@@ -126,33 +130,41 @@ where
     /// cannot deliver any further change.
     async fn observe(&self, mut shutdown: watch::Receiver<bool>) {
         loop {
-            tokio::select! {
-                observed = self.changes.changes() => {
-                    match observed {
-                        Ok(change) => self.dispatch(change).await,
-                        // One warning per degraded condition; the startup scan
-                        // remains the mechanism of record.
-                        Err(MediaChangeSourceError::Overflow) => {
-                            security_event::media_ingest_fault("queue_overflow");
-                        }
-                        Err(MediaChangeSourceError::WatchError) => {
-                            security_event::media_ingest_fault("watch_error");
-                            return;
-                        }
-                        Err(MediaChangeSourceError::WatchFailed) => {
-                            security_event::media_ingest_fault("watch_registration_failed");
-                            return;
-                        }
-                        Err(MediaChangeSourceError::Unknown(_error)) => {
-                            security_event::media_ingest_fault("change_source_failed");
-                            return;
-                        }
+            // One warning per degraded condition; the startup scan remains the
+            // mechanism of record. The emission sits outside the `select!` so
+            // `check_obs_006` can see it.
+            let fault = tokio::select! {
+                observed = self.changes.changes() => match observed {
+                    Ok(change) => {
+                        self.dispatch(change).await;
+                        None
                     }
-                }
+                    Err(MediaChangeSourceError::Overflow) => Some(("queue_overflow", false)),
+                    Err(MediaChangeSourceError::WatchError) => Some(("watch_error", true)),
+                    Err(MediaChangeSourceError::WatchFailed) => {
+                        Some(("watch_registration_failed", true))
+                    }
+                    Err(MediaChangeSourceError::Unknown(_error)) => {
+                        Some(("change_source_failed", true))
+                    }
+                },
                 _changed = shutdown.changed() => {
                     if *shutdown.borrow() {
                         return;
                     }
+                    None
+                }
+            };
+            if let Some((kind, stop)) = fault {
+                warn!(
+                    target: "security",
+                    event = "ingest_fault",
+                    kind = %kind,
+                    operation = "media_change_source",
+                    "the change observer degraded; the startup scan remains authoritative"
+                );
+                if stop {
+                    return;
                 }
             }
         }
@@ -164,13 +176,17 @@ where
     /// back; nothing is committed for the interrupted file.
     pub(crate) async fn scan(&self, mut shutdown: watch::Receiver<bool>) {
         let ingest = self.factory.ingest_media();
-        tokio::select! {
-            result = ingest.execute(IngestMediaCommand::new(IngestRequest::Scan)) => {
-                if result.is_err() {
-                    security_event::application_error("media_ingest_scan");
-                }
-            }
-            _changed = shutdown.changed() => {}
+        let result = tokio::select! {
+            result = ingest.execute(IngestMediaCommand::new(IngestRequest::Scan)) => Some(result),
+            _changed = shutdown.changed() => None,
+        };
+        if matches!(result, Some(Err(_error))) {
+            error!(
+                target: "security",
+                event = "application_error",
+                operation = %"media_ingest_scan",
+                "a use case originated an internal error"
+            );
         }
     }
 

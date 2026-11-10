@@ -2,10 +2,11 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
+use tracing::{debug, warn};
+
 use crate::application::port::{
     ListUsersCommand, ListUsersError, ListUsersResponse, ListUsersUseCase,
 };
-use crate::application::security_event;
 use crate::domain::model::{Action, Global};
 use crate::domain::port::{
     IdentityUnitOfWork, PermissionFilter, PermissionRepository as _, UnitOfWork as _,
@@ -72,10 +73,13 @@ where
                 if let Decision::Deny(denial) =
                     Authorization::decide(&caller, &permissions, Action::UserRead, &Global)
                 {
-                    security_event::authorization_failed(
-                        caller.id(),
-                        denial.action().verb(),
-                        denial.action().target(),
+                    warn!(
+                        target: "security",
+                        event = "authz_failed",
+                        actor = caller.id(),
+                        action = %denial.action().verb(),
+                        target = %denial.action().target(),
+                        "denied an action"
                     );
                     return Err(ListUsersError::NotAdmin);
                 }
@@ -111,7 +115,13 @@ where
                         .commit()
                         .await
                         .map_err(|error| ListUsersError::Unknown(error.into()))?;
-                    security_event::sensitive_data_access(command.caller_id(), "user_list");
+                    debug!(
+                        target: "security",
+                        event = "sensitive_data_access",
+                        actor = command.caller_id(),
+                        object = %"user_list",
+                        "read personal data"
+                    );
                     Ok(value)
                 }
                 Err(error) => {

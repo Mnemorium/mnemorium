@@ -11,7 +11,8 @@ use chrono::NaiveDate;
 use reqwest::{Client, RequestBuilder, StatusCode};
 use serde::Deserialize;
 
-use crate::application::security_event;
+use tracing::debug;
+
 use crate::domain::model::{
     Candidate, ExternalRef, Genre, MediaMetadata, MediaQuery, ProviderId, Target, VideoKind,
 };
@@ -374,7 +375,12 @@ fn mapped_genres(entries: &[GenrePayload]) -> Vec<Genre> {
         }
     }
     if unmatched > 0 {
-        security_event::metadata_genre_unmatched(unmatched);
+        debug!(
+            target: "security",
+            event = "metadata_genre_unmatched",
+            count = unmatched,
+            "a provider reported a genre outside the shared vocabulary"
+        );
     }
     genres.sort_unstable_by_key(|genre| genre.as_str());
     genres.dedup();

@@ -23,7 +23,8 @@ use serde::de::DeserializeOwned;
 use tokio::sync::Mutex;
 use tokio::time::{Instant, sleep_until};
 
-use crate::application::security_event;
+use tracing::warn;
+
 use crate::domain::model::{
     ArtistCredit, Artwork, Edition, ExternalRef, MediumFormat, MediumSummary, MusicCandidate,
     MusicKind, MusicMetadata, MusicQuery, MusicTarget, ProductionType, ProviderId, ReleaseStatus,
@@ -312,7 +313,13 @@ pub(crate) struct MusicBrainzMetadataProvider {
 impl MusicBrainzMetadataProvider {
     /// Return no artwork and emit the one catalogued event for `reason`.
     fn artwork_absent(reason: &str) -> Option<Artwork> {
-        security_event::metadata_artwork_failed(ProviderId::MusicBrainz.as_str(), reason);
+        warn!(
+            target: "security",
+            event = "metadata_artwork_failed",
+            provider = %ProviderId::MusicBrainz.as_str(),
+            reason = %reason,
+            "a provider artwork download failed"
+        );
         None
     }
 

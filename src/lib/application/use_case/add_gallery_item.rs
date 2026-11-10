@@ -4,10 +4,11 @@ use std::sync::Arc;
 
 use chrono::Utc;
 
+use tracing::warn;
+
 use crate::application::port::{
     AddGalleryItemCommand, AddGalleryItemError, AddGalleryItemResponse, AddGalleryItemUseCase,
 };
-use crate::application::security_event;
 use crate::domain::model::{Action, GalleryItem, GalleryItemMedia};
 use crate::domain::port::{
     AssetUnitOfWork, FileFilter, FileRepository as _, GalleryFilter, GalleryItemFilter,
@@ -94,10 +95,13 @@ where
                 if let Decision::Deny(denial) =
                     Authorization::decide(&caller, &permissions, Action::GalleryModerate, &gallery)
                 {
-                    security_event::authorization_failed(
-                        caller.id(),
-                        denial.action().verb(),
-                        denial.action().target(),
+                    warn!(
+                        target: "security",
+                        event = "authz_failed",
+                        actor = caller.id(),
+                        action = %denial.action().verb(),
+                        target = %denial.action().target(),
+                        "denied an action"
                     );
                     return Err(if denial.conceals() {
                         AddGalleryItemError::NoSuchGallery
@@ -161,10 +165,13 @@ where
                 if let Decision::Deny(denial) =
                     Authorization::decide(&caller, &permissions, Action::FileUse, &file)
                 {
-                    security_event::authorization_failed(
-                        caller.id(),
-                        denial.action().verb(),
-                        denial.action().target(),
+                    warn!(
+                        target: "security",
+                        event = "authz_failed",
+                        actor = caller.id(),
+                        action = %denial.action().verb(),
+                        target = %denial.action().target(),
+                        "denied an action"
                     );
                     return Err(AddGalleryItemError::NotOwnedMedia);
                 }

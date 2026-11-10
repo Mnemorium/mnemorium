@@ -2,11 +2,12 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
+use tracing::warn;
+
 use crate::application::port::{
     AssetTarget, ContentOutcome, GetAssetContentCommand, GetAssetContentError,
     GetAssetContentResponse, GetAssetContentUseCase,
 };
-use crate::application::security_event;
 use crate::application::use_case::{media_path, media_root};
 use crate::domain::model::File;
 use crate::domain::port::{
@@ -105,10 +106,13 @@ where
                     if let Decision::Deny(denial) =
                         Authorization::decide_asset(&caller, &permissions, &file)
                     {
-                        security_event::authorization_failed(
-                            caller.id(),
-                            denial.action().verb(),
-                            denial.action().target(),
+                        warn!(
+                            target: "security",
+                            event = "authz_failed",
+                            actor = caller.id(),
+                            action = %denial.action().verb(),
+                            target = %denial.action().target(),
+                            "denied an action"
                         );
                         return Err(GetAssetContentError::NoSuchAsset);
                     }

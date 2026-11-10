@@ -15,7 +15,6 @@ use crate::application::port::{
     EnsureStorageDirectoriesUseCase as _, InitializeRootAdminUseCase as _, LibraryUseCaseFactory,
     LoadConfigurationUseCase as _, LoadStateUseCase as _, STATE_PATH,
 };
-use crate::application::security_event;
 #[cfg(feature = "test-seed")]
 use crate::application::use_case::media_root;
 use crate::application::use_case::{
@@ -76,12 +75,28 @@ pub async fn run() -> anyhow::Result<()> {
     // reach a sink (`OBS-006`); identity creation happens before configuration
     // because logging settings are themselves configuration.
     if instance_state_created {
-        security_event::system_object("instance_state", "create");
+        info!(
+            target: "security",
+            event = "system_object",
+            object = %"instance_state",
+            action = %"create",
+            "created a system-level object"
+        );
         if pepper_generated {
-            security_event::secret_initialized("pepper");
+            info!(
+                target: "security",
+                event = "secret_initialized",
+                component = %"pepper",
+                "generated a secret"
+            );
         }
         if jwt_secret_generated {
-            security_event::secret_initialized("jwt_secret");
+            info!(
+                target: "security",
+                event = "secret_initialized",
+                component = %"jwt_secret",
+                "generated a secret"
+            );
         }
     }
     if configuration_file_created {

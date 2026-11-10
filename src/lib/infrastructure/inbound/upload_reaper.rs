@@ -12,8 +12,9 @@ use tokio::sync::{Mutex, watch};
 use tokio::task::JoinHandle;
 use tokio::time::{MissedTickBehavior, interval};
 
+use tracing::{error, info};
+
 use crate::application::port::{AssetUseCaseFactory, ReapUploadsCommand};
-use crate::application::security_event;
 
 /// Long-lived driver of the upload reaper.
 pub(crate) struct UploadReaperRunner {
@@ -81,27 +82,38 @@ async fn reap_loop(
     ticker.set_missed_tick_behavior(MissedTickBehavior::Delay);
     let _startup_tick = ticker.tick().await;
     loop {
-        tokio::select! {
+        let outcome = tokio::select! {
             _instant = ticker.tick() => {
                 let reaper = factory.reap_uploads();
-                match reaper.execute(ReapUploadsCommand::new()).await {
-                    Ok(response) => {
-                        // Aggregate counts only: the reaper never names a file or
-                        // a path (`OBS-003`, `OBS-006`).
-                        security_event::upload_reap(
-                            response.expired(),
-                            response.orphaned(),
-                            response.unsealed(),
-                        );
-                    }
-                    Err(_error) => security_event::application_error("upload_reaper"),
-                }
+                Some(reaper.execute(ReapUploadsCommand::new()).await)
             }
             changed = shutdown.changed() => {
                 if changed.is_err() || *shutdown.borrow() {
                     return;
                 }
+                None
             }
+        };
+        match outcome {
+            Some(Ok(response)) => {
+                // Aggregate counts only: the reaper never names a file or a path
+                // (`OBS-003`, `OBS-006`).
+                info!(
+                    target: "security",
+                    event = "upload_reap",
+                    expired = response.expired(),
+                    orphaned = response.orphaned(),
+                    unsealed = response.unsealed(),
+                    "reaped upload sessions"
+                );
+            }
+            Some(Err(_error)) => error!(
+                target: "security",
+                event = "application_error",
+                operation = %"upload_reaper",
+                "a use case originated an internal error"
+            ),
+            None => {}
         }
     }
 }

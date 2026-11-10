@@ -2,10 +2,11 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
+use tracing::{info, warn};
+
 use crate::application::port::{
     UpdateUserCommand, UpdateUserError, UpdateUserResponse, UpdateUserUseCase,
 };
-use crate::application::security_event;
 use crate::domain::model::{Action, UserError};
 use crate::domain::port::{
     IdentityUnitOfWork, PermissionFilter, PermissionRepository as _, RepositoryError,
@@ -91,10 +92,13 @@ where
                 if let Decision::Deny(denial) =
                     Authorization::decide(&caller, &permissions, Action::UserUpdate, &user)
                 {
-                    security_event::authorization_failed(
-                        caller.id(),
-                        denial.action().verb(),
-                        denial.action().target(),
+                    warn!(
+                        target: "security",
+                        event = "authz_failed",
+                        actor = caller.id(),
+                        action = %denial.action().verb(),
+                        target = %denial.action().target(),
+                        "denied an action"
                     );
                     return Err(UpdateUserError::NotAdmin);
                 }
@@ -102,10 +106,13 @@ where
                     && let Decision::Deny(denial) =
                         Authorization::decide(&caller, &permissions, Action::UserRoleChange, &user)
                 {
-                    security_event::authorization_failed(
-                        caller.id(),
-                        denial.action().verb(),
-                        denial.action().target(),
+                    warn!(
+                        target: "security",
+                        event = "authz_failed",
+                        actor = caller.id(),
+                        action = %denial.action().verb(),
+                        target = %denial.action().target(),
+                        "denied an action"
                     );
                     return Err(UpdateUserError::RoleChangeForbidden);
                 }
@@ -193,7 +200,14 @@ where
                         .commit()
                         .await
                         .map_err(|error| UpdateUserError::Unknown(error.into()))?;
-                    security_event::user_admin(command.caller_id(), "update", "user");
+                    info!(
+                        target: "security",
+                        event = "user_admin",
+                        actor = command.caller_id(),
+                        action = %"update",
+                        target = %"user",
+                        "changed a user-administration object"
+                    );
                     Ok(value)
                 }
                 Err(error) => {

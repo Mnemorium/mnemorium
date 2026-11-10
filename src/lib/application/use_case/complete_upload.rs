@@ -5,10 +5,11 @@ use std::sync::Arc;
 
 use chrono::Utc;
 
+use tracing::{error, info, warn};
+
 use crate::application::port::{
     CompleteUploadCommand, CompleteUploadError, CompleteUploadResponse, CompleteUploadUseCase,
 };
-use crate::application::security_event;
 use crate::application::use_case::{caller_file_id, expiry, media_path, staged_path};
 use crate::domain::NumericID;
 use crate::domain::model::{
@@ -204,10 +205,13 @@ where
                         // Idempotent completion: the upload finished since the
                         // caller's last attempt; return the caller's file.
                         discard(unit_of_work).await;
-                        security_event::upload(
-                            command.user_id(),
-                            &command.upload_id().to_string(),
-                            "completed",
+                        info!(
+                            target: "security",
+                            event = "upload",
+                            actor = command.user_id(),
+                            upload = %command.upload_id().to_string(),
+                            outcome = %"completed",
+                            "upload activity"
                         );
                         return Ok(CompleteUploadResponse::new(file_id, true));
                     }
@@ -220,20 +224,26 @@ where
                             .commit()
                             .await
                             .map_err(|error| CompleteUploadError::Unknown(error.into()))?;
-                        security_event::suspicious_business_logic(
-                            command.user_id(),
-                            "complete",
-                            "expired",
+                        warn!(
+                            target: "security",
+                            event = "suspicious_business_logic",
+                            actor = command.user_id(),
+                            action = %"complete",
+                            reason = %"expired",
+                            "an action was out of order or exceeded a limit"
                         );
                         return Err(CompleteUploadError::Expired);
                     }
                     Resolution::Failed(error) => {
                         discard(unit_of_work).await;
                         if matches!(&error, CompleteUploadError::Incomplete) {
-                            security_event::suspicious_business_logic(
-                                command.user_id(),
-                                "complete",
-                                "not_complete",
+                            warn!(
+                                target: "security",
+                                event = "suspicious_business_logic",
+                                actor = command.user_id(),
+                                action = %"complete",
+                                reason = %"not_complete",
+                                "an action was out of order or exceeded a limit"
                             );
                         }
                         return Err(error);
@@ -345,7 +355,12 @@ where
                     || file_name.contains(['/', '\\'])
                     || file_name.contains("..")
                 {
-                    security_event::application_error("complete_upload");
+                    error!(
+                        target: "security",
+                        event = "application_error",
+                        operation = %"complete_upload",
+                        "a use case originated an internal error"
+                    );
                     return Flow::Failed(CompleteUploadError::Unknown(anyhow::anyhow!(
                         "the upload file name is not a safe path segment"
                     )));
@@ -386,7 +401,12 @@ where
                 ) {
                     Ok(pending) => pending,
                     Err(error) => {
-                        security_event::application_error("complete_upload");
+                        error!(
+                            target: "security",
+                            event = "application_error",
+                            operation = %"complete_upload",
+                            "a use case originated an internal error"
+                        );
                         return Flow::Failed(CompleteUploadError::Unknown(error.into()));
                     }
                 };
@@ -410,7 +430,12 @@ where
                                 Flow::Succeeded(CompleteUploadResponse::new(file_id, false))
                             }
                             Ok(None) => {
-                                security_event::application_error("complete_upload");
+                                error!(
+                                    target: "security",
+                                    event = "application_error",
+                                    operation = %"complete_upload",
+                                    "a use case originated an internal error"
+                                );
                                 Flow::Failed(CompleteUploadError::Unknown(anyhow::anyhow!(
                                     "the duplicate file vanished while completing"
                                 )))
@@ -483,10 +508,13 @@ where
                         unseal(&unit_of_work_factory, command.upload_id()).await;
                         return Err(CompleteUploadError::Unknown(error.into()));
                     }
-                    security_event::upload(
-                        command.user_id(),
-                        &command.upload_id().to_string(),
-                        "completed",
+                    info!(
+                        target: "security",
+                        event = "upload",
+                        actor = command.user_id(),
+                        upload = %command.upload_id().to_string(),
+                        outcome = %"completed",
+                        "upload activity"
                     );
                     Ok(value)
                 }
@@ -499,10 +527,13 @@ where
                         .commit()
                         .await
                         .map_err(|error| CompleteUploadError::Unknown(error.into()))?;
-                    security_event::suspicious_business_logic(
-                        command.user_id(),
-                        "complete",
-                        "expired",
+                    warn!(
+                        target: "security",
+                        event = "suspicious_business_logic",
+                        actor = command.user_id(),
+                        action = %"complete",
+                        reason = %"expired",
+                        "an action was out of order or exceeded a limit"
                     );
                     Err(CompleteUploadError::Expired)
                 }
@@ -511,10 +542,13 @@ where
                     restore_promoted(&file_storage, promoted.as_ref()).await;
                     unseal(&unit_of_work_factory, command.upload_id()).await;
                     if matches!(&error, CompleteUploadError::Incomplete) {
-                        security_event::suspicious_business_logic(
-                            command.user_id(),
-                            "complete",
-                            "not_complete",
+                        warn!(
+                            target: "security",
+                            event = "suspicious_business_logic",
+                            actor = command.user_id(),
+                            action = %"complete",
+                            reason = %"not_complete",
+                            "an action was out of order or exceeded a limit"
                         );
                     }
                     Err(error)
@@ -554,7 +588,12 @@ where
     match caller_file_id(unit_of_work, &upload, command.user_id()).await {
         Ok(Some(file_id)) => Ok(CompleteUploadResponse::new(file_id, true)),
         Ok(None) => {
-            security_event::application_error("complete_upload");
+            error!(
+                target: "security",
+                event = "application_error",
+                operation = %"complete_upload",
+                "a use case originated an internal error"
+            );
             Err(CompleteUploadError::Unknown(anyhow::anyhow!(
                 "the finished upload has no matching file"
             )))
@@ -676,10 +715,13 @@ where
     if let Decision::Deny(denial) =
         Authorization::decide(&caller, &[], Action::UploadWrite, &upload)
     {
-        security_event::authorization_failed(
-            caller.id(),
-            denial.action().verb(),
-            denial.action().target(),
+        warn!(
+            target: "security",
+            event = "authz_failed",
+            actor = caller.id(),
+            action = %denial.action().verb(),
+            target = %denial.action().target(),
+            "denied an action"
         );
         return Resolution::Failed(CompleteUploadError::NoSuchUpload);
     }
@@ -721,7 +763,12 @@ where
         return match caller_file_id(unit_of_work, &upload, command.user_id()).await {
             Ok(Some(file_id)) => Resolution::Finished(file_id),
             Ok(None) => {
-                security_event::application_error("complete_upload");
+                error!(
+                    target: "security",
+                    event = "application_error",
+                    operation = %"complete_upload",
+                    "a use case originated an internal error"
+                );
                 Resolution::Failed(CompleteUploadError::Unknown(anyhow::anyhow!(
                     "the finished upload has no matching file"
                 )))
