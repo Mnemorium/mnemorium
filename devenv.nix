@@ -91,7 +91,6 @@
       enable = true;
       name = "clippy";
       entry = "cargo clippy --all-targets --all-features -- -D warnings";
-      language = "rust";
       pass_filenames = false; # It work on a package basis
       files = "\\.rs$";
     };
@@ -99,7 +98,6 @@
       enable = true;
       name = "clippy (default features)";
       entry = "cargo clippy --all-targets -- -D warnings";
-      language = "rust";
       pass_filenames = false; # It work on a package basis
       files = "\\.rs$";
     };
@@ -157,7 +155,6 @@
       entry = "cargo llvm-cov --lib --features test-seed --ignore-filename-regex 'src/lib/infrastructure/inbound/rest/handler' --fail-under-functions 80 --fail-under-regions 80 --fail-under-lines 80";
       pass_filenames = false;
       files = "\\.rs$";
-      language = "rust";
       fail_fast = true;
     };
 
