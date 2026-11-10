@@ -2,7 +2,8 @@ use chrono::{NaiveDate, NaiveDateTime};
 
 use crate::domain::NumericID;
 use crate::domain::model::{
-    DIGEST_HEX_LENGTH, IntegrityHash, IntegrityHashError, Protected, ResourceKind, ResourceRef,
+    AssetOwner, DIGEST_HEX_LENGTH, IntegrityHash, IntegrityHashError, Protected, ResourceKind,
+    ResourceRef,
 };
 
 /// Error returned when initialising or updating a `File`.
@@ -80,6 +81,8 @@ pub(crate) struct File {
     modified_at: NaiveDateTime,
     /// Origin of the file's bytes.
     origin: Origin,
+    /// The resource that owns the file, absent when nothing references it.
+    owner: Option<AssetOwner>,
     /// Path of the file relative to the library root.
     path: String,
     /// Size of the file content, in bytes.
@@ -125,6 +128,12 @@ impl File {
     #[must_use]
     pub(crate) fn origin(&self) -> Origin {
         self.origin
+    }
+
+    /// Return the resource that owns the file, absent when nothing references it.
+    #[must_use]
+    pub(crate) fn owner(&self) -> Option<AssetOwner> {
+        self.owner
     }
 
     /// Return the path relative to the library root.
@@ -205,6 +214,7 @@ impl File {
             mime_type_id,
             modified_at,
             origin: origin.unwrap_or_default(),
+            owner: None,
             path: validated_path,
             size_bytes,
             uploaded_at,
@@ -235,6 +245,15 @@ impl File {
         } else {
             Ok(path)
         }
+    }
+
+    /// Attach the resource that owns the file.
+    ///
+    /// Only the persistence adapter resolves the owner; every other constructor
+    /// leaves the file unattached.
+    #[must_use]
+    pub(crate) fn with_owner(self, owner: Option<AssetOwner>) -> Self {
+        Self { owner, ..self }
     }
 }
 

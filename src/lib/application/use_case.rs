@@ -8,7 +8,6 @@ mod apply_music_album;
 mod apply_series;
 /// The apply series episode metadata use case implementation.
 mod apply_series_episode;
-pub(crate) mod asset_access;
 /// The begin upload use case implementation.
 mod begin_upload;
 /// The cancel upload use case implementation.

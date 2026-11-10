@@ -27,3 +27,21 @@ pub(crate) struct File {
     /// Identifier of the `user` row that owns the file.
     pub user_id: NumericID,
 }
+
+/// Data model for a `file` row and the resource that owns it.
+///
+/// The four owner columns are absent when no media row references the file.
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub(crate) struct FileWithOwner {
+    /// The stored file.
+    #[sqlx(flatten)]
+    pub file: File,
+    /// Identifier of the owning resource.
+    pub owner_id: Option<NumericID>,
+    /// Whether the owning resource is public, absent for the catalogue.
+    pub owner_is_public: Option<bool>,
+    /// Kind of the owning resource, `LIBRARY` for shared catalogue art.
+    pub owner_kind: Option<String>,
+    /// Identifier of the user owning the resource, absent for the catalogue.
+    pub owner_user_id: Option<NumericID>,
+}

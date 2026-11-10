@@ -3,12 +3,14 @@ use std::pin::Pin;
 use std::sync::Arc;
 
 use crate::application::port::{GetVideoCommand, GetVideoError, GetVideoResponse, GetVideoUseCase};
-use crate::application::use_case::asset_access;
-use crate::application::use_case::asset_access::AssetAccessError;
+use crate::application::security_event;
 use crate::domain::port::{
-    AssetUnitOfWork, ContentLinkProvider, IdentityUnitOfWork, LibraryUnitOfWork, UnitOfWork as _,
-    UnitOfWorkFactory, UserUnitOfWork,
+    AssetUnitOfWork, ContentLinkProvider, FileFilter, FileRepository as _, IdentityUnitOfWork,
+    LibraryUnitOfWork, PermissionFilter, PermissionRepository as _, UnitOfWork as _,
+    UnitOfWorkFactory, UserFilter, UserRepository as _, UserUnitOfWork, VideoFilter,
+    VideoRepository as _,
 };
+use crate::domain::service::{Authorization, Decision};
 
 /// Use case implementation for fetching one typed video.
 pub(crate) struct GetVideo<F, L> {
@@ -50,17 +52,59 @@ where
                 .map_err(|error| GetVideoError::Unknown(error.into()))?;
 
             let result = async {
-                let (video, _accessed) = asset_access::access_video(
-                    &mut unit_of_work,
-                    command.caller_id(),
-                    command.video_id(),
-                )
-                .await
-                .map_err(|error| match error {
-                    AssetAccessError::NoSuchAsset => GetVideoError::NoSuchVideo,
-                    AssetAccessError::NoSuchCaller => GetVideoError::NoSuchCaller,
-                    AssetAccessError::Unknown(source) => GetVideoError::Unknown(source),
-                })?;
+                let caller = unit_of_work
+                    .users()
+                    .search(&UserFilter {
+                        id: Some(command.caller_id()),
+                        ..UserFilter::default()
+                    })
+                    .await
+                    .map_err(|error| GetVideoError::Unknown(error.into()))?
+                    .into_iter()
+                    .next()
+                    .ok_or(GetVideoError::NoSuchCaller)?;
+                let permissions = unit_of_work
+                    .permissions()
+                    .search(&PermissionFilter {
+                        user_id: Some(caller.id()),
+                        ..PermissionFilter::default()
+                    })
+                    .await
+                    .map_err(|error| GetVideoError::Unknown(error.into()))?;
+                let video = unit_of_work
+                    .videos()
+                    .search(&VideoFilter {
+                        id: Some(command.video_id()),
+                        ..VideoFilter::default()
+                    })
+                    .await
+                    .map_err(|error| GetVideoError::Unknown(error.into()))?
+                    .into_iter()
+                    .next()
+                    .ok_or(GetVideoError::NoSuchVideo)?;
+                let file = unit_of_work
+                    .files()
+                    .search(&FileFilter {
+                        id: Some(video.file_id()),
+                        ..FileFilter::default()
+                    })
+                    .await
+                    .map_err(|error| GetVideoError::Unknown(error.into()))?
+                    .into_iter()
+                    .next()
+                    .ok_or(GetVideoError::NoSuchVideo)?;
+
+                if let Decision::Deny(denial) =
+                    Authorization::decide_asset(&caller, &permissions, &file)
+                {
+                    security_event::authorization_failed(
+                        caller.id(),
+                        denial.action().verb(),
+                        denial.action().target(),
+                    );
+                    return Err(GetVideoError::NoSuchVideo);
+                }
+
                 let link = content_link
                     .mint(video.file_id())
                     .await
@@ -101,12 +145,13 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::model::{AssetScope, ScanType, Video};
+    use crate::domain::model::{
+        AssetOwner, AssetScope, ProtectedResource, ResourceKind, ResourceRef, ScanType, Video,
+    };
 
     use crate::domain::port::{
         ContentLink, MockAudioRepository, MockContentLinkProvider, MockFileRepository,
-        MockImageRepository, MockMusicAlbumRepository, MockUserRepository, MockVideoRepository,
-        RepositoryError,
+        MockImageRepository, MockUserRepository, MockVideoRepository, RepositoryError,
     };
 
     use crate::test_helpers::*;
@@ -125,7 +170,6 @@ mod tests {
             audios,
             files,
             images,
-            music_albums: MockMusicAlbumRepository::new(),
             permissions: no_permissions(),
             users,
             videos,
@@ -139,21 +183,13 @@ mod tests {
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 9)?;
         let mut files = MockFileRepository::new();
-        let stored_file = sample_file(100, 3, "video/mp4")?;
+        let stored_file = sample_file(100, 3, "video/mp4")?.with_owner(Some(AssetOwner::Resource(
+            ProtectedResource::new(ResourceRef::new(ResourceKind::Movie, 5), None, true),
+        )));
         files
             .expect_search()
             .times(1)
             .return_once(move |_| Box::pin(async move { Ok(vec![stored_file]) }));
-        let mut images = MockImageRepository::new();
-        images
-            .expect_search()
-            .times(1)
-            .returning(|_| Box::pin(async { Ok(Vec::new()) }));
-        let mut audios = MockAudioRepository::new();
-        audios
-            .expect_search()
-            .times(1)
-            .returning(|_| Box::pin(async { Ok(Vec::new()) }));
         let mut videos = MockVideoRepository::new();
         let stored_video = Video::try_new(
             7,
@@ -167,11 +203,17 @@ mod tests {
             100,
             Some(AssetScope::Library),
         )?;
-        videos.expect_search().times(2).returning(move |_| {
-            let stored = stored_video.clone();
-            Box::pin(async move { Ok(vec![stored]) })
-        });
-        let harness = harness(users, files, images, audios, videos);
+        videos
+            .expect_search()
+            .times(1)
+            .return_once(move |_| Box::pin(async move { Ok(vec![stored_video]) }));
+        let harness = harness(
+            users,
+            files,
+            MockImageRepository::new(),
+            MockAudioRepository::new(),
+            videos,
+        );
         let mut content_link = MockContentLinkProvider::new();
         content_link
             .expect_mint()
@@ -195,13 +237,15 @@ mod tests {
     #[tokio::test]
     async fn a_video_repository_failure_is_unknown() -> Result<(), Box<dyn Error>> {
         // Arrange
+        let mut users = MockUserRepository::new();
+        expect_caller(&mut users, 9)?;
         let mut videos = MockVideoRepository::new();
         videos
             .expect_search()
             .times(1)
             .returning(|_| Box::pin(async { Err(RepositoryError::OperationFailed) }));
         let harness = harness(
-            MockUserRepository::new(),
+            users,
             MockFileRepository::new(),
             MockImageRepository::new(),
             MockAudioRepository::new(),
@@ -222,8 +266,9 @@ mod tests {
 
     #[tokio::test]
     async fn an_unknown_video_is_concealed() -> Result<(), Box<dyn Error>> {
-        // Arrange: the video is loaded before the caller, so no caller read runs.
-        let users = MockUserRepository::new();
+        // Arrange
+        let mut users = MockUserRepository::new();
+        expect_caller(&mut users, 9)?;
         let mut videos = MockVideoRepository::new();
         videos
             .expect_search()
@@ -243,6 +288,56 @@ mod tests {
 
         // Act
         let result = use_case.execute(GetVideoCommand::new(9, 99)).await;
+
+        // Assert
+        assert!(matches!(result, Err(GetVideoError::NoSuchVideo)));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn a_private_gallery_video_is_concealed_from_a_non_owner() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let mut users = MockUserRepository::new();
+        expect_caller(&mut users, 9)?;
+        let mut files = MockFileRepository::new();
+        let stored_file = sample_file(100, 3, "video/mp4")?.with_owner(Some(AssetOwner::Resource(
+            ProtectedResource::new(ResourceRef::new(ResourceKind::Gallery, 2), Some(3), false),
+        )));
+        files
+            .expect_search()
+            .times(1)
+            .return_once(move |_| Box::pin(async move { Ok(vec![stored_file]) }));
+        let mut videos = MockVideoRepository::new();
+        let stored_video = Video::try_new(
+            7,
+            1_000.0,
+            "h264".to_owned(),
+            30,
+            640,
+            480,
+            "YCbCr".to_owned(),
+            ScanType::Progressive,
+            100,
+            Some(AssetScope::User),
+        )?;
+        videos
+            .expect_search()
+            .times(1)
+            .return_once(move |_| Box::pin(async move { Ok(vec![stored_video]) }));
+        let harness = harness(
+            users,
+            files,
+            MockImageRepository::new(),
+            MockAudioRepository::new(),
+            videos,
+        );
+        let use_case: UseCase = GetVideo::new(
+            Arc::clone(&harness.factory),
+            Arc::new(MockContentLinkProvider::new()),
+        );
+
+        // Act
+        let result = use_case.execute(GetVideoCommand::new(9, 7)).await;
 
         // Assert
         assert!(matches!(result, Err(GetVideoError::NoSuchVideo)));

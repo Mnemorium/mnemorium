@@ -1,8 +1,7 @@
+use std::ffi::OsStr;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
-
-use std::path::Path;
 
 use chrono::{Duration, NaiveDateTime, Utc};
 
@@ -169,7 +168,14 @@ where
                 .await
                 .map_err(|error| ReapUploadsError::Unknown(error.into()))?;
             for path in staged.iter().take(batch_size) {
-                let known = match staged_identifier(path) {
+                // The staging layout names a file after the upload it belongs
+                // to; a name the layout does not produce is not a session's
+                // content, so it counts as an orphan.
+                let identifier = path
+                    .file_name()
+                    .and_then(OsStr::to_str)
+                    .and_then(|name| name.parse::<NumericID>().ok());
+                let known = match identifier {
                     Some(upload_id) => !staging_unit_of_work
                         .uploads()
                         .search(&UploadFilter {
@@ -194,15 +200,6 @@ where
             Ok(ReapUploadsResponse::new(expired, orphaned, unsealed))
         })
     }
-}
-
-/// Return the upload identifier a staging entry's file name encodes, if any.
-///
-/// A name the layout does not produce is not a session's content, so the caller
-/// treats it as an orphan.
-fn staged_identifier(path: &Path) -> Option<NumericID> {
-    let name = path.file_name()?.to_str()?;
-    name.parse::<NumericID>().ok()
 }
 
 /// Best-effort delete the staged file of `upload_id`.

@@ -569,12 +569,17 @@ require_matches() {
 # name is called exactly once across `src` is a single-call helper, and the tree
 # may hold no more of them than `max_single_call_functions` records. Adding one
 # is then a reviewed change to that budget, not an accident. A call is an
-# identifier followed by `(` with comments stripped; a name declared more than
-# once is skipped because its occurrences cannot be attributed to one function.
+# identifier followed by `(` with comments stripped; the declaration's own line
+# is skipped by position, so a declaration the textual scan does see is not
+# mistaken for a call site. A generic declaration spells `name<...>(` and is no
+# textual occurrence at all, so its real call sites are counted untouched. A
+# name declared more than once is skipped because its occurrences cannot be
+# attributed to one function.
 check_sty_rust_001() {
 	local id="STY-RUST-001"
-	local config budget matches file name count lone result=0
+	local config budget matches file line hit name lone result=0
 	local -A declarations=()
+	local -A declaration_sites=()
 	local -A calls=()
 
 	config="$(rule_config "$id")" || return 2
@@ -587,29 +592,34 @@ check_sty_rust_001() {
 	matches="$(scan_json "$id" src)" || return 1
 	require_matches "$id" "production function declaration" "$matches" || return 1
 
-	while IFS=$'\t' read -r file name; do
+	while IFS=$'\t' read -r file line name; do
 		[ -n "$name" ] || continue
 		declarations["$name"]=$((${declarations["$name"]:-0} + 1))
+		declaration_sites["$file:$line"]+=" $name"
 	done < <(printf '%s\n' "$matches" |
-		jq -r '[.file, .metaVariables.single.NAME.text] | @tsv')
+		jq -r '[.file, .range.start.line + 1, .metaVariables.single.NAME.text] | @tsv')
 
-	# The declaration is one `name(` occurrence, so a name's callers are its
-	# occurrences minus its declarations.
+	# A name's callers are its textual occurrences outside the declaration line.
 	while IFS= read -r file; do
 		[ -n "$file" ] || continue
-		while IFS= read -r name; do
+		while IFS= read -r hit; do
+			[ -n "$hit" ] || continue
+			line="${hit%%:*}"
+			name="${hit#*:}"
 			[ -n "$name" ] || continue
+			case " ${declaration_sites["$file:$line"]:-} " in
+			*" $name "*) continue ;;
+			esac
 			calls["$name"]=$((${calls["$name"]:-0} + 1))
 		done < <(sed -E 's://.*::' "$file" |
-			grep -oE '[A-Za-z_][A-Za-z0-9_]*[[:space:]]*\(' |
+			grep -onE '[A-Za-z_][A-Za-z0-9_]*[[:space:]]*\(' |
 			sed -E 's/[[:space:]]*\($//')
 	done < <(find src -name '*.rs' | sort)
 
 	lone=0
 	for name in "${!declarations[@]}"; do
 		[ "${declarations[$name]}" -eq 1 ] || continue
-		count=$((${calls[$name]:-0} - 1))
-		if [ "$count" -eq 1 ]; then
+		if [ "${calls[$name]:-0}" -eq 1 ]; then
 			lone=$((lone + 1))
 		fi
 	done

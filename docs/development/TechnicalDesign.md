@@ -1171,7 +1171,8 @@ crate-private surface turns them on, and each finding is settled here rather tha
   exactly once, and `STY-RUST-018`–`STY-RUST-020` and `OBS-006` mandate the constructors; the lint cannot separate those
   shapes from an accidental one. `check_sty_rust_001` keeps the guard instead: it counts the production functions called
   exactly once and fails when the count exceeds the `max_single_call_functions` budget in `rule_enforcer.yaml`, so
-  adding one is a reviewed change to that budget rather than an accident.
+  adding one is a reviewed change to that budget rather than an accident. A call is the name followed by `(` outside the
+  declaration's own line, so a generic declaration (`name<…>(`) is never read as one of its callers.
 - `clippy::missing_docs_in_private_items` is satisfied, not allowed: every module declaration carries a `///` doc and
   every private field and variant carries one.
 - `dead_code` reports the contract the crate declares but no caller exercises yet — the port error variants and the

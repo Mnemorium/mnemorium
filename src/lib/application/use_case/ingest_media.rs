@@ -798,23 +798,19 @@ where
                 }
             }
             let report = counts.finish();
-            report_counts(&report);
+            // Emit the catalogued aggregate outcome of this operation.
+            security_event::media_ingest(
+                report.registered(),
+                report.completed(),
+                report.untouched(),
+                report.changed(),
+                report.missing(),
+                report.removed(),
+                report.skipped(),
+            );
             Ok(report)
         })
     }
-}
-
-/// Emit the catalogued aggregate outcome of one ingest operation.
-fn report_counts(report: &IngestMediaResponse) {
-    security_event::media_ingest(
-        report.registered(),
-        report.completed(),
-        report.untouched(),
-        report.changed(),
-        report.missing(),
-        report.removed(),
-        report.skipped(),
-    );
 }
 
 /// Roll back a unit of work, preserving the operation's own outcome.

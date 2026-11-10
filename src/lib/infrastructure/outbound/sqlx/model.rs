@@ -39,7 +39,7 @@ mod video;
 pub(crate) use self::asset_scope::{asset_scope_token, parse_asset_scope};
 pub(crate) use self::audio::Audio;
 pub(crate) use self::credential::Credential;
-pub(crate) use self::file::File;
+pub(crate) use self::file::{File, FileWithOwner};
 pub(crate) use self::gallery::Gallery;
 pub(crate) use self::gallery_item::{GalleryItem, GalleryItemDetail};
 pub(crate) use self::image::{Image, Orientation};

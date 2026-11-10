@@ -13,7 +13,15 @@ rules:
     # Raised from 72 when origin/main's complete-upload lifecycle merged in: its
     # new helpers lost the textual call sites the removed REST endpoint tests
     # used to supply.
-    max_single_call_functions: 75
+    # Raised from 75 when the asset-access module was deleted: the owning resource
+    # now travels with the file, and `ProtectedResource::reference` is the single
+    # accessor the authorization decision reads it through.
+    # Lowered to 62 after a sweep inlined the gratuitous one-call helpers, moved
+    # the two test-only ones under `#[cfg(test)] mod tests`, and fixed the check's
+    # accounting: it now skips the declaration line by position, so a generic
+    # declaration is no longer subtracted as if it were a call site and a generic
+    # helper with a single caller is counted.
+    max_single_call_functions: 62
   STY-RUST-002:
     bounded_contexts: &bounded_contexts
       - asset

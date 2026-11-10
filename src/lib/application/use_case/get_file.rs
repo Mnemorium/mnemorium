@@ -3,13 +3,15 @@ use std::pin::Pin;
 use std::sync::Arc;
 
 use crate::application::port::{GetFileCommand, GetFileError, GetFileResponse, GetFileUseCase};
-use crate::application::use_case::asset_access;
-use crate::application::use_case::asset_access::AssetAccessError;
+use crate::application::security_event;
 use crate::domain::model::{Audio, Image, Video};
 use crate::domain::port::{
-    AssetUnitOfWork, ContentLinkProvider, IdentityUnitOfWork, LibraryUnitOfWork, UnitOfWork as _,
-    UnitOfWorkFactory, UserUnitOfWork,
+    AssetUnitOfWork, AudioFilter, AudioRepository as _, ContentLinkProvider, FileFilter,
+    FileRepository as _, IdentityUnitOfWork, ImageFilter, ImageRepository as _, LibraryUnitOfWork,
+    PermissionFilter, PermissionRepository as _, UnitOfWork as _, UnitOfWorkFactory, UserFilter,
+    UserRepository as _, UserUnitOfWork, VideoFilter, VideoRepository as _,
 };
+use crate::domain::service::{Authorization, Decision};
 
 /// Use case implementation for fetching one stored file.
 pub(crate) struct GetFile<F, L> {
@@ -50,18 +52,81 @@ where
                 .map_err(|error| GetFileError::Unknown(error.into()))?;
 
             let result = async {
-                let accessed = asset_access::access_file(
-                    &mut unit_of_work,
-                    command.caller_id(),
-                    command.file_id(),
-                )
-                .await
-                .map_err(|error| match error {
-                    AssetAccessError::NoSuchAsset => GetFileError::NoSuchFile,
-                    AssetAccessError::NoSuchCaller => GetFileError::NoSuchCaller,
-                    AssetAccessError::Unknown(source) => GetFileError::Unknown(source),
-                })?;
-                let file = &accessed.file;
+                let caller = unit_of_work
+                    .users()
+                    .search(&UserFilter {
+                        id: Some(command.caller_id()),
+                        ..UserFilter::default()
+                    })
+                    .await
+                    .map_err(|error| GetFileError::Unknown(error.into()))?
+                    .into_iter()
+                    .next()
+                    .ok_or(GetFileError::NoSuchCaller)?;
+                let permissions = unit_of_work
+                    .permissions()
+                    .search(&PermissionFilter {
+                        user_id: Some(caller.id()),
+                        ..PermissionFilter::default()
+                    })
+                    .await
+                    .map_err(|error| GetFileError::Unknown(error.into()))?;
+                let file = unit_of_work
+                    .files()
+                    .search(&FileFilter {
+                        id: Some(command.file_id()),
+                        ..FileFilter::default()
+                    })
+                    .await
+                    .map_err(|error| GetFileError::Unknown(error.into()))?
+                    .into_iter()
+                    .next()
+                    .ok_or(GetFileError::NoSuchFile)?;
+
+                if let Decision::Deny(denial) =
+                    Authorization::decide_asset(&caller, &permissions, &file)
+                {
+                    security_event::authorization_failed(
+                        caller.id(),
+                        denial.action().verb(),
+                        denial.action().target(),
+                    );
+                    return Err(GetFileError::NoSuchFile);
+                }
+
+                // The media rows backing the file are response data, not an
+                // authorization input.
+                let image = unit_of_work
+                    .images()
+                    .search(&ImageFilter {
+                        file_id: Some(file.id()),
+                        ..ImageFilter::default()
+                    })
+                    .await
+                    .map_err(|error| GetFileError::Unknown(error.into()))?
+                    .into_iter()
+                    .next();
+                let audio = unit_of_work
+                    .audios()
+                    .search(&AudioFilter {
+                        file_id: Some(file.id()),
+                        ..AudioFilter::default()
+                    })
+                    .await
+                    .map_err(|error| GetFileError::Unknown(error.into()))?
+                    .into_iter()
+                    .next();
+                let video = unit_of_work
+                    .videos()
+                    .search(&VideoFilter {
+                        file_id: Some(file.id()),
+                        ..VideoFilter::default()
+                    })
+                    .await
+                    .map_err(|error| GetFileError::Unknown(error.into()))?
+                    .into_iter()
+                    .next();
+
                 let link = content_link
                     .mint(file.id())
                     .await
@@ -76,9 +141,9 @@ where
                     file.origin(),
                     file.is_public(),
                     file.user_id(),
-                    accessed.image.as_ref().map(Image::image_id),
-                    accessed.audio.as_ref().map(Audio::id),
-                    accessed.video.as_ref().map(Video::id),
+                    image.as_ref().map(Image::image_id),
+                    audio.as_ref().map(Audio::id),
+                    video.as_ref().map(Video::id),
                     link,
                 ))
             }
@@ -108,13 +173,13 @@ mod tests {
     use crate::domain::NumericID;
 
     use crate::domain::model::{
-        AssetScope, File, Gallery, GalleryItem, MusicPlaylist, Orientation, Role, User,
+        AssetOwner, AssetScope, File, Image, Orientation, ProtectedResource, ResourceKind,
+        ResourceRef, Role, User,
     };
 
     use crate::domain::port::{
-        ContentLink, GalleryItemDetail, MockAudioRepository, MockContentLinkProvider,
-        MockFileRepository, MockGalleryRepository, MockImageRepository,
-        MockMusicPlaylistRepository, MockUserRepository, MockVideoRepository, RepositoryError,
+        ContentLink, MockAudioRepository, MockContentLinkProvider, MockFileRepository,
+        MockImageRepository, MockUserRepository, MockVideoRepository, RepositoryError,
     };
 
     use crate::test_helpers::*;
@@ -133,7 +198,11 @@ mod tests {
         signer
     }
 
-    fn file(id: NumericID, owner_id: NumericID) -> Result<File, Box<dyn Error>> {
+    fn file(
+        id: NumericID,
+        owner_id: NumericID,
+        owner: Option<AssetOwner>,
+    ) -> Result<File, Box<dyn Error>> {
         Ok(File::try_new(
             id,
             format!("{id}.png"),
@@ -145,7 +214,29 @@ mod tests {
             NaiveDateTime::default(),
             None,
             None,
-        )?)
+        )?
+        .with_owner(owner))
+    }
+
+    fn resource(
+        kind: ResourceKind,
+        id: NumericID,
+        owner_id: Option<NumericID>,
+        is_public: bool,
+    ) -> AssetOwner {
+        AssetOwner::Resource(ProtectedResource::new(
+            ResourceRef::new(kind, id),
+            owner_id,
+            is_public,
+        ))
+    }
+
+    fn gallery(id: NumericID, owner_id: NumericID, is_public: bool) -> AssetOwner {
+        resource(ResourceKind::Gallery, id, Some(owner_id), is_public)
+    }
+
+    fn playlist(id: NumericID, owner_id: NumericID, is_public: bool) -> AssetOwner {
+        resource(ResourceKind::MusicPlaylist, id, Some(owner_id), is_public)
     }
 
     fn image(
@@ -165,50 +256,6 @@ mod tests {
         )?)
     }
 
-    fn gallery(id: NumericID, owner_id: NumericID, is_public: bool) -> Gallery {
-        let now = NaiveDateTime::default();
-        Gallery::new(
-            id,
-            Some(owner_id),
-            format!("Gallery {id}"),
-            is_public,
-            now,
-            now,
-        )
-    }
-
-    fn gallery_item(
-        gallery_id: NumericID,
-        image_id: NumericID,
-    ) -> Result<GalleryItemDetail, Box<dyn Error>> {
-        Ok(GalleryItemDetail::new(
-            GalleryItem::try_new(
-                1,
-                gallery_id,
-                Some(image_id),
-                None,
-                0,
-                NaiveDateTime::default(),
-            )?,
-            image_id,
-            "item".to_owned(),
-        ))
-    }
-
-    fn playlist(id: NumericID, owner_id: NumericID, is_public: bool) -> MusicPlaylist {
-        let now = NaiveDateTime::default();
-        MusicPlaylist::new(
-            id,
-            format!("Playlist {id}"),
-            now,
-            now,
-            owner_id,
-            is_public,
-            Some(19),
-            Vec::new(),
-        )
-    }
-
     fn caller(id: NumericID, role: Role) -> Result<User, Box<dyn Error>> {
         Ok(User::try_new(
             id,
@@ -226,15 +273,11 @@ mod tests {
         images: MockImageRepository,
         audios: MockAudioRepository,
         videos: MockVideoRepository,
-        galleries: MockGalleryRepository,
-        playlists: MockMusicPlaylistRepository,
     ) -> AssetFactoryHarness {
         AssetFactoryHarness::new(TestUnitOfWork {
             audios,
             files,
-            galleries,
             images,
-            music_playlists: playlists,
             permissions: no_permissions(),
             users,
             videos,
@@ -274,17 +317,13 @@ mod tests {
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 9)?;
         let mut files = MockFileRepository::new();
-        expect_file(&mut files, 100, file(100, 3)?);
+        expect_file(&mut files, 100, file(100, 3, Some(AssetOwner::Library))?);
         let mut images = MockImageRepository::new();
         expect_image(&mut images, image(19, 100, Some(AssetScope::Library))?);
         let mut audios = MockAudioRepository::new();
         let mut videos = MockVideoRepository::new();
         empty_media(&mut audios, &mut videos);
-        let mut galleries = MockGalleryRepository::new();
-        galleries.expect_search_items().times(0);
-        let mut playlists = MockMusicPlaylistRepository::new();
-        playlists.expect_search().times(0);
-        let harness = harness(users, files, images, audios, videos, galleries, playlists);
+        let harness = harness(users, files, images, audios, videos);
         let use_case: UseCase = GetFile::new(Arc::clone(&harness.factory), Arc::new(signer()));
 
         // Act
@@ -306,25 +345,11 @@ mod tests {
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 9)?;
         let mut files = MockFileRepository::new();
-        expect_file(&mut files, 100, file(100, 3)?);
-        let mut images = MockImageRepository::new();
-        expect_image(&mut images, image(19, 100, Some(AssetScope::User))?);
-        let mut audios = MockAudioRepository::new();
-        let mut videos = MockVideoRepository::new();
-        empty_media(&mut audios, &mut videos);
-        let mut galleries = MockGalleryRepository::new();
-        let item = gallery_item(2, 19)?;
-        galleries
-            .expect_search_items()
-            .times(1)
-            .return_once(move |_| Box::pin(async move { Ok(vec![item]) }));
-        galleries
-            .expect_search()
-            .times(1)
-            .return_once(|_| Box::pin(async { Ok(vec![gallery(2, 3, false)]) }));
-        let mut playlists = MockMusicPlaylistRepository::new();
-        playlists.expect_search().times(0);
-        let harness = harness(users, files, images, audios, videos, galleries, playlists);
+        expect_file(&mut files, 100, file(100, 3, Some(gallery(2, 3, false)))?);
+        let images = MockImageRepository::new();
+        let audios = MockAudioRepository::new();
+        let videos = MockVideoRepository::new();
+        let harness = harness(users, files, images, audios, videos);
         let use_case: UseCase = GetFile::new(Arc::clone(&harness.factory), Arc::new(signer()));
 
         // Act
@@ -343,25 +368,13 @@ mod tests {
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 3)?;
         let mut files = MockFileRepository::new();
-        expect_file(&mut files, 100, file(100, 3)?);
+        expect_file(&mut files, 100, file(100, 3, Some(gallery(2, 3, false)))?);
         let mut images = MockImageRepository::new();
         expect_image(&mut images, image(19, 100, Some(AssetScope::User))?);
         let mut audios = MockAudioRepository::new();
         let mut videos = MockVideoRepository::new();
         empty_media(&mut audios, &mut videos);
-        let mut galleries = MockGalleryRepository::new();
-        let item = gallery_item(2, 19)?;
-        galleries
-            .expect_search_items()
-            .times(1)
-            .return_once(move |_| Box::pin(async move { Ok(vec![item]) }));
-        galleries
-            .expect_search()
-            .times(1)
-            .return_once(|_| Box::pin(async { Ok(vec![gallery(2, 3, false)]) }));
-        let mut playlists = MockMusicPlaylistRepository::new();
-        playlists.expect_search().times(0);
-        let harness = harness(users, files, images, audios, videos, galleries, playlists);
+        let harness = harness(users, files, images, audios, videos);
         let use_case: UseCase = GetFile::new(Arc::clone(&harness.factory), Arc::new(signer()));
 
         // Act
@@ -378,24 +391,13 @@ mod tests {
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 3)?;
         let mut files = MockFileRepository::new();
-        expect_file(&mut files, 100, file(100, 3)?);
+        expect_file(&mut files, 100, file(100, 3, Some(playlist(4, 3, false)))?);
         let mut images = MockImageRepository::new();
         expect_image(&mut images, image(19, 100, Some(AssetScope::User))?);
         let mut audios = MockAudioRepository::new();
         let mut videos = MockVideoRepository::new();
         empty_media(&mut audios, &mut videos);
-        let mut galleries = MockGalleryRepository::new();
-        galleries
-            .expect_search_items()
-            .times(1)
-            .return_once(|_| Box::pin(async { Ok(Vec::new()) }));
-        let mut playlists = MockMusicPlaylistRepository::new();
-        playlists
-            .expect_search()
-            .times(1)
-            .withf(|filter| filter.cover_image_id == Some(19))
-            .return_once(|_| Box::pin(async { Ok(vec![playlist(4, 3, false)]) }));
-        let harness = harness(users, files, images, audios, videos, galleries, playlists);
+        let harness = harness(users, files, images, audios, videos);
         let use_case: UseCase = GetFile::new(Arc::clone(&harness.factory), Arc::new(signer()));
 
         // Act
@@ -412,23 +414,11 @@ mod tests {
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 9)?;
         let mut files = MockFileRepository::new();
-        expect_file(&mut files, 100, file(100, 3)?);
-        let mut images = MockImageRepository::new();
-        expect_image(&mut images, image(19, 100, Some(AssetScope::User))?);
-        let mut audios = MockAudioRepository::new();
-        let mut videos = MockVideoRepository::new();
-        empty_media(&mut audios, &mut videos);
-        let mut galleries = MockGalleryRepository::new();
-        galleries
-            .expect_search_items()
-            .times(1)
-            .return_once(|_| Box::pin(async { Ok(Vec::new()) }));
-        let mut playlists = MockMusicPlaylistRepository::new();
-        playlists
-            .expect_search()
-            .times(1)
-            .return_once(|_| Box::pin(async { Ok(Vec::new()) }));
-        let harness = harness(users, files, images, audios, videos, galleries, playlists);
+        expect_file(&mut files, 100, file(100, 3, None)?);
+        let images = MockImageRepository::new();
+        let audios = MockAudioRepository::new();
+        let videos = MockVideoRepository::new();
+        let harness = harness(users, files, images, audios, videos);
         let use_case: UseCase = GetFile::new(Arc::clone(&harness.factory), Arc::new(signer()));
 
         // Act
@@ -449,25 +439,13 @@ mod tests {
             .times(1)
             .return_once(move |_| Box::pin(async move { Ok(vec![root]) }));
         let mut files = MockFileRepository::new();
-        expect_file(&mut files, 100, file(100, 3)?);
+        expect_file(&mut files, 100, file(100, 3, Some(gallery(2, 3, false)))?);
         let mut images = MockImageRepository::new();
         expect_image(&mut images, image(19, 100, Some(AssetScope::User))?);
         let mut audios = MockAudioRepository::new();
         let mut videos = MockVideoRepository::new();
         empty_media(&mut audios, &mut videos);
-        let mut galleries = MockGalleryRepository::new();
-        let item = gallery_item(2, 19)?;
-        galleries
-            .expect_search_items()
-            .times(1)
-            .return_once(move |_| Box::pin(async move { Ok(vec![item]) }));
-        galleries
-            .expect_search()
-            .times(1)
-            .return_once(|_| Box::pin(async { Ok(vec![gallery(2, 3, false)]) }));
-        let mut playlists = MockMusicPlaylistRepository::new();
-        playlists.expect_search().times(0);
-        let harness = harness(users, files, images, audios, videos, galleries, playlists);
+        let harness = harness(users, files, images, audios, videos);
         let use_case: UseCase = GetFile::new(Arc::clone(&harness.factory), Arc::new(signer()));
 
         // Act
@@ -494,8 +472,6 @@ mod tests {
             MockImageRepository::new(),
             MockAudioRepository::new(),
             MockVideoRepository::new(),
-            MockGalleryRepository::new(),
-            MockMusicPlaylistRepository::new(),
         );
         let use_case: UseCase = GetFile::new(Arc::clone(&harness.factory), Arc::new(signer()));
 
@@ -521,8 +497,6 @@ mod tests {
             MockImageRepository::new(),
             MockAudioRepository::new(),
             MockVideoRepository::new(),
-            MockGalleryRepository::new(),
-            MockMusicPlaylistRepository::new(),
         );
         let use_case: UseCase = GetFile::new(Arc::clone(&harness.factory), Arc::new(signer()));
 
@@ -550,8 +524,6 @@ mod tests {
             MockImageRepository::new(),
             MockAudioRepository::new(),
             MockVideoRepository::new(),
-            MockGalleryRepository::new(),
-            MockMusicPlaylistRepository::new(),
         );
         let use_case: UseCase = GetFile::new(Arc::clone(&harness.factory), Arc::new(signer()));
 
@@ -570,17 +542,13 @@ mod tests {
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 9)?;
         let mut files = MockFileRepository::new();
-        expect_file(&mut files, 100, file(100, 3)?);
+        expect_file(&mut files, 100, file(100, 3, Some(AssetOwner::Library))?);
         let mut images = MockImageRepository::new();
         expect_image(&mut images, image(19, 100, Some(AssetScope::Library))?);
         let mut audios = MockAudioRepository::new();
         let mut videos = MockVideoRepository::new();
         empty_media(&mut audios, &mut videos);
-        let mut galleries = MockGalleryRepository::new();
-        galleries.expect_search_items().times(0);
-        let mut playlists = MockMusicPlaylistRepository::new();
-        playlists.expect_search().times(0);
-        let harness = harness(users, files, images, audios, videos, galleries, playlists);
+        let harness = harness(users, files, images, audios, videos);
         harness.commit_fails.store(true, Ordering::SeqCst);
         let use_case: UseCase = GetFile::new(Arc::clone(&harness.factory), Arc::new(signer()));
 

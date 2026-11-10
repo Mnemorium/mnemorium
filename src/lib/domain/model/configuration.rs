@@ -653,7 +653,14 @@ impl From<&RateLimit> for RateLimitConfig {
             burst_size: rate_limit.burst_size,
             client_ip_header: rate_limit.client_ip_header.as_str().to_owned(),
             period_seconds: rate_limit.period_seconds,
-            trusted_proxies: rate_limit.trusted_proxies_value(),
+            // The persisted layer carries the list as one comma-separated
+            // value, rendered from the validated addresses.
+            trusted_proxies: rate_limit
+                .trusted_proxies
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<String>>()
+                .join(&TRUSTED_PROXIES_SEPARATOR.to_string()),
         }
     }
 }
@@ -699,17 +706,6 @@ impl RateLimit {
     #[must_use]
     pub(crate) fn trusted_proxies(&self) -> &[IpAddr] {
         &self.trusted_proxies
-    }
-
-    /// Return the trusted proxies rendered as the persisted comma-separated
-    /// list.
-    #[must_use]
-    fn trusted_proxies_value(&self) -> String {
-        self.trusted_proxies
-            .iter()
-            .map(ToString::to_string)
-            .collect::<Vec<String>>()
-            .join(&TRUSTED_PROXIES_SEPARATOR.to_string())
     }
 
     /// Initialise a new `RateLimit`, validating `burst_size` and

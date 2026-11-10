@@ -104,12 +104,6 @@ impl ChunkBitmap {
         })
     }
 
-    /// Return whether every tracked chunk has been received.
-    #[must_use]
-    fn is_complete(&self) -> bool {
-        (0..self.total_chunks).all(|chunk_number| self.is_received(chunk_number).unwrap_or(false))
-    }
-
     /// Return whether chunk `chunk_number` has been received.
     ///
     /// # Errors
@@ -246,7 +240,8 @@ impl Upload {
     /// received.
     #[must_use]
     pub(crate) fn can_finish(&self) -> bool {
-        self.chunk_bitmap.is_complete()
+        (0..self.chunk_bitmap.total_chunks)
+            .all(|chunk_number| self.chunk_bitmap.is_received(chunk_number).unwrap_or(false))
     }
 
     /// Return the raw bitmap of the received chunks.
@@ -297,23 +292,6 @@ impl Upload {
         self.is_verifying
     }
 
-    /// Mark chunk `chunk_number` as received.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`UploadError::ChunkNumberOutOfRange`] when `chunk_number` is
-    /// not lower than [`Upload::total_chunks`].
-    fn mark_chunk_received(&mut self, chunk_number: usize) -> Result<(), UploadError> {
-        self.chunk_bitmap
-            .mark_received(chunk_number)
-            .map_err(|error| match error {
-                ChunkBitmapError::ChunkNumberOutOfRange => UploadError::ChunkNumberOutOfRange,
-                other @ (ChunkBitmapError::InvalidLength | ChunkBitmapError::TotalChunksZero) => {
-                    UploadError::Unknown(anyhow::Error::new(other))
-                }
-            })
-    }
-
     /// Return the identifier of the mime type of the file being uploaded.
     #[must_use]
     pub(crate) fn mime_type_id(&self) -> &str {
@@ -327,7 +305,14 @@ impl Upload {
     /// Returns [`UploadError::ChunkNumberOutOfRange`] when `chunk_number` is
     /// not lower than [`Upload::total_chunks`].
     pub(crate) fn record_chunk(&mut self, chunk_number: usize) -> Result<(), UploadError> {
-        self.mark_chunk_received(chunk_number)
+        self.chunk_bitmap
+            .mark_received(chunk_number)
+            .map_err(|error| match error {
+                ChunkBitmapError::ChunkNumberOutOfRange => UploadError::ChunkNumberOutOfRange,
+                other @ (ChunkBitmapError::InvalidLength | ChunkBitmapError::TotalChunksZero) => {
+                    UploadError::Unknown(anyhow::Error::new(other))
+                }
+            })
     }
 
     /// Seal the session for verification at `sealed_at`.

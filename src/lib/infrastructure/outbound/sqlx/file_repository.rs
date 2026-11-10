@@ -1,9 +1,11 @@
 use sqlx::{QueryBuilder, Sqlite, Transaction};
 
-use crate::domain::model::{File, IntegrityHash, Origin};
+use crate::domain::model::{
+    AssetOwner, File, IntegrityHash, Origin, ProtectedResource, ResourceKind, ResourceRef,
+};
 use crate::domain::port::{FileFilter, FileRepository, RepositoryError};
 
-use super::model::File as SqlxFile;
+use super::model::{File as SqlxFile, FileWithOwner as SqlxFileWithOwner};
 
 /// Repository persisting files, backed by a `SQLite` transaction.
 pub(crate) struct SqlxFileRepository<'transaction> {
@@ -121,44 +123,106 @@ impl FileRepository for SqlxFileRepository<'_> {
     async fn search(&mut self, filter: &FileFilter) -> Result<Vec<File>, RepositoryError> {
         let mut builder = QueryBuilder::<Sqlite>::new(
             "SELECT
-                file_id,
-                path,
-                user_id,
-                is_public,
-                mime_type_id,
-                uploaded_at,
-                size_bytes,
-                modified_at,
-                origin,
-                integrity_hash
-            FROM file",
+                f.file_id,
+                f.path,
+                f.user_id,
+                f.is_public,
+                f.mime_type_id,
+                f.uploaded_at,
+                f.size_bytes,
+                f.modified_at,
+                f.origin,
+                f.integrity_hash,
+                CASE
+                    WHEN image.scope = 'LIBRARY' THEN 'LIBRARY'
+                    WHEN image.scope = 'USER'
+                        AND gallery_item.gallery_id IS NOT NULL THEN 'GALLERY'
+                    WHEN image.scope = 'USER'
+                        AND music_playlist.music_playlist_id IS NOT NULL
+                        THEN 'MUSIC_PLAYLIST'
+                    WHEN video.scope = 'LIBRARY' THEN 'LIBRARY'
+                    WHEN video.scope = 'USER'
+                        AND gallery_item_video.gallery_id IS NOT NULL
+                        THEN 'GALLERY'
+                    WHEN video.scope IS NULL
+                        AND movie.movie_id IS NOT NULL THEN 'MOVIE'
+                    WHEN video.scope IS NULL
+                        AND series.series_id IS NOT NULL THEN 'SERIES'
+                    WHEN music_album.music_album_id IS NOT NULL THEN 'MUSIC_ALBUM'
+                END AS owner_kind,
+                COALESCE(
+                    gallery_item.gallery_id,
+                    music_playlist.music_playlist_id,
+                    gallery_item_video.gallery_id,
+                    movie.movie_id,
+                    series.series_id,
+                    music_album.music_album_id
+                ) AS owner_id,
+                COALESCE(
+                    gallery.user_id,
+                    music_playlist.user_id,
+                    gallery_video.user_id
+                ) AS owner_user_id,
+                COALESCE(
+                    gallery.is_public,
+                    music_playlist.is_public,
+                    gallery_video.is_public,
+                    1
+                ) AS owner_is_public
+            FROM file AS f
+            LEFT JOIN image ON image.file_id = f.file_id
+            LEFT JOIN gallery_item ON gallery_item.image_id = image.image_id
+            LEFT JOIN gallery ON gallery.gallery_id = gallery_item.gallery_id
+            LEFT JOIN music_playlist
+                ON music_playlist.cover_image_id = image.image_id
+            LEFT JOIN video ON video.file_id = f.file_id
+            LEFT JOIN gallery_item AS gallery_item_video
+                ON gallery_item_video.video_id = video.video_id
+            LEFT JOIN gallery AS gallery_video
+                ON gallery_video.gallery_id = gallery_item_video.gallery_id
+            LEFT JOIN movie ON movie.video_id = video.video_id
+            LEFT JOIN episode ON episode.video_id = video.video_id
+            LEFT JOIN season ON season.season_id = episode.season_id
+            LEFT JOIN series ON series.series_id = season.series_id
+            LEFT JOIN audio ON audio.file_id = f.file_id
+            LEFT JOIN music_album ON music_album.music_album_id = (
+                SELECT music_medium.music_album_id
+                FROM music_recording
+                JOIN music_track
+                    ON music_track.music_recording_id
+                        = music_recording.music_recording_id
+                JOIN music_medium
+                    ON music_medium.music_medium_id = music_track.music_medium_id
+                WHERE music_recording.audio_id = audio.audio_id
+                LIMIT 1
+            )",
         );
         let mut first = true;
 
         if let Some(id) = filter.id {
-            push_filter(&mut first, &mut builder, "file_id = ", id);
+            push_filter(&mut first, &mut builder, "f.file_id = ", id);
         }
         if let Some(integrity_hash) = filter.integrity_hash.as_deref() {
             push_filter(
                 &mut first,
                 &mut builder,
-                "integrity_hash = ",
+                "f.integrity_hash = ",
                 integrity_hash,
             );
         }
         if let Some(path) = filter.path.as_deref() {
-            push_filter(&mut first, &mut builder, "path = ", path);
+            push_filter(&mut first, &mut builder, "f.path = ", path);
         }
         if let Some(user_id) = filter.user_id {
-            push_filter(&mut first, &mut builder, "user_id = ", user_id);
+            push_filter(&mut first, &mut builder, "f.user_id = ", user_id);
         }
 
         let rows = builder
-            .build_query_as::<SqlxFile>()
+            .build_query_as::<SqlxFileWithOwner>()
             .fetch_all(&mut **self.transaction)
             .await?;
 
-        rows.into_iter().map(domain_file).collect()
+        rows.into_iter().map(domain_file_with_owner).collect()
     }
 }
 
@@ -204,6 +268,30 @@ fn domain_file(row: SqlxFile) -> Result<File, RepositoryError> {
         Some(origin),
     )
     .map_err(|_| RepositoryError::DataIntegrityViolation)
+}
+
+/// Map a persisted file row and its owner back to the domain model.
+fn domain_file_with_owner(row: SqlxFileWithOwner) -> Result<File, RepositoryError> {
+    let owner = match row.owner_kind.as_deref() {
+        // An unreferenced file is an orphan asset.
+        None => None,
+        // Shared catalogue art belongs to the library, not to one aggregate; the
+        // owner identifier the join carries is meaningless for it.
+        Some("LIBRARY") => Some(AssetOwner::Library),
+        Some(kind) => {
+            let resource_kind =
+                ResourceKind::from_wire(kind).ok_or(RepositoryError::DataIntegrityViolation)?;
+            let id = row
+                .owner_id
+                .ok_or(RepositoryError::DataIntegrityViolation)?;
+            Some(AssetOwner::Resource(ProtectedResource::new(
+                ResourceRef::new(resource_kind, id),
+                row.owner_user_id,
+                row.owner_is_public.unwrap_or(true),
+            )))
+        }
+    };
+    Ok(domain_file(row.file)?.with_owner(owner))
 }
 
 #[cfg(test)]
@@ -637,6 +725,275 @@ mod tests {
         assert!(
             matches!(mapped, Err(RepositoryError::DataIntegrityViolation)),
             "statement must violate a check constraint: {statement}"
+        );
+        Ok(())
+    }
+
+    /// Seed a scanned file with a known identifier.
+    async fn seed_file(
+        transaction: &mut Transaction<'static, Sqlite>,
+        file_id: i64,
+        path: &str,
+        user_id: i64,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            "INSERT INTO file (file_id, path, user_id, is_public, mime_type_id, size_bytes, modified_at)
+             VALUES (?1, ?2, ?3, 0, 'video/mp4', 10, '2026-09-26 10:00:00')",
+        )
+        .bind(file_id)
+        .bind(path)
+        .bind(user_id)
+        .execute(&mut **transaction)
+        .await?;
+        Ok(())
+    }
+
+    /// The owner of the file matching `file_id`.
+    async fn owner_of(
+        transaction: &mut Transaction<'static, Sqlite>,
+        file_id: i64,
+    ) -> Result<Option<AssetOwner>, Box<dyn Error>> {
+        let mut repository = SqlxFileRepository::new(transaction);
+        let found = repository
+            .search(&FileFilter {
+                id: Some(file_id),
+                ..FileFilter::default()
+            })
+            .await?;
+        Ok(found.first().and_then(File::owner))
+    }
+
+    fn protected(
+        kind: ResourceKind,
+        id: i64,
+        owner_id: Option<i64>,
+        is_public: bool,
+    ) -> AssetOwner {
+        AssetOwner::Resource(ProtectedResource::new(
+            ResourceRef::new(kind, id),
+            owner_id,
+            is_public,
+        ))
+    }
+
+    /// Seed an image row naming `file_id`.
+    async fn seed_image(
+        transaction: &mut Transaction<'static, Sqlite>,
+        image_id: i64,
+        file_id: i64,
+        scope: Option<&str>,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            "INSERT INTO image (image_id, name, width_px, height_px, orientation, created_at, scope, file_id)
+             VALUES (?1, 'art', 10, 10, 'SQUARE', '2026-09-26', ?2, ?3)",
+        )
+        .bind(image_id)
+        .bind(scope)
+        .bind(file_id)
+        .execute(&mut **transaction)
+        .await?;
+        Ok(())
+    }
+
+    /// Seed a video row naming `file_id`.
+    async fn seed_video(
+        transaction: &mut Transaction<'static, Sqlite>,
+        video_id: i64,
+        file_id: i64,
+        scope: Option<&str>,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            "INSERT INTO video (video_id, duration_ms, codec, frame_count, width, height, color_id, scan_type, scope, file_id)
+             VALUES (?1, 1000, 'h264', 30, 640, 480, 'sRGB', 'PROGRESSIVE', ?2, ?3)",
+        )
+        .bind(video_id)
+        .bind(scope)
+        .bind(file_id)
+        .execute(&mut **transaction)
+        .await?;
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn search_leaves_an_unreferenced_file_without_an_owner() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let mut transaction = begin_transaction().await?;
+        seed_user(&mut transaction, 1).await?;
+        seed_file(&mut transaction, 100, "files/1_orphan.mp4", 1).await?;
+
+        // Act
+        let owner = owner_of(&mut transaction, 100).await?;
+
+        // Assert
+        assert_eq!(owner, None);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn search_resolves_library_art() -> Result<(), Box<dyn Error>> {
+        // Arrange: a LIBRARY image belongs to no single aggregate.
+        let mut transaction = begin_transaction().await?;
+        seed_user(&mut transaction, 1).await?;
+        seed_file(&mut transaction, 100, "art/1.png", 1).await?;
+        seed_image(&mut transaction, 1, 100, Some("LIBRARY")).await?;
+
+        // Act
+        let owner = owner_of(&mut transaction, 100).await?;
+
+        // Assert
+        assert_eq!(owner, Some(AssetOwner::Library));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn search_resolves_the_gallery_that_holds_an_image() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let mut transaction = begin_transaction().await?;
+        seed_user(&mut transaction, 1).await?;
+        seed_file(&mut transaction, 100, "files/1_item.png", 1).await?;
+        sqlx::query(
+            "INSERT INTO gallery (gallery_id, name, created_at, last_modified_at, is_public, user_id)
+             VALUES (2, 'Private', '2026-09-26', '2026-09-26', 0, 1)",
+        )
+        .execute(&mut *transaction)
+        .await?;
+        seed_image(&mut transaction, 1, 100, Some("USER")).await?;
+        sqlx::query(
+            "INSERT INTO gallery_item (gallery_item_id, gallery_id, image_id, item_index)
+             VALUES (1, 2, 1, 0)",
+        )
+        .execute(&mut *transaction)
+        .await?;
+
+        // Act
+        let owner = owner_of(&mut transaction, 100).await?;
+
+        // Assert
+        assert_eq!(
+            owner,
+            Some(protected(ResourceKind::Gallery, 2, Some(1), false))
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn search_resolves_the_playlist_that_uses_an_image_as_cover() -> Result<(), Box<dyn Error>>
+    {
+        // Arrange
+        let mut transaction = begin_transaction().await?;
+        seed_user(&mut transaction, 1).await?;
+        seed_file(&mut transaction, 100, "files/1_cover.png", 1).await?;
+        sqlx::query(
+            "INSERT INTO music_playlist (music_playlist_id, name, user_id, is_public, cover_image_id)
+             VALUES (4, 'Mix', 1, 1, NULL)",
+        )
+        .execute(&mut *transaction)
+        .await?;
+        seed_image(&mut transaction, 1, 100, Some("USER")).await?;
+        sqlx::query("UPDATE music_playlist SET cover_image_id = 1 WHERE music_playlist_id = 4")
+            .execute(&mut *transaction)
+            .await?;
+
+        // Act
+        let owner = owner_of(&mut transaction, 100).await?;
+
+        // Assert
+        assert_eq!(
+            owner,
+            Some(protected(ResourceKind::MusicPlaylist, 4, Some(1), true))
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn search_resolves_the_film_that_names_a_video() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let mut transaction = begin_transaction().await?;
+        seed_user(&mut transaction, 1).await?;
+        seed_file(&mut transaction, 100, "files/1_film.mp4", 1).await?;
+        seed_video(&mut transaction, 3, 100, None).await?;
+        sqlx::query(
+            "INSERT INTO movie (movie_id, name, plot, video_id) VALUES (5, 'Film', 'Plot', 3)",
+        )
+        .execute(&mut *transaction)
+        .await?;
+
+        // Act
+        let owner = owner_of(&mut transaction, 100).await?;
+
+        // Assert
+        assert_eq!(owner, Some(protected(ResourceKind::Movie, 5, None, true)));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn search_resolves_the_series_that_holds_an_episode() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let mut transaction = begin_transaction().await?;
+        seed_user(&mut transaction, 1).await?;
+        seed_file(&mut transaction, 100, "files/1_episode.mp4", 1).await?;
+        sqlx::query("INSERT INTO series (series_id, name, plot) VALUES (6, 'Show', 'Plot')")
+            .execute(&mut *transaction)
+            .await?;
+        sqlx::query("INSERT INTO season (season_id, series_id) VALUES (7, 6)")
+            .execute(&mut *transaction)
+            .await?;
+        seed_video(&mut transaction, 3, 100, None).await?;
+        sqlx::query("INSERT INTO episode (episode_id, season_id, episode_index, name, plot, video_id) VALUES (8, 7, 0, 'Pilot', 'Plot', 3)")
+            .execute(&mut *transaction)
+            .await?;
+
+        // Act
+        let owner = owner_of(&mut transaction, 100).await?;
+
+        // Assert
+        assert_eq!(owner, Some(protected(ResourceKind::Series, 6, None, true)));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn search_resolves_the_album_that_holds_an_audio() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let mut transaction = begin_transaction().await?;
+        seed_user(&mut transaction, 1).await?;
+        seed_file(&mut transaction, 100, "files/1_track.flac", 1).await?;
+        sqlx::query("INSERT INTO music_group (music_group_id, stage_name) VALUES (9, 'Artist')")
+            .execute(&mut *transaction)
+            .await?;
+        sqlx::query(
+            "INSERT INTO music_album (music_album_id, name, music_group_id) VALUES (5, 'Album', 9)",
+        )
+        .execute(&mut *transaction)
+        .await?;
+        sqlx::query(
+            "INSERT INTO music_medium (music_medium_id, music_album_id, type) VALUES (11, 5, 'DIGITAL')",
+        )
+        .execute(&mut *transaction)
+        .await?;
+        sqlx::query(
+            "INSERT INTO audio (audio_id, name, codec, file_id) VALUES (7, 'Track', 'flac', 100)",
+        )
+        .execute(&mut *transaction)
+        .await?;
+        sqlx::query(
+            "INSERT INTO music_recording (music_recording_id, name, audio_id) VALUES (12, 'Track', 7)",
+        )
+        .execute(&mut *transaction)
+        .await?;
+        sqlx::query(
+            "INSERT INTO music_track (music_track_id, track_index, music_medium_id, music_recording_id)
+             VALUES (13, 0, 11, 12)",
+        )
+        .execute(&mut *transaction)
+        .await?;
+
+        // Act
+        let owner = owner_of(&mut transaction, 100).await?;
+
+        // Assert
+        assert_eq!(
+            owner,
+            Some(protected(ResourceKind::MusicAlbum, 5, None, true))
         );
         Ok(())
     }

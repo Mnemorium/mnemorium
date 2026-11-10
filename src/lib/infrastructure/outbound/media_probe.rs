@@ -114,21 +114,6 @@ impl LocalMediaProbe {
     }
 }
 
-#[cfg(test)]
-impl LocalMediaProbe {
-    /// Create a probe bound to an explicit `program` and `probe_timeout`.
-    ///
-    /// Test-only: production resolves `ffprobe` from `PATH` with the default
-    /// timeout.
-    fn with_program(program: impl Into<OsString>, probe_timeout: Duration) -> Self {
-        Self {
-            permits: test_permits(),
-            probe_timeout,
-            program: program.into(),
-        }
-    }
-}
-
 impl Default for LocalMediaProbe {
     fn default() -> Self {
         Self::new()
@@ -426,18 +411,6 @@ impl MediaProbe for LocalMediaProbe {
     }
 }
 
-/// Test-only permit pool bounding how many stubbed probes run at once.
-///
-/// The pool bounds probe concurrency only: a probe acquires its permit inside
-/// the adapter, after the test body has written its stub, so the pool orders a
-/// spawn against a spawn and never a spawn against a stub write. Isolating the
-/// stub file is [`tests::spawn_gate`]'s job (`TEST-052`).
-#[cfg(test)]
-fn test_permits() -> Arc<Semaphore> {
-    static PERMITS: OnceLock<Arc<Semaphore>> = OnceLock::new();
-    Arc::clone(PERMITS.get_or_init(|| Arc::new(Semaphore::new(MAX_CONCURRENT_PROBES))))
-}
-
 /// Classify an image decode error and log the matching security event.
 ///
 /// A format the decoder does not support, or content it recognises but cannot
@@ -673,6 +646,28 @@ mod tests {
 
     /// A generous probe timeout so a loaded test runner cannot starve a stub.
     const STUB_TIMEOUT: Duration = Duration::from_secs(10);
+
+    impl LocalMediaProbe {
+        /// Create a probe bound to an explicit `program` and `probe_timeout`.
+        ///
+        /// Test-only: production resolves `ffprobe` from `PATH` with the default
+        /// timeout.
+        fn with_program(program: impl Into<OsString>, probe_timeout: Duration) -> Self {
+            // The pool bounds probe concurrency only: a probe acquires its
+            // permit inside the adapter, after the test body has written its
+            // stub, so the pool orders a spawn against a spawn and never a
+            // spawn against a stub write. Isolating the stub file is
+            // [`spawn_gate`]'s job (`TEST-052`).
+            static PERMITS: OnceLock<Arc<Semaphore>> = OnceLock::new();
+            Self {
+                permits: Arc::clone(
+                    PERMITS.get_or_init(|| Arc::new(Semaphore::new(MAX_CONCURRENT_PROBES))),
+                ),
+                probe_timeout,
+                program: program.into(),
+            }
+        }
+    }
 
     /// Test-only process-wide gate held across a stub write and the probe that runs it.
     ///

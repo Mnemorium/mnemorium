@@ -57,7 +57,14 @@ matrix. Reading an asset delegates to the read action of the resource that owns 
 | Catalogue artwork (`LIBRARY` asset scope) | `library.read`  | Global                                 |
 | A gallery item (`USER` asset scope)       | `gallery.read`  | The gallery holding the item           |
 | A playlist cover (`USER` asset scope)     | `playlist.read` | The playlist holding the cover         |
+| A film's video                            | `library.read`  | The film                               |
+| An episode's video                        | `library.read`  | The series holding the episode         |
+| An album's audio                          | `library.read`  | The album                              |
 | An asset no resource references           | —               | Its file owner and the Root Admin only |
+
+The stored file carries the resource that owns it, so the read path takes one decision: the `Authorization` domain
+service receives the file and reads the owner from it, with no per-representation lookup and no separate path for the
+file, image, audio and video views.
 
 An asset scope is fixed by the first attachment and is not the permission `Scope`: the permission scope is the reach of
 an action over a resource family, defined under [Scopes](#scopes).

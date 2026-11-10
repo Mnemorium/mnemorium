@@ -1,47 +1,71 @@
 use crate::domain::NumericID;
-use crate::domain::model::{ResourceKind, ResourceRef};
+use crate::domain::model::{Protected, ResourceRef};
 
 /// The resource that owns a stored asset, as far as authorization is concerned.
 ///
-/// An image or video carries a [`crate::domain::model::AssetScope`] fixed by
-/// its first attachment. A `LIBRARY` asset is shared catalogue art, while a
-/// `USER` asset is owned by exactly one referrer: a gallery item or a playlist
-/// cover. Reading the asset delegates to the read action of that owner, so the
-/// asset is exactly as readable as the resource it belongs to.
+/// Reading an asset delegates to the read action of the resource that owns it,
+/// so the asset is exactly as readable as the resource it belongs to. The owner
+/// travels with the stored file, so the decision needs no further lookup.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
-pub(crate) enum AssetContext {
-    /// Media of one gallery, authorized through `gallery.read`.
-    Gallery(ResourceRef),
-    /// Shared catalogue art, authorized through `library.read`.
+pub(crate) enum AssetOwner {
+    /// Shared catalogue art, owned by the library rather than one resource:
+    /// `library.read` decides it against [`crate::domain::model::Global`].
     Library,
-    /// Artwork of one playlist, authorized through `playlist.read`.
-    Playlist(ResourceRef),
+    /// The one resource that owns the asset; its read action decides it.
+    Resource(ProtectedResource),
 }
 
-impl AssetContext {
-    /// Return the gallery context naming `gallery_id`.
-    #[must_use]
-    pub(crate) fn gallery(gallery_id: NumericID) -> Self {
-        Self::Gallery(ResourceRef::new(ResourceKind::Gallery, gallery_id))
-    }
+/// The part of an owning resource an authorization decision needs.
+///
+/// A decision reads a resource only through [`Protected`], so the three facts
+/// that trait exposes are enough to decide without loading the aggregate.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct ProtectedResource {
+    /// Whether every authenticated caller may read the resource.
+    is_public: bool,
+    /// Identifier of the owning user, absent for the catalogue.
+    owner_id: Option<NumericID>,
+    /// Kind and identifier of the resource, matched by a `LISTED` scope.
+    reference: ResourceRef,
+}
 
-    /// Return the playlist context naming `playlist_id`.
+impl ProtectedResource {
+    /// Return the resource named by `reference`, owned and visible as given.
     #[must_use]
-    pub(crate) fn playlist(playlist_id: NumericID) -> Self {
-        Self::Playlist(ResourceRef::new(ResourceKind::MusicPlaylist, playlist_id))
-    }
-
-    /// Return the reference the context names, absent for shared catalogue art.
-    #[must_use]
-    #[expect(
-        dead_code,
-        reason = "part of the type's declared contract; no caller exercises it yet"
-    )]
-    pub(crate) fn resource_ref(self) -> Option<ResourceRef> {
-        match self {
-            Self::Library => None,
-            Self::Gallery(reference) | Self::Playlist(reference) => Some(reference),
+    pub(crate) fn new(
+        reference: ResourceRef,
+        owner_id: Option<NumericID>,
+        is_public: bool,
+    ) -> Self {
+        Self {
+            is_public,
+            owner_id,
+            reference,
         }
+    }
+
+    /// Return the reference of the owning resource.
+    #[must_use]
+    pub(crate) fn reference(self) -> ResourceRef {
+        self.reference
+    }
+}
+
+impl Protected for ProtectedResource {
+    fn is_privileged_account(&self) -> bool {
+        false
+    }
+
+    fn is_publicly_visible(&self) -> bool {
+        self.is_public
+    }
+
+    fn owner_id(&self) -> Option<NumericID> {
+        self.owner_id
+    }
+
+    fn resource_ref(&self) -> Option<ResourceRef> {
+        Some(self.reference)
     }
 }

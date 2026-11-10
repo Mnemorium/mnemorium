@@ -371,7 +371,17 @@ impl MusicBrainzMetadataProvider {
         };
         let mut attempt: u32 = 0;
         loop {
-            self.reserve_slot().await;
+            // Reserve the next request slot, waiting until it arrives.
+            let send_at = {
+                let mut slot = self.next_slot.lock().await;
+                let now = Instant::now();
+                let send_at = slot.map_or(now, |previous| previous.max(now));
+                *slot = Some(send_at.checked_add(self.min_interval).unwrap_or(send_at));
+                send_at
+            };
+            if send_at > Instant::now() {
+                sleep_until(send_at).await;
+            }
             let outcome = self.send_once::<T>(url.clone()).await;
             match outcome {
                 Ok(payload) => return Ok(payload),
@@ -404,20 +414,6 @@ impl MusicBrainzMetadataProvider {
             DEFAULT_MIN_INTERVAL,
             DEFAULT_ATTEMPTS,
         )
-    }
-
-    /// Reserve the next request slot, waiting until it arrives.
-    async fn reserve_slot(&self) {
-        let send_at = {
-            let mut slot = self.next_slot.lock().await;
-            let now = Instant::now();
-            let send_at = slot.map_or(now, |previous| previous.max(now));
-            *slot = Some(send_at.checked_add(self.min_interval).unwrap_or(send_at));
-            send_at
-        };
-        if send_at > Instant::now() {
-            sleep_until(send_at).await;
-        }
     }
 
     /// Send one request and decode an optional payload.

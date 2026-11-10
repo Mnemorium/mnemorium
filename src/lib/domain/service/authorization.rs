@@ -6,7 +6,8 @@
 //! the `authz_failed` event and mapping the denial belong to the use case.
 
 use crate::domain::model::{
-    Action, AssetContext, File, Permission, Protected, ResourceRef, RootAccess, Scope, User,
+    Action, AssetOwner, File, Permission, Protected, ResourceKind, ResourceRef, RootAccess, Scope,
+    User,
 };
 
 /// The rendering of a denial to the caller.
@@ -107,24 +108,17 @@ impl Authorization {
         Decision::Deny(Denial { action, conceal })
     }
 
-    /// Decide whether `caller` may read the asset owned by the resource named
-    /// by `context`.
+    /// Decide whether `caller` may read `file` as an asset.
     ///
-    /// `referrer` is the aggregate `context` names: the gallery or the
-    /// playlist that owns the asset. Shared catalogue art has no single owner,
-    /// so `Global` is passed for [`AssetContext::Library`].
-    ///
-    /// The decision is the owning resource's read action, never `file.read`:
-    /// `file.read` is derived and its scope comes from the owner.
+    /// The decision delegates to the read action of the resource that owns the
+    /// file, never to `file.read`: `file.read` is derived and its scope comes
+    /// from the owner. A file nothing references is readable only by its owner
+    /// and the Root Admin, and shared catalogue art follows `library.read`
+    /// against [`crate::domain::model::Global`].
     #[must_use]
-    pub(crate) fn decide_asset<P: Protected + ?Sized>(
-        caller: &User,
-        permissions: &[Permission],
-        context: AssetContext,
-        referrer: &P,
-    ) -> Decision {
-        match context {
-            AssetContext::Library => {
+    pub(crate) fn decide_asset(caller: &User, permissions: &[Permission], file: &File) -> Decision {
+        match file.owner() {
+            Some(AssetOwner::Library) => {
                 // Catalogue art is shared and public, so a `LISTED` scope
                 // still reaches it: `LISTED` narrows the catalogue metadata,
                 // not the artwork (`design.md`, "`Global` for library art").
@@ -142,22 +136,20 @@ impl Authorization {
                     conceal: true,
                 })
             }
-            AssetContext::Gallery(reference) => {
-                debug_assert_eq!(
-                    referrer.resource_ref(),
-                    Some(reference),
-                    "the referrer must be the gallery the context names"
-                );
-                Self::decide(caller, permissions, Action::GalleryRead, referrer)
+            Some(AssetOwner::Resource(owner)) => {
+                let action = match owner.reference().kind() {
+                    ResourceKind::Gallery => Action::GalleryRead,
+                    ResourceKind::MusicPlaylist => Action::PlaylistRead,
+                    ResourceKind::Movie | ResourceKind::Series | ResourceKind::MusicAlbum => {
+                        Action::LibraryRead
+                    }
+                    ResourceKind::File => Action::FileRead,
+                    ResourceKind::Upload => Action::UploadRead,
+                    ResourceKind::User => Action::UserRead,
+                };
+                Self::decide(caller, permissions, action, &owner)
             }
-            AssetContext::Playlist(reference) => {
-                debug_assert_eq!(
-                    referrer.resource_ref(),
-                    Some(reference),
-                    "the referrer must be the playlist the context names"
-                );
-                Self::decide(caller, permissions, Action::PlaylistRead, referrer)
-            }
+            None => Self::decide_orphan_asset(caller, file),
         }
     }
 
@@ -217,8 +209,7 @@ impl Authorization {
     /// is visible only to the caller who owns its file and to the Root Admin.
     /// Every other caller sees the concealed `404 Not Found` of a missing
     /// asset.
-    #[must_use]
-    pub(crate) fn decide_orphan_asset(caller: &User, file: &File) -> Decision {
+    fn decide_orphan_asset(caller: &User, file: &File) -> Decision {
         if caller.is_root_admin() || file.owner_id() == Some(caller.id()) {
             return Decision::Allow;
         }
@@ -250,7 +241,7 @@ mod tests {
 
     use crate::domain::model::{
         ACTIONS, ChunkBitmap, Gallery, Global, IntegrityHash, MusicPlaylist, PermissionError,
-        ResourceKind, Role, Upload,
+        ProtectedResource, ResourceKind, Role, Upload,
     };
 
     use crate::test_helpers::*;
@@ -848,6 +839,27 @@ mod tests {
         assert_eq!(Action::FileUse.role_scope(Role::Admin), Scope::All);
     }
 
+    fn owned_file(
+        id: NumericID,
+        owner_id: NumericID,
+        owner: AssetOwner,
+    ) -> Result<File, Box<dyn Error>> {
+        Ok(file(id, owner_id)?.with_owner(Some(owner)))
+    }
+
+    fn resource(
+        kind: ResourceKind,
+        id: NumericID,
+        owner_id: Option<NumericID>,
+        is_public: bool,
+    ) -> AssetOwner {
+        AssetOwner::Resource(ProtectedResource::new(
+            ResourceRef::new(kind, id),
+            owner_id,
+            is_public,
+        ))
+    }
+
     #[test]
     fn library_art_follows_library_read() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -858,14 +870,12 @@ mod tests {
             Scope::Listed(vec![ResourceRef::new(ResourceKind::MusicAlbum, 7)]),
         )?];
         let hidden = [override_scope(9, Action::LibraryRead, Scope::None)?];
+        let art = owned_file(10, 3, AssetOwner::Library)?;
 
         // Act
-        let default_decision =
-            Authorization::decide_asset(&caller, &[], AssetContext::Library, &Global);
-        let listed_decision =
-            Authorization::decide_asset(&caller, &listed, AssetContext::Library, &Global);
-        let hidden_decision =
-            Authorization::decide_asset(&caller, &hidden, AssetContext::Library, &Global);
+        let default_decision = Authorization::decide_asset(&caller, &[], &art);
+        let listed_decision = Authorization::decide_asset(&caller, &listed, &art);
+        let hidden_decision = Authorization::decide_asset(&caller, &hidden, &art);
 
         // Assert
         assert!(default_decision.is_allowed());
@@ -884,14 +894,13 @@ mod tests {
         let other = user(9, Role::Standard)?;
         let admin = user(7, Role::Admin)?;
         let root = user(0, Role::Admin)?;
-        let private = gallery(2, Some(3), false);
-        let context = AssetContext::gallery(2);
+        let art = owned_file(10, 3, resource(ResourceKind::Gallery, 2, Some(3), false))?;
 
         // Act
-        let owner_decision = Authorization::decide_asset(&owner, &[], context, &private);
-        let other_decision = Authorization::decide_asset(&other, &[], context, &private);
-        let admin_decision = Authorization::decide_asset(&admin, &[], context, &private);
-        let root_decision = Authorization::decide_asset(&root, &[], context, &private);
+        let owner_decision = Authorization::decide_asset(&owner, &[], &art);
+        let other_decision = Authorization::decide_asset(&other, &[], &art);
+        let admin_decision = Authorization::decide_asset(&admin, &[], &art);
+        let root_decision = Authorization::decide_asset(&root, &[], &art);
 
         // Assert
         assert!(owner_decision.is_allowed());
@@ -909,16 +918,68 @@ mod tests {
         // Arrange
         let owner = user(3, Role::Standard)?;
         let other = user(9, Role::Standard)?;
-        let private = playlist(2, 3, false);
-        let context = AssetContext::playlist(2);
+        let cover = owned_file(
+            10,
+            3,
+            resource(ResourceKind::MusicPlaylist, 2, Some(3), false),
+        )?;
 
         // Act
-        let owner_decision = Authorization::decide_asset(&owner, &[], context, &private);
-        let other_decision = Authorization::decide_asset(&other, &[], context, &private);
+        let owner_decision = Authorization::decide_asset(&owner, &[], &cover);
+        let other_decision = Authorization::decide_asset(&other, &[], &cover);
 
         // Assert
         assert!(owner_decision.is_allowed());
         assert!(matches!(other_decision, Decision::Deny(denial) if denial.conceals()));
+        Ok(())
+    }
+
+    #[test]
+    fn a_catalogue_video_follows_the_film_that_names_it() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let caller = user(9, Role::Standard)?;
+        let named = [override_scope(
+            9,
+            Action::LibraryRead,
+            Scope::Listed(vec![ResourceRef::new(ResourceKind::Movie, 5)]),
+        )?];
+        let other = owned_file(10, 3, resource(ResourceKind::Movie, 5, None, true))?;
+        let sibling = owned_file(10, 3, resource(ResourceKind::Movie, 6, None, true))?;
+
+        // Act
+        let default_decision = Authorization::decide_asset(&caller, &[], &other);
+        let named_decision = Authorization::decide_asset(&caller, &named, &other);
+        let sibling_decision = Authorization::decide_asset(&caller, &named, &sibling);
+
+        // Assert
+        assert!(default_decision.is_allowed());
+        assert!(named_decision.is_allowed());
+        assert!(
+            !sibling_decision.is_allowed(),
+            "a LISTED catalogue scope names the film, not every film"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn an_episode_follows_the_series_that_holds_it() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let caller = user(9, Role::Standard)?;
+        let named = [override_scope(
+            9,
+            Action::LibraryRead,
+            Scope::Listed(vec![ResourceRef::new(ResourceKind::Series, 4)]),
+        )?];
+        let episode = owned_file(10, 3, resource(ResourceKind::Series, 4, None, true))?;
+        let sibling = owned_file(10, 3, resource(ResourceKind::Series, 5, None, true))?;
+
+        // Act
+        let named_decision = Authorization::decide_asset(&caller, &named, &episode);
+        let sibling_decision = Authorization::decide_asset(&caller, &named, &sibling);
+
+        // Assert
+        assert!(named_decision.is_allowed());
+        assert!(!sibling_decision.is_allowed());
         Ok(())
     }
 
@@ -932,9 +993,9 @@ mod tests {
         let asset = file(4, 3)?;
 
         // Act
-        let owner_decision = Authorization::decide_orphan_asset(&owner, &asset);
-        let other_decision = Authorization::decide_orphan_asset(&other, &asset);
-        let root_decision = Authorization::decide_orphan_asset(&root, &asset);
+        let owner_decision = Authorization::decide_asset(&owner, &[], &asset);
+        let other_decision = Authorization::decide_asset(&other, &[], &asset);
+        let root_decision = Authorization::decide_asset(&root, &[], &asset);
 
         // Assert
         assert!(owner_decision.is_allowed());

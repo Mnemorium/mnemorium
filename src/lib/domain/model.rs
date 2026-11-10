@@ -69,7 +69,7 @@ mod video;
 mod video_candidate;
 
 pub(crate) use self::artwork::Artwork;
-pub(crate) use self::asset::AssetContext;
+pub(crate) use self::asset::{AssetOwner, ProtectedResource};
 pub(crate) use self::asset_scope::AssetScope;
 #[cfg(test)]
 pub(crate) use self::audio::AudioError;
