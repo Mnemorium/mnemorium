@@ -310,6 +310,8 @@ pub(crate) enum Action {
     UserCreate,
     /// Create an Admin user account.
     UserCreateAdmin,
+    /// Delete a user account.
+    UserDelete,
     /// Read a user account.
     UserRead,
     /// Change a user's role.
@@ -319,7 +321,7 @@ pub(crate) enum Action {
 }
 
 /// Every action in the catalog.
-pub(crate) const ACTIONS: [Action; 19] = [
+pub(crate) const ACTIONS: [Action; 20] = [
     Action::LibraryRead,
     Action::LibraryManage,
     Action::CredentialPatch,
@@ -336,6 +338,7 @@ pub(crate) const ACTIONS: [Action; 19] = [
     Action::UploadWrite,
     Action::UserCreate,
     Action::UserCreateAdmin,
+    Action::UserDelete,
     Action::UserRead,
     Action::UserRoleChange,
     Action::UserUpdate,
@@ -365,6 +368,7 @@ impl Action {
             Self::UploadWrite => "upload.write",
             Self::UserCreate => "user.create",
             Self::UserCreateAdmin => "user.create_admin",
+            Self::UserDelete => "user.delete",
             Self::UserRead => "user.read",
             Self::UserRoleChange => "user.role_change",
             Self::UserUpdate => "user.update",
@@ -439,6 +443,7 @@ impl Action {
             | Self::UploadWrite
             | Self::UserCreate
             | Self::UserCreateAdmin
+            | Self::UserDelete
             | Self::UserRead
             | Self::UserRoleChange
             | Self::UserUpdate => None,
@@ -469,7 +474,9 @@ impl Action {
                 &[ResourceKind::MusicPlaylist]
             }
             Self::UploadRead | Self::UploadWrite => &[ResourceKind::Upload],
-            Self::UserRead | Self::UserRoleChange | Self::UserUpdate => &[ResourceKind::User],
+            Self::UserDelete | Self::UserRead | Self::UserRoleChange | Self::UserUpdate => {
+                &[ResourceKind::User]
+            }
         }
     }
 
@@ -499,7 +506,11 @@ impl Action {
             Self::GalleryManage | Self::PlaylistManage | Self::UploadRead | Self::UploadWrite => {
                 Scope::Owned
             }
-            Self::LibraryManage | Self::UserCreate | Self::UserRead | Self::UserUpdate => {
+            Self::LibraryManage
+            | Self::UserCreate
+            | Self::UserDelete
+            | Self::UserRead
+            | Self::UserUpdate => {
                 if role == Role::Admin {
                     Scope::All
                 } else {
@@ -528,6 +539,7 @@ impl Action {
             | Self::PlaylistRead
             | Self::UserCreate
             | Self::UserCreateAdmin
+            | Self::UserDelete
             | Self::UserRead
             | Self::UserRoleChange
             | Self::UserUpdate => RootAccess::All,
@@ -545,6 +557,7 @@ impl Action {
             | Self::PermissionManage
             | Self::UserCreate
             | Self::UserCreateAdmin
+            | Self::UserDelete
             | Self::UserRead
             | Self::UserRoleChange
             | Self::UserUpdate => &GLOBAL_SCOPES,
@@ -568,6 +581,7 @@ impl Action {
             | Self::PermissionManage
             | Self::UserCreate
             | Self::UserCreateAdmin
+            | Self::UserDelete
             | Self::UserRead
             | Self::UserRoleChange
             | Self::UserUpdate => "user",
@@ -597,6 +611,7 @@ impl Action {
             Self::GalleryModerate | Self::PlaylistModerate => "moderate",
             Self::UploadWrite => "write",
             Self::UserCreate | Self::UserCreateAdmin => "create",
+            Self::UserDelete => "delete",
             Self::UserRoleChange => "update_role",
             Self::UserUpdate => "update",
         }

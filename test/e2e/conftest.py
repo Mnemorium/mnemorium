@@ -297,6 +297,20 @@ def register(
 
 
 @pytest.fixture(scope="session")
+def delete_user(server_url: str) -> Callable[[str, int], requests.Response]:
+    """Return a callable that DELETEs a user account by identifier."""
+
+    def _delete_user(token: str, user_id: int) -> requests.Response:
+        return requests.delete(
+            f"{server_url}{API_PREFIX}/user/{user_id}",
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=10,
+        )
+
+    return _delete_user
+
+
+@pytest.fixture(scope="session")
 def me(server_url: str) -> Callable[[str], requests.Response]:
     """Return a callable that GETs /api/v1/user/me with the given access token."""
 

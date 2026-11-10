@@ -1,5 +1,6 @@
 use sqlx::{QueryBuilder, Sqlite, Transaction};
 
+use crate::domain::NumericID;
 use crate::domain::model::{
     AssetOwner, File, IntegrityHash, Origin, ProtectedResource, ResourceKind, ResourceRef,
 };
@@ -22,6 +23,14 @@ impl<'transaction> SqlxFileRepository<'transaction> {
 }
 
 impl FileRepository for SqlxFileRepository<'_> {
+    async fn clear_integrity_hash(&mut self, id: NumericID) -> Result<bool, RepositoryError> {
+        let result = sqlx::query("UPDATE file SET integrity_hash = NULL WHERE file_id = ?1")
+            .bind(id)
+            .execute(&mut **self.transaction)
+            .await?;
+        Ok(result.rows_affected() > 0)
+    }
+
     async fn create(&mut self, file: File) -> Result<File, RepositoryError> {
         let row = sqlx::query_as::<_, SqlxFile>(
             "INSERT INTO file (
@@ -86,6 +95,19 @@ impl FileRepository for SqlxFileRepository<'_> {
         }
 
         let result = builder.build().execute(&mut **self.transaction).await?;
+        Ok(result.rows_affected() > 0)
+    }
+
+    async fn reassign_owner(
+        &mut self,
+        id: NumericID,
+        new_owner: NumericID,
+    ) -> Result<bool, RepositoryError> {
+        let result = sqlx::query("UPDATE file SET user_id = ?1 WHERE file_id = ?2")
+            .bind(new_owner)
+            .bind(id)
+            .execute(&mut **self.transaction)
+            .await?;
         Ok(result.rows_affected() > 0)
     }
 
@@ -948,6 +970,90 @@ mod tests {
 
         // Assert
         assert_eq!(owner, Some(protected(ResourceKind::Series, 6, None, true)));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn reassign_owner_moves_the_file_to_the_new_owner() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let mut transaction = begin_transaction().await?;
+        seed_user(&mut transaction, 0).await?;
+        seed_user(&mut transaction, 1).await?;
+        let mut repository = SqlxFileRepository::new(&mut transaction);
+        let stored = repository
+            .create(file(0, "files/1_clip.mp4", 1, DIGEST)?)
+            .await?;
+
+        // Act
+        let reassigned = repository.reassign_owner(stored.id(), 0).await?;
+        let found = repository
+            .search(&FileFilter {
+                id: Some(stored.id()),
+                ..FileFilter::default()
+            })
+            .await?;
+
+        // Assert
+        assert!(reassigned);
+        assert_eq!(found.first().map(File::user_id), Some(0));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn reassign_owner_of_a_missing_file_returns_false() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let mut transaction = begin_transaction().await?;
+        seed_user(&mut transaction, 0).await?;
+
+        // Act
+        let mut repository = SqlxFileRepository::new(&mut transaction);
+        let reassigned = repository.reassign_owner(404, 0).await?;
+
+        // Assert
+        assert!(!reassigned);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn clear_integrity_hash_removes_the_digest() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let mut transaction = begin_transaction().await?;
+        seed_user(&mut transaction, 1).await?;
+        let mut repository = SqlxFileRepository::new(&mut transaction);
+        let stored = repository
+            .create(file(0, "files/1_clip.mp4", 1, DIGEST)?)
+            .await?;
+
+        // Act
+        let cleared = repository.clear_integrity_hash(stored.id()).await?;
+        let found = repository
+            .search(&FileFilter {
+                id: Some(stored.id()),
+                ..FileFilter::default()
+            })
+            .await?;
+
+        // Assert
+        assert!(cleared);
+        assert_eq!(
+            found.first().and_then(File::integrity_hash),
+            None,
+            "the cleared row must carry no digest"
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn clear_integrity_hash_of_a_missing_file_returns_false() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let mut transaction = begin_transaction().await?;
+
+        // Act
+        let mut repository = SqlxFileRepository::new(&mut transaction);
+        let cleared = repository.clear_integrity_hash(404).await?;
+
+        // Assert
+        assert!(!cleared);
         Ok(())
     }
 

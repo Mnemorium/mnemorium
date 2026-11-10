@@ -35,13 +35,6 @@ pub(crate) trait UserRepository: Send + Sync {
     /// when none matched. An all-`None` filter deletes every user; the root
     /// administrator is never deleted and is reported as
     /// [`RepositoryError::Conflict`].
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "part of the type's declared contract; no caller exercises it yet"
-        )
-    )]
     fn delete(
         &mut self,
         filter: &UserFilter,

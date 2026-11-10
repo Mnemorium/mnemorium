@@ -22,6 +22,17 @@ pub(crate) struct FileFilter {
 /// Port for persisting and querying `File`.
 #[cfg_attr(test, mockall::automock)]
 pub(crate) trait FileRepository: Send + Sync {
+    /// Clear the integrity hash of the file identified by `id`.
+    ///
+    /// Returns `Ok(true)` when a row carried the identifier and was updated,
+    /// and `Ok(false)` when none matched. The per-owner unique key ignores a
+    /// null digest, so a transferred file whose content the new owner already
+    /// stores can be moved without clearing the old owner's copy.
+    fn clear_integrity_hash(
+        &mut self,
+        id: NumericID,
+    ) -> impl Future<Output = Result<bool, RepositoryError>> + Send;
+
     /// Insert a new `file`, returning the persisted file with its final
     /// identifier.
     ///
@@ -40,6 +51,18 @@ pub(crate) trait FileRepository: Send + Sync {
     fn delete(
         &mut self,
         filter: &FileFilter,
+    ) -> impl Future<Output = Result<bool, RepositoryError>> + Send;
+
+    /// Reassign the file identified by `id` to `new_owner`.
+    ///
+    /// Returns `Ok(true)` when a row carried the identifier and was updated,
+    /// and `Ok(false)` when none matched (`STY-RUST-046`). The owner is a
+    /// narrow, explicit mutation rather than part of [`Self::save`], so the
+    /// ingest path cannot rewrite it by accident.
+    fn reassign_owner(
+        &mut self,
+        id: NumericID,
+        new_owner: NumericID,
     ) -> impl Future<Output = Result<bool, RepositoryError>> + Send;
 
     /// Update an existing `file` targeted by its identifier, returning the
@@ -61,6 +84,13 @@ pub(crate) trait FileRepository: Send + Sync {
 
 #[cfg(test)]
 impl<T: FileRepository + ?Sized> FileRepository for &mut T {
+    fn clear_integrity_hash(
+        &mut self,
+        id: NumericID,
+    ) -> impl Future<Output = Result<bool, RepositoryError>> + Send {
+        (**self).clear_integrity_hash(id)
+    }
+
     fn create(&mut self, file: File) -> impl Future<Output = Result<File, RepositoryError>> + Send {
         (**self).create(file)
     }
@@ -70,6 +100,14 @@ impl<T: FileRepository + ?Sized> FileRepository for &mut T {
         filter: &FileFilter,
     ) -> impl Future<Output = Result<bool, RepositoryError>> + Send {
         (**self).delete(filter)
+    }
+
+    fn reassign_owner(
+        &mut self,
+        id: NumericID,
+        new_owner: NumericID,
+    ) -> impl Future<Output = Result<bool, RepositoryError>> + Send {
+        (**self).reassign_owner(id, new_owner)
     }
 
     fn save(&mut self, file: File) -> impl Future<Output = Result<File, RepositoryError>> + Send {

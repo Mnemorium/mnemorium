@@ -232,7 +232,7 @@ mod tests {
         // Assert
         assert_eq!(response.user_id(), 5);
         assert_eq!(response.role(), Role::Standard);
-        assert_eq!(response.defaults().len(), 15);
+        assert_eq!(response.defaults().len(), 16);
         assert!(response.overrides().is_empty());
         assert_default(&response, Action::GalleryRead, &Scope::PublicOrOwned);
         assert_default(&response, Action::LibraryManage, &Scope::None);
