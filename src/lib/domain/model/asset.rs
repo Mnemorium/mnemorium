@@ -1,9 +1,9 @@
-use crate::domain::alias::NumericID;
-use crate::domain::model::permission::{ResourceKind, ResourceRef};
+use crate::domain::NumericID;
+use crate::domain::model::{ResourceKind, ResourceRef};
 
 /// The resource that owns a stored asset, as far as authorization is concerned.
 ///
-/// An image or video carries a [`crate::domain::model::scope::Scope`] fixed by
+/// An image or video carries a [`crate::domain::model::AssetScope`] fixed by
 /// its first attachment. A `LIBRARY` asset is shared catalogue art, while a
 /// `USER` asset is owned by exactly one referrer: a gallery item or a playlist
 /// cover. Reading the asset delegates to the read action of that owner, so the

@@ -1,13 +1,11 @@
 use axum::extract::{Path, State};
 use axum::response::Response;
 
-use crate::application::port::get_playlist::GetPlaylistCommand;
-use crate::domain::alias::NumericID;
-use crate::infrastructure::inbound::rest::api_error::{ApiError, ErrorBody};
-use crate::infrastructure::inbound::rest::app_state::AppState;
-use crate::infrastructure::inbound::rest::hal::hal_json;
+use crate::application::port::GetPlaylistCommand;
+use crate::domain::NumericID;
 use crate::infrastructure::inbound::rest::handler::library::{PlaylistResponse, parse_playlist_id};
-use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
+use crate::infrastructure::inbound::rest::middleware::AuthenticatedUser;
+use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody, hal_json};
 
 /// Fetch one music playlist through the collection alias.
 ///

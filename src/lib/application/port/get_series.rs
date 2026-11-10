@@ -3,7 +3,7 @@ use std::pin::Pin;
 
 use chrono::NaiveDate;
 
-use crate::domain::alias::NumericID;
+use crate::domain::NumericID;
 
 /// Command to fetch one show.
 #[derive(Debug, Clone, PartialEq, Eq)]

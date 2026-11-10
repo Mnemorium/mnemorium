@@ -1,9 +1,8 @@
 use std::future::Future;
 
-use crate::domain::alias::NumericID;
-use crate::domain::model::gallery::Gallery;
-use crate::domain::model::gallery_item::{GalleryItem, GalleryItemMedia};
-use crate::domain::port::error::RepositoryError;
+use crate::domain::NumericID;
+use crate::domain::model::{Gallery, GalleryItem, GalleryItemMedia};
+use crate::domain::port::RepositoryError;
 
 /// Search filters for [`GalleryRepository::search`]. Every field is optional;
 /// an all-`None` filter returns every gallery.

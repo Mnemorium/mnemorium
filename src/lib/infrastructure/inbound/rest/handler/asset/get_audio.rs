@@ -4,17 +4,15 @@ use axum::response::Response;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
-use crate::application::port::get_audio::{
+use crate::application::port::{
     GetAudioCommand, GetAudioError, GetAudioResponse as GetAudioResponseData,
 };
-use crate::domain::alias::NumericID;
-use crate::infrastructure::inbound::rest::api_error::{ApiError, ErrorBody};
-use crate::infrastructure::inbound::rest::app_state::AppState;
-use crate::infrastructure::inbound::rest::hal::{Link, hal_json};
+use crate::domain::NumericID;
 use crate::infrastructure::inbound::rest::handler::asset::{
     asset_audio_href, asset_file_href, content_href, parse_asset_id,
 };
-use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
+use crate::infrastructure::inbound::rest::middleware::AuthenticatedUser;
+use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody, Link, hal_json};
 
 /// HAL links exposed by a typed-audio representation.
 #[derive(Debug, Serialize, Deserialize, ToSchema)]

@@ -1,7 +1,7 @@
 use std::future::Future;
 
-use crate::domain::alias::NumericID;
-use crate::domain::port::error::ContentLinkError;
+use crate::domain::NumericID;
+use crate::domain::port::ContentLinkError;
 
 /// Lifetime of a content link, in seconds (twelve hours).
 ///

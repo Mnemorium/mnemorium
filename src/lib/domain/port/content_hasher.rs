@@ -1,5 +1,5 @@
-use crate::domain::model::integrity_hash::{DIGEST_HEX_LENGTH, IntegrityHash};
-use crate::domain::port::error::ContentHasherError;
+use crate::domain::model::{DIGEST_HEX_LENGTH, IntegrityHash};
+use crate::domain::port::ContentHasherError;
 
 /// Port for incrementally hashing byte content.
 ///

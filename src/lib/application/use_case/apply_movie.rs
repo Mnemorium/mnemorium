@@ -2,24 +2,17 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
-use crate::application::port::apply_movie::{
+use crate::application::port::{
     ApplyMovieCommand, ApplyMovieError, ApplyMovieResponse, ApplyMovieUseCase,
 };
 use crate::application::security_event;
-use crate::domain::model::media_metadata::MediaMetadata;
-use crate::domain::model::movie::Movie;
-use crate::domain::model::permission::Action;
-use crate::domain::model::video_candidate::Target;
-use crate::domain::port::error::RepositoryError;
-use crate::domain::port::identity_unit_of_work::IdentityUnitOfWork;
-use crate::domain::port::library_unit_of_work::LibraryUnitOfWork;
-use crate::domain::port::movie_repository::{MovieFilter, MovieRepository as _};
-use crate::domain::port::permission_repository::{PermissionFilter, PermissionRepository as _};
-use crate::domain::port::unit_of_work::{UnitOfWork as _, UnitOfWorkFactory};
-use crate::domain::port::user_repository::{UserFilter, UserRepository as _};
-use crate::domain::port::user_unit_of_work::UserUnitOfWork;
-use crate::domain::port::video_metadata_provider::VideoMetadataProvider;
-use crate::domain::service::authorization::{Authorization, Decision};
+use crate::domain::model::{Action, MediaMetadata, Movie, Target};
+use crate::domain::port::{
+    IdentityUnitOfWork, LibraryUnitOfWork, MovieFilter, MovieRepository as _, PermissionFilter,
+    PermissionRepository as _, RepositoryError, UnitOfWork as _, UnitOfWorkFactory, UserFilter,
+    UserRepository as _, UserUnitOfWork, VideoMetadataProvider,
+};
+use crate::domain::service::{Authorization, Decision};
 
 /// Use case implementation for applying external metadata to a film.
 ///
@@ -197,16 +190,15 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::alias::NumericID;
-    use crate::domain::model::configuration::ProviderId;
-    use crate::domain::model::external_ref::ExternalRef;
-    use crate::domain::model::genre::Genre;
-    use crate::domain::model::user::{Role, User};
-    use crate::domain::port::error::ExternalServiceError;
-    use crate::domain::port::movie_repository::MockMovieRepository;
-    use crate::domain::port::permission_repository::MockPermissionRepository;
-    use crate::domain::port::user_repository::MockUserRepository;
-    use crate::domain::port::video_metadata_provider::MockVideoMetadataProvider;
+    use crate::domain::NumericID;
+
+    use crate::domain::model::{ExternalRef, Genre, ProviderId, Role, User};
+
+    use crate::domain::port::{
+        ExternalServiceError, MockMovieRepository, MockPermissionRepository, MockUserRepository,
+        MockVideoMetadataProvider,
+    };
+
     use crate::test_helpers::*;
     use chrono::NaiveDate;
     use std::error::Error;

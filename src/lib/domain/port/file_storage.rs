@@ -5,8 +5,8 @@ use std::pin::Pin;
 use chrono::NaiveDateTime;
 use tokio::io::AsyncRead;
 
-use crate::domain::model::integrity_hash::{DIGEST_HEX_LENGTH, IntegrityHash};
-use crate::domain::port::error::StorageError;
+use crate::domain::model::{DIGEST_HEX_LENGTH, IntegrityHash};
+use crate::domain::port::StorageError;
 
 /// A bounded reader over stored content.
 pub(crate) type FileReader = Pin<Box<dyn AsyncRead + Send>>;

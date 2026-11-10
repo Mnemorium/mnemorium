@@ -2,14 +2,11 @@ use std::sync::Arc;
 
 use axum::extract::FromRef;
 
-use crate::application::port::asset_use_case_factory::AssetUseCaseFactory;
-use crate::application::port::identity_use_case_factory::IdentityUseCaseFactory;
-use crate::application::port::library_use_case_factory::LibraryUseCaseFactory;
-use crate::application::port::user_use_case_factory::UserUseCaseFactory;
-use crate::domain::model::configuration::Configuration;
-use crate::domain::model::instance_state::InstanceState;
-use crate::infrastructure::outbound::jwt::content_link::JwtContentLinkProvider;
-use crate::infrastructure::outbound::jwt::token_provider::JwtTokenProvider;
+use crate::application::port::{
+    AssetUseCaseFactory, IdentityUseCaseFactory, LibraryUseCaseFactory, UserUseCaseFactory,
+};
+use crate::domain::model::{Configuration, InstanceState};
+use crate::infrastructure::outbound::jwt::{JwtContentLinkProvider, JwtTokenProvider};
 
 /// Application state injected into routers and middleware.
 ///
@@ -119,7 +116,8 @@ impl FromRef<AppState> for Arc<JwtTokenProvider> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::port::token_provider::TokenProvider as _;
+    use crate::domain::port::TokenProvider as _;
+
     use crate::test_helpers::*;
     use std::error::Error;
 

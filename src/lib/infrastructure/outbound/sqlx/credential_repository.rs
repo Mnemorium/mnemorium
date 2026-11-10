@@ -1,10 +1,9 @@
 use sqlx::{QueryBuilder, Sqlite, Transaction};
 
-use crate::domain::model::credential::Credential;
-use crate::domain::port::credential_repository::{CredentialFilter, CredentialRepository};
-use crate::domain::port::error::RepositoryError;
+use crate::domain::model::Credential;
+use crate::domain::port::{CredentialFilter, CredentialRepository, RepositoryError};
 
-use super::model::credential::Credential as SqlxCredential;
+use super::model::Credential as SqlxCredential;
 
 /// Repository persisting credentials, backed by a `SQLite` transaction.
 pub(crate) struct SqlxCredentialRepository<'transaction> {
@@ -94,7 +93,8 @@ fn domain_credential(row: SqlxCredential) -> Result<Credential, RepositoryError>
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::model::credential::CredentialError;
+    use crate::domain::model::CredentialError;
+
     use crate::infrastructure::outbound::sqlx::test_helpers::begin_transaction;
     use chrono::NaiveDateTime;
     use std::error::Error;

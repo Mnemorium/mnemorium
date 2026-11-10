@@ -1,9 +1,9 @@
 use std::future::Future;
 use std::pin::Pin;
 
-use crate::domain::alias::NumericID;
-use crate::domain::model::video::ScanType;
-use crate::domain::port::content_link::ContentLink;
+use crate::domain::NumericID;
+use crate::domain::model::ScanType;
+use crate::domain::port::ContentLink;
 
 /// Command to fetch one typed video.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -1,12 +1,12 @@
 use sqlx::{QueryBuilder, Sqlite, Transaction};
 
-use crate::domain::alias::NumericID;
-use crate::domain::model::permission::{Action, Permission, ResourceKind, ResourceRef, Scope};
-use crate::domain::port::error::RepositoryError;
-use crate::domain::port::permission_repository::{PermissionFilter, PermissionRepository};
+use crate::domain::NumericID;
+use crate::domain::model::{Action, Permission, ResourceKind, ResourceRef, Scope};
+use crate::domain::port::{PermissionFilter, PermissionRepository, RepositoryError};
 
 use super::error_mapping::stored_data_invalid;
-use super::model::permission::{PermissionResourceRow, PermissionRow};
+use super::model::{PermissionResourceRow, PermissionRow};
+
 use super::query_filter::push_filter;
 
 /// Repository persisting permission overrides, backed by a `SQLite`

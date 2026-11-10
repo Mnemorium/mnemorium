@@ -4,28 +4,18 @@ use std::sync::Arc;
 
 use chrono::Utc;
 
-use crate::application::port::update_playlist::{
+use crate::application::port::{
     UpdatePlaylistCommand, UpdatePlaylistError, UpdatePlaylistResponse, UpdatePlaylistUseCase,
 };
 use crate::application::security_event;
-use crate::domain::model::music_playlist::MusicPlaylistError;
-use crate::domain::model::music_recording::{MusicRecording, TrackIndex};
-use crate::domain::model::permission::Action;
-use crate::domain::port::error::RepositoryError;
-use crate::domain::port::identity_unit_of_work::IdentityUnitOfWork;
-use crate::domain::port::library_unit_of_work::LibraryUnitOfWork;
-use crate::domain::port::music_album_repository::{
-    MusicAlbumRepository as _, MusicRecordingFilter,
+use crate::domain::model::{Action, MusicPlaylistError, MusicRecording, TrackIndex};
+use crate::domain::port::{
+    IdentityUnitOfWork, LibraryUnitOfWork, MusicAlbumRepository as _, MusicPlaylistFilter,
+    MusicPlaylistRepository as _, MusicRecordingFilter, PermissionFilter,
+    PermissionRepository as _, RepositoryError, UnitOfWork as _, UnitOfWorkFactory, UserFilter,
+    UserRepository as _, UserUnitOfWork,
 };
-use crate::domain::port::music_playlist_repository::{
-    MusicPlaylistFilter, MusicPlaylistRepository as _,
-};
-use crate::domain::port::permission_repository::{PermissionFilter, PermissionRepository as _};
-use crate::domain::port::unit_of_work::{UnitOfWork as _, UnitOfWorkFactory};
-use crate::domain::port::user_repository::{UserFilter, UserRepository as _};
-use crate::domain::port::user_unit_of_work::UserUnitOfWork;
-use crate::domain::service::authorization::{Authorization, Decision};
-use crate::domain::service::name_policy::{NamePolicy, NamePolicyError};
+use crate::domain::service::{Authorization, Decision, NamePolicy, NamePolicyError};
 
 /// Use case implementation for updating a playlist's metadata or tracks.
 pub(crate) struct UpdatePlaylist<F> {
@@ -272,14 +262,15 @@ where
 mod tests {
 
     use super::*;
-    use crate::domain::model::music_playlist::MusicPlaylist;
-    use crate::domain::model::music_recording::{MusicRecording, TrackIndex};
-    use crate::domain::model::permission::{Permission, Scope};
-    use crate::domain::model::user::{Role, User};
-    use crate::domain::port::music_album_repository::MockMusicAlbumRepository;
-    use crate::domain::port::music_playlist_repository::MockMusicPlaylistRepository;
-    use crate::domain::port::permission_repository::MockPermissionRepository;
-    use crate::domain::port::user_repository::MockUserRepository;
+    use crate::domain::model::{
+        MusicPlaylist, MusicRecording, Permission, Role, Scope, TrackIndex, User,
+    };
+
+    use crate::domain::port::{
+        MockMusicAlbumRepository, MockMusicPlaylistRepository, MockPermissionRepository,
+        MockUserRepository,
+    };
+
     use crate::test_helpers::*;
     use chrono::NaiveDateTime;
     use std::error::Error;

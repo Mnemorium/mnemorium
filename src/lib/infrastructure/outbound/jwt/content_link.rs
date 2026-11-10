@@ -5,11 +5,10 @@ use jsonwebtoken::errors::ErrorKind;
 use jsonwebtoken::{Algorithm, DecodingKey, EncodingKey, Header, Validation, decode, encode};
 use serde::{Deserialize, Serialize};
 
-use crate::domain::alias::NumericID;
-use crate::domain::port::content_link::{
-    CONTENT_LINK_TTL_SECONDS, ContentLink, ContentLinkProvider,
+use crate::domain::NumericID;
+use crate::domain::port::{
+    CONTENT_LINK_TTL_SECONDS, ContentLink, ContentLinkError, ContentLinkProvider,
 };
-use crate::domain::port::error::ContentLinkError;
 
 /// Audience separating a playback credential from a session token.
 const CONTENT_LINK_AUDIENCE: &str = "media-link";

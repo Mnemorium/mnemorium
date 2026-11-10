@@ -2,16 +2,13 @@ use std::mem::take;
 
 use sqlx::{QueryBuilder, Sqlite, Transaction};
 
-use crate::domain::alias::NumericID;
-use crate::domain::model::music_playlist::MusicPlaylist;
-use crate::domain::model::music_recording::{MusicRecording, TrackIndex};
-use crate::domain::port::error::RepositoryError;
-use crate::domain::port::music_playlist_repository::{
-    MusicPlaylistFilter, MusicPlaylistRepository,
-};
+use crate::domain::NumericID;
+use crate::domain::model::{MusicPlaylist, MusicRecording, TrackIndex};
+use crate::domain::port::{MusicPlaylistFilter, MusicPlaylistRepository, RepositoryError};
 
 use super::error_mapping::stored_data_invalid;
-use super::model::music_playlist::MusicPlaylistRow;
+use super::model::MusicPlaylistRow;
+
 use super::query_filter::push_filter;
 
 /// Repository persisting music playlists and the recordings they sequence,

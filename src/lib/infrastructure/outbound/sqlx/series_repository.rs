@@ -2,18 +2,13 @@ use std::collections::HashMap;
 
 use sqlx::{QueryBuilder, Sqlite, Transaction};
 
-use crate::domain::alias::NumericID;
-use crate::domain::model::episode::{Episode, EpisodeIndex};
-use crate::domain::model::season::{Season, SeasonIndex};
-use crate::domain::model::series::Series;
-use crate::domain::model::video::Video;
-use crate::domain::port::error::RepositoryError;
-use crate::domain::port::series_repository::{EpisodeFilter, SeriesFilter, SeriesRepository};
+use crate::domain::NumericID;
+use crate::domain::model::{Episode, EpisodeIndex, Season, SeasonIndex, Series, Video};
+use crate::domain::port::{EpisodeFilter, RepositoryError, SeriesFilter, SeriesRepository};
 
 use super::error_mapping::stored_data_invalid;
-use super::model::scope::parse_scope;
-use super::model::series::SeriesRow;
-use super::model::video::parse_scan_type;
+use super::model::{SeriesRow, parse_asset_scope, parse_scan_type};
+
 use super::query_filter::push_filter;
 
 /// The projection every show read is assembled from: the show, its genres, its
@@ -514,7 +509,7 @@ fn episode_from_row(row: &SeriesRow) -> Result<Option<Episode>, RepositoryError>
     let scope = row
         .video_scope
         .as_deref()
-        .map(|value| parse_scope(value).ok_or_else(|| stored_data_invalid("unknown_scope")))
+        .map(|value| parse_asset_scope(value).ok_or_else(|| stored_data_invalid("unknown_scope")))
         .transpose()?;
     let video = Video::try_new(
         row.video_id
@@ -557,7 +552,8 @@ fn episode_from_row(row: &SeriesRow) -> Result<Option<Episode>, RepositoryError>
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::model::video::ScanType;
+    use crate::domain::model::ScanType;
+
     use crate::infrastructure::outbound::sqlx::test_helpers::begin_transaction;
     use crate::test_helpers::*;
     use chrono::NaiveDate;

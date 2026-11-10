@@ -1,8 +1,8 @@
 use std::future::Future;
 
-use crate::domain::alias::NumericID;
-use crate::domain::model::user::{Role, User};
-use crate::domain::port::error::RepositoryError;
+use crate::domain::NumericID;
+use crate::domain::model::{Role, User};
+use crate::domain::port::RepositoryError;
 
 /// Search filters for [`UserRepository::search`]. Every field is optional;
 /// an all-`None` filter returns every user.

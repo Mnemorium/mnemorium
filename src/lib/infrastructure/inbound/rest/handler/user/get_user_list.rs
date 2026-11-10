@@ -5,16 +5,16 @@ use serde::{Deserialize, Serialize};
 use tracing::warn;
 use utoipa::{IntoParams, ToSchema};
 
-use crate::application::port::list_users::{
+use crate::application::port::{
     ListUsersCommand, ListUsersError, ListUsersResponse as ListUsersResponseData,
 };
-use crate::domain::model::user::Role;
-use crate::domain::service::username_policy::{MAX_USERNAME_LENGTH, MIN_USERNAME_LENGTH};
-use crate::infrastructure::inbound::rest::api_error::{ApiError, ErrorBody};
-use crate::infrastructure::inbound::rest::app_state::AppState;
-use crate::infrastructure::inbound::rest::hal::{Link, SelfLinks, hal_json};
+use crate::domain::model::Role;
+use crate::domain::service::{MAX_USERNAME_LENGTH, MIN_USERNAME_LENGTH};
 use crate::infrastructure::inbound::rest::handler::user::{GetUserResponse, user_self_href};
-use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
+use crate::infrastructure::inbound::rest::middleware::AuthenticatedUser;
+use crate::infrastructure::inbound::rest::{
+    ApiError, AppState, ErrorBody, Link, SelfLinks, hal_json,
+};
 
 /// Filters restricting the returned users.
 ///

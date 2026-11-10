@@ -2,11 +2,10 @@ use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse as _, Response};
 
-use crate::application::port::cancel_upload::{CancelUploadCommand, CancelUploadError};
-use crate::domain::alias::NumericID;
-use crate::infrastructure::inbound::rest::api_error::{ApiError, ErrorBody};
-use crate::infrastructure::inbound::rest::app_state::AppState;
-use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
+use crate::application::port::{CancelUploadCommand, CancelUploadError};
+use crate::domain::NumericID;
+use crate::infrastructure::inbound::rest::middleware::AuthenticatedUser;
+use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody};
 
 /// Map a cancel-upload error to its API error.
 impl From<CancelUploadError> for ApiError {

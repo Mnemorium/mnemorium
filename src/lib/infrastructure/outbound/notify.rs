@@ -1,1 +1,3 @@
-pub(crate) mod media_change_source;
+mod media_change_source;
+
+pub(crate) use self::media_change_source::NotifyMediaChangeSource;

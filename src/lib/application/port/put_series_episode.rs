@@ -3,8 +3,8 @@ use std::pin::Pin;
 
 use chrono::NaiveDate;
 
-use crate::domain::alias::NumericID;
-use crate::domain::model::episode::Episode;
+use crate::domain::NumericID;
+use crate::domain::model::Episode;
 
 /// Command to create or replace one episode of a season.
 #[derive(Debug, Clone, PartialEq, Eq)]

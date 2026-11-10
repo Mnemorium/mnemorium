@@ -1,9 +1,8 @@
 use std::future::Future;
 use std::pin::Pin;
 
-use crate::domain::alias::NumericID;
-use crate::domain::model::external_ref::ExternalRef;
-use crate::domain::model::movie::Movie;
+use crate::domain::NumericID;
+use crate::domain::model::{ExternalRef, Movie};
 
 /// Command to apply external metadata to a film.
 #[derive(Debug, Clone, PartialEq, Eq)]

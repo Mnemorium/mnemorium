@@ -4,7 +4,7 @@
 
 use std::path::{Path, PathBuf};
 
-use crate::domain::alias::NumericID;
+use crate::domain::NumericID;
 
 /// Root directory of the library, relative to the working directory.
 ///

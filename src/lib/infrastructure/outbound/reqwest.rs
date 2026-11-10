@@ -14,9 +14,13 @@
 //! failed download yields no artwork and one catalogued event; it never fails
 //! the lookup.
 
-pub(crate) mod musicbrainz;
-pub(crate) mod omdb;
-pub(crate) mod tmdb;
+mod musicbrainz;
+mod omdb;
+mod tmdb;
+
+pub(crate) use self::musicbrainz::MusicBrainzMetadataProvider;
+pub(crate) use self::omdb::OmdbVideoMetadataProvider;
+pub(crate) use self::tmdb::TmdbVideoMetadataProvider;
 
 use std::time::Duration;
 
@@ -26,9 +30,8 @@ use serde::de::DeserializeOwned;
 use tracing::error;
 
 use crate::application::security_event;
-use crate::domain::model::artwork::Artwork;
-use crate::domain::model::configuration::ProviderId;
-use crate::domain::port::error::ExternalServiceError;
+use crate::domain::model::{Artwork, ProviderId};
+use crate::domain::port::ExternalServiceError;
 
 /// Largest artwork the server accepts, in bytes.
 pub(crate) const ARTWORK_MAX_BYTES: usize = 5 * 1024 * 1024;

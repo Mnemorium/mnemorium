@@ -6,15 +6,15 @@ use std::path::Path;
 
 use chrono::{Duration, NaiveDateTime, Utc};
 
-use crate::application::port::reap_uploads::{
+use crate::application::port::{
     ReapUploadsCommand, ReapUploadsError, ReapUploadsResponse, ReapUploadsUseCase,
 };
-use crate::application::use_case::upload_layout::{staged_path, uploads_path};
-use crate::domain::alias::NumericID;
-use crate::domain::port::asset_unit_of_work::AssetUnitOfWork;
-use crate::domain::port::file_storage::FileStorage;
-use crate::domain::port::unit_of_work::{UnitOfWork as _, UnitOfWorkFactory};
-use crate::domain::port::upload_repository::{UploadFilter, UploadRepository as _};
+use crate::application::use_case::{staged_path, uploads_path};
+use crate::domain::NumericID;
+use crate::domain::port::{
+    AssetUnitOfWork, FileStorage, UnitOfWork as _, UnitOfWorkFactory, UploadFilter,
+    UploadRepository as _,
+};
 
 /// Bound after which a verification seal is considered stale, in seconds.
 ///
@@ -226,11 +226,10 @@ where
 mod tests {
     use super::*;
     use crate::application::use_case::test_fixtures::TTL_SECONDS;
-    use crate::domain::model::integrity_hash::IntegrityHash;
-    use crate::domain::model::upload::{ChunkBitmap, Upload};
-    use crate::domain::port::error::RepositoryError;
-    use crate::domain::port::file_storage::MockFileStorage;
-    use crate::domain::port::upload_repository::MockUploadRepository;
+    use crate::domain::model::{ChunkBitmap, IntegrityHash, Upload};
+
+    use crate::domain::port::{MockFileStorage, MockUploadRepository, RepositoryError};
+
     use crate::test_helpers::*;
     use chrono::NaiveDateTime;
     use std::error::Error;

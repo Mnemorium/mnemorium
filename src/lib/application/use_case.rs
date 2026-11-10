@@ -1,160 +1,242 @@
 /// The add gallery item use case implementation.
-pub(crate) mod add_gallery_item;
+mod add_gallery_item;
 /// The apply movie metadata use case implementation.
-pub(crate) mod apply_movie;
+mod apply_movie;
 /// The apply music album use case implementation.
-pub(crate) mod apply_music_album;
+mod apply_music_album;
 /// The apply series metadata use case implementation.
-pub(crate) mod apply_series;
+mod apply_series;
 /// The apply series episode metadata use case implementation.
-pub(crate) mod apply_series_episode;
+mod apply_series_episode;
 pub(crate) mod asset_access;
 /// The begin upload use case implementation.
-pub(crate) mod begin_upload;
+mod begin_upload;
 /// The cancel upload use case implementation.
-pub(crate) mod cancel_upload;
+mod cancel_upload;
 /// The complete upload use case implementation.
-pub(crate) mod complete_upload;
+mod complete_upload;
 /// The create gallery use case implementation.
-pub(crate) mod create_gallery;
+mod create_gallery;
 /// The create movie use case implementation.
-pub(crate) mod create_movie;
+mod create_movie;
 /// The create music album use case implementation.
-pub(crate) mod create_music_album;
+mod create_music_album;
 /// The create music group use case implementation.
-pub(crate) mod create_music_group;
+mod create_music_group;
 /// The create playlist use case implementation.
-pub(crate) mod create_playlist;
+mod create_playlist;
 /// The create series use case implementation.
-pub(crate) mod create_series;
+mod create_series;
 /// The delete gallery use case implementation.
-pub(crate) mod delete_gallery;
+mod delete_gallery;
 /// The delete gallery item use case implementation.
-pub(crate) mod delete_gallery_item;
+mod delete_gallery_item;
 /// The delete playlist use case implementation.
-pub(crate) mod delete_playlist;
+mod delete_playlist;
 /// The ensure storage directories use case implementation.
-pub(crate) mod ensure_storage_directories;
+mod ensure_storage_directories;
 /// The get album use case implementation.
-pub(crate) mod get_album;
+mod get_album;
 /// The get album medium use case implementation.
-pub(crate) mod get_album_medium;
+mod get_album_medium;
 /// The get album track use case implementation.
-pub(crate) mod get_album_track;
+mod get_album_track;
 /// The get asset content use case implementation.
-pub(crate) mod get_asset_content;
+mod get_asset_content;
 /// The get audio use case implementation.
-pub(crate) mod get_audio;
+mod get_audio;
 /// The get current user use case implementation.
-pub(crate) mod get_current_user;
+mod get_current_user;
 /// The get file use case implementation.
-pub(crate) mod get_file;
+mod get_file;
 /// The get gallery use case implementation.
-pub(crate) mod get_gallery;
+mod get_gallery;
 /// The get gallery item use case implementation.
-pub(crate) mod get_gallery_item;
+mod get_gallery_item;
 /// The get image use case implementation.
-pub(crate) mod get_image;
+mod get_image;
 /// The get movie use case implementation.
-pub(crate) mod get_movie;
+mod get_movie;
 /// The get music group use case implementation.
-pub(crate) mod get_music_group;
+mod get_music_group;
 /// The get permission use case implementation.
-pub(crate) mod get_permission;
+mod get_permission;
 /// The get playlist use case implementation.
-pub(crate) mod get_playlist;
+mod get_playlist;
 /// The get playlist track use case implementation.
-pub(crate) mod get_playlist_track;
+mod get_playlist_track;
 /// The get series use case implementation.
-pub(crate) mod get_series;
+mod get_series;
 /// The get series episode use case implementation.
-pub(crate) mod get_series_episode;
+mod get_series_episode;
 /// The get series season use case implementation.
-pub(crate) mod get_series_season;
+mod get_series_season;
 /// The get upload use case implementation.
-pub(crate) mod get_upload;
+mod get_upload;
 /// The get user use case implementation.
-pub(crate) mod get_user;
+mod get_user;
 /// The get video use case implementation.
-pub(crate) mod get_video;
+mod get_video;
 /// The identify music use case implementation.
-pub(crate) mod identify_music;
+mod identify_music;
 /// The identify video use case implementation.
-pub(crate) mod identify_video;
+mod identify_video;
 /// The ingest media use case implementation.
-pub(crate) mod ingest_media;
+mod ingest_media;
 /// The initialize root admin use case implementation.
-pub(crate) mod initialize_root_admin;
+mod initialize_root_admin;
 /// The list album tracks use case implementation.
-pub(crate) mod list_album_tracks;
+mod list_album_tracks;
 /// The list albums use case implementation.
-pub(crate) mod list_albums;
+mod list_albums;
 /// The list galleries use case implementation.
-pub(crate) mod list_galleries;
+mod list_galleries;
 /// The list movies use case implementation.
-pub(crate) mod list_movies;
+mod list_movies;
 /// The list music groups use case implementation.
-pub(crate) mod list_music_groups;
+mod list_music_groups;
 /// The list playlists use case implementation.
-pub(crate) mod list_playlists;
+mod list_playlists;
 /// The list series use case implementation.
-pub(crate) mod list_series;
+mod list_series;
 /// The list series episodes use case implementation.
-pub(crate) mod list_series_episodes;
+mod list_series_episodes;
 /// The list users use case implementation.
-pub(crate) mod list_users;
+mod list_users;
 /// The load configuration use case implementation.
-pub(crate) mod load_configuration;
+mod load_configuration;
 /// The load state use case implementation.
-pub(crate) mod load_state;
+mod load_state;
 /// The login user use case implementation.
-pub(crate) mod login_user;
+mod login_user;
 /// The patch album track use case implementation.
-pub(crate) mod patch_album_track;
+mod patch_album_track;
 /// The patch credential use case implementation.
-pub(crate) mod patch_credential;
+mod patch_credential;
 /// The put album medium use case implementation.
-pub(crate) mod put_album_medium;
+mod put_album_medium;
 /// The put album track use case implementation.
-pub(crate) mod put_album_track;
+mod put_album_track;
 /// The put series episode use case implementation.
-pub(crate) mod put_series_episode;
+mod put_series_episode;
 /// The put series season use case implementation.
-pub(crate) mod put_series_season;
+mod put_series_season;
 /// The reap uploads use case implementation.
-pub(crate) mod reap_uploads;
+mod reap_uploads;
 /// The register user use case implementation.
-pub(crate) mod register_user;
+mod register_user;
 /// The remove playlist track use case implementation.
-pub(crate) mod remove_playlist_track;
+mod remove_playlist_track;
 /// The reorder playlist tracks use case implementation.
-pub(crate) mod reorder_playlist_tracks;
+mod reorder_playlist_tracks;
 /// The replace permission use case implementation.
-pub(crate) mod replace_permission;
+mod replace_permission;
 /// The resolve music metadata use case implementation.
-pub(crate) mod resolve_music_metadata;
+mod resolve_music_metadata;
 /// The resolve video metadata use case implementation.
-pub(crate) mod resolve_video_metadata;
+mod resolve_video_metadata;
 /// The update movie use case implementation.
-pub(crate) mod update_movie;
+mod update_movie;
 /// The update music album use case implementation.
-pub(crate) mod update_music_album;
+mod update_music_album;
 /// The update music group use case implementation.
-pub(crate) mod update_music_group;
+mod update_music_group;
 /// The update playlist use case implementation.
-pub(crate) mod update_playlist;
+mod update_playlist;
 /// The update series use case implementation.
-pub(crate) mod update_series;
+mod update_series;
 /// The update series episode use case implementation.
-pub(crate) mod update_series_episode;
+mod update_series_episode;
 /// The update series season use case implementation.
-pub(crate) mod update_series_season;
+mod update_series_season;
 /// The update user use case implementation.
-pub(crate) mod update_user;
-pub(crate) mod upload_layout;
-pub(crate) mod upload_session;
+mod update_user;
+mod upload_layout;
+mod upload_session;
 /// The write upload chunk use case implementation.
-pub(crate) mod write_upload_chunk;
+mod write_upload_chunk;
+
+pub(crate) use self::add_gallery_item::AddGalleryItem;
+pub(crate) use self::apply_movie::ApplyMovie;
+pub(crate) use self::apply_music_album::ApplyMusicAlbum;
+pub(crate) use self::apply_series::ApplySeries;
+pub(crate) use self::apply_series_episode::ApplySeriesEpisode;
+pub(crate) use self::begin_upload::BeginUpload;
+pub(crate) use self::cancel_upload::CancelUpload;
+pub(crate) use self::complete_upload::CompleteUpload;
+pub(crate) use self::create_gallery::CreateGallery;
+pub(crate) use self::create_movie::CreateMovie;
+pub(crate) use self::create_music_album::CreateMusicAlbum;
+pub(crate) use self::create_music_group::CreateMusicGroup;
+pub(crate) use self::create_playlist::CreatePlaylist;
+pub(crate) use self::create_series::CreateSeries;
+pub(crate) use self::delete_gallery::DeleteGallery;
+pub(crate) use self::delete_gallery_item::DeleteGalleryItem;
+pub(crate) use self::delete_playlist::DeletePlaylist;
+pub(crate) use self::ensure_storage_directories::EnsureStorageDirectories;
+pub(crate) use self::get_album::GetAlbum;
+pub(crate) use self::get_album_medium::GetAlbumMedium;
+pub(crate) use self::get_album_track::GetAlbumTrack;
+pub(crate) use self::get_asset_content::GetAssetContent;
+pub(crate) use self::get_audio::GetAudio;
+pub(crate) use self::get_current_user::GetCurrentUser;
+pub(crate) use self::get_file::GetFile;
+pub(crate) use self::get_gallery::GetGallery;
+pub(crate) use self::get_gallery_item::GetGalleryItem;
+pub(crate) use self::get_image::GetImage;
+pub(crate) use self::get_movie::GetMovie;
+pub(crate) use self::get_music_group::GetMusicGroup;
+pub(crate) use self::get_permission::GetPermission;
+pub(crate) use self::get_playlist::GetPlaylist;
+pub(crate) use self::get_playlist_track::GetPlaylistTrack;
+pub(crate) use self::get_series::GetSeries;
+pub(crate) use self::get_series_episode::GetSeriesEpisode;
+pub(crate) use self::get_series_season::GetSeriesSeason;
+pub(crate) use self::get_upload::GetUpload;
+pub(crate) use self::get_user::GetUser;
+pub(crate) use self::get_video::GetVideo;
+pub(crate) use self::identify_music::IdentifyMusic;
+pub(crate) use self::identify_video::IdentifyVideo;
+pub(crate) use self::ingest_media::IngestMedia;
+pub(crate) use self::initialize_root_admin::InitializeRootAdmin;
+pub(crate) use self::list_album_tracks::ListAlbumTracks;
+pub(crate) use self::list_albums::ListAlbums;
+pub(crate) use self::list_galleries::ListGalleries;
+pub(crate) use self::list_movies::ListMovies;
+pub(crate) use self::list_music_groups::ListMusicGroups;
+pub(crate) use self::list_playlists::ListPlaylists;
+pub(crate) use self::list_series::ListSeries;
+pub(crate) use self::list_series_episodes::ListSeriesEpisodes;
+pub(crate) use self::list_users::ListUsers;
+pub(crate) use self::load_configuration::LoadConfiguration;
+pub(crate) use self::load_state::LoadState;
+pub(crate) use self::login_user::LoginUser;
+pub(crate) use self::patch_album_track::PatchAlbumTrack;
+pub(crate) use self::patch_credential::PatchCredential;
+pub(crate) use self::put_album_medium::PutAlbumMedium;
+pub(crate) use self::put_album_track::PutAlbumTrack;
+pub(crate) use self::put_series_episode::PutSeriesEpisode;
+pub(crate) use self::put_series_season::PutSeriesSeason;
+pub(crate) use self::reap_uploads::ReapUploads;
+pub(crate) use self::register_user::RegisterUser;
+pub(crate) use self::remove_playlist_track::RemovePlaylistTrack;
+pub(crate) use self::reorder_playlist_tracks::ReorderPlaylistTracks;
+pub(crate) use self::replace_permission::ReplacePermission;
+pub(crate) use self::resolve_music_metadata::ResolveMusicMetadata;
+pub(crate) use self::resolve_video_metadata::ResolveVideoMetadata;
+pub(crate) use self::update_movie::UpdateMovie;
+pub(crate) use self::update_music_album::UpdateMusicAlbum;
+pub(crate) use self::update_music_group::UpdateMusicGroup;
+pub(crate) use self::update_playlist::UpdatePlaylist;
+pub(crate) use self::update_series::UpdateSeries;
+pub(crate) use self::update_series_episode::UpdateSeriesEpisode;
+pub(crate) use self::update_series_season::UpdateSeriesSeason;
+pub(crate) use self::update_user::UpdateUser;
+pub(crate) use self::upload_layout::{
+    MEDIA_ROOT, media_path, media_root, staged_path, uploads_path,
+};
+pub(crate) use self::upload_session::{caller_file_id, expiry, received_bitmap};
+pub(crate) use self::write_upload_chunk::WriteUploadChunk;
 
 /// Fixtures shared by the application use-case test modules.
 ///

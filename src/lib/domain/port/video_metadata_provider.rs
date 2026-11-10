@@ -1,9 +1,7 @@
 use std::future::Future;
 
-use crate::domain::model::media_metadata::MediaMetadata;
-use crate::domain::model::media_query::MediaQuery;
-use crate::domain::model::video_candidate::{Candidate, Target};
-use crate::domain::port::error::ExternalServiceError;
+use crate::domain::model::{Candidate, MediaMetadata, MediaQuery, Target};
+use crate::domain::port::ExternalServiceError;
 
 /// Port for asking an external service what a film, a show or an episode is.
 ///

@@ -6,37 +6,23 @@ use std::sync::Arc;
 
 use chrono::Utc;
 
-use crate::application::port::ingest_media::{
+use crate::application::port::{
     IngestMediaCommand, IngestMediaError, IngestMediaResponse, IngestMediaUseCase, IngestRequest,
 };
 use crate::application::security_event;
-use crate::application::use_case::upload_layout::media_path;
-use crate::domain::alias::NumericID;
-use crate::domain::model::audio::{Audio, ProbedAudio};
-use crate::domain::model::file::File;
-use crate::domain::model::gallery_item::GalleryItemMedia;
-use crate::domain::model::image::{Image, ProbedImage};
-use crate::domain::model::video::{ProbedVideo, Video};
-use crate::domain::port::asset_unit_of_work::AssetUnitOfWork;
-use crate::domain::port::audio_repository::{AudioFilter, AudioRepository as _};
-use crate::domain::port::content_type_sniffer::ContentTypeSniffer;
-use crate::domain::port::error::RepositoryError;
-use crate::domain::port::file_repository::{FileFilter, FileRepository as _};
-use crate::domain::port::gallery_repository::{GalleryItemFilter, GalleryRepository as _};
-use crate::domain::port::image_repository::{ImageFilter, ImageRepository as _};
-use crate::domain::port::library_unit_of_work::LibraryUnitOfWork;
-use crate::domain::port::media_probe::MediaProbe;
-use crate::domain::port::media_source::{MediaEntry, MediaSource};
-use crate::domain::port::mime_type_repository::{MimeTypeFilter, MimeTypeRepository as _};
-use crate::domain::port::movie_repository::{MovieFilter, MovieRepository as _};
-use crate::domain::port::music_album_repository::{
-    MusicAlbumRepository as _, MusicRecordingFilter,
+use crate::application::use_case::media_path;
+use crate::domain::NumericID;
+use crate::domain::model::{
+    Audio, File, GalleryItemMedia, Image, ProbedAudio, ProbedImage, ProbedVideo, Video,
 };
-use crate::domain::port::series_repository::{EpisodeFilter, SeriesRepository as _};
-use crate::domain::port::unit_of_work::{UnitOfWork, UnitOfWorkFactory};
-use crate::domain::port::user_repository::{UserFilter, UserRepository as _};
-use crate::domain::port::user_unit_of_work::UserUnitOfWork;
-use crate::domain::port::video_repository::{VideoFilter, VideoRepository as _};
+use crate::domain::port::{
+    AssetUnitOfWork, AudioFilter, AudioRepository as _, ContentTypeSniffer, EpisodeFilter,
+    FileFilter, FileRepository as _, GalleryItemFilter, GalleryRepository as _, ImageFilter,
+    ImageRepository as _, LibraryUnitOfWork, MediaEntry, MediaProbe, MediaSource, MimeTypeFilter,
+    MimeTypeRepository as _, MovieFilter, MovieRepository as _, MusicAlbumRepository as _,
+    MusicRecordingFilter, RepositoryError, SeriesRepository as _, UnitOfWork, UnitOfWorkFactory,
+    UserFilter, UserRepository as _, UserUnitOfWork, VideoFilter, VideoRepository as _,
+};
 
 /// Identifier of the Root Admin, who owns a file the server did not store.
 const ROOT_ADMIN_USER_ID: NumericID = 0;
@@ -856,15 +842,13 @@ fn media_kind(mime_type_id: &str) -> Option<MediaKind> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::model::audio::AudioError;
-    use crate::domain::model::file::{FileError, Origin};
-    use crate::domain::model::image::Orientation;
-    use crate::domain::model::mime_type::MimeType;
-    use crate::domain::model::user::{Role, User};
-    use crate::domain::port::content_type_sniffer::MockContentTypeSniffer;
-    use crate::domain::port::error::{ContentTypeSnifferError, MediaProbeError};
-    use crate::domain::port::media_probe::MockMediaProbe;
-    use crate::domain::port::media_source::MockMediaSource;
+    use crate::domain::model::{AudioError, FileError, MimeType, Orientation, Origin, Role, User};
+
+    use crate::domain::port::{
+        ContentTypeSnifferError, MediaProbeError, MockContentTypeSniffer, MockMediaProbe,
+        MockMediaSource,
+    };
+
     use crate::test_helpers::*;
     use chrono::{NaiveDate, NaiveDateTime};
     use std::error::Error;

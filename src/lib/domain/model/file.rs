@@ -1,8 +1,9 @@
 use chrono::{NaiveDate, NaiveDateTime};
 
-use crate::domain::alias::NumericID;
-use crate::domain::model::integrity_hash::{DIGEST_HEX_LENGTH, IntegrityHash, IntegrityHashError};
-use crate::domain::model::permission::{Protected, ResourceKind, ResourceRef};
+use crate::domain::NumericID;
+use crate::domain::model::{
+    DIGEST_HEX_LENGTH, IntegrityHash, IntegrityHashError, Protected, ResourceKind, ResourceRef,
+};
 
 /// Error returned when initialising or updating a `File`.
 #[derive(Debug, thiserror::Error)]

@@ -12,9 +12,8 @@ use tower_governor::{GovernorError, GovernorLayer};
 use tracing::{error, warn};
 use utoipa_axum::router::OpenApiRouter;
 
-use crate::domain::model::configuration::{ClientIpHeader, RateLimit};
-use crate::infrastructure::inbound::rest::api_error::ApiError;
-use crate::infrastructure::inbound::rest::app_state::AppState;
+use crate::domain::model::{ClientIpHeader, RateLimit};
+use crate::infrastructure::inbound::rest::{ApiError, AppState};
 
 /// A [`KeyExtractor`] that trusts one declared client-address header from the
 /// configured proxy addresses.

@@ -8,10 +8,9 @@
 
 use std::sync::Arc;
 
-use crate::application::port::get_current_user::GetCurrentUserUseCase;
-use crate::application::port::get_user::GetUserUseCase;
-use crate::application::port::list_users::ListUsersUseCase;
-use crate::application::port::update_user::UpdateUserUseCase;
+use crate::application::port::{
+    GetCurrentUserUseCase, GetUserUseCase, ListUsersUseCase, UpdateUserUseCase,
+};
 
 /// Builds the use cases of the User bounded context on demand.
 ///

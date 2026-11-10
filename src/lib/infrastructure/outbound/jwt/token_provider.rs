@@ -5,9 +5,8 @@ use jsonwebtoken::errors::ErrorKind;
 use jsonwebtoken::{Algorithm, DecodingKey, EncodingKey, Header, Validation, decode, encode};
 use serde::{Deserialize, Serialize};
 
-use crate::domain::alias::NumericID;
-use crate::domain::port::error::TokenProviderError;
-use crate::domain::port::token_provider::{IssuedToken, TokenProvider};
+use crate::domain::NumericID;
+use crate::domain::port::{IssuedToken, TokenProvider, TokenProviderError};
 
 /// Claims embedded in a `JwtTokenProvider` token.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

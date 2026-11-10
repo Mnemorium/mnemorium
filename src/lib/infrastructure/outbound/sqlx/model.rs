@@ -3,35 +3,52 @@
     reason = "STY-SQL-008 names each primary key `<table>_id`, so the field repeats the struct's name"
 )]
 
+/// The asset scope SQL model.
+mod asset_scope;
 /// The audio SQL model.
-pub(crate) mod audio;
+mod audio;
 /// The credential SQL model.
-pub(crate) mod credential;
+mod credential;
 /// The file SQL model.
-pub(crate) mod file;
+mod file;
 /// The gallery SQL model.
-pub(crate) mod gallery;
+mod gallery;
 /// The gallery item SQL model.
-pub(crate) mod gallery_item;
+mod gallery_item;
 /// The image SQL model.
-pub(crate) mod image;
+mod image;
 /// The movie SQL model.
-pub(crate) mod movie;
+mod movie;
 /// The music album SQL model.
-pub(crate) mod music_album;
+mod music_album;
 /// The music group SQL model.
-pub(crate) mod music_group;
+mod music_group;
 /// The music playlist SQL model.
-pub(crate) mod music_playlist;
+mod music_playlist;
 /// The permission SQL model.
-pub(crate) mod permission;
-/// The scope SQL model.
-pub(crate) mod scope;
+mod permission;
 /// The series SQL model.
-pub(crate) mod series;
+mod series;
 /// The upload SQL model.
-pub(crate) mod upload;
+mod upload;
 /// The user SQL model.
-pub(crate) mod user;
+mod user;
 /// The video SQL model.
-pub(crate) mod video;
+mod video;
+
+pub(crate) use self::asset_scope::{asset_scope_token, parse_asset_scope};
+pub(crate) use self::audio::Audio;
+pub(crate) use self::credential::Credential;
+pub(crate) use self::file::File;
+pub(crate) use self::gallery::Gallery;
+pub(crate) use self::gallery_item::{GalleryItem, GalleryItemDetail};
+pub(crate) use self::image::{Image, Orientation};
+pub(crate) use self::movie::MovieRow;
+pub(crate) use self::music_album::MusicAlbumRow;
+pub(crate) use self::music_group::MusicGroupRow;
+pub(crate) use self::music_playlist::MusicPlaylistRow;
+pub(crate) use self::permission::{PermissionResourceRow, PermissionRow};
+pub(crate) use self::series::SeriesRow;
+pub(crate) use self::upload::Upload;
+pub(crate) use self::user::{Role, User};
+pub(crate) use self::video::{ScanType, Video, parse_scan_type};

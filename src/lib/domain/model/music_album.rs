@@ -1,8 +1,7 @@
 use chrono::NaiveDate;
 
-use crate::domain::alias::NumericID;
-use crate::domain::model::music_medium::MusicMedium;
-use crate::domain::model::permission::{Protected, ResourceKind, ResourceRef};
+use crate::domain::NumericID;
+use crate::domain::model::{MusicMedium, Protected, ResourceKind, ResourceRef};
 
 /// Production type of a music album.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

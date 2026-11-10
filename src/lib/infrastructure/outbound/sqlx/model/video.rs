@@ -1,5 +1,5 @@
-use crate::domain::alias::NumericID;
-use crate::domain::model::video::ScanType as DomainScanType;
+use crate::domain::NumericID;
+use crate::domain::model::ScanType as DomainScanType;
 
 /// Scan type of a video, matching the `chk_video_scan_type` check constraint in
 /// the `video` table.

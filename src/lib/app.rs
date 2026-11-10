@@ -10,45 +10,35 @@ use tokio::signal::unix::{SignalKind, signal};
 use tokio::time::sleep;
 use tracing::{error, info, warn};
 
-use crate::application::port::asset_use_case_factory::AssetUseCaseFactory;
-use crate::application::port::ensure_storage_directories::{
-    EnsureStorageDirectoriesCommand, EnsureStorageDirectoriesUseCase as _,
+use crate::application::port::{
+    AssetUseCaseFactory, DATABASE_PATH, EnsureStorageDirectoriesCommand,
+    EnsureStorageDirectoriesUseCase as _, InitializeRootAdminUseCase as _, LibraryUseCaseFactory,
+    LoadConfigurationUseCase as _, LoadStateUseCase as _, STATE_PATH,
 };
-use crate::application::port::initialize_root_admin::InitializeRootAdminUseCase as _;
-use crate::application::port::library_use_case_factory::LibraryUseCaseFactory;
-use crate::application::port::load_configuration::LoadConfigurationUseCase as _;
-use crate::application::port::load_state::{DATABASE_PATH, LoadStateUseCase as _, STATE_PATH};
 use crate::application::security_event;
-use crate::application::use_case::ensure_storage_directories::EnsureStorageDirectories;
-use crate::application::use_case::initialize_root_admin::InitializeRootAdmin;
-use crate::application::use_case::load_configuration::LoadConfiguration;
-use crate::application::use_case::load_state::LoadState;
-use crate::application::use_case::upload_layout::MEDIA_ROOT;
 #[cfg(feature = "test-seed")]
-use crate::application::use_case::upload_layout::media_root;
-use crate::infrastructure::inbound::media_ingest::MediaIngestRunner;
-use crate::infrastructure::inbound::rest::app_state::AppState;
-use crate::infrastructure::inbound::rest::handler;
-use crate::infrastructure::inbound::rest::middleware::rate_limit::LoginRateLimiter;
-use crate::infrastructure::inbound::upload_reaper::UploadReaperRunner;
-use crate::infrastructure::logging;
-use crate::infrastructure::outbound::argon2::password_hasher::Argon2PasswordHasher;
-use crate::infrastructure::outbound::envy::configuration::EnvConfigurationSource;
-use crate::infrastructure::outbound::envy::state_seeds::EnvStateSeedSource;
-use crate::infrastructure::outbound::file_system::configuration_source::FileConfigurationSource;
-use crate::infrastructure::outbound::file_system::file_storage::FileSystemStorage;
-use crate::infrastructure::outbound::file_system::instance_state_store::FileInstanceStateStore;
-use crate::infrastructure::outbound::media_probe::LocalMediaProbe;
-use crate::infrastructure::outbound::random::password_generator::RandomPasswordGenerator;
-use crate::infrastructure::outbound::random::secret_generator::ChaChaSecretGenerator;
-use crate::infrastructure::outbound::sqlx::init_db;
-use crate::infrastructure::outbound::sqlx::unit_of_work::SqlxUnitOfWorkFactory;
+use crate::application::use_case::media_root;
+use crate::application::use_case::{
+    EnsureStorageDirectories, InitializeRootAdmin, LoadConfiguration, LoadState, MEDIA_ROOT,
+};
 #[cfg(feature = "test-seed")]
-use crate::infrastructure::seed;
-use crate::infrastructure::use_case_factory::asset::RuntimeAssetUseCaseFactory;
-use crate::infrastructure::use_case_factory::identity::RuntimeIdentityUseCaseFactory;
-use crate::infrastructure::use_case_factory::library::RuntimeLibraryUseCaseFactory;
-use crate::infrastructure::use_case_factory::user::RuntimeUserUseCaseFactory;
+use crate::infrastructure::apply;
+use crate::infrastructure::inbound::rest::middleware::LoginRateLimiter;
+use crate::infrastructure::inbound::rest::{AppState, handler};
+use crate::infrastructure::inbound::{MediaIngestRunner, UploadReaperRunner};
+use crate::infrastructure::outbound::LocalMediaProbe;
+use crate::infrastructure::outbound::argon2::Argon2PasswordHasher;
+use crate::infrastructure::outbound::envy::{EnvConfigurationSource, EnvStateSeedSource};
+use crate::infrastructure::outbound::file_system::{
+    FileConfigurationSource, FileInstanceStateStore, FileSystemStorage,
+};
+use crate::infrastructure::outbound::random::{ChaChaSecretGenerator, RandomPasswordGenerator};
+use crate::infrastructure::outbound::sqlx::{SqlxUnitOfWorkFactory, init_db};
+use crate::infrastructure::setup;
+use crate::infrastructure::use_case_factory::{
+    RuntimeAssetUseCaseFactory, RuntimeIdentityUseCaseFactory, RuntimeLibraryUseCaseFactory,
+    RuntimeUserUseCaseFactory,
+};
 
 /// Run the Mnemorium server until a shutdown signal arrives.
 ///
@@ -80,9 +70,9 @@ pub async fn run() -> anyhow::Result<()> {
     let configuration_file_created = loaded_configuration.file_created();
     let configuration = Arc::new(loaded_configuration.configuration().clone());
 
-    let _log_guard = logging::setup(configuration.logging())?;
+    let _log_guard = setup(configuration.logging())?;
 
-    // The lifecycle events are emitted here, after `logging::setup`, so they
+    // The lifecycle events are emitted here, after `setup`, so they
     // reach a sink (`OBS-006`); identity creation happens before configuration
     // because logging settings are themselves configuration.
     if instance_state_created {
@@ -163,7 +153,7 @@ pub async fn run() -> anyhow::Result<()> {
         ));
 
     #[cfg(feature = "test-seed")]
-    seed::apply(&seed_pool, instance_state.pepper(), &media_root()).await?;
+    apply(&seed_pool, instance_state.pepper(), &media_root()).await?;
 
     let file_storage = Arc::new(FileSystemStorage::new());
     let startup = configuration.library().startup();

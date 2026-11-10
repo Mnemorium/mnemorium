@@ -3,8 +3,8 @@ use std::pin::Pin;
 
 use chrono::NaiveDate;
 
-use crate::domain::alias::NumericID;
-use crate::domain::model::video::Video;
+use crate::domain::NumericID;
+use crate::domain::model::Video;
 
 /// Command to list the episodes of one season.
 #[derive(Debug, Clone, PartialEq, Eq)]

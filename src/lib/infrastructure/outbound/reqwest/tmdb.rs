@@ -12,14 +12,10 @@ use reqwest::{Client, RequestBuilder, StatusCode};
 use serde::Deserialize;
 
 use crate::application::security_event;
-use crate::domain::model::configuration::ProviderId;
-use crate::domain::model::external_ref::ExternalRef;
-use crate::domain::model::genre::Genre;
-use crate::domain::model::media_metadata::MediaMetadata;
-use crate::domain::model::media_query::{MediaQuery, VideoKind};
-use crate::domain::model::video_candidate::{Candidate, Target};
-use crate::domain::port::error::ExternalServiceError;
-use crate::domain::port::video_metadata_provider::VideoMetadataProvider;
+use crate::domain::model::{
+    Candidate, ExternalRef, Genre, MediaMetadata, MediaQuery, ProviderId, Target, VideoKind,
+};
+use crate::domain::port::{ExternalServiceError, VideoMetadataProvider};
 use crate::infrastructure::outbound::reqwest::{
     ArtworkClient, REQUEST_TIMEOUT, classify_status, classify_transport_error, log_provider_fault,
     read_payload, request_url,
@@ -397,8 +393,10 @@ fn parse_date(value: Option<&str>) -> Option<NaiveDate> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::model::media_query::MediaQueryError;
+    use crate::domain::model::MediaQueryError;
+
     use crate::infrastructure::outbound::reqwest::ARTWORK_MAX_BYTES;
+
     use chrono::Datelike as _;
     use rstest::rstest;
     use std::error::Error;

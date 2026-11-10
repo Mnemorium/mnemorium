@@ -1,6 +1,6 @@
 use chrono::{NaiveDate, NaiveDateTime};
 
-use crate::domain::alias::NumericID;
+use crate::domain::NumericID;
 
 /// Data model for the `file` table.
 #[derive(Debug, Clone, sqlx::FromRow)]

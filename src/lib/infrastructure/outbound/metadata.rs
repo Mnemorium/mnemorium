@@ -5,17 +5,16 @@
 //! providers in ascending index order, records each fallback as a catalogued
 //! event, and routes a lookup to the provider that issued the reference.
 
-pub(crate) mod failover;
+mod failover;
 
-use crate::domain::model::configuration::{MusicProviders, ProviderId, VideoProviders};
-use crate::domain::model::media_metadata::MediaMetadata;
-use crate::domain::model::media_query::MediaQuery;
-use crate::domain::model::video_candidate::{Candidate, Target};
-use crate::domain::port::error::ExternalServiceError;
-use crate::domain::port::video_metadata_provider::VideoMetadataProvider;
-use crate::infrastructure::outbound::reqwest::musicbrainz::MusicBrainzMetadataProvider;
-use crate::infrastructure::outbound::reqwest::omdb::OmdbVideoMetadataProvider;
-use crate::infrastructure::outbound::reqwest::tmdb::TmdbVideoMetadataProvider;
+pub(crate) use self::failover::FailoverVideoMetadataProvider;
+use crate::domain::model::{
+    Candidate, MediaMetadata, MediaQuery, MusicProviders, ProviderId, Target, VideoProviders,
+};
+use crate::domain::port::{ExternalServiceError, VideoMetadataProvider};
+use crate::infrastructure::outbound::reqwest::{
+    MusicBrainzMetadataProvider, OmdbVideoMetadataProvider, TmdbVideoMetadataProvider,
+};
 
 /// One configured provider link, selected at startup by configuration.
 #[non_exhaustive]
@@ -102,8 +101,8 @@ pub(crate) fn configured_music_provider(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::model::configuration::{MusicProvider, VideoProvider};
-    use crate::domain::model::media_query::{MediaQueryError, VideoKind};
+    use crate::domain::model::{MediaQueryError, MusicProvider, VideoKind, VideoProvider};
+
     use std::error::Error;
     use std::time::Duration;
     use wiremock::matchers::{method, path};

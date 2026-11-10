@@ -1,5 +1,4 @@
-use crate::domain::model::external_ref::ExternalRef;
-use crate::domain::model::media_query::VideoKind;
+use crate::domain::model::{ExternalRef, VideoKind};
 
 /// One video search result, as any provider reports it.
 ///

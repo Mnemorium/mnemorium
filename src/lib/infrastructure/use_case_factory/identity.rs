@@ -1,21 +1,16 @@
 use std::sync::Arc;
 
-use crate::application::port::get_permission::GetPermissionUseCase;
-use crate::application::port::identity_use_case_factory::IdentityUseCaseFactory;
-use crate::application::port::login_user::LoginUserUseCase;
-use crate::application::port::patch_credential::PatchCredentialUseCase;
-use crate::application::port::register_user::RegisterUserUseCase;
-use crate::application::port::replace_permission::ReplacePermissionUseCase;
-use crate::application::use_case::get_permission::GetPermission;
-use crate::application::use_case::login_user::LoginUser;
-use crate::application::use_case::patch_credential::PatchCredential;
-use crate::application::use_case::register_user::RegisterUser;
-use crate::application::use_case::replace_permission::ReplacePermission;
-use crate::domain::model::configuration::Configuration;
-use crate::domain::model::instance_state::InstanceState;
-use crate::infrastructure::outbound::argon2::password_hasher::Argon2PasswordHasher;
-use crate::infrastructure::outbound::jwt::token_provider::JwtTokenProvider;
-use crate::infrastructure::outbound::sqlx::unit_of_work::SqlxUnitOfWorkFactory;
+use crate::application::port::{
+    GetPermissionUseCase, IdentityUseCaseFactory, LoginUserUseCase, PatchCredentialUseCase,
+    RegisterUserUseCase, ReplacePermissionUseCase,
+};
+use crate::application::use_case::{
+    GetPermission, LoginUser, PatchCredential, RegisterUser, ReplacePermission,
+};
+use crate::domain::model::{Configuration, InstanceState};
+use crate::infrastructure::outbound::argon2::Argon2PasswordHasher;
+use crate::infrastructure::outbound::jwt::JwtTokenProvider;
+use crate::infrastructure::outbound::sqlx::SqlxUnitOfWorkFactory;
 
 /// Builds the Identity use cases from the immutable configuration and identity.
 ///

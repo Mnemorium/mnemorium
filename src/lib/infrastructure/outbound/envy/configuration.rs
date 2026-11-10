@@ -1,13 +1,12 @@
 use std::env::vars;
 use std::future::{Future, ready};
 
-use crate::domain::model::configuration::Rotation;
-use crate::domain::model::partial_configuration::{
+use crate::domain::model::{
     PartialAsset, PartialAssetUpload, PartialConfiguration, PartialJwt, PartialLibrary,
     PartialLogging, PartialPersistence, PartialRateLimit, PartialSecurity, PartialSqlite3,
+    Rotation,
 };
-use crate::domain::port::configuration_source::EnvironmentConfiguration;
-use crate::domain::port::error::ConfigurationSourceError;
+use crate::domain::port::{ConfigurationSourceError, EnvironmentConfiguration};
 
 /// Prefix every server environment variable carries.
 const ENVIRONMENT_PREFIX: &str = "MNEMORIUM_";

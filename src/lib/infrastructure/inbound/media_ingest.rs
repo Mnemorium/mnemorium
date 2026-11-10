@@ -8,16 +8,16 @@ use tokio::sync::{Mutex, watch};
 use tokio::task::JoinHandle;
 use tokio::time::{Instant, sleep};
 
-use crate::application::port::ingest_media::{IngestMediaCommand, IngestRequest};
-use crate::application::port::library_use_case_factory::LibraryUseCaseFactory;
-use crate::application::port::media_change_source::{
-    MediaChange, MediaChangeSource, MediaChangeSourceError,
+use crate::application::port::{
+    IngestMediaCommand, IngestRequest, LibraryUseCaseFactory, MediaChange, MediaChangeSource,
+    MediaChangeSourceError,
 };
 use crate::application::security_event;
-use crate::application::use_case::upload_layout::{MEDIA_ROOT, media_root};
-use crate::domain::port::media_source::{MediaEntry, MediaSource};
-use crate::infrastructure::outbound::file_system::media_source::LocalMediaSource;
-use crate::infrastructure::outbound::notify::media_change_source::NotifyMediaChangeSource;
+use crate::application::use_case::{MEDIA_ROOT, media_root};
+use crate::domain::port::{MediaEntry, MediaSource};
+use crate::infrastructure::outbound::file_system::LocalMediaSource;
+use crate::infrastructure::outbound::notify::NotifyMediaChangeSource;
+
 use tracing::warn;
 
 /// How long a path must keep the same size and modification instant before it is
@@ -330,12 +330,13 @@ impl MediaChangeSource for StoppedMediaChangeSource {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::application::port::ingest_media::{
-        IngestMediaResponse, IngestMediaUseCase, MockIngestMediaUseCase,
+    use crate::application::port::{
+        IngestMediaResponse, IngestMediaUseCase, MockIngestMediaUseCase, MockLibraryUseCaseFactory,
+        MockMediaChangeSource,
     };
-    use crate::application::port::library_use_case_factory::MockLibraryUseCaseFactory;
-    use crate::application::port::media_change_source::MockMediaChangeSource;
-    use crate::domain::port::media_source::MockMediaSource;
+
+    use crate::domain::port::MockMediaSource;
+
     use chrono::NaiveDateTime;
     use std::error::Error;
     use std::future::pending;

@@ -4,20 +4,16 @@ use std::sync::Arc;
 
 use chrono::Utc;
 
-use crate::application::port::create_playlist::{
+use crate::application::port::{
     CreatePlaylistCommand, CreatePlaylistError, CreatePlaylistResponse, CreatePlaylistUseCase,
 };
 use crate::application::security_event;
-use crate::domain::model::music_playlist::MusicPlaylist;
-use crate::domain::port::error::RepositoryError;
-use crate::domain::port::library_unit_of_work::LibraryUnitOfWork;
-use crate::domain::port::music_playlist_repository::{
-    MusicPlaylistFilter, MusicPlaylistRepository as _,
+use crate::domain::model::MusicPlaylist;
+use crate::domain::port::{
+    LibraryUnitOfWork, MusicPlaylistFilter, MusicPlaylistRepository as _, RepositoryError,
+    UnitOfWork as _, UnitOfWorkFactory, UserFilter, UserRepository as _, UserUnitOfWork,
 };
-use crate::domain::port::unit_of_work::{UnitOfWork as _, UnitOfWorkFactory};
-use crate::domain::port::user_repository::{UserFilter, UserRepository as _};
-use crate::domain::port::user_unit_of_work::UserUnitOfWork;
-use crate::domain::service::name_policy::{NamePolicy, NamePolicyError};
+use crate::domain::service::{NamePolicy, NamePolicyError};
 
 /// Use case implementation for creating a playlist.
 pub(crate) struct CreatePlaylist<F> {
@@ -149,10 +145,12 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::model::user::{Role, User};
-    use crate::domain::port::music_playlist_repository::MockMusicPlaylistRepository;
-    use crate::domain::port::user_repository::MockUserRepository;
-    use crate::domain::service::name_policy::MAX_NAME_LENGTH;
+    use crate::domain::model::{Role, User};
+
+    use crate::domain::port::{MockMusicPlaylistRepository, MockUserRepository};
+
+    use crate::domain::service::MAX_NAME_LENGTH;
+
     use crate::test_helpers::*;
     use chrono::NaiveDateTime;
     use std::error::Error;

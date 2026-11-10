@@ -2,28 +2,21 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
-use crate::application::port::apply_music_album::{
+use crate::application::port::{
     ApplyMusicAlbumCommand, ApplyMusicAlbumError, ApplyMusicAlbumResponse, ApplyMusicAlbumUseCase,
 };
 use crate::application::security_event;
-use crate::domain::model::music_album::MusicAlbum;
-use crate::domain::model::music_candidate::MusicTarget;
-use crate::domain::model::music_medium::{MediumIndex, MusicMedium};
-use crate::domain::model::music_metadata::{Edition, MusicMetadata};
-use crate::domain::model::music_recording::{MusicRecording, TrackIndex};
-use crate::domain::model::permission::Action;
-use crate::domain::port::error::RepositoryError;
-use crate::domain::port::identity_unit_of_work::IdentityUnitOfWork;
-use crate::domain::port::library_unit_of_work::LibraryUnitOfWork;
-use crate::domain::port::music_album_repository::{
-    MusicAlbumFilter, MusicAlbumRepository as _, MusicRecordingFilter,
+use crate::domain::model::{
+    Action, Edition, MediumIndex, MusicAlbum, MusicMedium, MusicMetadata, MusicRecording,
+    MusicTarget, TrackIndex,
 };
-use crate::domain::port::music_metadata_provider::MusicMetadataProvider;
-use crate::domain::port::permission_repository::{PermissionFilter, PermissionRepository as _};
-use crate::domain::port::unit_of_work::{UnitOfWork as _, UnitOfWorkFactory};
-use crate::domain::port::user_repository::{UserFilter, UserRepository as _};
-use crate::domain::port::user_unit_of_work::UserUnitOfWork;
-use crate::domain::service::authorization::{Authorization, Decision};
+use crate::domain::port::{
+    IdentityUnitOfWork, LibraryUnitOfWork, MusicAlbumFilter, MusicAlbumRepository as _,
+    MusicMetadataProvider, MusicRecordingFilter, PermissionFilter, PermissionRepository as _,
+    RepositoryError, UnitOfWork as _, UnitOfWorkFactory, UserFilter, UserRepository as _,
+    UserUnitOfWork,
+};
+use crate::domain::service::{Authorization, Decision};
 
 /// The genre an applied album carries when the provider reports none.
 const DEFAULT_GENRE: &str = "UNKNOWN";
@@ -294,19 +287,20 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::application::port::apply_music_album::AlbumPlacement;
-    use crate::domain::alias::NumericID;
-    use crate::domain::model::configuration::ProviderId;
-    use crate::domain::model::external_ref::ExternalRef;
-    use crate::domain::model::music_album::ProductionType;
-    use crate::domain::model::music_medium::MusicMedium;
-    use crate::domain::model::music_metadata::{MediumFormat, MediumSummary};
-    use crate::domain::model::music_recording::{MusicRecording, TrackIndex};
-    use crate::domain::model::user::{Role, User};
-    use crate::domain::port::error::ExternalServiceError;
-    use crate::domain::port::music_album_repository::MockMusicAlbumRepository;
-    use crate::domain::port::music_metadata_provider::MockMusicMetadataProvider;
-    use crate::domain::port::user_repository::MockUserRepository;
+    use crate::application::port::AlbumPlacement;
+
+    use crate::domain::NumericID;
+
+    use crate::domain::model::{
+        ExternalRef, MediumFormat, MediumSummary, MusicMedium, MusicRecording, ProductionType,
+        ProviderId, Role, TrackIndex, User,
+    };
+
+    use crate::domain::port::{
+        ExternalServiceError, MockMusicAlbumRepository, MockMusicMetadataProvider,
+        MockUserRepository,
+    };
+
     use crate::test_helpers::*;
     use chrono::NaiveDate;
     use std::error::Error;

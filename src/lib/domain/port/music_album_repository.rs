@@ -1,10 +1,8 @@
 use std::future::Future;
 
-use crate::domain::alias::NumericID;
-use crate::domain::model::music_album::MusicAlbum;
-use crate::domain::model::music_medium::MusicMedium;
-use crate::domain::model::music_recording::MusicRecording;
-use crate::domain::port::error::RepositoryError;
+use crate::domain::NumericID;
+use crate::domain::model::{MusicAlbum, MusicMedium, MusicRecording};
+use crate::domain::port::RepositoryError;
 
 /// Search filters for [`MusicAlbumRepository::search`]. Every field is optional;
 /// an all-`None` filter returns every album.

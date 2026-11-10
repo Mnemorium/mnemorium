@@ -1,5 +1,5 @@
-use crate::domain::alias::NumericID;
-use crate::domain::model::episode::Episode;
+use crate::domain::NumericID;
+use crate::domain::model::Episode;
 
 /// The series-scoped identity of a season.
 ///

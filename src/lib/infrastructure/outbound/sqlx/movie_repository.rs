@@ -1,15 +1,12 @@
 use sqlx::{QueryBuilder, Sqlite, Transaction};
 
-use crate::domain::alias::NumericID;
-use crate::domain::model::movie::Movie;
-use crate::domain::model::video::Video;
-use crate::domain::port::error::RepositoryError;
-use crate::domain::port::movie_repository::{MovieFilter, MovieRepository};
+use crate::domain::NumericID;
+use crate::domain::model::{Movie, Video};
+use crate::domain::port::{MovieFilter, MovieRepository, RepositoryError};
 
 use super::error_mapping::stored_data_invalid;
-use super::model::movie::MovieRow;
-use super::model::scope::parse_scope;
-use super::model::video::parse_scan_type;
+use super::model::{MovieRow, parse_asset_scope, parse_scan_type};
+
 use super::query_filter::push_filter;
 
 /// Repository querying films and the videos that back them, backed by a
@@ -198,7 +195,7 @@ impl MovieRepository for SqlxMovieRepository<'_> {
                     .video_scope
                     .as_deref()
                     .map(|value| {
-                        parse_scope(value).ok_or_else(|| stored_data_invalid("unknown_scope"))
+                        parse_asset_scope(value).ok_or_else(|| stored_data_invalid("unknown_scope"))
                     })
                     .transpose()?;
                 let video = Video::try_new(
@@ -237,7 +234,8 @@ impl MovieRepository for SqlxMovieRepository<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::model::video::ScanType;
+    use crate::domain::model::ScanType;
+
     use crate::infrastructure::outbound::sqlx::test_helpers::begin_transaction;
     use crate::test_helpers::*;
     use chrono::NaiveDate;

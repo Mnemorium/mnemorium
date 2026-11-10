@@ -1,8 +1,8 @@
 use std::future::Future;
 
-use crate::domain::alias::NumericID;
-use crate::domain::model::credential::Credential;
-use crate::domain::port::error::RepositoryError;
+use crate::domain::NumericID;
+use crate::domain::model::Credential;
+use crate::domain::port::RepositoryError;
 
 /// Search filters for [`CredentialRepository::search`]. Every field is
 /// optional; an all-`None` filter returns every credential.

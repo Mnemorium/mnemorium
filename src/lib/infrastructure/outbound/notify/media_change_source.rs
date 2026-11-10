@@ -16,9 +16,7 @@ use notify::{EventKind, RecommendedWatcher, RecursiveMode, Watcher as _};
 use tokio::sync::mpsc::UnboundedReceiver;
 use tokio::sync::{Mutex, mpsc};
 
-use crate::application::port::media_change_source::{
-    MediaChange, MediaChangeSource, MediaChangeSourceError,
-};
+use crate::application::port::{MediaChange, MediaChangeSource, MediaChangeSourceError};
 use crate::application::security_event;
 
 /// Change source backed by the local filesystem watcher.

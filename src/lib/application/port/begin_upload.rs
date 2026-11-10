@@ -3,8 +3,8 @@ use std::pin::Pin;
 
 use chrono::NaiveDateTime;
 
-use crate::domain::alias::NumericID;
-use crate::domain::model::integrity_hash::{DIGEST_HEX_LENGTH, IntegrityHash};
+use crate::domain::NumericID;
+use crate::domain::model::{DIGEST_HEX_LENGTH, IntegrityHash};
 
 /// Command to begin a chunked upload session.
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -1,6 +1,6 @@
 use chrono::NaiveDate;
 
-use crate::domain::alias::NumericID;
+use crate::domain::NumericID;
 
 /// Row for a show with one of its seasons, one episode of that season and the
 /// video backing that episode.

@@ -1,9 +1,8 @@
 use std::future::Future;
 use std::pin::Pin;
 
-use crate::domain::alias::NumericID;
-use crate::domain::model::permission::{Permission, PermissionPreset};
-use crate::domain::model::user::Role;
+use crate::domain::NumericID;
+use crate::domain::model::{Permission, PermissionPreset, Role};
 
 /// Command fetching a user's effective permissions.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -4,13 +4,11 @@ use axum::response::Response;
 use serde::Deserialize;
 use utoipa::ToSchema;
 
-use crate::application::port::create_gallery::{CreateGalleryCommand, CreateGalleryError};
-use crate::infrastructure::inbound::rest::api_error::{ApiError, ErrorBody};
-use crate::infrastructure::inbound::rest::app_state::AppState;
-use crate::infrastructure::inbound::rest::hal::hal_json;
+use crate::application::port::{CreateGalleryCommand, CreateGalleryError};
 use crate::infrastructure::inbound::rest::handler::JsonObject;
 use crate::infrastructure::inbound::rest::handler::library::GalleryResponse;
-use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
+use crate::infrastructure::inbound::rest::middleware::AuthenticatedUser;
+use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody, hal_json};
 
 /// Payload to create a gallery owned by the caller.
 #[derive(Debug, Deserialize, ToSchema)]

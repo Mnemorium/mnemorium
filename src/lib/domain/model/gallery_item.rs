@@ -1,6 +1,6 @@
 use chrono::NaiveDateTime;
 
-use crate::domain::alias::NumericID;
+use crate::domain::NumericID;
 
 /// Error returned when initialising a `GalleryItem`.
 #[derive(Debug, thiserror::Error)]

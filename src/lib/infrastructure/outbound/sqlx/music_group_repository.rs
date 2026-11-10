@@ -1,11 +1,11 @@
 use sqlx::{QueryBuilder, Sqlite, Transaction};
 
-use crate::domain::model::music_group::MusicGroup;
-use crate::domain::port::error::RepositoryError;
-use crate::domain::port::music_group_repository::{MusicGroupFilter, MusicGroupRepository};
+use crate::domain::model::MusicGroup;
+use crate::domain::port::{MusicGroupFilter, MusicGroupRepository, RepositoryError};
 
 use super::error_mapping::stored_data_invalid;
-use super::model::music_group::MusicGroupRow;
+use super::model::MusicGroupRow;
+
 use super::query_filter::push_filter;
 
 /// Repository persisting music groups, backed by a `SQLite` transaction.
@@ -109,7 +109,8 @@ fn domain_group(row: MusicGroupRow) -> Result<MusicGroup, RepositoryError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::alias::NumericID;
+    use crate::domain::NumericID;
+
     use crate::infrastructure::outbound::sqlx::test_helpers::begin_transaction;
     use std::error::Error;
 

@@ -5,12 +5,9 @@
 //! is application orchestration and stays in the application layer; emitting
 //! the `authz_failed` event and mapping the denial belong to the use case.
 
-use crate::domain::model::asset::AssetContext;
-use crate::domain::model::file::File;
-use crate::domain::model::permission::{
-    Action, Permission, Protected, ResourceRef, RootAccess, Scope,
+use crate::domain::model::{
+    Action, AssetContext, File, Permission, Protected, ResourceRef, RootAccess, Scope, User,
 };
-use crate::domain::model::user::User;
 
 /// The rendering of a denial to the caller.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -249,13 +246,13 @@ impl Authorization {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::alias::NumericID;
-    use crate::domain::model::gallery::Gallery;
-    use crate::domain::model::integrity_hash::IntegrityHash;
-    use crate::domain::model::music_playlist::MusicPlaylist;
-    use crate::domain::model::permission::{ACTIONS, Global, PermissionError, ResourceKind};
-    use crate::domain::model::upload::{ChunkBitmap, Upload};
-    use crate::domain::model::user::Role;
+    use crate::domain::NumericID;
+
+    use crate::domain::model::{
+        ACTIONS, ChunkBitmap, Gallery, Global, IntegrityHash, MusicPlaylist, PermissionError,
+        ResourceKind, Role, Upload,
+    };
+
     use crate::test_helpers::*;
     use chrono::{NaiveDate, NaiveDateTime};
     use std::collections::BTreeSet;

@@ -10,8 +10,7 @@ use std::path::Path;
 
 use tokio::task::spawn_blocking;
 
-use crate::domain::port::content_type_sniffer::ContentTypeSniffer;
-use crate::domain::port::error::ContentTypeSnifferError;
+use crate::domain::port::{ContentTypeSniffer, ContentTypeSnifferError};
 
 /// Content-type sniffer backed by `infer`'s magic-number signatures.
 pub(crate) struct InferContentTypeSniffer;

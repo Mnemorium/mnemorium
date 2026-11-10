@@ -2,14 +2,12 @@ use std::collections::HashMap;
 
 use sqlx::{QueryBuilder, Sqlite, Transaction};
 
-use crate::domain::alias::NumericID;
-use crate::domain::model::integrity_hash::IntegrityHash;
-use crate::domain::model::upload::{ChunkBitmap, Upload};
-use crate::domain::port::error::RepositoryError;
-use crate::domain::port::upload_repository::{UploadFilter, UploadRepository};
+use crate::domain::NumericID;
+use crate::domain::model::{ChunkBitmap, IntegrityHash, Upload};
+use crate::domain::port::{RepositoryError, UploadFilter, UploadRepository};
 
 use super::error_mapping::emit_catalogued_failure;
-use super::model::upload::Upload as SqlxUpload;
+use super::model::Upload as SqlxUpload;
 
 /// Repository persisting uploads, backed by a `SQLite` transaction.
 pub(crate) struct SqlxUploadRepository<'transaction> {

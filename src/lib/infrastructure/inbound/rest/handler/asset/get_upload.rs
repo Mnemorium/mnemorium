@@ -3,13 +3,11 @@ use axum::extract::{Path, State};
 use axum::http::{HeaderValue, header};
 use axum::response::{IntoResponse as _, Response};
 
-use crate::application::port::get_upload::{GetUploadCommand, GetUploadError};
-use crate::domain::alias::NumericID;
-use crate::infrastructure::inbound::rest::api_error::{ApiError, ErrorBody};
-use crate::infrastructure::inbound::rest::app_state::AppState;
-use crate::infrastructure::inbound::rest::hal::HAL_CONTENT_TYPE;
+use crate::application::port::{GetUploadCommand, GetUploadError};
+use crate::domain::NumericID;
 use crate::infrastructure::inbound::rest::handler::asset::UploadSessionResponse;
-use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
+use crate::infrastructure::inbound::rest::middleware::AuthenticatedUser;
+use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody, HAL_CONTENT_TYPE};
 
 /// Map a get-upload error to its API error.
 impl From<GetUploadError> for ApiError {

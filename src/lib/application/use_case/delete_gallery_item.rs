@@ -5,28 +5,19 @@ use std::sync::Arc;
 
 use chrono::Utc;
 
-use crate::application::port::delete_gallery_item::{
+use crate::application::port::{
     DeleteGalleryItemCommand, DeleteGalleryItemError, DeleteGalleryItemUseCase,
 };
 use crate::application::security_event;
-use crate::domain::model::gallery_item::GalleryItemMedia;
-use crate::domain::model::permission::Action;
-use crate::domain::port::asset_unit_of_work::AssetUnitOfWork;
-use crate::domain::port::error::RepositoryError;
-use crate::domain::port::file_repository::{FileFilter, FileRepository as _};
-use crate::domain::port::file_storage::FileStorage;
-use crate::domain::port::gallery_repository::{
-    GalleryFilter, GalleryItemFilter, GalleryRepository as _,
+use crate::domain::model::{Action, GalleryItemMedia};
+use crate::domain::port::{
+    AssetUnitOfWork, FileFilter, FileRepository as _, FileStorage, GalleryFilter,
+    GalleryItemFilter, GalleryRepository as _, IdentityUnitOfWork, ImageFilter,
+    ImageRepository as _, LibraryUnitOfWork, PermissionFilter, PermissionRepository as _,
+    RepositoryError, UnitOfWork as _, UnitOfWorkFactory, UserFilter, UserRepository as _,
+    UserUnitOfWork, VideoFilter, VideoRepository as _,
 };
-use crate::domain::port::identity_unit_of_work::IdentityUnitOfWork;
-use crate::domain::port::image_repository::{ImageFilter, ImageRepository as _};
-use crate::domain::port::library_unit_of_work::LibraryUnitOfWork;
-use crate::domain::port::permission_repository::{PermissionFilter, PermissionRepository as _};
-use crate::domain::port::unit_of_work::{UnitOfWork as _, UnitOfWorkFactory};
-use crate::domain::port::user_repository::{UserFilter, UserRepository as _};
-use crate::domain::port::user_unit_of_work::UserUnitOfWork;
-use crate::domain::port::video_repository::{VideoFilter, VideoRepository as _};
-use crate::domain::service::authorization::{Authorization, Decision};
+use crate::domain::service::{Authorization, Decision};
 
 /// Use case implementation for deleting one item of a gallery.
 pub(crate) struct DeleteGalleryItem<F, S> {
@@ -281,19 +272,16 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::model::file::{File, Origin};
-    use crate::domain::model::gallery::Gallery;
-    use crate::domain::model::gallery_item::GalleryItem;
-    use crate::domain::model::image::{Image, Orientation};
-    use crate::domain::model::integrity_hash::IntegrityHash;
-    use crate::domain::model::user::{Role, User};
-    use crate::domain::model::video::{ScanType, Video};
-    use crate::domain::port::file_repository::MockFileRepository;
-    use crate::domain::port::file_storage::MockFileStorage;
-    use crate::domain::port::gallery_repository::{GalleryItemDetail, MockGalleryRepository};
-    use crate::domain::port::image_repository::MockImageRepository;
-    use crate::domain::port::user_repository::MockUserRepository;
-    use crate::domain::port::video_repository::MockVideoRepository;
+    use crate::domain::model::{
+        File, Gallery, GalleryItem, Image, IntegrityHash, Orientation, Origin, Role, ScanType,
+        User, Video,
+    };
+
+    use crate::domain::port::{
+        GalleryItemDetail, MockFileRepository, MockFileStorage, MockGalleryRepository,
+        MockImageRepository, MockUserRepository, MockVideoRepository,
+    };
+
     use crate::test_helpers::*;
     use chrono::{NaiveDate, NaiveDateTime};
     use std::error::Error;

@@ -2,17 +2,13 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
-use crate::application::port::get_image::{
-    GetImageCommand, GetImageError, GetImageResponse, GetImageUseCase,
-};
+use crate::application::port::{GetImageCommand, GetImageError, GetImageResponse, GetImageUseCase};
 use crate::application::use_case::asset_access;
 use crate::application::use_case::asset_access::AssetAccessError;
-use crate::domain::port::asset_unit_of_work::AssetUnitOfWork;
-use crate::domain::port::content_link::ContentLinkProvider;
-use crate::domain::port::identity_unit_of_work::IdentityUnitOfWork;
-use crate::domain::port::library_unit_of_work::LibraryUnitOfWork;
-use crate::domain::port::unit_of_work::{UnitOfWork as _, UnitOfWorkFactory};
-use crate::domain::port::user_unit_of_work::UserUnitOfWork;
+use crate::domain::port::{
+    AssetUnitOfWork, ContentLinkProvider, IdentityUnitOfWork, LibraryUnitOfWork, UnitOfWork as _,
+    UnitOfWorkFactory, UserUnitOfWork,
+};
 
 /// Use case implementation for fetching one typed image.
 pub(crate) struct GetImage<F, L> {
@@ -103,21 +99,16 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::alias::NumericID;
-    use crate::domain::model::file::File;
-    use crate::domain::model::gallery::Gallery;
-    use crate::domain::model::gallery_item::GalleryItem;
-    use crate::domain::model::image::{Image, Orientation};
-    use crate::domain::model::scope::Scope as AssetScope;
-    use crate::domain::port::audio_repository::MockAudioRepository;
-    use crate::domain::port::content_link::{ContentLink, MockContentLinkProvider};
-    use crate::domain::port::error::RepositoryError;
-    use crate::domain::port::file_repository::MockFileRepository;
-    use crate::domain::port::gallery_repository::{GalleryItemDetail, MockGalleryRepository};
-    use crate::domain::port::image_repository::MockImageRepository;
-    use crate::domain::port::music_playlist_repository::MockMusicPlaylistRepository;
-    use crate::domain::port::user_repository::MockUserRepository;
-    use crate::domain::port::video_repository::MockVideoRepository;
+    use crate::domain::NumericID;
+
+    use crate::domain::model::{AssetScope, File, Gallery, GalleryItem, Image, Orientation};
+
+    use crate::domain::port::{
+        ContentLink, GalleryItemDetail, MockAudioRepository, MockContentLinkProvider,
+        MockFileRepository, MockGalleryRepository, MockImageRepository,
+        MockMusicPlaylistRepository, MockUserRepository, MockVideoRepository, RepositoryError,
+    };
+
     use crate::test_helpers::*;
     use chrono::{NaiveDate, NaiveDateTime};
     use std::error::Error;

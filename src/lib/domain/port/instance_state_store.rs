@@ -1,7 +1,7 @@
 use std::future::Future;
 
-use crate::domain::model::instance_state::InstanceState;
-use crate::domain::port::error::InstanceStateStoreError;
+use crate::domain::model::InstanceState;
+use crate::domain::port::InstanceStateStoreError;
 
 /// Port for reading and persisting the instance identity.
 ///

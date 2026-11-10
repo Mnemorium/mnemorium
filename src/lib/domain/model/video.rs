@@ -1,5 +1,5 @@
-use crate::domain::alias::{NonNegativeF64, NumericID, PositiveI64};
-use crate::domain::model::scope::Scope;
+use crate::domain::model::AssetScope;
+use crate::domain::{NonNegativeF64, NumericID, PositiveI64};
 
 /// Error returned when initialising a `Video`.
 #[derive(Debug, thiserror::Error)]
@@ -62,8 +62,8 @@ pub(crate) struct Video {
     id: NumericID,
     /// Scan type of the video.
     scan_type: ScanType,
-    /// Scope fixed by the first attachment, when set.
-    scope: Option<Scope>,
+    /// Asset scope fixed by the first attachment, when set.
+    scope: Option<AssetScope>,
     /// Width of the video, in pixels.
     width: i64,
 }
@@ -108,7 +108,7 @@ impl Video {
         id: NumericID,
         probed: ProbedVideo,
         file_id: NumericID,
-        scope: Option<Scope>,
+        scope: Option<AssetScope>,
     ) -> Self {
         Self {
             codec: probed.codec,
@@ -144,7 +144,7 @@ impl Video {
 
     /// Return the scope fixed by the first attachment, if any.
     #[must_use]
-    pub(crate) fn scope(&self) -> Option<Scope> {
+    pub(crate) fn scope(&self) -> Option<AssetScope> {
         self.scope
     }
 
@@ -172,7 +172,7 @@ impl Video {
         color_id: String,
         scan_type: ScanType,
         file_id: NumericID,
-        scope: Option<Scope>,
+        scope: Option<AssetScope>,
     ) -> Result<Self, VideoError> {
         if !duration_ms.is_finite() || duration_ms < 0.0f64 {
             return Err(VideoError::InvalidDurationMs);

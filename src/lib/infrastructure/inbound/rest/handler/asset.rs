@@ -1,35 +1,35 @@
 /// The cancel-upload endpoint.
-pub(crate) mod delete_upload;
+mod delete_upload;
 /// The get-audio endpoint.
-pub(crate) mod get_audio;
+mod get_audio;
 /// The get-audio content endpoint.
-pub(crate) mod get_audio_content;
+mod get_audio_content;
 /// The get-audio file alias endpoint.
-pub(crate) mod get_audio_file;
+mod get_audio_file;
 /// The get-file endpoint.
-pub(crate) mod get_file;
+mod get_file;
 /// The get-file content endpoint.
-pub(crate) mod get_file_content;
+mod get_file_content;
 /// The get-image endpoint.
-pub(crate) mod get_image;
+mod get_image;
 /// The get-image content endpoint.
-pub(crate) mod get_image_content;
+mod get_image_content;
 /// The get-image file alias endpoint.
-pub(crate) mod get_image_file;
+mod get_image_file;
 /// The get-upload endpoint.
-pub(crate) mod get_upload;
+mod get_upload;
 /// The get-video endpoint.
-pub(crate) mod get_video;
+mod get_video;
 /// The get-video content endpoint.
-pub(crate) mod get_video_content;
+mod get_video_content;
 /// The get-video file alias endpoint.
-pub(crate) mod get_video_file;
+mod get_video_file;
 /// The begin-upload endpoint.
-pub(crate) mod post_upload;
+mod post_upload;
 /// The complete-upload endpoint.
-pub(crate) mod post_upload_complete;
+mod post_upload_complete;
 /// The store-chunk endpoint.
-pub(crate) mod put_upload_chunk;
+mod put_upload_chunk;
 
 use std::future::Future;
 use std::sync::Arc;
@@ -48,19 +48,16 @@ use utoipa::ToSchema;
 use utoipa_axum::router::{OpenApiRouter, UtoipaMethodRouterExt as _};
 use utoipa_axum::routes;
 
-use crate::application::port::get_asset_content::{
+use crate::application::port::{
     AssetTarget, ContentOutcome, GetAssetContentCommand, GetAssetContentResponse,
 };
-use crate::domain::alias::NumericID;
-use crate::domain::port::content_link::{ContentLink, ContentLinkProvider as _};
-use crate::domain::port::error::TokenProviderError;
-use crate::domain::port::token_provider::TokenProvider as _;
-use crate::infrastructure::inbound::rest::api_error::ApiError;
-use crate::infrastructure::inbound::rest::app_state::AppState;
-use crate::infrastructure::inbound::rest::hal::Link;
-use crate::infrastructure::inbound::rest::middleware::auth::authenticate;
-use crate::infrastructure::outbound::jwt::content_link::JwtContentLinkProvider;
-use crate::infrastructure::outbound::jwt::token_provider::JwtTokenProvider;
+use crate::domain::NumericID;
+use crate::domain::port::{
+    ContentLink, ContentLinkProvider as _, TokenProvider as _, TokenProviderError,
+};
+use crate::infrastructure::inbound::rest::middleware::authenticate;
+use crate::infrastructure::inbound::rest::{ApiError, AppState, Link};
+use crate::infrastructure::outbound::jwt::{JwtContentLinkProvider, JwtTokenProvider};
 
 /// Date and time format of the asset representations.
 const TIMESTAMP_FORMAT: &str = "%Y-%m-%dT%H:%M:%S";
@@ -532,7 +529,8 @@ pub(crate) fn asset_routes(state: &AppState) -> OpenApiRouter<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::infrastructure::inbound::rest::hal::hal_json;
+    use crate::infrastructure::inbound::rest::hal_json;
+
     use crate::test_helpers::{TEST_JWT_SECRET, app_state};
     use axum::Router;
     use axum::body::Body;

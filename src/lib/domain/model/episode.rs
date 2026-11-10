@@ -1,7 +1,7 @@
 use chrono::NaiveDate;
 
-use crate::domain::alias::NumericID;
-use crate::domain::model::video::Video;
+use crate::domain::NumericID;
+use crate::domain::model::Video;
 
 /// The season-scoped identity of an episode.
 ///

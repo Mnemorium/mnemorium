@@ -24,18 +24,12 @@ use tokio::sync::Mutex;
 use tokio::time::{Instant, sleep_until};
 
 use crate::application::security_event;
-use crate::domain::model::artwork::Artwork;
-use crate::domain::model::configuration::ProviderId;
-use crate::domain::model::external_ref::ExternalRef;
-use crate::domain::model::music_album::ProductionType;
-use crate::domain::model::music_candidate::{MusicCandidate, MusicTarget};
-use crate::domain::model::music_metadata::{
-    ArtistCredit, Edition, MediumFormat, MediumSummary, MusicMetadata, ReleaseStatus,
+use crate::domain::model::{
+    ArtistCredit, Artwork, Edition, ExternalRef, MediumFormat, MediumSummary, MusicCandidate,
+    MusicKind, MusicMetadata, MusicQuery, MusicTarget, ProductionType, ProviderId, ReleaseStatus,
 };
-use crate::domain::model::music_query::{MusicKind, MusicQuery};
-use crate::domain::port::error::ExternalServiceError;
-use crate::domain::port::music_metadata_provider::MusicMetadataProvider;
-use crate::domain::service::release_order::ReleaseOrder;
+use crate::domain::port::{ExternalServiceError, MusicMetadataProvider};
+use crate::domain::service::ReleaseOrder;
 use crate::infrastructure::outbound::reqwest::{
     ArtworkClient, REQUEST_TIMEOUT, classify_status, classify_transport_error, log_provider_fault,
     read_payload, request_url,
@@ -827,7 +821,8 @@ fn year(value: Option<&str>) -> Option<u32> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::model::music_query::MusicQueryError;
+    use crate::domain::model::MusicQueryError;
+
     use rstest::rstest;
     use std::collections::VecDeque;
     use std::error::Error;

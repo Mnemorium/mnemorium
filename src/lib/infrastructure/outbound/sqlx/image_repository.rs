@@ -1,12 +1,13 @@
 use sqlx::{QueryBuilder, Sqlite, Transaction};
 
-use crate::domain::model::image::{Image, Orientation};
-use crate::domain::port::error::RepositoryError;
-use crate::domain::port::image_repository::{ImageFilter, ImageRepository};
+use crate::domain::model::{Image, Orientation};
+use crate::domain::port::{ImageFilter, ImageRepository, RepositoryError};
 
 use super::error_mapping::stored_data_invalid;
-use super::model::image::{Image as SqlxImage, Orientation as SqlxOrientation};
-use super::model::scope::{parse_scope, scope_token};
+use super::model::{
+    Image as SqlxImage, Orientation as SqlxOrientation, asset_scope_token, parse_asset_scope,
+};
+
 use super::query_filter::push_filter;
 
 /// Repository persisting images, backed by a `SQLite` transaction.
@@ -44,7 +45,7 @@ impl ImageRepository for SqlxImageRepository<'_> {
         .bind(sqlx_orientation(image.orientation()))
         .bind(image.created_at())
         .bind(image.file_id())
-        .bind(image.scope().map(scope_token))
+        .bind(image.scope().map(asset_scope_token))
         .fetch_one(&mut **self.transaction)
         .await?;
 
@@ -138,7 +139,7 @@ fn domain_image(row: SqlxImage) -> Result<Image, RepositoryError> {
     let scope = row
         .scope
         .as_deref()
-        .map(|value| parse_scope(value).ok_or_else(|| stored_data_invalid("image_scope")))
+        .map(|value| parse_asset_scope(value).ok_or_else(|| stored_data_invalid("image_scope")))
         .transpose()?;
 
     Image::try_new(
@@ -157,7 +158,8 @@ fn domain_image(row: SqlxImage) -> Result<Image, RepositoryError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::model::scope::Scope;
+    use crate::domain::model::AssetScope;
+
     use crate::infrastructure::outbound::sqlx::test_helpers::begin_transaction;
     use chrono::NaiveDate;
     use rstest::rstest;
@@ -273,7 +275,7 @@ mod tests {
             Orientation::Landscape,
             NaiveDate::from_ymd_opt(2026, 10, 6).ok_or("invalid fixture date")?,
             10,
-            Some(Scope::Library),
+            Some(AssetScope::Library),
         )?;
 
         // Act
@@ -289,8 +291,11 @@ mod tests {
             .next();
 
         // Assert
-        assert_eq!(persisted.scope(), Some(Scope::Library));
-        assert_eq!(found.and_then(|image| image.scope()), Some(Scope::Library));
+        assert_eq!(persisted.scope(), Some(AssetScope::Library));
+        assert_eq!(
+            found.and_then(|image| image.scope()),
+            Some(AssetScope::Library)
+        );
         Ok(())
     }
 

@@ -1,8 +1,8 @@
 use std::future::Future;
 
-use crate::domain::alias::NumericID;
-use crate::domain::model::music_playlist::MusicPlaylist;
-use crate::domain::port::error::RepositoryError;
+use crate::domain::NumericID;
+use crate::domain::model::MusicPlaylist;
+use crate::domain::port::RepositoryError;
 
 /// Search filters for [`MusicPlaylistRepository::search`]. Every field is
 /// optional; an all-`None` filter returns every playlist.

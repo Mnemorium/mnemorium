@@ -1,14 +1,11 @@
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 
-use crate::application::port::delete_gallery_item::{
-    DeleteGalleryItemCommand, DeleteGalleryItemError,
-};
-use crate::domain::alias::NumericID;
-use crate::infrastructure::inbound::rest::api_error::{ApiError, ErrorBody};
-use crate::infrastructure::inbound::rest::app_state::AppState;
+use crate::application::port::{DeleteGalleryItemCommand, DeleteGalleryItemError};
+use crate::domain::NumericID;
 use crate::infrastructure::inbound::rest::handler::library::{parse_gallery_id, parse_item_id};
-use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
+use crate::infrastructure::inbound::rest::middleware::AuthenticatedUser;
+use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody};
 
 /// Map a delete-gallery-item error to its API error.
 impl From<DeleteGalleryItemError> for ApiError {

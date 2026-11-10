@@ -4,22 +4,15 @@ use serde::Serialize;
 use tracing::warn;
 use utoipa::ToSchema;
 
-use crate::application::port::resolve_music_metadata::{
-    ResolveMusicMetadataCommand, ResolveMusicMetadataError,
+use crate::application::port::{ResolveMusicMetadataCommand, ResolveMusicMetadataError};
+use crate::domain::model::{
+    Edition, ExternalRef, MusicKind, MusicMetadata, MusicTarget, ProductionType, ProviderId,
 };
-use crate::domain::model::configuration::ProviderId;
-use crate::domain::model::external_ref::ExternalRef;
-use crate::domain::model::music_album::ProductionType;
-use crate::domain::model::music_candidate::MusicTarget;
-use crate::domain::model::music_metadata::{Edition, MusicMetadata};
-use crate::domain::model::music_query::MusicKind;
-use crate::infrastructure::inbound::rest::api_error::{ApiError, ErrorBody};
-use crate::infrastructure::inbound::rest::app_state::AppState;
-use crate::infrastructure::inbound::rest::hal::{SelfLinks, hal_json};
 use crate::infrastructure::inbound::rest::handler::library::{
     ArtistCreditResponse, MusicMediumResponse, MusicReferenceResponse, format_date,
 };
-use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
+use crate::infrastructure::inbound::rest::middleware::AuthenticatedUser;
+use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody, SelfLinks, hal_json};
 
 /// One edition of an album, as identification reports it.
 #[derive(Debug, Serialize, ToSchema)]

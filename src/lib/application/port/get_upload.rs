@@ -3,7 +3,7 @@ use std::pin::Pin;
 
 use chrono::NaiveDateTime;
 
-use crate::domain::alias::NumericID;
+use crate::domain::NumericID;
 
 /// Command to fetch the state of an upload session.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

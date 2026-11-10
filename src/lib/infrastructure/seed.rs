@@ -19,8 +19,8 @@ use sqlx::SqlitePool;
 use tokio::fs;
 use tracing::info;
 
-use crate::domain::port::password_hasher::PasswordHasher as _;
-use crate::infrastructure::outbound::argon2::password_hasher::Argon2PasswordHasher;
+use crate::domain::port::PasswordHasher as _;
+use crate::infrastructure::outbound::argon2::Argon2PasswordHasher;
 
 /// The fixed password every seeded demo account shares.
 ///

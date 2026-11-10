@@ -1,40 +1,57 @@
 /// The audio repository adapter.
-pub(crate) mod audio_repository;
+mod audio_repository;
 /// The credential repository adapter.
-pub(crate) mod credential_repository;
-pub(crate) mod error_mapping;
+mod credential_repository;
+mod error_mapping;
 /// The file repository adapter.
-pub(crate) mod file_repository;
+mod file_repository;
 /// The gallery repository adapter.
-pub(crate) mod gallery_repository;
+mod gallery_repository;
 /// The image repository adapter.
-pub(crate) mod image_repository;
+mod image_repository;
 /// The mime type repository adapter.
-pub(crate) mod mime_type_repository;
+mod mime_type_repository;
 /// The SQL row models the repositories decode into.
 pub(crate) mod model;
 /// The movie repository adapter.
-pub(crate) mod movie_repository;
+mod movie_repository;
 /// The music album repository adapter.
-pub(crate) mod music_album_repository;
+mod music_album_repository;
 /// The music group repository adapter.
-pub(crate) mod music_group_repository;
+mod music_group_repository;
 /// The music playlist repository adapter.
-pub(crate) mod music_playlist_repository;
+mod music_playlist_repository;
 /// The permission repository adapter.
-pub(crate) mod permission_repository;
+mod permission_repository;
 /// The shared SQL filter and sort clause builders.
-pub(crate) mod query_filter;
+mod query_filter;
 /// The series repository adapter.
-pub(crate) mod series_repository;
+mod series_repository;
 /// The `SQLite` unit of work and its factory.
-pub(crate) mod unit_of_work;
+mod unit_of_work;
 /// The upload repository adapter.
-pub(crate) mod upload_repository;
+mod upload_repository;
 /// The user repository adapter.
-pub(crate) mod user_repository;
+mod user_repository;
 /// The video repository adapter.
-pub(crate) mod video_repository;
+mod video_repository;
+
+pub(crate) use self::audio_repository::SqlxAudioRepository;
+pub(crate) use self::credential_repository::SqlxCredentialRepository;
+pub(crate) use self::file_repository::SqlxFileRepository;
+pub(crate) use self::gallery_repository::SqlxGalleryRepository;
+pub(crate) use self::image_repository::SqlxImageRepository;
+pub(crate) use self::mime_type_repository::SqlxMimeTypeRepository;
+pub(crate) use self::movie_repository::SqlxMovieRepository;
+pub(crate) use self::music_album_repository::SqlxMusicAlbumRepository;
+pub(crate) use self::music_group_repository::SqlxMusicGroupRepository;
+pub(crate) use self::music_playlist_repository::SqlxMusicPlaylistRepository;
+pub(crate) use self::permission_repository::SqlxPermissionRepository;
+pub(crate) use self::series_repository::SqlxSeriesRepository;
+pub(crate) use self::unit_of_work::SqlxUnitOfWorkFactory;
+pub(crate) use self::upload_repository::SqlxUploadRepository;
+pub(crate) use self::user_repository::SqlxUserRepository;
+pub(crate) use self::video_repository::SqlxVideoRepository;
 
 use std::fs::File;
 use std::path::Path;
@@ -126,12 +143,13 @@ mod test_helpers {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::model::file::File;
-    use crate::domain::port::asset_unit_of_work::AssetUnitOfWork as _;
-    use crate::domain::port::error::RepositoryError;
-    use crate::domain::port::file_repository::{FileFilter, FileRepository as _};
-    use crate::domain::port::unit_of_work::{UnitOfWork as _, UnitOfWorkFactory as _};
-    use crate::infrastructure::outbound::sqlx::unit_of_work::SqlxUnitOfWorkFactory;
+    use crate::domain::model::File;
+
+    use crate::domain::port::{
+        AssetUnitOfWork as _, FileFilter, FileRepository as _, RepositoryError, UnitOfWork as _,
+        UnitOfWorkFactory as _,
+    };
+
     use crate::test_helpers::*;
     use chrono::Utc;
     use std::error::Error;

@@ -4,7 +4,7 @@ use sqlx::Error;
 use sqlx::error::ErrorKind;
 use tracing::{error, warn};
 
-use crate::domain::port::error::{RepositoryError, UnitOfWorkError};
+use crate::domain::port::{RepositoryError, UnitOfWorkError};
 
 /// `SQLite` extended result code for a trigger `RAISE(ABORT)`
 /// (`SQLITE_CONSTRAINT_TRIGGER`), which `sqlx` collapses into `ErrorKind::Other`.

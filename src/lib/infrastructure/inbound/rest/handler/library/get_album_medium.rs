@@ -1,15 +1,13 @@
 use axum::extract::{Path, State};
 use axum::response::Response;
 
-use crate::application::port::get_album_medium::GetAlbumMediumCommand;
-use crate::domain::alias::NumericID;
-use crate::infrastructure::inbound::rest::api_error::{ApiError, ErrorBody};
-use crate::infrastructure::inbound::rest::app_state::AppState;
-use crate::infrastructure::inbound::rest::hal::hal_json;
+use crate::application::port::GetAlbumMediumCommand;
+use crate::domain::NumericID;
 use crate::infrastructure::inbound::rest::handler::library::{
     MediumResponse, parse_album_id, parse_index,
 };
-use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
+use crate::infrastructure::inbound::rest::middleware::AuthenticatedUser;
+use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody, hal_json};
 
 /// Fetch one medium of a music album by its album identifier and medium index.
 ///

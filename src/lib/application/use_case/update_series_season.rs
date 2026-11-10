@@ -2,22 +2,18 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
-use crate::application::port::update_series_season::{
+use crate::application::port::{
     UpdateSeriesSeasonCommand, UpdateSeriesSeasonError, UpdateSeriesSeasonResponse,
     UpdateSeriesSeasonUseCase,
 };
 use crate::application::security_event;
-use crate::domain::model::permission::Action;
-use crate::domain::model::season::Season;
-use crate::domain::port::error::RepositoryError;
-use crate::domain::port::identity_unit_of_work::IdentityUnitOfWork;
-use crate::domain::port::library_unit_of_work::LibraryUnitOfWork;
-use crate::domain::port::permission_repository::{PermissionFilter, PermissionRepository as _};
-use crate::domain::port::series_repository::{SeriesFilter, SeriesRepository as _};
-use crate::domain::port::unit_of_work::{UnitOfWork as _, UnitOfWorkFactory};
-use crate::domain::port::user_repository::{UserFilter, UserRepository as _};
-use crate::domain::port::user_unit_of_work::UserUnitOfWork;
-use crate::domain::service::authorization::{Authorization, Decision};
+use crate::domain::model::{Action, Season};
+use crate::domain::port::{
+    IdentityUnitOfWork, LibraryUnitOfWork, PermissionFilter, PermissionRepository as _,
+    RepositoryError, SeriesFilter, SeriesRepository as _, UnitOfWork as _, UnitOfWorkFactory,
+    UserFilter, UserRepository as _, UserUnitOfWork,
+};
+use crate::domain::service::{Authorization, Decision};
 
 /// Use case implementation for updating a show season partially.
 pub(crate) struct UpdateSeriesSeason<F> {
@@ -174,15 +170,14 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::application::field_update::FieldUpdate;
-    use crate::domain::alias::NumericID;
-    use crate::domain::model::permission::{Permission, Scope};
-    use crate::domain::model::season::SeasonIndex;
-    use crate::domain::model::series::Series;
-    use crate::domain::model::user::{Role, User};
-    use crate::domain::port::permission_repository::MockPermissionRepository;
-    use crate::domain::port::series_repository::MockSeriesRepository;
-    use crate::domain::port::user_repository::MockUserRepository;
+    use crate::application::FieldUpdate;
+
+    use crate::domain::NumericID;
+
+    use crate::domain::model::{Permission, Role, Scope, SeasonIndex, Series, User};
+
+    use crate::domain::port::{MockPermissionRepository, MockSeriesRepository, MockUserRepository};
+
     use crate::test_helpers::*;
     use std::error::Error;
     use std::sync::atomic::Ordering;

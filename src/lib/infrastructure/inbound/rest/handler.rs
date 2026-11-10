@@ -6,13 +6,16 @@
 /// The Asset context endpoints.
 pub(crate) mod asset;
 /// The liveness endpoint.
-pub(crate) mod get_health;
+mod get_health;
 /// The Identity context endpoints.
 pub(crate) mod identity;
 /// The Library context endpoints.
 pub(crate) mod library;
 /// The User context endpoints.
 pub(crate) mod user;
+
+#[cfg(any(feature = "api-docs", test))]
+pub(crate) use self::get_health::{__path_get_health, get_health};
 
 use axum::extract::{FromRequest, Request};
 use axum::middleware;
@@ -28,17 +31,14 @@ use axum::{Json, routing};
 #[cfg(feature = "api-docs")]
 use utoipa_scalar::Servable as _;
 
-use crate::infrastructure::inbound::rest::api_error::ApiError;
-use crate::infrastructure::inbound::rest::app_state::AppState;
 use crate::infrastructure::inbound::rest::handler::asset::asset_routes;
 use crate::infrastructure::inbound::rest::handler::identity::identity_routes;
 use crate::infrastructure::inbound::rest::handler::library::library_routes;
 use crate::infrastructure::inbound::rest::handler::user::user_routes;
-use crate::infrastructure::inbound::rest::middleware::hal_errors::hal_errors;
-use crate::infrastructure::inbound::rest::middleware::rate_limit::LoginRateLimiter;
-use crate::infrastructure::inbound::rest::middleware::trace::tracing;
+use crate::infrastructure::inbound::rest::middleware::{LoginRateLimiter, hal_errors, tracing};
 #[cfg(feature = "api-docs")]
 use crate::infrastructure::inbound::rest::openapi;
+use crate::infrastructure::inbound::rest::{ApiError, AppState};
 
 /// A JSON request body that must be a JSON object.
 ///

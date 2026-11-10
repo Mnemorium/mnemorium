@@ -6,14 +6,12 @@ use tracing::warn;
 use utoipa::IntoParams;
 
 use super::{DEFAULT_LIMIT, MAX_LIMIT};
-use crate::application::port::list_series::ListSeriesCommand;
-use crate::infrastructure::inbound::rest::api_error::{ApiError, ErrorBody};
-use crate::infrastructure::inbound::rest::app_state::AppState;
-use crate::infrastructure::inbound::rest::hal::hal_json;
+use crate::application::port::ListSeriesCommand;
 use crate::infrastructure::inbound::rest::handler::library::{
     SeriesListLinks, SeriesListResponse, SeriesSummaryResponse,
 };
-use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
+use crate::infrastructure::inbound::rest::middleware::AuthenticatedUser;
+use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody, hal_json};
 
 /// Filters and pagination restricting the returned shows.
 ///

@@ -2,17 +2,17 @@ use std::collections::HashMap;
 
 use sqlx::{QueryBuilder, Sqlite, Transaction};
 
-use crate::domain::alias::NumericID;
-use crate::domain::model::music_album::{MusicAlbum, ProductionType};
-use crate::domain::model::music_medium::{MediumIndex, MusicMedium};
-use crate::domain::model::music_recording::{MusicRecording, TrackIndex};
-use crate::domain::port::error::RepositoryError;
-use crate::domain::port::music_album_repository::{
-    MusicAlbumFilter, MusicAlbumRepository, MusicRecordingFilter,
+use crate::domain::NumericID;
+use crate::domain::model::{
+    MediumIndex, MusicAlbum, MusicMedium, MusicRecording, ProductionType, TrackIndex,
+};
+use crate::domain::port::{
+    MusicAlbumFilter, MusicAlbumRepository, MusicRecordingFilter, RepositoryError,
 };
 
 use super::error_mapping::stored_data_invalid;
-use super::model::music_album::MusicAlbumRow;
+use super::model::MusicAlbumRow;
+
 use super::query_filter::push_filter;
 
 /// Repository querying music albums, their mediums and the recordings they

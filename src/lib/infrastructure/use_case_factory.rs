@@ -1,8 +1,13 @@
 /// The runtime asset use-case factory.
-pub(crate) mod asset;
+mod asset;
 /// The runtime identity use-case factory.
-pub(crate) mod identity;
+mod identity;
 /// The runtime library use-case factory.
-pub(crate) mod library;
+mod library;
 /// The runtime user use-case factory.
-pub(crate) mod user;
+mod user;
+
+pub(crate) use self::asset::RuntimeAssetUseCaseFactory;
+pub(crate) use self::identity::RuntimeIdentityUseCaseFactory;
+pub(crate) use self::library::RuntimeLibraryUseCaseFactory;
+pub(crate) use self::user::RuntimeUserUseCaseFactory;

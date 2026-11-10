@@ -1,4 +1,4 @@
-use crate::domain::model::configuration::ProviderId;
+use crate::domain::model::ProviderId;
 
 /// Opaque reference to one item at a provider.
 ///

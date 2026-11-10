@@ -1,12 +1,16 @@
 /// The transport error mapped onto an HTTP status.
-pub(crate) mod api_error;
+mod api_error;
 /// The single router state every handler extracts.
-pub(crate) mod app_state;
-pub(crate) mod hal;
+mod app_state;
+mod hal;
 /// The route table and the per-context endpoint folders.
 pub(crate) mod handler;
 /// The authentication, tracing, rate-limit and HAL error layers.
 pub(crate) mod middleware;
+
+pub(crate) use self::api_error::{ApiError, ApiErrorMessage, ErrorBody, error_response};
+pub(crate) use self::app_state::AppState;
+pub(crate) use self::hal::{HAL_CONTENT_TYPE, Link, SelfLinks, hal_json};
 
 #[cfg(any(feature = "api-docs", test))]
 use utoipa::OpenApi as _;
@@ -26,15 +30,15 @@ use utoipa_axum::routes;
 #[cfg(any(feature = "api-docs", test))]
 use crate::infrastructure::inbound::rest::handler::asset::asset_router;
 #[cfg(any(feature = "api-docs", test))]
-use crate::infrastructure::inbound::rest::handler::get_health;
-#[cfg(any(feature = "api-docs", test))]
-use crate::infrastructure::inbound::rest::handler::identity::identity_protected_router;
-#[cfg(any(feature = "api-docs", test))]
-use crate::infrastructure::inbound::rest::handler::identity::identity_public_router;
+use crate::infrastructure::inbound::rest::handler::identity::{
+    identity_protected_router, identity_public_router,
+};
 #[cfg(any(feature = "api-docs", test))]
 use crate::infrastructure::inbound::rest::handler::library::library_router;
 #[cfg(any(feature = "api-docs", test))]
 use crate::infrastructure::inbound::rest::handler::user::user_router;
+#[cfg(any(feature = "api-docs", test))]
+use crate::infrastructure::inbound::rest::handler::{__path_get_health, get_health};
 
 /// Add the `bearer_auth` security scheme referenced by the protected
 /// endpoints.
@@ -98,7 +102,7 @@ struct ApiDoc;
 #[cfg(any(feature = "api-docs", test))]
 pub(crate) fn openapi() -> OpenApi {
     let (_, openapi) = OpenApiRouter::with_openapi(ApiDoc::openapi())
-        .routes(routes!(get_health::get_health))
+        .routes(routes!(get_health))
         // The chunk body limit is a runtime layer; the document only needs the
         // route, so no limit is passed here.
         .nest("/asset", asset_router(None))

@@ -7,9 +7,8 @@ use std::path::{Path, PathBuf};
 
 use yaml_serde::{Mapping, Value};
 
-use crate::domain::model::partial_configuration::PartialConfiguration;
-use crate::domain::port::configuration_source::{ConfigurationSource, LoadedFileConfiguration};
-use crate::domain::port::error::ConfigurationSourceError;
+use crate::domain::model::PartialConfiguration;
+use crate::domain::port::{ConfigurationSource, ConfigurationSourceError, LoadedFileConfiguration};
 
 /// Path to the user configuration file.
 const USER_CONFIG_PATH: &str = "config.yaml";
@@ -167,8 +166,8 @@ impl Resolver<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::model::configuration::{Configuration, Rotation};
-    use crate::domain::model::partial_configuration::PartialAsset;
+    use crate::domain::model::{Configuration, PartialAsset, Rotation};
+
     use std::error::Error;
     use std::fs;
     use tempfile::tempdir;

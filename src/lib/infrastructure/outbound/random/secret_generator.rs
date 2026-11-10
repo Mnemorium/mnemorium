@@ -3,8 +3,7 @@ use std::future::{Future, ready};
 use rand::rngs::ChaCha20Rng;
 use rand::{Rng as _, SeedableRng as _};
 
-use crate::domain::port::error::SecretGeneratorError;
-use crate::domain::port::secret_generator::SecretGenerator;
+use crate::domain::port::{SecretGenerator, SecretGeneratorError};
 
 /// Secret generator producing random bytes from a `ChaCha20` RNG.
 pub(crate) struct ChaChaSecretGenerator;

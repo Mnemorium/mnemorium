@@ -1,17 +1,15 @@
 use chrono::NaiveDateTime;
 use sqlx::{QueryBuilder, Sqlite, Transaction};
 
-use crate::domain::alias::NumericID;
-use crate::domain::model::gallery::Gallery;
-use crate::domain::model::gallery_item::{GalleryItem, GalleryItemMedia};
-use crate::domain::port::error::RepositoryError;
-use crate::domain::port::gallery_repository::{
-    GalleryFilter, GalleryItemDetail, GalleryItemFilter, GalleryRepository,
+use crate::domain::NumericID;
+use crate::domain::model::{Gallery, GalleryItem, GalleryItemMedia};
+use crate::domain::port::{
+    GalleryFilter, GalleryItemDetail, GalleryItemFilter, GalleryRepository, RepositoryError,
 };
 
-use super::model::gallery::Gallery as SqlxGallery;
-use super::model::gallery_item::{
-    GalleryItem as SqlxGalleryItem, GalleryItemDetail as SqlxGalleryItemDetail,
+use super::model::{
+    Gallery as SqlxGallery, GalleryItem as SqlxGalleryItem,
+    GalleryItemDetail as SqlxGalleryItemDetail,
 };
 
 /// Repository persisting galleries and their items, backed by a `SQLite`

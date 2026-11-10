@@ -1,7 +1,7 @@
 use std::future::Future;
 
-use crate::domain::model::mime_type::MimeType;
-use crate::domain::port::error::RepositoryError;
+use crate::domain::model::MimeType;
+use crate::domain::port::RepositoryError;
 
 /// Search filters for [`MimeTypeRepository::search`]. Every field is optional;
 /// an all-`None` filter returns every supported mime type.

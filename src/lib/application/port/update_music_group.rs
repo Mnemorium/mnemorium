@@ -1,8 +1,8 @@
 use std::future::Future;
 use std::pin::Pin;
 
-use crate::domain::alias::NumericID;
-use crate::domain::model::music_group::MusicGroup;
+use crate::domain::NumericID;
+use crate::domain::model::MusicGroup;
 
 /// Command to update a music group.
 #[derive(Debug, Clone, PartialEq, Eq)]

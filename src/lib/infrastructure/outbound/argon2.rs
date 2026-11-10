@@ -1,2 +1,4 @@
 /// The password hasher adapter.
-pub(crate) mod password_hasher;
+mod password_hasher;
+
+pub(crate) use self::password_hasher::Argon2PasswordHasher;

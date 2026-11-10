@@ -1,4 +1,4 @@
-use crate::domain::alias::NumericID;
+use crate::domain::NumericID;
 
 /// Data model for the `audio` table.
 #[derive(Debug, Clone, sqlx::FromRow)]

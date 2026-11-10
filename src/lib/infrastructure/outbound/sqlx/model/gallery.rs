@@ -1,6 +1,6 @@
 use chrono::NaiveDateTime;
 
-use crate::domain::alias::NumericID;
+use crate::domain::NumericID;
 
 /// Data model for the `gallery` table.
 #[derive(Debug, Clone, sqlx::FromRow)]

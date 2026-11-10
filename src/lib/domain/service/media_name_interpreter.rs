@@ -1,6 +1,6 @@
 use std::mem::take;
 
-use crate::domain::model::media_query::{EpisodePosition, MediaQuery, VideoKind};
+use crate::domain::model::{EpisodePosition, MediaQuery, VideoKind};
 
 /// Folder and file names that denote an extra rather than the work itself.
 const EXTRAS: &[&str] = &[

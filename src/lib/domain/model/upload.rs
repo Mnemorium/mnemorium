@@ -1,8 +1,9 @@
 use chrono::NaiveDateTime;
 
-use crate::domain::alias::NumericID;
-use crate::domain::model::integrity_hash::{DIGEST_HEX_LENGTH, IntegrityHash, IntegrityHashError};
-use crate::domain::model::permission::{Protected, ResourceKind, ResourceRef};
+use crate::domain::NumericID;
+use crate::domain::model::{
+    DIGEST_HEX_LENGTH, IntegrityHash, IntegrityHashError, Protected, ResourceKind, ResourceRef,
+};
 
 /// Hard upper bound on the number of chunks an upload may be split into.
 ///

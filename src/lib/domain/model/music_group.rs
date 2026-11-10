@@ -1,5 +1,5 @@
-use crate::domain::alias::NumericID;
-use crate::domain::model::permission::{Protected, ResourceRef};
+use crate::domain::NumericID;
+use crate::domain::model::{Protected, ResourceRef};
 
 /// Error returned when initialising a `MusicGroup`.
 #[derive(Debug, thiserror::Error)]

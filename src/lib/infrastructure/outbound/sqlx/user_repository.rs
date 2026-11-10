@@ -1,10 +1,9 @@
 use sqlx::{QueryBuilder, Sqlite, Transaction};
 
-use crate::domain::model::user::{Role, User};
-use crate::domain::port::error::RepositoryError;
-use crate::domain::port::user_repository::{UserFilter, UserRepository};
+use crate::domain::model::{Role, User};
+use crate::domain::port::{RepositoryError, UserFilter, UserRepository};
 
-use super::model::user::{Role as SqlxRole, User as SqlxUser};
+use super::model::{Role as SqlxRole, User as SqlxUser};
 
 /// Repository persisting users, backed by a `SQLite` transaction.
 pub(crate) struct SqlxUserRepository<'transaction> {
@@ -165,7 +164,8 @@ fn domain_user(row: SqlxUser) -> Result<User, RepositoryError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::model::user::UserError;
+    use crate::domain::model::UserError;
+
     use crate::infrastructure::outbound::sqlx::test_helpers::begin_transaction;
     use std::error::Error;
 

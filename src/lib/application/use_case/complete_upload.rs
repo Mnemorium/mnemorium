@@ -5,33 +5,22 @@ use std::sync::Arc;
 
 use chrono::Utc;
 
-use crate::application::port::complete_upload::{
+use crate::application::port::{
     CompleteUploadCommand, CompleteUploadError, CompleteUploadResponse, CompleteUploadUseCase,
 };
 use crate::application::security_event;
-use crate::application::use_case::upload_layout::{media_path, staged_path};
-use crate::application::use_case::upload_session::{caller_file_id, expiry};
-use crate::domain::alias::NumericID;
-use crate::domain::model::audio::{Audio, ProbedAudio};
-use crate::domain::model::file::{File, Origin};
-use crate::domain::model::image::{Image, ProbedImage};
-use crate::domain::model::permission::Action;
-use crate::domain::model::upload::Upload;
-use crate::domain::model::video::{ProbedVideo, Video};
-use crate::domain::port::asset_unit_of_work::AssetUnitOfWork;
-use crate::domain::port::audio_repository::AudioRepository as _;
-use crate::domain::port::error::{MediaProbeError, RepositoryError, StorageError};
-use crate::domain::port::file_repository::FileRepository as _;
-use crate::domain::port::file_storage::FileStorage;
-use crate::domain::port::image_repository::ImageRepository as _;
-use crate::domain::port::library_unit_of_work::LibraryUnitOfWork;
-use crate::domain::port::media_probe::MediaProbe;
-use crate::domain::port::unit_of_work::{UnitOfWork, UnitOfWorkFactory};
-use crate::domain::port::upload_repository::{UploadFilter, UploadRepository as _};
-use crate::domain::port::user_repository::{UserFilter, UserRepository as _};
-use crate::domain::port::user_unit_of_work::UserUnitOfWork;
-use crate::domain::port::video_repository::VideoRepository as _;
-use crate::domain::service::authorization::{Authorization, Decision};
+use crate::application::use_case::{caller_file_id, expiry, media_path, staged_path};
+use crate::domain::NumericID;
+use crate::domain::model::{
+    Action, Audio, File, Image, Origin, ProbedAudio, ProbedImage, ProbedVideo, Upload, Video,
+};
+use crate::domain::port::{
+    AssetUnitOfWork, AudioRepository as _, FileRepository as _, FileStorage, ImageRepository as _,
+    LibraryUnitOfWork, MediaProbe, MediaProbeError, RepositoryError, StorageError, UnitOfWork,
+    UnitOfWorkFactory, UploadFilter, UploadRepository as _, UserFilter, UserRepository as _,
+    UserUnitOfWork, VideoRepository as _,
+};
+use crate::domain::service::{Authorization, Decision};
 
 /// Outcome of the business logic wrapped by the unit-of-work lifecycle.
 enum Flow<T, E> {
@@ -801,16 +790,13 @@ fn probe_fault(error: MediaProbeError) -> CompleteUploadError {
 mod tests {
     use super::*;
     use crate::application::use_case::test_fixtures::TTL_SECONDS;
-    use crate::domain::model::integrity_hash::IntegrityHash;
-    use crate::domain::model::upload::ChunkBitmap;
-    use crate::domain::port::audio_repository::MockAudioRepository;
-    use crate::domain::port::error::StorageError;
-    use crate::domain::port::file_repository::MockFileRepository;
-    use crate::domain::port::file_storage::{MockFileStorage, PromotedFile};
-    use crate::domain::port::image_repository::MockImageRepository;
-    use crate::domain::port::media_probe::MockMediaProbe;
-    use crate::domain::port::upload_repository::MockUploadRepository;
-    use crate::domain::port::video_repository::MockVideoRepository;
+    use crate::domain::model::{ChunkBitmap, IntegrityHash};
+
+    use crate::domain::port::{
+        MockAudioRepository, MockFileRepository, MockFileStorage, MockImageRepository,
+        MockMediaProbe, MockUploadRepository, MockVideoRepository, PromotedFile, StorageError,
+    };
+
     use crate::test_helpers::*;
     use chrono::{NaiveDate, NaiveDateTime};
     use std::error::Error;

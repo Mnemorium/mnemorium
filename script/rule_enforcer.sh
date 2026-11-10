@@ -125,6 +125,7 @@ RULES=(
 	"STY-RUST-087:check_sty_rust_087"
 	"STY-RUST-088:check_sty_rust_088"
 	"STY-RUST-089:check_sty_rust_089"
+	"STY-RUST-090:check_sty_rust_090"
 	"DOC-003:check_doc_003"
 	"DOC-005:check_doc_005"
 	"DOC-007:check_doc_007"
@@ -1732,7 +1733,7 @@ check_sty_rust_074() {
 	# sty-rust-074 extracts the `logging::setup` install call and the composition root's `LoadConfiguration` binding; the count, path and ordering logic happens here because an ast-grep rule cannot see how many call sites exist, which file they are in, or the order of two statements.
 	matches="$(scan_json "$id" src)" || return 1
 
-	# Clause A: the subscriber is installed exactly once, by `logging::setup`, from the composition root.
+	# Clause A: the subscriber is installed exactly once, by the logging install call, from the composition root.
 	installs="$(printf '%s\n' "$matches" |
 		jq -r 'select(.metaVariables.single.VAR | not) | [.file, (.range.start.line | tostring)] | @tsv')"
 	install_count="$(printf '%s\n' "$installs" | grep -c .)"
@@ -1758,13 +1759,13 @@ check_sty_rust_074() {
 		return 1
 	fi
 	execute_line="$(grep -nF "${var}.execute(" "$server" | head -n 1 | cut -d: -f1)"
-	install_line="$(grep -nF "logging::setup(" "$server" | head -n 1 | cut -d: -f1)"
+	install_line="$(grep -nE "^[[:space:]]*let _log_guard = setup\(" "$server" | head -n 1 | cut -d: -f1)"
 	if [ -z "$execute_line" ]; then
 		printf 'error: %s: %s never runs %s.execute()\n' "$id" "$server" "$var" >&2
 		return 1
 	fi
 	if [ -z "$install_line" ] || [ "$install_line" -le "$execute_line" ]; then
-		printf 'error: %s: logging::setup must run after LoadConfiguration (%s.execute at line %s)\n' \
+		printf 'error: %s: the logging install must run after LoadConfiguration (%s.execute at line %s)\n' \
 			"$id" "$var" "$execute_line" >&2
 		result=1
 	fi
@@ -3556,8 +3557,9 @@ check_test_052() {
 		fi
 
 		# Clause 4 — every child outcome is asserted.
-		error_type="$(grep -oE 'use crate::domain::port::error::[A-Za-z0-9_]+' "$file" |
-			head -n 1 | sed 's/.*:://')"
+		error_type="$(tr '\n' ' ' <"$file" |
+			grep -oE 'crate::domain::port::(\{[^}]*\}|error::[A-Za-z0-9_]+)' |
+			grep -oE '[A-Za-z0-9_]+Error' | head -n 1)"
 		if [ -z "$error_type" ]; then
 			printf 'error: %s: %s: the adapter imports no domain port error type\n' \
 				"$id" "$file" >&2
@@ -5996,6 +5998,33 @@ check_sty_rust_089() {
 		result=1
 	fi
 
+	return "$result"
+}
+
+# check_sty_rust_090 — a child module that is not itself a module root is private
+# (STY-RUST-090). A leaf declared pub(crate) would let an outside module name the
+# child directly again and defeat the compiler check the facade relies on.
+check_sty_rust_090() {
+	local id="STY-RUST-090"
+	local matches result=0
+	matches="$(scan_json "$id" src)" || return 1
+	while IFS=$'\t' read -r file name; do
+		[ -n "$name" ] || continue
+		local stem dir child
+		stem="$(basename "$file" .rs)"
+		dir="$(dirname "$file")"
+		if [ "$stem" = "lib" ]; then
+			child="$dir/$name"
+		else
+			child="$dir/$stem/$name"
+		fi
+		if [ ! -d "$child" ]; then
+			printf 'error: %s: %s: %s is a leaf module; declare it private (mod %s;)\n' \
+				"$id" "$file" "$name" "$name" >&2
+			result=1
+		fi
+	done < <(printf '%s\n' "$matches" |
+		jq -r '[.file, .metaVariables.single.NAME.text] | @tsv')
 	return "$result"
 }
 

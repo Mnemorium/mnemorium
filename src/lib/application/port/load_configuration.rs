@@ -1,7 +1,7 @@
 use std::future::Future;
 use std::pin::Pin;
 
-use crate::domain::model::configuration::Configuration;
+use crate::domain::model::Configuration;
 
 /// Response of a successful configuration load.
 #[derive(Debug, Clone, PartialEq, Eq)]

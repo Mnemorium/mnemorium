@@ -8,7 +8,7 @@ pub(crate) mod file_system;
 pub(crate) mod infer;
 /// The JWT token provider.
 pub(crate) mod jwt;
-pub(crate) mod media_probe;
+mod media_probe;
 pub(crate) mod metadata;
 /// The file-system media-change observer.
 pub(crate) mod notify;
@@ -19,3 +19,5 @@ pub(crate) mod reqwest;
 pub(crate) mod sha2;
 /// The `SQLite` datastore adapters.
 pub(crate) mod sqlx;
+
+pub(crate) use self::media_probe::LocalMediaProbe;

@@ -1,7 +1,6 @@
 use chrono::NaiveDate;
 
-use crate::domain::model::artwork::Artwork;
-use crate::domain::model::genre::Genre;
+use crate::domain::model::{Artwork, Genre};
 
 /// Metadata a provider reports for a film, a show or an episode.
 ///

@@ -4,18 +4,16 @@ use std::sync::Arc;
 
 use chrono::Utc;
 
-use crate::application::port::create_gallery::{
+use crate::application::port::{
     CreateGalleryCommand, CreateGalleryError, CreateGalleryResponse, CreateGalleryUseCase,
 };
 use crate::application::security_event;
-use crate::domain::model::gallery::Gallery;
-use crate::domain::port::error::RepositoryError;
-use crate::domain::port::gallery_repository::{GalleryFilter, GalleryRepository as _};
-use crate::domain::port::library_unit_of_work::LibraryUnitOfWork;
-use crate::domain::port::unit_of_work::{UnitOfWork as _, UnitOfWorkFactory};
-use crate::domain::port::user_repository::{UserFilter, UserRepository as _};
-use crate::domain::port::user_unit_of_work::UserUnitOfWork;
-use crate::domain::service::name_policy::{NamePolicy, NamePolicyError};
+use crate::domain::model::Gallery;
+use crate::domain::port::{
+    GalleryFilter, GalleryRepository as _, LibraryUnitOfWork, RepositoryError, UnitOfWork as _,
+    UnitOfWorkFactory, UserFilter, UserRepository as _, UserUnitOfWork,
+};
+use crate::domain::service::{NamePolicy, NamePolicyError};
 
 /// Use case implementation for creating a gallery.
 pub(crate) struct CreateGallery<F> {
@@ -150,9 +148,10 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::model::user::{Role, User};
-    use crate::domain::port::gallery_repository::MockGalleryRepository;
-    use crate::domain::port::user_repository::MockUserRepository;
+    use crate::domain::model::{Role, User};
+
+    use crate::domain::port::{MockGalleryRepository, MockUserRepository};
+
     use crate::test_helpers::*;
     use chrono::NaiveDateTime;
     use std::error::Error;

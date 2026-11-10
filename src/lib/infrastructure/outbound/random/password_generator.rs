@@ -4,8 +4,7 @@ use rand::RngExt as _;
 use rand::distr::{Alphanumeric, SampleString as _};
 use rand::seq::IndexedRandom as _;
 
-use crate::domain::port::error::PasswordGeneratorError;
-use crate::domain::port::password_generator::PasswordGenerator;
+use crate::domain::port::{PasswordGenerator, PasswordGeneratorError};
 
 /// Length of generated passwords.
 const PASSWORD_LENGTH: usize = 20;

@@ -2,9 +2,8 @@ use std::collections::HashMap;
 
 use chrono::NaiveDateTime;
 
-use crate::domain::alias::NumericID;
-use crate::domain::model::music_recording::{MusicRecording, TrackIndex};
-use crate::domain::model::permission::{Protected, ResourceKind, ResourceRef};
+use crate::domain::NumericID;
+use crate::domain::model::{MusicRecording, Protected, ResourceKind, ResourceRef, TrackIndex};
 
 /// Error returned when initialising or updating a `MusicPlaylist`.
 #[derive(Debug, thiserror::Error)]

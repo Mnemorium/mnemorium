@@ -4,24 +4,20 @@ use std::sync::Arc;
 
 use chrono::Utc;
 
-use crate::application::port::register_user::{
+use crate::application::port::{
     RegisterUserCommand, RegisterUserError, RegisterUserResponse, RegisterUserUseCase,
 };
 use crate::application::security_event;
-use crate::domain::model::credential::Credential;
-use crate::domain::model::permission::{Action, Global};
-use crate::domain::model::user::{Role, User, UserError};
-use crate::domain::port::credential_repository::CredentialRepository as _;
-use crate::domain::port::error::RepositoryError;
-use crate::domain::port::identity_unit_of_work::IdentityUnitOfWork;
-use crate::domain::port::password_hasher::PasswordHasher;
-use crate::domain::port::permission_repository::{PermissionFilter, PermissionRepository as _};
-use crate::domain::port::unit_of_work::{UnitOfWork as _, UnitOfWorkFactory};
-use crate::domain::port::user_repository::{UserFilter, UserRepository as _};
-use crate::domain::port::user_unit_of_work::UserUnitOfWork;
-use crate::domain::service::authorization::{Authorization, Decision};
-use crate::domain::service::password_policy::{PasswordPolicy, PasswordPolicyError};
-use crate::domain::service::username_policy::{UsernamePolicy, UsernamePolicyError};
+use crate::domain::model::{Action, Credential, Global, Role, User, UserError};
+use crate::domain::port::{
+    CredentialRepository as _, IdentityUnitOfWork, PasswordHasher, PermissionFilter,
+    PermissionRepository as _, RepositoryError, UnitOfWork as _, UnitOfWorkFactory, UserFilter,
+    UserRepository as _, UserUnitOfWork,
+};
+use crate::domain::service::{
+    Authorization, Decision, PasswordPolicy, PasswordPolicyError, UsernamePolicy,
+    UsernamePolicyError,
+};
 
 /// Use case implementation for registering a new user.
 pub(crate) struct RegisterUser<F, P> {
@@ -222,12 +218,13 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::model::permission::{Permission, Scope};
-    use crate::domain::port::credential_repository::MockCredentialRepository;
-    use crate::domain::port::error::PasswordHasherError;
-    use crate::domain::port::password_hasher::MockPasswordHasher;
-    use crate::domain::port::permission_repository::MockPermissionRepository;
-    use crate::domain::port::user_repository::MockUserRepository;
+    use crate::domain::model::{Permission, Scope};
+
+    use crate::domain::port::{
+        MockCredentialRepository, MockPasswordHasher, MockPermissionRepository, MockUserRepository,
+        PasswordHasherError,
+    };
+
     use crate::test_helpers::*;
     use std::error::Error;
     use std::sync::atomic::{AtomicBool, Ordering};

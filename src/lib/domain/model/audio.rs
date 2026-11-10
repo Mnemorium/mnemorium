@@ -1,4 +1,4 @@
-use crate::domain::alias::{NonNegativeF64, NumericID};
+use crate::domain::{NonNegativeF64, NumericID};
 
 /// Error returned when initialising or updating an `Audio`.
 #[derive(Debug, thiserror::Error)]

@@ -7,11 +7,11 @@ use tokio::fs;
 use tokio::io::{AsyncReadExt as _, AsyncSeekExt as _, AsyncWriteExt as _};
 use tracing::error;
 
-use crate::domain::model::integrity_hash::{DIGEST_HEX_LENGTH, IntegrityHash};
-use crate::domain::port::content_hasher::ContentHasher as _;
-use crate::domain::port::error::StorageError;
-use crate::domain::port::file_storage::{FileStorage, OpenedFile, PromotedFile};
-use crate::infrastructure::outbound::sha2::content_hasher::Sha2ContentHasher;
+use crate::domain::model::{DIGEST_HEX_LENGTH, IntegrityHash};
+use crate::domain::port::{
+    ContentHasher as _, FileStorage, OpenedFile, PromotedFile, StorageError,
+};
+use crate::infrastructure::outbound::sha2::Sha2ContentHasher;
 
 /// Size of the buffer used to stream a file, in bytes.
 const HASH_BUFFER_BYTES: usize = 64 * 1024;
@@ -413,7 +413,8 @@ async fn open_new(path: &Path) -> Result<fs::File, Error> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::port::file_storage::FileReader;
+    use crate::domain::port::FileReader;
+
     use std::error::Error;
     use tempfile::{Builder, tempdir};
     use tracing_test::traced_test;

@@ -1,8 +1,8 @@
 use std::future::Future;
 
-use crate::domain::alias::NumericID;
-use crate::domain::model::file::File;
-use crate::domain::port::error::RepositoryError;
+use crate::domain::NumericID;
+use crate::domain::model::File;
+use crate::domain::port::RepositoryError;
 
 /// Search filters for [`FileRepository::search`]. Every field is optional; an
 /// all-`None` filter returns every file.

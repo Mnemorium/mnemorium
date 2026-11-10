@@ -1,13 +1,7 @@
-use crate::domain::port::audio_repository::AudioRepository;
-use crate::domain::port::gallery_repository::GalleryRepository;
-use crate::domain::port::image_repository::ImageRepository;
-use crate::domain::port::movie_repository::MovieRepository;
-use crate::domain::port::music_album_repository::MusicAlbumRepository;
-use crate::domain::port::music_group_repository::MusicGroupRepository;
-use crate::domain::port::music_playlist_repository::MusicPlaylistRepository;
-use crate::domain::port::series_repository::SeriesRepository;
-use crate::domain::port::unit_of_work::UnitOfWork;
-use crate::domain::port::video_repository::VideoRepository;
+use crate::domain::port::{
+    AudioRepository, GalleryRepository, ImageRepository, MovieRepository, MusicAlbumRepository,
+    MusicGroupRepository, MusicPlaylistRepository, SeriesRepository, UnitOfWork, VideoRepository,
+};
 
 /// Library bounded-context view over a [`UnitOfWork`].
 pub(crate) trait LibraryUnitOfWork: UnitOfWork {

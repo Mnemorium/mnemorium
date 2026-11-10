@@ -3,9 +3,9 @@ use std::pin::Pin;
 
 use chrono::NaiveDate;
 
-use crate::application::field_update::FieldUpdate;
-use crate::domain::alias::NumericID;
-use crate::domain::model::music_album::{MusicAlbum, ProductionType};
+use crate::application::FieldUpdate;
+use crate::domain::NumericID;
+use crate::domain::model::{MusicAlbum, ProductionType};
 
 /// Command to update a music album partially.
 ///

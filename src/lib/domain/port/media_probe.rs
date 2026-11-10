@@ -6,10 +6,8 @@
 use std::future::Future;
 use std::path::Path;
 
-use crate::domain::model::audio::ProbedAudio;
-use crate::domain::model::image::ProbedImage;
-use crate::domain::model::video::ProbedVideo;
-use crate::domain::port::error::MediaProbeError;
+use crate::domain::model::{ProbedAudio, ProbedImage, ProbedVideo};
+use crate::domain::port::MediaProbeError;
 
 /// Port for probing media files for their metadata.
 #[cfg_attr(test, mockall::automock)]

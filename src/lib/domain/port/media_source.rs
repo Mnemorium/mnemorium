@@ -1,6 +1,6 @@
 //! Read-only discovery of the files under the library root.
 //!
-//! Kept separate from [`crate::domain::port::file_storage::FileStorage`]: that
+//! Kept separate from [`crate::domain::port::FileStorage`]: that
 //! port is the write path for server-owned content, while this one only reads
 //! the operator's mount. Mixing traversal into the write path would give one
 //! port two owners and two trust levels.
@@ -9,7 +9,7 @@ use std::future::Future;
 
 use chrono::NaiveDateTime;
 
-use crate::domain::port::error::MediaSourceError;
+use crate::domain::port::MediaSourceError;
 
 /// One file found under the library root.
 #[derive(Debug, Clone, PartialEq, Eq)]

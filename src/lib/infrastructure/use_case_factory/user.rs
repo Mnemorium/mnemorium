@@ -1,15 +1,10 @@
 use std::sync::Arc;
 
-use crate::application::port::get_current_user::GetCurrentUserUseCase;
-use crate::application::port::get_user::GetUserUseCase;
-use crate::application::port::list_users::ListUsersUseCase;
-use crate::application::port::update_user::UpdateUserUseCase;
-use crate::application::port::user_use_case_factory::UserUseCaseFactory;
-use crate::application::use_case::get_current_user::GetCurrentUser;
-use crate::application::use_case::get_user::GetUser;
-use crate::application::use_case::list_users::ListUsers;
-use crate::application::use_case::update_user::UpdateUser;
-use crate::infrastructure::outbound::sqlx::unit_of_work::SqlxUnitOfWorkFactory;
+use crate::application::port::{
+    GetCurrentUserUseCase, GetUserUseCase, ListUsersUseCase, UpdateUserUseCase, UserUseCaseFactory,
+};
+use crate::application::use_case::{GetCurrentUser, GetUser, ListUsers, UpdateUser};
+use crate::infrastructure::outbound::sqlx::SqlxUnitOfWorkFactory;
 
 /// Builds the User use cases over the shared unit of work factory.
 pub(crate) struct RuntimeUserUseCaseFactory {

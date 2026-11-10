@@ -27,12 +27,9 @@ use tokio::task::spawn_blocking;
 use tokio::time::timeout;
 use tracing::{error, warn};
 
-use crate::domain::alias::{NonNegativeF64, PositiveI64, ScalarError};
-use crate::domain::model::audio::ProbedAudio;
-use crate::domain::model::image::{Orientation, ProbedImage};
-use crate::domain::model::video::{ProbedVideo, ScanType};
-use crate::domain::port::error::MediaProbeError;
-use crate::domain::port::media_probe::MediaProbe;
+use crate::domain::model::{Orientation, ProbedAudio, ProbedImage, ProbedVideo, ScanType};
+use crate::domain::port::{MediaProbe, MediaProbeError};
+use crate::domain::{NonNegativeF64, PositiveI64, ScalarError};
 
 /// Name of the video probe binary resolved from `PATH`.
 const FFPROBE: &str = "ffprobe";

@@ -9,8 +9,7 @@
 
 use std::cmp::Ordering;
 
-use crate::domain::model::music_candidate::MusicCandidate;
-use crate::domain::model::music_metadata::{Edition, MediumSummary, ReleaseStatus};
+use crate::domain::model::{Edition, MediumSummary, MusicCandidate, ReleaseStatus};
 
 /// Domain service holding the edition ordering rule.
 ///
@@ -116,10 +115,8 @@ fn all_compact_discs(mediums: &[MediumSummary]) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::model::configuration::ProviderId;
-    use crate::domain::model::external_ref::ExternalRef;
-    use crate::domain::model::music_metadata::MediumFormat;
-    use crate::domain::model::music_query::MusicKind;
+    use crate::domain::model::{ExternalRef, MediumFormat, MusicKind, ProviderId};
+
     use chrono::NaiveDate;
     use std::error::Error;
 

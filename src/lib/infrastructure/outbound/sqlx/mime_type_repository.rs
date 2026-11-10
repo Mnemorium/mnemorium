@@ -1,8 +1,7 @@
 use sqlx::{QueryBuilder, Sqlite, Transaction};
 
-use crate::domain::model::mime_type::MimeType;
-use crate::domain::port::error::RepositoryError;
-use crate::domain::port::mime_type_repository::{MimeTypeFilter, MimeTypeRepository};
+use crate::domain::model::MimeType;
+use crate::domain::port::{MimeTypeFilter, MimeTypeRepository, RepositoryError};
 
 use super::query_filter::push_filter;
 

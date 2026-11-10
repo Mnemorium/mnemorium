@@ -2,17 +2,13 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
-use crate::application::port::get_video::{
-    GetVideoCommand, GetVideoError, GetVideoResponse, GetVideoUseCase,
-};
+use crate::application::port::{GetVideoCommand, GetVideoError, GetVideoResponse, GetVideoUseCase};
 use crate::application::use_case::asset_access;
 use crate::application::use_case::asset_access::AssetAccessError;
-use crate::domain::port::asset_unit_of_work::AssetUnitOfWork;
-use crate::domain::port::content_link::ContentLinkProvider;
-use crate::domain::port::identity_unit_of_work::IdentityUnitOfWork;
-use crate::domain::port::library_unit_of_work::LibraryUnitOfWork;
-use crate::domain::port::unit_of_work::{UnitOfWork as _, UnitOfWorkFactory};
-use crate::domain::port::user_unit_of_work::UserUnitOfWork;
+use crate::domain::port::{
+    AssetUnitOfWork, ContentLinkProvider, IdentityUnitOfWork, LibraryUnitOfWork, UnitOfWork as _,
+    UnitOfWorkFactory, UserUnitOfWork,
+};
 
 /// Use case implementation for fetching one typed video.
 pub(crate) struct GetVideo<F, L> {
@@ -105,16 +101,14 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::model::scope::Scope;
-    use crate::domain::model::video::{ScanType, Video};
-    use crate::domain::port::audio_repository::MockAudioRepository;
-    use crate::domain::port::content_link::{ContentLink, MockContentLinkProvider};
-    use crate::domain::port::error::RepositoryError;
-    use crate::domain::port::file_repository::MockFileRepository;
-    use crate::domain::port::image_repository::MockImageRepository;
-    use crate::domain::port::music_album_repository::MockMusicAlbumRepository;
-    use crate::domain::port::user_repository::MockUserRepository;
-    use crate::domain::port::video_repository::MockVideoRepository;
+    use crate::domain::model::{AssetScope, ScanType, Video};
+
+    use crate::domain::port::{
+        ContentLink, MockAudioRepository, MockContentLinkProvider, MockFileRepository,
+        MockImageRepository, MockMusicAlbumRepository, MockUserRepository, MockVideoRepository,
+        RepositoryError,
+    };
+
     use crate::test_helpers::*;
     use std::error::Error;
 
@@ -171,7 +165,7 @@ mod tests {
             "YCbCr".to_owned(),
             ScanType::Progressive,
             100,
-            Some(Scope::Library),
+            Some(AssetScope::Library),
         )?;
         videos.expect_search().times(2).returning(move |_| {
             let stored = stored_video.clone();

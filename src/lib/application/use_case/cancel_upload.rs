@@ -4,21 +4,16 @@ use std::sync::Arc;
 
 use chrono::Utc;
 
-use crate::application::port::cancel_upload::{
-    CancelUploadCommand, CancelUploadError, CancelUploadUseCase,
-};
+use crate::application::port::{CancelUploadCommand, CancelUploadError, CancelUploadUseCase};
 use crate::application::security_event;
-use crate::application::use_case::upload_layout::staged_path;
-use crate::application::use_case::upload_session::expiry;
-use crate::domain::alias::NumericID;
-use crate::domain::model::permission::Action;
-use crate::domain::port::asset_unit_of_work::AssetUnitOfWork;
-use crate::domain::port::file_storage::FileStorage;
-use crate::domain::port::unit_of_work::{UnitOfWork as _, UnitOfWorkFactory};
-use crate::domain::port::upload_repository::{UploadFilter, UploadRepository as _};
-use crate::domain::port::user_repository::{UserFilter, UserRepository as _};
-use crate::domain::port::user_unit_of_work::UserUnitOfWork;
-use crate::domain::service::authorization::{Authorization, Decision};
+use crate::application::use_case::{expiry, staged_path};
+use crate::domain::NumericID;
+use crate::domain::model::Action;
+use crate::domain::port::{
+    AssetUnitOfWork, FileStorage, UnitOfWork as _, UnitOfWorkFactory, UploadFilter,
+    UploadRepository as _, UserFilter, UserRepository as _, UserUnitOfWork,
+};
+use crate::domain::service::{Authorization, Decision};
 
 /// Outcome of the business logic wrapped by the unit-of-work lifecycle.
 enum Flow<T, E> {
@@ -232,11 +227,12 @@ where
 mod tests {
     use super::*;
     use crate::application::use_case::test_fixtures::TTL_SECONDS;
-    use crate::domain::model::integrity_hash::IntegrityHash;
-    use crate::domain::model::upload::{ChunkBitmap, Upload};
-    use crate::domain::port::error::{RepositoryError, StorageError};
-    use crate::domain::port::file_storage::MockFileStorage;
-    use crate::domain::port::upload_repository::MockUploadRepository;
+    use crate::domain::model::{ChunkBitmap, IntegrityHash, Upload};
+
+    use crate::domain::port::{
+        MockFileStorage, MockUploadRepository, RepositoryError, StorageError,
+    };
+
     use crate::test_helpers::*;
     use chrono::NaiveDateTime;
     use std::error::Error;

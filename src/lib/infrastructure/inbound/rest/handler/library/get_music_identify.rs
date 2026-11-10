@@ -5,16 +5,13 @@ use serde::{Deserialize, Serialize};
 use tracing::warn;
 use utoipa::{IntoParams, ToSchema};
 
-use crate::application::port::identify_music::{IdentifyMusicCommand, IdentifyMusicError};
-use crate::domain::model::music_candidate::MusicCandidate;
-use crate::domain::model::music_query::{MusicKind, MusicQuery};
-use crate::infrastructure::inbound::rest::api_error::{ApiError, ErrorBody};
-use crate::infrastructure::inbound::rest::app_state::AppState;
-use crate::infrastructure::inbound::rest::hal::{SelfLinks, hal_json};
+use crate::application::port::{IdentifyMusicCommand, IdentifyMusicError};
+use crate::domain::model::{MusicCandidate, MusicKind, MusicQuery};
 use crate::infrastructure::inbound::rest::handler::library::{
     MusicMediumResponse, MusicReferenceResponse,
 };
-use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
+use crate::infrastructure::inbound::rest::middleware::AuthenticatedUser;
+use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody, SelfLinks, hal_json};
 
 /// Kind of music work to search for.
 #[derive(Debug, Clone, Copy, Deserialize, ToSchema)]

@@ -1,115 +1,121 @@
 /// The library context endpoints.
-pub(crate) mod delete_gallery;
+mod delete_gallery;
 /// The library context endpoints.
-pub(crate) mod delete_gallery_item;
+mod delete_gallery_item;
 /// The library context endpoints.
-pub(crate) mod delete_playlist;
+mod delete_playlist;
 /// The library context endpoints.
-pub(crate) mod delete_playlist_track;
+mod delete_playlist_track;
 /// The library context endpoints.
-pub(crate) mod get_album;
+mod get_album;
 /// The library context endpoints.
-pub(crate) mod get_album_list;
+mod get_album_list;
 /// The library context endpoints.
-pub(crate) mod get_album_medium;
+mod get_album_medium;
 /// The library context endpoints.
-pub(crate) mod get_album_track;
+mod get_album_track;
 /// The library context endpoints.
-pub(crate) mod get_album_track_list;
+mod get_album_track_list;
 /// The library context endpoints.
-pub(crate) mod get_gallery;
+mod get_gallery;
 /// The library context endpoints.
-pub(crate) mod get_gallery_item;
+mod get_gallery_item;
 /// The library context endpoints.
-pub(crate) mod get_gallery_item_list;
+mod get_gallery_item_list;
 /// The library context endpoints.
-pub(crate) mod get_gallery_list;
+mod get_gallery_list;
 /// The library context endpoints.
-pub(crate) mod get_movie;
+mod get_movie;
 /// The library context endpoints.
-pub(crate) mod get_movie_identify;
+mod get_movie_identify;
 /// The library context endpoints.
-pub(crate) mod get_movie_identify_metadata;
+mod get_movie_identify_metadata;
 /// The library context endpoints.
-pub(crate) mod get_movie_list;
+mod get_movie_list;
 /// The library context endpoints.
-pub(crate) mod get_music_group;
+mod get_music_group;
 /// The library context endpoints.
-pub(crate) mod get_music_group_list;
+mod get_music_group_list;
 /// The library context endpoints.
-pub(crate) mod get_music_identify;
+mod get_music_identify;
 /// The library context endpoints.
-pub(crate) mod get_music_identify_metadata;
+mod get_music_identify_metadata;
 /// The library context endpoints.
-pub(crate) mod get_playlist;
+mod get_playlist;
 /// The library context endpoints.
-pub(crate) mod get_playlist_list;
+mod get_playlist_list;
 /// The library context endpoints.
-pub(crate) mod get_playlist_track;
+mod get_playlist_track;
 /// The library context endpoints.
-pub(crate) mod get_playlist_track_list;
+mod get_playlist_track_list;
 /// The library context endpoints.
-pub(crate) mod get_series;
+mod get_series;
 /// The library context endpoints.
-pub(crate) mod get_series_episode;
+mod get_series_episode;
 /// The library context endpoints.
-pub(crate) mod get_series_episode_list;
+mod get_series_episode_list;
 /// The library context endpoints.
-pub(crate) mod get_series_identify;
+mod get_series_identify;
 /// The library context endpoints.
-pub(crate) mod get_series_identify_metadata;
+mod get_series_identify_metadata;
 /// The library context endpoints.
-pub(crate) mod get_series_list;
+mod get_series_list;
 /// The library context endpoints.
-pub(crate) mod get_series_season;
+mod get_series_season;
 /// The library context endpoints.
-pub(crate) mod patch_album;
+mod patch_album;
 /// The library context endpoints.
-pub(crate) mod patch_album_track;
+mod patch_album_track;
 /// The library context endpoints.
-pub(crate) mod patch_movie;
+mod patch_movie;
 /// The library context endpoints.
-pub(crate) mod patch_music_group;
+mod patch_music_group;
 /// The library context endpoints.
-pub(crate) mod patch_playlist;
+mod patch_playlist;
 /// The library context endpoints.
-pub(crate) mod patch_series;
+mod patch_series;
 /// The library context endpoints.
-pub(crate) mod patch_series_episode;
+mod patch_series_episode;
 /// The library context endpoints.
-pub(crate) mod patch_series_season;
+mod patch_series_season;
 /// The library context endpoints.
-pub(crate) mod post_album;
+mod post_album;
 /// The library context endpoints.
-pub(crate) mod post_album_apply;
+mod post_album_apply;
 /// The library context endpoints.
-pub(crate) mod post_gallery;
+mod post_gallery;
 /// The library context endpoints.
-pub(crate) mod post_gallery_item;
+mod post_gallery_item;
 /// The library context endpoints.
-pub(crate) mod post_movie;
+mod post_movie;
 /// The library context endpoints.
-pub(crate) mod post_movie_apply;
+mod post_movie_apply;
 /// The library context endpoints.
-pub(crate) mod post_music_group;
+mod post_music_group;
 /// The library context endpoints.
-pub(crate) mod post_playlist;
+mod post_playlist;
 /// The library context endpoints.
-pub(crate) mod post_series;
+mod post_series;
 /// The library context endpoints.
-pub(crate) mod post_series_apply;
+mod post_series_apply;
 /// The library context endpoints.
-pub(crate) mod post_series_episode_apply;
+mod post_series_episode_apply;
 /// The library context endpoints.
-pub(crate) mod put_album_medium;
+mod put_album_medium;
 /// The library context endpoints.
-pub(crate) mod put_album_track;
+mod put_album_track;
 /// The library context endpoints.
-pub(crate) mod put_playlist_track;
+mod put_playlist_track;
 /// The library context endpoints.
-pub(crate) mod put_series_episode;
+mod put_series_episode;
 /// The library context endpoints.
-pub(crate) mod put_series_season;
+mod put_series_season;
+
+pub(crate) use self::get_album_list::ListAlbumsQuery;
+pub(crate) use self::get_movie_list::ListMoviesQuery;
+pub(crate) use self::get_music_group_list::ListMusicGroupsQuery;
+pub(crate) use self::get_playlist_list::ListPlaylistsQuery;
+pub(crate) use self::get_series_list::ListSeriesQuery;
 
 use axum::middleware;
 use chrono::{NaiveDate, NaiveDateTime};
@@ -119,96 +125,38 @@ use utoipa::ToSchema;
 use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
 
-use crate::application::field_update::FieldUpdate;
-use crate::application::port::add_gallery_item::AddGalleryItemResponse;
-use crate::application::port::apply_movie::ApplyMovieError;
-use crate::application::port::apply_music_album::ApplyMusicAlbumError;
-use crate::application::port::apply_series::ApplySeriesError;
-use crate::application::port::apply_series_episode::ApplySeriesEpisodeError;
-use crate::application::port::create_gallery::CreateGalleryResponse;
-use crate::application::port::create_movie::CreateMovieError;
-use crate::application::port::create_music_album::CreateMusicAlbumError;
-use crate::application::port::create_music_group::CreateMusicGroupError;
-use crate::application::port::create_playlist::CreatePlaylistError;
-use crate::application::port::create_series::CreateSeriesError;
-use crate::application::port::delete_playlist::DeletePlaylistError;
-use crate::application::port::get_album::{
-    GetAlbumError, GetAlbumResponse as GetAlbumResponseData,
+use crate::application::FieldUpdate;
+use crate::application::port::{
+    AddGalleryItemResponse, ApplyMovieError, ApplyMusicAlbumError, ApplySeriesEpisodeError,
+    ApplySeriesError, CreateGalleryResponse, CreateMovieError, CreateMusicAlbumError,
+    CreateMusicGroupError, CreatePlaylistError, CreateSeriesError, DeletePlaylistError,
+    GalleryItemSummary, GetAlbumError, GetAlbumMediumError, GetAlbumMediumResponse,
+    GetAlbumResponse as GetAlbumResponseData, GetAlbumTrackError, GetAlbumTrackResponse,
+    GetGalleryItemResponse, GetGalleryResponse as GetGalleryResponseData, GetMovieError,
+    GetMovieResponse as GetMovieResponseData, GetMusicGroupError,
+    GetMusicGroupResponse as GetMusicGroupResponseData, GetPlaylistError, GetPlaylistTrackError,
+    GetSeriesEpisodeError, GetSeriesEpisodeResponse, GetSeriesError,
+    GetSeriesResponse as GetSeriesResponseData, GetSeriesSeasonError, GetSeriesSeasonResponse,
+    IdentifyMusicError, IdentifyVideoError, ListAlbumTracksError, ListAlbumTracksItem,
+    ListAlbumsError, ListAlbumsItem, ListGalleriesItem, ListMoviesError, ListMoviesItem,
+    ListMusicGroupsError, ListMusicGroupsItem, ListPlaylistsError, ListPlaylistsItem,
+    ListSeriesEpisodesError, ListSeriesEpisodesItem, ListSeriesError, ListSeriesItem,
+    PatchAlbumTrackError, PutAlbumMediumError, PutAlbumTrackError, PutSeriesEpisodeError,
+    PutSeriesSeasonError, RemovePlaylistTrackError, ReorderPlaylistTracksError,
+    ResolveMusicMetadataError, ResolveVideoMetadataError, UpdateMovieError, UpdateMusicAlbumError,
+    UpdateMusicGroupError, UpdatePlaylistError, UpdateSeriesEpisodeError, UpdateSeriesError,
+    UpdateSeriesSeasonError,
 };
-use crate::application::port::get_album_medium::{GetAlbumMediumError, GetAlbumMediumResponse};
-use crate::application::port::get_album_track::{GetAlbumTrackError, GetAlbumTrackResponse};
-use crate::application::port::get_gallery::{
-    GalleryItemSummary, GetGalleryResponse as GetGalleryResponseData,
+use crate::domain::NumericID;
+use crate::domain::model::{
+    ArtistCredit, Candidate, Episode, ExternalRef, GalleryItemMedia, MediaMetadata, MediumFormat,
+    MediumSummary, Movie, MusicAlbum, MusicPlaylist, MusicRecording, ProductionType, ScanType,
+    Series, Video, VideoKind,
 };
-use crate::application::port::get_gallery_item::GetGalleryItemResponse;
-use crate::application::port::get_movie::{
-    GetMovieError, GetMovieResponse as GetMovieResponseData,
-};
-use crate::application::port::get_music_group::{
-    GetMusicGroupError, GetMusicGroupResponse as GetMusicGroupResponseData,
-};
-use crate::application::port::get_playlist::GetPlaylistError;
-use crate::application::port::get_playlist_track::GetPlaylistTrackError;
-use crate::application::port::get_series::{
-    GetSeriesError, GetSeriesResponse as GetSeriesResponseData,
-};
-use crate::application::port::get_series_episode::{
-    GetSeriesEpisodeError, GetSeriesEpisodeResponse,
-};
-use crate::application::port::get_series_season::{GetSeriesSeasonError, GetSeriesSeasonResponse};
-use crate::application::port::identify_music::IdentifyMusicError;
-use crate::application::port::identify_video::IdentifyVideoError;
-use crate::application::port::list_album_tracks::{ListAlbumTracksError, ListAlbumTracksItem};
-use crate::application::port::list_albums::{ListAlbumsError, ListAlbumsItem};
-use crate::application::port::list_galleries::ListGalleriesItem;
-use crate::application::port::list_movies::{ListMoviesError, ListMoviesItem};
-use crate::application::port::list_music_groups::{ListMusicGroupsError, ListMusicGroupsItem};
-use crate::application::port::list_playlists::{ListPlaylistsError, ListPlaylistsItem};
-use crate::application::port::list_series::{ListSeriesError, ListSeriesItem};
-use crate::application::port::list_series_episodes::{
-    ListSeriesEpisodesError, ListSeriesEpisodesItem,
-};
-use crate::application::port::patch_album_track::PatchAlbumTrackError;
-use crate::application::port::put_album_medium::PutAlbumMediumError;
-use crate::application::port::put_album_track::PutAlbumTrackError;
-use crate::application::port::put_series_episode::PutSeriesEpisodeError;
-use crate::application::port::put_series_season::PutSeriesSeasonError;
-use crate::application::port::remove_playlist_track::RemovePlaylistTrackError;
-use crate::application::port::reorder_playlist_tracks::ReorderPlaylistTracksError;
-use crate::application::port::resolve_music_metadata::ResolveMusicMetadataError;
-use crate::application::port::resolve_video_metadata::ResolveVideoMetadataError;
-use crate::application::port::update_movie::UpdateMovieError;
-use crate::application::port::update_music_album::UpdateMusicAlbumError;
-use crate::application::port::update_music_group::UpdateMusicGroupError;
-use crate::application::port::update_playlist::UpdatePlaylistError;
-use crate::application::port::update_series::UpdateSeriesError;
-use crate::application::port::update_series_episode::UpdateSeriesEpisodeError;
-use crate::application::port::update_series_season::UpdateSeriesSeasonError;
-use crate::domain::alias::NumericID;
-use crate::domain::model::episode::Episode;
-use crate::domain::model::external_ref::ExternalRef;
-use crate::domain::model::gallery_item::GalleryItemMedia;
-use crate::domain::model::media_metadata::MediaMetadata;
-use crate::domain::model::media_query::VideoKind;
-use crate::domain::model::movie::Movie;
-use crate::domain::model::music_album::{MusicAlbum, ProductionType};
-use crate::domain::model::music_metadata::{ArtistCredit, MediumFormat, MediumSummary};
-use crate::domain::model::music_playlist::MusicPlaylist;
-use crate::domain::model::music_recording::MusicRecording;
-use crate::domain::model::series::Series;
-use crate::domain::model::video::{ScanType, Video};
-use crate::domain::model::video_candidate::Candidate;
-use crate::infrastructure::inbound::rest::api_error::ApiError;
-use crate::infrastructure::inbound::rest::app_state::AppState;
-use crate::infrastructure::inbound::rest::hal::{Link, SelfLinks};
 use crate::infrastructure::inbound::rest::handler::asset::asset_image_href;
-use crate::infrastructure::inbound::rest::handler::library::get_album_list::ListAlbumsQuery;
-use crate::infrastructure::inbound::rest::handler::library::get_movie_list::ListMoviesQuery;
-use crate::infrastructure::inbound::rest::handler::library::get_music_group_list::ListMusicGroupsQuery;
-use crate::infrastructure::inbound::rest::handler::library::get_playlist_list::ListPlaylistsQuery;
-use crate::infrastructure::inbound::rest::handler::library::get_series_list::ListSeriesQuery;
-use crate::infrastructure::inbound::rest::middleware::auth::authenticate;
-use crate::infrastructure::outbound::jwt::token_provider::JwtTokenProvider;
+use crate::infrastructure::inbound::rest::middleware::authenticate;
+use crate::infrastructure::inbound::rest::{ApiError, AppState, Link, SelfLinks};
+use crate::infrastructure::outbound::jwt::JwtTokenProvider;
 
 /// Default number of items a listing returns when `limit` is omitted.
 pub(crate) const DEFAULT_LIMIT: usize = 20;

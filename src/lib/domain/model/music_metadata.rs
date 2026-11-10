@@ -1,8 +1,6 @@
 use chrono::NaiveDate;
 
-use crate::domain::model::artwork::Artwork;
-use crate::domain::model::external_ref::ExternalRef;
-use crate::domain::model::music_album::ProductionType;
+use crate::domain::model::{Artwork, ExternalRef, ProductionType};
 
 /// One name a provider credits for an album, a release or a recording.
 ///

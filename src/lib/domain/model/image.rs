@@ -1,7 +1,7 @@
 use chrono::NaiveDate;
 
-use crate::domain::alias::{NumericID, PositiveI64};
-use crate::domain::model::scope::Scope;
+use crate::domain::model::AssetScope;
+use crate::domain::{NumericID, PositiveI64};
 
 /// Error returned when initialising an `Image`.
 #[derive(Debug, thiserror::Error)]
@@ -59,8 +59,8 @@ pub(crate) struct Image {
     name: String,
     /// Orientation of the image.
     orientation: Orientation,
-    /// Scope fixed by the first attachment, when set.
-    scope: Option<Scope>,
+    /// Asset scope fixed by the first attachment, when set.
+    scope: Option<AssetScope>,
     /// Width of the image, in pixels.
     width_px: i64,
 }
@@ -89,7 +89,7 @@ impl Image {
         probed: ProbedImage,
         created_at: NaiveDate,
         file_id: NumericID,
-        scope: Option<Scope>,
+        scope: Option<AssetScope>,
     ) -> Self {
         Self {
             created_at,
@@ -129,7 +129,7 @@ impl Image {
 
     /// Return the scope fixed by the first attachment, if any.
     #[must_use]
-    pub(crate) fn scope(&self) -> Option<Scope> {
+    pub(crate) fn scope(&self) -> Option<AssetScope> {
         self.scope
     }
 
@@ -152,7 +152,7 @@ impl Image {
         orientation: Orientation,
         created_at: NaiveDate,
         file_id: NumericID,
-        scope: Option<Scope>,
+        scope: Option<AssetScope>,
     ) -> Result<Self, ImageError> {
         if name.is_empty() {
             return Err(ImageError::InvalidName);

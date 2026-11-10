@@ -3,8 +3,8 @@
     reason = "the module keeps the scope algebra, the catalog and the aggregate next to the concept each documents"
 )]
 
-use crate::domain::alias::NumericID;
-use crate::domain::model::user::Role;
+use crate::domain::NumericID;
+use crate::domain::model::Role;
 
 /// Error returned when initialising a `Permission`.
 #[derive(Debug, thiserror::Error)]

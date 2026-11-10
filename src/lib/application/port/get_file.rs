@@ -3,9 +3,9 @@ use std::pin::Pin;
 
 use chrono::{NaiveDate, NaiveDateTime};
 
-use crate::domain::alias::NumericID;
-use crate::domain::model::file::Origin;
-use crate::domain::port::content_link::ContentLink;
+use crate::domain::NumericID;
+use crate::domain::model::Origin;
+use crate::domain::port::ContentLink;
 
 /// Command to fetch one stored file.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

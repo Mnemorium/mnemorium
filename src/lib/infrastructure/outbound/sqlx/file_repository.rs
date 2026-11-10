@@ -1,11 +1,9 @@
 use sqlx::{QueryBuilder, Sqlite, Transaction};
 
-use crate::domain::model::file::{File, Origin};
-use crate::domain::model::integrity_hash::IntegrityHash;
-use crate::domain::port::error::RepositoryError;
-use crate::domain::port::file_repository::{FileFilter, FileRepository};
+use crate::domain::model::{File, IntegrityHash, Origin};
+use crate::domain::port::{FileFilter, FileRepository, RepositoryError};
 
-use super::model::file::File as SqlxFile;
+use super::model::File as SqlxFile;
 
 /// Repository persisting files, backed by a `SQLite` transaction.
 pub(crate) struct SqlxFileRepository<'transaction> {

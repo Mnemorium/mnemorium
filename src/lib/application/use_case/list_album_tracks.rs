@@ -2,20 +2,18 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
-use crate::application::port::list_album_tracks::{
+use crate::application::port::{
     ListAlbumTracksCommand, ListAlbumTracksError, ListAlbumTracksItem, ListAlbumTracksResponse,
     ListAlbumTracksUseCase,
 };
 use crate::application::security_event;
-use crate::domain::model::permission::Action;
-use crate::domain::port::identity_unit_of_work::IdentityUnitOfWork;
-use crate::domain::port::library_unit_of_work::LibraryUnitOfWork;
-use crate::domain::port::music_album_repository::{MusicAlbumFilter, MusicAlbumRepository as _};
-use crate::domain::port::permission_repository::{PermissionFilter, PermissionRepository as _};
-use crate::domain::port::unit_of_work::{UnitOfWork as _, UnitOfWorkFactory};
-use crate::domain::port::user_repository::{UserFilter, UserRepository as _};
-use crate::domain::port::user_unit_of_work::UserUnitOfWork;
-use crate::domain::service::authorization::{Authorization, Decision};
+use crate::domain::model::Action;
+use crate::domain::port::{
+    IdentityUnitOfWork, LibraryUnitOfWork, MusicAlbumFilter, MusicAlbumRepository as _,
+    PermissionFilter, PermissionRepository as _, UnitOfWork as _, UnitOfWorkFactory, UserFilter,
+    UserRepository as _, UserUnitOfWork,
+};
+use crate::domain::service::{Authorization, Decision};
 
 /// Use case implementation for listing the tracks of one medium of one music
 /// album.
@@ -153,13 +151,12 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::model::music_album::MusicAlbum;
-    use crate::domain::model::music_medium::{MediumIndex, MusicMedium};
-    use crate::domain::model::music_recording::{MusicRecording, TrackIndex};
-    use crate::domain::model::user::{Role, User};
-    use crate::domain::port::error::RepositoryError;
-    use crate::domain::port::music_album_repository::MockMusicAlbumRepository;
-    use crate::domain::port::user_repository::MockUserRepository;
+    use crate::domain::model::{
+        MediumIndex, MusicAlbum, MusicMedium, MusicRecording, Role, TrackIndex, User,
+    };
+
+    use crate::domain::port::{MockMusicAlbumRepository, MockUserRepository, RepositoryError};
+
     use crate::test_helpers::*;
     use std::error::Error;
     use std::sync::atomic::Ordering;

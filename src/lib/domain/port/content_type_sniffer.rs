@@ -7,7 +7,7 @@
 use std::future::Future;
 use std::path::Path;
 
-use crate::domain::port::error::ContentTypeSnifferError;
+use crate::domain::port::ContentTypeSnifferError;
 
 /// Port for determining a file's media type from its content.
 #[cfg_attr(test, mockall::automock)]

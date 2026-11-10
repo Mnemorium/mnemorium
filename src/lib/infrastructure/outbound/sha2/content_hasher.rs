@@ -1,8 +1,7 @@
 use sha2::{Digest as _, Sha256};
 
-use crate::domain::model::integrity_hash::{DIGEST_HEX_LENGTH, IntegrityHash};
-use crate::domain::port::content_hasher::{ContentHasher, ContentHasherSession};
-use crate::domain::port::error::ContentHasherError;
+use crate::domain::model::{DIGEST_HEX_LENGTH, IntegrityHash};
+use crate::domain::port::{ContentHasher, ContentHasherError, ContentHasherSession};
 
 /// Content hasher backed by the SHA-256 algorithm.
 #[derive(Debug, Default)]

@@ -1,9 +1,9 @@
 use std::future::Future;
 use std::pin::Pin;
 
-use crate::application::field_update::FieldUpdate;
-use crate::domain::alias::NumericID;
-use crate::domain::model::season::Season;
+use crate::application::FieldUpdate;
+use crate::domain::NumericID;
+use crate::domain::model::Season;
 
 /// Command to update a season partially.
 ///

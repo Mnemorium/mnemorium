@@ -6,14 +6,12 @@ use std::sync::Arc;
 
 use chrono::Utc;
 
-use crate::application::port::load_state::{
+use crate::application::port::{
     DATABASE_PATH, JWT_SECRET_VARIABLE, LoadStateError, LoadStateResponse, LoadStateUseCase,
     PEPPER_VARIABLE, SECRET_LENGTH, StateSeedSource,
 };
-use crate::domain::model::instance_state::{InstanceState, SECRET_HEX_LENGTH};
-use crate::domain::port::error::InstanceStateStoreError;
-use crate::domain::port::instance_state_store::InstanceStateStore;
-use crate::domain::port::secret_generator::SecretGenerator;
+use crate::domain::model::{InstanceState, SECRET_HEX_LENGTH};
+use crate::domain::port::{InstanceStateStore, InstanceStateStoreError, SecretGenerator};
 
 /// Use case implementation for loading or creating the instance state.
 ///
@@ -216,11 +214,14 @@ fn validate_seed(seed: Option<&str>, variable: &'static str) -> Result<(), LoadS
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::application::port::load_state::StateSeeds;
-    use crate::domain::model::instance_state::InstanceStateError;
-    use crate::domain::port::error::{SecretGeneratorError, StateSeedSourceError};
-    use crate::domain::port::instance_state_store::MockInstanceStateStore;
-    use crate::domain::port::secret_generator::MockSecretGenerator;
+    use crate::application::port::StateSeeds;
+
+    use crate::domain::model::InstanceStateError;
+
+    use crate::domain::port::{
+        MockInstanceStateStore, MockSecretGenerator, SecretGeneratorError, StateSeedSourceError,
+    };
+
     use std::error::Error;
     use std::future::ready;
     use std::iter::repeat_n;

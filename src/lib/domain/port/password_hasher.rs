@@ -1,6 +1,6 @@
 use std::future::Future;
 
-use crate::domain::port::error::PasswordHasherError;
+use crate::domain::port::PasswordHasherError;
 
 /// Port for hashing and verifying passwords.
 #[cfg_attr(test, mockall::automock)]

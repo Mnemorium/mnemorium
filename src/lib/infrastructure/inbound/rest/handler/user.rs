@@ -1,11 +1,11 @@
 /// The user context endpoints.
-pub(crate) mod get_me;
+mod get_me;
 /// The user context endpoints.
-pub(crate) mod get_user;
+mod get_user;
 /// The user context endpoints.
-pub(crate) mod get_user_list;
+mod get_user_list;
 /// The user context endpoints.
-pub(crate) mod patch_user;
+mod patch_user;
 
 use axum::middleware;
 use serde::Serialize;
@@ -14,15 +14,15 @@ use utoipa::ToSchema;
 use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
 
-use crate::application::port::get_user::GetUserResponse as GetUserResponseData;
-use crate::domain::alias::NumericID;
-use crate::domain::model::user::Role;
-use crate::infrastructure::inbound::rest::api_error::ApiError;
-use crate::infrastructure::inbound::rest::app_state::AppState;
-use crate::infrastructure::inbound::rest::hal::SelfLinks;
-use crate::infrastructure::inbound::rest::handler::identity::{get_permission, put_permission};
-use crate::infrastructure::inbound::rest::middleware::auth::authenticate;
-use crate::infrastructure::outbound::jwt::token_provider::JwtTokenProvider;
+use crate::application::port::GetUserResponse as GetUserResponseData;
+use crate::domain::NumericID;
+use crate::domain::model::Role;
+use crate::infrastructure::inbound::rest::handler::identity::{
+    __path_get_permission, __path_put_permission, get_permission, put_permission,
+};
+use crate::infrastructure::inbound::rest::middleware::authenticate;
+use crate::infrastructure::inbound::rest::{ApiError, AppState, SelfLinks};
+use crate::infrastructure::outbound::jwt::JwtTokenProvider;
 
 /// User returned by a successful lookup.
 #[derive(Debug, Serialize, ToSchema)]
@@ -90,10 +90,7 @@ pub(crate) fn user_router() -> OpenApiRouter<AppState> {
         .routes(routes!(get_me::get_me))
         .routes(routes!(get_user::get_user, patch_user::patch_user))
         .routes(routes!(get_user_list::get_user_list))
-        .routes(routes!(
-            get_permission::get_permission,
-            put_permission::put_permission
-        ))
+        .routes(routes!(get_permission, put_permission))
 }
 
 /// Routes of the user bounded context.

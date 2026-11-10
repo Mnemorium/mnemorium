@@ -1,10 +1,10 @@
 use sqlx::{QueryBuilder, Sqlite, Transaction};
 
-use crate::domain::model::audio::Audio;
-use crate::domain::port::audio_repository::{AudioFilter, AudioRepository};
-use crate::domain::port::error::RepositoryError;
+use crate::domain::model::Audio;
+use crate::domain::port::{AudioFilter, AudioRepository, RepositoryError};
 
-use super::model::audio::Audio as SqlxAudio;
+use super::model::Audio as SqlxAudio;
+
 use super::query_filter::push_filter;
 
 /// Repository persisting audio rows, backed by a `SQLite` transaction.

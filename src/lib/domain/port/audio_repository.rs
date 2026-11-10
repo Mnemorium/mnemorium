@@ -1,8 +1,8 @@
 use std::future::Future;
 
-use crate::domain::alias::NumericID;
-use crate::domain::model::audio::Audio;
-use crate::domain::port::error::RepositoryError;
+use crate::domain::NumericID;
+use crate::domain::model::Audio;
+use crate::domain::port::RepositoryError;
 
 /// Search filters for [`AudioRepository::search`]. Every field is optional; an
 /// all-`None` filter returns every audio row.

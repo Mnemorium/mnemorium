@@ -1,7 +1,7 @@
 //! The background upload reaper.
 //!
 //! A [`UploadReaperRunner`] ticks on the configured interval and runs one
-//! bounded [`ReapUploads`](crate::application::use_case::reap_uploads::ReapUploads)
+//! bounded [`ReapUploads`](crate::application::use_case::ReapUploads)
 //! pass per tick. It starts with the server, never delays readiness, and drains
 //! on the shutdown signal like the media ingest.
 
@@ -12,8 +12,7 @@ use tokio::sync::{Mutex, watch};
 use tokio::task::JoinHandle;
 use tokio::time::{MissedTickBehavior, interval};
 
-use crate::application::port::asset_use_case_factory::AssetUseCaseFactory;
-use crate::application::port::reap_uploads::ReapUploadsCommand;
+use crate::application::port::{AssetUseCaseFactory, ReapUploadsCommand};
 use crate::application::security_event;
 
 /// Long-lived driver of the upload reaper.
@@ -118,9 +117,8 @@ mod tests {
     use tokio::time::sleep;
     use tracing_test::traced_test;
 
-    use crate::application::port::asset_use_case_factory::MockAssetUseCaseFactory;
-    use crate::application::port::reap_uploads::{
-        MockReapUploadsUseCase, ReapUploadsResponse, ReapUploadsUseCase,
+    use crate::application::port::{
+        MockAssetUseCaseFactory, MockReapUploadsUseCase, ReapUploadsResponse, ReapUploadsUseCase,
     };
 
     /// Interval short enough for a fast reaping test, in milliseconds.

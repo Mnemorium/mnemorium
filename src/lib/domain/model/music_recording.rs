@@ -1,4 +1,4 @@
-use crate::domain::alias::NumericID;
+use crate::domain::NumericID;
 
 /// Required length of `MusicRecording::isrc_code`.
 const ISRC_CODE_LENGTH: usize = 12;

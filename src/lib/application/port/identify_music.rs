@@ -1,9 +1,8 @@
 use std::future::Future;
 use std::pin::Pin;
 
-use crate::domain::alias::NumericID;
-use crate::domain::model::music_candidate::MusicCandidate;
-use crate::domain::model::music_query::MusicQuery;
+use crate::domain::NumericID;
+use crate::domain::model::{MusicCandidate, MusicQuery};
 
 /// Command for one music identification run.
 #[derive(Debug, Clone, PartialEq, Eq)]

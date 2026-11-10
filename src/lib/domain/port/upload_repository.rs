@@ -2,9 +2,9 @@ use std::future::Future;
 
 use chrono::NaiveDateTime;
 
-use crate::domain::alias::NumericID;
-use crate::domain::model::upload::Upload;
-use crate::domain::port::error::RepositoryError;
+use crate::domain::NumericID;
+use crate::domain::model::Upload;
+use crate::domain::port::RepositoryError;
 
 /// Search filters for [`UploadRepository::search`]. Every field is optional;
 /// an all-`None` filter returns every upload.

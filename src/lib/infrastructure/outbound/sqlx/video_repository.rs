@@ -1,12 +1,13 @@
 use sqlx::{QueryBuilder, Sqlite, Transaction};
 
-use crate::domain::model::video::{ScanType, Video};
-use crate::domain::port::error::RepositoryError;
-use crate::domain::port::video_repository::{VideoFilter, VideoRepository};
+use crate::domain::model::{ScanType, Video};
+use crate::domain::port::{RepositoryError, VideoFilter, VideoRepository};
 
 use super::error_mapping::stored_data_invalid;
-use super::model::scope::{parse_scope, scope_token};
-use super::model::video::{ScanType as SqlxScanType, Video as SqlxVideo};
+use super::model::{
+    ScanType as SqlxScanType, Video as SqlxVideo, asset_scope_token, parse_asset_scope,
+};
+
 use super::query_filter::push_filter;
 
 /// Repository persisting videos, backed by a `SQLite` transaction.
@@ -58,7 +59,7 @@ impl VideoRepository for SqlxVideoRepository<'_> {
         .bind(video.color_id())
         .bind(sqlx_scan_type(video.scan_type()))
         .bind(video.file_id())
-        .bind(video.scope().map(scope_token))
+        .bind(video.scope().map(asset_scope_token))
         .fetch_one(&mut **self.transaction)
         .await?;
 
@@ -162,7 +163,7 @@ fn domain_video(row: SqlxVideo) -> Result<Video, RepositoryError> {
     let scope = row
         .scope
         .as_deref()
-        .map(|value| parse_scope(value).ok_or_else(|| stored_data_invalid("video_scope")))
+        .map(|value| parse_asset_scope(value).ok_or_else(|| stored_data_invalid("video_scope")))
         .transpose()?;
 
     Video::try_new(
@@ -183,7 +184,8 @@ fn domain_video(row: SqlxVideo) -> Result<Video, RepositoryError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::model::scope::Scope;
+    use crate::domain::model::AssetScope;
+
     use crate::infrastructure::outbound::sqlx::test_helpers::begin_transaction;
     use rstest::rstest;
     use std::error::Error;
@@ -297,7 +299,7 @@ mod tests {
             "YCbCr".to_owned(),
             ScanType::Progressive,
             11,
-            Some(Scope::User),
+            Some(AssetScope::User),
         )?;
 
         // Act
@@ -313,8 +315,11 @@ mod tests {
             .next();
 
         // Assert
-        assert_eq!(persisted.scope(), Some(Scope::User));
-        assert_eq!(found.and_then(|video| video.scope()), Some(Scope::User));
+        assert_eq!(persisted.scope(), Some(AssetScope::User));
+        assert_eq!(
+            found.and_then(|video| video.scope()),
+            Some(AssetScope::User)
+        );
         Ok(())
     }
 

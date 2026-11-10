@@ -1,9 +1,8 @@
 use std::future::Future;
 use std::pin::Pin;
 
-use crate::domain::alias::NumericID;
-use crate::domain::model::media_metadata::MediaMetadata;
-use crate::domain::model::video_candidate::Target;
+use crate::domain::NumericID;
+use crate::domain::model::{MediaMetadata, Target};
 
 /// Command for one video metadata resolution run.
 #[derive(Debug, Clone, PartialEq, Eq)]

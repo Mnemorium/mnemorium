@@ -1,9 +1,9 @@
 use std::future::Future;
 use std::pin::Pin;
 
-use crate::application::field_update::FieldUpdate;
-use crate::domain::alias::NumericID;
-use crate::domain::model::music_album::MusicAlbum;
+use crate::application::FieldUpdate;
+use crate::domain::NumericID;
+use crate::domain::model::MusicAlbum;
 
 /// Command to edit the shared recording behind a track address.
 ///

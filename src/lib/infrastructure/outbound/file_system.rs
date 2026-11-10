@@ -1,7 +1,12 @@
 /// The configuration source adapter.
-pub(crate) mod configuration_source;
+mod configuration_source;
 /// The file storage adapter.
-pub(crate) mod file_storage;
+mod file_storage;
 /// The instance state store adapter.
-pub(crate) mod instance_state_store;
-pub(crate) mod media_source;
+mod instance_state_store;
+mod media_source;
+
+pub(crate) use self::configuration_source::FileConfigurationSource;
+pub(crate) use self::file_storage::FileSystemStorage;
+pub(crate) use self::instance_state_store::FileInstanceStateStore;
+pub(crate) use self::media_source::LocalMediaSource;

@@ -1,6 +1,6 @@
 use std::future::Future;
 
-use crate::domain::port::error::UnitOfWorkError;
+use crate::domain::port::UnitOfWorkError;
 
 /// Transaction boundary spanning the repositories a use case needs.
 ///

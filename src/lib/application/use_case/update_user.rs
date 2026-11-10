@@ -2,20 +2,16 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
-use crate::application::port::update_user::{
+use crate::application::port::{
     UpdateUserCommand, UpdateUserError, UpdateUserResponse, UpdateUserUseCase,
 };
 use crate::application::security_event;
-use crate::domain::model::permission::Action;
-use crate::domain::model::user::UserError;
-use crate::domain::port::error::RepositoryError;
-use crate::domain::port::identity_unit_of_work::IdentityUnitOfWork;
-use crate::domain::port::permission_repository::{PermissionFilter, PermissionRepository as _};
-use crate::domain::port::unit_of_work::{UnitOfWork as _, UnitOfWorkFactory};
-use crate::domain::port::user_repository::{UserFilter, UserRepository as _};
-use crate::domain::port::user_unit_of_work::UserUnitOfWork;
-use crate::domain::service::authorization::{Authorization, Decision};
-use crate::domain::service::username_policy::{UsernamePolicy, UsernamePolicyError};
+use crate::domain::model::{Action, UserError};
+use crate::domain::port::{
+    IdentityUnitOfWork, PermissionFilter, PermissionRepository as _, RepositoryError,
+    UnitOfWork as _, UnitOfWorkFactory, UserFilter, UserRepository as _, UserUnitOfWork,
+};
+use crate::domain::service::{Authorization, Decision, UsernamePolicy, UsernamePolicyError};
 
 /// Use case implementation for updating the profile of a user.
 pub(crate) struct UpdateUser<F> {
@@ -213,8 +209,10 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::model::user::{Role, User};
-    use crate::domain::port::user_repository::MockUserRepository;
+    use crate::domain::model::{Role, User};
+
+    use crate::domain::port::MockUserRepository;
+
     use crate::test_helpers::*;
     use std::error::Error;
     use std::sync::atomic::{AtomicBool, Ordering};

@@ -2,21 +2,17 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
-use crate::application::port::get_gallery_item::{
+use crate::application::port::{
     GetGalleryItemCommand, GetGalleryItemError, GetGalleryItemResponse, GetGalleryItemUseCase,
 };
 use crate::application::security_event;
-use crate::domain::model::permission::Action;
-use crate::domain::port::gallery_repository::{
-    GalleryFilter, GalleryItemFilter, GalleryRepository as _,
+use crate::domain::model::Action;
+use crate::domain::port::{
+    GalleryFilter, GalleryItemFilter, GalleryRepository as _, IdentityUnitOfWork,
+    LibraryUnitOfWork, PermissionFilter, PermissionRepository as _, UnitOfWork as _,
+    UnitOfWorkFactory, UserFilter, UserRepository as _, UserUnitOfWork,
 };
-use crate::domain::port::identity_unit_of_work::IdentityUnitOfWork;
-use crate::domain::port::library_unit_of_work::LibraryUnitOfWork;
-use crate::domain::port::permission_repository::{PermissionFilter, PermissionRepository as _};
-use crate::domain::port::unit_of_work::{UnitOfWork as _, UnitOfWorkFactory};
-use crate::domain::port::user_repository::{UserFilter, UserRepository as _};
-use crate::domain::port::user_unit_of_work::UserUnitOfWork;
-use crate::domain::service::authorization::{Authorization, Decision};
+use crate::domain::service::{Authorization, Decision};
 
 /// Use case implementation for fetching one item of a gallery.
 pub(crate) struct GetGalleryItem<F> {
@@ -149,12 +145,12 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::model::gallery::Gallery;
-    use crate::domain::model::gallery_item::{GalleryItem, GalleryItemMedia};
-    use crate::domain::model::user::{Role, User};
-    use crate::domain::port::error::RepositoryError;
-    use crate::domain::port::gallery_repository::{GalleryItemDetail, MockGalleryRepository};
-    use crate::domain::port::user_repository::MockUserRepository;
+    use crate::domain::model::{Gallery, GalleryItem, GalleryItemMedia, Role, User};
+
+    use crate::domain::port::{
+        GalleryItemDetail, MockGalleryRepository, MockUserRepository, RepositoryError,
+    };
+
     use crate::test_helpers::*;
     use chrono::NaiveDateTime;
     use std::error::Error;

@@ -1,8 +1,8 @@
 use std::future::Future;
 
-use crate::domain::alias::NumericID;
-use crate::domain::model::movie::Movie;
-use crate::domain::port::error::RepositoryError;
+use crate::domain::NumericID;
+use crate::domain::model::Movie;
+use crate::domain::port::RepositoryError;
 
 /// Search filters for [`MovieRepository::search`]. Every field is optional; an
 /// all-`None` filter returns every film.
