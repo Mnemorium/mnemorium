@@ -1,8 +1,8 @@
 use std::future::Future;
 use std::pin::Pin;
 
-use crate::domain::alias::NumericID;
-use crate::domain::model::music_playlist::MusicPlaylist;
+use crate::domain::NumericID;
+use crate::domain::model::MusicPlaylist;
 
 /// Command to update a playlist's metadata and/or append a recording.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -96,9 +96,6 @@ impl UpdatePlaylistResponse {
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub(crate) enum UpdatePlaylistError {
-    /// A concurrent change conflicts with the requested one.
-    #[error("the playlist update conflicts with its current state")]
-    Conflict,
     /// The caller may read the playlist but does not own it.
     #[error("only the owner may change a playlist's metadata")]
     Forbidden,

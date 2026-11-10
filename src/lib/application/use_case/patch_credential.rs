@@ -6,20 +6,16 @@ use chrono::Utc;
 
 use tracing::{info, warn};
 
-use crate::application::port::patch_credential::{
+use crate::application::port::{
     PatchCredentialCommand, PatchCredentialError, PatchCredentialUseCase,
 };
-use crate::domain::model::credential::Credential;
-use crate::domain::model::permission::{Action, Global};
-use crate::domain::port::credential_repository::{CredentialFilter, CredentialRepository as _};
-use crate::domain::port::identity_unit_of_work::IdentityUnitOfWork;
-use crate::domain::port::password_hasher::PasswordHasher;
-use crate::domain::port::permission_repository::{PermissionFilter, PermissionRepository as _};
-use crate::domain::port::unit_of_work::{UnitOfWork as _, UnitOfWorkFactory};
-use crate::domain::port::user_repository::{UserFilter, UserRepository as _};
-use crate::domain::port::user_unit_of_work::UserUnitOfWork;
-use crate::domain::service::authorization::{Authorization, Decision};
-use crate::domain::service::password_policy::{PasswordPolicy, PasswordPolicyError};
+use crate::domain::model::{Action, Credential, Global};
+use crate::domain::port::{
+    CredentialFilter, CredentialRepository as _, IdentityUnitOfWork, PasswordHasher,
+    PermissionFilter, PermissionRepository as _, UnitOfWork as _, UnitOfWorkFactory, UserFilter,
+    UserRepository as _, UserUnitOfWork,
+};
+use crate::domain::service::{Authorization, Decision, PasswordPolicy, PasswordPolicyError};
 
 /// Use case implementation for changing the password behind a credential.
 pub(crate) struct PatchCredential<F, H> {
@@ -161,11 +157,13 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::model::user::{Role, User, UserError};
-    use crate::domain::port::credential_repository::MockCredentialRepository;
-    use crate::domain::port::error::{PasswordHasherError, RepositoryError};
-    use crate::domain::port::password_hasher::MockPasswordHasher;
-    use crate::domain::port::user_repository::MockUserRepository;
+    use crate::domain::model::{Role, User, UserError};
+
+    use crate::domain::port::{
+        MockCredentialRepository, MockPasswordHasher, MockUserRepository, PasswordHasherError,
+        RepositoryError,
+    };
+
     use crate::test_helpers::*;
     use chrono::NaiveDateTime;
     use std::error::Error;

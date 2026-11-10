@@ -1,67 +1,174 @@
 /// The asset unit of work port.
-pub(crate) mod asset_unit_of_work;
+mod asset_unit_of_work;
 /// The audio repository port.
-pub(crate) mod audio_repository;
+mod audio_repository;
 /// The configuration source port.
-pub(crate) mod configuration_source;
+mod configuration_source;
 /// The content hasher port.
-pub(crate) mod content_hasher;
+mod content_hasher;
 /// The content link port.
-pub(crate) mod content_link;
-pub(crate) mod content_type_sniffer;
+mod content_link;
+mod content_type_sniffer;
 /// The credential repository port.
-pub(crate) mod credential_repository;
-pub(crate) mod error;
+mod credential_repository;
+mod error;
 /// The file repository port.
-pub(crate) mod file_repository;
+mod file_repository;
 /// The file storage port.
-pub(crate) mod file_storage;
+mod file_storage;
 /// The gallery repository port.
-pub(crate) mod gallery_repository;
+mod gallery_repository;
 /// The identity unit of work port.
-pub(crate) mod identity_unit_of_work;
+mod identity_unit_of_work;
 /// The image repository port.
-pub(crate) mod image_repository;
+mod image_repository;
 /// The instance state store port.
-pub(crate) mod instance_state_store;
+mod instance_state_store;
 /// The library unit of work port.
-pub(crate) mod library_unit_of_work;
+mod library_unit_of_work;
 /// The media probe port.
-pub(crate) mod media_probe;
-pub(crate) mod media_source;
+mod media_probe;
+mod media_source;
 /// The mime type repository port.
-pub(crate) mod mime_type_repository;
+mod mime_type_repository;
 /// The movie repository port.
-pub(crate) mod movie_repository;
+mod movie_repository;
 /// The music album repository port.
-pub(crate) mod music_album_repository;
+mod music_album_repository;
 /// The music group repository port.
-pub(crate) mod music_group_repository;
+mod music_group_repository;
 /// The music metadata provider port.
-pub(crate) mod music_metadata_provider;
+mod music_metadata_provider;
 /// The music playlist repository port.
-pub(crate) mod music_playlist_repository;
+mod music_playlist_repository;
 /// The password generator port.
-pub(crate) mod password_generator;
+mod password_generator;
 /// The password hasher port.
-pub(crate) mod password_hasher;
+mod password_hasher;
 /// The permission repository port.
-pub(crate) mod permission_repository;
+mod permission_repository;
 /// The secret generator port.
-pub(crate) mod secret_generator;
+mod secret_generator;
 /// The series repository port.
-pub(crate) mod series_repository;
+mod series_repository;
 /// The token provider port.
-pub(crate) mod token_provider;
+mod token_provider;
 /// The unit of work port.
-pub(crate) mod unit_of_work;
+mod unit_of_work;
 /// The upload repository port.
-pub(crate) mod upload_repository;
+mod upload_repository;
 /// The user repository port.
-pub(crate) mod user_repository;
+mod user_repository;
 /// The user unit of work port.
-pub(crate) mod user_unit_of_work;
+mod user_unit_of_work;
 /// The video metadata provider port.
-pub(crate) mod video_metadata_provider;
+mod video_metadata_provider;
 /// The video repository port.
-pub(crate) mod video_repository;
+mod video_repository;
+
+pub(crate) use self::asset_unit_of_work::AssetUnitOfWork;
+#[cfg(test)]
+pub(crate) use self::audio_repository::MockAudioRepository;
+pub(crate) use self::audio_repository::{AudioFilter, AudioRepository};
+pub(crate) use self::configuration_source::{
+    ConfigurationSource, EnvironmentConfiguration, LoadedFileConfiguration,
+};
+#[cfg(test)]
+pub(crate) use self::configuration_source::{
+    MockConfigurationSource, MockEnvironmentConfiguration,
+};
+pub(crate) use self::content_hasher::{ContentHasher, ContentHasherSession};
+#[cfg(test)]
+pub(crate) use self::content_hasher::{MockContentHasher, MockContentHasherSession};
+#[cfg(test)]
+pub(crate) use self::content_link::MockContentLinkProvider;
+pub(crate) use self::content_link::{CONTENT_LINK_TTL_SECONDS, ContentLink, ContentLinkProvider};
+pub(crate) use self::content_type_sniffer::ContentTypeSniffer;
+#[cfg(test)]
+pub(crate) use self::content_type_sniffer::MockContentTypeSniffer;
+#[cfg(test)]
+pub(crate) use self::credential_repository::MockCredentialRepository;
+pub(crate) use self::credential_repository::{CredentialFilter, CredentialRepository};
+pub(crate) use self::error::{
+    ConfigurationSourceError, ContentHasherError, ContentLinkError, ContentTypeSnifferError,
+    ExternalServiceError, InstanceStateStoreError, MediaProbeError, MediaSourceError,
+    PasswordGeneratorError, PasswordHasherError, RepositoryError, SecretGeneratorError,
+    StateSeedSourceError, StorageError, TokenProviderError, UnitOfWorkError,
+};
+#[cfg(test)]
+pub(crate) use self::file_repository::MockFileRepository;
+pub(crate) use self::file_repository::{FileFilter, FileRepository};
+#[cfg(test)]
+pub(crate) use self::file_storage::MockFileStorage;
+pub(crate) use self::file_storage::{FileReader, FileStorage, OpenedFile, PromotedFile};
+#[cfg(test)]
+pub(crate) use self::gallery_repository::MockGalleryRepository;
+pub(crate) use self::gallery_repository::{
+    GalleryFilter, GalleryItemDetail, GalleryItemFilter, GalleryRepository,
+};
+pub(crate) use self::identity_unit_of_work::IdentityUnitOfWork;
+#[cfg(test)]
+pub(crate) use self::image_repository::MockImageRepository;
+pub(crate) use self::image_repository::{ImageFilter, ImageRepository};
+pub(crate) use self::instance_state_store::InstanceStateStore;
+#[cfg(test)]
+pub(crate) use self::instance_state_store::MockInstanceStateStore;
+pub(crate) use self::library_unit_of_work::LibraryUnitOfWork;
+pub(crate) use self::media_probe::MediaProbe;
+#[cfg(test)]
+pub(crate) use self::media_probe::MockMediaProbe;
+#[cfg(test)]
+pub(crate) use self::media_source::MockMediaSource;
+pub(crate) use self::media_source::{MediaEntry, MediaSource};
+#[cfg(test)]
+pub(crate) use self::mime_type_repository::MockMimeTypeRepository;
+pub(crate) use self::mime_type_repository::{MimeTypeFilter, MimeTypeRepository};
+#[cfg(test)]
+pub(crate) use self::movie_repository::MockMovieRepository;
+pub(crate) use self::movie_repository::{MovieFilter, MovieRepository};
+#[cfg(test)]
+pub(crate) use self::music_album_repository::MockMusicAlbumRepository;
+pub(crate) use self::music_album_repository::{
+    MusicAlbumFilter, MusicAlbumRepository, MusicRecordingFilter,
+};
+#[cfg(test)]
+pub(crate) use self::music_group_repository::MockMusicGroupRepository;
+pub(crate) use self::music_group_repository::{MusicGroupFilter, MusicGroupRepository};
+#[cfg(test)]
+pub(crate) use self::music_metadata_provider::MockMusicMetadataProvider;
+pub(crate) use self::music_metadata_provider::MusicMetadataProvider;
+#[cfg(test)]
+pub(crate) use self::music_playlist_repository::MockMusicPlaylistRepository;
+pub(crate) use self::music_playlist_repository::{MusicPlaylistFilter, MusicPlaylistRepository};
+#[cfg(test)]
+pub(crate) use self::password_generator::MockPasswordGenerator;
+pub(crate) use self::password_generator::PasswordGenerator;
+#[cfg(test)]
+pub(crate) use self::password_hasher::MockPasswordHasher;
+pub(crate) use self::password_hasher::PasswordHasher;
+#[cfg(test)]
+pub(crate) use self::permission_repository::MockPermissionRepository;
+pub(crate) use self::permission_repository::{PermissionFilter, PermissionRepository};
+#[cfg(test)]
+pub(crate) use self::secret_generator::MockSecretGenerator;
+pub(crate) use self::secret_generator::SecretGenerator;
+#[cfg(test)]
+pub(crate) use self::series_repository::MockSeriesRepository;
+pub(crate) use self::series_repository::{EpisodeFilter, SeriesFilter, SeriesRepository};
+#[cfg(test)]
+pub(crate) use self::token_provider::MockTokenProvider;
+pub(crate) use self::token_provider::{IssuedToken, TokenProvider};
+pub(crate) use self::unit_of_work::{UnitOfWork, UnitOfWorkFactory};
+#[cfg(test)]
+pub(crate) use self::upload_repository::MockUploadRepository;
+pub(crate) use self::upload_repository::{UploadFilter, UploadRepository};
+#[cfg(test)]
+pub(crate) use self::user_repository::MockUserRepository;
+pub(crate) use self::user_repository::{UserFilter, UserRepository};
+pub(crate) use self::user_unit_of_work::UserUnitOfWork;
+#[cfg(test)]
+pub(crate) use self::video_metadata_provider::MockVideoMetadataProvider;
+pub(crate) use self::video_metadata_provider::VideoMetadataProvider;
+#[cfg(test)]
+pub(crate) use self::video_repository::MockVideoRepository;
+pub(crate) use self::video_repository::{VideoFilter, VideoRepository};

@@ -8,16 +8,16 @@ use tokio::sync::{Mutex, watch};
 use tokio::task::JoinHandle;
 use tokio::time::{Instant, sleep};
 
-use crate::application::port::ingest_media::{IngestMediaCommand, IngestRequest};
-use crate::application::port::library_use_case_factory::LibraryUseCaseFactory;
-use crate::application::port::media_change_source::{
-    MediaChange, MediaChangeSource, MediaChangeSourceError,
+use crate::application::port::{
+    IngestMediaCommand, IngestRequest, LibraryUseCaseFactory, MediaChange, MediaChangeSource,
+    MediaChangeSourceError,
 };
-use crate::application::use_case::upload_layout::{MEDIA_ROOT, media_root};
-use crate::domain::port::media_source::{MediaEntry, MediaSource};
-use crate::infrastructure::outbound::file_system::media_source::LocalMediaSource;
-use crate::infrastructure::outbound::notify::media_change_source::NotifyMediaChangeSource;
 use tracing::{error, warn};
+
+use crate::application::use_case::{MEDIA_ROOT, media_root};
+use crate::domain::port::{MediaEntry, MediaSource};
+use crate::infrastructure::outbound::file_system::LocalMediaSource;
+use crate::infrastructure::outbound::notify::NotifyMediaChangeSource;
 
 /// How long a path must keep the same size and modification instant before it is
 /// processed.
@@ -72,13 +72,11 @@ where
     /// Wait until `path`'s size and modification instant stop changing.
     ///
     /// Returns the stable entry, or `None` when the file vanished or kept
-    /// changing past [`MediaIngestRuntime::stability_timeout`].
-    #[expect(
-        clippy::arithmetic_side_effects,
-        reason = "a monotonic deadline built from two bounded durations cannot overflow"
-    )]
+    /// changing past [`MediaIngestRuntime::stability_timeout`]. A deadline the
+    /// clock cannot represent also yields `None`, so the gate gives up on the
+    /// path rather than panicking.
     async fn await_stable(&self, path: &str) -> Option<MediaEntry> {
-        let deadline = Instant::now() + self.stability_timeout;
+        let deadline = Instant::now().checked_add(self.stability_timeout)?;
         let mut previous: Option<MediaEntry> = None;
         loop {
             if Instant::now() >= deadline {
@@ -348,12 +346,13 @@ impl MediaChangeSource for StoppedMediaChangeSource {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::application::port::ingest_media::{
-        IngestMediaResponse, IngestMediaUseCase, MockIngestMediaUseCase,
+    use crate::application::port::{
+        IngestMediaResponse, IngestMediaUseCase, MockIngestMediaUseCase, MockLibraryUseCaseFactory,
+        MockMediaChangeSource,
     };
-    use crate::application::port::library_use_case_factory::MockLibraryUseCaseFactory;
-    use crate::application::port::media_change_source::MockMediaChangeSource;
-    use crate::domain::port::media_source::MockMediaSource;
+
+    use crate::domain::port::MockMediaSource;
+
     use chrono::NaiveDateTime;
     use std::error::Error;
     use std::future::pending;
@@ -407,17 +406,13 @@ mod tests {
     }
 
     /// A source whose file keeps growing for two samples before settling.
-    #[expect(
-        clippy::arithmetic_side_effects,
-        reason = "the fixture size is a small bounded multiple"
-    )]
     fn changing_sizes_source() -> MockMediaSource {
         let mut source = MockMediaSource::new();
         let mut samples = 0u32;
         source.expect_stat().returning(move |_| {
             samples = samples.saturating_add(1);
             let size = if samples < 3 {
-                i64::from(samples) * 3
+                i64::from(samples).saturating_mul(3)
             } else {
                 9
             };

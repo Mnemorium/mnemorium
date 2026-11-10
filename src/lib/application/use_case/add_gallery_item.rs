@@ -6,26 +6,18 @@ use chrono::Utc;
 
 use tracing::warn;
 
-use crate::application::port::add_gallery_item::{
+use crate::application::port::{
     AddGalleryItemCommand, AddGalleryItemError, AddGalleryItemResponse, AddGalleryItemUseCase,
 };
-use crate::domain::model::gallery_item::{GalleryItem, GalleryItemMedia};
-use crate::domain::model::permission::Action;
-use crate::domain::port::asset_unit_of_work::AssetUnitOfWork;
-use crate::domain::port::error::RepositoryError;
-use crate::domain::port::file_repository::{FileFilter, FileRepository as _};
-use crate::domain::port::gallery_repository::{
-    GalleryFilter, GalleryItemFilter, GalleryRepository as _,
+use crate::domain::model::{Action, GalleryItem, GalleryItemMedia};
+use crate::domain::port::{
+    AssetUnitOfWork, FileFilter, FileRepository as _, GalleryFilter, GalleryItemFilter,
+    GalleryRepository as _, IdentityUnitOfWork, ImageFilter, ImageRepository as _,
+    LibraryUnitOfWork, PermissionFilter, PermissionRepository as _, RepositoryError,
+    UnitOfWork as _, UnitOfWorkFactory, UserFilter, UserRepository as _, UserUnitOfWork,
+    VideoFilter, VideoRepository as _,
 };
-use crate::domain::port::identity_unit_of_work::IdentityUnitOfWork;
-use crate::domain::port::image_repository::{ImageFilter, ImageRepository as _};
-use crate::domain::port::library_unit_of_work::LibraryUnitOfWork;
-use crate::domain::port::permission_repository::{PermissionFilter, PermissionRepository as _};
-use crate::domain::port::unit_of_work::{UnitOfWork as _, UnitOfWorkFactory};
-use crate::domain::port::user_repository::{UserFilter, UserRepository as _};
-use crate::domain::port::user_unit_of_work::UserUnitOfWork;
-use crate::domain::port::video_repository::{VideoFilter, VideoRepository as _};
-use crate::domain::service::authorization::{Authorization, Decision};
+use crate::domain::service::{Authorization, Decision};
 
 /// Use case implementation for adding one of the caller's media to a gallery.
 pub(crate) struct AddGalleryItem<F> {
@@ -200,9 +192,16 @@ where
                 let now = Utc::now().naive_utc();
                 let item_index = unit_of_work
                     .galleries()
-                    .next_item_index(command.gallery_id())
+                    .search_items(&GalleryItemFilter {
+                        gallery_id: Some(command.gallery_id()),
+                        ..GalleryItemFilter::default()
+                    })
                     .await
-                    .map_err(|error| AddGalleryItemError::Unknown(error.into()))?;
+                    .map_err(|error| AddGalleryItemError::Unknown(error.into()))?
+                    .iter()
+                    .map(|detail| detail.item().item_index())
+                    .max()
+                    .map_or(0, |index| index.saturating_add(1));
                 let (image_id, video_id) = match media {
                     GalleryItemMedia::Image(id) => (Some(id), None),
                     GalleryItemMedia::Video(id) => (None, Some(id)),
@@ -216,17 +215,18 @@ where
                     now,
                 )
                 .map_err(|error| AddGalleryItemError::Unknown(anyhow::Error::new(error)))?;
-                let persisted = unit_of_work
-                    .galleries()
-                    .add_item(item)
-                    .await
-                    .map_err(|error| {
-                        if matches!(error, RepositoryError::Conflict) {
-                            AddGalleryItemError::ScopeConflict
-                        } else {
-                            AddGalleryItemError::Unknown(error.into())
-                        }
-                    })?;
+                let persisted =
+                    unit_of_work
+                        .galleries()
+                        .save_item(item)
+                        .await
+                        .map_err(|error| {
+                            if matches!(error, RepositoryError::Conflict) {
+                                AddGalleryItemError::ScopeConflict
+                            } else {
+                                AddGalleryItemError::Unknown(error.into())
+                            }
+                        })?;
 
                 gallery.touch(now);
                 unit_of_work
@@ -268,17 +268,15 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::model::file::{File, Origin};
-    use crate::domain::model::gallery::Gallery;
-    use crate::domain::model::image::{Image, Orientation};
-    use crate::domain::model::integrity_hash::IntegrityHash;
-    use crate::domain::model::user::{Role, User};
-    use crate::domain::model::video::{ScanType, Video};
-    use crate::domain::port::file_repository::MockFileRepository;
-    use crate::domain::port::gallery_repository::{GalleryItemDetail, MockGalleryRepository};
-    use crate::domain::port::image_repository::MockImageRepository;
-    use crate::domain::port::user_repository::MockUserRepository;
-    use crate::domain::port::video_repository::MockVideoRepository;
+    use crate::domain::model::{
+        File, Gallery, Image, IntegrityHash, Orientation, Origin, Role, ScanType, User, Video,
+    };
+
+    use crate::domain::port::{
+        GalleryItemDetail, MockFileRepository, MockGalleryRepository, MockImageRepository,
+        MockUserRepository, MockVideoRepository,
+    };
+
     use crate::test_helpers::*;
     use chrono::{NaiveDate, NaiveDateTime};
     use std::error::Error;
@@ -389,7 +387,21 @@ mod tests {
         galleries
             .expect_search_items()
             .times(1)
+            .withf(|filter| filter.media.is_some())
             .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+    }
+
+    /// Expect the per-gallery item read to return `items`, whose largest item
+    /// index seeds the next index.
+    fn expect_item_index(galleries: &mut MockGalleryRepository, items: Vec<GalleryItemDetail>) {
+        galleries
+            .expect_search_items()
+            .times(1)
+            .withf(|filter| filter.media.is_none())
+            .returning(move |_| {
+                let details = items.clone();
+                Box::pin(async move { Ok(details) })
+            });
     }
 
     fn expect_saved_gallery(galleries: &mut MockGalleryRepository) {
@@ -432,13 +444,14 @@ mod tests {
         let mut galleries = MockGalleryRepository::new();
         expect_gallery(&mut galleries, gallery(3, Some(4), "Mine", false));
         expect_unassigned(&mut galleries);
+        let indexed = GalleryItemDetail::new(
+            persisted_item(99, 3, GalleryItemMedia::Image(7), 2)?,
+            100,
+            "item".to_owned(),
+        );
+        expect_item_index(&mut galleries, vec![indexed]);
         galleries
-            .expect_next_item_index()
-            .times(1)
-            .withf(|id| *id == 3)
-            .returning(|_| Box::pin(async { Ok(3) }));
-        galleries
-            .expect_add_item()
+            .expect_save_item()
             .times(1)
             .withf(|item| item.item_index() == 3 && item.gallery_id() == 3)
             .return_once(|_| {
@@ -488,11 +501,8 @@ mod tests {
         let mut galleries = MockGalleryRepository::new();
         expect_gallery(&mut galleries, gallery(2, Some(3), "Public", true));
         expect_unassigned(&mut galleries);
-        galleries
-            .expect_next_item_index()
-            .times(1)
-            .returning(|_| Box::pin(async { Ok(0) }));
-        galleries.expect_add_item().times(1).return_once(|_| {
+        expect_item_index(&mut galleries, Vec::new());
+        galleries.expect_save_item().times(1).return_once(|_| {
             Box::pin(async { persisted_item(1, 2, GalleryItemMedia::Video(8), 0) })
         });
         expect_saved_gallery(&mut galleries);
@@ -538,7 +548,7 @@ mod tests {
         expect_caller(&mut users, 4, Role::Standard)?;
         let mut galleries = MockGalleryRepository::new();
         expect_gallery(&mut galleries, gallery(3, Some(4), "Mine", false));
-        galleries.expect_add_item().times(0);
+        galleries.expect_save_item().times(0);
         let mut videos = MockVideoRepository::new();
         videos
             .expect_search()
@@ -578,11 +588,8 @@ mod tests {
         let mut galleries = MockGalleryRepository::new();
         expect_gallery(&mut galleries, gallery(3, Some(4), "Public", true));
         expect_unassigned(&mut galleries);
-        galleries
-            .expect_next_item_index()
-            .times(1)
-            .returning(|_| Box::pin(async { Ok(0) }));
-        galleries.expect_add_item().times(1).return_once(|_| {
+        expect_item_index(&mut galleries, Vec::new());
+        galleries.expect_save_item().times(1).return_once(|_| {
             Box::pin(async { persisted_item(1, 3, GalleryItemMedia::Image(7), 0) })
         });
         expect_saved_gallery(&mut galleries);
@@ -616,11 +623,8 @@ mod tests {
         let mut galleries = MockGalleryRepository::new();
         expect_gallery(&mut galleries, gallery(3, Some(4), "Mine", false));
         expect_unassigned(&mut galleries);
-        galleries
-            .expect_next_item_index()
-            .times(1)
-            .returning(|_| Box::pin(async { Ok(0) }));
-        galleries.expect_add_item().times(1).return_once(|_| {
+        expect_item_index(&mut galleries, Vec::new());
+        galleries.expect_save_item().times(1).return_once(|_| {
             Box::pin(async { persisted_item(1, 3, GalleryItemMedia::Image(7), 0) })
         });
         expect_saved_gallery(&mut galleries);
@@ -654,7 +658,7 @@ mod tests {
         expect_caller(&mut users, 4, Role::Standard)?;
         let mut galleries = MockGalleryRepository::new();
         expect_gallery(&mut galleries, gallery(2, Some(3), "Public", true));
-        galleries.expect_add_item().times(0);
+        galleries.expect_save_item().times(0);
         let mut images = MockImageRepository::new();
         expect_image(&mut images, 100, image(7, 100, "sunset.png")?);
         let mut files = MockFileRepository::new();
@@ -685,7 +689,7 @@ mod tests {
         expect_caller(&mut users, 9, Role::Standard)?;
         let mut galleries = MockGalleryRepository::new();
         expect_gallery(&mut galleries, gallery(3, Some(4), "Mine", false));
-        galleries.expect_add_item().times(0);
+        galleries.expect_save_item().times(0);
         let harness = harness_with(
             users,
             galleries,
@@ -714,7 +718,7 @@ mod tests {
         expect_caller(&mut users, 1, Role::Admin)?;
         let mut galleries = MockGalleryRepository::new();
         expect_gallery(&mut galleries, gallery(3, Some(4), "Mine", false));
-        galleries.expect_add_item().times(0);
+        galleries.expect_save_item().times(0);
         let harness = harness_with(
             users,
             galleries,
@@ -756,7 +760,7 @@ mod tests {
                 let found = existing.clone();
                 Box::pin(async move { Ok(vec![found]) })
             });
-        galleries.expect_add_item().times(0);
+        galleries.expect_save_item().times(0);
         let mut images = MockImageRepository::new();
         expect_image(&mut images, 100, image(7, 100, "sunset.png")?);
         let mut files = MockFileRepository::new();
@@ -821,7 +825,7 @@ mod tests {
         expect_caller(&mut users, 4, Role::Standard)?;
         let mut galleries = MockGalleryRepository::new();
         expect_gallery(&mut galleries, gallery(3, Some(4), "Mine", false));
-        galleries.expect_add_item().times(0);
+        galleries.expect_save_item().times(0);
         let mut images = MockImageRepository::new();
         images
             .expect_search()
@@ -894,12 +898,14 @@ mod tests {
         let mut galleries = MockGalleryRepository::new();
         expect_gallery(&mut galleries, gallery(3, Some(4), "Mine", false));
         expect_unassigned(&mut galleries);
+        let indexed = GalleryItemDetail::new(
+            persisted_item(99, 3, GalleryItemMedia::Image(7), 2)?,
+            100,
+            "item".to_owned(),
+        );
+        expect_item_index(&mut galleries, vec![indexed]);
         galleries
-            .expect_next_item_index()
-            .times(1)
-            .returning(|_| Box::pin(async { Ok(3) }));
-        galleries
-            .expect_add_item()
+            .expect_save_item()
             .times(1)
             .returning(|_| Box::pin(async { Err(RepositoryError::Conflict) }));
         let mut images = MockImageRepository::new();
@@ -931,7 +937,7 @@ mod tests {
         expect_caller(&mut users, 4, Role::Standard)?;
         let mut galleries = MockGalleryRepository::new();
         expect_gallery(&mut galleries, gallery(3, Some(4), "Mine", false));
-        galleries.expect_add_item().times(0);
+        galleries.expect_save_item().times(0);
         let mut images = MockImageRepository::new();
         images
             .expect_search()
@@ -968,7 +974,7 @@ mod tests {
         expect_caller(&mut users, 4, Role::Standard)?;
         let mut galleries = MockGalleryRepository::new();
         expect_gallery(&mut galleries, gallery(3, Some(4), "Mine", false));
-        galleries.expect_add_item().times(0);
+        galleries.expect_save_item().times(0);
         let mut images = MockImageRepository::new();
         expect_image(&mut images, 100, image(7, 100, "sunset.png")?);
         let mut files = MockFileRepository::new();
@@ -1002,11 +1008,8 @@ mod tests {
         let mut galleries = MockGalleryRepository::new();
         expect_gallery(&mut galleries, gallery(3, Some(4), "Mine", false));
         expect_unassigned(&mut galleries);
-        galleries
-            .expect_next_item_index()
-            .times(1)
-            .returning(|_| Box::pin(async { Ok(0) }));
-        galleries.expect_add_item().times(1).return_once(|_| {
+        expect_item_index(&mut galleries, Vec::new());
+        galleries.expect_save_item().times(1).return_once(|_| {
             Box::pin(async { persisted_item(1, 3, GalleryItemMedia::Image(7), 0) })
         });
         expect_saved_gallery(&mut galleries);

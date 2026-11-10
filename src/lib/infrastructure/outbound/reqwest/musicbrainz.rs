@@ -25,18 +25,12 @@ use tokio::time::{Instant, sleep_until};
 
 use tracing::warn;
 
-use crate::domain::model::artwork::Artwork;
-use crate::domain::model::configuration::ProviderId;
-use crate::domain::model::external_ref::ExternalRef;
-use crate::domain::model::music_album::ProductionType;
-use crate::domain::model::music_candidate::{MusicCandidate, MusicTarget};
-use crate::domain::model::music_metadata::{
-    ArtistCredit, Edition, MediumFormat, MediumSummary, MusicMetadata, ReleaseStatus,
+use crate::domain::model::{
+    ArtistCredit, Artwork, Edition, ExternalRef, MediumFormat, MediumSummary, MusicCandidate,
+    MusicKind, MusicMetadata, MusicQuery, MusicTarget, ProductionType, ProviderId, ReleaseStatus,
 };
-use crate::domain::model::music_query::{MusicKind, MusicQuery};
-use crate::domain::port::error::ExternalServiceError;
-use crate::domain::port::music_metadata_provider::MusicMetadataProvider;
-use crate::domain::service::release_order::ReleaseOrder;
+use crate::domain::port::{ExternalServiceError, MusicMetadataProvider};
+use crate::domain::service::ReleaseOrder;
 use crate::infrastructure::outbound::reqwest::{
     ArtworkClient, REQUEST_TIMEOUT, classify_status, classify_transport_error, log_provider_fault,
     read_payload, request_url,
@@ -384,7 +378,17 @@ impl MusicBrainzMetadataProvider {
         };
         let mut attempt: u32 = 0;
         loop {
-            self.reserve_slot().await;
+            // Reserve the next request slot, waiting until it arrives.
+            let send_at = {
+                let mut slot = self.next_slot.lock().await;
+                let now = Instant::now();
+                let send_at = slot.map_or(now, |previous| previous.max(now));
+                *slot = Some(send_at.checked_add(self.min_interval).unwrap_or(send_at));
+                send_at
+            };
+            if send_at > Instant::now() {
+                sleep_until(send_at).await;
+            }
             let outcome = self.send_once::<T>(url.clone()).await;
             match outcome {
                 Ok(payload) => return Ok(payload),
@@ -417,20 +421,6 @@ impl MusicBrainzMetadataProvider {
             DEFAULT_MIN_INTERVAL,
             DEFAULT_ATTEMPTS,
         )
-    }
-
-    /// Reserve the next request slot, waiting until it arrives.
-    async fn reserve_slot(&self) {
-        let send_at = {
-            let mut slot = self.next_slot.lock().await;
-            let now = Instant::now();
-            let send_at = slot.map_or(now, |previous| previous.max(now));
-            *slot = Some(send_at.checked_add(self.min_interval).unwrap_or(send_at));
-            send_at
-        };
-        if send_at > Instant::now() {
-            sleep_until(send_at).await;
-        }
     }
 
     /// Send one request and decode an optional payload.
@@ -834,7 +824,8 @@ fn year(value: Option<&str>) -> Option<u32> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::model::music_query::MusicQueryError;
+    use crate::domain::model::MusicQueryError;
+
     use rstest::rstest;
     use std::collections::VecDeque;
     use std::error::Error;
@@ -1993,12 +1984,8 @@ mod tests {
     }
 
     /// Return the kind of work a resolved document reports.
-    #[expect(
-        clippy::pattern_type_mismatch,
-        reason = "the arms borrow the metadata out of a non-Copy enum matched by reference"
-    )]
     fn metadata_kind(metadata: &MusicMetadata) -> MusicKind {
-        match metadata {
+        match *metadata {
             MusicMetadata::Album { .. } => MusicKind::Album,
             MusicMetadata::Recording { .. } => MusicKind::Recording,
             MusicMetadata::Release { .. } => MusicKind::Release,

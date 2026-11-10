@@ -1,58 +1,21 @@
 use std::sync::Arc;
 
-use crate::application::port::add_gallery_item::AddGalleryItemUseCase;
-use crate::application::port::apply_movie::ApplyMovieUseCase;
-use crate::application::port::apply_music_album::ApplyMusicAlbumUseCase;
-use crate::application::port::apply_series::ApplySeriesUseCase;
-use crate::application::port::apply_series_episode::ApplySeriesEpisodeUseCase;
-use crate::application::port::create_gallery::CreateGalleryUseCase;
-use crate::application::port::create_movie::CreateMovieUseCase;
-use crate::application::port::create_music_album::CreateMusicAlbumUseCase;
-use crate::application::port::create_music_group::CreateMusicGroupUseCase;
-use crate::application::port::create_playlist::CreatePlaylistUseCase;
-use crate::application::port::create_series::CreateSeriesUseCase;
-use crate::application::port::delete_gallery::DeleteGalleryUseCase;
-use crate::application::port::delete_gallery_item::DeleteGalleryItemUseCase;
-use crate::application::port::delete_playlist::DeletePlaylistUseCase;
-use crate::application::port::get_album::GetAlbumUseCase;
-use crate::application::port::get_album_medium::GetAlbumMediumUseCase;
-use crate::application::port::get_album_track::GetAlbumTrackUseCase;
-use crate::application::port::get_gallery::GetGalleryUseCase;
-use crate::application::port::get_gallery_item::GetGalleryItemUseCase;
-use crate::application::port::get_movie::GetMovieUseCase;
-use crate::application::port::get_music_group::GetMusicGroupUseCase;
-use crate::application::port::get_playlist::GetPlaylistUseCase;
-use crate::application::port::get_playlist_track::GetPlaylistTrackUseCase;
-use crate::application::port::get_series::GetSeriesUseCase;
-use crate::application::port::get_series_episode::GetSeriesEpisodeUseCase;
-use crate::application::port::get_series_season::GetSeriesSeasonUseCase;
-use crate::application::port::identify_music::IdentifyMusicUseCase;
-use crate::application::port::identify_video::IdentifyVideoUseCase;
-use crate::application::port::ingest_media::IngestMediaUseCase;
-use crate::application::port::list_album_tracks::ListAlbumTracksUseCase;
-use crate::application::port::list_albums::ListAlbumsUseCase;
-use crate::application::port::list_galleries::ListGalleriesUseCase;
-use crate::application::port::list_movies::ListMoviesUseCase;
-use crate::application::port::list_music_groups::ListMusicGroupsUseCase;
-use crate::application::port::list_playlists::ListPlaylistsUseCase;
-use crate::application::port::list_series::ListSeriesUseCase;
-use crate::application::port::list_series_episodes::ListSeriesEpisodesUseCase;
-use crate::application::port::patch_album_track::PatchAlbumTrackUseCase;
-use crate::application::port::put_album_medium::PutAlbumMediumUseCase;
-use crate::application::port::put_album_track::PutAlbumTrackUseCase;
-use crate::application::port::put_series_episode::PutSeriesEpisodeUseCase;
-use crate::application::port::put_series_season::PutSeriesSeasonUseCase;
-use crate::application::port::remove_playlist_track::RemovePlaylistTrackUseCase;
-use crate::application::port::reorder_playlist_tracks::ReorderPlaylistTracksUseCase;
-use crate::application::port::resolve_music_metadata::ResolveMusicMetadataUseCase;
-use crate::application::port::resolve_video_metadata::ResolveVideoMetadataUseCase;
-use crate::application::port::update_movie::UpdateMovieUseCase;
-use crate::application::port::update_music_album::UpdateMusicAlbumUseCase;
-use crate::application::port::update_music_group::UpdateMusicGroupUseCase;
-use crate::application::port::update_playlist::UpdatePlaylistUseCase;
-use crate::application::port::update_series::UpdateSeriesUseCase;
-use crate::application::port::update_series_episode::UpdateSeriesEpisodeUseCase;
-use crate::application::port::update_series_season::UpdateSeriesSeasonUseCase;
+use crate::application::port::{
+    AddGalleryItemUseCase, ApplyMovieUseCase, ApplyMusicAlbumUseCase, ApplySeriesEpisodeUseCase,
+    ApplySeriesUseCase, CreateGalleryUseCase, CreateMovieUseCase, CreateMusicAlbumUseCase,
+    CreateMusicGroupUseCase, CreatePlaylistUseCase, CreateSeriesUseCase, DeleteGalleryItemUseCase,
+    DeleteGalleryUseCase, DeletePlaylistUseCase, GetAlbumMediumUseCase, GetAlbumTrackUseCase,
+    GetAlbumUseCase, GetGalleryItemUseCase, GetGalleryUseCase, GetMovieUseCase,
+    GetMusicGroupUseCase, GetPlaylistTrackUseCase, GetPlaylistUseCase, GetSeriesEpisodeUseCase,
+    GetSeriesSeasonUseCase, GetSeriesUseCase, IdentifyMusicUseCase, IdentifyVideoUseCase,
+    IngestMediaUseCase, ListAlbumTracksUseCase, ListAlbumsUseCase, ListGalleriesUseCase,
+    ListMoviesUseCase, ListMusicGroupsUseCase, ListPlaylistsUseCase, ListSeriesEpisodesUseCase,
+    ListSeriesUseCase, PatchAlbumTrackUseCase, PutAlbumMediumUseCase, PutAlbumTrackUseCase,
+    PutSeriesEpisodeUseCase, PutSeriesSeasonUseCase, RemovePlaylistTrackUseCase,
+    ReorderPlaylistTracksUseCase, ResolveMusicMetadataUseCase, ResolveVideoMetadataUseCase,
+    UpdateMovieUseCase, UpdateMusicAlbumUseCase, UpdateMusicGroupUseCase, UpdatePlaylistUseCase,
+    UpdateSeriesEpisodeUseCase, UpdateSeriesSeasonUseCase, UpdateSeriesUseCase,
+};
 
 /// Builds the use cases of the Library bounded context on demand.
 ///

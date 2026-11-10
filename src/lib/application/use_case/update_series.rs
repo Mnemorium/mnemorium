@@ -4,23 +4,17 @@ use std::sync::Arc;
 
 use tracing::warn;
 
-use crate::application::field_update::FieldUpdate;
-use crate::application::port::update_series::{
+use crate::application::FieldUpdate;
+use crate::application::port::{
     UpdateSeriesCommand, UpdateSeriesError, UpdateSeriesResponse, UpdateSeriesUseCase,
 };
-use crate::domain::model::permission::Action;
-use crate::domain::model::series::Series;
-use crate::domain::port::error::RepositoryError;
-use crate::domain::port::identity_unit_of_work::IdentityUnitOfWork;
-use crate::domain::port::library_unit_of_work::LibraryUnitOfWork;
-use crate::domain::port::permission_repository::{PermissionFilter, PermissionRepository as _};
-use crate::domain::port::series_repository::{SeriesFilter, SeriesRepository as _};
-use crate::domain::port::unit_of_work::{UnitOfWork as _, UnitOfWorkFactory};
-use crate::domain::port::user_repository::{UserFilter, UserRepository as _};
-use crate::domain::port::user_unit_of_work::UserUnitOfWork;
-use crate::domain::service::authorization::{Authorization, Decision};
-use crate::domain::service::country_code::CountryCode;
-use crate::domain::service::name_policy::{NamePolicy, NamePolicyError};
+use crate::domain::model::{Action, Series};
+use crate::domain::port::{
+    IdentityUnitOfWork, LibraryUnitOfWork, PermissionFilter, PermissionRepository as _,
+    RepositoryError, SeriesFilter, SeriesRepository as _, UnitOfWork as _, UnitOfWorkFactory,
+    UserFilter, UserRepository as _, UserUnitOfWork,
+};
+use crate::domain::service::{Authorization, CountryCode, Decision, NamePolicy, NamePolicyError};
 
 /// Use case implementation for updating a show partially.
 pub(crate) struct UpdateSeries<F> {
@@ -202,23 +196,18 @@ where
                 )
                 .map_err(|_| UpdateSeriesError::InvalidName)?;
 
-                let stored = unit_of_work
-                    .series()
-                    .update(updated)
-                    .await
-                    .map_err(|error| {
-                        if matches!(
-                            error,
-                            RepositoryError::AlreadyExist
-                                | RepositoryError::Conflict
-                                | RepositoryError::DataIntegrityViolation
-                        ) {
-                            UpdateSeriesError::Conflict
-                        } else {
-                            UpdateSeriesError::Unknown(error.into())
-                        }
-                    })?
-                    .ok_or(UpdateSeriesError::NoSuchSeries)?;
+                let stored = unit_of_work.series().save(updated).await.map_err(|error| {
+                    if matches!(
+                        error,
+                        RepositoryError::AlreadyExist
+                            | RepositoryError::Conflict
+                            | RepositoryError::DataIntegrityViolation
+                    ) {
+                        UpdateSeriesError::Conflict
+                    } else {
+                        UpdateSeriesError::Unknown(error.into())
+                    }
+                })?;
 
                 Ok(UpdateSeriesResponse::new(stored))
             }
@@ -245,12 +234,12 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::alias::NumericID;
-    use crate::domain::model::permission::{Permission, Scope};
-    use crate::domain::model::user::{Role, User};
-    use crate::domain::port::permission_repository::MockPermissionRepository;
-    use crate::domain::port::series_repository::MockSeriesRepository;
-    use crate::domain::port::user_repository::MockUserRepository;
+    use crate::domain::NumericID;
+
+    use crate::domain::model::{Permission, Role, Scope, User};
+
+    use crate::domain::port::{MockPermissionRepository, MockSeriesRepository, MockUserRepository};
+
     use crate::test_helpers::*;
     use chrono::NaiveDate;
     use std::error::Error;
@@ -325,7 +314,7 @@ mod tests {
         let mut series = MockSeriesRepository::new();
         expect_series(&mut series, stored);
         series
-            .expect_update()
+            .expect_save()
             .times(1)
             .withf(|candidate| {
                 candidate.id() == 7
@@ -339,7 +328,7 @@ mod tests {
                         .first()
                         .is_some_and(|season| season.episodes().len() == 1)
             })
-            .returning(|candidate| Box::pin(async move { Ok(Some(candidate)) }));
+            .returning(|candidate| Box::pin(async move { Ok(candidate) }));
         let harness = harness_with(users, no_permissions(), series);
         let use_case: UseCase = UpdateSeries::new(Arc::clone(&harness.factory));
 
@@ -374,14 +363,14 @@ mod tests {
         let mut series = MockSeriesRepository::new();
         expect_series(&mut series, stored);
         series
-            .expect_update()
+            .expect_save()
             .times(1)
             .withf(|candidate| {
                 candidate.country_of_origin().is_none()
                     && candidate.first_air_date().is_none()
                     && candidate.cover_image_id().is_none()
             })
-            .returning(|candidate| Box::pin(async move { Ok(Some(candidate)) }));
+            .returning(|candidate| Box::pin(async move { Ok(candidate) }));
         let harness = harness_with(users, no_permissions(), series);
         let use_case: UseCase = UpdateSeries::new(Arc::clone(&harness.factory));
 
@@ -483,7 +472,7 @@ mod tests {
         let mut series = MockSeriesRepository::new();
         expect_series(&mut series, stored);
         series
-            .expect_update()
+            .expect_save()
             .times(1)
             .returning(|_| Box::pin(async { Err(RepositoryError::Conflict) }));
         let harness = harness_with(users, no_permissions(), series);
@@ -518,7 +507,7 @@ mod tests {
         let mut series = MockSeriesRepository::new();
         expect_series(&mut series, stored);
         series
-            .expect_update()
+            .expect_save()
             .times(1)
             .returning(|_| Box::pin(async { Err(RepositoryError::DataIntegrityViolation) }));
         let harness = harness_with(users, no_permissions(), series);
@@ -571,29 +560,6 @@ mod tests {
 
         // Assert
         assert!(matches!(result, Err(UpdateSeriesError::InvalidName)));
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn update_series_absent_at_write_returns_no_such_series() -> Result<(), Box<dyn Error>> {
-        // Arrange: the show disappears between the read and the write.
-        let mut users = MockUserRepository::new();
-        expect_admin(&mut users, 1)?;
-        let stored = sample_series(7, Vec::new())?;
-        let mut series = MockSeriesRepository::new();
-        expect_series(&mut series, stored);
-        series
-            .expect_update()
-            .times(1)
-            .returning(|_| Box::pin(async { Ok(None) }));
-        let harness = harness_with(users, no_permissions(), series);
-        let use_case: UseCase = UpdateSeries::new(Arc::clone(&harness.factory));
-
-        // Act
-        let result = use_case.execute(empty_command()).await;
-
-        // Assert
-        assert!(matches!(result, Err(UpdateSeriesError::NoSuchSeries)));
         Ok(())
     }
 }

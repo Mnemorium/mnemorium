@@ -1,15 +1,12 @@
 use sqlx::{QueryBuilder, Sqlite, Transaction};
 
-use crate::domain::alias::NumericID;
-use crate::domain::model::movie::Movie;
-use crate::domain::model::video::Video;
-use crate::domain::port::error::RepositoryError;
-use crate::domain::port::movie_repository::{MovieFilter, MovieRepository};
+use crate::domain::NumericID;
+use crate::domain::model::{Movie, Video};
+use crate::domain::port::{MovieFilter, MovieRepository, RepositoryError};
 
 use super::error_mapping::stored_data_invalid;
-use super::model::movie::MovieRow;
-use super::model::scope::parse_scope;
-use super::model::video::parse_scan_type;
+use super::model::{MovieRow, parse_asset_scope, parse_scan_type};
+
 use super::query_filter::push_filter;
 
 /// Repository querying films and the videos that back them, backed by a
@@ -87,32 +84,57 @@ impl MovieRepository for SqlxMovieRepository<'_> {
         .ok_or(RepositoryError::OperationFailed)
     }
 
-    async fn delete(&mut self, id: NumericID) -> Result<bool, RepositoryError> {
-        sqlx::query("DELETE FROM movie_genre WHERE movie_id = ?")
-            .bind(id)
-            .execute(&mut **self.transaction)
-            .await?;
-        let result = sqlx::query("DELETE FROM movie WHERE movie_id = ?")
-            .bind(id)
-            .execute(&mut **self.transaction)
-            .await?;
+    async fn delete(&mut self, filter: &MovieFilter) -> Result<bool, RepositoryError> {
+        let mut builder = QueryBuilder::<Sqlite>::new("DELETE FROM movie");
+        let mut first = true;
+
+        if let Some(id) = filter.id {
+            push_filter(&mut first, &mut builder, "movie_id = ", id);
+        }
+        if let Some(name) = filter.name.as_deref() {
+            push_filter(&mut first, &mut builder, "name = ", name);
+        }
+        if let Some(video_id) = filter.video_id {
+            push_filter(&mut first, &mut builder, "video_id = ", video_id);
+        }
+
+        let result = builder.build().execute(&mut **self.transaction).await?;
         Ok(result.rows_affected() > 0)
     }
 
-    async fn find_by_video(
-        &mut self,
-        video_id: NumericID,
-    ) -> Result<Option<Movie>, RepositoryError> {
-        Ok(self
-            .search(&MovieFilter {
-                video_id: Some(video_id),
-                ..MovieFilter::default()
-            })
-            .await?
-            .into_iter()
-            .next())
-    }
+    async fn save(&mut self, movie: Movie) -> Result<Movie, RepositoryError> {
+        sqlx::query(
+            "INSERT INTO movie (
+                movie_id, name, plot, country_of_origin, release_date, video_id, cover_image_id
+             )
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+             ON CONFLICT (movie_id) DO UPDATE SET
+                name = excluded.name,
+                plot = excluded.plot,
+                country_of_origin = excluded.country_of_origin,
+                release_date = excluded.release_date,
+                cover_image_id = excluded.cover_image_id",
+        )
+        .bind(movie.id())
+        .bind(movie.name())
+        .bind(movie.plot())
+        .bind(movie.country_of_origin())
+        .bind(movie.release_date())
+        .bind(movie.video_id())
+        .bind(movie.cover_image_id())
+        .execute(&mut **self.transaction)
+        .await?;
 
+        self.replace_genres(movie.id(), movie.genre_ids()).await?;
+        self.search(&MovieFilter {
+            id: Some(movie.id()),
+            ..MovieFilter::default()
+        })
+        .await?
+        .into_iter()
+        .next()
+        .ok_or(RepositoryError::OperationFailed)
+    }
     async fn search(&mut self, filter: &MovieFilter) -> Result<Vec<Movie>, RepositoryError> {
         let mut builder = QueryBuilder::<Sqlite>::new(
             "SELECT
@@ -173,7 +195,7 @@ impl MovieRepository for SqlxMovieRepository<'_> {
                     .video_scope
                     .as_deref()
                     .map(|value| {
-                        parse_scope(value).ok_or_else(|| stored_data_invalid("unknown_scope"))
+                        parse_asset_scope(value).ok_or_else(|| stored_data_invalid("unknown_scope"))
                     })
                     .transpose()?;
                 let video = Video::try_new(
@@ -207,49 +229,16 @@ impl MovieRepository for SqlxMovieRepository<'_> {
             })
             .collect()
     }
-
-    async fn update(&mut self, movie: Movie) -> Result<Option<Movie>, RepositoryError> {
-        let result = sqlx::query(
-            "UPDATE movie
-             SET name = ?1,
-                 plot = ?2,
-                 country_of_origin = ?3,
-                 release_date = ?4,
-                 cover_image_id = ?5
-             WHERE movie_id = ?6",
-        )
-        .bind(movie.name())
-        .bind(movie.plot())
-        .bind(movie.country_of_origin())
-        .bind(movie.release_date())
-        .bind(movie.cover_image_id())
-        .bind(movie.id())
-        .execute(&mut **self.transaction)
-        .await?;
-        if result.rows_affected() == 0 {
-            return Ok(None);
-        }
-
-        self.replace_genres(movie.id(), movie.genre_ids()).await?;
-        self.search(&MovieFilter {
-            id: Some(movie.id()),
-            ..MovieFilter::default()
-        })
-        .await?
-        .into_iter()
-        .next()
-        .map(Some)
-        .ok_or(RepositoryError::OperationFailed)
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::model::video::ScanType;
+    use crate::domain::model::ScanType;
+
+    use crate::infrastructure::outbound::sqlx::test_helpers::begin_transaction;
     use crate::test_helpers::*;
     use chrono::NaiveDate;
-    use sqlx::sqlite::SqlitePoolOptions;
     use std::error::Error;
     use tracing_test::traced_test;
 
@@ -287,15 +276,6 @@ mod tests {
     }
 
     /// Open a migrated in-memory database and begin one transaction.
-    async fn begin_transaction() -> Result<Transaction<'static, Sqlite>, sqlx::Error> {
-        let pool = SqlitePoolOptions::new()
-            .max_connections(1)
-            .connect("sqlite::memory:")
-            .await?;
-        sqlx::migrate!("./migrations").run(&pool).await?;
-        pool.begin().await
-    }
-
     /// Seed a credential and a standard user so foreign keys resolve.
     async fn seed_user(transaction: &mut Transaction<'static, Sqlite>) -> Result<(), sqlx::Error> {
         sqlx::query("INSERT INTO credential (credential_id, password_hash) VALUES (1, 'hash')")
@@ -943,12 +923,14 @@ mod tests {
 
     #[tokio::test]
     async fn update_replaces_metadata_and_genres_but_not_the_video() -> Result<(), Box<dyn Error>> {
-        // Arrange: film 1 backs video 20; the update names an unseeded video to
-        // prove the adapter never rewrites it.
+        // Arrange: film 1 backs video 20; the update names a different, existing
+        // video to prove the adapter never rewrites it.
         let mut transaction = begin_transaction().await?;
         seed_user(&mut transaction).await?;
         seed_video_file(&mut transaction, 10).await?;
+        seed_video_file(&mut transaction, 11).await?;
         seed_video(&mut transaction, 20, 10, 1920).await?;
+        seed_video(&mut transaction, 21, 11, 1280).await?;
         seed_movie(&mut transaction, 1, "Old Name", 20).await?;
         let updated = Movie::try_new(
             1,
@@ -958,15 +940,15 @@ mod tests {
             Some(NaiveDate::from_ymd_opt(1960, 1, 2).unwrap_or_default()),
             vec!["Science Fiction".to_owned()],
             None,
-            sample_video(99, 99)?,
+            sample_video(21, 11)?,
         )?;
         let mut repository = SqlxMovieRepository::new(&mut transaction);
 
         // Act
-        let stored = repository.update(updated).await?;
+        let stored = repository.save(updated).await?;
 
         // Assert
-        let persisted = stored.ok_or("the stored film must be returned")?;
+        let persisted = stored;
         assert_eq!(persisted.name(), "New Name");
         assert_eq!(persisted.plot(), "New plot");
         assert_eq!(persisted.country_of_origin(), Some("GB"));
@@ -988,10 +970,13 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn update_returns_none_for_an_absent_film() -> Result<(), Box<dyn Error>> {
-        // Arrange
+    async fn save_inserts_an_absent_film() -> Result<(), Box<dyn Error>> {
+        // Arrange: the identifier 404 carries no film, and video 10 is free.
         let mut transaction = begin_transaction().await?;
-        let updated = Movie::try_new(
+        seed_user(&mut transaction).await?;
+        seed_video_file(&mut transaction, 10).await?;
+        seed_video(&mut transaction, 20, 10, 1920).await?;
+        let pending = Movie::try_new(
             404,
             "New Name".to_owned(),
             "New plot".to_owned(),
@@ -999,20 +984,22 @@ mod tests {
             None,
             Vec::new(),
             None,
-            sample_video(1, 1)?,
+            sample_video(20, 10)?,
         )?;
         let mut repository = SqlxMovieRepository::new(&mut transaction);
 
         // Act
-        let stored = repository.update(updated).await?;
+        let stored = repository.save(pending).await?;
 
-        // Assert
-        assert!(stored.is_none(), "an absent film must read as none");
+        // Assert: save upserts, so an unknown identifier is inserted.
+        assert_eq!(stored.id(), 404);
+        assert_eq!(stored.name(), "New Name");
         Ok(())
     }
 
     #[tokio::test]
-    async fn find_by_video_returns_the_attached_film_only() -> Result<(), Box<dyn Error>> {
+    async fn search_filters_by_video_returns_the_attached_film_only() -> Result<(), Box<dyn Error>>
+    {
         // Arrange: video 20 backs a film, video 21 is unattached.
         let mut transaction = begin_transaction().await?;
         seed_user(&mut transaction).await?;
@@ -1024,8 +1011,22 @@ mod tests {
         let mut repository = SqlxMovieRepository::new(&mut transaction);
 
         // Act
-        let found = repository.find_by_video(20).await?;
-        let missing = repository.find_by_video(21).await?;
+        let found = repository
+            .search(&MovieFilter {
+                video_id: Some(20),
+                ..MovieFilter::default()
+            })
+            .await?
+            .into_iter()
+            .next();
+        let missing = repository
+            .search(&MovieFilter {
+                video_id: Some(21),
+                ..MovieFilter::default()
+            })
+            .await?
+            .into_iter()
+            .next();
 
         // Assert
         assert_eq!(found.as_ref().map(Movie::id), Some(5));
@@ -1046,7 +1047,12 @@ mod tests {
         // Act
         let removed = {
             let mut repository = SqlxMovieRepository::new(&mut transaction);
-            repository.delete(5).await?
+            repository
+                .delete(&MovieFilter {
+                    id: Some(5),
+                    ..MovieFilter::default()
+                })
+                .await?
         };
         let genres = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM movie_genre")
             .fetch_one(&mut *transaction)

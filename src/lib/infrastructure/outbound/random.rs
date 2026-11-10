@@ -1,4 +1,7 @@
 /// The password generator adapter.
-pub(crate) mod password_generator;
+mod password_generator;
 /// The secret generator adapter.
-pub(crate) mod secret_generator;
+mod secret_generator;
+
+pub(crate) use self::password_generator::RandomPasswordGenerator;
+pub(crate) use self::secret_generator::ChaChaSecretGenerator;

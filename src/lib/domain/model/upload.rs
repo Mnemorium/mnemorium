@@ -1,13 +1,9 @@
-#![allow(
-    dead_code,
-    reason = "the upload aggregate keeps the lifecycle methods and error variants its contract declares; the chunk bookkeeping has no caller yet"
-)]
-
 use chrono::NaiveDateTime;
 
-use crate::domain::alias::NumericID;
-use crate::domain::model::integrity_hash::{DIGEST_HEX_LENGTH, IntegrityHash, IntegrityHashError};
-use crate::domain::model::permission::{Protected, ResourceKind, ResourceRef};
+use crate::domain::NumericID;
+use crate::domain::model::{
+    DIGEST_HEX_LENGTH, IntegrityHash, IntegrityHashError, Protected, ResourceKind, ResourceRef,
+};
 
 /// Hard upper bound on the number of chunks an upload may be split into.
 ///
@@ -25,6 +21,13 @@ pub(crate) enum ChunkBitmapError {
     ChunkNumberOutOfRange,
     /// The byte representation is not long enough for the total number of
     /// chunks.
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "the error belongs to the bitmap rebuild that only tests perform"
+        )
+    )]
     #[error("the byte representation is too short for the total number of chunks")]
     InvalidLength,
     /// The total number of chunks is zero.
@@ -61,11 +64,9 @@ impl ChunkBitmap {
         if chunk_number >= self.total_chunks {
             return Err(ChunkBitmapError::ChunkNumberOutOfRange);
         }
-        #[expect(
-            clippy::integer_division,
-            reason = "the byte index of a bit is its chunk number divided by eight"
-        )]
-        let byte_index = chunk_number / 8;
+        // One bitmap byte tracks eight chunks, so the byte index of a chunk is
+        // its chunk number shifted right by three.
+        let byte_index = chunk_number >> 3u32;
         let bit_index = chunk_number % 8;
         let mask = 1u8
             .checked_shl(u32::try_from(bit_index).unwrap_or(0))
@@ -80,6 +81,13 @@ impl ChunkBitmap {
     /// Returns [`ChunkBitmapError::InvalidLength`] when `bytes` is shorter than
     /// the representation of `total_chunks` chunks, and
     /// [`ChunkBitmapError::TotalChunksZero`] when `total_chunks` is zero.
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "the persisted bitmap is rebuilt from its bytes in tests only"
+        )
+    )]
     pub(crate) fn from_bytes(
         bytes: Vec<u8>,
         total_chunks: usize,
@@ -94,12 +102,6 @@ impl ChunkBitmap {
             bytes,
             total_chunks,
         })
-    }
-
-    /// Return whether every tracked chunk has been received.
-    #[must_use]
-    fn is_complete(&self) -> bool {
-        (0..self.total_chunks).all(|chunk_number| self.is_received(chunk_number).unwrap_or(false))
     }
 
     /// Return whether chunk `chunk_number` has been received.
@@ -192,6 +194,10 @@ pub(crate) enum UploadError {
     #[error("an unknown error occurred: {0}")]
     Unknown(#[source] anyhow::Error),
     /// The upload is not complete and cannot be finished.
+    #[expect(
+        dead_code,
+        reason = "the domain error keeps the variant its completion contract declares; no constructor raises it yet"
+    )]
     #[error("the upload is not complete and cannot be finished")]
     UploadIncomplete,
 }
@@ -234,7 +240,8 @@ impl Upload {
     /// received.
     #[must_use]
     pub(crate) fn can_finish(&self) -> bool {
-        self.chunk_bitmap.is_complete()
+        (0..self.chunk_bitmap.total_chunks)
+            .all(|chunk_number| self.chunk_bitmap.is_received(chunk_number).unwrap_or(false))
     }
 
     /// Return the raw bitmap of the received chunks.
@@ -267,11 +274,6 @@ impl Upload {
         self.file_size
     }
 
-    /// Mark the upload as finished.
-    pub(crate) fn finish(&mut self) {
-        self.is_finished = true;
-    }
-
     /// Return the integrity hash of the complete file.
     #[must_use]
     pub(crate) fn integrity_hash(&self) -> &IntegrityHash<DIGEST_HEX_LENGTH> {
@@ -290,13 +292,19 @@ impl Upload {
         self.is_verifying
     }
 
-    /// Mark chunk `chunk_number` as received.
+    /// Return the identifier of the mime type of the file being uploaded.
+    #[must_use]
+    pub(crate) fn mime_type_id(&self) -> &str {
+        &self.mime_type_id
+    }
+
+    /// Record `chunk_number` as received.
     ///
     /// # Errors
     ///
     /// Returns [`UploadError::ChunkNumberOutOfRange`] when `chunk_number` is
     /// not lower than [`Upload::total_chunks`].
-    fn mark_chunk_received(&mut self, chunk_number: usize) -> Result<(), UploadError> {
+    pub(crate) fn record_chunk(&mut self, chunk_number: usize) -> Result<(), UploadError> {
         self.chunk_bitmap
             .mark_received(chunk_number)
             .map_err(|error| match error {
@@ -307,10 +315,10 @@ impl Upload {
             })
     }
 
-    /// Return the identifier of the mime type of the file being uploaded.
-    #[must_use]
-    pub(crate) fn mime_type_id(&self) -> &str {
-        &self.mime_type_id
+    /// Seal the session for verification at `sealed_at`.
+    pub(crate) fn seal(&mut self, sealed_at: NaiveDateTime) {
+        self.is_verifying = true;
+        self.sealed_at = Some(sealed_at);
     }
 
     /// Return the instant at which the current verification sealed the session.
@@ -382,6 +390,12 @@ impl Upload {
             upload_id,
             user_id,
         })
+    }
+
+    /// Clear the verification seal.
+    pub(crate) fn unseal(&mut self) {
+        self.is_verifying = false;
+        self.sealed_at = None;
     }
 
     /// Return the unique identifier of the upload.

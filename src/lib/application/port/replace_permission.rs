@@ -1,9 +1,9 @@
 use std::future::Future;
 use std::pin::Pin;
 
-use crate::application::port::get_permission::GetPermissionResponse;
-use crate::domain::alias::NumericID;
-use crate::domain::model::permission::{Action, Scope};
+use crate::application::port::GetPermissionResponse;
+use crate::domain::NumericID;
+use crate::domain::model::{Action, Scope};
 
 /// One requested override, validated by the use case.
 #[derive(Debug, Clone, PartialEq, Eq)]

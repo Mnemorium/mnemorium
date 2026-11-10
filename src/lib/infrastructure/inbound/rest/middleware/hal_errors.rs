@@ -7,7 +7,7 @@ use axum::middleware::Next;
 use axum::response::Response;
 use serde_json::Value;
 
-use crate::infrastructure::inbound::rest::api_error::{ApiErrorMessage, error_response};
+use crate::infrastructure::inbound::rest::{ApiErrorMessage, error_response};
 
 /// Rewrap every `4xx`/`5xx` response as the HAL error envelope (`API-039`).
 ///
@@ -69,7 +69,8 @@ pub(crate) async fn hal_errors(request: Request, next: Next) -> Response {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::infrastructure::inbound::rest::api_error::ApiError;
+    use crate::infrastructure::inbound::rest::ApiError;
+
     use crate::test_helpers::*;
     use axum::body::Body;
     use axum::extract::Path;

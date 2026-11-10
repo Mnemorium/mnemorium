@@ -4,7 +4,7 @@ use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 
 use axum::extract::ConnectInfo;
-use axum::http::{HeaderMap, Request};
+use axum::http::Request;
 use axum::response::{IntoResponse as _, Response};
 use tower_governor::governor::GovernorConfigBuilder;
 use tower_governor::key_extractor::{KeyExtractor, PeerIpKeyExtractor};
@@ -12,9 +12,8 @@ use tower_governor::{GovernorError, GovernorLayer};
 use tracing::{error, warn};
 use utoipa_axum::router::OpenApiRouter;
 
-use crate::domain::model::configuration::{ClientIpHeader, RateLimit};
-use crate::infrastructure::inbound::rest::api_error::ApiError;
-use crate::infrastructure::inbound::rest::app_state::AppState;
+use crate::domain::model::{ClientIpHeader, RateLimit};
+use crate::infrastructure::inbound::rest::{ApiError, AppState};
 
 /// A [`KeyExtractor`] that trusts one declared client-address header from the
 /// configured proxy addresses.
@@ -37,6 +36,11 @@ struct TrustedProxyKeyExtractor {
 impl TrustedProxyKeyExtractor {
     /// Return the client address for `request`, or `None` when no peer address
     /// is available.
+    ///
+    /// A peer outside the trusted set is the client. For a trusted peer the
+    /// declared header supplies the forwarded chain, which is walked
+    /// right-to-left and skipped over the trusted hops; a header the extractor
+    /// cannot read leaves the peer as the client.
     fn client_address<T>(&self, request: &Request<T>) -> Option<IpAddr> {
         let peer = request
             .extensions()
@@ -45,39 +49,35 @@ impl TrustedProxyKeyExtractor {
         if !self.trusted.contains(&peer) {
             return Some(peer);
         }
-        Some(self.forwarded_address(request.headers()).unwrap_or(peer))
-    }
-
-    /// Resolve the client address from the declared header, walking the chain
-    /// right-to-left and skipping trusted hops.
-    fn forwarded_address(&self, headers: &HeaderMap) -> Option<IpAddr> {
-        let chain = self.header_chain(headers)?;
-        chain
-            .into_iter()
-            .rev()
-            .find(|address| !self.trusted.contains(address))
-    }
-
-    /// Return the forwarded chain from the declared header only.
-    fn header_chain(&self, headers: &HeaderMap) -> Option<Vec<IpAddr>> {
-        let value = headers.get(self.header.as_str())?.to_str().ok()?;
-        match self.header {
-            ClientIpHeader::XForwardedFor => {
-                let addresses: Vec<IpAddr> = value.split(',').filter_map(parse_address).collect();
-                (!addresses.is_empty()).then_some(addresses)
-            }
-            ClientIpHeader::XRealIp => parse_address(value).map(|address| vec![address]),
-            ClientIpHeader::Forwarded => {
-                let addresses: Vec<IpAddr> = value
-                    .split(',')
-                    .flat_map(|element| element.split(';'))
-                    .filter_map(|parameter| parameter.split_once('='))
-                    .filter(|&(name, _value)| name.trim().eq_ignore_ascii_case("for"))
-                    .filter_map(|(_name, address)| parse_address(address))
-                    .collect();
-                (!addresses.is_empty()).then_some(addresses)
-            }
-        }
+        let forwarded = request
+            .headers()
+            .get(self.header.as_str())
+            .and_then(|value| value.to_str().ok())
+            .and_then(|value| match self.header {
+                ClientIpHeader::XForwardedFor => {
+                    let addresses: Vec<IpAddr> =
+                        value.split(',').filter_map(parse_address).collect();
+                    (!addresses.is_empty()).then_some(addresses)
+                }
+                ClientIpHeader::XRealIp => parse_address(value).map(|address| vec![address]),
+                ClientIpHeader::Forwarded => {
+                    let addresses: Vec<IpAddr> = value
+                        .split(',')
+                        .flat_map(|element| element.split(';'))
+                        .filter_map(|parameter| parameter.split_once('='))
+                        .filter(|&(name, _value)| name.trim().eq_ignore_ascii_case("for"))
+                        .filter_map(|(_name, address)| parse_address(address))
+                        .collect();
+                    (!addresses.is_empty()).then_some(addresses)
+                }
+            })
+            .and_then(|chain| {
+                chain
+                    .into_iter()
+                    .rev()
+                    .find(|address| !self.trusted.contains(address))
+            });
+        Some(forwarded.unwrap_or(peer))
     }
 
     /// Create a new extractor trusting `trusted` and reading `header`.
@@ -260,7 +260,7 @@ fn rate_limit_error(error: GovernorError) -> Response {
 mod tests {
     use super::*;
     use crate::test_helpers::*;
-    use axum::http::{HeaderValue, StatusCode};
+    use axum::http::{HeaderMap, HeaderValue, StatusCode};
     use std::error::Error;
     use std::sync::atomic::{AtomicUsize, Ordering};
 

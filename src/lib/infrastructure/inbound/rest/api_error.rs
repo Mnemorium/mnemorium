@@ -5,7 +5,7 @@ use axum::http::{HeaderValue, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use tracing::{error, warn};
 
-use crate::infrastructure::inbound::rest::hal::{HAL_CONTENT_TYPE, SelfLinks};
+use crate::infrastructure::inbound::rest::{HAL_CONTENT_TYPE, SelfLinks};
 
 /// Standard error payload returned by every failed request.
 ///
@@ -324,7 +324,8 @@ pub(crate) fn error_response(status: StatusCode, message: String, path: &str) ->
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::infrastructure::inbound::rest::app_state::AppState;
+    use crate::infrastructure::inbound::rest::AppState;
+
     use crate::test_helpers::*;
     use axum::Router;
     use axum::body::{Body, Bytes};

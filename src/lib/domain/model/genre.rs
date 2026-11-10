@@ -1,8 +1,3 @@
-#![allow(
-    dead_code,
-    reason = "the genre vocabulary belongs to the internal video-identification path, which has no REST caller yet"
-)]
-
 /// A category the shared genre vocabulary recognizes.
 ///
 /// The vocabulary is closed: an adapter maps every provider's spelling of an

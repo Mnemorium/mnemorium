@@ -1,4 +1,4 @@
-use crate::domain::alias::NumericID;
+use crate::domain::NumericID;
 
 /// Role of an application user, matching the `chk_user_role` check
 /// constraint in the `user` table.

@@ -3,8 +3,8 @@ use std::pin::Pin;
 
 use chrono::NaiveDate;
 
-use crate::domain::alias::NumericID;
-use crate::domain::model::series::Series;
+use crate::domain::NumericID;
+use crate::domain::model::Series;
 
 /// Command to create a show.
 #[derive(Debug, Clone, PartialEq, Eq)]

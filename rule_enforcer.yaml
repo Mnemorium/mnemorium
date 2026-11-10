@@ -13,7 +13,17 @@ rules:
     # Raised from 72 when origin/main's complete-upload lifecycle merged in: its
     # new helpers lost the textual call sites the removed REST endpoint tests
     # used to supply.
-    max_single_call_functions: 75
+    # Raised from 75 when the asset-access module was deleted: the owning resource
+    # now travels with the file, and `ProtectedResource::reference` is the single
+    # accessor the authorization decision reads it through.
+    # Lowered to 62 after a sweep inlined the gratuitous one-call helpers, moved
+    # the two test-only ones under `#[cfg(test)] mod tests`, and fixed the check's
+    # accounting: it now skips the declaration line by position, so a generic
+    # declaration is no longer subtracted as if it were a call site and a generic
+    # helper with a single caller is counted.
+    # Lowered to 55 when the security-event catalog was inlined: its constructors
+    # were single-call helpers, and the module that held them is gone.
+    max_single_call_functions: 55
   STY-RUST-002:
     bounded_contexts: &bounded_contexts
       - asset
@@ -99,6 +109,20 @@ rules:
       - src/lib/infrastructure/outbound/sqlx/*_repository.rs
       - src/lib/infrastructure/outbound/file_system/configuration_source.rs
       - src/lib/infrastructure/outbound/file_system/instance_state_store.rs
+
+  TEST-033:
+    # The surfaces whose test modules open their own `:memory:` connection: the
+    # adapter family directory and the module root holding its shared fixtures.
+    surfaces:
+      - src/lib/infrastructure/outbound/sqlx
+      - src/lib/infrastructure/outbound/sqlx.rs
+  TEST-044:
+    # Module roots that may declare their own inline #[cfg(test)] mod
+    # test_helpers for helpers used only inside that module's subtree. The
+    # crate-wide module in src/lib/lib.rs is implicit. Each entry must exist and
+    # declare exactly one such module.
+    module_scoped_helper_roots:
+      - src/lib/infrastructure/outbound/sqlx.rs
 
   TEST-039:
     # Business use cases excepted from the one-file-per-use-case rule, each a

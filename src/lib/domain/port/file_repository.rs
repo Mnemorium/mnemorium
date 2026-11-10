@@ -1,8 +1,8 @@
 use std::future::Future;
 
-use crate::domain::alias::NumericID;
-use crate::domain::model::file::File;
-use crate::domain::port::error::RepositoryError;
+use crate::domain::NumericID;
+use crate::domain::model::File;
+use crate::domain::port::RepositoryError;
 
 /// Search filters for [`FileRepository::search`]. Every field is optional; an
 /// all-`None` filter returns every file.
@@ -29,19 +29,17 @@ pub(crate) trait FileRepository: Send + Sync {
     /// identity.
     fn create(&mut self, file: File) -> impl Future<Output = Result<File, RepositoryError>> + Send;
 
-    /// Delete the file identified by `id`.
+    /// Delete every file matching `filter`.
     ///
-    /// Returns `Ok(true)` when a file matched `id` and was deleted, and
-    /// `Ok(false)` when no file matched. A missing file is a valid outcome,
-    /// not an error.
+    /// Returns `Ok(true)` when at least one file was deleted, and `Ok(false)`
+    /// when none matched. An all-`None` filter deletes every file.
     ///
     /// The `file` foreign keys of the Library media (`image.file_id`,
     /// `video.file_id`) do not cascade (`ARCH-004`, `PERS-020`), so the delete
-    /// is rejected while a media row still references the file. The caller
-    /// confirms no media row references it first.
+    /// is rejected while a media row still references the file.
     fn delete(
         &mut self,
-        id: NumericID,
+        filter: &FileFilter,
     ) -> impl Future<Output = Result<bool, RepositoryError>> + Send;
 
     /// Update an existing `file` targeted by its identifier, returning the
@@ -69,9 +67,9 @@ impl<T: FileRepository + ?Sized> FileRepository for &mut T {
 
     fn delete(
         &mut self,
-        id: NumericID,
+        filter: &FileFilter,
     ) -> impl Future<Output = Result<bool, RepositoryError>> + Send {
-        (**self).delete(id)
+        (**self).delete(filter)
     }
 
     fn save(&mut self, file: File) -> impl Future<Output = Result<File, RepositoryError>> + Send {

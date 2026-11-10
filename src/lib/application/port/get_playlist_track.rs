@@ -1,8 +1,8 @@
 use std::future::Future;
 use std::pin::Pin;
 
-use crate::domain::alias::NumericID;
-use crate::domain::model::music_recording::MusicRecording;
+use crate::domain::NumericID;
+use crate::domain::model::MusicRecording;
 
 /// Command to fetch one track of a playlist.
 #[derive(Debug, Clone, PartialEq, Eq)]

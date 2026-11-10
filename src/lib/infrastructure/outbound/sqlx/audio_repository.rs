@@ -1,11 +1,10 @@
 use sqlx::{QueryBuilder, Sqlite, Transaction};
 
-use crate::domain::alias::NumericID;
-use crate::domain::model::audio::Audio;
-use crate::domain::port::audio_repository::{AudioFilter, AudioRepository};
-use crate::domain::port::error::RepositoryError;
+use crate::domain::model::Audio;
+use crate::domain::port::{AudioFilter, AudioRepository, RepositoryError};
 
-use super::model::audio::Audio as SqlxAudio;
+use super::model::Audio as SqlxAudio;
+
 use super::query_filter::push_filter;
 
 /// Repository persisting audio rows, backed by a `SQLite` transaction.
@@ -52,15 +51,18 @@ impl AudioRepository for SqlxAudioRepository<'_> {
         domain_audio(row)
     }
 
-    async fn delete(&mut self, id: NumericID) -> Result<bool, RepositoryError> {
-        sqlx::query("DELETE FROM audio_stream WHERE audio_id = ?")
-            .bind(id)
-            .execute(&mut **self.transaction)
-            .await?;
-        let result = sqlx::query("DELETE FROM audio WHERE audio_id = ?")
-            .bind(id)
-            .execute(&mut **self.transaction)
-            .await?;
+    async fn delete(&mut self, filter: &AudioFilter) -> Result<bool, RepositoryError> {
+        let mut builder = QueryBuilder::<Sqlite>::new("DELETE FROM audio");
+        let mut first = true;
+
+        if let Some(file_id) = filter.file_id {
+            push_filter(&mut first, &mut builder, "file_id = ", file_id);
+        }
+        if let Some(id) = filter.id {
+            push_filter(&mut first, &mut builder, "audio_id = ", id);
+        }
+
+        let result = builder.build().execute(&mut **self.transaction).await?;
         Ok(result.rows_affected() > 0)
     }
 
@@ -113,20 +115,11 @@ fn domain_audio(row: SqlxAudio) -> Result<Audio, RepositoryError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::infrastructure::outbound::sqlx::test_helpers::begin_transaction;
     use rstest::rstest;
-    use sqlx::sqlite::SqlitePoolOptions;
     use std::error::Error;
 
     /// Open a migrated in-memory database and begin one transaction.
-    async fn begin_transaction() -> Result<Transaction<'static, Sqlite>, sqlx::Error> {
-        let pool = SqlitePoolOptions::new()
-            .max_connections(1)
-            .connect("sqlite::memory:")
-            .await?;
-        sqlx::migrate!("./migrations").run(&pool).await?;
-        pool.begin().await
-    }
-
     /// Seed a credential and a standard user so foreign keys resolve.
     async fn seed_user(
         transaction: &mut Transaction<'static, Sqlite>,
@@ -334,7 +327,12 @@ mod tests {
         let stored = repository.create(audio(10, None, None)?).await?;
 
         // Act
-        let removed = repository.delete(stored.id()).await?;
+        let removed = repository
+            .delete(&AudioFilter {
+                id: Some(stored.id()),
+                ..AudioFilter::default()
+            })
+            .await?;
         let found = repository
             .search(&AudioFilter {
                 id: Some(stored.id()),

@@ -5,16 +5,14 @@ use axum::response::{IntoResponse as _, Response};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
-use crate::application::port::complete_upload::{
+use crate::application::port::{
     CompleteUploadCommand, CompleteUploadError,
     CompleteUploadResponse as CompleteUploadResponseData,
 };
-use crate::domain::alias::NumericID;
-use crate::infrastructure::inbound::rest::api_error::{ApiError, ErrorBody};
-use crate::infrastructure::inbound::rest::app_state::AppState;
-use crate::infrastructure::inbound::rest::hal::{HAL_CONTENT_TYPE, Link};
+use crate::domain::NumericID;
 use crate::infrastructure::inbound::rest::handler::asset::{asset_file_href, upload_self_href};
-use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
+use crate::infrastructure::inbound::rest::middleware::AuthenticatedUser;
+use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody, HAL_CONTENT_TYPE, Link};
 
 /// HAL links exposed by a completed upload.
 ///

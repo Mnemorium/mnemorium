@@ -2,18 +2,16 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
-use crate::application::port::list_movies::{
+use crate::application::port::{
     ListMoviesCommand, ListMoviesError, ListMoviesItem, ListMoviesResponse, ListMoviesUseCase,
 };
-use crate::domain::model::permission::Action;
-use crate::domain::port::identity_unit_of_work::IdentityUnitOfWork;
-use crate::domain::port::library_unit_of_work::LibraryUnitOfWork;
-use crate::domain::port::movie_repository::{MovieFilter, MovieRepository as _};
-use crate::domain::port::permission_repository::{PermissionFilter, PermissionRepository as _};
-use crate::domain::port::unit_of_work::{UnitOfWork as _, UnitOfWorkFactory};
-use crate::domain::port::user_repository::{UserFilter, UserRepository as _};
-use crate::domain::port::user_unit_of_work::UserUnitOfWork;
-use crate::domain::service::authorization::Authorization;
+use crate::domain::model::Action;
+use crate::domain::port::{
+    IdentityUnitOfWork, LibraryUnitOfWork, MovieFilter, MovieRepository as _, PermissionFilter,
+    PermissionRepository as _, UnitOfWork as _, UnitOfWorkFactory, UserFilter, UserRepository as _,
+    UserUnitOfWork,
+};
+use crate::domain::service::Authorization;
 
 /// Use case implementation for listing the films the caller may see.
 pub(crate) struct ListMovies<F> {
@@ -130,12 +128,12 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::model::movie::Movie;
-    use crate::domain::model::permission::{Permission, ResourceKind, ResourceRef, Scope};
-    use crate::domain::port::error::RepositoryError;
-    use crate::domain::port::movie_repository::MockMovieRepository;
-    use crate::domain::port::permission_repository::MockPermissionRepository;
-    use crate::domain::port::user_repository::MockUserRepository;
+    use crate::domain::model::{Movie, Permission, ResourceKind, ResourceRef, Scope};
+
+    use crate::domain::port::{
+        MockMovieRepository, MockPermissionRepository, MockUserRepository, RepositoryError,
+    };
+
     use crate::test_helpers::*;
     use std::error::Error;
     use std::sync::atomic::Ordering;

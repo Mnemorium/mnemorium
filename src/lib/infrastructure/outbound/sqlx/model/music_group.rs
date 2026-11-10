@@ -1,4 +1,4 @@
-use crate::domain::alias::NumericID;
+use crate::domain::NumericID;
 
 /// Row of the `music_group` table.
 #[derive(Debug, Clone, sqlx::FromRow)]

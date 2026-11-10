@@ -1,6 +1,6 @@
 use std::future::Future;
 
-use crate::domain::port::error::PasswordGeneratorError;
+use crate::domain::port::PasswordGeneratorError;
 
 /// Port for generating random passwords.
 #[cfg_attr(test, mockall::automock)]

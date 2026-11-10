@@ -4,21 +4,16 @@ use std::sync::Arc;
 
 use tracing::warn;
 
-use crate::application::port::create_series::{
+use crate::application::port::{
     CreateSeriesCommand, CreateSeriesError, CreateSeriesResponse, CreateSeriesUseCase,
 };
-use crate::domain::model::series::Series;
-use crate::domain::port::error::RepositoryError;
-use crate::domain::port::identity_unit_of_work::IdentityUnitOfWork;
-use crate::domain::port::library_unit_of_work::LibraryUnitOfWork;
-use crate::domain::port::permission_repository::{PermissionFilter, PermissionRepository as _};
-use crate::domain::port::series_repository::SeriesRepository as _;
-use crate::domain::port::unit_of_work::{UnitOfWork as _, UnitOfWorkFactory};
-use crate::domain::port::user_repository::{UserFilter, UserRepository as _};
-use crate::domain::port::user_unit_of_work::UserUnitOfWork;
-use crate::domain::service::authorization::{Authorization, Decision};
-use crate::domain::service::country_code::CountryCode;
-use crate::domain::service::name_policy::{NamePolicy, NamePolicyError};
+use crate::domain::model::Series;
+use crate::domain::port::{
+    IdentityUnitOfWork, LibraryUnitOfWork, PermissionFilter, PermissionRepository as _,
+    RepositoryError, SeriesRepository as _, UnitOfWork as _, UnitOfWorkFactory, UserFilter,
+    UserRepository as _, UserUnitOfWork,
+};
+use crate::domain::service::{Authorization, CountryCode, Decision, NamePolicy, NamePolicyError};
 
 /// Use case implementation for creating a show.
 pub(crate) struct CreateSeries<F> {
@@ -198,11 +193,12 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::alias::NumericID;
-    use crate::domain::model::user::{Role, User};
-    use crate::domain::port::permission_repository::MockPermissionRepository;
-    use crate::domain::port::series_repository::MockSeriesRepository;
-    use crate::domain::port::user_repository::MockUserRepository;
+    use crate::domain::NumericID;
+
+    use crate::domain::model::{Role, User};
+
+    use crate::domain::port::{MockPermissionRepository, MockSeriesRepository, MockUserRepository};
+
     use crate::test_helpers::*;
     use chrono::NaiveDate;
     use std::error::Error;

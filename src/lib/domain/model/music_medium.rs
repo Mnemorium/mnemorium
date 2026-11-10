@@ -1,4 +1,4 @@
-use crate::domain::model::music_recording::MusicRecording;
+use crate::domain::model::MusicRecording;
 
 /// The album-scoped identity of a medium.
 ///

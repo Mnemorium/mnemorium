@@ -1,6 +1,6 @@
 use chrono::NaiveDate;
 
-use crate::domain::alias::NumericID;
+use crate::domain::NumericID;
 
 /// Row for a music album with one of its mediums and one recording the medium
 /// sequences, with the recording's backing file.

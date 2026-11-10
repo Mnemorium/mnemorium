@@ -52,12 +52,22 @@ album, so `library.read` and `library.manage` never name a season or a track.
 `file.read` is derived: it has no scope, no role preset and no override, and it never appears in the configurable
 matrix. Reading an asset delegates to the read action of the resource that owns it:
 
-| Asset                               | Decided by      | Resource                               |
-| ----------------------------------- | --------------- | -------------------------------------- |
-| Catalogue artwork (`LIBRARY` scope) | `library.read`  | Global                                 |
-| A gallery item (`USER` scope)       | `gallery.read`  | The gallery holding the item           |
-| A playlist cover (`USER` scope)     | `playlist.read` | The playlist holding the cover         |
-| An asset no resource references     | —               | Its file owner and the Root Admin only |
+| Asset                                     | Decided by      | Resource                               |
+| ----------------------------------------- | --------------- | -------------------------------------- |
+| Catalogue artwork (`LIBRARY` asset scope) | `library.read`  | Global                                 |
+| A gallery item (`USER` asset scope)       | `gallery.read`  | The gallery holding the item           |
+| A playlist cover (`USER` asset scope)     | `playlist.read` | The playlist holding the cover         |
+| A film's video                            | `library.read`  | The film                               |
+| An episode's video                        | `library.read`  | The series holding the episode         |
+| An album's audio                          | `library.read`  | The album                              |
+| An asset no resource references           | —               | Its file owner and the Root Admin only |
+
+The stored file carries the resource that owns it, so the read path takes one decision: the `Authorization` domain
+service receives the file and reads the owner from it, with no per-representation lookup and no separate path for the
+file, image, audio and video views.
+
+An asset scope is fixed by the first attachment and is not the permission `Scope`: the permission scope is the reach of
+an action over a resource family, defined under [Scopes](#scopes).
 
 Catalogue artwork is shared and public, so a `LISTED` library scope still reaches it while `NONE` or `OWNED` hides it. A
 `USER` asset is owned by exactly one referrer, so a caller that cannot read the gallery or playlist cannot read its

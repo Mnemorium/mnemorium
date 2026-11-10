@@ -1,10 +1,7 @@
 use std::future::Future;
 
-use crate::domain::model::configuration::ProviderId;
-use crate::domain::model::music_candidate::{MusicCandidate, MusicTarget};
-use crate::domain::model::music_metadata::MusicMetadata;
-use crate::domain::model::music_query::MusicQuery;
-use crate::domain::port::error::ExternalServiceError;
+use crate::domain::model::{MusicCandidate, MusicMetadata, MusicQuery, MusicTarget, ProviderId};
+use crate::domain::port::ExternalServiceError;
 
 /// Port for asking an external service what an album, a release or a recording
 /// is.

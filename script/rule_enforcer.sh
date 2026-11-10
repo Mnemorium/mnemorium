@@ -125,6 +125,7 @@ RULES=(
 	"STY-RUST-087:check_sty_rust_087"
 	"STY-RUST-088:check_sty_rust_088"
 	"STY-RUST-089:check_sty_rust_089"
+	"STY-RUST-090:check_sty_rust_090"
 	"DOC-003:check_doc_003"
 	"DOC-005:check_doc_005"
 	"DOC-007:check_doc_007"
@@ -568,12 +569,17 @@ require_matches() {
 # name is called exactly once across `src` is a single-call helper, and the tree
 # may hold no more of them than `max_single_call_functions` records. Adding one
 # is then a reviewed change to that budget, not an accident. A call is an
-# identifier followed by `(` with comments stripped; a name declared more than
-# once is skipped because its occurrences cannot be attributed to one function.
+# identifier followed by `(` with comments stripped; the declaration's own line
+# is skipped by position, so a declaration the textual scan does see is not
+# mistaken for a call site. A generic declaration spells `name<...>(` and is no
+# textual occurrence at all, so its real call sites are counted untouched. A
+# name declared more than once is skipped because its occurrences cannot be
+# attributed to one function.
 check_sty_rust_001() {
 	local id="STY-RUST-001"
-	local config budget matches file name count lone result=0
+	local config budget matches file line hit name lone result=0
 	local -A declarations=()
+	local -A declaration_sites=()
 	local -A calls=()
 
 	config="$(rule_config "$id")" || return 2
@@ -586,29 +592,34 @@ check_sty_rust_001() {
 	matches="$(scan_json "$id" src)" || return 1
 	require_matches "$id" "production function declaration" "$matches" || return 1
 
-	while IFS=$'\t' read -r file name; do
+	while IFS=$'\t' read -r file line name; do
 		[ -n "$name" ] || continue
 		declarations["$name"]=$((${declarations["$name"]:-0} + 1))
+		declaration_sites["$file:$line"]+=" $name"
 	done < <(printf '%s\n' "$matches" |
-		jq -r '[.file, .metaVariables.single.NAME.text] | @tsv')
+		jq -r '[.file, .range.start.line + 1, .metaVariables.single.NAME.text] | @tsv')
 
-	# The declaration is one `name(` occurrence, so a name's callers are its
-	# occurrences minus its declarations.
+	# A name's callers are its textual occurrences outside the declaration line.
 	while IFS= read -r file; do
 		[ -n "$file" ] || continue
-		while IFS= read -r name; do
+		while IFS= read -r hit; do
+			[ -n "$hit" ] || continue
+			line="${hit%%:*}"
+			name="${hit#*:}"
 			[ -n "$name" ] || continue
+			case " ${declaration_sites["$file:$line"]:-} " in
+			*" $name "*) continue ;;
+			esac
 			calls["$name"]=$((${calls["$name"]:-0} + 1))
 		done < <(sed -E 's://.*::' "$file" |
-			grep -oE '[A-Za-z_][A-Za-z0-9_]*[[:space:]]*\(' |
+			grep -onE '[A-Za-z_][A-Za-z0-9_]*[[:space:]]*\(' |
 			sed -E 's/[[:space:]]*\($//')
 	done < <(find src -name '*.rs' | sort)
 
 	lone=0
 	for name in "${!declarations[@]}"; do
 		[ "${declarations[$name]}" -eq 1 ] || continue
-		count=$((${calls[$name]:-0} - 1))
-		if [ "$count" -eq 1 ]; then
+		if [ "${calls[$name]:-0}" -eq 1 ]; then
 			lone=$((lone + 1))
 		fi
 	done
@@ -1732,7 +1743,7 @@ check_sty_rust_074() {
 	# sty-rust-074 extracts the `logging::setup` install call and the composition root's `LoadConfiguration` binding; the count, path and ordering logic happens here because an ast-grep rule cannot see how many call sites exist, which file they are in, or the order of two statements.
 	matches="$(scan_json "$id" src)" || return 1
 
-	# Clause A: the subscriber is installed exactly once, by `logging::setup`, from the composition root.
+	# Clause A: the subscriber is installed exactly once, by the logging install call, from the composition root.
 	installs="$(printf '%s\n' "$matches" |
 		jq -r 'select(.metaVariables.single.VAR | not) | [.file, (.range.start.line | tostring)] | @tsv')"
 	install_count="$(printf '%s\n' "$installs" | grep -c .)"
@@ -1758,13 +1769,13 @@ check_sty_rust_074() {
 		return 1
 	fi
 	execute_line="$(grep -nF "${var}.execute(" "$server" | head -n 1 | cut -d: -f1)"
-	install_line="$(grep -nF "logging::setup(" "$server" | head -n 1 | cut -d: -f1)"
+	install_line="$(grep -nE "^[[:space:]]*let _log_guard = setup\(" "$server" | head -n 1 | cut -d: -f1)"
 	if [ -z "$execute_line" ]; then
 		printf 'error: %s: %s never runs %s.execute()\n' "$id" "$server" "$var" >&2
 		return 1
 	fi
 	if [ -z "$install_line" ] || [ "$install_line" -le "$execute_line" ]; then
-		printf 'error: %s: logging::setup must run after LoadConfiguration (%s.execute at line %s)\n' \
+		printf 'error: %s: the logging install must run after LoadConfiguration (%s.execute at line %s)\n' \
 			"$id" "$var" "$execute_line" >&2
 		result=1
 	fi
@@ -2027,6 +2038,11 @@ check_sty_rust_080() {
 		*Filter) ;;
 		*) continue ;;
 		esac
+		# A join constraint names a child field rather than an aggregate field
+		# (`STY-RUST-080`'s documented exception).
+		if [ "$filter" = "MusicAlbumFilter" ] && [ "$field" = "audio_id" ]; then
+			continue
+		fi
 		aggregate="${filter%Filter}"
 		if [ -z "${accessors["${aggregate}:${field}"]+set}" ]; then
 			printf 'error: %s: %s: field %s is not named after a field of %s (no %s::%s())\n' \
@@ -3551,8 +3567,9 @@ check_test_052() {
 		fi
 
 		# Clause 4 — every child outcome is asserted.
-		error_type="$(grep -oE 'use crate::domain::port::error::[A-Za-z0-9_]+' "$file" |
-			head -n 1 | sed 's/.*:://')"
+		error_type="$(tr '\n' ' ' <"$file" |
+			grep -oE 'crate::domain::port::(\{[^}]*\}|error::[A-Za-z0-9_]+)' |
+			grep -oE '[A-Za-z0-9_]+Error' | head -n 1)"
 		if [ -z "$error_type" ]; then
 			printf 'error: %s: %s: the adapter imports no domain port error type\n' \
 				"$id" "$file" >&2
@@ -4210,14 +4227,21 @@ check_test_027() {
 # check_test_028 — an integration test module lives in the same file as the code under test (TEST-028).
 check_test_028() { need_dir "TEST-028" "src/lib/infrastructure/outbound" && scan_short TEST-028 src; }
 
-# check_test_033 — the SQLite repository is exercised against an in-memory database, one `:memory:` connection per test so each test runs against a fresh database (TEST-033).
+# check_test_033 — the SQLite repository is exercised against an in-memory database, one `:memory:` connection per test so each test runs against a fresh database (TEST-033). The surfaces come from rule_enforcer.yaml (TEST-033.surfaces): the adapter family directory and the module root that holds the fixtures its tests share.
 check_test_033() {
 	local id="TEST-033"
-	local surface="src/lib/infrastructure/outbound/sqlx"
-	local matches file line arg helper result=0 modules=0
+	local matches file line arg helper result=0 modules=0 surface
+	local -a surfaces=()
 	local -A in_memory=()
 
-	need_dir "$id" "$surface" || return 1
+	config_list "$id" surfaces surfaces || return 2
+	for surface in "${surfaces[@]}"; do
+		if [ ! -e "$surface" ]; then
+			printf 'error: %s: configured surface %s does not exist\n' \
+				"$id" "$surface" >&2
+			return 1
+		fi
+	done
 
 	matches="$(scan_json "$id" src)" || return 1
 
@@ -4241,7 +4265,7 @@ check_test_033() {
 		 (.metaVariables.single.ARG.text // ""),
 		 (.metaVariables.single.HELPER.text // "")] | @tsv')
 
-	# Every test module that builds a SQLite pool must open an in-memory connection; a module with none runs against an on-disk file.
+	# Every test module on a configured surface that builds a SQLite pool must open an in-memory connection; a module with none runs against an on-disk file.
 	while IFS= read -r file; do
 		[ -n "$file" ] || continue
 		grep -qE 'SqlitePool|SqlitePoolOptions|init_db|sqlx::migrate!' "$file" || continue
@@ -4251,10 +4275,10 @@ check_test_033() {
 				"$id" "$file" >&2
 			result=1
 		fi
-	done < <(grep -rl '#\[cfg(test)\]' "$surface" --include='*.rs' | sort)
+	done < <(grep -rl '#\[cfg(test)\]' "${surfaces[@]}" --include='*.rs' | sort)
 
 	if [ "$modules" -eq 0 ]; then
-		printf 'error: %s: extracted no SQLite test module from %s\n' "$id" "$surface" >&2
+		printf 'error: %s: extracted no SQLite test module from %s\n' "$id" "${surfaces[*]}" >&2
 		return 1
 	fi
 
@@ -4262,7 +4286,11 @@ check_test_033() {
 }
 
 # check_test_034 — a SQLite repository integration test caps its in-memory pool at one connection (TEST-034).
-check_test_034() { need_dir "TEST-034" "src/lib/infrastructure/outbound/sqlx" && scan_short TEST-034 "src/lib/infrastructure/outbound/sqlx"; }
+check_test_034() {
+	need_dir "TEST-034" "src/lib/infrastructure/outbound/sqlx" || return 1
+	need_file "TEST-034" "src/lib/infrastructure/outbound/sqlx.rs" || return 1
+	scan_short TEST-034 "src/lib/infrastructure/outbound/sqlx" "src/lib/infrastructure/outbound/sqlx.rs"
+}
 
 # check_test_035 — an external-service test stubs the service with `wiremock` and loads its canned responses from golden files (TEST-035).
 check_test_035() {
@@ -4596,16 +4624,29 @@ check_test_043() {
 	return "$result"
 }
 
-# check_test_044 — shared Rust test helpers live only in the single `#[cfg(test)] mod test_helpers` in src/lib/lib.rs (TEST-044); a separate helper file or module is forbidden.
+# check_test_044 — a helper a test module shares lives in an inline, #[cfg(test)]-gated mod test_helpers, declared once per root file: crate-wide helpers in src/lib/lib.rs, helpers shared only by the descendants of one module in that module's own root (rule_enforcer.yaml, TEST-044.module_scoped_helper_roots). A separate helper file or module is forbidden.
 check_test_044() {
 	local id="TEST-044"
 	local module="src/lib/lib.rs"
 	local src_dir="src"
-	local file line inline gated result=0 count=0
-	local -a files=()
+	local file line inline gated root allowed count_value result=0
+	local -a files=() roots=() allowed_roots=()
+	local -A counts=()
 
 	need_dir "$id" "$src_dir" || return 1
 	need_file "$id" "$module" || return 1
+	config_list "$id" module_scoped_helper_roots roots || return 2
+
+	# An allowlist entry that rots is an error: every configured root must exist.
+	allowed_roots=("$module" "${roots[@]}")
+	for root in "${allowed_roots[@]}"; do
+		if [ ! -f "$root" ]; then
+			printf 'error: %s: configured helper root %s does not exist\n' \
+				"$id" "$root" >&2
+			result=1
+		fi
+	done
+	[ "$result" -eq 0 ] || return 1
 
 	# Clause A: no separate helper file anywhere under src/ — the named failure mode is a `test_helper.rs` beside the code under test, which is the file form of the helper module.
 	while IFS= read -r file; do
@@ -4623,13 +4664,20 @@ check_test_044() {
 	fi
 	while IFS=$'\t' read -r file line inline gated; do
 		[ -n "$file" ] || continue
-		count=$((count + 1))
-		if [ "$file" != "$module" ]; then
-			printf 'error: %s: %s:%s: test helpers must live only in the single #[cfg(test)] mod test_helpers in %s\n' \
+		allowed=0
+		for root in "${allowed_roots[@]}"; do
+			if [ "$file" = "$root" ]; then
+				allowed=1
+			fi
+		done
+		if [ "$allowed" -eq 0 ]; then
+			printf 'error: %s: %s:%s: test helpers must live only in the #[cfg(test)] mod test_helpers of %s or of a module root listed under TEST-044.module_scoped_helper_roots\n' \
 				"$id" "$file" "$line" "$module" >&2
 			result=1
 			continue
 		fi
+		count_value="${counts["$file"]:-0}"
+		counts["$file"]=$((count_value + 1))
 		if [ "$inline" != "inline" ]; then
 			printf 'error: %s: %s:%s: mod test_helpers must be declared inline; a file module (mod test_helpers;) is a separate helper file\n' \
 				"$id" "$file" "$line" >&2
@@ -4669,15 +4717,16 @@ check_test_044() {
 			}
 		' "${files[@]}")
 
-	if [ "$count" -eq 0 ]; then
-		printf 'error: %s: %s declares no mod test_helpers; shared helpers live in the single #[cfg(test)] mod test_helpers there\n' \
-			"$id" "$module" >&2
-		result=1
-	elif [ "$count" -gt 1 ]; then
-		printf 'error: %s: found %s mod test_helpers declarations; there must be exactly one\n' \
-			"$id" "$count" >&2
-		result=1
-	fi
+	# Each allowed root declares exactly one such module: the crate-wide helpers
+	# in the crate root, and the module-scoped helpers beside their descendants.
+	for root in "${allowed_roots[@]}"; do
+		count_value="${counts["$root"]:-0}"
+		if [ "$count_value" -ne 1 ]; then
+			printf 'error: %s: %s declares %s mod test_helpers declarations; the root must declare exactly one\n' \
+				"$id" "$root" "$count_value" >&2
+			result=1
+		fi
+	done
 
 	return "$result"
 }
@@ -5959,6 +6008,33 @@ check_sty_rust_089() {
 		result=1
 	fi
 
+	return "$result"
+}
+
+# check_sty_rust_090 — a child module that is not itself a module root is private
+# (STY-RUST-090). A leaf declared pub(crate) would let an outside module name the
+# child directly again and defeat the compiler check the facade relies on.
+check_sty_rust_090() {
+	local id="STY-RUST-090"
+	local matches result=0
+	matches="$(scan_json "$id" src)" || return 1
+	while IFS=$'\t' read -r file name; do
+		[ -n "$name" ] || continue
+		local stem dir child
+		stem="$(basename "$file" .rs)"
+		dir="$(dirname "$file")"
+		if [ "$stem" = "lib" ]; then
+			child="$dir/$name"
+		else
+			child="$dir/$stem/$name"
+		fi
+		if [ ! -d "$child" ]; then
+			printf 'error: %s: %s: %s is a leaf module; declare it private (mod %s;)\n' \
+				"$id" "$file" "$name" "$name" >&2
+			result=1
+		fi
+	done < <(printf '%s\n' "$matches" |
+		jq -r '[.file, .metaVariables.single.NAME.text] | @tsv')
 	return "$result"
 }
 

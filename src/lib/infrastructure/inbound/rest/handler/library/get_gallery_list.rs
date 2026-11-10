@@ -6,13 +6,11 @@ use tracing::warn;
 use utoipa::{IntoParams, ToSchema};
 
 use super::{DEFAULT_LIMIT, MAX_LIMIT};
-use crate::application::port::list_galleries::{ListGalleriesCommand, ListGalleriesError};
-use crate::domain::alias::NumericID;
-use crate::infrastructure::inbound::rest::api_error::{ApiError, ErrorBody};
-use crate::infrastructure::inbound::rest::app_state::AppState;
-use crate::infrastructure::inbound::rest::hal::{Link, hal_json};
+use crate::application::port::{ListGalleriesCommand, ListGalleriesError};
+use crate::domain::NumericID;
 use crate::infrastructure::inbound::rest::handler::library::GalleryResponse;
-use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
+use crate::infrastructure::inbound::rest::middleware::AuthenticatedUser;
+use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody, Link, hal_json};
 
 /// Filters and pagination restricting the returned galleries.
 ///

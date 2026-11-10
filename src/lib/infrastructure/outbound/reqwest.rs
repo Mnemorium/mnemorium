@@ -13,14 +13,14 @@
 //! addresses are followed, but only to a host already on its own allow-list. A
 //! failed download yields no artwork and one catalogued event; it never fails
 //! the lookup.
-#![allow(
-    dead_code,
-    reason = "the artwork client keeps its download method and client field; the video metadata path that reads them has no caller yet"
-)]
 
-pub(crate) mod musicbrainz;
-pub(crate) mod omdb;
-pub(crate) mod tmdb;
+mod musicbrainz;
+mod omdb;
+mod tmdb;
+
+pub(crate) use self::musicbrainz::MusicBrainzMetadataProvider;
+pub(crate) use self::omdb::OmdbVideoMetadataProvider;
+pub(crate) use self::tmdb::TmdbVideoMetadataProvider;
 
 use std::time::Duration;
 
@@ -29,9 +29,8 @@ use reqwest::{Client, Response, StatusCode, Url};
 use serde::de::DeserializeOwned;
 use tracing::{error, warn};
 
-use crate::domain::model::artwork::Artwork;
-use crate::domain::model::configuration::ProviderId;
-use crate::domain::port::error::ExternalServiceError;
+use crate::domain::model::{Artwork, ProviderId};
+use crate::domain::port::ExternalServiceError;
 
 /// Largest artwork the server accepts, in bytes.
 pub(crate) const ARTWORK_MAX_BYTES: usize = 5 * 1024 * 1024;

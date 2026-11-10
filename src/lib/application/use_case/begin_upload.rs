@@ -6,19 +6,16 @@ use chrono::{Duration, Utc};
 
 use tracing::{error, info, warn};
 
-use crate::application::port::begin_upload::{
+use crate::application::port::{
     BeginUploadCommand, BeginUploadError, BeginUploadResponse, BeginUploadUseCase,
 };
-use crate::application::use_case::upload_layout::{media_root, staged_path};
-use crate::domain::alias::NumericID;
-use crate::domain::model::upload::{ChunkBitmap, MAX_TOTAL_CHUNKS, Upload, UploadError};
-use crate::domain::port::asset_unit_of_work::AssetUnitOfWork;
-use crate::domain::port::file_storage::FileStorage;
-use crate::domain::port::mime_type_repository::MimeTypeRepository as _;
-use crate::domain::port::unit_of_work::{UnitOfWork as _, UnitOfWorkFactory};
-use crate::domain::port::upload_repository::UploadRepository as _;
-use crate::domain::port::user_repository::{UserFilter, UserRepository as _};
-use crate::domain::port::user_unit_of_work::UserUnitOfWork;
+use crate::application::use_case::{media_root, staged_path};
+use crate::domain::NumericID;
+use crate::domain::model::{ChunkBitmap, MAX_TOTAL_CHUNKS, Upload, UploadError};
+use crate::domain::port::{
+    AssetUnitOfWork, FileStorage, MimeTypeFilter, MimeTypeRepository as _, UnitOfWork as _,
+    UnitOfWorkFactory, UploadRepository as _, UserFilter, UserRepository as _, UserUnitOfWork,
+};
 
 /// Use case implementation for beginning an upload session.
 pub(crate) struct BeginUpload<F, S> {
@@ -154,11 +151,14 @@ where
                     .next()
                     .ok_or(BeginUploadError::NoSuchCaller)?;
 
-                let content_type_supported = unit_of_work
+                let content_type_supported = !unit_of_work
                     .mime_types()
-                    .exists(command.content_type())
+                    .search(&MimeTypeFilter {
+                        mime_type_id: Some(command.content_type().to_owned()),
+                    })
                     .await
-                    .map_err(|error| BeginUploadError::Unknown(error.into()))?;
+                    .map_err(|error| BeginUploadError::Unknown(error.into()))?
+                    .is_empty();
                 if !content_type_supported {
                     return Err(BeginUploadError::UnsupportedMediaType);
                 }
@@ -310,12 +310,13 @@ where
 mod tests {
     use super::*;
     use crate::application::use_case::test_fixtures::TTL_SECONDS;
-    use crate::domain::model::integrity_hash::IntegrityHash;
-    use crate::domain::port::error::{RepositoryError, StorageError};
-    use crate::domain::port::file_storage::MockFileStorage;
-    use crate::domain::port::mime_type_repository::MockMimeTypeRepository;
-    use crate::domain::port::upload_repository::MockUploadRepository;
-    use crate::domain::port::user_repository::MockUserRepository;
+    use crate::domain::model::{ChunkBitmap, IntegrityHash, MimeType};
+
+    use crate::domain::port::{
+        MockFileStorage, MockMimeTypeRepository, MockUploadRepository, MockUserRepository,
+        RepositoryError, StorageError,
+    };
+
     use crate::test_helpers::*;
     use std::error::Error;
     use std::sync::atomic::{AtomicBool, Ordering};
@@ -419,25 +420,21 @@ mod tests {
         )
     }
 
-    /// Build an [`IntegrityHash`] from a literal digest.
-    #[expect(
-        clippy::expect_used,
-        reason = "the test literal is a valid 64-character hexadecimal digest"
-    )]
-    fn hash(digest: &str) -> IntegrityHash<64> {
-        IntegrityHash::try_new(digest.to_owned()).expect("the fixture digest is valid")
-    }
-
     fn expect_mime_type(mime_types: &mut MockMimeTypeRepository, exists: bool) {
-        mime_types
-            .expect_exists()
-            .times(1)
-            .returning(move |_| Box::pin(async move { Ok(exists) }));
+        mime_types.expect_search().times(1).returning(move |_| {
+            let found: Vec<MimeType> = if exists {
+                MimeType::try_new("video/mp4".to_owned())
+                    .ok()
+                    .into_iter()
+                    .collect()
+            } else {
+                Vec::new()
+            };
+            Box::pin(async move { Ok(found) })
+        });
     }
 
     fn stored_upload(command: &BeginUploadCommand) -> Result<Upload, RepositoryError> {
-        use crate::domain::model::upload::ChunkBitmap;
-
         let total_chunks = usize::try_from(command.file_size().div_ceil(CHUNK_SIZE)).unwrap_or(1);
         let bitmap = ChunkBitmap::try_new(total_chunks.max(1))
             .map_err(|_| RepositoryError::OperationFailed)?;

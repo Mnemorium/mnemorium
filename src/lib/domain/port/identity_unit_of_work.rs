@@ -1,6 +1,4 @@
-use crate::domain::port::credential_repository::CredentialRepository;
-use crate::domain::port::permission_repository::PermissionRepository;
-use crate::domain::port::unit_of_work::UnitOfWork;
+use crate::domain::port::{CredentialRepository, PermissionRepository, UnitOfWork};
 
 /// Identity bounded-context view over a [`UnitOfWork`].
 pub(crate) trait IdentityUnitOfWork: UnitOfWork {

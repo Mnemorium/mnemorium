@@ -6,8 +6,7 @@ use argon2::password_hash::{
 use argon2::{Algorithm, Argon2, Params, Version};
 use tracing::error;
 
-use crate::domain::port::error::PasswordHasherError;
-use crate::domain::port::password_hasher::PasswordHasher;
+use crate::domain::port::{PasswordHasher, PasswordHasherError};
 
 /// Map a `password_hash` engine error to the port error.
 impl From<PasswordHashError> for PasswordHasherError {

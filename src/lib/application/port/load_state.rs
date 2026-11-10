@@ -1,8 +1,8 @@
 use std::future::Future;
 use std::pin::Pin;
 
-use crate::domain::model::instance_state::InstanceState;
-use crate::domain::port::error::StateSeedSourceError;
+use crate::domain::model::InstanceState;
+use crate::domain::port::StateSeedSourceError;
 
 /// Fixed path of the `SQLite3` datastore, relative to the working directory.
 ///

@@ -1,8 +1,8 @@
 use std::future::Future;
 use std::pin::Pin;
 
-use crate::domain::alias::NumericID;
-use crate::domain::model::music_playlist::MusicPlaylist;
+use crate::domain::NumericID;
+use crate::domain::model::MusicPlaylist;
 
 /// Command to reorder the tracks of a playlist.
 #[derive(Debug, Clone, PartialEq, Eq)]

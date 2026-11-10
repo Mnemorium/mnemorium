@@ -32,56 +32,32 @@ mod test_helpers {
     use chrono::{NaiveDate, NaiveDateTime};
     use serde_json::Value;
 
-    use crate::application::port::asset_use_case_factory::MockAssetUseCaseFactory;
-    use crate::application::port::identity_use_case_factory::MockIdentityUseCaseFactory;
-    use crate::application::port::library_use_case_factory::MockLibraryUseCaseFactory;
-    use crate::application::port::user_use_case_factory::MockUserUseCaseFactory;
-    use crate::domain::alias::NumericID;
-    use crate::domain::model::configuration::Configuration;
-    use crate::domain::model::episode::{Episode, EpisodeIndex};
-    use crate::domain::model::file::File;
-    use crate::domain::model::instance_state::InstanceState;
-    use crate::domain::model::movie::Movie;
-    use crate::domain::model::music_album::MusicAlbum;
-    use crate::domain::model::music_medium::MusicMedium;
-    use crate::domain::model::permission::Permission;
-    use crate::domain::model::season::{Season, SeasonIndex};
-    use crate::domain::model::series::Series;
-    use crate::domain::model::user::{Role, User};
-    use crate::domain::model::video::{ScanType, Video};
-    use crate::domain::port::asset_unit_of_work::AssetUnitOfWork;
-    use crate::domain::port::audio_repository::{AudioRepository, MockAudioRepository};
-    use crate::domain::port::credential_repository::{
-        CredentialRepository, MockCredentialRepository,
+    use crate::application::port::{
+        MockAssetUseCaseFactory, MockIdentityUseCaseFactory, MockLibraryUseCaseFactory,
+        MockUserUseCaseFactory,
     };
-    use crate::domain::port::error::UnitOfWorkError;
-    use crate::domain::port::file_repository::{FileRepository, MockFileRepository};
-    use crate::domain::port::gallery_repository::{GalleryRepository, MockGalleryRepository};
-    use crate::domain::port::identity_unit_of_work::IdentityUnitOfWork;
-    use crate::domain::port::image_repository::{ImageRepository, MockImageRepository};
-    use crate::domain::port::library_unit_of_work::LibraryUnitOfWork;
-    use crate::domain::port::mime_type_repository::{MimeTypeRepository, MockMimeTypeRepository};
-    use crate::domain::port::movie_repository::{MockMovieRepository, MovieRepository};
-    use crate::domain::port::music_album_repository::{
-        MockMusicAlbumRepository, MusicAlbumRepository,
+
+    use crate::domain::{NonNegativeF64, NumericID, PositiveI64};
+
+    use crate::domain::model::{
+        Configuration, DIGEST_HEX_LENGTH, Episode, EpisodeIndex, File, InstanceState,
+        IntegrityHash, Movie, MusicAlbum, MusicMedium, Orientation, Permission, ProbedAudio,
+        ProbedImage, ProbedVideo, Role, ScanType, Season, SeasonIndex, Series, User, Video,
     };
-    use crate::domain::port::music_group_repository::{
-        MockMusicGroupRepository, MusicGroupRepository,
+
+    use crate::domain::port::{
+        AssetUnitOfWork, AudioRepository, CredentialRepository, FileRepository, GalleryRepository,
+        IdentityUnitOfWork, ImageRepository, LibraryUnitOfWork, MimeTypeRepository,
+        MockAudioRepository, MockCredentialRepository, MockFileRepository, MockGalleryRepository,
+        MockImageRepository, MockMimeTypeRepository, MockMovieRepository, MockMusicAlbumRepository,
+        MockMusicGroupRepository, MockMusicPlaylistRepository, MockPermissionRepository,
+        MockSeriesRepository, MockUploadRepository, MockUserRepository, MockVideoRepository,
+        MovieRepository, MusicAlbumRepository, MusicGroupRepository, MusicPlaylistRepository,
+        PermissionRepository, SeriesRepository, UnitOfWork, UnitOfWorkError, UnitOfWorkFactory,
+        UploadRepository, UserRepository, UserUnitOfWork, VideoRepository,
     };
-    use crate::domain::port::music_playlist_repository::{
-        MockMusicPlaylistRepository, MusicPlaylistRepository,
-    };
-    use crate::domain::port::permission_repository::{
-        MockPermissionRepository, PermissionRepository,
-    };
-    use crate::domain::port::series_repository::{MockSeriesRepository, SeriesRepository};
-    use crate::domain::port::unit_of_work::{UnitOfWork, UnitOfWorkFactory};
-    use crate::domain::port::upload_repository::{MockUploadRepository, UploadRepository};
-    use crate::domain::port::user_repository::{MockUserRepository, UserRepository};
-    use crate::domain::port::user_unit_of_work::UserUnitOfWork;
-    use crate::domain::port::video_repository::{MockVideoRepository, VideoRepository};
-    use crate::infrastructure::inbound::rest::api_error::ApiErrorMessage;
-    use crate::infrastructure::inbound::rest::app_state::AppState;
+
+    use crate::infrastructure::inbound::rest::{ApiErrorMessage, AppState};
 
     /// Digest of the content the asset fixtures persist.
     pub(crate) const DIGEST: &str =
@@ -651,5 +627,83 @@ mod test_helpers {
         let status = response.status();
         let bytes = to_bytes(response.into_body(), usize::MAX).await?;
         Ok((status, serde_json::from_slice(&bytes)?))
+    }
+
+    /// Build a positive [`PositiveI64`] from a literal.
+    #[must_use]
+    #[expect(
+        clippy::expect_used,
+        reason = "the fixtures pass only values that satisfy the scalar's invariant"
+    )]
+    pub(crate) fn positive_i64(value: i64) -> PositiveI64 {
+        PositiveI64::try_new(value).expect("the fixture scalar is positive")
+    }
+
+    /// Build a non-negative [`NonNegativeF64`] from a literal.
+    #[must_use]
+    #[expect(
+        clippy::expect_used,
+        reason = "the fixtures pass only values that satisfy the scalar's invariant"
+    )]
+    pub(crate) fn non_negative_f64(value: f64) -> NonNegativeF64 {
+        NonNegativeF64::try_new(value).expect("the fixture scalar is non-negative")
+    }
+
+    /// Build an [`IntegrityHash`] from a literal digest.
+    #[must_use]
+    #[expect(
+        clippy::expect_used,
+        reason = "the fixtures pass only valid 64-character hexadecimal digests"
+    )]
+    pub(crate) fn hash(digest: &str) -> IntegrityHash<DIGEST_HEX_LENGTH> {
+        IntegrityHash::try_new(digest.to_owned()).expect("the fixture digest is valid")
+    }
+
+    /// Build the image the probe tests compare against.
+    #[must_use]
+    pub(crate) fn probed_image() -> ProbedImage {
+        ProbedImage {
+            height_px: positive_i64(480),
+            orientation: Orientation::Landscape,
+            width_px: positive_i64(640),
+        }
+    }
+
+    /// Build the video the probe tests compare against.
+    #[must_use]
+    pub(crate) fn probed_video() -> ProbedVideo {
+        ProbedVideo {
+            codec: "h264".to_owned(),
+            color_id: "YCbCr".to_owned(),
+            duration_ms: non_negative_f64(1_000.0f64),
+            frame_count: positive_i64(30),
+            height: positive_i64(480),
+            scan_type: ScanType::Progressive,
+            width: positive_i64(640),
+        }
+    }
+
+    /// Build an audio probe result that reports its measurements.
+    #[must_use]
+    pub(crate) fn probed_audio() -> ProbedAudio {
+        ProbedAudio {
+            bit_depth: Some(16),
+            block_size: Some(1_152),
+            codec: "mp3".to_owned(),
+            duration_ms: Some(non_negative_f64(1_000.0f64)),
+            sample_rate_hz: Some(non_negative_f64(44_100.0f64)),
+        }
+    }
+
+    /// Build an audio probe result whose measurements are absent.
+    #[must_use]
+    pub(crate) fn probed_audio_without_measurements() -> ProbedAudio {
+        ProbedAudio {
+            bit_depth: None,
+            block_size: None,
+            codec: "mp3".to_owned(),
+            duration_ms: Some(non_negative_f64(1_000.0f64)),
+            sample_rate_hz: Some(non_negative_f64(44_100.0f64)),
+        }
     }
 }

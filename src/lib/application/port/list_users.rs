@@ -1,8 +1,8 @@
 use std::future::Future;
 use std::pin::Pin;
 
-use crate::domain::alias::NumericID;
-use crate::domain::model::user::Role;
+use crate::domain::NumericID;
+use crate::domain::model::Role;
 
 /// Command to list the users of the instance.
 #[derive(Debug, Clone, PartialEq, Eq)]

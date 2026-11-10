@@ -1,12 +1,11 @@
 use sqlx::{QueryBuilder, Sqlite, Transaction};
 
-use crate::domain::alias::NumericID;
-use crate::domain::model::music_group::MusicGroup;
-use crate::domain::port::error::RepositoryError;
-use crate::domain::port::music_group_repository::{MusicGroupFilter, MusicGroupRepository};
+use crate::domain::model::MusicGroup;
+use crate::domain::port::{MusicGroupFilter, MusicGroupRepository, RepositoryError};
 
 use super::error_mapping::stored_data_invalid;
-use super::model::music_group::MusicGroupRow;
+use super::model::MusicGroupRow;
+
 use super::query_filter::push_filter;
 
 /// Repository persisting music groups, backed by a `SQLite` transaction.
@@ -38,19 +37,40 @@ impl MusicGroupRepository for SqlxMusicGroupRepository<'_> {
         domain_group(row)
     }
 
-    async fn get(&mut self, id: NumericID) -> Result<Option<MusicGroup>, RepositoryError> {
-        let row = sqlx::query_as::<_, MusicGroupRow>(
-            "SELECT music_group_id, stage_name, cover_image_id
-             FROM music_group
-             WHERE music_group_id = ?",
-        )
-        .bind(id)
-        .fetch_optional(&mut **self.transaction)
-        .await?;
+    async fn delete(&mut self, filter: &MusicGroupFilter) -> Result<bool, RepositoryError> {
+        let mut builder = QueryBuilder::<Sqlite>::new("DELETE FROM music_group");
+        let mut first = true;
 
-        row.map(domain_group).transpose()
+        if let Some(id) = filter.id {
+            push_filter(&mut first, &mut builder, "music_group_id = ", id);
+        }
+        if let Some(name) = filter.stage_name.as_deref() {
+            push_filter(&mut first, &mut builder, "stage_name = ", name);
+        }
+
+        let result = builder.build().execute(&mut **self.transaction).await?;
+        Ok(result.rows_affected() > 0)
     }
 
+    async fn save(&mut self, group: MusicGroup) -> Result<MusicGroup, RepositoryError> {
+        let row = sqlx::query_as::<_, MusicGroupRow>(
+            "INSERT INTO music_group (
+                music_group_id, stage_name, cover_image_id
+             )
+             VALUES (?1, ?2, ?3)
+             ON CONFLICT (music_group_id) DO UPDATE SET
+                stage_name = excluded.stage_name,
+                cover_image_id = excluded.cover_image_id
+             RETURNING music_group_id, stage_name, cover_image_id",
+        )
+        .bind(group.id())
+        .bind(group.stage_name())
+        .bind(group.cover_image_id())
+        .fetch_one(&mut **self.transaction)
+        .await?;
+
+        domain_group(row)
+    }
     async fn search(
         &mut self,
         filter: &MusicGroupFilter,
@@ -78,22 +98,6 @@ impl MusicGroupRepository for SqlxMusicGroupRepository<'_> {
 
         rows.into_iter().map(domain_group).collect()
     }
-
-    async fn update(&mut self, group: MusicGroup) -> Result<Option<MusicGroup>, RepositoryError> {
-        let row = sqlx::query_as::<_, MusicGroupRow>(
-            "UPDATE music_group
-             SET stage_name = ?1, cover_image_id = ?2
-             WHERE music_group_id = ?3
-             RETURNING music_group_id, stage_name, cover_image_id",
-        )
-        .bind(group.stage_name())
-        .bind(group.cover_image_id())
-        .bind(group.id())
-        .fetch_optional(&mut **self.transaction)
-        .await?;
-
-        row.map(domain_group).transpose()
-    }
 }
 
 /// Assemble the domain group held by `row`.
@@ -105,19 +109,12 @@ fn domain_group(row: MusicGroupRow) -> Result<MusicGroup, RepositoryError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use sqlx::sqlite::SqlitePoolOptions;
+    use crate::domain::NumericID;
+
+    use crate::infrastructure::outbound::sqlx::test_helpers::begin_transaction;
     use std::error::Error;
 
     /// Open a migrated in-memory database and begin one transaction.
-    async fn begin_transaction() -> Result<Transaction<'static, Sqlite>, sqlx::Error> {
-        let pool = SqlitePoolOptions::new()
-            .max_connections(1)
-            .connect("sqlite::memory:")
-            .await?;
-        sqlx::migrate!("./migrations").run(&pool).await?;
-        pool.begin().await
-    }
-
     /// Seed a credential and a standard user so the image's file resolves.
     async fn seed_user(
         transaction: &mut Transaction<'static, Sqlite>,
@@ -191,7 +188,14 @@ mod tests {
         // Act
         let plain = repository.create(group(0, "The Group", None)?).await?;
         let covered = repository.create(group(0, "The Covered", Some(1))?).await?;
-        let read = repository.get(covered.id()).await?;
+        let read = repository
+            .search(&MusicGroupFilter {
+                id: Some(covered.id()),
+                ..MusicGroupFilter::default()
+            })
+            .await?
+            .into_iter()
+            .next();
 
         // Assert: the insert assigns identifiers and stores name and cover.
         assert_ne!(plain.id(), 0, "the insert must assign an identifier");
@@ -231,7 +235,14 @@ mod tests {
         let mut repository = SqlxMusicGroupRepository::new(&mut transaction);
 
         // Act
-        let found = repository.get(999_999_999).await?;
+        let found = repository
+            .search(&MusicGroupFilter {
+                id: Some(999_999_999),
+                ..MusicGroupFilter::default()
+            })
+            .await?
+            .into_iter()
+            .next();
 
         // Assert
         assert_eq!(found, None, "a missing group is a value, not an error");
@@ -245,7 +256,14 @@ mod tests {
         let mut repository = SqlxMusicGroupRepository::new(&mut transaction);
 
         // Act
-        let found = repository.get(0).await?;
+        let found = repository
+            .search(&MusicGroupFilter {
+                id: Some(0),
+                ..MusicGroupFilter::default()
+            })
+            .await?
+            .into_iter()
+            .next();
 
         // Assert
         assert_eq!(
@@ -321,46 +339,49 @@ mod tests {
 
         // Act
         let renamed = repository
-            .update(group(created.id(), "The Renamed", Some(1))?)
+            .save(group(created.id(), "The Renamed", Some(1))?)
             .await?;
 
         // Assert
+        assert_eq!(renamed.stage_name(), "The Renamed");
+        assert_eq!(renamed.cover_image_id(), Some(1));
         assert_eq!(
-            renamed.as_ref().map(MusicGroup::stage_name),
-            Some("The Renamed")
+            repository
+                .search(&MusicGroupFilter {
+                    id: Some(created.id()),
+                    ..MusicGroupFilter::default()
+                })
+                .await?,
+            vec![renamed]
         );
-        assert_eq!(
-            renamed.as_ref().and_then(MusicGroup::cover_image_id),
-            Some(1)
-        );
-        assert_eq!(repository.get(created.id()).await?, renamed);
         Ok(())
     }
 
     #[tokio::test]
-    async fn update_unknown_group_returns_none() -> Result<(), Box<dyn Error>> {
+    async fn save_unknown_group_inserts_it() -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut transaction = begin_transaction().await?;
         let mut repository = SqlxMusicGroupRepository::new(&mut transaction);
 
         // Act
-        let updated = repository
-            .update(group(999_999_999, "The Group", None)?)
+        let saved = repository
+            .save(group(999_999_999, "The Group", None)?)
             .await?;
 
-        // Assert
-        assert_eq!(updated, None, "a missing group is a value, not an error");
+        // Assert: save upserts, so an unknown identifier is inserted.
+        assert_eq!(saved.id(), 999_999_999);
+        assert_eq!(saved.stage_name(), "The Group");
         Ok(())
     }
 
     #[tokio::test]
-    async fn update_of_the_unknown_group_returns_conflict() -> Result<(), Box<dyn Error>> {
+    async fn save_of_the_default_group_returns_conflict() -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut transaction = begin_transaction().await?;
         let mut repository = SqlxMusicGroupRepository::new(&mut transaction);
 
         // Act: the seeded group 0 is protected by its update trigger.
-        let result = repository.update(group(0, "Renamed", None)?).await;
+        let result = repository.save(group(0, "Renamed", None)?).await;
 
         // Assert
         assert!(
@@ -405,7 +426,7 @@ mod tests {
 
         // Act
         let result = repository
-            .update(group(created.id(), "The Group", Some(1))?)
+            .save(group(created.id(), "The Group", Some(1))?)
             .await;
 
         // Assert

@@ -1,6 +1,6 @@
 use chrono::NaiveDate;
 
-use crate::domain::alias::NumericID;
+use crate::domain::NumericID;
 
 /// Orientation of an image, matching the `chk_image_orientation` check
 /// constraint in the `image` table.

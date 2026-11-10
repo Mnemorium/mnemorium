@@ -8,10 +8,9 @@ use axum::middleware::Next;
 use axum::response::{IntoResponse as _, Response};
 use tracing::{error, warn};
 
-use crate::domain::alias::NumericID;
-use crate::domain::port::error::TokenProviderError;
-use crate::domain::port::token_provider::TokenProvider;
-use crate::infrastructure::inbound::rest::api_error::ApiError;
+use crate::domain::NumericID;
+use crate::domain::port::{TokenProvider, TokenProviderError};
+use crate::infrastructure::inbound::rest::ApiError;
 
 /// Authenticated user identifier attached to a request.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -20,11 +19,7 @@ pub(crate) struct AuthenticatedUser(NumericID);
 impl AuthenticatedUser {
     /// Return the authenticated user identifier.
     #[must_use]
-    #[expect(
-        clippy::trivially_copy_pass_by_ref,
-        reason = "STY-RUST-019 fixes the getter receiver as `&self`"
-    )]
-    pub(crate) fn user_id(&self) -> NumericID {
+    pub(crate) fn user_id(self) -> NumericID {
         self.0
     }
 }
@@ -122,8 +117,10 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::port::token_provider::MockTokenProvider;
-    use crate::infrastructure::inbound::rest::app_state::AppState;
+    use crate::domain::port::MockTokenProvider;
+
+    use crate::infrastructure::inbound::rest::AppState;
+
     use crate::test_helpers::*;
     use axum::Json;
     use axum::body::Body;

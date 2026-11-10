@@ -1,12 +1,12 @@
 use sqlx::{QueryBuilder, Sqlite, Transaction};
 
-use crate::domain::alias::NumericID;
-use crate::domain::model::permission::{Action, Permission, ResourceKind, ResourceRef, Scope};
-use crate::domain::port::error::RepositoryError;
-use crate::domain::port::permission_repository::{PermissionFilter, PermissionRepository};
+use crate::domain::NumericID;
+use crate::domain::model::{Action, Permission, ResourceKind, ResourceRef, Scope};
+use crate::domain::port::{PermissionFilter, PermissionRepository, RepositoryError};
 
 use super::error_mapping::stored_data_invalid;
-use super::model::permission::{PermissionResourceRow, PermissionRow};
+use super::model::{PermissionResourceRow, PermissionRow};
+
 use super::query_filter::push_filter;
 
 /// Repository persisting permission overrides, backed by a `SQLite`
@@ -25,24 +25,18 @@ impl<'transaction> SqlxPermissionRepository<'transaction> {
 }
 
 impl PermissionRepository for SqlxPermissionRepository<'_> {
-    async fn delete(
-        &mut self,
-        user_id: NumericID,
-        action: Action,
-    ) -> Result<bool, RepositoryError> {
-        let result = sqlx::query("DELETE FROM permission WHERE user_id = ?1 AND action_name = ?2")
-            .bind(user_id)
-            .bind(action.as_wire())
-            .execute(&mut **self.transaction)
-            .await?;
-        Ok(result.rows_affected() > 0)
-    }
+    async fn delete(&mut self, filter: &PermissionFilter) -> Result<bool, RepositoryError> {
+        let mut builder = QueryBuilder::<Sqlite>::new("DELETE FROM permission");
+        let mut first = true;
 
-    async fn delete_all(&mut self, user_id: NumericID) -> Result<bool, RepositoryError> {
-        let result = sqlx::query("DELETE FROM permission WHERE user_id = ?")
-            .bind(user_id)
-            .execute(&mut **self.transaction)
-            .await?;
+        if let Some(action) = filter.action {
+            push_filter(&mut first, &mut builder, "action_name = ", action.as_wire());
+        }
+        if let Some(user_id) = filter.user_id {
+            push_filter(&mut first, &mut builder, "user_id = ", user_id);
+        }
+
+        let result = builder.build().execute(&mut **self.transaction).await?;
         Ok(result.rows_affected() > 0)
     }
 
@@ -175,17 +169,8 @@ fn domain_permission(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use sqlx::sqlite::SqlitePoolOptions;
+    use crate::infrastructure::outbound::sqlx::test_helpers::begin_transaction;
     use std::error::Error;
-
-    async fn begin_transaction() -> Result<Transaction<'static, Sqlite>, sqlx::Error> {
-        let pool = SqlitePoolOptions::new()
-            .max_connections(1)
-            .connect("sqlite::memory:")
-            .await?;
-        sqlx::migrate!("./migrations").run(&pool).await?;
-        pool.begin().await
-    }
 
     async fn seed_user(
         transaction: &mut Transaction<'static, Sqlite>,
@@ -324,8 +309,20 @@ mod tests {
             .await?;
 
         // Act
-        let deleted = repository.delete(5, Action::PlaylistRead).await?;
-        let missing = repository.delete(5, Action::PlaylistRead).await?;
+        let deleted = repository
+            .delete(&PermissionFilter {
+                user_id: Some(5),
+                action: Some(Action::PlaylistRead),
+                ..PermissionFilter::default()
+            })
+            .await?;
+        let missing = repository
+            .delete(&PermissionFilter {
+                user_id: Some(5),
+                action: Some(Action::PlaylistRead),
+                ..PermissionFilter::default()
+            })
+            .await?;
         let stored_children: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM permission_resource")
             .fetch_one(&mut *transaction)
             .await?;
@@ -355,7 +352,12 @@ mod tests {
             .await?;
 
         // Act
-        let deleted = repository.delete_all(5).await?;
+        let deleted = repository
+            .delete(&PermissionFilter {
+                user_id: Some(5),
+                ..PermissionFilter::default()
+            })
+            .await?;
         let remaining = repository.search(&PermissionFilter::default()).await?;
 
         // Assert

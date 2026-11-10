@@ -1,9 +1,9 @@
 use std::future::Future;
 use std::pin::Pin;
 
-use crate::domain::alias::NumericID;
-use crate::domain::model::user::Role;
-use crate::domain::service::username_policy::{MAX_USERNAME_LENGTH, MIN_USERNAME_LENGTH};
+use crate::domain::NumericID;
+use crate::domain::model::Role;
+use crate::domain::service::{MAX_USERNAME_LENGTH, MIN_USERNAME_LENGTH};
 
 /// Command to update the profile of an existing user.
 #[derive(Debug, Clone, PartialEq, Eq)]

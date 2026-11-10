@@ -6,23 +6,17 @@ use chrono::Utc;
 
 use tracing::warn;
 
-use crate::application::port::update_playlist::{
+use crate::application::port::{
     UpdatePlaylistCommand, UpdatePlaylistError, UpdatePlaylistResponse, UpdatePlaylistUseCase,
 };
-use crate::domain::model::music_playlist::MusicPlaylistError;
-use crate::domain::model::permission::Action;
-use crate::domain::port::error::RepositoryError;
-use crate::domain::port::identity_unit_of_work::IdentityUnitOfWork;
-use crate::domain::port::library_unit_of_work::LibraryUnitOfWork;
-use crate::domain::port::music_playlist_repository::{
-    MusicPlaylistFilter, MusicPlaylistRepository as _,
+use crate::domain::model::{Action, MusicPlaylistError, MusicRecording, TrackIndex};
+use crate::domain::port::{
+    IdentityUnitOfWork, LibraryUnitOfWork, MusicAlbumRepository as _, MusicPlaylistFilter,
+    MusicPlaylistRepository as _, MusicRecordingFilter, PermissionFilter,
+    PermissionRepository as _, RepositoryError, UnitOfWork as _, UnitOfWorkFactory, UserFilter,
+    UserRepository as _, UserUnitOfWork,
 };
-use crate::domain::port::permission_repository::{PermissionFilter, PermissionRepository as _};
-use crate::domain::port::unit_of_work::{UnitOfWork as _, UnitOfWorkFactory};
-use crate::domain::port::user_repository::{UserFilter, UserRepository as _};
-use crate::domain::port::user_unit_of_work::UserUnitOfWork;
-use crate::domain::service::authorization::{Authorization, Decision};
-use crate::domain::service::name_policy::{NamePolicy, NamePolicyError};
+use crate::domain::service::{Authorization, Decision, NamePolicy, NamePolicyError};
 
 /// Use case implementation for updating a playlist's metadata or tracks.
 pub(crate) struct UpdatePlaylist<F> {
@@ -218,23 +212,36 @@ where
                             return Err(UpdatePlaylistError::Unknown(anyhow::Error::new(error)));
                         }
                     }
-                    match unit_of_work
-                        .music_playlists()
-                        .add_track(playlist.id(), recording_id)
+                    let recorded = unit_of_work
+                        .music_albums()
+                        .search_recordings(&MusicRecordingFilter {
+                            id: Some(recording_id),
+                            ..MusicRecordingFilter::default()
+                        })
                         .await
-                    {
-                        Ok(Some(_)) => {}
-                        Ok(None) => return Err(UpdatePlaylistError::NoSuchRecording),
-                        // The unique index rejects a concurrent duplicate or an
-                        // append that lost the position race. The generic
-                        // conflict does not claim which.
-                        Err(RepositoryError::AlreadyExist) => {
-                            return Err(UpdatePlaylistError::Conflict);
-                        }
-                        Err(error) => {
-                            return Err(UpdatePlaylistError::Unknown(error.into()));
-                        }
-                    }
+                        .map_err(|error| UpdatePlaylistError::Unknown(error.into()))?
+                        .into_iter()
+                        .next()
+                        .ok_or(UpdatePlaylistError::NoSuchRecording)?;
+                    let next_index = playlist
+                        .tracks()
+                        .iter()
+                        .filter_map(|track| track.index().playlist_index())
+                        .max()
+                        .map_or(0, |index| index.saturating_add(1));
+                    let placed = MusicRecording::try_new(
+                        recorded.id(),
+                        recorded.name().map(str::to_owned),
+                        recorded.isrc_code().map(str::to_owned),
+                        recorded.audio_id(),
+                        recorded.file_id(),
+                        recorded.music_group_ids().map(<[_]>::to_vec),
+                        TrackIndex::PlaylistIndex(next_index),
+                    )
+                    .map_err(|error| UpdatePlaylistError::Unknown(error.into()))?;
+                    playlist
+                        .add_track(placed)
+                        .map_err(|error| UpdatePlaylistError::Unknown(error.into()))?;
                 }
 
                 if let Some(is_public) = command.is_public() {
@@ -277,13 +284,15 @@ where
 mod tests {
 
     use super::*;
-    use crate::domain::model::music_playlist::MusicPlaylist;
-    use crate::domain::model::music_recording::{MusicRecording, TrackIndex};
-    use crate::domain::model::permission::{Permission, Scope};
-    use crate::domain::model::user::{Role, User};
-    use crate::domain::port::music_playlist_repository::MockMusicPlaylistRepository;
-    use crate::domain::port::permission_repository::MockPermissionRepository;
-    use crate::domain::port::user_repository::MockUserRepository;
+    use crate::domain::model::{
+        MusicPlaylist, MusicRecording, Permission, Role, Scope, TrackIndex, User,
+    };
+
+    use crate::domain::port::{
+        MockMusicAlbumRepository, MockMusicPlaylistRepository, MockPermissionRepository,
+        MockUserRepository,
+    };
+
     use crate::test_helpers::*;
     use chrono::NaiveDateTime;
     use std::error::Error;
@@ -462,7 +471,7 @@ mod tests {
         expect_caller(&mut users, 9, Role::Standard)?;
         let mut playlists = MockMusicPlaylistRepository::new();
         expect_playlist(&mut playlists, playlist(3, 4, "Public", true, Vec::new()));
-        playlists.expect_add_track().times(0);
+        playlists.expect_save().times(0);
         let mut permissions = MockPermissionRepository::new();
         expect_permissions(
             &mut permissions,
@@ -620,26 +629,39 @@ mod tests {
         let loaded_at = stored.last_modified_at();
         expect_playlist(&mut playlists, stored);
         let added = track(30, 0)?;
-        let saved_track = added.clone();
-        playlists
-            .expect_add_track()
+        let recorded = added.clone();
+        let mut albums = MockMusicAlbumRepository::new();
+        albums
+            .expect_search_recordings()
             .times(1)
-            .withf(|playlist_id, recording_id| *playlist_id == 3 && *recording_id == 30)
-            .return_once(move |_, _| Box::pin(async move { Ok(Some(added)) }));
-        // The adapter re-reads the aggregate after the placement insert, so the
-        // saved playlist answers with the recording the use case appended.
-        let saved = playlist(3, 4, "Public", true, vec![saved_track]);
+            .withf(|filter| filter.id == Some(30))
+            .return_once(move |_| Box::pin(async move { Ok(vec![recorded]) }));
+        // The use case appends the recording to the aggregate in memory and
+        // saves the whole playlist, so the persisted value carries the track.
+        let saved = playlist(3, 4, "Public", true, vec![added]);
         playlists
             .expect_save()
             .times(1)
             .withf(move |candidate| {
-                candidate.tracks().is_empty() && candidate.last_modified_at() > loaded_at
+                candidate.tracks().len() == 1
+                    && candidate
+                        .tracks()
+                        .first()
+                        .is_some_and(|track| track.id() == 30)
+                    && candidate.last_modified_at() > loaded_at
             })
             .return_once(move |_| {
                 let found = saved.clone();
                 Box::pin(async move { Ok(found) })
             });
-        let harness = harness_with(users, playlists);
+        let unit_of_work = TestUnitOfWork {
+            music_albums: albums,
+            permissions: no_permissions(),
+            music_playlists: playlists,
+            users,
+            ..TestUnitOfWork::default()
+        };
+        let harness = GalleryFactoryHarness::new(unit_of_work);
         let use_case: UseCase = UpdatePlaylist::new(Arc::clone(&harness.factory));
 
         // Act
@@ -666,12 +688,20 @@ mod tests {
         expect_caller(&mut users, 4, Role::Standard)?;
         let mut playlists = MockMusicPlaylistRepository::new();
         expect_playlist(&mut playlists, playlist(3, 4, "Mine", false, Vec::new()));
-        playlists
-            .expect_add_track()
+        let mut albums = MockMusicAlbumRepository::new();
+        albums
+            .expect_search_recordings()
             .times(1)
-            .returning(|_, _| Box::pin(async { Ok(None) }));
+            .returning(|_| Box::pin(async { Ok(Vec::new()) }));
         playlists.expect_save().times(0);
-        let harness = harness_with(users, playlists);
+        let unit_of_work = TestUnitOfWork {
+            music_albums: albums,
+            permissions: no_permissions(),
+            music_playlists: playlists,
+            users,
+            ..TestUnitOfWork::default()
+        };
+        let harness = GalleryFactoryHarness::new(unit_of_work);
         let use_case: UseCase = UpdatePlaylist::new(Arc::clone(&harness.factory));
 
         // Act
@@ -696,7 +726,7 @@ mod tests {
             &mut playlists,
             playlist(3, 4, "Mine", false, vec![track(30, 0)?]),
         );
-        playlists.expect_add_track().times(0);
+        playlists.expect_save().times(0);
         let harness = harness_with(users, playlists);
         let use_case: UseCase = UpdatePlaylist::new(Arc::clone(&harness.factory));
 
@@ -714,17 +744,31 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn update_playlist_raced_duplicate_returns_conflict() -> Result<(), Box<dyn Error>> {
-        // Arrange: the schema guard rejects a concurrent duplicate add.
+    async fn update_playlist_raced_duplicate_returns_name_already_exists()
+    -> Result<(), Box<dyn Error>> {
+        // Arrange: saving the aggregate races another writer of the same name.
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 4, Role::Standard)?;
         let mut playlists = MockMusicPlaylistRepository::new();
         expect_playlist(&mut playlists, playlist(3, 4, "Mine", false, Vec::new()));
-        playlists
-            .expect_add_track()
+        let recorded = track(30, 0)?;
+        let mut albums = MockMusicAlbumRepository::new();
+        albums
+            .expect_search_recordings()
             .times(1)
-            .returning(|_, _| Box::pin(async { Err(RepositoryError::AlreadyExist) }));
-        let harness = harness_with(users, playlists);
+            .return_once(move |_| Box::pin(async move { Ok(vec![recorded]) }));
+        playlists
+            .expect_save()
+            .times(1)
+            .returning(|_| Box::pin(async { Err(RepositoryError::AlreadyExist) }));
+        let unit_of_work = TestUnitOfWork {
+            music_albums: albums,
+            permissions: no_permissions(),
+            music_playlists: playlists,
+            users,
+            ..TestUnitOfWork::default()
+        };
+        let harness = GalleryFactoryHarness::new(unit_of_work);
         let use_case: UseCase = UpdatePlaylist::new(Arc::clone(&harness.factory));
 
         // Act
@@ -733,7 +777,10 @@ mod tests {
             .await;
 
         // Assert
-        assert!(matches!(result, Err(UpdatePlaylistError::Conflict)));
+        assert!(matches!(
+            result,
+            Err(UpdatePlaylistError::NameAlreadyExists)
+        ));
         Ok(())
     }
 
@@ -745,7 +792,6 @@ mod tests {
         expect_caller(&mut users, 9, Role::Standard)?;
         let mut playlists = MockMusicPlaylistRepository::new();
         expect_playlist(&mut playlists, playlist(3, 4, "Public", true, Vec::new()));
-        playlists.expect_add_track().times(0);
         playlists.expect_save().times(0);
         let harness = harness_with(users, playlists);
         let use_case: UseCase = UpdatePlaylist::new(Arc::clone(&harness.factory));

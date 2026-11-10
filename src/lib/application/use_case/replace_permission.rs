@@ -4,19 +4,18 @@ use std::sync::Arc;
 
 use tracing::warn;
 
-use crate::application::port::get_permission::GetPermissionResponse;
-use crate::application::port::replace_permission::{
-    ReplacePermissionCommand, ReplacePermissionError, ReplacePermissionUseCase,
+use crate::application::port::{
+    GetPermissionResponse, ReplacePermissionCommand, ReplacePermissionError,
+    ReplacePermissionUseCase,
 };
-use crate::domain::model::permission::{
+use crate::domain::model::{
     ACTIONS, Action, Global, Permission, PermissionError, PermissionPreset,
 };
-use crate::domain::port::identity_unit_of_work::IdentityUnitOfWork;
-use crate::domain::port::permission_repository::{PermissionFilter, PermissionRepository as _};
-use crate::domain::port::unit_of_work::{UnitOfWork as _, UnitOfWorkFactory};
-use crate::domain::port::user_repository::{UserFilter, UserRepository as _};
-use crate::domain::port::user_unit_of_work::UserUnitOfWork;
-use crate::domain::service::authorization::{Authorization, Decision};
+use crate::domain::port::{
+    IdentityUnitOfWork, PermissionFilter, PermissionRepository as _, UnitOfWork as _,
+    UnitOfWorkFactory, UserFilter, UserRepository as _, UserUnitOfWork,
+};
+use crate::domain::service::{Authorization, Decision};
 
 /// Use case implementation for replacing a user's permission overrides.
 pub(crate) struct ReplacePermission<F> {
@@ -131,7 +130,10 @@ where
 
                 unit_of_work
                     .permissions()
-                    .delete_all(target.id())
+                    .delete(&PermissionFilter {
+                        user_id: Some(target.id()),
+                        ..PermissionFilter::default()
+                    })
                     .await
                     .map_err(|error| ReplacePermissionError::Unknown(error.into()))?;
                 for permission in permissions {
@@ -185,10 +187,6 @@ where
 }
 
 /// Map a permission validation failure onto the replacement error.
-#[expect(
-    clippy::needless_pass_by_value,
-    reason = "the validation error is mapped by value like every other error in the use case"
-)]
 fn map_permission_error(error: PermissionError) -> ReplacePermissionError {
     match error {
         PermissionError::DuplicateAction => ReplacePermissionError::DuplicateAction,
@@ -196,21 +194,22 @@ fn map_permission_error(error: PermissionError) -> ReplacePermissionError {
         | PermissionError::EmptyListed
         | PermissionError::NotConfigurable
         | PermissionError::UnsupportedResourceKind
-        | PermissionError::UnsupportedScope
-        | PermissionError::Unknown(_) => ReplacePermissionError::InvalidPermission,
+        | PermissionError::UnsupportedScope => ReplacePermissionError::InvalidPermission,
+        PermissionError::Unknown(source) => ReplacePermissionError::Unknown(source),
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::application::port::replace_permission::PermissionRequest;
-    use crate::domain::alias::NumericID;
-    use crate::domain::model::permission::{ResourceKind, ResourceRef, Scope};
-    use crate::domain::model::user::{Role, User};
-    use crate::domain::port::error::RepositoryError;
-    use crate::domain::port::permission_repository::MockPermissionRepository;
-    use crate::domain::port::user_repository::MockUserRepository;
+    use crate::application::port::PermissionRequest;
+
+    use crate::domain::NumericID;
+
+    use crate::domain::model::{ResourceKind, ResourceRef, Role, Scope, User};
+
+    use crate::domain::port::{MockPermissionRepository, MockUserRepository, RepositoryError};
+
     use crate::test_helpers::*;
     use rstest::rstest;
     use std::error::Error;
@@ -273,9 +272,9 @@ mod tests {
         let mut permissions = MockPermissionRepository::new();
         caller_permission_load(&mut permissions);
         permissions
-            .expect_delete_all()
+            .expect_delete()
             .times(1)
-            .withf(|user_id| *user_id == 5)
+            .withf(|filter| filter.user_id == Some(5))
             .returning(|_| Box::pin(async { Ok(false) }));
         permissions
             .expect_save()
@@ -329,9 +328,9 @@ mod tests {
         let mut permissions = MockPermissionRepository::new();
         caller_permission_load(&mut permissions);
         permissions
-            .expect_delete_all()
+            .expect_delete()
             .times(1)
-            .withf(|user_id| *user_id == 5)
+            .withf(|filter| filter.user_id == Some(5))
             .returning(|_| Box::pin(async { Ok(true) }));
         permissions
             .expect_search()
@@ -633,7 +632,7 @@ mod tests {
             .expect_search()
             .times(1)
             .returning(|_| Box::pin(async { Ok(Vec::new()) }));
-        permissions.expect_delete_all().times(0);
+        permissions.expect_delete().times(0);
         permissions.expect_save().times(0);
         let unit_of_work = TestUnitOfWork {
             permissions,

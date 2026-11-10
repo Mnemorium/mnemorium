@@ -2,16 +2,13 @@ use std::mem::take;
 
 use sqlx::{QueryBuilder, Sqlite, Transaction};
 
-use crate::domain::alias::NumericID;
-use crate::domain::model::music_playlist::MusicPlaylist;
-use crate::domain::model::music_recording::{MusicRecording, TrackIndex};
-use crate::domain::port::error::RepositoryError;
-use crate::domain::port::music_playlist_repository::{
-    MusicPlaylistFilter, MusicPlaylistRepository,
-};
+use crate::domain::NumericID;
+use crate::domain::model::{MusicPlaylist, MusicRecording, TrackIndex};
+use crate::domain::port::{MusicPlaylistFilter, MusicPlaylistRepository, RepositoryError};
 
 use super::error_mapping::stored_data_invalid;
-use super::model::music_playlist::MusicPlaylistRow;
+use super::model::MusicPlaylistRow;
+
 use super::query_filter::push_filter;
 
 /// Repository persisting music playlists and the recordings they sequence,
@@ -30,65 +27,6 @@ impl<'transaction> SqlxMusicPlaylistRepository<'transaction> {
 }
 
 impl MusicPlaylistRepository for SqlxMusicPlaylistRepository<'_> {
-    async fn add_track(
-        &mut self,
-        playlist_id: NumericID,
-        recording_id: NumericID,
-    ) -> Result<Option<MusicRecording>, RepositoryError> {
-        // The placement insert validates the recording and appends at the next
-        // index atomically. No row is inserted when the recording does not
-        // exist, which reports the missing recording as a value.
-        let inserted = sqlx::query_scalar::<_, i64>(
-            "INSERT INTO music_track (track_index, music_playlist_id, music_recording_id)
-             SELECT COALESCE((
-                 SELECT MAX(track_index) + 1
-                 FROM music_track
-                 WHERE music_playlist_id = ?1
-             ), 0), ?1, music_recording_id
-             FROM music_recording
-             WHERE music_recording_id = ?2
-             RETURNING track_index",
-        )
-        .bind(playlist_id)
-        .bind(recording_id)
-        .fetch_optional(&mut **self.transaction)
-        .await?;
-        let Some(track_index_raw) = inserted else {
-            return Ok(None);
-        };
-        let track_index = u32::try_from(track_index_raw)
-            .map_err(|_| stored_data_invalid("track_index_out_of_range"))?;
-
-        let row = sqlx::query_as::<_, RecordingRow>(
-            "SELECT
-                music_recording.music_recording_id,
-                music_recording.name,
-                music_recording.isrc_code,
-                music_recording.audio_id,
-                file.file_id
-             FROM music_recording
-             JOIN audio ON audio.audio_id = music_recording.audio_id
-             JOIN file ON file.file_id = audio.file_id
-             WHERE music_recording.music_recording_id = ?",
-        )
-        .bind(recording_id)
-        .fetch_optional(&mut **self.transaction)
-        .await?
-        .ok_or_else(|| stored_data_invalid("missing_recording"))?;
-
-        MusicRecording::try_new(
-            row.music_recording_id,
-            row.name,
-            row.isrc_code,
-            row.audio_id,
-            row.file_id,
-            None,
-            TrackIndex::PlaylistIndex(track_index),
-        )
-        .map_err(|_| stored_data_invalid("invalid_recording"))
-        .map(Some)
-    }
-
     async fn create(&mut self, playlist: MusicPlaylist) -> Result<MusicPlaylist, RepositoryError> {
         let row = sqlx::query_as::<_, MusicPlaylistRow>(
             "INSERT INTO music_playlist (name, created_at, last_modified_at, user_id, is_public)
@@ -119,15 +57,36 @@ impl MusicPlaylistRepository for SqlxMusicPlaylistRepository<'_> {
         Ok(domain_playlist(row, Vec::new()))
     }
 
-    async fn delete(&mut self, id: NumericID) -> Result<bool, RepositoryError> {
-        let result = sqlx::query("DELETE FROM music_playlist WHERE music_playlist_id = ?")
-            .bind(id)
-            .execute(&mut **self.transaction)
-            .await?;
+    async fn delete(&mut self, filter: &MusicPlaylistFilter) -> Result<bool, RepositoryError> {
+        let mut builder = QueryBuilder::<Sqlite>::new("DELETE FROM music_playlist");
+        let mut first = true;
+
+        if let Some(id) = filter.id {
+            push_filter(&mut first, &mut builder, "music_playlist_id = ", id);
+        }
+        if let Some(cover_image_id) = filter.cover_image_id {
+            push_filter(
+                &mut first,
+                &mut builder,
+                "cover_image_id = ",
+                cover_image_id,
+            );
+        }
+        if let Some(is_public) = filter.is_public {
+            push_filter(&mut first, &mut builder, "is_public = ", is_public);
+        }
+        if let Some(name) = filter.name.as_deref() {
+            push_filter(&mut first, &mut builder, "name = ", name);
+        }
+        if let Some(user_id) = filter.user_id {
+            push_filter(&mut first, &mut builder, "user_id = ", user_id);
+        }
+
+        let result = builder.build().execute(&mut **self.transaction).await?;
         Ok(result.rows_affected() > 0)
     }
 
-    async fn remove_track(
+    async fn delete_track(
         &mut self,
         playlist_id: NumericID,
         track_index: u32,
@@ -141,29 +100,6 @@ impl MusicPlaylistRepository for SqlxMusicPlaylistRepository<'_> {
         .execute(&mut **self.transaction)
         .await?;
         Ok(result.rows_affected() > 0)
-    }
-
-    async fn replace_tracks(
-        &mut self,
-        playlist_id: NumericID,
-        order: &[(u32, NumericID)],
-    ) -> Result<(), RepositoryError> {
-        sqlx::query("DELETE FROM music_track WHERE music_playlist_id = ?")
-            .bind(playlist_id)
-            .execute(&mut **self.transaction)
-            .await?;
-        for &(track_index, recording_id) in order {
-            sqlx::query(
-                "INSERT INTO music_track (track_index, music_playlist_id, music_recording_id)
-                 VALUES (?1, ?2, ?3)",
-            )
-            .bind(i64::from(track_index))
-            .bind(playlist_id)
-            .bind(recording_id)
-            .execute(&mut **self.transaction)
-            .await?;
-        }
-        Ok(())
     }
 
     async fn save(&mut self, playlist: MusicPlaylist) -> Result<MusicPlaylist, RepositoryError> {
@@ -187,6 +123,28 @@ impl MusicPlaylistRepository for SqlxMusicPlaylistRepository<'_> {
         .bind(playlist.is_public())
         .execute(&mut **self.transaction)
         .await?;
+
+        // `save` writes the whole aggregate: the stored track placements are
+        // replaced by the ones the caller holds.
+        sqlx::query("DELETE FROM music_track WHERE music_playlist_id = ?")
+            .bind(playlist.id())
+            .execute(&mut **self.transaction)
+            .await?;
+        for recording in playlist.tracks() {
+            let track_index = recording
+                .index()
+                .playlist_index()
+                .ok_or_else(|| stored_data_invalid("missing_playlist_index"))?;
+            sqlx::query(
+                "INSERT INTO music_track (track_index, music_playlist_id, music_recording_id)
+                 VALUES (?1, ?2, ?3)",
+            )
+            .bind(i64::from(track_index))
+            .bind(playlist.id())
+            .bind(recording.id())
+            .execute(&mut **self.transaction)
+            .await?;
+        }
 
         self.search(&MusicPlaylistFilter {
             id: Some(playlist.id()),
@@ -320,21 +278,6 @@ impl MusicPlaylistRepository for SqlxMusicPlaylistRepository<'_> {
     }
 }
 
-/// One recording and the file backing its audio.
-#[derive(Debug, sqlx::FromRow)]
-struct RecordingRow {
-    /// Identifier of the backing audio.
-    audio_id: NumericID,
-    /// Identifier of the backing file.
-    file_id: NumericID,
-    /// ISRC code of the recording, when set.
-    isrc_code: Option<String>,
-    /// Unique identifier of the recording.
-    music_recording_id: NumericID,
-    /// Name of the recording, when set.
-    name: Option<String>,
-}
-
 /// Map a persisted playlist row and its hydrated tracks back to the domain
 /// model.
 fn domain_playlist(row: MusicPlaylistRow, tracks: Vec<MusicRecording>) -> MusicPlaylist {
@@ -354,8 +297,8 @@ fn domain_playlist(row: MusicPlaylistRow, tracks: Vec<MusicRecording>) -> MusicP
 mod tests {
 
     use super::*;
+    use crate::infrastructure::outbound::sqlx::test_helpers::begin_transaction;
     use chrono::NaiveDateTime;
-    use sqlx::sqlite::SqlitePoolOptions;
     use std::error::Error;
     use tracing_test::traced_test;
 
@@ -392,15 +335,6 @@ mod tests {
     }
 
     /// Open a migrated in-memory database and begin one transaction.
-    async fn begin_transaction() -> Result<Transaction<'static, Sqlite>, sqlx::Error> {
-        let pool = SqlitePoolOptions::new()
-            .max_connections(1)
-            .connect("sqlite::memory:")
-            .await?;
-        sqlx::migrate!("./migrations").run(&pool).await?;
-        pool.begin().await
-    }
-
     /// Seed a credential and a standard user so foreign keys resolve.
     async fn seed_user(
         transaction: &mut Transaction<'static, Sqlite>,
@@ -604,6 +538,35 @@ mod tests {
         seed_file(transaction, recording_id, 1, &format!("{name}.mp3")).await?;
         seed_audio(transaction, recording_id, recording_id, name).await?;
         seed_recording(transaction, recording_id, Some(name), recording_id).await
+    }
+
+    /// Re-read the playlist identified by `id`.
+    async fn load(
+        repository: &mut SqlxMusicPlaylistRepository<'_>,
+        id: i64,
+    ) -> Result<MusicPlaylist, Box<dyn Error>> {
+        repository
+            .search(&MusicPlaylistFilter {
+                id: Some(id),
+                ..MusicPlaylistFilter::default()
+            })
+            .await?
+            .into_iter()
+            .next()
+            .ok_or_else(|| "the playlist must still exist".into())
+    }
+
+    /// Build a playlist placement of `recording_id` at `index`.
+    fn track(recording_id: i64, index: u32) -> Result<MusicRecording, Box<dyn Error>> {
+        Ok(MusicRecording::try_new(
+            recording_id,
+            None,
+            None,
+            recording_id,
+            recording_id,
+            None,
+            TrackIndex::PlaylistIndex(index),
+        )?)
     }
 
     #[tokio::test]
@@ -988,7 +951,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn add_track_appends_at_the_next_index() -> Result<(), Box<dyn Error>> {
+    async fn save_appends_tracks_at_the_next_index() -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut transaction = begin_transaction().await?;
         seed_user(&mut transaction, 1).await?;
@@ -998,67 +961,94 @@ mod tests {
         let created = repository.create(playlist("Mix", 1, false)).await?;
 
         // Act
-        let first = repository.add_track(created.id(), 30).await?;
-        let second = repository.add_track(created.id(), 31).await?;
+        let mut aggregate = load(&mut repository, created.id()).await?;
+        let next = u32::try_from(aggregate.tracks().len())?;
+        aggregate.add_track(track(30, next)?)?;
+        repository.save(aggregate).await?;
+        let mut reloaded = load(&mut repository, created.id()).await?;
+        let next_index = u32::try_from(reloaded.tracks().len())?;
+        reloaded.add_track(track(31, next_index)?)?;
+        let saved = repository.save(reloaded).await?;
 
         // Assert
         assert_eq!(
-            first
-                .as_ref()
+            saved
+                .tracks()
+                .first()
                 .and_then(|track| track.index().playlist_index()),
             Some(0),
             "the first track must receive index zero"
         );
         assert_eq!(
-            second
-                .as_ref()
+            saved
+                .tracks()
+                .get(1)
                 .and_then(|track| track.index().playlist_index()),
             Some(1),
             "a later track must append at the next index"
         );
         assert_eq!(
-            second.and_then(|track| track.name().map(str::to_owned)),
+            saved
+                .tracks()
+                .get(1)
+                .and_then(|track| track.name().map(str::to_owned)),
             Some("Second".to_owned())
         );
         Ok(())
     }
 
     #[tokio::test]
-    async fn add_track_reports_an_unknown_recording_as_none() -> Result<(), Box<dyn Error>> {
+    async fn save_rejects_an_unknown_recording() -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut transaction = begin_transaction().await?;
         seed_user(&mut transaction, 1).await?;
         let mut repository = SqlxMusicPlaylistRepository::new(&mut transaction);
         let created = repository.create(playlist("Mix", 1, false)).await?;
+        let mut aggregate = load(&mut repository, created.id()).await?;
+        aggregate.add_track(track(999, 0)?)?;
 
-        // Act
-        let result = repository.add_track(created.id(), 999).await?;
+        // Act: the missing recording violates `fk_music_track_recording`.
+        let result = repository.save(aggregate).await;
 
         // Assert
-        assert!(result.is_none());
+        assert!(matches!(
+            result,
+            Err(RepositoryError::DataIntegrityViolation)
+        ));
         Ok(())
     }
 
     #[tokio::test]
-    async fn add_track_rejects_a_duplicate_recording() -> Result<(), Box<dyn Error>> {
+    async fn save_rejects_a_duplicate_recording() -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut transaction = begin_transaction().await?;
         seed_user(&mut transaction, 1).await?;
         seed_one_recording(&mut transaction, 30, "First").await?;
         let mut repository = SqlxMusicPlaylistRepository::new(&mut transaction);
         let created = repository.create(playlist("Mix", 1, false)).await?;
-        repository.add_track(created.id(), 30).await?;
+        // The domain rejects a duplicate on `add_track`, so the aggregate is
+        // built directly to reach the adapter's unique key.
+        let duplicate = MusicPlaylist::new(
+            created.id(),
+            created.name().to_owned(),
+            created.created_at(),
+            created.last_modified_at(),
+            1,
+            false,
+            None,
+            vec![track(30, 0)?, track(30, 1)?],
+        );
 
         // Act
-        let duplicate = repository.add_track(created.id(), 30).await;
+        let result = repository.save(duplicate).await;
 
         // Assert: uq_music_track_playlist_recording rejects a second occurrence.
-        assert!(matches!(duplicate, Err(RepositoryError::AlreadyExist)));
+        assert!(matches!(result, Err(RepositoryError::AlreadyExist)));
         Ok(())
     }
 
     #[tokio::test]
-    async fn add_track_allows_the_same_recording_in_two_playlists() -> Result<(), Box<dyn Error>> {
+    async fn save_allows_the_same_recording_in_two_playlists() -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut transaction = begin_transaction().await?;
         seed_user(&mut transaction, 1).await?;
@@ -1066,13 +1056,17 @@ mod tests {
         let mut repository = SqlxMusicPlaylistRepository::new(&mut transaction);
         let first = repository.create(playlist("First", 1, false)).await?;
         let second = repository.create(playlist("Second", 1, false)).await?;
-        repository.add_track(first.id(), 30).await?;
+        let mut aggregate = load(&mut repository, first.id()).await?;
+        aggregate.add_track(track(30, 0)?)?;
+        repository.save(aggregate).await?;
 
         // Act
-        let result = repository.add_track(second.id(), 30).await?;
+        let mut second_aggregate = load(&mut repository, second.id()).await?;
+        second_aggregate.add_track(track(30, 0)?)?;
+        let result = repository.save(second_aggregate).await?;
 
         // Assert
-        assert!(result.is_some());
+        assert_eq!(result.tracks().first().map(MusicRecording::id), Some(30));
         Ok(())
     }
 
@@ -1085,12 +1079,14 @@ mod tests {
         seed_one_recording(&mut transaction, 31, "Second").await?;
         let mut repository = SqlxMusicPlaylistRepository::new(&mut transaction);
         let created = repository.create(playlist("Mix", 1, false)).await?;
-        repository.add_track(created.id(), 30).await?;
-        repository.add_track(created.id(), 31).await?;
+        let mut aggregate = load(&mut repository, created.id()).await?;
+        aggregate.add_track(track(30, 0)?)?;
+        aggregate.add_track(track(31, 1)?)?;
+        repository.save(aggregate).await?;
 
         // Act
-        let removed = repository.remove_track(created.id(), 0).await?;
-        let missing = repository.remove_track(created.id(), 0).await?;
+        let removed = repository.delete_track(created.id(), 0).await?;
+        let missing = repository.delete_track(created.id(), 0).await?;
         let found = repository
             .search(&MusicPlaylistFilter {
                 id: Some(created.id()),
@@ -1121,13 +1117,15 @@ mod tests {
         seed_one_recording(&mut transaction, 31, "Second").await?;
         let mut repository = SqlxMusicPlaylistRepository::new(&mut transaction);
         let created = repository.create(playlist("Mix", 1, false)).await?;
-        repository.add_track(created.id(), 30).await?;
-        repository.add_track(created.id(), 31).await?;
+        let mut aggregate = load(&mut repository, created.id()).await?;
+        aggregate.add_track(track(30, 0)?)?;
+        aggregate.add_track(track(31, 1)?)?;
+        repository.save(aggregate).await?;
 
         // Act
-        repository
-            .replace_tracks(created.id(), &[(0, 31), (1, 30)])
-            .await?;
+        let mut reordered = load(&mut repository, created.id()).await?;
+        reordered.apply_order(&[(0, 31), (1, 30)])?;
+        repository.save(reordered).await?;
         let found = repository
             .search(&MusicPlaylistFilter {
                 id: Some(created.id()),
@@ -1187,11 +1185,23 @@ mod tests {
         seed_one_recording(&mut transaction, 30, "First").await?;
         let mut repository = SqlxMusicPlaylistRepository::new(&mut transaction);
         let created = repository.create(playlist("Mix", 1, false)).await?;
-        repository.add_track(created.id(), 30).await?;
+        let mut aggregate = load(&mut repository, created.id()).await?;
+        aggregate.add_track(track(30, 0)?)?;
+        repository.save(aggregate).await?;
 
         // Act
-        let deleted = repository.delete(created.id()).await?;
-        let missing = repository.delete(created.id()).await?;
+        let deleted = repository
+            .delete(&MusicPlaylistFilter {
+                id: Some(created.id()),
+                ..MusicPlaylistFilter::default()
+            })
+            .await?;
+        let missing = repository
+            .delete(&MusicPlaylistFilter {
+                id: Some(created.id()),
+                ..MusicPlaylistFilter::default()
+            })
+            .await?;
         let placements: i64 =
             sqlx::query_scalar("SELECT COUNT(*) FROM music_track WHERE music_playlist_id = ?")
                 .bind(created.id())

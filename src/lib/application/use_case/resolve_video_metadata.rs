@@ -4,19 +4,16 @@ use std::sync::Arc;
 
 use tracing::warn;
 
-use crate::application::port::resolve_video_metadata::{
+use crate::application::port::{
     ResolveVideoMetadataCommand, ResolveVideoMetadataError, ResolveVideoMetadataResponse,
     ResolveVideoMetadataUseCase,
 };
-use crate::domain::model::media_metadata::MediaMetadata;
-use crate::domain::model::video_candidate::Target;
-use crate::domain::port::identity_unit_of_work::IdentityUnitOfWork;
-use crate::domain::port::permission_repository::{PermissionFilter, PermissionRepository as _};
-use crate::domain::port::unit_of_work::{UnitOfWork as _, UnitOfWorkFactory};
-use crate::domain::port::user_repository::{UserFilter, UserRepository as _};
-use crate::domain::port::user_unit_of_work::UserUnitOfWork;
-use crate::domain::port::video_metadata_provider::VideoMetadataProvider;
-use crate::domain::service::authorization::{Authorization, Decision};
+use crate::domain::model::{MediaMetadata, Target};
+use crate::domain::port::{
+    IdentityUnitOfWork, PermissionFilter, PermissionRepository as _, UnitOfWork as _,
+    UnitOfWorkFactory, UserFilter, UserRepository as _, UserUnitOfWork, VideoMetadataProvider,
+};
+use crate::domain::service::{Authorization, Decision};
 
 /// Use case implementation for resolving one video target's metadata.
 ///
@@ -52,10 +49,6 @@ where
     F::Uow: IdentityUnitOfWork + UserUnitOfWork,
     P: VideoMetadataProvider,
 {
-    #[expect(
-        clippy::pattern_type_mismatch,
-        reason = "the arms borrow the target and the metadata out of non-Copy enums matched by reference"
-    )]
     fn execute<'future>(
         &'future self,
         command: ResolveVideoMetadataCommand,
@@ -130,19 +123,19 @@ where
                     return Ok(None);
                 };
                 match (command.target(), &metadata) {
-                    (Target::Movie(_), MediaMetadata::Movie { .. })
-                    | (Target::Series(_), MediaMetadata::Series { .. }) => {}
+                    (&Target::Movie(_), &MediaMetadata::Movie { .. })
+                    | (&Target::Series(_), &MediaMetadata::Series { .. }) => {}
                     (
-                        Target::Episode {
+                        &Target::Episode {
                             episode: requested_episode,
                             season: requested_season,
                             ..
                         },
-                        MediaMetadata::Episode {
+                        &MediaMetadata::Episode {
                             episode, season, ..
                         },
                     ) if episode == requested_episode && season == requested_season => {}
-                    (Target::Episode { .. }, MediaMetadata::Episode { .. }) => {
+                    (&Target::Episode { .. }, &MediaMetadata::Episode { .. }) => {
                         return Err(ResolveVideoMetadataError::PositionMismatch);
                     }
                     _ => return Err(ResolveVideoMetadataError::KindMismatch),
@@ -172,13 +165,13 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::model::configuration::ProviderId;
-    use crate::domain::model::external_ref::ExternalRef;
-    use crate::domain::model::permission::{Action, Permission, Scope};
-    use crate::domain::port::error::ExternalServiceError;
-    use crate::domain::port::permission_repository::MockPermissionRepository;
-    use crate::domain::port::user_repository::MockUserRepository;
-    use crate::domain::port::video_metadata_provider::MockVideoMetadataProvider;
+    use crate::domain::model::{Action, ExternalRef, Permission, ProviderId, Scope};
+
+    use crate::domain::port::{
+        ExternalServiceError, MockPermissionRepository, MockUserRepository,
+        MockVideoMetadataProvider,
+    };
+
     use crate::test_helpers::*;
     use chrono::NaiveDate;
     use std::error::Error;

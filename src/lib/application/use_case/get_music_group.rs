@@ -4,18 +4,16 @@ use std::sync::Arc;
 
 use tracing::warn;
 
-use crate::application::port::get_music_group::{
+use crate::application::port::{
     GetMusicGroupCommand, GetMusicGroupError, GetMusicGroupResponse, GetMusicGroupUseCase,
 };
-use crate::domain::model::permission::Action;
-use crate::domain::port::identity_unit_of_work::IdentityUnitOfWork;
-use crate::domain::port::library_unit_of_work::LibraryUnitOfWork;
-use crate::domain::port::music_group_repository::MusicGroupRepository as _;
-use crate::domain::port::permission_repository::{PermissionFilter, PermissionRepository as _};
-use crate::domain::port::unit_of_work::{UnitOfWork as _, UnitOfWorkFactory};
-use crate::domain::port::user_repository::{UserFilter, UserRepository as _};
-use crate::domain::port::user_unit_of_work::UserUnitOfWork;
-use crate::domain::service::authorization::{Authorization, Decision};
+use crate::domain::model::Action;
+use crate::domain::port::{
+    IdentityUnitOfWork, LibraryUnitOfWork, MusicGroupFilter, MusicGroupRepository as _,
+    PermissionFilter, PermissionRepository as _, UnitOfWork as _, UnitOfWorkFactory, UserFilter,
+    UserRepository as _, UserUnitOfWork,
+};
+use crate::domain::service::{Authorization, Decision};
 
 /// Use case implementation for fetching one music group.
 pub(crate) struct GetMusicGroup<F> {
@@ -78,9 +76,14 @@ where
 
                 let group = unit_of_work
                     .music_groups()
-                    .get(command.group_id())
+                    .search(&MusicGroupFilter {
+                        id: Some(command.group_id()),
+                        ..MusicGroupFilter::default()
+                    })
                     .await
                     .map_err(|error| GetMusicGroupError::Unknown(error.into()))?
+                    .into_iter()
+                    .next()
                     .ok_or(GetMusicGroupError::NoSuchGroup)?;
                 if let Decision::Deny(denial) =
                     Authorization::decide(&caller, &permissions, Action::LibraryRead, &group)
@@ -125,13 +128,14 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::alias::NumericID;
-    use crate::domain::model::music_group::MusicGroup;
-    use crate::domain::model::permission::{Permission, Scope};
-    use crate::domain::port::error::RepositoryError;
-    use crate::domain::port::music_group_repository::MockMusicGroupRepository;
-    use crate::domain::port::permission_repository::MockPermissionRepository;
-    use crate::domain::port::user_repository::MockUserRepository;
+    use crate::domain::NumericID;
+
+    use crate::domain::model::{MusicGroup, Permission, Scope};
+
+    use crate::domain::port::{
+        MockMusicGroupRepository, MockPermissionRepository, MockUserRepository, RepositoryError,
+    };
+
     use crate::test_helpers::*;
     use std::error::Error;
     use std::sync::atomic::Ordering;
@@ -170,12 +174,12 @@ mod tests {
         let mut groups = MockMusicGroupRepository::new();
         let expected = group(7, "The Group", Some(19))?;
         groups
-            .expect_get()
+            .expect_search()
             .times(1)
-            .withf(|group_id| *group_id == 7)
+            .withf(|filter| filter.id == Some(7))
             .return_once(move |_| {
                 let found = expected.clone();
-                Box::pin(async move { Ok(Some(found)) })
+                Box::pin(async move { Ok(vec![found]) })
             });
         let harness = harness_with(users, groups);
         let use_case: UseCase = GetMusicGroup::new(Arc::clone(&harness.factory));
@@ -200,9 +204,9 @@ mod tests {
         expect_caller(&mut users, 1)?;
         let mut groups = MockMusicGroupRepository::new();
         groups
-            .expect_get()
+            .expect_search()
             .times(1)
-            .returning(|_| Box::pin(async { Ok(None) }));
+            .returning(|_| Box::pin(async { Ok(Vec::new()) }));
         let harness = harness_with(users, groups);
         let use_case: UseCase = GetMusicGroup::new(Arc::clone(&harness.factory));
 
@@ -222,9 +226,9 @@ mod tests {
         expect_caller(&mut users, 1)?;
         let mut groups = MockMusicGroupRepository::new();
         let hidden = group(7, "The Group", None)?;
-        groups.expect_get().times(1).return_once(move |_| {
+        groups.expect_search().times(1).return_once(move |_| {
             let found = hidden.clone();
-            Box::pin(async move { Ok(Some(found)) })
+            Box::pin(async move { Ok(vec![found]) })
         });
         let mut permissions = MockPermissionRepository::new();
         expect_permissions(
@@ -277,7 +281,7 @@ mod tests {
         expect_caller(&mut users, 1)?;
         let mut groups = MockMusicGroupRepository::new();
         groups
-            .expect_get()
+            .expect_search()
             .times(1)
             .returning(|_| Box::pin(async { Err(RepositoryError::OperationFailed) }));
         let harness = harness_with(users, groups);
@@ -299,9 +303,9 @@ mod tests {
         expect_caller(&mut users, 1)?;
         let mut groups = MockMusicGroupRepository::new();
         let stored = group(7, "The Group", None)?;
-        groups.expect_get().times(1).return_once(move |_| {
+        groups.expect_search().times(1).return_once(move |_| {
             let found = stored.clone();
-            Box::pin(async move { Ok(Some(found)) })
+            Box::pin(async move { Ok(vec![found]) })
         });
         let harness = harness_with(users, groups);
         harness.commit_fails.store(true, Ordering::SeqCst);

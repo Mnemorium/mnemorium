@@ -4,16 +4,15 @@ use std::sync::Arc;
 
 use tracing::{debug, warn};
 
-use crate::application::port::get_current_user::{
+use crate::application::port::{
     GetCurrentUserCommand, GetCurrentUserError, GetCurrentUserResponse, GetCurrentUserUseCase,
 };
-use crate::domain::model::permission::Action;
-use crate::domain::port::identity_unit_of_work::IdentityUnitOfWork;
-use crate::domain::port::permission_repository::{PermissionFilter, PermissionRepository as _};
-use crate::domain::port::unit_of_work::{UnitOfWork as _, UnitOfWorkFactory};
-use crate::domain::port::user_repository::{UserFilter, UserRepository as _};
-use crate::domain::port::user_unit_of_work::UserUnitOfWork;
-use crate::domain::service::authorization::{Authorization, Decision};
+use crate::domain::model::Action;
+use crate::domain::port::{
+    IdentityUnitOfWork, PermissionFilter, PermissionRepository as _, UnitOfWork as _,
+    UnitOfWorkFactory, UserFilter, UserRepository as _, UserUnitOfWork,
+};
+use crate::domain::service::{Authorization, Decision};
 
 /// Use case implementation for fetching the current user.
 pub(crate) struct GetCurrentUser<F> {
@@ -126,9 +125,10 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::model::user::{Role, User, UserError};
-    use crate::domain::port::error::RepositoryError;
-    use crate::domain::port::user_repository::MockUserRepository;
+    use crate::domain::model::{Role, User, UserError};
+
+    use crate::domain::port::{MockUserRepository, RepositoryError};
+
     use crate::test_helpers::*;
     use std::error::Error;
     use std::sync::atomic::{AtomicBool, Ordering};

@@ -3,8 +3,8 @@ use std::pin::Pin;
 
 use chrono::NaiveDateTime;
 
-use crate::domain::alias::NumericID;
-use crate::domain::service::name_policy::MAX_NAME_LENGTH;
+use crate::domain::NumericID;
+use crate::domain::service::MAX_NAME_LENGTH;
 
 /// Command to create a gallery owned by the caller.
 #[derive(Debug, Clone, PartialEq, Eq)]

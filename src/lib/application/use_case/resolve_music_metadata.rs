@@ -4,17 +4,15 @@ use std::sync::Arc;
 
 use tracing::warn;
 
-use crate::application::port::resolve_music_metadata::{
+use crate::application::port::{
     ResolveMusicMetadataCommand, ResolveMusicMetadataError, ResolveMusicMetadataResponse,
     ResolveMusicMetadataUseCase,
 };
-use crate::domain::port::identity_unit_of_work::IdentityUnitOfWork;
-use crate::domain::port::music_metadata_provider::MusicMetadataProvider;
-use crate::domain::port::permission_repository::{PermissionFilter, PermissionRepository as _};
-use crate::domain::port::unit_of_work::{UnitOfWork as _, UnitOfWorkFactory};
-use crate::domain::port::user_repository::{UserFilter, UserRepository as _};
-use crate::domain::port::user_unit_of_work::UserUnitOfWork;
-use crate::domain::service::authorization::{Authorization, Decision};
+use crate::domain::port::{
+    IdentityUnitOfWork, MusicMetadataProvider, PermissionFilter, PermissionRepository as _,
+    UnitOfWork as _, UnitOfWorkFactory, UserFilter, UserRepository as _, UserUnitOfWork,
+};
+use crate::domain::service::{Authorization, Decision};
 
 /// Use case implementation for resolving one music target's metadata.
 ///
@@ -147,16 +145,15 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::model::configuration::ProviderId;
-    use crate::domain::model::external_ref::ExternalRef;
-    use crate::domain::model::music_album::ProductionType;
-    use crate::domain::model::music_candidate::MusicTarget;
-    use crate::domain::model::music_metadata::{ArtistCredit, MusicMetadata};
-    use crate::domain::model::music_query::MusicKind;
-    use crate::domain::model::permission::{Action, Permission, Scope};
-    use crate::domain::port::error::ExternalServiceError;
-    use crate::domain::port::music_metadata_provider::MockMusicMetadataProvider;
-    use crate::domain::port::permission_repository::MockPermissionRepository;
+    use crate::domain::model::{
+        Action, ArtistCredit, ExternalRef, MusicKind, MusicMetadata, MusicTarget, Permission,
+        ProductionType, ProviderId, Scope,
+    };
+
+    use crate::domain::port::{
+        ExternalServiceError, MockMusicMetadataProvider, MockPermissionRepository,
+    };
+
     use crate::test_helpers::*;
     use chrono::NaiveDate;
     use std::error::Error;

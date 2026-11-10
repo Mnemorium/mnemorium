@@ -2,8 +2,8 @@ use std::fmt::{Debug, Formatter, Result as FmtResult};
 
 use email_address::{EmailAddress, Options};
 
-use crate::domain::alias::NumericID;
-use crate::domain::model::permission::{Protected, ResourceKind, ResourceRef};
+use crate::domain::NumericID;
+use crate::domain::model::{Protected, ResourceKind, ResourceRef};
 
 /// Error returned when initialising or updating a `User`.
 #[derive(Debug, thiserror::Error)]
@@ -117,7 +117,7 @@ impl User {
     /// Update the username with an already-validated value.
     ///
     /// The caller is responsible for validating the value through
-    /// [`UsernamePolicy`](crate::domain::service::username_policy::UsernamePolicy);
+    /// [`UsernamePolicy`](crate::domain::service::UsernamePolicy);
     /// the model stores it unchanged.
     pub(crate) fn set_username(&mut self, username: String) {
         self.username = username;
@@ -127,7 +127,7 @@ impl User {
     ///
     /// The username is supplied already validated and is stored unchanged; the
     /// caller applies
-    /// [`UsernamePolicy`](crate::domain::service::username_policy::UsernamePolicy).
+    /// [`UsernamePolicy`](crate::domain::service::UsernamePolicy).
     ///
     /// # Errors
     ///

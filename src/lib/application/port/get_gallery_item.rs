@@ -3,8 +3,8 @@ use std::pin::Pin;
 
 use chrono::NaiveDateTime;
 
-use crate::domain::alias::NumericID;
-use crate::domain::model::gallery_item::GalleryItemMedia;
+use crate::domain::NumericID;
+use crate::domain::model::GalleryItemMedia;
 
 /// Command to fetch one item of a gallery.
 #[derive(Debug, Clone, PartialEq, Eq)]

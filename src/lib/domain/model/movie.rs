@@ -1,8 +1,7 @@
 use chrono::NaiveDate;
 
-use crate::domain::alias::NumericID;
-use crate::domain::model::permission::{Protected, ResourceKind, ResourceRef};
-use crate::domain::model::video::Video;
+use crate::domain::NumericID;
+use crate::domain::model::{Protected, ResourceKind, ResourceRef, Video};
 
 /// Error returned when initialising a `Movie`.
 #[derive(Debug, thiserror::Error)]

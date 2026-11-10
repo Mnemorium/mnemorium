@@ -1,6 +1,6 @@
 use std::future::Future;
 
-use crate::domain::port::error::SecretGeneratorError;
+use crate::domain::port::SecretGeneratorError;
 
 /// Port for generating a site-wide pepper for password hashing.
 #[cfg_attr(test, mockall::automock)]

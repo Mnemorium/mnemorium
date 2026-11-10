@@ -3,8 +3,8 @@ use std::pin::Pin;
 
 use chrono::NaiveDate;
 
-use crate::domain::alias::NumericID;
-use crate::domain::model::music_album::ProductionType;
+use crate::domain::NumericID;
+use crate::domain::model::ProductionType;
 
 /// Command to fetch one music album.
 #[derive(Debug, Clone, PartialEq, Eq)]

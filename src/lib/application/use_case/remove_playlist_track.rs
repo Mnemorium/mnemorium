@@ -6,20 +6,16 @@ use chrono::Utc;
 
 use tracing::warn;
 
-use crate::application::port::remove_playlist_track::{
+use crate::application::port::{
     RemovePlaylistTrackCommand, RemovePlaylistTrackError, RemovePlaylistTrackUseCase,
 };
-use crate::domain::model::permission::Action;
-use crate::domain::port::identity_unit_of_work::IdentityUnitOfWork;
-use crate::domain::port::library_unit_of_work::LibraryUnitOfWork;
-use crate::domain::port::music_playlist_repository::{
-    MusicPlaylistFilter, MusicPlaylistRepository as _,
+use crate::domain::model::Action;
+use crate::domain::port::{
+    IdentityUnitOfWork, LibraryUnitOfWork, MusicPlaylistFilter, MusicPlaylistRepository as _,
+    PermissionFilter, PermissionRepository as _, UnitOfWork as _, UnitOfWorkFactory, UserFilter,
+    UserRepository as _, UserUnitOfWork,
 };
-use crate::domain::port::permission_repository::{PermissionFilter, PermissionRepository as _};
-use crate::domain::port::unit_of_work::{UnitOfWork as _, UnitOfWorkFactory};
-use crate::domain::port::user_repository::{UserFilter, UserRepository as _};
-use crate::domain::port::user_unit_of_work::UserUnitOfWork;
-use crate::domain::service::authorization::{Authorization, Decision};
+use crate::domain::service::{Authorization, Decision};
 
 /// Use case implementation for removing one track of a playlist.
 pub(crate) struct RemovePlaylistTrack<F> {
@@ -109,11 +105,7 @@ where
                     });
                 }
 
-                let removed = unit_of_work
-                    .music_playlists()
-                    .remove_track(command.playlist_id(), command.track_index())
-                    .await
-                    .map_err(|error| RemovePlaylistTrackError::Unknown(error.into()))?;
+                let removed = playlist.remove_track(command.track_index());
                 if !removed {
                     return Err(RemovePlaylistTrackError::NoSuchTrack);
                 }
@@ -146,12 +138,10 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::model::music_playlist::MusicPlaylist;
-    use crate::domain::model::music_recording::{MusicRecording, TrackIndex};
-    use crate::domain::model::user::{Role, User};
-    use crate::domain::port::error::RepositoryError;
-    use crate::domain::port::music_playlist_repository::MockMusicPlaylistRepository;
-    use crate::domain::port::user_repository::MockUserRepository;
+    use crate::domain::model::{MusicPlaylist, MusicRecording, Role, TrackIndex, User};
+
+    use crate::domain::port::{MockMusicPlaylistRepository, MockUserRepository, RepositoryError};
+
     use crate::test_helpers::*;
     use chrono::NaiveDateTime;
     use std::error::Error;
@@ -235,14 +225,13 @@ mod tests {
         let loaded_at = stored.last_modified_at();
         expect_playlist(&mut playlists, stored);
         playlists
-            .expect_remove_track()
-            .times(1)
-            .withf(|playlist_id, index| *playlist_id == 3 && *index == 0)
-            .returning(|_, _| Box::pin(async { Ok(true) }));
-        playlists
             .expect_save()
             .times(1)
-            .withf(move |saved| saved.last_modified_at() > loaded_at)
+            .withf(move |saved| {
+                saved.tracks().len() == 1
+                    && saved.tracks().first().is_some_and(|track| track.id() == 31)
+                    && saved.last_modified_at() > loaded_at
+            })
             .returning(|saved| Box::pin(async move { Ok(saved) }));
         let harness = harness_with(users, playlists);
         let use_case: UseCase = RemovePlaylistTrack::new(Arc::clone(&harness.factory));
@@ -266,10 +255,6 @@ mod tests {
         expect_caller(&mut users, 4, Role::Standard)?;
         let mut playlists = MockMusicPlaylistRepository::new();
         expect_playlist(&mut playlists, playlist(3, 4, false, vec![track(30, 0)?]));
-        playlists
-            .expect_remove_track()
-            .times(1)
-            .returning(|_, _| Box::pin(async { Ok(false) }));
         playlists.expect_save().times(0);
         let harness = harness_with(users, playlists);
         let use_case: UseCase = RemovePlaylistTrack::new(Arc::clone(&harness.factory));
@@ -293,7 +278,7 @@ mod tests {
         expect_caller(&mut users, 9, Role::Standard)?;
         let mut playlists = MockMusicPlaylistRepository::new();
         expect_playlist(&mut playlists, playlist(3, 4, false, vec![track(30, 0)?]));
-        playlists.expect_remove_track().times(0);
+        playlists.expect_save().times(0);
         let harness = harness_with(users, playlists);
         let use_case: UseCase = RemovePlaylistTrack::new(Arc::clone(&harness.factory));
 
@@ -318,9 +303,9 @@ mod tests {
         let mut playlists = MockMusicPlaylistRepository::new();
         expect_playlist(&mut playlists, playlist(3, 4, false, vec![track(30, 0)?]));
         playlists
-            .expect_remove_track()
+            .expect_save()
             .times(1)
-            .returning(|_, _| Box::pin(async { Err(RepositoryError::OperationFailed) }));
+            .returning(|_| Box::pin(async { Err(RepositoryError::OperationFailed) }));
         let harness = harness_with(users, playlists);
         let use_case: UseCase = RemovePlaylistTrack::new(Arc::clone(&harness.factory));
 

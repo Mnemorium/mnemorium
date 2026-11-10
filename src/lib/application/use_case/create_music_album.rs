@@ -4,22 +4,18 @@ use std::sync::Arc;
 
 use tracing::warn;
 
-use crate::application::port::create_music_album::{
+use crate::application::port::{
     CreateMusicAlbumCommand, CreateMusicAlbumError, CreateMusicAlbumResponse,
     CreateMusicAlbumUseCase,
 };
-use crate::domain::model::music_album::MusicAlbum;
-use crate::domain::port::error::RepositoryError;
-use crate::domain::port::identity_unit_of_work::IdentityUnitOfWork;
-use crate::domain::port::library_unit_of_work::LibraryUnitOfWork;
-use crate::domain::port::music_album_repository::{MusicAlbumFilter, MusicAlbumRepository as _};
-use crate::domain::port::music_group_repository::MusicGroupRepository as _;
-use crate::domain::port::permission_repository::{PermissionFilter, PermissionRepository as _};
-use crate::domain::port::unit_of_work::{UnitOfWork as _, UnitOfWorkFactory};
-use crate::domain::port::user_repository::{UserFilter, UserRepository as _};
-use crate::domain::port::user_unit_of_work::UserUnitOfWork;
-use crate::domain::service::authorization::{Authorization, Decision};
-use crate::domain::service::name_policy::{NamePolicy, NamePolicyError};
+use crate::domain::model::MusicAlbum;
+use crate::domain::port::{
+    IdentityUnitOfWork, LibraryUnitOfWork, MusicAlbumFilter, MusicAlbumRepository as _,
+    MusicGroupFilter, MusicGroupRepository as _, PermissionFilter, PermissionRepository as _,
+    RepositoryError, UnitOfWork as _, UnitOfWorkFactory, UserFilter, UserRepository as _,
+    UserUnitOfWork,
+};
+use crate::domain::service::{Authorization, Decision, NamePolicy, NamePolicyError};
 
 /// The genre an album carries when the request names none.
 const DEFAULT_GENRE: &str = "UNKNOWN";
@@ -141,12 +137,18 @@ where
                     command.genres().to_vec()
                 };
 
-                unit_of_work
+                if unit_of_work
                     .music_groups()
-                    .get(command.music_group_id())
+                    .search(&MusicGroupFilter {
+                        id: Some(command.music_group_id()),
+                        ..MusicGroupFilter::default()
+                    })
                     .await
                     .map_err(|error| CreateMusicAlbumError::Unknown(error.into()))?
-                    .ok_or(CreateMusicAlbumError::NoSuchGroup)?;
+                    .is_empty()
+                {
+                    return Err(CreateMusicAlbumError::NoSuchGroup);
+                }
 
                 let existing = unit_of_work
                     .music_albums()
@@ -218,14 +220,17 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::alias::NumericID;
-    use crate::domain::model::music_group::MusicGroup;
-    use crate::domain::model::permission::{Action, Permission, ResourceKind, ResourceRef, Scope};
-    use crate::domain::model::user::{Role, User};
-    use crate::domain::port::music_album_repository::MockMusicAlbumRepository;
-    use crate::domain::port::music_group_repository::MockMusicGroupRepository;
-    use crate::domain::port::permission_repository::MockPermissionRepository;
-    use crate::domain::port::user_repository::MockUserRepository;
+    use crate::domain::NumericID;
+
+    use crate::domain::model::{
+        Action, MusicGroup, Permission, ResourceKind, ResourceRef, Role, Scope, User,
+    };
+
+    use crate::domain::port::{
+        MockMusicAlbumRepository, MockMusicGroupRepository, MockPermissionRepository,
+        MockUserRepository,
+    };
+
     use crate::test_helpers::*;
     use std::error::Error;
     use std::sync::atomic::Ordering;
@@ -267,12 +272,12 @@ mod tests {
     fn expect_group(groups: &mut MockMusicGroupRepository) -> Result<(), Box<dyn Error>> {
         let group = MusicGroup::try_new(0, "Unknown".to_owned(), None)?;
         groups
-            .expect_get()
+            .expect_search()
             .times(1)
-            .withf(|group_id| *group_id == 0)
+            .withf(|filter| filter.id == Some(0))
             .return_once(move |_| {
                 let found = group.clone();
-                Box::pin(async move { Ok(Some(found)) })
+                Box::pin(async move { Ok(vec![found]) })
             });
         Ok(())
     }
@@ -411,9 +416,9 @@ mod tests {
         expect_admin(&mut users, 1)?;
         let mut groups = MockMusicGroupRepository::new();
         groups
-            .expect_get()
+            .expect_search()
             .times(1)
-            .returning(|_| Box::pin(async { Ok(None) }));
+            .returning(|_| Box::pin(async { Ok(Vec::new()) }));
         let harness = harness_with(users, MockMusicAlbumRepository::new(), groups);
         let use_case: UseCase = CreateMusicAlbum::new(Arc::clone(&harness.factory));
 
@@ -568,7 +573,7 @@ mod tests {
         expect_admin(&mut users, 1)?;
         let mut groups = MockMusicGroupRepository::new();
         groups
-            .expect_get()
+            .expect_search()
             .times(1)
             .returning(|_| Box::pin(async { Err(RepositoryError::Unavailable) }));
         let harness = harness_with(users, MockMusicAlbumRepository::new(), groups);

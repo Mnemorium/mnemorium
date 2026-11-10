@@ -2,13 +2,12 @@ use axum::extract::{Path, State};
 use axum::http::{HeaderMap, Method};
 use axum::response::Response;
 
-use crate::application::port::get_asset_content::AssetTarget;
-use crate::domain::alias::NumericID;
-use crate::infrastructure::inbound::rest::api_error::{ApiError, ErrorBody};
-use crate::infrastructure::inbound::rest::app_state::AppState;
+use crate::application::port::AssetTarget;
+use crate::domain::NumericID;
 use crate::infrastructure::inbound::rest::handler::asset::{
     ContentAccess, asset_content_response, content_command, parse_asset_id,
 };
+use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody};
 
 /// Read the bytes of a typed audio.
 #[utoipa::path(

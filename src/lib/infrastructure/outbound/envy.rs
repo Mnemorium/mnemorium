@@ -1,4 +1,7 @@
 /// The configuration adapter.
-pub(crate) mod configuration;
+mod configuration;
 /// The state seeds adapter.
-pub(crate) mod state_seeds;
+mod state_seeds;
+
+pub(crate) use self::configuration::EnvConfigurationSource;
+pub(crate) use self::state_seeds::EnvStateSeedSource;

@@ -2,14 +2,13 @@ use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse as _, Response};
 
-use crate::application::port::remove_playlist_track::RemovePlaylistTrackCommand;
-use crate::domain::alias::NumericID;
-use crate::infrastructure::inbound::rest::api_error::{ApiError, ErrorBody};
-use crate::infrastructure::inbound::rest::app_state::AppState;
+use crate::application::port::RemovePlaylistTrackCommand;
+use crate::domain::NumericID;
 use crate::infrastructure::inbound::rest::handler::library::{
     parse_playlist_id, parse_playlist_track_index,
 };
-use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
+use crate::infrastructure::inbound::rest::middleware::AuthenticatedUser;
+use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody};
 
 /// Remove one track from a music playlist.
 ///

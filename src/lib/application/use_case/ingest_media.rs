@@ -8,34 +8,22 @@ use chrono::Utc;
 
 use tracing::info;
 
-use crate::application::port::ingest_media::{
+use crate::application::port::{
     IngestMediaCommand, IngestMediaError, IngestMediaResponse, IngestMediaUseCase, IngestRequest,
 };
-use crate::application::use_case::upload_layout::media_path;
-use crate::domain::alias::NumericID;
-use crate::domain::model::audio::{Audio, ProbedAudio};
-use crate::domain::model::file::File;
-use crate::domain::model::gallery_item::GalleryItemMedia;
-use crate::domain::model::image::{Image, ProbedImage};
-use crate::domain::model::video::{ProbedVideo, Video};
-use crate::domain::port::asset_unit_of_work::AssetUnitOfWork;
-use crate::domain::port::audio_repository::{AudioFilter, AudioRepository as _};
-use crate::domain::port::content_type_sniffer::ContentTypeSniffer;
-use crate::domain::port::error::RepositoryError;
-use crate::domain::port::file_repository::{FileFilter, FileRepository as _};
-use crate::domain::port::gallery_repository::GalleryRepository as _;
-use crate::domain::port::image_repository::{ImageFilter, ImageRepository as _};
-use crate::domain::port::library_unit_of_work::LibraryUnitOfWork;
-use crate::domain::port::media_probe::MediaProbe;
-use crate::domain::port::media_source::{MediaEntry, MediaSource};
-use crate::domain::port::mime_type_repository::MimeTypeRepository as _;
-use crate::domain::port::movie_repository::MovieRepository as _;
-use crate::domain::port::music_album_repository::MusicAlbumRepository as _;
-use crate::domain::port::series_repository::SeriesRepository as _;
-use crate::domain::port::unit_of_work::{UnitOfWork, UnitOfWorkFactory};
-use crate::domain::port::user_repository::{UserFilter, UserRepository as _};
-use crate::domain::port::user_unit_of_work::UserUnitOfWork;
-use crate::domain::port::video_repository::{VideoFilter, VideoRepository as _};
+use crate::application::use_case::media_path;
+use crate::domain::NumericID;
+use crate::domain::model::{
+    Audio, File, GalleryItemMedia, Image, ProbedAudio, ProbedImage, ProbedVideo, Video,
+};
+use crate::domain::port::{
+    AssetUnitOfWork, AudioFilter, AudioRepository as _, ContentTypeSniffer, EpisodeFilter,
+    FileFilter, FileRepository as _, GalleryItemFilter, GalleryRepository as _, ImageFilter,
+    ImageRepository as _, LibraryUnitOfWork, MediaEntry, MediaProbe, MediaSource, MimeTypeFilter,
+    MimeTypeRepository as _, MovieFilter, MovieRepository as _, MusicAlbumRepository as _,
+    MusicRecordingFilter, RepositoryError, SeriesRepository as _, UnitOfWork, UnitOfWorkFactory,
+    UserFilter, UserRepository as _, UserUnitOfWork, VideoFilter, VideoRepository as _,
+};
 
 /// Identifier of the Root Admin, who owns a file the server did not store.
 const ROOT_ADMIN_USER_ID: NumericID = 0;
@@ -318,7 +306,7 @@ where
             .map_err(|error| IngestMediaError::Unknown(error.into()))?;
         let supported = unit_of_work
             .mime_types()
-            .all_ids()
+            .search(&MimeTypeFilter::default())
             .await
             .map_err(|error| IngestMediaError::Unknown(error.into()))?;
         discard(unit_of_work).await;
@@ -327,7 +315,10 @@ where
                 .into_iter()
                 .map(|file| (file.path().to_owned(), file))
                 .collect(),
-            supported.into_iter().collect(),
+            supported
+                .into_iter()
+                .map(|mime_type| mime_type.mime_type_id().to_owned())
+                .collect(),
         ))
     }
 
@@ -336,11 +327,14 @@ where
         let mut unit_of_work = self.begin_read().await?;
         let supported = unit_of_work
             .mime_types()
-            .all_ids()
+            .search(&MimeTypeFilter::default())
             .await
             .map_err(|error| IngestMediaError::Unknown(error.into()))?;
         discard(unit_of_work).await;
-        Ok(supported.into_iter().collect())
+        Ok(supported
+            .into_iter()
+            .map(|mime_type| mime_type.mime_type_id().to_owned())
+            .collect())
     }
 
     /// Return whether `file` already carries the media row its type requires.
@@ -591,14 +585,19 @@ where
                 .next();
             if let Some(image) = image_row {
                 unit_of_work
-                    .images()
-                    .clear_cover_references(image.image_id())
-                    .await?;
-                unit_of_work
                     .galleries()
-                    .delete_items_by_media(GalleryItemMedia::Image(image.image_id()))
+                    .delete_item(&GalleryItemFilter {
+                        media: Some(GalleryItemMedia::Image(image.image_id())),
+                        ..GalleryItemFilter::default()
+                    })
                     .await?;
-                let _deleted = unit_of_work.images().delete(image.image_id()).await?;
+                let _deleted = unit_of_work
+                    .images()
+                    .delete(&ImageFilter {
+                        image_id: Some(image.image_id()),
+                        ..ImageFilter::default()
+                    })
+                    .await?;
             }
 
             let video_row = unit_of_work
@@ -611,20 +610,43 @@ where
                 .into_iter()
                 .next();
             if let Some(video) = video_row {
-                unit_of_work.videos().delete_streams(video.id()).await?;
-                let movie_row = unit_of_work.movies().find_by_video(video.id()).await?;
-                if let Some(movie) = movie_row {
-                    let _movie_removed = unit_of_work.movies().delete(movie.id()).await?;
+                let movie_row = unit_of_work
+                    .movies()
+                    .search(&MovieFilter {
+                        video_id: Some(video.id()),
+                        ..MovieFilter::default()
+                    })
+                    .await?;
+                if let Some(movie) = movie_row.into_iter().next() {
+                    let _movie_removed = unit_of_work
+                        .movies()
+                        .delete(&MovieFilter {
+                            id: Some(movie.id()),
+                            ..MovieFilter::default()
+                        })
+                        .await?;
                 }
                 let _episode_removed = unit_of_work
                     .series()
-                    .delete_episode_by_video(video.id())
+                    .delete_episode(&EpisodeFilter {
+                        video_id: Some(video.id()),
+                        ..EpisodeFilter::default()
+                    })
                     .await?;
                 unit_of_work
                     .galleries()
-                    .delete_items_by_media(GalleryItemMedia::Video(video.id()))
+                    .delete_item(&GalleryItemFilter {
+                        media: Some(GalleryItemMedia::Video(video.id())),
+                        ..GalleryItemFilter::default()
+                    })
                     .await?;
-                let _video_removed = unit_of_work.videos().delete(video.id()).await?;
+                let _video_removed = unit_of_work
+                    .videos()
+                    .delete(&VideoFilter {
+                        id: Some(video.id()),
+                        ..VideoFilter::default()
+                    })
+                    .await?;
             }
 
             let audio_row = unit_of_work
@@ -639,12 +661,27 @@ where
             if let Some(audio) = audio_row {
                 let _recording_removed = unit_of_work
                     .music_albums()
-                    .delete_recording_by_audio(audio.id())
+                    .delete_recording(&MusicRecordingFilter {
+                        audio_id: Some(audio.id()),
+                        ..MusicRecordingFilter::default()
+                    })
                     .await?;
-                let _audio_removed = unit_of_work.audios().delete(audio.id()).await?;
+                let _audio_removed = unit_of_work
+                    .audios()
+                    .delete(&AudioFilter {
+                        id: Some(audio.id()),
+                        ..AudioFilter::default()
+                    })
+                    .await?;
             }
 
-            let _file_removed = unit_of_work.files().delete(file.id()).await?;
+            let _file_removed = unit_of_work
+                .files()
+                .delete(&FileFilter {
+                    id: Some(file.id()),
+                    ..FileFilter::default()
+                })
+                .await?;
             Ok::<(), RepositoryError>(())
         }
         .await;
@@ -762,26 +799,22 @@ where
                 }
             }
             let report = counts.finish();
-            report_counts(&report);
+            // Emit the catalogued aggregate outcome of this operation.
+            info!(
+                target: "security",
+                event = "ingest",
+                registered = report.registered(),
+                completed = report.completed(),
+                untouched = report.untouched(),
+                changed = report.changed(),
+                missing = report.missing(),
+                removed = report.removed(),
+                skipped = report.skipped(),
+                "reconciled the library root"
+            );
             Ok(report)
         })
     }
-}
-
-/// Emit the catalogued aggregate outcome of one ingest operation.
-fn report_counts(report: &IngestMediaResponse) {
-    info!(
-        target: "security",
-        event = "ingest",
-        registered = report.registered(),
-        completed = report.completed(),
-        untouched = report.untouched(),
-        changed = report.changed(),
-        missing = report.missing(),
-        removed = report.removed(),
-        skipped = report.skipped(),
-        "reconciled the library root"
-    );
 }
 
 /// Roll back a unit of work, preserving the operation's own outcome.
@@ -809,16 +842,13 @@ fn media_kind(mime_type_id: &str) -> Option<MediaKind> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::alias::{NonNegativeF64, PositiveI64};
-    use crate::domain::model::audio::AudioError;
-    use crate::domain::model::file::{FileError, Origin};
-    use crate::domain::model::image::Orientation;
-    use crate::domain::model::user::{Role, User};
-    use crate::domain::model::video::ScanType;
-    use crate::domain::port::content_type_sniffer::MockContentTypeSniffer;
-    use crate::domain::port::error::{ContentTypeSnifferError, MediaProbeError};
-    use crate::domain::port::media_probe::MockMediaProbe;
-    use crate::domain::port::media_source::MockMediaSource;
+    use crate::domain::model::{AudioError, FileError, MimeType, Orientation, Origin, Role, User};
+
+    use crate::domain::port::{
+        ContentTypeSnifferError, MediaProbeError, MockContentTypeSniffer, MockMediaProbe,
+        MockMediaSource,
+    };
+
     use crate::test_helpers::*;
     use chrono::{NaiveDate, NaiveDateTime};
     use std::error::Error;
@@ -907,21 +937,20 @@ mod tests {
     }
 
     /// The mime types the scan fixtures consider supported.
-    fn supported_mime_types() -> Vec<String> {
-        vec![
-            "audio/mpeg".to_owned(),
-            "image/png".to_owned(),
-            "video/mp4".to_owned(),
-        ]
+    fn supported_mime_types() -> Vec<MimeType> {
+        ["audio/mpeg", "image/png", "video/mp4"]
+            .into_iter()
+            .filter_map(|mime_type_id| MimeType::try_new(mime_type_id.to_owned()).ok())
+            .collect()
     }
 
     /// Build a snapshot unit of work returning `files` and the supported set.
     fn snapshot_uow(files: Vec<File>) -> TestUow {
         let mut uow = reading_uow(files);
         uow.mime_types
-            .expect_all_ids()
+            .expect_search()
             .times(1)
-            .returning(|| Box::pin(async { Ok(supported_mime_types()) }));
+            .returning(|_| Box::pin(async { Ok(supported_mime_types()) }));
         uow
     }
 
@@ -929,9 +958,9 @@ mod tests {
     fn mime_types_uow() -> TestUow {
         let mut uow = TestUow::default();
         uow.mime_types
-            .expect_all_ids()
+            .expect_search()
             .times(1)
-            .returning(|| Box::pin(async { Ok(supported_mime_types()) }));
+            .returning(|_| Box::pin(async { Ok(supported_mime_types()) }));
         uow
     }
 
@@ -971,57 +1000,6 @@ mod tests {
             .expect_sniff()
             .times(1)
             .returning(move |_| Box::pin(async move { Ok(Some(mime_type_id.to_owned())) }));
-    }
-
-    /// Build a probed image.
-    #[expect(
-        clippy::expect_used,
-        reason = "the fixture scalars are valid by construction"
-    )]
-    fn probed_image() -> ProbedImage {
-        ProbedImage {
-            height_px: PositiveI64::try_new(480).expect("the fixture height is positive"),
-            orientation: Orientation::Landscape,
-            width_px: PositiveI64::try_new(640).expect("the fixture width is positive"),
-        }
-    }
-
-    /// Build a probed video.
-    #[expect(
-        clippy::expect_used,
-        reason = "the fixture scalars are valid by construction"
-    )]
-    fn probed_video() -> ProbedVideo {
-        ProbedVideo {
-            codec: "h264".to_owned(),
-            color_id: "YCbCr".to_owned(),
-            duration_ms: NonNegativeF64::try_new(1_000.0f64)
-                .expect("the fixture duration is non-negative"),
-            frame_count: PositiveI64::try_new(30).expect("the fixture frame count is positive"),
-            height: PositiveI64::try_new(480).expect("the fixture height is positive"),
-            scan_type: ScanType::Progressive,
-            width: PositiveI64::try_new(640).expect("the fixture width is positive"),
-        }
-    }
-
-    /// Build a probed audio row with absent measurements.
-    #[expect(
-        clippy::expect_used,
-        reason = "the fixture scalars are valid by construction"
-    )]
-    fn probed_audio() -> ProbedAudio {
-        ProbedAudio {
-            bit_depth: None,
-            block_size: None,
-            codec: "mp3".to_owned(),
-            duration_ms: Some(
-                NonNegativeF64::try_new(1_000.0f64).expect("the fixture duration is non-negative"),
-            ),
-            sample_rate_hz: Some(
-                NonNegativeF64::try_new(44_100.0f64)
-                    .expect("the fixture sample rate is non-negative"),
-            ),
-        }
     }
 
     /// Return the content type the fixture's relative path implies.
@@ -1136,7 +1114,7 @@ mod tests {
         probe
             .expect_probe_audio()
             .times(1)
-            .returning(|_| Box::pin(async { Ok(Some(probed_audio())) }));
+            .returning(|_| Box::pin(async { Ok(Some(probed_audio_without_measurements())) }));
         let use_case = use_case(
             factory(vec![snapshot_uow(Vec::new()), storing]),
             source,
@@ -1527,7 +1505,7 @@ mod tests {
         probe
             .expect_probe_audio()
             .times(1)
-            .returning(|_| Box::pin(async { Ok(Some(probed_audio())) }));
+            .returning(|_| Box::pin(async { Ok(Some(probed_audio_without_measurements())) }));
         let use_case = use_case(
             factory(vec![snapshot_uow(vec![file]), media, storing]),
             source,

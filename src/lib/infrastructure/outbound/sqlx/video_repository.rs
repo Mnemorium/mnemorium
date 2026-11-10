@@ -1,13 +1,13 @@
 use sqlx::{QueryBuilder, Sqlite, Transaction};
 
-use crate::domain::alias::NumericID;
-use crate::domain::model::video::{ScanType, Video};
-use crate::domain::port::error::RepositoryError;
-use crate::domain::port::video_repository::{VideoFilter, VideoRepository};
+use crate::domain::model::{ScanType, Video};
+use crate::domain::port::{RepositoryError, VideoFilter, VideoRepository};
 
 use super::error_mapping::stored_data_invalid;
-use super::model::scope::{parse_scope, scope_token};
-use super::model::video::{ScanType as SqlxScanType, Video as SqlxVideo};
+use super::model::{
+    ScanType as SqlxScanType, Video as SqlxVideo, asset_scope_token, parse_asset_scope,
+};
+
 use super::query_filter::push_filter;
 
 /// Repository persisting videos, backed by a `SQLite` transaction.
@@ -59,64 +59,40 @@ impl VideoRepository for SqlxVideoRepository<'_> {
         .bind(video.color_id())
         .bind(sqlx_scan_type(video.scan_type()))
         .bind(video.file_id())
-        .bind(video.scope().map(scope_token))
+        .bind(video.scope().map(asset_scope_token))
         .fetch_one(&mut **self.transaction)
         .await?;
 
         domain_video(row)
     }
 
-    async fn delete(&mut self, id: NumericID) -> Result<bool, RepositoryError> {
-        let result = sqlx::query("DELETE FROM video WHERE video_id = ?")
-            .bind(id)
-            .execute(&mut **self.transaction)
-            .await?;
+    async fn delete(&mut self, filter: &VideoFilter) -> Result<bool, RepositoryError> {
+        let mut builder = QueryBuilder::<Sqlite>::new("DELETE FROM video");
+        let mut first = true;
+
+        if let Some(codec) = filter.codec.as_deref() {
+            push_filter(&mut first, &mut builder, "codec = ", codec);
+        }
+        if let Some(color_id) = filter.color_id.as_deref() {
+            push_filter(&mut first, &mut builder, "color_id = ", color_id);
+        }
+        if let Some(file_id) = filter.file_id {
+            push_filter(&mut first, &mut builder, "file_id = ", file_id);
+        }
+        if let Some(id) = filter.id {
+            push_filter(&mut first, &mut builder, "video_id = ", id);
+        }
+        if let Some(scan_type) = filter.scan_type {
+            push_filter(
+                &mut first,
+                &mut builder,
+                "scan_type = ",
+                sqlx_scan_type(scan_type),
+            );
+        }
+
+        let result = builder.build().execute(&mut **self.transaction).await?;
         Ok(result.rows_affected() > 0)
-    }
-
-    async fn delete_streams(&mut self, video_id: NumericID) -> Result<bool, RepositoryError> {
-        sqlx::query(
-            "DELETE FROM subtitle_stream
-             WHERE stream_id IN (SELECT stream_id FROM stream WHERE video_id = ?)",
-        )
-        .bind(video_id)
-        .execute(&mut **self.transaction)
-        .await?;
-        sqlx::query(
-            "DELETE FROM audio_stream
-             WHERE stream_id IN (SELECT stream_id FROM stream WHERE video_id = ?)",
-        )
-        .bind(video_id)
-        .execute(&mut **self.transaction)
-        .await?;
-        let result = sqlx::query("DELETE FROM stream WHERE video_id = ?")
-            .bind(video_id)
-            .execute(&mut **self.transaction)
-            .await?;
-        Ok(result.rows_affected() > 0)
-    }
-
-    async fn get(&mut self, id: NumericID) -> Result<Option<Video>, RepositoryError> {
-        let row = sqlx::query_as::<_, SqlxVideo>(
-            "SELECT
-                video_id,
-                duration_ms,
-                codec,
-                frame_count,
-                width,
-                height,
-                color_id,
-                scan_type,
-                file_id,
-                scope
-            FROM video
-            WHERE video_id = ?",
-        )
-        .bind(id)
-        .fetch_optional(&mut **self.transaction)
-        .await?;
-
-        row.map(domain_video).transpose()
     }
 
     async fn search(&mut self, filter: &VideoFilter) -> Result<Vec<Video>, RepositoryError> {
@@ -187,7 +163,7 @@ fn domain_video(row: SqlxVideo) -> Result<Video, RepositoryError> {
     let scope = row
         .scope
         .as_deref()
-        .map(|value| parse_scope(value).ok_or_else(|| stored_data_invalid("video_scope")))
+        .map(|value| parse_asset_scope(value).ok_or_else(|| stored_data_invalid("video_scope")))
         .transpose()?;
 
     Video::try_new(
@@ -208,21 +184,13 @@ fn domain_video(row: SqlxVideo) -> Result<Video, RepositoryError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::model::scope::Scope;
+    use crate::domain::model::AssetScope;
+
+    use crate::infrastructure::outbound::sqlx::test_helpers::begin_transaction;
     use rstest::rstest;
-    use sqlx::sqlite::SqlitePoolOptions;
     use std::error::Error;
 
     /// Open a migrated in-memory database and begin one transaction.
-    async fn begin_transaction() -> Result<Transaction<'static, Sqlite>, sqlx::Error> {
-        let pool = SqlitePoolOptions::new()
-            .max_connections(1)
-            .connect("sqlite::memory:")
-            .await?;
-        sqlx::migrate!("./migrations").run(&pool).await?;
-        pool.begin().await
-    }
-
     /// Seed a credential and a standard user so foreign keys resolve.
     async fn seed_user(
         transaction: &mut Transaction<'static, Sqlite>,
@@ -293,7 +261,14 @@ mod tests {
         // Act
         let mut repository = SqlxVideoRepository::new(&mut transaction);
         let persisted = repository.create(pending).await?;
-        let found = repository.get(persisted.id()).await?;
+        let found = repository
+            .search(&VideoFilter {
+                id: Some(persisted.id()),
+                ..VideoFilter::default()
+            })
+            .await?
+            .into_iter()
+            .next();
 
         // Assert
         assert_ne!(
@@ -324,17 +299,27 @@ mod tests {
             "YCbCr".to_owned(),
             ScanType::Progressive,
             11,
-            Some(Scope::User),
+            Some(AssetScope::User),
         )?;
 
         // Act
         let mut repository = SqlxVideoRepository::new(&mut transaction);
         let persisted = repository.create(pending).await?;
-        let found = repository.get(persisted.id()).await?;
+        let found = repository
+            .search(&VideoFilter {
+                id: Some(persisted.id()),
+                ..VideoFilter::default()
+            })
+            .await?
+            .into_iter()
+            .next();
 
         // Assert
-        assert_eq!(persisted.scope(), Some(Scope::User));
-        assert_eq!(found.and_then(|video| video.scope()), Some(Scope::User));
+        assert_eq!(persisted.scope(), Some(AssetScope::User));
+        assert_eq!(
+            found.and_then(|video| video.scope()),
+            Some(AssetScope::User)
+        );
         Ok(())
     }
 
@@ -345,7 +330,14 @@ mod tests {
 
         // Act
         let mut repository = SqlxVideoRepository::new(&mut transaction);
-        let missing = repository.get(999).await?;
+        let missing = repository
+            .search(&VideoFilter {
+                id: Some(999),
+                ..VideoFilter::default()
+            })
+            .await?
+            .into_iter()
+            .next();
 
         // Assert
         assert!(missing.is_none());
@@ -412,8 +404,18 @@ mod tests {
         let stored = repository.create(video(0, 11, ScanType::Mbaff)?).await?;
 
         // Act
-        let deleted = repository.delete(stored.id()).await?;
-        let missing = repository.delete(stored.id()).await?;
+        let deleted = repository
+            .delete(&VideoFilter {
+                id: Some(stored.id()),
+                ..VideoFilter::default()
+            })
+            .await?;
+        let missing = repository
+            .delete(&VideoFilter {
+                id: Some(stored.id()),
+                ..VideoFilter::default()
+            })
+            .await?;
 
         // Assert
         assert!(deleted);
@@ -519,7 +521,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn delete_streams_removes_only_the_video_streams() -> Result<(), Box<dyn Error>> {
+    async fn delete_removes_only_the_target_video_and_its_streams() -> Result<(), Box<dyn Error>> {
         // Arrange: two videos, each with one stream.
         let mut transaction = begin_transaction().await?;
         seed_user(&mut transaction, 1).await?;
@@ -551,15 +553,25 @@ mod tests {
         .await?;
 
         // Act
-        {
+        let deleted = {
             let mut repository = SqlxVideoRepository::new(&mut transaction);
-            repository.delete_streams(first.id()).await?;
-        }
+            repository
+                .delete(&VideoFilter {
+                    id: Some(first.id()),
+                    ..VideoFilter::default()
+                })
+                .await?
+        };
+        let videos = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM video")
+            .fetch_one(&mut *transaction)
+            .await?;
         let streams = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM stream")
             .fetch_one(&mut *transaction)
             .await?;
 
         // Assert
+        assert!(deleted);
+        assert_eq!(videos, 1, "only the targeted video is removed");
         assert_eq!(streams, 1, "only the removed video's stream is gone");
         Ok(())
     }

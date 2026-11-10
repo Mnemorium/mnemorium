@@ -2,7 +2,7 @@ use std::fmt::{Debug, Formatter, Result as FmtResult};
 
 use chrono::NaiveDateTime;
 
-use crate::domain::alias::NumericID;
+use crate::domain::NumericID;
 
 /// Data model for the `credential` table.
 #[derive(Clone, sqlx::FromRow)]

@@ -1,7 +1,7 @@
 use std::future::Future;
 use std::pin::Pin;
 
-use crate::domain::alias::NumericID;
+use crate::domain::NumericID;
 
 /// Command to delete a playlist.
 #[derive(Debug, Clone, PartialEq, Eq)]

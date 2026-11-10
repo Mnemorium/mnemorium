@@ -27,12 +27,9 @@ use tokio::task::spawn_blocking;
 use tokio::time::timeout;
 use tracing::{error, warn};
 
-use crate::domain::alias::{NonNegativeF64, PositiveI64, ScalarError};
-use crate::domain::model::audio::ProbedAudio;
-use crate::domain::model::image::{Orientation, ProbedImage};
-use crate::domain::model::video::{ProbedVideo, ScanType};
-use crate::domain::port::error::MediaProbeError;
-use crate::domain::port::media_probe::MediaProbe;
+use crate::domain::model::{Orientation, ProbedAudio, ProbedImage, ProbedVideo, ScanType};
+use crate::domain::port::{MediaProbe, MediaProbeError};
+use crate::domain::{NonNegativeF64, PositiveI64, ScalarError};
 
 /// Name of the video probe binary resolved from `PATH`.
 const FFPROBE: &str = "ffprobe";
@@ -113,21 +110,6 @@ impl LocalMediaProbe {
             permits,
             probe_timeout: PROBE_TIMEOUT,
             program: OsString::from(FFPROBE),
-        }
-    }
-}
-
-#[cfg(test)]
-impl LocalMediaProbe {
-    /// Create a probe bound to an explicit `program` and `probe_timeout`.
-    ///
-    /// Test-only: production resolves `ffprobe` from `PATH` with the default
-    /// timeout.
-    fn with_program(program: impl Into<OsString>, probe_timeout: Duration) -> Self {
-        Self {
-            permits: test_permits(),
-            probe_timeout,
-            program: program.into(),
         }
     }
 }
@@ -429,32 +411,6 @@ impl MediaProbe for LocalMediaProbe {
     }
 }
 
-/// Test-only permit pool bounding how many stubbed probes run at once.
-///
-/// The pool bounds probe concurrency only: a probe acquires its permit inside
-/// the adapter, after the test body has written its stub, so the pool orders a
-/// spawn against a spawn and never a spawn against a stub write. Isolating the
-/// stub file is [`spawn_gate`]'s job (`TEST-052`).
-#[cfg(test)]
-fn test_permits() -> Arc<Semaphore> {
-    static PERMITS: OnceLock<Arc<Semaphore>> = OnceLock::new();
-    Arc::clone(PERMITS.get_or_init(|| Arc::new(Semaphore::new(MAX_CONCURRENT_PROBES))))
-}
-
-/// Test-only process-wide gate held across a stub write and the probe that runs it.
-///
-/// One permit excludes every other spawning test in this binary, so no child is
-/// forked while any stub write descriptor can exist: a child forked in that
-/// window inherits a duplicate of the descriptor, and the stub author's `exec`
-/// then fails with `ETXTBSY` (`TEST-052`). The permit is acquired as the first
-/// Arrange step and held to the end of the test body, because the `exec` is not
-/// observable from the test side.
-#[cfg(test)]
-fn spawn_gate() -> Arc<Semaphore> {
-    static GATE: OnceLock<Arc<Semaphore>> = OnceLock::new();
-    Arc::clone(GATE.get_or_init(|| Arc::new(Semaphore::new(1))))
-}
-
 /// Classify an image decode error and log the matching security event.
 ///
 /// A format the decoder does not support, or content it recognises but cannot
@@ -690,6 +646,41 @@ mod tests {
 
     /// A generous probe timeout so a loaded test runner cannot starve a stub.
     const STUB_TIMEOUT: Duration = Duration::from_secs(10);
+
+    impl LocalMediaProbe {
+        /// Create a probe bound to an explicit `program` and `probe_timeout`.
+        ///
+        /// Test-only: production resolves `ffprobe` from `PATH` with the default
+        /// timeout.
+        fn with_program(program: impl Into<OsString>, probe_timeout: Duration) -> Self {
+            // The pool bounds probe concurrency only: a probe acquires its
+            // permit inside the adapter, after the test body has written its
+            // stub, so the pool orders a spawn against a spawn and never a
+            // spawn against a stub write. Isolating the stub file is
+            // [`spawn_gate`]'s job (`TEST-052`).
+            static PERMITS: OnceLock<Arc<Semaphore>> = OnceLock::new();
+            Self {
+                permits: Arc::clone(
+                    PERMITS.get_or_init(|| Arc::new(Semaphore::new(MAX_CONCURRENT_PROBES))),
+                ),
+                probe_timeout,
+                program: program.into(),
+            }
+        }
+    }
+
+    /// Test-only process-wide gate held across a stub write and the probe that runs it.
+    ///
+    /// One permit excludes every other spawning test in this binary, so no child is
+    /// forked while any stub write descriptor can exist: a child forked in that
+    /// window inherits a duplicate of the descriptor, and the stub author's `exec`
+    /// then fails with `ETXTBSY` (`TEST-052`). The permit is acquired as the first
+    /// Arrange step and held to the end of the test body, because the `exec` is not
+    /// observable from the test side.
+    fn spawn_gate() -> Arc<Semaphore> {
+        static GATE: OnceLock<Arc<Semaphore>> = OnceLock::new();
+        Arc::clone(GATE.get_or_init(|| Arc::new(Semaphore::new(1))))
+    }
 
     /// Write an executable `script` into `dir` and return its path.
     fn stub(dir: &Path, name: &str, body: &str) -> Result<PathBuf, Box<dyn Error>> {

@@ -2,17 +2,18 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
-use crate::application::port::load_configuration::{
+use crate::application::port::{
     LoadConfigurationError, LoadConfigurationResponse, LoadConfigurationUseCase,
 };
-use crate::domain::model::configuration::{
+use crate::domain::model::{
     Asset, AssetUpload, ClientIpHeader, Configuration, Jwt, Library, LibraryMetadata,
-    LibraryStartup, Logging, MusicProvider, MusicProviders, Persistence, RateLimit, RateLimitError,
-    Security, Sqlite3, VideoProvider, VideoProviders, parse_trusted_proxies,
+    LibraryStartup, Logging, MusicProvider, MusicProviders, PartialConfiguration, Persistence,
+    RateLimit, RateLimitError, Security, Sqlite3, VideoProvider, VideoProviders,
+    parse_trusted_proxies,
 };
-use crate::domain::model::partial_configuration::PartialConfiguration;
-use crate::domain::port::configuration_source::{ConfigurationSource, EnvironmentConfiguration};
-use crate::domain::port::error::ConfigurationSourceError;
+use crate::domain::port::{
+    ConfigurationSource, ConfigurationSourceError, EnvironmentConfiguration,
+};
 
 /// Use case implementation for loading the configuration.
 ///
@@ -283,7 +284,7 @@ fn merge(
         invalid(setting, error)
     })?;
 
-    let security = Security::try_new(
+    let security = Security::new(
         jwt,
         resolve(
             partial.security.log_root_admin_password,
@@ -292,8 +293,7 @@ fn merge(
             &mut applied,
         ),
         rate_limit,
-    )
-    .map_err(|error| invalid("security", error))?;
+    );
 
     applied.sort_unstable();
     applied.dedup();
@@ -328,15 +328,17 @@ fn resolve<T>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::model::configuration::{ProviderId, Rotation};
-    use crate::domain::model::partial_configuration::{
+    use crate::domain::model::{
         PartialAsset, PartialAssetUpload, PartialJwt, PartialLibrary, PartialLibraryMetadata,
         PartialLibraryStartup, PartialLogging, PartialMusicProvider, PartialMusicProviders,
-        PartialRateLimit, PartialSecurity, PartialVideoMetadata, PartialVideoProvider,
+        PartialRateLimit, PartialSecurity, PartialVideoMetadata, PartialVideoProvider, ProviderId,
+        Rotation,
     };
-    use crate::domain::port::configuration_source::{
+
+    use crate::domain::port::{
         LoadedFileConfiguration, MockConfigurationSource, MockEnvironmentConfiguration,
     };
+
     use std::error::Error;
 
     type UseCase = LoadConfiguration<MockConfigurationSource, MockEnvironmentConfiguration>;

@@ -20,5 +20,5 @@ CREATE TABLE episode (
     ) ON DELETE CASCADE,
     CONSTRAINT fk_episode_video FOREIGN KEY (video_id) REFERENCES video (
         video_id
-    )
+    ) ON DELETE CASCADE
 );

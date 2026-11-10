@@ -5,12 +5,7 @@
 //! authentication failure, the former absence. The key travels in the query
 //! string, so a failure is classified and logged by kind, never by the request
 //! address.
-#![allow(
-    dead_code,
-    reason = "the OMDb provider serves the internal video-identification path, which has no REST caller yet"
-)]
 
-use std::future::Future;
 use std::time::Duration;
 
 use chrono::NaiveDate;
@@ -19,14 +14,10 @@ use serde::Deserialize;
 
 use tracing::debug;
 
-use crate::domain::model::configuration::ProviderId;
-use crate::domain::model::external_ref::ExternalRef;
-use crate::domain::model::genre::Genre;
-use crate::domain::model::media_metadata::MediaMetadata;
-use crate::domain::model::media_query::{MediaQuery, VideoKind};
-use crate::domain::model::video_candidate::{Candidate, Target};
-use crate::domain::port::error::ExternalServiceError;
-use crate::domain::port::video_metadata_provider::VideoMetadataProvider;
+use crate::domain::model::{
+    Candidate, ExternalRef, Genre, MediaMetadata, MediaQuery, ProviderId, Target, VideoKind,
+};
+use crate::domain::port::{ExternalServiceError, VideoMetadataProvider};
 use crate::infrastructure::outbound::reqwest::{
     ArtworkClient, REQUEST_TIMEOUT, classify_status, classify_transport_error, log_provider_fault,
     read_payload, request_url,
@@ -160,171 +151,149 @@ impl OmdbVideoMetadataProvider {
 }
 
 impl VideoMetadataProvider for OmdbVideoMetadataProvider {
-    #[expect(
-        clippy::manual_async_fn,
-        reason = "the implementation mirrors the port's return-position `impl Future` declaration"
-    )]
-    #[expect(
-        clippy::pattern_type_mismatch,
-        reason = "the arms read the target's position out of a non-Copy enum matched by reference"
-    )]
-    fn lookup(
-        &self,
-        target: &Target,
-    ) -> impl Future<Output = Result<Option<MediaMetadata>, ExternalServiceError>> + Send {
-        async move {
-            let reference = target.reference();
-            if reference.provider() != ProviderId::Omdb {
-                return Ok(None);
+    async fn lookup(&self, target: &Target) -> Result<Option<MediaMetadata>, ExternalServiceError> {
+        let reference = target.reference();
+        if reference.provider() != ProviderId::Omdb {
+            return Ok(None);
+        }
+        let id = reference.id();
+        if id.is_empty()
+            || !id.chars().all(|character| {
+                character.is_ascii_alphanumeric() || character == '-' || character == '_'
+            })
+        {
+            return Ok(None);
+        }
+        let season_value;
+        let episode_value;
+        let mut pairs: Vec<(&str, &str)> = vec![("i", id), ("plot", "full")];
+        match *target {
+            Target::Episode {
+                season, episode, ..
+            } => {
+                season_value = season.to_string();
+                episode_value = episode.to_string();
+                pairs.push(("season", &season_value));
+                pairs.push(("episode", &episode_value));
             }
-            let id = reference.id();
-            if id.is_empty()
-                || !id.chars().all(|character| {
-                    character.is_ascii_alphanumeric() || character == '-' || character == '_'
-                })
-            {
-                return Ok(None);
+            Target::Movie(_) | Target::Series(_) => {}
+        }
+        let Some(request) = self.request(&pairs) else {
+            return Err(Self::fault(ExternalServiceError::InvalidRequest));
+        };
+        let response = match request.send().await {
+            Ok(response) => response,
+            Err(failure) => return Err(Self::fault(classify_transport_error(&failure))),
+        };
+        if response.status() == StatusCode::NOT_FOUND {
+            return Ok(None);
+        }
+        classify_status(response.status()).map_err(Self::fault)?;
+        let payload = match read_payload::<DetailPayload>(response).await {
+            Ok(payload) => payload,
+            Err(error) => return Err(Self::fault(error)),
+        };
+        if payload.response.as_deref() == Some("False") {
+            if let Some(error) = refusal(payload.error.as_deref()) {
+                return Err(Self::fault(error));
             }
-            let season_value;
-            let episode_value;
-            let mut pairs: Vec<(&str, &str)> = vec![("i", id), ("plot", "full")];
-            match target {
-                Target::Episode {
-                    season, episode, ..
-                } => {
-                    season_value = season.to_string();
-                    episode_value = episode.to_string();
-                    pairs.push(("season", &season_value));
-                    pairs.push(("episode", &episode_value));
-                }
-                Target::Movie(_) | Target::Series(_) => {}
-            }
-            let Some(request) = self.request(&pairs) else {
-                return Err(Self::fault(ExternalServiceError::InvalidRequest));
-            };
-            let response = match request.send().await {
-                Ok(response) => response,
-                Err(failure) => return Err(Self::fault(classify_transport_error(&failure))),
-            };
-            if response.status() == StatusCode::NOT_FOUND {
-                return Ok(None);
-            }
-            classify_status(response.status()).map_err(Self::fault)?;
-            let payload = match read_payload::<DetailPayload>(response).await {
-                Ok(payload) => payload,
-                Err(error) => return Err(Self::fault(error)),
-            };
-            if payload.response.as_deref() == Some("False") {
-                if let Some(error) = refusal(payload.error.as_deref()) {
-                    return Err(Self::fault(error));
-                }
-                return Ok(None);
-            }
-            let Some(title) = payload.title.filter(|title| !title.is_empty()) else {
-                return Ok(None);
-            };
-            let plot = payload.plot.unwrap_or_default();
-            let poster = payload
-                .poster
-                .as_deref()
-                .filter(|poster| !poster.is_empty() && *poster != "N/A");
-            let artwork = match poster {
-                Some(address) => self.artwork.fetch(ProviderId::Omdb, address).await,
-                None => None,
-            };
+            return Ok(None);
+        }
+        let Some(title) = payload.title.filter(|title| !title.is_empty()) else {
+            return Ok(None);
+        };
+        let plot = payload.plot.unwrap_or_default();
+        let poster = payload
+            .poster
+            .as_deref()
+            .filter(|poster| !poster.is_empty() && *poster != "N/A");
+        let artwork = match poster {
+            Some(address) => self.artwork.fetch(ProviderId::Omdb, address).await,
+            None => None,
+        };
 
-            match target {
-                Target::Episode {
-                    season, episode, ..
-                } => Ok(Some(MediaMetadata::Episode {
-                    air_date: parse_release_date(payload.released.as_deref()),
-                    artwork,
-                    episode: *episode,
-                    plot,
-                    season: *season,
-                    title,
-                })),
-                Target::Movie(_) => Ok(Some(MediaMetadata::Movie {
-                    artwork,
-                    country_of_origin: mapped_country(payload.country.as_deref()),
-                    genres: mapped_genres(payload.genre.as_deref()),
-                    plot,
-                    release_date: parse_release_date(payload.released.as_deref()),
-                    title,
-                })),
-                Target::Series(_) => Ok(Some(MediaMetadata::Series {
-                    artwork,
-                    country_of_origin: mapped_country(payload.country.as_deref()),
-                    first_air_date: parse_release_date(payload.released.as_deref()),
-                    genres: mapped_genres(payload.genre.as_deref()),
-                    plot,
-                    title,
-                })),
-            }
+        match *target {
+            Target::Episode {
+                season, episode, ..
+            } => Ok(Some(MediaMetadata::Episode {
+                air_date: parse_release_date(payload.released.as_deref()),
+                artwork,
+                episode,
+                plot,
+                season,
+                title,
+            })),
+            Target::Movie(_) => Ok(Some(MediaMetadata::Movie {
+                artwork,
+                country_of_origin: mapped_country(payload.country.as_deref()),
+                genres: mapped_genres(payload.genre.as_deref()),
+                plot,
+                release_date: parse_release_date(payload.released.as_deref()),
+                title,
+            })),
+            Target::Series(_) => Ok(Some(MediaMetadata::Series {
+                artwork,
+                country_of_origin: mapped_country(payload.country.as_deref()),
+                first_air_date: parse_release_date(payload.released.as_deref()),
+                genres: mapped_genres(payload.genre.as_deref()),
+                plot,
+                title,
+            })),
         }
     }
 
-    #[expect(
-        clippy::manual_async_fn,
-        reason = "the implementation mirrors the port's return-position `impl Future` declaration"
-    )]
-    fn search(
-        &self,
-        query: &MediaQuery,
-    ) -> impl Future<Output = Result<Vec<Candidate>, ExternalServiceError>> + Send {
-        async move {
-            let kind = query.kind();
-            let kind_parameter = match kind {
-                VideoKind::Movie => "movie",
-                VideoKind::Series => "series",
-            };
-            let year_value = query.year().map(|year| year.to_string());
-            let mut pairs: Vec<(&str, &str)> = vec![("s", query.title()), ("type", kind_parameter)];
-            if let Some(year) = year_value.as_deref() {
-                pairs.push(("y", year));
-            }
-            let Some(request) = self.request(&pairs) else {
-                return Err(Self::fault(ExternalServiceError::InvalidRequest));
-            };
-            let response = match request.send().await {
-                Ok(response) => response,
-                Err(failure) => return Err(Self::fault(classify_transport_error(&failure))),
-            };
-            if response.status() == StatusCode::NOT_FOUND {
-                return Ok(Vec::new());
-            }
-            classify_status(response.status()).map_err(Self::fault)?;
-            let payload = match read_payload::<SearchPayload>(response).await {
-                Ok(payload) => payload,
-                Err(error) => return Err(Self::fault(error)),
-            };
-            if payload.response.as_deref() == Some("False") {
-                if let Some(error) = refusal(payload.error.as_deref()) {
-                    return Err(Self::fault(error));
-                }
-                return Ok(Vec::new());
-            }
-            Ok(payload
-                .search
-                .unwrap_or_default()
-                .into_iter()
-                .filter_map(|hit| {
-                    let title = hit.title.filter(|value| !value.is_empty())?;
-                    let id = hit.imdb_id.filter(|value| !value.is_empty())?;
-                    let year = hit
-                        .year
-                        .as_deref()
-                        .and_then(|value| value.get(..4))
-                        .and_then(|digits| digits.parse::<u32>().ok());
-                    Some(Candidate::new(
-                        ExternalRef::new(ProviderId::Omdb, id),
-                        kind,
-                        title,
-                        year,
-                    ))
-                })
-                .collect())
+    async fn search(&self, query: &MediaQuery) -> Result<Vec<Candidate>, ExternalServiceError> {
+        let kind = query.kind();
+        let kind_parameter = match kind {
+            VideoKind::Movie => "movie",
+            VideoKind::Series => "series",
+        };
+        let year_value = query.year().map(|year| year.to_string());
+        let mut pairs: Vec<(&str, &str)> = vec![("s", query.title()), ("type", kind_parameter)];
+        if let Some(year) = year_value.as_deref() {
+            pairs.push(("y", year));
         }
+        let Some(request) = self.request(&pairs) else {
+            return Err(Self::fault(ExternalServiceError::InvalidRequest));
+        };
+        let response = match request.send().await {
+            Ok(response) => response,
+            Err(failure) => return Err(Self::fault(classify_transport_error(&failure))),
+        };
+        if response.status() == StatusCode::NOT_FOUND {
+            return Ok(Vec::new());
+        }
+        classify_status(response.status()).map_err(Self::fault)?;
+        let payload = match read_payload::<SearchPayload>(response).await {
+            Ok(payload) => payload,
+            Err(error) => return Err(Self::fault(error)),
+        };
+        if payload.response.as_deref() == Some("False") {
+            if let Some(error) = refusal(payload.error.as_deref()) {
+                return Err(Self::fault(error));
+            }
+            return Ok(Vec::new());
+        }
+        Ok(payload
+            .search
+            .unwrap_or_default()
+            .into_iter()
+            .filter_map(|hit| {
+                let title = hit.title.filter(|value| !value.is_empty())?;
+                let id = hit.imdb_id.filter(|value| !value.is_empty())?;
+                let year = hit
+                    .year
+                    .as_deref()
+                    .and_then(|value| value.get(..4))
+                    .and_then(|digits| digits.parse::<u32>().ok());
+                Some(Candidate::new(
+                    ExternalRef::new(ProviderId::Omdb, id),
+                    kind,
+                    title,
+                    year,
+                ))
+            })
+            .collect())
     }
 }
 
@@ -432,7 +401,8 @@ fn refusal(error: Option<&str>) -> Option<ExternalServiceError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::model::media_query::MediaQueryError;
+    use crate::domain::model::MediaQueryError;
+
     use chrono::Datelike as _;
     use rstest::rstest;
     use std::error::Error;

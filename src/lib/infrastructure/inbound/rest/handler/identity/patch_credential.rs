@@ -5,12 +5,11 @@ use axum::response::IntoResponse;
 use serde::Deserialize;
 use utoipa::ToSchema;
 
-use crate::application::port::patch_credential::{PatchCredentialCommand, PatchCredentialError};
-use crate::domain::alias::NumericID;
-use crate::infrastructure::inbound::rest::api_error::{ApiError, ErrorBody};
-use crate::infrastructure::inbound::rest::app_state::AppState;
+use crate::application::port::{PatchCredentialCommand, PatchCredentialError};
+use crate::domain::NumericID;
 use crate::infrastructure::inbound::rest::handler::JsonObject;
-use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
+use crate::infrastructure::inbound::rest::middleware::AuthenticatedUser;
+use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody};
 
 /// Payload to change the password behind a credential.
 #[derive(Debug, Deserialize, ToSchema)]

@@ -1,13 +1,13 @@
 use sqlx::{QueryBuilder, Sqlite, Transaction};
 
-use crate::domain::alias::NumericID;
-use crate::domain::model::image::{Image, Orientation};
-use crate::domain::port::error::RepositoryError;
-use crate::domain::port::image_repository::{ImageFilter, ImageRepository};
+use crate::domain::model::{Image, Orientation};
+use crate::domain::port::{ImageFilter, ImageRepository, RepositoryError};
 
 use super::error_mapping::stored_data_invalid;
-use super::model::image::{Image as SqlxImage, Orientation as SqlxOrientation};
-use super::model::scope::{parse_scope, scope_token};
+use super::model::{
+    Image as SqlxImage, Orientation as SqlxOrientation, asset_scope_token, parse_asset_scope,
+};
+
 use super::query_filter::push_filter;
 
 /// Repository persisting images, backed by a `SQLite` transaction.
@@ -25,23 +25,6 @@ impl<'transaction> SqlxImageRepository<'transaction> {
 }
 
 impl ImageRepository for SqlxImageRepository<'_> {
-    async fn clear_cover_references(&mut self, id: NumericID) -> Result<(), RepositoryError> {
-        for statement in [
-            "UPDATE music_group SET cover_image_id = NULL WHERE cover_image_id = ?",
-            "UPDATE music_album SET cover_image_id = NULL WHERE cover_image_id = ?",
-            "UPDATE music_playlist SET cover_image_id = NULL WHERE cover_image_id = ?",
-            "UPDATE movie SET cover_image_id = NULL WHERE cover_image_id = ?",
-            "UPDATE series SET cover_image_id = NULL WHERE cover_image_id = ?",
-            "UPDATE season SET cover_image_id = NULL WHERE cover_image_id = ?",
-        ] {
-            sqlx::query(statement)
-                .bind(id)
-                .execute(&mut **self.transaction)
-                .await?;
-        }
-        Ok(())
-    }
-
     async fn create(&mut self, image: Image) -> Result<Image, RepositoryError> {
         let row = sqlx::query_as::<_, SqlxImage>(
             "INSERT INTO image (name, width_px, height_px, orientation, created_at, file_id, scope)
@@ -62,40 +45,37 @@ impl ImageRepository for SqlxImageRepository<'_> {
         .bind(sqlx_orientation(image.orientation()))
         .bind(image.created_at())
         .bind(image.file_id())
-        .bind(image.scope().map(scope_token))
+        .bind(image.scope().map(asset_scope_token))
         .fetch_one(&mut **self.transaction)
         .await?;
 
         domain_image(row)
     }
 
-    async fn delete(&mut self, id: NumericID) -> Result<bool, RepositoryError> {
-        let result = sqlx::query("DELETE FROM image WHERE image_id = ?")
-            .bind(id)
-            .execute(&mut **self.transaction)
-            .await?;
+    async fn delete(&mut self, filter: &ImageFilter) -> Result<bool, RepositoryError> {
+        let mut builder = QueryBuilder::<Sqlite>::new("DELETE FROM image");
+        let mut first = true;
+
+        if let Some(file_id) = filter.file_id {
+            push_filter(&mut first, &mut builder, "file_id = ", file_id);
+        }
+        if let Some(id) = filter.image_id {
+            push_filter(&mut first, &mut builder, "image_id = ", id);
+        }
+        if let Some(name) = filter.name.as_deref() {
+            push_filter(&mut first, &mut builder, "name = ", name);
+        }
+        if let Some(orientation) = filter.orientation {
+            push_filter(
+                &mut first,
+                &mut builder,
+                "orientation = ",
+                sqlx_orientation(orientation),
+            );
+        }
+
+        let result = builder.build().execute(&mut **self.transaction).await?;
         Ok(result.rows_affected() > 0)
-    }
-
-    async fn get(&mut self, id: NumericID) -> Result<Option<Image>, RepositoryError> {
-        let row = sqlx::query_as::<_, SqlxImage>(
-            "SELECT
-                image_id,
-                name,
-                width_px,
-                height_px,
-                orientation,
-                created_at,
-                file_id,
-                scope
-            FROM image
-            WHERE image_id = ?",
-        )
-        .bind(id)
-        .fetch_optional(&mut **self.transaction)
-        .await?;
-
-        row.map(domain_image).transpose()
     }
 
     async fn search(&mut self, filter: &ImageFilter) -> Result<Vec<Image>, RepositoryError> {
@@ -159,7 +139,7 @@ fn domain_image(row: SqlxImage) -> Result<Image, RepositoryError> {
     let scope = row
         .scope
         .as_deref()
-        .map(|value| parse_scope(value).ok_or_else(|| stored_data_invalid("image_scope")))
+        .map(|value| parse_asset_scope(value).ok_or_else(|| stored_data_invalid("image_scope")))
         .transpose()?;
 
     Image::try_new(
@@ -178,22 +158,14 @@ fn domain_image(row: SqlxImage) -> Result<Image, RepositoryError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::model::scope::Scope;
+    use crate::domain::model::AssetScope;
+
+    use crate::infrastructure::outbound::sqlx::test_helpers::begin_transaction;
     use chrono::NaiveDate;
     use rstest::rstest;
-    use sqlx::sqlite::SqlitePoolOptions;
     use std::error::Error;
 
     /// Open a migrated in-memory database and begin one transaction.
-    async fn begin_transaction() -> Result<Transaction<'static, Sqlite>, sqlx::Error> {
-        let pool = SqlitePoolOptions::new()
-            .max_connections(1)
-            .connect("sqlite::memory:")
-            .await?;
-        sqlx::migrate!("./migrations").run(&pool).await?;
-        pool.begin().await
-    }
-
     /// Seed a credential and a standard user so foreign keys resolve.
     async fn seed_user(
         transaction: &mut Transaction<'static, Sqlite>,
@@ -267,7 +239,14 @@ mod tests {
         // Act
         let mut repository = SqlxImageRepository::new(&mut transaction);
         let persisted = repository.create(pending).await?;
-        let found = repository.get(persisted.image_id()).await?;
+        let found = repository
+            .search(&ImageFilter {
+                image_id: Some(persisted.image_id()),
+                ..ImageFilter::default()
+            })
+            .await?
+            .into_iter()
+            .next();
 
         // Assert
         assert_ne!(
@@ -296,17 +275,27 @@ mod tests {
             Orientation::Landscape,
             NaiveDate::from_ymd_opt(2026, 10, 6).ok_or("invalid fixture date")?,
             10,
-            Some(Scope::Library),
+            Some(AssetScope::Library),
         )?;
 
         // Act
         let mut repository = SqlxImageRepository::new(&mut transaction);
         let persisted = repository.create(pending).await?;
-        let found = repository.get(persisted.image_id()).await?;
+        let found = repository
+            .search(&ImageFilter {
+                image_id: Some(persisted.image_id()),
+                ..ImageFilter::default()
+            })
+            .await?
+            .into_iter()
+            .next();
 
         // Assert
-        assert_eq!(persisted.scope(), Some(Scope::Library));
-        assert_eq!(found.and_then(|image| image.scope()), Some(Scope::Library));
+        assert_eq!(persisted.scope(), Some(AssetScope::Library));
+        assert_eq!(
+            found.and_then(|image| image.scope()),
+            Some(AssetScope::Library)
+        );
         Ok(())
     }
 
@@ -317,7 +306,14 @@ mod tests {
 
         // Act
         let mut repository = SqlxImageRepository::new(&mut transaction);
-        let missing = repository.get(999).await?;
+        let missing = repository
+            .search(&ImageFilter {
+                image_id: Some(999),
+                ..ImageFilter::default()
+            })
+            .await?
+            .into_iter()
+            .next();
 
         // Assert
         assert!(missing.is_none());
@@ -377,8 +373,18 @@ mod tests {
             .await?;
 
         // Act
-        let deleted = repository.delete(stored.image_id()).await?;
-        let missing = repository.delete(stored.image_id()).await?;
+        let deleted = repository
+            .delete(&ImageFilter {
+                image_id: Some(stored.image_id()),
+                ..ImageFilter::default()
+            })
+            .await?;
+        let missing = repository
+            .delete(&ImageFilter {
+                image_id: Some(stored.image_id()),
+                ..ImageFilter::default()
+            })
+            .await?;
 
         // Assert
         assert!(deleted);
@@ -432,8 +438,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn clear_cover_references_nulls_the_cover_and_keeps_the_owner()
-    -> Result<(), Box<dyn Error>> {
+    async fn delete_nulls_the_cover_and_keeps_the_owner() -> Result<(), Box<dyn Error>> {
         // Arrange: one music group uses the image as its cover.
         let mut transaction = begin_transaction().await?;
         seed_user(&mut transaction, 1).await?;
@@ -455,7 +460,12 @@ mod tests {
         // Act
         {
             let mut repository = SqlxImageRepository::new(&mut transaction);
-            repository.clear_cover_references(stored.image_id()).await?;
+            repository
+                .delete(&ImageFilter {
+                    image_id: Some(stored.image_id()),
+                    ..ImageFilter::default()
+                })
+                .await?;
         }
 
         // Assert

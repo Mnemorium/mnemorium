@@ -18,9 +18,7 @@ use tokio::sync::{Mutex, mpsc};
 
 use tracing::warn;
 
-use crate::application::port::media_change_source::{
-    MediaChange, MediaChangeSource, MediaChangeSourceError,
-};
+use crate::application::port::{MediaChange, MediaChangeSource, MediaChangeSourceError};
 
 /// Change source backed by the local filesystem watcher.
 pub(crate) struct NotifyMediaChangeSource {

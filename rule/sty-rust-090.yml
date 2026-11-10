@@ -1,0 +1,17 @@
+---
+id: sty-rust-090
+language: Rust
+severity: hint
+message: >-
+  extract every `pub(crate) mod` declaration with its name, for STY-RUST-090
+files:
+  - src/**/*.rs
+rule:
+  all:
+    - kind: mod_item
+    - has:
+        kind: visibility_modifier
+        regex: '^pub\(crate\)$'
+    - has:
+        field: name
+        pattern: $NAME

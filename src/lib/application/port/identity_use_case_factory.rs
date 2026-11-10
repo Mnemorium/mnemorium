@@ -1,10 +1,9 @@
 use std::sync::Arc;
 
-use crate::application::port::get_permission::GetPermissionUseCase;
-use crate::application::port::login_user::LoginUserUseCase;
-use crate::application::port::patch_credential::PatchCredentialUseCase;
-use crate::application::port::register_user::RegisterUserUseCase;
-use crate::application::port::replace_permission::ReplacePermissionUseCase;
+use crate::application::port::{
+    GetPermissionUseCase, LoginUserUseCase, PatchCredentialUseCase, RegisterUserUseCase,
+    ReplacePermissionUseCase,
+};
 
 /// Builds the use cases of the Identity bounded context on demand.
 ///

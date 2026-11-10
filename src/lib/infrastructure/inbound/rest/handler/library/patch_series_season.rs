@@ -3,17 +3,15 @@ use axum::response::Response;
 use serde::Deserialize;
 use utoipa::ToSchema;
 
-use crate::application::field_update::FieldUpdate;
-use crate::application::port::update_series_season::UpdateSeriesSeasonCommand;
-use crate::domain::alias::NumericID;
-use crate::infrastructure::inbound::rest::api_error::{ApiError, ErrorBody};
-use crate::infrastructure::inbound::rest::app_state::AppState;
-use crate::infrastructure::inbound::rest::hal::hal_json;
+use crate::application::FieldUpdate;
+use crate::application::port::UpdateSeriesSeasonCommand;
+use crate::domain::NumericID;
 use crate::infrastructure::inbound::rest::handler::JsonObject;
 use crate::infrastructure::inbound::rest::handler::library::{
     SeasonResponse, deserialize_field_update, parse_season_index, parse_series_id,
 };
-use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
+use crate::infrastructure::inbound::rest::middleware::AuthenticatedUser;
+use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody, hal_json};
 
 /// Payload to update a show season partially.
 ///

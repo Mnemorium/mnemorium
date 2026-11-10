@@ -1,2 +1,4 @@
 /// The content hasher adapter.
-pub(crate) mod content_hasher;
+mod content_hasher;
+
+pub(crate) use self::content_hasher::Sha2ContentHasher;

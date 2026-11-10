@@ -4,23 +4,16 @@ use std::sync::Arc;
 
 use tracing::warn;
 
-use crate::application::port::apply_movie::{
+use crate::application::port::{
     ApplyMovieCommand, ApplyMovieError, ApplyMovieResponse, ApplyMovieUseCase,
 };
-use crate::domain::model::media_metadata::MediaMetadata;
-use crate::domain::model::movie::Movie;
-use crate::domain::model::permission::Action;
-use crate::domain::model::video_candidate::Target;
-use crate::domain::port::error::RepositoryError;
-use crate::domain::port::identity_unit_of_work::IdentityUnitOfWork;
-use crate::domain::port::library_unit_of_work::LibraryUnitOfWork;
-use crate::domain::port::movie_repository::{MovieFilter, MovieRepository as _};
-use crate::domain::port::permission_repository::{PermissionFilter, PermissionRepository as _};
-use crate::domain::port::unit_of_work::{UnitOfWork as _, UnitOfWorkFactory};
-use crate::domain::port::user_repository::{UserFilter, UserRepository as _};
-use crate::domain::port::user_unit_of_work::UserUnitOfWork;
-use crate::domain::port::video_metadata_provider::VideoMetadataProvider;
-use crate::domain::service::authorization::{Authorization, Decision};
+use crate::domain::model::{Action, MediaMetadata, Movie, Target};
+use crate::domain::port::{
+    IdentityUnitOfWork, LibraryUnitOfWork, MovieFilter, MovieRepository as _, PermissionFilter,
+    PermissionRepository as _, RepositoryError, UnitOfWork as _, UnitOfWorkFactory, UserFilter,
+    UserRepository as _, UserUnitOfWork, VideoMetadataProvider,
+};
+use crate::domain::service::{Authorization, Decision};
 
 /// Use case implementation for applying external metadata to a film.
 ///
@@ -168,21 +161,16 @@ where
                 )
                 .map_err(|_| ApplyMovieError::InvalidReference)?;
 
-                let stored = unit_of_work
-                    .movies()
-                    .update(updated)
-                    .await
-                    .map_err(|error| {
-                        if matches!(
-                            error,
-                            RepositoryError::AlreadyExist | RepositoryError::Conflict
-                        ) {
-                            ApplyMovieError::Conflict
-                        } else {
-                            ApplyMovieError::Unknown(error.into())
-                        }
-                    })?
-                    .ok_or(ApplyMovieError::NoSuchMovie)?;
+                let stored = unit_of_work.movies().save(updated).await.map_err(|error| {
+                    if matches!(
+                        error,
+                        RepositoryError::AlreadyExist | RepositoryError::Conflict
+                    ) {
+                        ApplyMovieError::Conflict
+                    } else {
+                        ApplyMovieError::Unknown(error.into())
+                    }
+                })?;
 
                 Ok(ApplyMovieResponse::new(stored))
             }
@@ -209,16 +197,15 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::alias::NumericID;
-    use crate::domain::model::configuration::ProviderId;
-    use crate::domain::model::external_ref::ExternalRef;
-    use crate::domain::model::genre::Genre;
-    use crate::domain::model::user::{Role, User};
-    use crate::domain::port::error::ExternalServiceError;
-    use crate::domain::port::movie_repository::MockMovieRepository;
-    use crate::domain::port::permission_repository::MockPermissionRepository;
-    use crate::domain::port::user_repository::MockUserRepository;
-    use crate::domain::port::video_metadata_provider::MockVideoMetadataProvider;
+    use crate::domain::NumericID;
+
+    use crate::domain::model::{ExternalRef, Genre, ProviderId, Role, User};
+
+    use crate::domain::port::{
+        ExternalServiceError, MockMovieRepository, MockPermissionRepository, MockUserRepository,
+        MockVideoMetadataProvider,
+    };
+
     use crate::test_helpers::*;
     use chrono::NaiveDate;
     use std::error::Error;
@@ -290,9 +277,9 @@ mod tests {
         let mut movies = MockMovieRepository::new();
         loaded(&mut movies, sample_movie(7)?);
         movies
-            .expect_update()
+            .expect_save()
             .times(1)
-            .returning(|movie| Box::pin(async move { Ok(Some(movie)) }));
+            .returning(|movie| Box::pin(async move { Ok(movie) }));
         let mut provider = MockVideoMetadataProvider::new();
         provider
             .expect_lookup()
@@ -326,9 +313,9 @@ mod tests {
         let mut movies = MockMovieRepository::new();
         loaded(&mut movies, sample_movie(7)?);
         movies
-            .expect_update()
+            .expect_save()
             .times(1)
-            .returning(|movie| Box::pin(async move { Ok(Some(movie)) }));
+            .returning(|movie| Box::pin(async move { Ok(movie) }));
         let mut provider = MockVideoMetadataProvider::new();
         provider.expect_lookup().times(1).return_once(|_| {
             Box::pin(async {
@@ -493,7 +480,7 @@ mod tests {
         let mut movies = MockMovieRepository::new();
         loaded(&mut movies, sample_movie(7)?);
         movies
-            .expect_update()
+            .expect_save()
             .times(1)
             .returning(|_| Box::pin(async { Err(RepositoryError::Conflict) }));
         let mut provider = MockVideoMetadataProvider::new();

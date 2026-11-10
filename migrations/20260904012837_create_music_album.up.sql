@@ -24,7 +24,7 @@ CREATE TABLE music_album (
     ),
     CONSTRAINT fk_music_album_cover_image FOREIGN KEY (
         cover_image_id
-    ) REFERENCES image (image_id),
+    ) REFERENCES image (image_id) ON DELETE SET NULL,
     CONSTRAINT fk_music_album_music_group FOREIGN KEY (
         music_group_id
     ) REFERENCES music_group (music_group_id)

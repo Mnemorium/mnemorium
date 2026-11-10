@@ -1,6 +1,4 @@
-use crate::domain::model::external_ref::ExternalRef;
-use crate::domain::model::music_metadata::{MediumSummary, ReleaseStatus};
-use crate::domain::model::music_query::MusicKind;
+use crate::domain::model::{ExternalRef, MediumSummary, MusicKind, ReleaseStatus};
 
 /// One music search result, as any provider reports it.
 ///
@@ -92,12 +90,8 @@ impl MusicCandidate {
 
     /// Return the kind of work the candidate denotes.
     #[must_use]
-    #[expect(
-        clippy::pattern_type_mismatch,
-        reason = "the arms read fields out of a non-Copy enum matched by reference"
-    )]
     pub(crate) fn kind(&self) -> MusicKind {
-        match self {
+        match *self {
             Self::Album { .. } => MusicKind::Album,
             Self::Recording { .. } => MusicKind::Recording,
             Self::Release { .. } => MusicKind::Release,
@@ -134,14 +128,10 @@ impl MusicCandidate {
     /// Return the release status, when the candidate is a release and the
     /// provider reports a mappable one.
     #[must_use]
-    #[expect(
-        clippy::pattern_type_mismatch,
-        reason = "the arms read fields out of a non-Copy enum matched by reference"
-    )]
     pub(crate) fn status(&self) -> Option<ReleaseStatus> {
-        match self {
+        match *self {
             Self::Album { .. } | Self::Recording { .. } => None,
-            Self::Release { status, .. } => *status,
+            Self::Release { status, .. } => status,
         }
     }
 
@@ -161,15 +151,11 @@ impl MusicCandidate {
 
     /// Return the release or first-release year, when the provider reports one.
     #[must_use]
-    #[expect(
-        clippy::pattern_type_mismatch,
-        reason = "the arms read fields out of a non-Copy enum matched by reference"
-    )]
     pub(crate) fn year(&self) -> Option<u32> {
-        match self {
+        match *self {
             Self::Album { year, .. }
             | Self::Recording { year, .. }
-            | Self::Release { year, .. } => *year,
+            | Self::Release { year, .. } => year,
         }
     }
 }
@@ -189,12 +175,8 @@ pub(crate) enum MusicTarget {
 impl MusicTarget {
     /// Return the kind of work the target resolves.
     #[must_use]
-    #[expect(
-        clippy::pattern_type_mismatch,
-        reason = "the arms read fields out of a non-Copy enum matched by reference"
-    )]
     pub(crate) fn kind(&self) -> MusicKind {
-        match self {
+        match *self {
             Self::Album(_) => MusicKind::Album,
             Self::Recording(_) => MusicKind::Recording,
             Self::Release(_) => MusicKind::Release,

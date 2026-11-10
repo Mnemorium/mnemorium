@@ -4,18 +4,16 @@ use axum::response::Response;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
-use crate::application::port::get_image::{
+use crate::application::port::{
     GetImageCommand, GetImageError, GetImageResponse as GetImageResponseData,
 };
-use crate::domain::alias::NumericID;
-use crate::domain::model::image::Orientation;
-use crate::infrastructure::inbound::rest::api_error::{ApiError, ErrorBody};
-use crate::infrastructure::inbound::rest::app_state::AppState;
-use crate::infrastructure::inbound::rest::hal::{Link, hal_json};
+use crate::domain::NumericID;
+use crate::domain::model::Orientation;
 use crate::infrastructure::inbound::rest::handler::asset::{
     asset_file_href, asset_image_href, content_href, format_date, parse_asset_id,
 };
-use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
+use crate::infrastructure::inbound::rest::middleware::AuthenticatedUser;
+use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody, Link, hal_json};
 
 /// HAL links exposed by a typed-image representation.
 ///

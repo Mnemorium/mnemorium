@@ -1,7 +1,9 @@
-use sqlx::{Sqlite, Transaction};
+use sqlx::{QueryBuilder, Sqlite, Transaction};
 
-use crate::domain::port::error::RepositoryError;
-use crate::domain::port::mime_type_repository::MimeTypeRepository;
+use crate::domain::model::MimeType;
+use crate::domain::port::{MimeTypeFilter, MimeTypeRepository, RepositoryError};
+
+use super::query_filter::push_filter;
 
 /// Repository querying mime types, backed by a `SQLite` transaction.
 pub(crate) struct SqlxMimeTypeRepository<'transaction> {
@@ -18,83 +20,81 @@ impl<'transaction> SqlxMimeTypeRepository<'transaction> {
 }
 
 impl MimeTypeRepository for SqlxMimeTypeRepository<'_> {
-    async fn all_ids(&mut self) -> Result<Vec<String>, RepositoryError> {
-        let ids = sqlx::query_scalar::<_, String>(
-            "SELECT mime_type_id FROM mime_type ORDER BY mime_type_id",
-        )
-        .fetch_all(&mut **self.transaction)
-        .await?;
+    async fn search(&mut self, filter: &MimeTypeFilter) -> Result<Vec<MimeType>, RepositoryError> {
+        let mut builder = QueryBuilder::<Sqlite>::new("SELECT mime_type_id FROM mime_type");
+        let mut first = true;
 
-        Ok(ids)
-    }
+        if let Some(mime_type_id) = filter.mime_type_id.as_deref() {
+            push_filter(&mut first, &mut builder, "mime_type_id = ", mime_type_id);
+        }
+        builder.push(" ORDER BY mime_type_id");
 
-    async fn exists(&mut self, mime_type_id: &str) -> Result<bool, RepositoryError> {
-        let count =
-            sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM mime_type WHERE mime_type_id = ?")
-                .bind(mime_type_id)
-                .fetch_one(&mut **self.transaction)
-                .await?;
+        let ids = builder
+            .build_query_scalar::<String>()
+            .fetch_all(&mut **self.transaction)
+            .await?;
 
-        Ok(count > 0)
+        ids.into_iter()
+            .map(|id| MimeType::try_new(id).map_err(|_| RepositoryError::DataIntegrityViolation))
+            .collect()
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use sqlx::sqlite::SqlitePoolOptions;
+    use crate::infrastructure::outbound::sqlx::test_helpers::begin_transaction;
     use std::error::Error;
 
-    async fn begin_transaction() -> Result<Transaction<'static, Sqlite>, sqlx::Error> {
-        let pool = SqlitePoolOptions::new()
-            .max_connections(1)
-            .connect("sqlite::memory:")
-            .await?;
-        sqlx::migrate!("./migrations").run(&pool).await?;
-        pool.begin().await
-    }
-
     #[tokio::test]
-    async fn all_ids_returns_the_seeded_mime_types() -> Result<(), Box<dyn Error>> {
+    async fn search_returns_the_seeded_mime_types() -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut transaction = begin_transaction().await?;
         let mut repository = SqlxMimeTypeRepository::new(&mut transaction);
 
         // Act
-        let ids = repository.all_ids().await?;
+        let found = repository.search(&MimeTypeFilter::default()).await?;
 
         // Assert: the supported set comes from the seed and includes media.
-        assert!(ids.iter().any(|id| id == "image/png"));
-        assert!(ids.iter().any(|id| id == "video/mp4"));
-        assert!(ids.iter().any(|id| id == "audio/mpeg"));
+        assert!(found.iter().any(|item| item.mime_type_id() == "image/png"));
+        assert!(found.iter().any(|item| item.mime_type_id() == "video/mp4"));
+        assert!(found.iter().any(|item| item.mime_type_id() == "audio/mpeg"));
         Ok(())
     }
 
     #[tokio::test]
-    async fn exists_returns_true_for_a_seeded_mime_type() -> Result<(), Box<dyn Error>> {
+    async fn search_finds_a_seeded_mime_type() -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut transaction = begin_transaction().await?;
         let mut repository = SqlxMimeTypeRepository::new(&mut transaction);
 
         // Act
-        let exists = repository.exists("video/mp4").await?;
+        let found = repository
+            .search(&MimeTypeFilter {
+                mime_type_id: Some("video/mp4".to_owned()),
+            })
+            .await?;
 
         // Assert
-        assert!(exists);
+        assert_eq!(found.len(), 1);
         Ok(())
     }
 
     #[tokio::test]
-    async fn exists_returns_false_for_an_unknown_mime_type() -> Result<(), Box<dyn Error>> {
+    async fn search_returns_empty_for_an_unknown_mime_type() -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut transaction = begin_transaction().await?;
         let mut repository = SqlxMimeTypeRepository::new(&mut transaction);
 
         // Act
-        let exists = repository.exists("application/unknown").await?;
+        let found = repository
+            .search(&MimeTypeFilter {
+                mime_type_id: Some("application/unknown".to_owned()),
+            })
+            .await?;
 
         // Assert
-        assert!(!exists);
+        assert!(found.is_empty());
         Ok(())
     }
 }

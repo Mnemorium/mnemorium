@@ -5,10 +5,9 @@ use axum::extract::State;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
-use crate::application::port::login_user::{LoginUserCommand, LoginUserError, LoginUserResponse};
-use crate::infrastructure::inbound::rest::api_error::{ApiError, ErrorBody};
-use crate::infrastructure::inbound::rest::app_state::AppState;
+use crate::application::port::{LoginUserCommand, LoginUserError, LoginUserResponse};
 use crate::infrastructure::inbound::rest::handler::JsonObject;
+use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody};
 
 /// Payload to authenticate a user.
 #[derive(Deserialize, ToSchema)]

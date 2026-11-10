@@ -4,17 +4,14 @@ use std::sync::Arc;
 
 use tracing::warn;
 
-use crate::application::port::identify_video::{
+use crate::application::port::{
     IdentifyVideoCommand, IdentifyVideoError, IdentifyVideoResponse, IdentifyVideoUseCase,
 };
-use crate::domain::port::identity_unit_of_work::IdentityUnitOfWork;
-use crate::domain::port::permission_repository::{PermissionFilter, PermissionRepository as _};
-use crate::domain::port::unit_of_work::{UnitOfWork as _, UnitOfWorkFactory};
-use crate::domain::port::user_repository::{UserFilter, UserRepository as _};
-use crate::domain::port::user_unit_of_work::UserUnitOfWork;
-use crate::domain::port::video_metadata_provider::VideoMetadataProvider;
-use crate::domain::service::authorization::{Authorization, Decision};
-use crate::domain::service::media_name_interpreter::MediaNameInterpreter;
+use crate::domain::port::{
+    IdentityUnitOfWork, PermissionFilter, PermissionRepository as _, UnitOfWork as _,
+    UnitOfWorkFactory, UserFilter, UserRepository as _, UserUnitOfWork, VideoMetadataProvider,
+};
+use crate::domain::service::{Authorization, Decision, MediaNameInterpreter};
 
 /// Use case implementation for identifying a video from its name.
 ///
@@ -146,15 +143,15 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::model::configuration::ProviderId;
-    use crate::domain::model::external_ref::ExternalRef;
-    use crate::domain::model::media_query::VideoKind;
-    use crate::domain::model::permission::{Action, Permission, Scope};
-    use crate::domain::model::video_candidate::Candidate;
-    use crate::domain::port::error::ExternalServiceError;
-    use crate::domain::port::permission_repository::MockPermissionRepository;
-    use crate::domain::port::user_repository::MockUserRepository;
-    use crate::domain::port::video_metadata_provider::MockVideoMetadataProvider;
+    use crate::domain::model::{
+        Action, Candidate, ExternalRef, Permission, ProviderId, Scope, VideoKind,
+    };
+
+    use crate::domain::port::{
+        ExternalServiceError, MockPermissionRepository, MockUserRepository,
+        MockVideoMetadataProvider,
+    };
+
     use crate::test_helpers::*;
     use std::error::Error;
     use std::sync::atomic::{AtomicBool, Ordering};

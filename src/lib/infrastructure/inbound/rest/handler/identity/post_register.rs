@@ -4,17 +4,13 @@ use axum::response::Response;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
-use crate::application::port::register_user::{
-    RegisterUserCommand, RegisterUserError, RegisterUserResponse,
-};
-use crate::domain::alias::NumericID;
-use crate::domain::model::user::Role;
-use crate::infrastructure::inbound::rest::api_error::{ApiError, ErrorBody};
-use crate::infrastructure::inbound::rest::app_state::AppState;
-use crate::infrastructure::inbound::rest::hal::{SelfLinks, hal_json};
+use crate::application::port::{RegisterUserCommand, RegisterUserError, RegisterUserResponse};
+use crate::domain::NumericID;
+use crate::domain::model::Role;
 use crate::infrastructure::inbound::rest::handler::JsonObject;
 use crate::infrastructure::inbound::rest::handler::user::user_self_href;
-use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
+use crate::infrastructure::inbound::rest::middleware::AuthenticatedUser;
+use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody, SelfLinks, hal_json};
 
 /// Payload to register a new user.
 ///

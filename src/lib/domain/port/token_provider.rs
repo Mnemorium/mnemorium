@@ -1,8 +1,8 @@
 use std::fmt::{Debug, Formatter, Result as FmtResult};
 use std::future::Future;
 
-use crate::domain::alias::NumericID;
-use crate::domain::port::error::TokenProviderError;
+use crate::domain::NumericID;
+use crate::domain::port::TokenProviderError;
 
 /// Token issued by a successful authentication.
 #[derive(Clone, PartialEq, Eq)]

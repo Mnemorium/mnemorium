@@ -4,24 +4,17 @@ use std::sync::Arc;
 
 use tracing::warn;
 
-use crate::application::port::apply_series_episode::{
+use crate::application::port::{
     ApplySeriesEpisodeCommand, ApplySeriesEpisodeError, ApplySeriesEpisodeResponse,
     ApplySeriesEpisodeUseCase,
 };
-use crate::domain::model::episode::{Episode, EpisodeIndex};
-use crate::domain::model::media_metadata::MediaMetadata;
-use crate::domain::model::permission::Action;
-use crate::domain::model::video_candidate::Target;
-use crate::domain::port::error::RepositoryError;
-use crate::domain::port::identity_unit_of_work::IdentityUnitOfWork;
-use crate::domain::port::library_unit_of_work::LibraryUnitOfWork;
-use crate::domain::port::permission_repository::{PermissionFilter, PermissionRepository as _};
-use crate::domain::port::series_repository::{SeriesFilter, SeriesRepository as _};
-use crate::domain::port::unit_of_work::{UnitOfWork as _, UnitOfWorkFactory};
-use crate::domain::port::user_repository::{UserFilter, UserRepository as _};
-use crate::domain::port::user_unit_of_work::UserUnitOfWork;
-use crate::domain::port::video_metadata_provider::VideoMetadataProvider;
-use crate::domain::service::authorization::{Authorization, Decision};
+use crate::domain::model::{Action, Episode, EpisodeIndex, MediaMetadata, Target};
+use crate::domain::port::{
+    IdentityUnitOfWork, LibraryUnitOfWork, PermissionFilter, PermissionRepository as _,
+    RepositoryError, SeriesFilter, SeriesRepository as _, UnitOfWork as _, UnitOfWorkFactory,
+    UserFilter, UserRepository as _, UserUnitOfWork, VideoMetadataProvider,
+};
+use crate::domain::service::{Authorization, Decision};
 
 /// Use case implementation for applying external metadata to one episode.
 ///
@@ -192,7 +185,7 @@ where
 
                 let written = unit_of_work
                     .series()
-                    .update_episode(command.series_id(), command.season_index(), updated)
+                    .save_episode(command.series_id(), command.season_index(), updated)
                     .await
                     .map_err(|error| {
                         if matches!(
@@ -236,15 +229,15 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::alias::NumericID;
-    use crate::domain::model::configuration::ProviderId;
-    use crate::domain::model::external_ref::ExternalRef;
-    use crate::domain::model::series::Series;
-    use crate::domain::model::user::{Role, User};
-    use crate::domain::port::permission_repository::MockPermissionRepository;
-    use crate::domain::port::series_repository::MockSeriesRepository;
-    use crate::domain::port::user_repository::MockUserRepository;
-    use crate::domain::port::video_metadata_provider::MockVideoMetadataProvider;
+    use crate::domain::NumericID;
+
+    use crate::domain::model::{ExternalRef, ProviderId, Role, Series, User};
+
+    use crate::domain::port::{
+        MockPermissionRepository, MockSeriesRepository, MockUserRepository,
+        MockVideoMetadataProvider,
+    };
+
     use crate::test_helpers::*;
     use chrono::NaiveDate;
     use std::error::Error;
@@ -324,7 +317,7 @@ mod tests {
             sample_series(7, vec![sample_season(1, vec![sample_episode(1, 20)?])])?,
         );
         series
-            .expect_update_episode()
+            .expect_save_episode()
             .times(1)
             .returning(|_, _, episode| Box::pin(async move { Ok(Some(episode)) }));
         let mut provider = MockVideoMetadataProvider::new();

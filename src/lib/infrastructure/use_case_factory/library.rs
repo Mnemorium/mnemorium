@@ -2,122 +2,43 @@ use std::sync::Arc;
 
 use tokio::sync::Semaphore;
 
-use crate::application::port::add_gallery_item::AddGalleryItemUseCase;
-use crate::application::port::apply_movie::ApplyMovieUseCase;
-use crate::application::port::apply_music_album::ApplyMusicAlbumUseCase;
-use crate::application::port::apply_series::ApplySeriesUseCase;
-use crate::application::port::apply_series_episode::ApplySeriesEpisodeUseCase;
-use crate::application::port::create_gallery::CreateGalleryUseCase;
-use crate::application::port::create_movie::CreateMovieUseCase;
-use crate::application::port::create_music_album::CreateMusicAlbumUseCase;
-use crate::application::port::create_music_group::CreateMusicGroupUseCase;
-use crate::application::port::create_playlist::CreatePlaylistUseCase;
-use crate::application::port::create_series::CreateSeriesUseCase;
-use crate::application::port::delete_gallery::DeleteGalleryUseCase;
-use crate::application::port::delete_gallery_item::DeleteGalleryItemUseCase;
-use crate::application::port::delete_playlist::DeletePlaylistUseCase;
-use crate::application::port::get_album::GetAlbumUseCase;
-use crate::application::port::get_album_medium::GetAlbumMediumUseCase;
-use crate::application::port::get_album_track::GetAlbumTrackUseCase;
-use crate::application::port::get_gallery::GetGalleryUseCase;
-use crate::application::port::get_gallery_item::GetGalleryItemUseCase;
-use crate::application::port::get_movie::GetMovieUseCase;
-use crate::application::port::get_music_group::GetMusicGroupUseCase;
-use crate::application::port::get_playlist::GetPlaylistUseCase;
-use crate::application::port::get_playlist_track::GetPlaylistTrackUseCase;
-use crate::application::port::get_series::GetSeriesUseCase;
-use crate::application::port::get_series_episode::GetSeriesEpisodeUseCase;
-use crate::application::port::get_series_season::GetSeriesSeasonUseCase;
-use crate::application::port::identify_music::IdentifyMusicUseCase;
-use crate::application::port::identify_video::IdentifyVideoUseCase;
-use crate::application::port::ingest_media::IngestMediaUseCase;
-use crate::application::port::library_use_case_factory::LibraryUseCaseFactory;
-use crate::application::port::list_album_tracks::ListAlbumTracksUseCase;
-use crate::application::port::list_albums::ListAlbumsUseCase;
-use crate::application::port::list_galleries::ListGalleriesUseCase;
-use crate::application::port::list_movies::ListMoviesUseCase;
-use crate::application::port::list_music_groups::ListMusicGroupsUseCase;
-use crate::application::port::list_playlists::ListPlaylistsUseCase;
-use crate::application::port::list_series::ListSeriesUseCase;
-use crate::application::port::list_series_episodes::ListSeriesEpisodesUseCase;
-use crate::application::port::patch_album_track::PatchAlbumTrackUseCase;
-use crate::application::port::put_album_medium::PutAlbumMediumUseCase;
-use crate::application::port::put_album_track::PutAlbumTrackUseCase;
-use crate::application::port::put_series_episode::PutSeriesEpisodeUseCase;
-use crate::application::port::put_series_season::PutSeriesSeasonUseCase;
-use crate::application::port::remove_playlist_track::RemovePlaylistTrackUseCase;
-use crate::application::port::reorder_playlist_tracks::ReorderPlaylistTracksUseCase;
-use crate::application::port::resolve_music_metadata::ResolveMusicMetadataUseCase;
-use crate::application::port::resolve_video_metadata::ResolveVideoMetadataUseCase;
-use crate::application::port::update_movie::UpdateMovieUseCase;
-use crate::application::port::update_music_album::UpdateMusicAlbumUseCase;
-use crate::application::port::update_music_group::UpdateMusicGroupUseCase;
-use crate::application::port::update_playlist::UpdatePlaylistUseCase;
-use crate::application::port::update_series::UpdateSeriesUseCase;
-use crate::application::port::update_series_episode::UpdateSeriesEpisodeUseCase;
-use crate::application::port::update_series_season::UpdateSeriesSeasonUseCase;
-use crate::application::use_case::add_gallery_item::AddGalleryItem;
-use crate::application::use_case::apply_movie::ApplyMovie;
-use crate::application::use_case::apply_music_album::ApplyMusicAlbum;
-use crate::application::use_case::apply_series::ApplySeries;
-use crate::application::use_case::apply_series_episode::ApplySeriesEpisode;
-use crate::application::use_case::create_gallery::CreateGallery;
-use crate::application::use_case::create_movie::CreateMovie;
-use crate::application::use_case::create_music_album::CreateMusicAlbum;
-use crate::application::use_case::create_music_group::CreateMusicGroup;
-use crate::application::use_case::create_playlist::CreatePlaylist;
-use crate::application::use_case::create_series::CreateSeries;
-use crate::application::use_case::delete_gallery::DeleteGallery;
-use crate::application::use_case::delete_gallery_item::DeleteGalleryItem;
-use crate::application::use_case::delete_playlist::DeletePlaylist;
-use crate::application::use_case::get_album::GetAlbum;
-use crate::application::use_case::get_album_medium::GetAlbumMedium;
-use crate::application::use_case::get_album_track::GetAlbumTrack;
-use crate::application::use_case::get_gallery::GetGallery;
-use crate::application::use_case::get_gallery_item::GetGalleryItem;
-use crate::application::use_case::get_movie::GetMovie;
-use crate::application::use_case::get_music_group::GetMusicGroup;
-use crate::application::use_case::get_playlist::GetPlaylist;
-use crate::application::use_case::get_playlist_track::GetPlaylistTrack;
-use crate::application::use_case::get_series::GetSeries;
-use crate::application::use_case::get_series_episode::GetSeriesEpisode;
-use crate::application::use_case::get_series_season::GetSeriesSeason;
-use crate::application::use_case::identify_music::IdentifyMusic;
-use crate::application::use_case::identify_video::IdentifyVideo;
-use crate::application::use_case::ingest_media::IngestMedia;
-use crate::application::use_case::list_album_tracks::ListAlbumTracks;
-use crate::application::use_case::list_albums::ListAlbums;
-use crate::application::use_case::list_galleries::ListGalleries;
-use crate::application::use_case::list_movies::ListMovies;
-use crate::application::use_case::list_music_groups::ListMusicGroups;
-use crate::application::use_case::list_playlists::ListPlaylists;
-use crate::application::use_case::list_series::ListSeries;
-use crate::application::use_case::list_series_episodes::ListSeriesEpisodes;
-use crate::application::use_case::patch_album_track::PatchAlbumTrack;
-use crate::application::use_case::put_album_medium::PutAlbumMedium;
-use crate::application::use_case::put_album_track::PutAlbumTrack;
-use crate::application::use_case::put_series_episode::PutSeriesEpisode;
-use crate::application::use_case::put_series_season::PutSeriesSeason;
-use crate::application::use_case::remove_playlist_track::RemovePlaylistTrack;
-use crate::application::use_case::reorder_playlist_tracks::ReorderPlaylistTracks;
-use crate::application::use_case::resolve_music_metadata::ResolveMusicMetadata;
-use crate::application::use_case::resolve_video_metadata::ResolveVideoMetadata;
-use crate::application::use_case::update_movie::UpdateMovie;
-use crate::application::use_case::update_music_album::UpdateMusicAlbum;
-use crate::application::use_case::update_music_group::UpdateMusicGroup;
-use crate::application::use_case::update_playlist::UpdatePlaylist;
-use crate::application::use_case::update_series::UpdateSeries;
-use crate::application::use_case::update_series_episode::UpdateSeriesEpisode;
-use crate::application::use_case::update_series_season::UpdateSeriesSeason;
-use crate::application::use_case::upload_layout::media_root;
-use crate::domain::model::configuration::Configuration;
-use crate::infrastructure::outbound::file_system::file_storage::FileSystemStorage;
-use crate::infrastructure::outbound::file_system::media_source::LocalMediaSource;
-use crate::infrastructure::outbound::infer::content_type_sniffer::InferContentTypeSniffer;
-use crate::infrastructure::outbound::media_probe::LocalMediaProbe;
-use crate::infrastructure::outbound::metadata::failover::FailoverVideoMetadataProvider;
-use crate::infrastructure::outbound::metadata::{configured_links, configured_music_provider};
-use crate::infrastructure::outbound::sqlx::unit_of_work::SqlxUnitOfWorkFactory;
+use crate::application::port::{
+    AddGalleryItemUseCase, ApplyMovieUseCase, ApplyMusicAlbumUseCase, ApplySeriesEpisodeUseCase,
+    ApplySeriesUseCase, CreateGalleryUseCase, CreateMovieUseCase, CreateMusicAlbumUseCase,
+    CreateMusicGroupUseCase, CreatePlaylistUseCase, CreateSeriesUseCase, DeleteGalleryItemUseCase,
+    DeleteGalleryUseCase, DeletePlaylistUseCase, GetAlbumMediumUseCase, GetAlbumTrackUseCase,
+    GetAlbumUseCase, GetGalleryItemUseCase, GetGalleryUseCase, GetMovieUseCase,
+    GetMusicGroupUseCase, GetPlaylistTrackUseCase, GetPlaylistUseCase, GetSeriesEpisodeUseCase,
+    GetSeriesSeasonUseCase, GetSeriesUseCase, IdentifyMusicUseCase, IdentifyVideoUseCase,
+    IngestMediaUseCase, LibraryUseCaseFactory, ListAlbumTracksUseCase, ListAlbumsUseCase,
+    ListGalleriesUseCase, ListMoviesUseCase, ListMusicGroupsUseCase, ListPlaylistsUseCase,
+    ListSeriesEpisodesUseCase, ListSeriesUseCase, PatchAlbumTrackUseCase, PutAlbumMediumUseCase,
+    PutAlbumTrackUseCase, PutSeriesEpisodeUseCase, PutSeriesSeasonUseCase,
+    RemovePlaylistTrackUseCase, ReorderPlaylistTracksUseCase, ResolveMusicMetadataUseCase,
+    ResolveVideoMetadataUseCase, UpdateMovieUseCase, UpdateMusicAlbumUseCase,
+    UpdateMusicGroupUseCase, UpdatePlaylistUseCase, UpdateSeriesEpisodeUseCase,
+    UpdateSeriesSeasonUseCase, UpdateSeriesUseCase,
+};
+use crate::application::use_case::{
+    AddGalleryItem, ApplyMovie, ApplyMusicAlbum, ApplySeries, ApplySeriesEpisode, CreateGallery,
+    CreateMovie, CreateMusicAlbum, CreateMusicGroup, CreatePlaylist, CreateSeries, DeleteGallery,
+    DeleteGalleryItem, DeletePlaylist, GetAlbum, GetAlbumMedium, GetAlbumTrack, GetGallery,
+    GetGalleryItem, GetMovie, GetMusicGroup, GetPlaylist, GetPlaylistTrack, GetSeries,
+    GetSeriesEpisode, GetSeriesSeason, IdentifyMusic, IdentifyVideo, IngestMedia, ListAlbumTracks,
+    ListAlbums, ListGalleries, ListMovies, ListMusicGroups, ListPlaylists, ListSeries,
+    ListSeriesEpisodes, PatchAlbumTrack, PutAlbumMedium, PutAlbumTrack, PutSeriesEpisode,
+    PutSeriesSeason, RemovePlaylistTrack, ReorderPlaylistTracks, ResolveMusicMetadata,
+    ResolveVideoMetadata, UpdateMovie, UpdateMusicAlbum, UpdateMusicGroup, UpdatePlaylist,
+    UpdateSeries, UpdateSeriesEpisode, UpdateSeriesSeason, media_root,
+};
+use crate::domain::model::Configuration;
+use crate::infrastructure::outbound::LocalMediaProbe;
+use crate::infrastructure::outbound::file_system::{FileSystemStorage, LocalMediaSource};
+use crate::infrastructure::outbound::infer::InferContentTypeSniffer;
+use crate::infrastructure::outbound::metadata::{
+    FailoverVideoMetadataProvider, configured_links, configured_music_provider,
+};
+use crate::infrastructure::outbound::sqlx::SqlxUnitOfWorkFactory;
 
 /// Builds the Library use cases.
 ///

@@ -1,13 +1,16 @@
 /// The identity context endpoints.
-pub(crate) mod get_permission;
+mod get_permission;
 /// The identity context endpoints.
-pub(crate) mod patch_credential;
+mod patch_credential;
 /// The identity context endpoints.
-pub(crate) mod post_login;
+mod post_login;
 /// The identity context endpoints.
-pub(crate) mod post_register;
+mod post_register;
 /// The identity context endpoints.
-pub(crate) mod put_permission;
+mod put_permission;
+
+pub(crate) use self::get_permission::{__path_get_permission, get_permission};
+pub(crate) use self::put_permission::{__path_put_permission, put_permission};
 
 use axum::middleware;
 use utoipa_axum::router::OpenApiRouter;
@@ -16,17 +19,14 @@ use utoipa_axum::routes;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
-use crate::application::port::get_permission::GetPermissionResponse as GetPermissionResponseData;
-use crate::application::port::replace_permission::PermissionRequest as PermissionRequestData;
-use crate::domain::alias::NumericID;
-use crate::domain::model::permission::{Action, ResourceKind, ResourceRef, Scope};
-use crate::domain::model::user::Role;
-use crate::infrastructure::inbound::rest::api_error::ApiError;
-use crate::infrastructure::inbound::rest::app_state::AppState;
-use crate::infrastructure::inbound::rest::hal::SelfLinks;
-use crate::infrastructure::inbound::rest::middleware::auth::authenticate;
-use crate::infrastructure::inbound::rest::middleware::rate_limit::LoginRateLimiter;
-use crate::infrastructure::outbound::jwt::token_provider::JwtTokenProvider;
+use crate::application::port::{
+    GetPermissionResponse as GetPermissionResponseData, PermissionRequest as PermissionRequestData,
+};
+use crate::domain::NumericID;
+use crate::domain::model::{Action, ResourceKind, ResourceRef, Role, Scope};
+use crate::infrastructure::inbound::rest::middleware::{LoginRateLimiter, authenticate};
+use crate::infrastructure::inbound::rest::{ApiError, AppState, SelfLinks};
+use crate::infrastructure::outbound::jwt::JwtTokenProvider;
 
 /// Kind of an aggregate a `LISTED` scope names.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, ToSchema)]

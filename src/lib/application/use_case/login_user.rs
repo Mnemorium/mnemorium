@@ -4,16 +4,13 @@ use std::sync::Arc;
 
 use tracing::{error, info, warn};
 
-use crate::application::port::login_user::{
+use crate::application::port::{
     LoginUserCommand, LoginUserError, LoginUserResponse, LoginUserUseCase,
 };
-use crate::domain::port::credential_repository::{CredentialFilter, CredentialRepository as _};
-use crate::domain::port::identity_unit_of_work::IdentityUnitOfWork;
-use crate::domain::port::password_hasher::PasswordHasher;
-use crate::domain::port::token_provider::TokenProvider;
-use crate::domain::port::unit_of_work::{UnitOfWork as _, UnitOfWorkFactory};
-use crate::domain::port::user_repository::{UserFilter, UserRepository as _};
-use crate::domain::port::user_unit_of_work::UserUnitOfWork;
+use crate::domain::port::{
+    CredentialFilter, CredentialRepository as _, IdentityUnitOfWork, PasswordHasher, TokenProvider,
+    UnitOfWork as _, UnitOfWorkFactory, UserFilter, UserRepository as _, UserUnitOfWork,
+};
 
 /// Use case implementation for authenticating a user.
 pub(crate) struct LoginUser<F, H, P> {
@@ -184,13 +181,13 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::model::credential::Credential;
-    use crate::domain::model::user::{Role, User, UserError};
-    use crate::domain::port::credential_repository::MockCredentialRepository;
-    use crate::domain::port::error::{PasswordHasherError, RepositoryError, TokenProviderError};
-    use crate::domain::port::password_hasher::MockPasswordHasher;
-    use crate::domain::port::token_provider::{IssuedToken, MockTokenProvider};
-    use crate::domain::port::user_repository::MockUserRepository;
+    use crate::domain::model::{Credential, Role, User, UserError};
+
+    use crate::domain::port::{
+        IssuedToken, MockCredentialRepository, MockPasswordHasher, MockTokenProvider,
+        MockUserRepository, PasswordHasherError, RepositoryError, TokenProviderError,
+    };
+
     use crate::test_helpers::*;
     use chrono::NaiveDateTime;
     use std::error::Error;

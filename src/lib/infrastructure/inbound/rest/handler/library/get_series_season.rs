@@ -1,15 +1,13 @@
 use axum::extract::{Path, State};
 use axum::response::Response;
 
-use crate::application::port::get_series_season::GetSeriesSeasonCommand;
-use crate::domain::alias::NumericID;
-use crate::infrastructure::inbound::rest::api_error::{ApiError, ErrorBody};
-use crate::infrastructure::inbound::rest::app_state::AppState;
-use crate::infrastructure::inbound::rest::hal::hal_json;
+use crate::application::port::GetSeriesSeasonCommand;
+use crate::domain::NumericID;
 use crate::infrastructure::inbound::rest::handler::library::{
     SeasonResponse, parse_season_index, parse_series_id,
 };
-use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
+use crate::infrastructure::inbound::rest::middleware::AuthenticatedUser;
+use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody, hal_json};
 
 /// Fetch one season of a show.
 ///

@@ -9,8 +9,7 @@
 
 use std::cmp::Ordering;
 
-use crate::domain::model::music_candidate::MusicCandidate;
-use crate::domain::model::music_metadata::{Edition, MediumSummary, ReleaseStatus};
+use crate::domain::model::{Edition, MediumSummary, ReleaseStatus};
 
 /// Domain service holding the edition ordering rule.
 ///
@@ -49,46 +48,6 @@ impl ReleaseOrder {
             .then_with(|| left.reference().id().cmp(right.reference().id()))
     }
 
-    /// Order the release candidates of one search, compact-disc releases first.
-    ///
-    /// Only release candidates move: an album or a recording keeps its position
-    /// and the provider's relative order, and the release candidates keep theirs
-    /// inside each bucket.
-    #[must_use]
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "the security-event catalog declares this constructor; no caller emits the event yet"
-        )
-    )]
-    fn order_candidates(candidates: Vec<MusicCandidate>) -> Vec<MusicCandidate> {
-        let mut slots: Vec<Option<MusicCandidate>> = candidates.into_iter().map(Some).collect();
-        let mut release_positions: Vec<usize> = Vec::new();
-        let mut releases: Vec<MusicCandidate> = Vec::new();
-        for (position, slot) in slots.iter_mut().enumerate() {
-            let is_release = slot
-                .as_ref()
-                .is_some_and(|candidate| matches!(candidate, MusicCandidate::Release { .. }));
-            if is_release && let Some(candidate) = slot.take() {
-                release_positions.push(position);
-                releases.push(candidate);
-            }
-        }
-        let (compact_discs, others): (Vec<MusicCandidate>, Vec<MusicCandidate>) = releases
-            .into_iter()
-            .partition(|candidate| all_compact_discs(candidate.mediums()));
-        for (position, candidate) in release_positions
-            .into_iter()
-            .zip(compact_discs.into_iter().chain(others))
-        {
-            if let Some(slot) = slots.get_mut(position) {
-                *slot = Some(candidate);
-            }
-        }
-        slots.into_iter().flatten().collect()
-    }
-
     /// Order the editions of one album, compact discs first.
     ///
     /// The partition is stable: the provider's relative order survives inside
@@ -116,10 +75,8 @@ fn all_compact_discs(mediums: &[MediumSummary]) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::model::configuration::ProviderId;
-    use crate::domain::model::external_ref::ExternalRef;
-    use crate::domain::model::music_metadata::MediumFormat;
-    use crate::domain::model::music_query::MusicKind;
+    use crate::domain::model::{ExternalRef, MediumFormat, MusicCandidate, MusicKind, ProviderId};
+
     use chrono::NaiveDate;
     use std::error::Error;
 
@@ -360,6 +317,38 @@ mod tests {
         Ok(())
     }
 
+    /// Order the release candidates of one search, compact-disc releases first.
+    ///
+    /// Only release candidates move: an album or a recording keeps its position
+    /// and the provider's relative order, and the release candidates keep theirs
+    /// inside each bucket.
+    fn order_candidates(candidates: Vec<MusicCandidate>) -> Vec<MusicCandidate> {
+        let mut slots: Vec<Option<MusicCandidate>> = candidates.into_iter().map(Some).collect();
+        let mut release_positions: Vec<usize> = Vec::new();
+        let mut releases: Vec<MusicCandidate> = Vec::new();
+        for (position, slot) in slots.iter_mut().enumerate() {
+            let is_release = slot
+                .as_ref()
+                .is_some_and(|candidate| matches!(candidate, MusicCandidate::Release { .. }));
+            if is_release && let Some(candidate) = slot.take() {
+                release_positions.push(position);
+                releases.push(candidate);
+            }
+        }
+        let (compact_discs, others): (Vec<MusicCandidate>, Vec<MusicCandidate>) = releases
+            .into_iter()
+            .partition(|candidate| all_compact_discs(candidate.mediums()));
+        for (position, candidate) in release_positions
+            .into_iter()
+            .zip(compact_discs.into_iter().chain(others))
+        {
+            if let Some(slot) = slots.get_mut(position) {
+                *slot = Some(candidate);
+            }
+        }
+        slots.into_iter().flatten().collect()
+    }
+
     #[test]
     fn order_candidates_moves_only_release_candidates() {
         // Arrange
@@ -371,7 +360,7 @@ mod tests {
         ];
 
         // Act
-        let ordered = ReleaseOrder::order_candidates(candidates);
+        let ordered = order_candidates(candidates);
 
         // Assert
         let ids: Vec<&str> = ordered

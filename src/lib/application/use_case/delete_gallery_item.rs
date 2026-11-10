@@ -7,27 +7,18 @@ use chrono::Utc;
 
 use tracing::warn;
 
-use crate::application::port::delete_gallery_item::{
+use crate::application::port::{
     DeleteGalleryItemCommand, DeleteGalleryItemError, DeleteGalleryItemUseCase,
 };
-use crate::domain::model::gallery_item::GalleryItemMedia;
-use crate::domain::model::permission::Action;
-use crate::domain::port::asset_unit_of_work::AssetUnitOfWork;
-use crate::domain::port::error::RepositoryError;
-use crate::domain::port::file_repository::{FileFilter, FileRepository as _};
-use crate::domain::port::file_storage::FileStorage;
-use crate::domain::port::gallery_repository::{
-    GalleryFilter, GalleryItemFilter, GalleryRepository as _,
+use crate::domain::model::{Action, GalleryItemMedia};
+use crate::domain::port::{
+    AssetUnitOfWork, FileFilter, FileRepository as _, FileStorage, GalleryFilter,
+    GalleryItemFilter, GalleryRepository as _, IdentityUnitOfWork, ImageFilter,
+    ImageRepository as _, LibraryUnitOfWork, PermissionFilter, PermissionRepository as _,
+    RepositoryError, UnitOfWork as _, UnitOfWorkFactory, UserFilter, UserRepository as _,
+    UserUnitOfWork, VideoFilter, VideoRepository as _,
 };
-use crate::domain::port::identity_unit_of_work::IdentityUnitOfWork;
-use crate::domain::port::image_repository::{ImageFilter, ImageRepository as _};
-use crate::domain::port::library_unit_of_work::LibraryUnitOfWork;
-use crate::domain::port::permission_repository::{PermissionFilter, PermissionRepository as _};
-use crate::domain::port::unit_of_work::{UnitOfWork as _, UnitOfWorkFactory};
-use crate::domain::port::user_repository::{UserFilter, UserRepository as _};
-use crate::domain::port::user_unit_of_work::UserUnitOfWork;
-use crate::domain::port::video_repository::{VideoFilter, VideoRepository as _};
-use crate::domain::service::authorization::{Authorization, Decision};
+use crate::domain::service::{Authorization, Decision};
 
 /// Use case implementation for deleting one item of a gallery.
 pub(crate) struct DeleteGalleryItem<F, S> {
@@ -135,7 +126,10 @@ where
 
                 let deleted = unit_of_work
                     .galleries()
-                    .delete_item(detail.item().gallery_item_id())
+                    .delete_item(&GalleryItemFilter {
+                        gallery_item_id: Some(detail.item().gallery_item_id()),
+                        ..GalleryItemFilter::default()
+                    })
                     .await
                     .map_err(|error| DeleteGalleryItemError::Unknown(error.into()))?;
                 if !deleted {
@@ -143,10 +137,22 @@ where
                 }
                 let deleted_media = match media {
                     GalleryItemMedia::Image(image_id) => {
-                        unit_of_work.images().delete(image_id).await
+                        unit_of_work
+                            .images()
+                            .delete(&ImageFilter {
+                                image_id: Some(image_id),
+                                ..ImageFilter::default()
+                            })
+                            .await
                     }
                     GalleryItemMedia::Video(video_id) => {
-                        unit_of_work.videos().delete(video_id).await
+                        unit_of_work
+                            .videos()
+                            .delete(&VideoFilter {
+                                id: Some(video_id),
+                                ..VideoFilter::default()
+                            })
+                            .await
                     }
                 }
                 .map_err(|error| DeleteGalleryItemError::Unknown(error.into()))?;
@@ -207,7 +213,14 @@ where
                         if still_referenced {
                             None
                         } else {
-                            match unit_of_work.files().delete(file.id()).await {
+                            match unit_of_work
+                                .files()
+                                .delete(&FileFilter {
+                                    id: Some(file.id()),
+                                    ..FileFilter::default()
+                                })
+                                .await
+                            {
                                 Ok(true) => Some(PathBuf::from(file.path())),
                                 // The row was already gone — the removal that
                                 // deleted it owns the bytes — or the datastore
@@ -263,19 +276,16 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::model::file::{File, Origin};
-    use crate::domain::model::gallery::Gallery;
-    use crate::domain::model::gallery_item::GalleryItem;
-    use crate::domain::model::image::{Image, Orientation};
-    use crate::domain::model::integrity_hash::IntegrityHash;
-    use crate::domain::model::user::{Role, User};
-    use crate::domain::model::video::{ScanType, Video};
-    use crate::domain::port::file_repository::MockFileRepository;
-    use crate::domain::port::file_storage::MockFileStorage;
-    use crate::domain::port::gallery_repository::{GalleryItemDetail, MockGalleryRepository};
-    use crate::domain::port::image_repository::MockImageRepository;
-    use crate::domain::port::user_repository::MockUserRepository;
-    use crate::domain::port::video_repository::MockVideoRepository;
+    use crate::domain::model::{
+        File, Gallery, GalleryItem, Image, IntegrityHash, Orientation, Origin, Role, ScanType,
+        User, Video,
+    };
+
+    use crate::domain::port::{
+        GalleryItemDetail, MockFileRepository, MockFileStorage, MockGalleryRepository,
+        MockImageRepository, MockUserRepository, MockVideoRepository,
+    };
+
     use crate::test_helpers::*;
     use chrono::{NaiveDate, NaiveDateTime};
     use std::error::Error;
@@ -390,7 +400,7 @@ mod tests {
         files
             .expect_delete()
             .times(1)
-            .withf(|id| *id == 100)
+            .withf(|filter| filter.id == Some(100))
             .returning(|_| Box::pin(async { Ok(true) }));
         Ok(())
     }
@@ -442,7 +452,7 @@ mod tests {
         galleries
             .expect_delete_item()
             .times(1)
-            .withf(|id| *id == 42)
+            .withf(|filter| filter.gallery_item_id == Some(42))
             .returning(|_| Box::pin(async { Ok(true) }));
         galleries
             .expect_save()
@@ -453,7 +463,7 @@ mod tests {
         images
             .expect_delete()
             .times(1)
-            .withf(|id| *id == 7)
+            .withf(|filter| filter.image_id == Some(7))
             .returning(|_| Box::pin(async { Ok(true) }));
         let mut videos = MockVideoRepository::new();
         let mut files = MockFileRepository::new();
@@ -552,7 +562,7 @@ mod tests {
         videos
             .expect_delete()
             .times(1)
-            .withf(|id| *id == 8)
+            .withf(|filter| filter.id == Some(8))
             .returning(|_| Box::pin(async { Ok(true) }));
         let mut images = MockImageRepository::new();
         let mut files = MockFileRepository::new();
@@ -603,7 +613,7 @@ mod tests {
         images
             .expect_delete()
             .times(1)
-            .withf(|id| *id == 7)
+            .withf(|filter| filter.image_id == Some(7))
             .returning(|_| Box::pin(async { Ok(true) }));
         // The file is not the caller's, so the reference guard never runs.
         images.expect_search().times(0);
@@ -667,7 +677,7 @@ mod tests {
         images
             .expect_delete()
             .times(1)
-            .withf(|id| *id == 7)
+            .withf(|filter| filter.image_id == Some(7))
             .returning(|_| Box::pin(async { Ok(true) }));
         let mut videos = MockVideoRepository::new();
         let mut files = MockFileRepository::new();
@@ -779,7 +789,7 @@ mod tests {
         images
             .expect_delete()
             .times(1)
-            .withf(|id| *id == 7)
+            .withf(|filter| filter.image_id == Some(7))
             .returning(|_| Box::pin(async { Ok(true) }));
         let referencing = Image::try_new(
             1,
@@ -851,7 +861,7 @@ mod tests {
         images
             .expect_delete()
             .times(1)
-            .withf(|id| *id == 7)
+            .withf(|filter| filter.image_id == Some(7))
             .returning(|_| Box::pin(async { Ok(true) }));
         images
             .expect_search()

@@ -8,5 +8,5 @@ CREATE TABLE series (
     CONSTRAINT pk_series_series_id PRIMARY KEY (series_id),
     CONSTRAINT fk_series_cover_image FOREIGN KEY (
         cover_image_id
-    ) REFERENCES image (image_id)
+    ) REFERENCES image (image_id) ON DELETE SET NULL
 );

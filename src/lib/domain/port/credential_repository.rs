@@ -1,8 +1,8 @@
 use std::future::Future;
 
-use crate::domain::alias::NumericID;
-use crate::domain::model::credential::Credential;
-use crate::domain::port::error::RepositoryError;
+use crate::domain::NumericID;
+use crate::domain::model::Credential;
+use crate::domain::port::RepositoryError;
 
 /// Search filters for [`CredentialRepository::search`]. Every field is
 /// optional; an all-`None` filter returns every credential.
@@ -26,11 +26,11 @@ pub(crate) trait CredentialRepository: Send + Sync {
         credential: Credential,
     ) -> impl Future<Output = Result<Credential, RepositoryError>> + Send;
 
-    /// Delete the credential identified by `id`.
+    /// Delete every credential matching `filter`.
     ///
-    /// Returns `Ok(true)` when a credential matched `id` and was deleted, and
-    /// `Ok(false)` when no credential matched. A missing credential is a valid
-    /// outcome, not an error.
+    /// Returns `Ok(true)` when at least one credential was deleted, and
+    /// `Ok(false)` when none matched. An all-`None` filter deletes every
+    /// credential.
     #[cfg_attr(
         not(test),
         expect(
@@ -40,7 +40,7 @@ pub(crate) trait CredentialRepository: Send + Sync {
     )]
     fn delete(
         &mut self,
-        id: NumericID,
+        filter: &CredentialFilter,
     ) -> impl Future<Output = Result<bool, RepositoryError>> + Send;
 
     /// Insert or update an existing `credential` targeted by its identifier,
@@ -71,9 +71,9 @@ impl<T: CredentialRepository + ?Sized> CredentialRepository for &mut T {
 
     fn delete(
         &mut self,
-        id: NumericID,
+        filter: &CredentialFilter,
     ) -> impl Future<Output = Result<bool, RepositoryError>> + Send {
-        (**self).delete(id)
+        (**self).delete(filter)
     }
 
     fn save(

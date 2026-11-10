@@ -1,17 +1,15 @@
 use chrono::NaiveDateTime;
 use sqlx::{QueryBuilder, Sqlite, Transaction};
 
-use crate::domain::alias::NumericID;
-use crate::domain::model::gallery::Gallery;
-use crate::domain::model::gallery_item::{GalleryItem, GalleryItemMedia};
-use crate::domain::port::error::RepositoryError;
-use crate::domain::port::gallery_repository::{
-    GalleryFilter, GalleryItemDetail, GalleryItemFilter, GalleryRepository,
+use crate::domain::NumericID;
+use crate::domain::model::{Gallery, GalleryItem, GalleryItemMedia};
+use crate::domain::port::{
+    GalleryFilter, GalleryItemDetail, GalleryItemFilter, GalleryRepository, RepositoryError,
 };
 
-use super::model::gallery::Gallery as SqlxGallery;
-use super::model::gallery_item::{
-    GalleryItem as SqlxGalleryItem, GalleryItemDetail as SqlxGalleryItemDetail,
+use super::model::{
+    Gallery as SqlxGallery, GalleryItem as SqlxGalleryItem,
+    GalleryItemDetail as SqlxGalleryItemDetail,
 };
 
 /// Repository persisting galleries and their items, backed by a `SQLite`
@@ -30,40 +28,6 @@ impl<'transaction> SqlxGalleryRepository<'transaction> {
 }
 
 impl GalleryRepository for SqlxGalleryRepository<'_> {
-    async fn add_item(&mut self, item: GalleryItem) -> Result<GalleryItem, RepositoryError> {
-        let (image_id, video_id) = match item.media() {
-            GalleryItemMedia::Image(image) => (Some(image), None),
-            GalleryItemMedia::Video(video) => (None, Some(video)),
-        };
-        let row = sqlx::query_as::<_, SqlxGalleryItem>(
-            "INSERT INTO gallery_item (gallery_id, image_id, video_id, item_index, added_at)
-            VALUES (?1, ?2, ?3, ?4, ?5)
-            RETURNING
-                gallery_item_id,
-                gallery_id,
-                image_id,
-                video_id,
-                item_index,
-                added_at",
-        )
-        .bind(item.gallery_id())
-        .bind(image_id)
-        .bind(video_id)
-        .bind(item.item_index())
-        .bind(item.added_at())
-        .fetch_one(&mut **self.transaction)
-        .await?;
-
-        domain_item(
-            row.gallery_item_id,
-            row.gallery_id,
-            row.image_id,
-            row.video_id,
-            row.item_index,
-            row.added_at,
-        )
-    }
-
     async fn create(&mut self, gallery: Gallery) -> Result<Gallery, RepositoryError> {
         let row = sqlx::query_as::<_, SqlxGallery>(
             "INSERT INTO gallery (name, created_at, last_modified_at, is_public, user_id)
@@ -87,54 +51,50 @@ impl GalleryRepository for SqlxGalleryRepository<'_> {
         Ok(domain_gallery(row))
     }
 
-    async fn delete(&mut self, id: NumericID) -> Result<bool, RepositoryError> {
-        let result = sqlx::query("DELETE FROM gallery WHERE gallery_id = ?")
-            .bind(id)
-            .execute(&mut **self.transaction)
-            .await?;
+    async fn delete(&mut self, filter: &GalleryFilter) -> Result<bool, RepositoryError> {
+        let mut builder = QueryBuilder::<Sqlite>::new("DELETE FROM gallery");
+        let mut first = true;
+
+        if let Some(id) = filter.gallery_id {
+            push_filter(&mut first, &mut builder, "gallery_id = ", id);
+        }
+        if let Some(is_public) = filter.is_public {
+            push_filter(&mut first, &mut builder, "is_public = ", is_public);
+        }
+        if let Some(name) = filter.name.as_deref() {
+            push_filter(&mut first, &mut builder, "name = ", name);
+        }
+        if let Some(user_id) = filter.user_id {
+            push_filter(&mut first, &mut builder, "user_id = ", user_id);
+        }
+
+        let result = builder.build().execute(&mut **self.transaction).await?;
         Ok(result.rows_affected() > 0)
     }
 
-    async fn delete_item(&mut self, id: NumericID) -> Result<bool, RepositoryError> {
-        let result = sqlx::query("DELETE FROM gallery_item WHERE gallery_item_id = ?")
-            .bind(id)
-            .execute(&mut **self.transaction)
-            .await?;
-        Ok(result.rows_affected() > 0)
-    }
+    async fn delete_item(&mut self, filter: &GalleryItemFilter) -> Result<bool, RepositoryError> {
+        let mut builder = QueryBuilder::<Sqlite>::new("DELETE FROM gallery_item");
+        let mut first = true;
 
-    async fn delete_items_by_media(
-        &mut self,
-        media: GalleryItemMedia,
-    ) -> Result<bool, RepositoryError> {
-        let result = match media {
-            GalleryItemMedia::Image(id) => {
-                sqlx::query("DELETE FROM gallery_item WHERE image_id = ?")
-                    .bind(id)
-                    .execute(&mut **self.transaction)
-                    .await?
+        if let Some(gallery_id) = filter.gallery_id {
+            push_filter(&mut first, &mut builder, "gallery_id = ", gallery_id);
+        }
+        if let Some(id) = filter.gallery_item_id {
+            push_filter(&mut first, &mut builder, "gallery_item_id = ", id);
+        }
+        if let Some(media) = filter.media {
+            match media {
+                GalleryItemMedia::Image(image) => {
+                    push_filter(&mut first, &mut builder, "image_id = ", image);
+                }
+                GalleryItemMedia::Video(video) => {
+                    push_filter(&mut first, &mut builder, "video_id = ", video);
+                }
             }
-            GalleryItemMedia::Video(id) => {
-                sqlx::query("DELETE FROM gallery_item WHERE video_id = ?")
-                    .bind(id)
-                    .execute(&mut **self.transaction)
-                    .await?
-            }
-        };
+        }
+
+        let result = builder.build().execute(&mut **self.transaction).await?;
         Ok(result.rows_affected() > 0)
-    }
-
-    async fn next_item_index(&mut self, gallery_id: NumericID) -> Result<i64, RepositoryError> {
-        let next = sqlx::query_scalar::<_, i64>(
-            "SELECT COALESCE(MAX(item_index) + 1, 0)
-            FROM gallery_item
-            WHERE gallery_id = ?",
-        )
-        .bind(gallery_id)
-        .fetch_one(&mut **self.transaction)
-        .await?;
-
-        Ok(next)
     }
 
     async fn save(&mut self, gallery: Gallery) -> Result<Gallery, RepositoryError> {
@@ -165,6 +125,72 @@ impl GalleryRepository for SqlxGalleryRepository<'_> {
         .await?;
 
         Ok(domain_gallery(row))
+    }
+
+    async fn save_item(&mut self, item: GalleryItem) -> Result<GalleryItem, RepositoryError> {
+        let (image_id, video_id) = match item.media() {
+            GalleryItemMedia::Image(image) => (Some(image), None),
+            GalleryItemMedia::Video(video) => (None, Some(video)),
+        };
+        // The store assigns a fresh identity; an item constructed for insertion
+        // carries none, so it takes the plain-insert path.
+        let row = if item.gallery_item_id() == 0 {
+            sqlx::query_as::<_, SqlxGalleryItem>(
+                "INSERT INTO gallery_item (gallery_id, image_id, video_id, item_index, added_at)
+                VALUES (?1, ?2, ?3, ?4, ?5)
+                RETURNING
+                    gallery_item_id,
+                    gallery_id,
+                    image_id,
+                    video_id,
+                    item_index,
+                    added_at",
+            )
+            .bind(item.gallery_id())
+            .bind(image_id)
+            .bind(video_id)
+            .bind(item.item_index())
+            .bind(item.added_at())
+            .fetch_one(&mut **self.transaction)
+            .await?
+        } else {
+            sqlx::query_as::<_, SqlxGalleryItem>(
+                "INSERT INTO gallery_item (
+                    gallery_item_id, gallery_id, image_id, video_id, item_index, added_at
+                )
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+                ON CONFLICT (gallery_item_id) DO UPDATE SET
+                    gallery_id = excluded.gallery_id,
+                    image_id = excluded.image_id,
+                    video_id = excluded.video_id,
+                    item_index = excluded.item_index,
+                    added_at = excluded.added_at
+                RETURNING
+                    gallery_item_id,
+                    gallery_id,
+                    image_id,
+                    video_id,
+                    item_index,
+                    added_at",
+            )
+            .bind(item.gallery_item_id())
+            .bind(item.gallery_id())
+            .bind(image_id)
+            .bind(video_id)
+            .bind(item.item_index())
+            .bind(item.added_at())
+            .fetch_one(&mut **self.transaction)
+            .await?
+        };
+
+        domain_item(
+            row.gallery_item_id,
+            row.gallery_id,
+            row.image_id,
+            row.video_id,
+            row.item_index,
+            row.added_at,
+        )
     }
 
     async fn search(&mut self, filter: &GalleryFilter) -> Result<Vec<Gallery>, RepositoryError> {
@@ -330,19 +356,10 @@ fn domain_item(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use sqlx::sqlite::SqlitePoolOptions;
+    use crate::infrastructure::outbound::sqlx::test_helpers::begin_transaction;
     use std::error::Error;
 
     /// Open a migrated in-memory database and begin one transaction.
-    async fn begin_transaction() -> Result<Transaction<'static, Sqlite>, sqlx::Error> {
-        let pool = SqlitePoolOptions::new()
-            .max_connections(1)
-            .connect("sqlite::memory:")
-            .await?;
-        sqlx::migrate!("./migrations").run(&pool).await?;
-        pool.begin().await
-    }
-
     /// Seed a credential and a standard user so foreign keys resolve.
     async fn seed_user(
         transaction: &mut Transaction<'static, Sqlite>,
@@ -630,8 +647,18 @@ mod tests {
             .await?;
 
         // Act
-        let deleted = repository.delete(created.gallery_id()).await?;
-        let missing = repository.delete(created.gallery_id()).await?;
+        let deleted = repository
+            .delete(&GalleryFilter {
+                gallery_id: Some(created.gallery_id()),
+                ..GalleryFilter::default()
+            })
+            .await?;
+        let missing = repository
+            .delete(&GalleryFilter {
+                gallery_id: Some(created.gallery_id()),
+                ..GalleryFilter::default()
+            })
+            .await?;
 
         // Assert
         assert!(deleted, "an existing gallery must be deleted");
@@ -649,7 +676,12 @@ mod tests {
         let mut repository = SqlxGalleryRepository::new(&mut transaction);
 
         // Act
-        let result = repository.delete(0).await;
+        let result = repository
+            .delete(&GalleryFilter {
+                gallery_id: Some(0),
+                ..GalleryFilter::default()
+            })
+            .await;
 
         // Assert
         assert!(matches!(result, Err(RepositoryError::Conflict)));
@@ -668,7 +700,7 @@ mod tests {
             .create(gallery(0, Some(1), "Holidays", false))
             .await?;
         repository
-            .add_item(item(
+            .save_item(item(
                 0,
                 created.gallery_id(),
                 GalleryItemMedia::Image(1),
@@ -677,7 +709,12 @@ mod tests {
             .await?;
 
         // Act
-        let deleted = repository.delete(created.gallery_id()).await?;
+        let deleted = repository
+            .delete(&GalleryFilter {
+                gallery_id: Some(created.gallery_id()),
+                ..GalleryFilter::default()
+            })
+            .await?;
         let items = repository
             .search_items(&GalleryItemFilter {
                 gallery_id: Some(created.gallery_id()),
@@ -866,7 +903,7 @@ mod tests {
 
         // Act
         let persisted = repository
-            .add_item(item(
+            .save_item(item(
                 0,
                 created.gallery_id(),
                 GalleryItemMedia::Image(5),
@@ -908,7 +945,7 @@ mod tests {
             .create(gallery(0, Some(1), "Holidays", false))
             .await?;
         repository
-            .add_item(item(
+            .save_item(item(
                 0,
                 created.gallery_id(),
                 GalleryItemMedia::Image(5),
@@ -918,7 +955,7 @@ mod tests {
 
         // Act
         let result = repository
-            .add_item(item(
+            .save_item(item(
                 0,
                 created.gallery_id(),
                 GalleryItemMedia::Image(6),
@@ -946,12 +983,12 @@ mod tests {
             .create(gallery(0, Some(1), "Second", false))
             .await?;
         repository
-            .add_item(item(0, first.gallery_id(), GalleryItemMedia::Image(5), 0)?)
+            .save_item(item(0, first.gallery_id(), GalleryItemMedia::Image(5), 0)?)
             .await?;
 
         // Act
         let result = repository
-            .add_item(item(0, second.gallery_id(), GalleryItemMedia::Image(5), 0)?)
+            .save_item(item(0, second.gallery_id(), GalleryItemMedia::Image(5), 0)?)
             .await;
 
         // Assert: the partial unique index keeps a medium in one gallery only
@@ -972,7 +1009,7 @@ mod tests {
 
         // Act
         let result = repository
-            .add_item(item(0, 999, GalleryItemMedia::Image(5), 0)?)
+            .save_item(item(0, 999, GalleryItemMedia::Image(5), 0)?)
             .await;
 
         // Assert
@@ -996,7 +1033,7 @@ mod tests {
 
         // Act
         let result = repository
-            .add_item(item(
+            .save_item(item(
                 0,
                 created.gallery_id(),
                 GalleryItemMedia::Image(999),
@@ -1026,7 +1063,7 @@ mod tests {
             .create(gallery(0, Some(1), "Holidays", false))
             .await?;
         repository
-            .add_item(item(
+            .save_item(item(
                 0,
                 created.gallery_id(),
                 GalleryItemMedia::Image(5),
@@ -1034,7 +1071,7 @@ mod tests {
             )?)
             .await?;
         repository
-            .add_item(item(
+            .save_item(item(
                 0,
                 created.gallery_id(),
                 GalleryItemMedia::Video(6),
@@ -1078,10 +1115,10 @@ mod tests {
             .create(gallery(0, Some(1), "Second", false))
             .await?;
         let stored = repository
-            .add_item(item(0, first.gallery_id(), GalleryItemMedia::Image(5), 0)?)
+            .save_item(item(0, first.gallery_id(), GalleryItemMedia::Image(5), 0)?)
             .await?;
         let reassignment = repository
-            .add_item(item(0, second.gallery_id(), GalleryItemMedia::Image(5), 0)?)
+            .save_item(item(0, second.gallery_id(), GalleryItemMedia::Image(5), 0)?)
             .await;
 
         // Act
@@ -1155,7 +1192,7 @@ mod tests {
             .create(gallery(0, Some(1), "Holidays", false))
             .await?;
         let stored = repository
-            .add_item(item(
+            .save_item(item(
                 0,
                 created.gallery_id(),
                 GalleryItemMedia::Image(5),
@@ -1164,42 +1201,22 @@ mod tests {
             .await?;
 
         // Act
-        let deleted = repository.delete_item(stored.gallery_item_id()).await?;
-        let missing = repository.delete_item(stored.gallery_item_id()).await?;
+        let deleted = repository
+            .delete_item(&GalleryItemFilter {
+                gallery_item_id: Some(stored.gallery_item_id()),
+                ..GalleryItemFilter::default()
+            })
+            .await?;
+        let missing = repository
+            .delete_item(&GalleryItemFilter {
+                gallery_item_id: Some(stored.gallery_item_id()),
+                ..GalleryItemFilter::default()
+            })
+            .await?;
 
         // Assert
         assert!(deleted, "an existing item must be deleted");
         assert!(!missing, "a missing item must report false, not an error");
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn next_item_index_grows_with_the_highest_index() -> Result<(), Box<dyn Error>> {
-        // Arrange
-        let mut transaction = begin_transaction().await?;
-        seed_user(&mut transaction, 1).await?;
-        seed_file(&mut transaction, 10, 1, "a.png", "image/png").await?;
-        seed_image(&mut transaction, 5, 10, "a.png").await?;
-        let mut repository = SqlxGalleryRepository::new(&mut transaction);
-        let created = repository
-            .create(gallery(0, Some(1), "Holidays", false))
-            .await?;
-        let empty = repository.next_item_index(created.gallery_id()).await?;
-        repository
-            .add_item(item(
-                0,
-                created.gallery_id(),
-                GalleryItemMedia::Image(5),
-                4,
-            )?)
-            .await?;
-
-        // Act
-        let after = repository.next_item_index(created.gallery_id()).await?;
-
-        // Assert
-        assert_eq!(empty, 0, "an empty gallery's next index must be zero");
-        assert_eq!(after, 5, "the next index must follow the highest one");
         Ok(())
     }
 
@@ -1304,15 +1321,18 @@ mod tests {
         };
         let mut repository = SqlxGalleryRepository::new(&mut transaction);
         let _first_item = repository
-            .add_item(item(0, first.gallery_id(), GalleryItemMedia::Image(5), 0)?)
+            .save_item(item(0, first.gallery_id(), GalleryItemMedia::Image(5), 0)?)
             .await?;
         let _second_item = repository
-            .add_item(item(0, second.gallery_id(), GalleryItemMedia::Image(6), 0)?)
+            .save_item(item(0, second.gallery_id(), GalleryItemMedia::Image(6), 0)?)
             .await?;
 
         // Act
         repository
-            .delete_items_by_media(GalleryItemMedia::Image(5))
+            .delete_item(&GalleryItemFilter {
+                media: Some(GalleryItemMedia::Image(5)),
+                ..GalleryItemFilter::default()
+            })
             .await?;
         let items = repository
             .search_items(&GalleryItemFilter::default())

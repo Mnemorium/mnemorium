@@ -4,21 +4,17 @@ use std::sync::Arc;
 
 use tracing::warn;
 
-use crate::application::port::update_series_episode::{
+use crate::application::port::{
     UpdateSeriesEpisodeCommand, UpdateSeriesEpisodeError, UpdateSeriesEpisodeResponse,
     UpdateSeriesEpisodeUseCase,
 };
-use crate::domain::model::episode::Episode;
-use crate::domain::model::permission::Action;
-use crate::domain::port::identity_unit_of_work::IdentityUnitOfWork;
-use crate::domain::port::library_unit_of_work::LibraryUnitOfWork;
-use crate::domain::port::permission_repository::{PermissionFilter, PermissionRepository as _};
-use crate::domain::port::series_repository::{SeriesFilter, SeriesRepository as _};
-use crate::domain::port::unit_of_work::{UnitOfWork as _, UnitOfWorkFactory};
-use crate::domain::port::user_repository::{UserFilter, UserRepository as _};
-use crate::domain::port::user_unit_of_work::UserUnitOfWork;
-use crate::domain::service::authorization::{Authorization, Decision};
-use crate::domain::service::name_policy::{NamePolicy, NamePolicyError};
+use crate::domain::model::{Action, Episode};
+use crate::domain::port::{
+    IdentityUnitOfWork, LibraryUnitOfWork, PermissionFilter, PermissionRepository as _,
+    SeriesFilter, SeriesRepository as _, UnitOfWork as _, UnitOfWorkFactory, UserFilter,
+    UserRepository as _, UserUnitOfWork,
+};
+use crate::domain::service::{Authorization, Decision, NamePolicy, NamePolicyError};
 
 /// Use case implementation for updating a season episode partially.
 pub(crate) struct UpdateSeriesEpisode<F> {
@@ -179,7 +175,7 @@ where
 
                 let stored = unit_of_work
                     .series()
-                    .update_episode(series.id(), command.season_index(), updated)
+                    .save_episode(series.id(), command.season_index(), updated)
                     .await
                     .map_err(|error| UpdateSeriesEpisodeError::Unknown(error.into()))?
                     .ok_or(UpdateSeriesEpisodeError::NoSuchEpisode)?;
@@ -209,16 +205,16 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::application::field_update::FieldUpdate;
-    use crate::domain::alias::NumericID;
-    use crate::domain::model::episode::EpisodeIndex;
-    use crate::domain::model::permission::{Permission, Scope};
-    use crate::domain::model::series::Series;
-    use crate::domain::model::user::{Role, User};
-    use crate::domain::port::error::RepositoryError;
-    use crate::domain::port::permission_repository::MockPermissionRepository;
-    use crate::domain::port::series_repository::MockSeriesRepository;
-    use crate::domain::port::user_repository::MockUserRepository;
+    use crate::application::FieldUpdate;
+
+    use crate::domain::NumericID;
+
+    use crate::domain::model::{EpisodeIndex, Permission, Role, Scope, Series, User};
+
+    use crate::domain::port::{
+        MockPermissionRepository, MockSeriesRepository, MockUserRepository, RepositoryError,
+    };
+
     use crate::test_helpers::*;
     use chrono::NaiveDate;
     use std::error::Error;
@@ -298,7 +294,7 @@ mod tests {
             sample_video(20, 20)?,
         )?;
         series
-            .expect_update_episode()
+            .expect_save_episode()
             .times(1)
             .withf(|series_id, season_index, episode| {
                 *series_id == 7
@@ -345,7 +341,7 @@ mod tests {
             series_with_episodes(vec![sample_episode(1, 20)?])?,
         );
         series
-            .expect_update_episode()
+            .expect_save_episode()
             .times(1)
             .withf(|_, _, episode| {
                 episode.name() == "Episode 1"
@@ -379,7 +375,7 @@ mod tests {
             series_with_episodes(vec![sample_episode(1, 20)?])?,
         );
         series
-            .expect_update_episode()
+            .expect_save_episode()
             .times(1)
             .withf(|_, _, episode| episode.air_date().is_none())
             .returning(|_, _, episode| Box::pin(async move { Ok(Some(episode)) }));
@@ -569,7 +565,7 @@ mod tests {
             series_with_episodes(vec![sample_episode(1, 20)?])?,
         );
         series
-            .expect_update_episode()
+            .expect_save_episode()
             .times(1)
             .returning(|_, _, _| Box::pin(async { Ok(None) }));
         let harness = harness_with(users, no_permissions(), series);

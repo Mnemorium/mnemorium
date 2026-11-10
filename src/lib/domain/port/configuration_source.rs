@@ -1,7 +1,7 @@
 use std::future::Future;
 
-use crate::domain::model::partial_configuration::PartialConfiguration;
-use crate::domain::port::error::ConfigurationSourceError;
+use crate::domain::model::PartialConfiguration;
+use crate::domain::port::ConfigurationSourceError;
 
 /// Response of a successful file-layer load.
 #[derive(Debug, Clone, PartialEq, Eq)]

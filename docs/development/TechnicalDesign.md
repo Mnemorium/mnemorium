@@ -133,7 +133,7 @@ material. The `#[utoipa::path(...)]` declaration contract lives in the [API sect
 | `STY-RUST-042` | Unit of Work      | Declare the `UnitOfWork` trait first in `domain/port/unit_of_work.rs`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | [§ 7.4](#74-declaration-order-in-the-unit-of-work-port-file)     |
 | `STY-RUST-043` | Unit of Work      | Declare the `UnitOfWorkFactory` trait second in `domain/port/unit_of_work.rs`.                                                                                                                                                                                                                                                                                                                                                                                                                                                         | [§ 7.4](#74-declaration-order-in-the-unit-of-work-port-file)     |
 | `STY-RUST-044` | Repository        | `create` inserts a new aggregate and never binds identity columns: the datastore auto-increments them and `create` returns the aggregate with its final identifier.                                                                                                                                                                                                                                                                                                                                                                    | [§ 8.1](#81-repository-port)                                     |
-| `STY-RUST-045` | Repository        | `save` upserts an existing aggregate targeted by its identifier.                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | [§ 8.1](#81-repository-port)                                     |
+| `STY-RUST-045` | Repository        | `save` upserts an existing aggregate targeted by its identifier, and writes the child collections the aggregate carries.                                                                                                                                                                                                                                                                                                                                                                                                               | [§ 8.1](#81-repository-port)                                     |
 | `STY-RUST-046` | Repository        | `delete` returns `Ok(false)` when no row matched; a missing entity is not an error.                                                                                                                                                                                                                                                                                                                                                                                                                                                    | [§ 8.1](#81-repository-port)                                     |
 | `STY-RUST-047` | Repository        | `search` returns an empty collection when nothing matches.                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | [§ 8.1](#81-repository-port)                                     |
 | `STY-RUST-048` | Repository        | Missing entities are never errors (see [Port error](#26-port-errors)).                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | [§ 8.1](#81-repository-port)                                     |
@@ -167,7 +167,7 @@ material. The `#[utoipa::path(...)]` declaration contract lives in the [API sect
 | `STY-RUST-077` | Domain models     | **Validated deserialization**: a domain model that validates in `try_new` must not derive a `Deserialize` that bypasses it. Route serde through the validating constructor (`#[serde(try_from = "…")]` plus `TryFrom`, or a custom `Deserialize`) so every construction path enforces the same invariant.                                                                                                                                                                                                                              | [§ 3.2](#32-validated-deserialization)                           |
 | `STY-RUST-078` | Configuration     | A configuration value that is **present but malformed or out of range** fails startup: a reader falls back to a default only when the key is absent, and propagates every other read or validation error.                                                                                                                                                                                                                                                                                                                              | [§ 10](#10-configuration)                                        |
 | `STY-RUST-079` | Repository        | A repository persists and queries exactly one aggregate; a port that spans two aggregates is split per aggregate.                                                                                                                                                                                                                                                                                                                                                                                                                      | [§ 8](#8-repository)                                             |
-| `STY-RUST-080` | Repository        | A filter field is named after the aggregate field it constrains, e.g. `UserFilter.id` for `User::id()`.                                                                                                                                                                                                                                                                                                                                                                                                                                |                                                                  |
+| `STY-RUST-080` | Repository        | A filter field is named after the aggregate field it constrains, e.g. `UserFilter.id` for `User::id()`. A join constraint on a child collection is the documented exception (`MusicAlbumFilter.audio_id`).                                                                                                                                                                                                                                                                                                                             |                                                                  |
 | `STY-RUST-081` | Repository        | The classic `search` returns the aggregate, never a summary or a detail the port declares; the application assembles the representation.                                                                                                                                                                                                                                                                                                                                                                                               |                                                                  |
 | `STY-RUST-082` | REST handlers     | Shared representations, links and helpers live in the bounded context module file (`<context>.rs`); a context folder holds only endpoint files, and an endpoint file imports no `<context>::<operation>` submodule — it takes shared items from the `<context>.rs` module file and `hal`.                                                                                                                                                                                                                                              |                                                                  |
 | `STY-RUST-083` | REST handlers     | `rest/` holds only the known REST infrastructure (`api_error.rs`, `app_state.rs`, `hal.rs`, `handler.rs`, `handler`, `middleware.rs`, `middleware`); `handler/` holds only `get_health.rs` plus each bounded context's `<context>.rs` module file and `<context>/` endpoint folder.                                                                                                                                                                                                                                                    |                                                                  |
@@ -177,6 +177,7 @@ material. The `#[utoipa::path(...)]` declaration contract lives in the [API sect
 | `STY-RUST-087` | General           | Do not gate code on the host platform: the server targets Linux only, so a `#[cfg(unix)]`, `#[cfg(windows)]`, `#[cfg(target_os = …)]`, `#[cfg(target_family = …)]` or `cfg!(…)` gate is a constant. Write the code unconditionally.                                                                                                                                                                                                                                                                                                    |                                                                  |
 | `STY-RUST-088` | Visibility        | A declaration is as narrow as its use: private by default, `pub(crate)` when another module names it, and `pub` only at the crate entry point — `pub mod app;` in `src/lib/lib.rs` and `pub async fn run` in `src/lib/app.rs`; `pub(super)` and `pub(in …)` never. Struct fields are out of scope.                                                                                                                                                                                                                                     | [§ 11](#11-visibility)                                           |
 | `STY-RUST-089` | General           | Imports from one module are one declaration: two adjacent `use` declarations in the same scope never share a parent module — merge them into one brace group (`use a::b::{C, D};`), keeping `as _` trait imports inside the group.                                                                                                                                                                                                                                                                                                     |                                                                  |
+| `STY-RUST-090` | Ports             | A module with child modules is the import surface for them: a leaf child module is declared `mod <name>;`, only a child that is itself a module root is `pub(crate) mod <name>;`, and callers import `crate::…::<root>::<Item>`.                                                                                                                                                                                                                                                                                                       | [§ 6.7](#67-module-facades)                                      |
 
 ---
 
@@ -722,6 +723,50 @@ documentation change:
 
 ---
 
+##### 6.7 Module facades
+
+A **module root** is a file `x.rs` with a sibling directory `x/`; the files under `x/` are its **child modules**. A root
+with child modules is the import surface for them: callers import `crate::…::<root>::<Item>`, never
+`crate::…::<root>::<child>::<Item>`.
+
+A root declares its children first, each with its `///` doc, then re-exports what its callers use. Drawn from
+`src/lib/domain/port.rs`:
+
+```rust
+/// The audio repository port.
+mod audio_repository;
+/// The configuration source port.
+mod configuration_source;
+// [...]
+
+pub(crate) use self::audio_repository::{AudioFilter, AudioRepository};
+#[cfg(test)]
+pub(crate) use self::audio_repository::MockAudioRepository;
+pub(crate) use self::configuration_source::{ConfigurationSource, EnvironmentConfiguration};
+```
+
+- A **leaf child** — one with no directory of its own — is `mod <name>;`. A child that is itself a module root stays
+  `pub(crate) mod <name>;`, and callers reach its items through its own facade
+  (`crate::…::<root>::<nested_root>::<Item>`).
+- Entries are **demand-driven**: a re-export exists exactly when another module imports the item. Adding a port, model
+  or use case adds its entry in the same change; removing the last consumer removes the entry. The compiler keeps it
+  honest — a missing entry is an unresolved import, and a surplus one is `unused_imports` under `-D warnings`.
+- `pub(crate)` is the only legal width. The re-exported item is `pub(crate)` at most, so `pub use` would be `E0364`, and
+  `pub(super)` / `pub(in …)` are banned by [§ 11](#11-visibility).
+- A `Mock*` type generated by `#[cfg_attr(test, mockall::automock)]` exists only in the test build, so its entry carries
+  `#[cfg(test)]`. An item only test code imports carries the same gate, and the entries sharing a child module form one
+  brace group (`STY-RUST-089`).
+- A module callers reach as a **namespace** — the module itself rather than the items it re-exports — is itself a root.
+  Promotion is a file move, never a widening: the module stays `pub(crate) mod <name>;`, its implementation moves under
+  it, and its items are re-exported so the callers' `<name>::…` paths keep resolving.
+
+The compiler enforces the import path: with a leaf private, any `crate::…::<root>::<child>::<Item>` outside its root is
+`E0603`. `STY-RUST-090` enforces the visibility the compiler cannot check — a `pub(crate) mod` whose name has no
+directory is a leaf and must be private (`check_sty_rust_090`). No import-path rule duplicates the compiler: it would
+need a generated alternation of every root, and `E0603` already covers the whole tree.
+
+---
+
 #### 7. Unit of Work
 
 The transaction boundary lives in the application service, not the presentation layer. A use case opens a unit of work,
@@ -859,22 +904,28 @@ pub trait UserRepository: Send + Sync {
 }
 ```
 
-| Name                                   | Action                                      |
-| -------------------------------------- | ------------------------------------------- |
-| `create(domain: DomainSpecificObject)` | Insert (identity assigned by the datastore) |
-| `save(domain: DomainSpecificObject)`   | Insert/Update (upsert by identity)          |
-| `delete(id: DomainSpecificId)`         | Delete                                      |
-| `search(filter: &SomeFilter)`          | Query                                       |
+| Name                                   | Action                                               |
+| -------------------------------------- | ---------------------------------------------------- |
+| `create(domain: DomainSpecificObject)` | Insert (identity assigned by the datastore)          |
+| `save(domain: DomainSpecificObject)`   | Insert/Update (upsert by identity), writing children |
+| `delete(filter: &SomeFilter)`          | Delete every aggregate matching the filter           |
+| `search(filter: &SomeFilter)`          | Query the aggregates matching the filter             |
 
-`save` is the default mutation when an aggregate is stored as one row. An aggregate may instead expose narrowly-scoped
-explicit mutators when a whole-row upsert would be wrong — for example `UploadRepository` records each received chunk as
-a child row (`record_chunk`) and transitions the upload to finished under a guard (`finish`), so no method rewrites a
-stale copy of the whole aggregate.
+`save` is the default mutation when an aggregate is stored as one row, and it persists the child collections the
+aggregate carries (a playlist's tracks, an album's mediums and placements, a show's seasons and episodes). An aggregate
+may instead expose narrowly-scoped child mutators named `<verb>_<child>` — for example `SeriesRepository::save_episode`,
+`MusicAlbumRepository::save_medium` and `MusicPlaylistRepository::delete_track` — when a whole-row write would be wrong.
+
+`delete` takes a filter rather than an identity: an all-`None` filter deletes every aggregate the repository owns, and a
+filter naming one or more fields deletes the matches. It returns `Ok(false)` when nothing matched (`STY-RUST-046`).
+There is no per-identity `get`, `find` or `exists`: `search` with the identity in the filter is the read, and an empty
+result is the not-found answer.
 
 The classic `search` is the aggregate query: it returns the aggregate (`STY-RUST-081`). The port declares no read model
 for it — a summary or a detail the representation needs is assembled by the application from the aggregate, never
 returned by the port and never stitched from per-aggregate lookups. A query that reads an aggregate's child collection
-is named for the child (`GalleryRepository::search_items`), which is what distinguishes it from the classic query.
+is named for the child (`GalleryRepository::search_items`, `SeriesRepository::search_episodes`,
+`MusicAlbumRepository::search_recordings`), which is what distinguishes it from the classic query.
 
 ---
 
@@ -1073,6 +1124,12 @@ A declaration is as narrow as its use, and the compiler is the arbiter of every 
 `pub(super)` and `pub(in …)` are never used. They encode the shape of the module tree in the declaration, so moving a
 module silently changes who may see the item; `pub(crate)` states the fact the declaration actually rests on.
 
+**Re-exports.** A `pub(crate) use` in a module facade is a re-export, not a widening: the item keeps the visibility it
+declares, and the facade becomes the other module the ladder counts. The facade is therefore the one file allowed to
+name its children's items ([§ 6.7](#67-module-facades)), and its own entries are `pub(crate)` exactly for that reason. A
+child module with no child modules of its own is private — the ladder's narrowest step — so nothing outside its root can
+name it (`STY-RUST-090`).
+
 **The signature lower bound.** A declaration is at least as wide as the widest signature that names it: a type named by
 a `pub(crate)` signature cannot be private, and a name the crate entry point exposes cannot be narrower than the entry
 point. rustc enforces the bound through its private-interface diagnostics, so the ladder narrows a declaration only as
@@ -1111,16 +1168,21 @@ A `#[cfg_attr(test, mockall::automock)]` attribute generates a `pub` `Mock*` typ
 crate-private surface turns them on, and each finding is settled here rather than by widening a declaration back:
 
 - `clippy::single_call_fn` is not enabled. `STY-RUST-003` gives every endpoint its own file, so the router names it
-  exactly once, and `STY-RUST-018`–`STY-RUST-020` and `OBS-006` mandate the constructors; the lint cannot separate those
-  shapes from an accidental one. `check_sty_rust_001` keeps the guard instead: it counts the production functions called
-  exactly once and fails when the count exceeds the `max_single_call_functions` budget in `rule_enforcer.yaml`, so
-  adding one is a reviewed change to that budget rather than an accident.
+  exactly once, and `STY-RUST-018`–`STY-RUST-020` mandate the constructors; the lint cannot separate those shapes from
+  an accidental one. `check_sty_rust_001` keeps the guard instead: it counts the production functions called exactly
+  once and fails when the count exceeds the `max_single_call_functions` budget in `rule_enforcer.yaml`, so adding one is
+  a reviewed change to that budget rather than an accident. A call is the name followed by `(` outside the declaration's
+  own line, so a generic declaration (`name<…>(`) is never read as one of its callers.
 - `clippy::missing_docs_in_private_items` is satisfied, not allowed: every module declaration carries a `///` doc and
   every private field and variant carries one.
-- `dead_code` reports the contract the crate declares but no caller exercises yet — the internal video-identification
-  path, which has no REST caller, and the error variants, repository methods and setters another rule mandates. Each
-  cluster carries an `#![allow(dead_code, reason = "…")]` or an `#[expect(dead_code, reason = "…")]` naming why the item
-  stays. The attribute is a record, not an exemption from this rule: the declaration still follows the ladder.
+- `dead_code` reports the contract the crate declares but no caller exercises yet — the port error variants and the
+  getters another rule mandates. There is no module-level allow: a `#![allow(dead_code, …)]` or
+  `#![expect(dead_code, …)]` would absolve dead code added to the module later, and the `allow` form never expires. The
+  exemption is item-scoped and self-expiring instead: a dead item that must stay carries
+  `#[expect(dead_code, reason = "…")]`, and an item only test code exercises carries
+  `#[cfg_attr(not(test), expect(dead_code, reason = "…"))]` (drawn from `src/lib/domain/model/artwork.rs` and
+  `src/lib/infrastructure/outbound/envy/state_seeds.rs`). An item with no contract behind it is deleted, not annotated.
+  The attribute is a record, not an exemption from this rule: the declaration still follows the ladder.
 
 **Before and after.** The `after` lines of both examples are the source today, drawn from
 `src/lib/domain/model/movie.rs` and `src/lib/infrastructure/inbound/rest/handler/library/get_movie.rs`:
@@ -2059,7 +2121,7 @@ the root exists is `500 Internal Server Error`, which the next scan reconciles.
 
 Mnemorium uses a single datastore: **SQLite3**, accessed through `sqlx`. The schema is versioned by migrations in
 `migrations/` (one `.up.sql`/`.down.sql` pair per change) and applied at startup by `sqlx::migrate!` in
-`src/lib/infrastructure/outbound/sqlx/sqlite3.rs`.
+`src/lib/infrastructure/outbound/sqlx.rs`.
 
 Migrations run at boot inside `init_db`; besides the table schema they seed reference data and install triggers that
 enforce invariants.
@@ -2068,7 +2130,7 @@ enforce invariants.
 | ---------- | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------- |
 | `PERS-001` | Datastore & migrations      | Use a single datastore: **SQLite3**, accessed through `sqlx`.                                                                                                                                                                                                                                                       |                                           |
 | `PERS-002` | Datastore & migrations      | Version the schema with migrations in `migrations/`, one `.up.sql`/`.down.sql` pair per change.                                                                                                                                                                                                                     |                                           |
-| `PERS-003` | Datastore & migrations      | Apply the migrations at startup with `sqlx::migrate!` in `src/lib/infrastructure/outbound/sqlx/sqlite3.rs`.                                                                                                                                                                                                         |                                           |
+| `PERS-003` | Datastore & migrations      | Apply the migrations at startup with `sqlx::migrate!` in `src/lib/infrastructure/outbound/sqlx.rs`.                                                                                                                                                                                                                 |                                           |
 | `PERS-004` | Datastore & migrations      | Run the migrations at boot inside `init_db`.                                                                                                                                                                                                                                                                        |                                           |
 | `PERS-005` | Seeds                       | Seed the reference data (`color`, `gallery`, `language`, `mime_type`) and the music bucket (`genre('UNKNOWN')`, `music_group` 0, `music_album` 0 and its `DIGITAL` medium) from the migrations.                                                                                                                     |                                           |
 | `PERS-006` | Invariants                  | A `user` row with `user_id = 0` (the Root Admin) cannot be deleted or modified.                                                                                                                                                                                                                                     |                                           |
@@ -2622,7 +2684,7 @@ the flows the E2E suite covers come from the critical exception paths in [UseCas
 | `TEST-041` | E2E                | Generic tests (those whose subject is not password behavior) use the shared `SECRET_PASSWORD` from `test/e2e/conftest.py` for any user they provision or register.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | [§ E2E test](#e2e-test)                         |
 | `TEST-042` | E2E                | Tests whose subject is password behavior (password policy validation, change-password flows, wrong-password login) pick their own explicit passwords and must not use the shared secret.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | [§ E2E test](#e2e-test)                         |
 | `TEST-043` | E2E                | The Root Admin's password is random per container and obtained through the `default_password` fixture; the shared secret never applies to it.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | [§ E2E test](#e2e-test)                         |
-| `TEST-044` | Test helpers       | Shared Rust test helpers live **only** in the single `#[cfg(test)] mod test_helpers` in `src/lib/lib.rs`; never create a separate helper file or module (for example `test_helper.rs`).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | [§ Test helpers](#test-helpers)                 |
+| `TEST-044` | Test helpers       | A helper a test module shares lives in an inline, `#[cfg(test)]`-gated `mod test_helpers`, declared once per root file: crate-wide helpers in `src/lib/lib.rs`, helpers shared only by the descendants of one module in that module's own root (for example `src/lib/infrastructure/outbound/sqlx.rs`); never a separate helper file or module.                                                                                                                                                                                                                                                                                                                                                               | [§ Test helpers](#test-helpers)                 |
 | `TEST-045` | Test helpers       | Adding a new shared test helper, or changing the existing helper surface, requires the developer's explicit approval (their thumbs-up on the change).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | [§ Test helpers](#test-helpers)                 |
 | `TEST-046` | Factory            | Production factory structs need no dedicated test; they only wire use cases, adapters and transactions, so test the assembled parts, not the wiring.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | [§ Factory](#factory-strategy)                  |
 | `TEST-048` | Shell script       | Shell scripts in the `script/` folder are tooling and CI glue and are exempt from the unit, integration and E2E test requirements; they are validated by their own gates — `shellcheck` and `shfmt` plus their pre-commit and CI execution — not by a test module.                                                                                                                                                                                                                                                                                                                                                                                                                                            | [§ Shell script](#shell-script)                 |
@@ -2808,14 +2870,19 @@ malformed header name, an invalid date, username or country code, and a partial 
 
 ### Test helpers
 
-Shared Rust test helpers live only in the single `#[cfg(test)] mod test_helpers` in `src/lib/lib.rs`. The module is the
-sanctioned exception to [TEST-001](#unit-test) (a test module lives with the code under test) and to `STY-RUST-001`
-(shared test fixtures are exempt from the extract-function rule).
+Shared Rust test helpers live in an inline, `#[cfg(test)]`-gated `mod test_helpers`, declared once per root file, at one
+of two scopes. The crate-wide module lives in `src/lib/lib.rs` and is the sanctioned exception to [TEST-001](#unit-test)
+(a test module lives with the code under test) and to `STY-RUST-001` (shared test fixtures are exempt from the
+extract-function rule). A module-scoped helper module lives in the root file of the module whose descendants share the
+helper — for example `src/lib/infrastructure/outbound/sqlx.rs` for the SQLite adapters — and every user must sit inside
+that module's subtree; a helper that escapes it moves to `src/lib/lib.rs`. The module-scoped roots are listed in
+`rule_enforcer.yaml` under `TEST-044.module_scoped_helper_roots`, so the set cannot grow or rot silently. Both scopes
+declare the module inline (never `mod test_helpers;`) and gate it with `#[cfg(test)]`.
 
-It holds the fixtures the in-crate tests share: the secrets `SECRET_PASSWORD` and `TEST_JWT_SECRET`; the unit-of-work
-double `TestUnitOfWork`/`TestUow` and its factory double `TestUnitOfWorkFactory`/`TestFactory`, wrapped by
-`AssetFactoryHarness::new` and `GalleryFactoryHarness::new`; `TEST_PEPPER` and `instance_state`; the app-state builder
-`app_state`; the album release date `album_release_date`; the video date `video_date`; and the response helpers
+The crate-wide module holds the fixtures the in-crate tests share: the secrets `SECRET_PASSWORD` and `TEST_JWT_SECRET`;
+the unit-of-work double `TestUnitOfWork`/`TestUow` and its factory double `TestUnitOfWorkFactory`/`TestFactory`, wrapped
+by `AssetFactoryHarness::new` and `GalleryFactoryHarness::new`; `TEST_PEPPER` and `instance_state`; the app-state
+builder `app_state`; the album release date `album_release_date`; the video date `video_date`; and the response helpers
 `error_message_of` and `into_status_and_body`.
 
 `TestUnitOfWork` implements `Default`, and a test names only the repositories it stubs —
@@ -2824,8 +2891,11 @@ module, the context's `UnitOfWork` implementation, and the tests of the use case
 of the other use cases.
 
 Helpers are never scattered into per-module files — for example a `test_helper.rs` beside the code under test, or a
-second helper module. A new shared helper is added to this single module, and only with the developer's explicit
-approval.
+second helper module in the same file. A new shared helper is added to one of these modules, and only with the
+developer's explicit approval.
+
+The module-scoped root of the SQLite adapters holds `begin_transaction`, the migrated in-memory transaction their
+repository tests run in ([TEST-033](#sqlite3), [TEST-034](#sqlite3)).
 
 ---
 

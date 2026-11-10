@@ -3,16 +3,13 @@ use axum::response::Response;
 use serde::Deserialize;
 use utoipa::ToSchema;
 
-use crate::application::port::apply_music_album::{AlbumPlacement, ApplyMusicAlbumCommand};
-use crate::domain::alias::NumericID;
-use crate::domain::model::configuration::ProviderId;
-use crate::domain::model::external_ref::ExternalRef;
-use crate::infrastructure::inbound::rest::api_error::{ApiError, ErrorBody};
-use crate::infrastructure::inbound::rest::app_state::AppState;
-use crate::infrastructure::inbound::rest::hal::hal_json;
+use crate::application::port::{AlbumPlacement, ApplyMusicAlbumCommand};
+use crate::domain::NumericID;
+use crate::domain::model::{ExternalRef, ProviderId};
 use crate::infrastructure::inbound::rest::handler::JsonObject;
 use crate::infrastructure::inbound::rest::handler::library::{AlbumResponse, parse_album_id};
-use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
+use crate::infrastructure::inbound::rest::middleware::AuthenticatedUser;
+use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody, hal_json};
 
 /// Reference to the provider work an apply resolves.
 #[derive(Debug, Deserialize, ToSchema)]

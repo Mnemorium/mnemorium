@@ -2,17 +2,11 @@ use axum::extract::{Path, State};
 use axum::response::Response;
 use tracing::warn;
 
-use crate::application::port::resolve_video_metadata::{
-    ResolveVideoMetadataCommand, ResolveVideoMetadataError,
-};
-use crate::domain::model::configuration::ProviderId;
-use crate::domain::model::external_ref::ExternalRef;
-use crate::domain::model::video_candidate::Target;
-use crate::infrastructure::inbound::rest::api_error::{ApiError, ErrorBody};
-use crate::infrastructure::inbound::rest::app_state::AppState;
-use crate::infrastructure::inbound::rest::hal::hal_json;
+use crate::application::port::{ResolveVideoMetadataCommand, ResolveVideoMetadataError};
+use crate::domain::model::{ExternalRef, ProviderId, Target};
 use crate::infrastructure::inbound::rest::handler::library::VideoMetadataDocumentResponse;
-use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
+use crate::infrastructure::inbound::rest::middleware::AuthenticatedUser;
+use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody, hal_json};
 
 /// Resolve one provider reference into a film metadata document.
 ///

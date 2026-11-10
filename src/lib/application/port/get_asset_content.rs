@@ -3,8 +3,8 @@ use std::pin::Pin;
 
 use chrono::NaiveDateTime;
 
-use crate::domain::alias::NumericID;
-use crate::domain::port::file_storage::FileReader;
+use crate::domain::NumericID;
+use crate::domain::port::FileReader;
 
 /// Command to read the content of one asset.
 #[derive(Debug, Clone, PartialEq, Eq)]

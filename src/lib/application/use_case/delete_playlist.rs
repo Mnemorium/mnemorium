@@ -4,20 +4,14 @@ use std::sync::Arc;
 
 use tracing::warn;
 
-use crate::application::port::delete_playlist::{
-    DeletePlaylistCommand, DeletePlaylistError, DeletePlaylistUseCase,
+use crate::application::port::{DeletePlaylistCommand, DeletePlaylistError, DeletePlaylistUseCase};
+use crate::domain::model::Action;
+use crate::domain::port::{
+    IdentityUnitOfWork, LibraryUnitOfWork, MusicPlaylistFilter, MusicPlaylistRepository as _,
+    PermissionFilter, PermissionRepository as _, UnitOfWork as _, UnitOfWorkFactory, UserFilter,
+    UserRepository as _, UserUnitOfWork,
 };
-use crate::domain::model::permission::Action;
-use crate::domain::port::identity_unit_of_work::IdentityUnitOfWork;
-use crate::domain::port::library_unit_of_work::LibraryUnitOfWork;
-use crate::domain::port::music_playlist_repository::{
-    MusicPlaylistFilter, MusicPlaylistRepository as _,
-};
-use crate::domain::port::permission_repository::{PermissionFilter, PermissionRepository as _};
-use crate::domain::port::unit_of_work::{UnitOfWork as _, UnitOfWorkFactory};
-use crate::domain::port::user_repository::{UserFilter, UserRepository as _};
-use crate::domain::port::user_unit_of_work::UserUnitOfWork;
-use crate::domain::service::authorization::{Authorization, Decision};
+use crate::domain::service::{Authorization, Decision};
 
 /// Use case implementation for deleting a playlist.
 pub(crate) struct DeletePlaylist<F> {
@@ -106,7 +100,10 @@ where
 
                 let deleted = unit_of_work
                     .music_playlists()
-                    .delete(command.playlist_id())
+                    .delete(&MusicPlaylistFilter {
+                        id: Some(command.playlist_id()),
+                        ..MusicPlaylistFilter::default()
+                    })
                     .await
                     .map_err(|error| DeletePlaylistError::Unknown(error.into()))?;
                 if !deleted {
@@ -134,11 +131,10 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::model::music_playlist::MusicPlaylist;
-    use crate::domain::model::user::{Role, User};
-    use crate::domain::port::error::RepositoryError;
-    use crate::domain::port::music_playlist_repository::MockMusicPlaylistRepository;
-    use crate::domain::port::user_repository::MockUserRepository;
+    use crate::domain::model::{MusicPlaylist, Role, User};
+
+    use crate::domain::port::{MockMusicPlaylistRepository, MockUserRepository, RepositoryError};
+
     use crate::test_helpers::*;
     use chrono::NaiveDateTime;
     use std::error::Error;
@@ -205,7 +201,7 @@ mod tests {
         playlists
             .expect_delete()
             .times(1)
-            .withf(|id| *id == 3)
+            .withf(|filter| filter.id == Some(3))
             .returning(|_| Box::pin(async { Ok(true) }));
         let harness = harness_with(users, playlists);
         let use_case: UseCase = DeletePlaylist::new(Arc::clone(&harness.factory));
@@ -230,7 +226,7 @@ mod tests {
         playlists
             .expect_delete()
             .times(1)
-            .withf(|id| *id == 3)
+            .withf(|filter| filter.id == Some(3))
             .returning(|_| Box::pin(async { Ok(true) }));
         let harness = harness_with(users, playlists);
         let use_case: UseCase = DeletePlaylist::new(Arc::clone(&harness.factory));

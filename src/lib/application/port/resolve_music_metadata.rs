@@ -1,9 +1,8 @@
 use std::future::Future;
 use std::pin::Pin;
 
-use crate::domain::alias::NumericID;
-use crate::domain::model::music_candidate::MusicTarget;
-use crate::domain::model::music_metadata::MusicMetadata;
+use crate::domain::NumericID;
+use crate::domain::model::{MusicMetadata, MusicTarget};
 
 /// Command for one music metadata resolution run.
 #[derive(Debug, Clone, PartialEq, Eq)]

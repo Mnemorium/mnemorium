@@ -4,19 +4,16 @@ use std::sync::Arc;
 
 use tracing::warn;
 
-use crate::application::port::put_album_track::{
+use crate::application::port::{
     PutAlbumTrackCommand, PutAlbumTrackError, PutAlbumTrackResponse, PutAlbumTrackUseCase,
 };
-use crate::domain::model::permission::Action;
-use crate::domain::port::error::RepositoryError;
-use crate::domain::port::identity_unit_of_work::IdentityUnitOfWork;
-use crate::domain::port::library_unit_of_work::LibraryUnitOfWork;
-use crate::domain::port::music_album_repository::{MusicAlbumFilter, MusicAlbumRepository as _};
-use crate::domain::port::permission_repository::{PermissionFilter, PermissionRepository as _};
-use crate::domain::port::unit_of_work::{UnitOfWork as _, UnitOfWorkFactory};
-use crate::domain::port::user_repository::{UserFilter, UserRepository as _};
-use crate::domain::port::user_unit_of_work::UserUnitOfWork;
-use crate::domain::service::authorization::{Authorization, Decision};
+use crate::domain::model::{Action, MusicMedium, MusicRecording, TrackIndex};
+use crate::domain::port::{
+    IdentityUnitOfWork, LibraryUnitOfWork, MusicAlbumFilter, MusicAlbumRepository as _,
+    MusicRecordingFilter, PermissionFilter, PermissionRepository as _, RepositoryError,
+    UnitOfWork as _, UnitOfWorkFactory, UserFilter, UserRepository as _, UserUnitOfWork,
+};
+use crate::domain::service::{Authorization, Decision};
 
 /// Use case implementation for placing a recording at a medium track address.
 pub(crate) struct PutAlbumTrack<F> {
@@ -135,21 +132,44 @@ where
                 if destination.is_some_and(|track| track.id() != command.recording_id()) {
                     return Err(PutAlbumTrackError::Conflict);
                 }
-                let created = destination.is_none()
-                    && !unit_of_work
-                        .music_albums()
-                        .has_medium_placement(command.recording_id())
-                        .await
-                        .map_err(|error| PutAlbumTrackError::Unknown(error.into()))?;
+                let recorded = unit_of_work
+                    .music_albums()
+                    .search_recordings(&MusicRecordingFilter {
+                        id: Some(command.recording_id()),
+                        ..MusicRecordingFilter::default()
+                    })
+                    .await
+                    .map_err(|error| PutAlbumTrackError::Unknown(error.into()))?
+                    .into_iter()
+                    .next()
+                    .ok_or(PutAlbumTrackError::NoSuchRecording)?;
+                let created = destination.is_none() && recorded.index().medium_index().is_none();
+
+                let mut tracks: Vec<MusicRecording> = medium
+                    .tracks()
+                    .iter()
+                    .filter(|track| {
+                        track.index().medium_index() != Some(command.track_index())
+                            && track.id() != command.recording_id()
+                    })
+                    .cloned()
+                    .collect();
+                tracks.push(
+                    MusicRecording::try_new(
+                        recorded.id(),
+                        recorded.name().map(str::to_owned),
+                        recorded.isrc_code().map(str::to_owned),
+                        recorded.audio_id(),
+                        recorded.file_id(),
+                        recorded.music_group_ids().map(<[_]>::to_vec),
+                        TrackIndex::MediumIndex(command.track_index()),
+                    )
+                    .map_err(|_| PutAlbumTrackError::NoSuchRecording)?,
+                );
 
                 unit_of_work
                     .music_albums()
-                    .place_track(
-                        album.id(),
-                        command.medium_index(),
-                        command.track_index(),
-                        command.recording_id(),
-                    )
+                    .save_medium(album.id(), MusicMedium::new(medium.index(), tracks))
                     .await
                     .map_err(|error| {
                         if matches!(
@@ -161,7 +181,7 @@ where
                             PutAlbumTrackError::Unknown(error.into())
                         }
                     })?
-                    .ok_or(PutAlbumTrackError::NoSuchRecording)?;
+                    .ok_or(PutAlbumTrackError::NoSuchMedium)?;
 
                 let stored = unit_of_work
                     .music_albums()
@@ -205,13 +225,14 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::alias::NumericID;
-    use crate::domain::model::music_album::MusicAlbum;
-    use crate::domain::model::music_medium::{MediumIndex, MusicMedium};
-    use crate::domain::model::music_recording::{MusicRecording, TrackIndex};
-    use crate::domain::model::user::{Role, User};
-    use crate::domain::port::music_album_repository::MockMusicAlbumRepository;
-    use crate::domain::port::user_repository::MockUserRepository;
+    use crate::domain::NumericID;
+
+    use crate::domain::model::{
+        MediumIndex, MusicAlbum, MusicMedium, MusicRecording, Role, TrackIndex, User,
+    };
+
+    use crate::domain::port::{MockMusicAlbumRepository, MockUserRepository};
+
     use crate::test_helpers::*;
     use std::error::Error;
     use std::sync::atomic::Ordering;
@@ -265,8 +286,8 @@ mod tests {
         sample_album(id, vec![MusicMedium::new(MediumIndex::Cd(1), Vec::new())])
     }
 
-    /// The recording every placement test moves.
-    fn recording(index: u8) -> Result<MusicRecording, Box<dyn Error>> {
+    /// The recording every placement test moves, at `index`.
+    fn recording_at(index: TrackIndex) -> Result<MusicRecording, Box<dyn Error>> {
         Ok(MusicRecording::try_new(
             5,
             Some("So What".to_owned()),
@@ -274,8 +295,13 @@ mod tests {
             1,
             2,
             None,
-            TrackIndex::MediumIndex(index),
+            index,
         )?)
+    }
+
+    /// The recording every placement test moves, already placed at `index`.
+    fn recording(index: u8) -> Result<MusicRecording, Box<dyn Error>> {
+        recording_at(TrackIndex::MediumIndex(index))
     }
 
     /// The album holding one `CD` medium with `recording_id` at `track_index`.
@@ -296,12 +322,17 @@ mod tests {
         sample_album(id, vec![MusicMedium::new(MediumIndex::Cd(1), vec![placed])])
     }
 
-    /// Expect the placement check to report `placed`.
-    fn expect_placement(albums: &mut MockMusicAlbumRepository, placed: bool) {
+    /// Expect the recording lookup backing a placement to find `recorded`.
+    fn expect_recording(albums: &mut MockMusicAlbumRepository, recorded: MusicRecording) {
+        let recording_id = recorded.id();
         albums
-            .expect_has_medium_placement()
+            .expect_search_recordings()
             .times(1)
-            .returning(move |_| Box::pin(async move { Ok(placed) }));
+            .withf(move |filter| filter.id == Some(recording_id))
+            .return_once(move |_| {
+                let found = recorded.clone();
+                Box::pin(async move { Ok(vec![found]) })
+            });
     }
 
     /// Expect the post-write album reload.
@@ -319,18 +350,20 @@ mod tests {
         expect_admin(&mut users, 1)?;
         let mut albums = MockMusicAlbumRepository::new();
         expect_album(&mut albums, album_with_medium(7)?);
-        expect_placement(&mut albums, false);
-        let placed = recording(1)?;
+        let placed = recording_at(TrackIndex::Unplaced)?;
+        expect_recording(&mut albums, placed);
         albums
-            .expect_place_track()
+            .expect_save_medium()
             .times(1)
-            .withf(|album_id, medium_index, track_index, recording_id| {
-                *album_id == 7 && *medium_index == 1 && *track_index == 1 && *recording_id == 5
+            .withf(|album_id, medium| {
+                *album_id == 7
+                    && medium.index() == MediumIndex::Cd(1)
+                    && medium.tracks().len() == 1
+                    && medium.tracks().first().is_some_and(|track| {
+                        track.id() == 5 && track.index().medium_index() == Some(1)
+                    })
             })
-            .return_once(move |_, _, _, _| {
-                let recorded = placed.clone();
-                Box::pin(async move { Ok(Some(recorded)) })
-            });
+            .return_once(|_, medium| Box::pin(async move { Ok(Some(medium)) }));
         expect_reload(&mut albums, album_with_medium(7)?);
         let harness = harness_with(users, albums);
         let use_case: UseCase = PutAlbumTrack::new(Arc::clone(&harness.factory));
@@ -354,15 +387,11 @@ mod tests {
         expect_admin(&mut users, 1)?;
         let mut albums = MockMusicAlbumRepository::new();
         expect_album(&mut albums, album_with_medium(7)?);
-        expect_placement(&mut albums, true);
-        let placed = recording(2)?;
+        expect_recording(&mut albums, recording(2)?);
         albums
-            .expect_place_track()
+            .expect_save_medium()
             .times(1)
-            .return_once(move |_, _, _, _| {
-                let recorded = placed.clone();
-                Box::pin(async move { Ok(Some(recorded)) })
-            });
+            .return_once(|_, medium| Box::pin(async move { Ok(Some(medium)) }));
         expect_reload(&mut albums, album_with_medium(7)?);
         let harness = harness_with(users, albums);
         let use_case: UseCase = PutAlbumTrack::new(Arc::clone(&harness.factory));
@@ -384,14 +413,11 @@ mod tests {
         expect_admin(&mut users, 1)?;
         let mut albums = MockMusicAlbumRepository::new();
         expect_album(&mut albums, album_with_recording(7, 5, 1)?);
-        let placed = recording(1)?;
+        expect_recording(&mut albums, recording(1)?);
         albums
-            .expect_place_track()
+            .expect_save_medium()
             .times(1)
-            .return_once(move |_, _, _, _| {
-                let recorded = placed.clone();
-                Box::pin(async move { Ok(Some(recorded)) })
-            });
+            .return_once(|_, medium| Box::pin(async move { Ok(Some(medium)) }));
         expect_reload(&mut albums, album_with_medium(7)?);
         let harness = harness_with(users, albums);
         let use_case: UseCase = PutAlbumTrack::new(Arc::clone(&harness.factory));
@@ -413,7 +439,7 @@ mod tests {
         expect_admin(&mut users, 1)?;
         let mut albums = MockMusicAlbumRepository::new();
         expect_album(&mut albums, album_with_recording(7, 6, 1)?);
-        albums.expect_place_track().times(0);
+        albums.expect_save_medium().times(0);
         let harness = harness_with(users, albums);
         let use_case: UseCase = PutAlbumTrack::new(Arc::clone(&harness.factory));
 
@@ -435,11 +461,11 @@ mod tests {
         expect_admin(&mut users, 1)?;
         let mut albums = MockMusicAlbumRepository::new();
         expect_album(&mut albums, album_with_medium(7)?);
-        expect_placement(&mut albums, false);
         albums
-            .expect_place_track()
+            .expect_search_recordings()
             .times(1)
-            .returning(|_, _, _, _| Box::pin(async { Ok(None) }));
+            .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+        albums.expect_save_medium().times(0);
         let harness = harness_with(users, albums);
         let use_case: UseCase = PutAlbumTrack::new(Arc::clone(&harness.factory));
 
@@ -501,7 +527,7 @@ mod tests {
         let mut albums = MockMusicAlbumRepository::new();
         expect_album(&mut albums, album_with_medium(7)?);
         albums
-            .expect_has_medium_placement()
+            .expect_search_recordings()
             .times(1)
             .returning(|_| Box::pin(async { Err(RepositoryError::Unavailable) }));
         let harness = harness_with(users, albums);

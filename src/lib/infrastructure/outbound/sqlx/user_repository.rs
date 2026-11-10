@@ -1,11 +1,9 @@
 use sqlx::{QueryBuilder, Sqlite, Transaction};
 
-use crate::domain::alias::NumericID;
-use crate::domain::model::user::{Role, User};
-use crate::domain::port::error::RepositoryError;
-use crate::domain::port::user_repository::{UserFilter, UserRepository};
+use crate::domain::model::{Role, User};
+use crate::domain::port::{RepositoryError, UserFilter, UserRepository};
 
-use super::model::user::{Role as SqlxRole, User as SqlxUser};
+use super::model::{Role as SqlxRole, User as SqlxUser};
 
 /// Repository persisting users, backed by a `SQLite` transaction.
 pub(crate) struct SqlxUserRepository<'transaction> {
@@ -43,11 +41,24 @@ impl UserRepository for SqlxUserRepository<'_> {
         domain_user(row)
     }
 
-    async fn delete(&mut self, id: NumericID) -> Result<bool, RepositoryError> {
-        let result = sqlx::query("DELETE FROM user WHERE user_id = ?")
-            .bind(id)
-            .execute(&mut **self.transaction)
-            .await?;
+    async fn delete(&mut self, filter: &UserFilter) -> Result<bool, RepositoryError> {
+        let mut builder = QueryBuilder::<Sqlite>::new("DELETE FROM user");
+        let mut first = true;
+
+        if let Some(id) = filter.id {
+            push_filter(&mut first, &mut builder, "user_id = ", id);
+        }
+        if let Some(role) = filter.role {
+            push_filter(&mut first, &mut builder, "role = ", sqlx_role(role));
+        }
+        if let Some(username) = filter.username.as_deref() {
+            push_filter(&mut first, &mut builder, "username = ", username);
+        }
+        if let Some(email) = filter.email.as_deref() {
+            push_filter(&mut first, &mut builder, "email = ", email);
+        }
+
+        let result = builder.build().execute(&mut **self.transaction).await?;
         Ok(result.rows_affected() > 0)
     }
 
@@ -153,18 +164,10 @@ fn domain_user(row: SqlxUser) -> Result<User, RepositoryError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::model::user::UserError;
-    use sqlx::sqlite::SqlitePoolOptions;
-    use std::error::Error;
+    use crate::domain::model::UserError;
 
-    async fn begin_transaction() -> Result<Transaction<'static, Sqlite>, sqlx::Error> {
-        let pool = SqlitePoolOptions::new()
-            .max_connections(1)
-            .connect("sqlite::memory:")
-            .await?;
-        sqlx::migrate!("./migrations").run(&pool).await?;
-        pool.begin().await
-    }
+    use crate::infrastructure::outbound::sqlx::test_helpers::begin_transaction;
+    use std::error::Error;
 
     fn user(
         id: i64,
@@ -399,7 +402,12 @@ mod tests {
 
         // Act
         let mut repository = SqlxUserRepository::new(&mut transaction);
-        let deleted = repository.delete(404).await?;
+        let deleted = repository
+            .delete(&UserFilter {
+                id: Some(404),
+                ..UserFilter::default()
+            })
+            .await?;
 
         // Assert
         assert!(!deleted);
@@ -417,7 +425,12 @@ mod tests {
             .await?;
 
         // Act
-        let deleted = repository.delete(7).await?;
+        let deleted = repository
+            .delete(&UserFilter {
+                id: Some(7),
+                ..UserFilter::default()
+            })
+            .await?;
 
         // Assert
         assert!(deleted);
@@ -435,7 +448,12 @@ mod tests {
             .await?;
 
         // Act
-        let result = repository.delete(0).await;
+        let result = repository
+            .delete(&UserFilter {
+                id: Some(0),
+                ..UserFilter::default()
+            })
+            .await;
 
         // Assert
         assert!(matches!(result, Err(RepositoryError::Conflict)));

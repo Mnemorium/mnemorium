@@ -6,16 +6,14 @@ use serde::Deserialize;
 use tracing::warn;
 use utoipa::ToSchema;
 
-use crate::application::port::put_series_episode::PutSeriesEpisodeCommand;
-use crate::domain::alias::NumericID;
-use crate::infrastructure::inbound::rest::api_error::{ApiError, ErrorBody};
-use crate::infrastructure::inbound::rest::app_state::AppState;
-use crate::infrastructure::inbound::rest::hal::hal_json;
+use crate::application::port::PutSeriesEpisodeCommand;
+use crate::domain::NumericID;
 use crate::infrastructure::inbound::rest::handler::JsonObject;
 use crate::infrastructure::inbound::rest::handler::library::{
     DATE_FORMAT, EpisodeResponse, parse_episode_index, parse_season_index, parse_series_id,
 };
-use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
+use crate::infrastructure::inbound::rest::middleware::AuthenticatedUser;
+use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody, hal_json};
 
 /// Payload to create or replace a season episode.
 #[derive(Debug, Deserialize, ToSchema)]

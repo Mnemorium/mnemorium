@@ -1,7 +1,4 @@
-use crate::domain::port::file_repository::FileRepository;
-use crate::domain::port::mime_type_repository::MimeTypeRepository;
-use crate::domain::port::unit_of_work::UnitOfWork;
-use crate::domain::port::upload_repository::UploadRepository;
+use crate::domain::port::{FileRepository, MimeTypeRepository, UnitOfWork, UploadRepository};
 
 /// Asset bounded-context view over a [`UnitOfWork`].
 pub(crate) trait AssetUnitOfWork: UnitOfWork {

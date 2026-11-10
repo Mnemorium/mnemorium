@@ -6,14 +6,12 @@ use tracing::warn;
 use utoipa::IntoParams;
 
 use super::{DEFAULT_LIMIT, MAX_LIMIT};
-use crate::application::port::list_movies::ListMoviesCommand;
-use crate::infrastructure::inbound::rest::api_error::{ApiError, ErrorBody};
-use crate::infrastructure::inbound::rest::app_state::AppState;
-use crate::infrastructure::inbound::rest::hal::hal_json;
+use crate::application::port::ListMoviesCommand;
 use crate::infrastructure::inbound::rest::handler::library::{
     MovieListLinks, MovieListResponse, MovieResponse,
 };
-use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
+use crate::infrastructure::inbound::rest::middleware::AuthenticatedUser;
+use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody, hal_json};
 
 /// Filters and pagination restricting the returned films.
 ///

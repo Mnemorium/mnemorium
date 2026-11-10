@@ -3,8 +3,8 @@ use std::pin::Pin;
 
 use chrono::NaiveDate;
 
-use crate::domain::alias::NumericID;
-use crate::domain::model::movie::Movie;
+use crate::domain::NumericID;
+use crate::domain::model::Movie;
 
 /// Command to create a film from a video.
 #[derive(Debug, Clone, PartialEq, Eq)]

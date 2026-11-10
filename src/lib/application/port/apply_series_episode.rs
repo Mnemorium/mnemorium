@@ -1,9 +1,8 @@
 use std::future::Future;
 use std::pin::Pin;
 
-use crate::domain::alias::NumericID;
-use crate::domain::model::episode::Episode;
-use crate::domain::model::external_ref::ExternalRef;
+use crate::domain::NumericID;
+use crate::domain::model::{Episode, ExternalRef};
 
 /// Command to apply external metadata to one episode of a show.
 #[derive(Debug, Clone, PartialEq, Eq)]

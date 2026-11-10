@@ -1,10 +1,8 @@
 use std::future::Future;
 
-use crate::domain::alias::NumericID;
-use crate::domain::model::episode::Episode;
-use crate::domain::model::season::Season;
-use crate::domain::model::series::Series;
-use crate::domain::port::error::RepositoryError;
+use crate::domain::NumericID;
+use crate::domain::model::{Episode, EpisodeIndex, Season, Series};
+use crate::domain::port::RepositoryError;
 
 /// Search filters for [`SeriesRepository::search`]. Every field is optional; an
 /// all-`None` filter returns every show.
@@ -15,6 +13,19 @@ pub(crate) struct SeriesFilter {
     pub id: Option<NumericID>,
     /// Filter on the show name.
     pub name: Option<String>,
+}
+
+/// Search filters for [`SeriesRepository::search_episodes`]. Every field is
+/// optional; an all-`None` filter returns every episode.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[non_exhaustive]
+pub(crate) struct EpisodeFilter {
+    /// Filter on the season-scoped episode index.
+    pub index: Option<EpisodeIndex>,
+    /// Filter on the episode name.
+    pub name: Option<String>,
+    /// Filter on the video backing the episode.
+    pub video_id: Option<NumericID>,
 }
 
 /// Port for querying and mutating `Series` with its seasons, their episodes and
@@ -32,24 +43,38 @@ pub(crate) trait SeriesRepository: Send + Sync {
         series: Series,
     ) -> impl Future<Output = Result<Series, RepositoryError>> + Send;
 
-    /// Delete the episode backed by `video_id`.
+    /// Delete every show matching `filter`.
     ///
-    /// The season and the show are retained; an unattached video is a valid
-    /// outcome reported as `Ok(false)`.
-    fn delete_episode_by_video(
+    /// Returns `Ok(true)` when at least one show was deleted, and `Ok(false)`
+    /// when none matched. An all-`None` filter deletes every show; seasons and
+    /// episodes cascade.
+    #[expect(
+        dead_code,
+        reason = "part of the type's declared contract; no caller exercises it yet"
+    )]
+    fn delete(
         &mut self,
-        video_id: NumericID,
+        filter: &SeriesFilter,
     ) -> impl Future<Output = Result<bool, RepositoryError>> + Send;
 
-    /// Return the episode backed by `video_id`, if any.
+    /// Delete every episode matching `filter`.
     ///
-    /// A video backs at most one film or episode; a video the catalogue does
-    /// not attach has no episode. A missing attachment is `Ok(None)`, not an
-    /// error.
-    fn find_episode_by_video(
+    /// The season and the show are retained. Returns `Ok(true)` when at least
+    /// one episode was deleted, and `Ok(false)` when none matched. An
+    /// all-`None` filter deletes every episode.
+    fn delete_episode(
         &mut self,
-        video_id: NumericID,
-    ) -> impl Future<Output = Result<Option<Episode>, RepositoryError>> + Send;
+        filter: &EpisodeFilter,
+    ) -> impl Future<Output = Result<bool, RepositoryError>> + Send;
+
+    /// Persist the metadata and cover of `series` over the stored show carrying
+    /// its identifier, replacing its genre links, seasons and episodes.
+    ///
+    /// The show is inserted when no row carries its identifier.
+    fn save(
+        &mut self,
+        series: Series,
+    ) -> impl Future<Output = Result<Series, RepositoryError>> + Send;
 
     /// Create or replace the episode at `episode.index()` of the season at
     /// `season_index` of `series_id`, replacing its video when a different one
@@ -59,18 +84,19 @@ pub(crate) trait SeriesRepository: Send + Sync {
     /// does not exist; a missing target is a valid outcome, not an error. A
     /// video already backing another film or episode is reported as
     /// [`RepositoryError::AlreadyExist`] or [`RepositoryError::Conflict`].
-    fn put_episode(
+    fn save_episode(
         &mut self,
         series_id: NumericID,
         season_index: u32,
         episode: Episode,
     ) -> impl Future<Output = Result<Option<Episode>, RepositoryError>> + Send;
-    /// Create or replace the season at `season.index()` of `series_id`,
-    /// keeping the episodes it already sequences.
+
+    /// Create or replace the season at `season.index()` of `series_id`, keeping
+    /// the episodes it already sequences.
     ///
     /// Returns the stored season, or `Ok(None)` when no show matches
     /// `series_id`; a missing show is a valid outcome, not an error.
-    fn put_season(
+    fn save_season(
         &mut self,
         series_id: NumericID,
         season: Season,
@@ -89,39 +115,14 @@ pub(crate) trait SeriesRepository: Send + Sync {
         filter: &SeriesFilter,
     ) -> impl Future<Output = Result<Vec<Series>, RepositoryError>> + Send;
 
-    /// Persist the metadata and cover of `series` over the stored show carrying
-    /// its identifier, replacing its genre links.
+    /// Search the episodes matching `filter`, returned as `Vec<Episode>`.
     ///
-    /// Returns `Ok(None)` when no show matches; a missing show is a valid
-    /// outcome, not an error. The show's seasons and episodes are untouched.
-    fn update(
+    /// Returns an empty list when no episode matches; a missing match is a
+    /// valid outcome, not an error.
+    fn search_episodes(
         &mut self,
-        series: Series,
-    ) -> impl Future<Output = Result<Option<Series>, RepositoryError>> + Send;
-
-    /// Persist the name, plot and air date of `episode` over the stored episode
-    /// at its index of the addressed season.
-    ///
-    /// The backing video is never rewritten. Returns `Ok(None)` when the show,
-    /// the season or the episode does not exist; a missing target is a valid
-    /// outcome, not an error.
-    fn update_episode(
-        &mut self,
-        series_id: NumericID,
-        season_index: u32,
-        episode: Episode,
-    ) -> impl Future<Output = Result<Option<Episode>, RepositoryError>> + Send;
-    /// Persist the name and cover of `season` over the stored season at its
-    /// index of `series_id`.
-    ///
-    /// Returns `Ok(None)` when the show does not exist or holds no season at
-    /// that index; a missing target is a valid outcome, not an error. The
-    /// season's episodes are untouched.
-    fn update_season(
-        &mut self,
-        series_id: NumericID,
-        season: Season,
-    ) -> impl Future<Output = Result<Option<Season>, RepositoryError>> + Send;
+        filter: &EpisodeFilter,
+    ) -> impl Future<Output = Result<Vec<Episode>, RepositoryError>> + Send;
 }
 
 #[cfg(test)]
@@ -133,34 +134,42 @@ impl<T: SeriesRepository + ?Sized> SeriesRepository for &mut T {
         (**self).create(series)
     }
 
-    fn delete_episode_by_video(
+    fn delete(
         &mut self,
-        video_id: NumericID,
+        filter: &SeriesFilter,
     ) -> impl Future<Output = Result<bool, RepositoryError>> + Send {
-        (**self).delete_episode_by_video(video_id)
+        (**self).delete(filter)
     }
 
-    fn find_episode_by_video(
+    fn delete_episode(
         &mut self,
-        video_id: NumericID,
-    ) -> impl Future<Output = Result<Option<Episode>, RepositoryError>> + Send {
-        (**self).find_episode_by_video(video_id)
+        filter: &EpisodeFilter,
+    ) -> impl Future<Output = Result<bool, RepositoryError>> + Send {
+        (**self).delete_episode(filter)
     }
 
-    fn put_episode(
+    fn save(
+        &mut self,
+        series: Series,
+    ) -> impl Future<Output = Result<Series, RepositoryError>> + Send {
+        (**self).save(series)
+    }
+
+    fn save_episode(
         &mut self,
         series_id: NumericID,
         season_index: u32,
         episode: Episode,
     ) -> impl Future<Output = Result<Option<Episode>, RepositoryError>> + Send {
-        (**self).put_episode(series_id, season_index, episode)
+        (**self).save_episode(series_id, season_index, episode)
     }
-    fn put_season(
+
+    fn save_season(
         &mut self,
         series_id: NumericID,
         season: Season,
     ) -> impl Future<Output = Result<Option<Season>, RepositoryError>> + Send {
-        (**self).put_season(series_id, season)
+        (**self).save_season(series_id, season)
     }
 
     fn search(
@@ -170,26 +179,10 @@ impl<T: SeriesRepository + ?Sized> SeriesRepository for &mut T {
         (**self).search(filter)
     }
 
-    fn update(
+    fn search_episodes(
         &mut self,
-        series: Series,
-    ) -> impl Future<Output = Result<Option<Series>, RepositoryError>> + Send {
-        (**self).update(series)
-    }
-
-    fn update_episode(
-        &mut self,
-        series_id: NumericID,
-        season_index: u32,
-        episode: Episode,
-    ) -> impl Future<Output = Result<Option<Episode>, RepositoryError>> + Send {
-        (**self).update_episode(series_id, season_index, episode)
-    }
-    fn update_season(
-        &mut self,
-        series_id: NumericID,
-        season: Season,
-    ) -> impl Future<Output = Result<Option<Season>, RepositoryError>> + Send {
-        (**self).update_season(series_id, season)
+        filter: &EpisodeFilter,
+    ) -> impl Future<Output = Result<Vec<Episode>, RepositoryError>> + Send {
+        (**self).search_episodes(filter)
     }
 }

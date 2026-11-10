@@ -4,22 +4,17 @@ use std::sync::Arc;
 
 use tracing::warn;
 
-use crate::application::port::create_music_group::{
+use crate::application::port::{
     CreateMusicGroupCommand, CreateMusicGroupError, CreateMusicGroupResponse,
     CreateMusicGroupUseCase,
 };
-use crate::domain::model::music_group::MusicGroup;
-use crate::domain::model::permission::{Action, Global};
-use crate::domain::port::error::RepositoryError;
-use crate::domain::port::identity_unit_of_work::IdentityUnitOfWork;
-use crate::domain::port::library_unit_of_work::LibraryUnitOfWork;
-use crate::domain::port::music_group_repository::{MusicGroupFilter, MusicGroupRepository as _};
-use crate::domain::port::permission_repository::{PermissionFilter, PermissionRepository as _};
-use crate::domain::port::unit_of_work::{UnitOfWork as _, UnitOfWorkFactory};
-use crate::domain::port::user_repository::{UserFilter, UserRepository as _};
-use crate::domain::port::user_unit_of_work::UserUnitOfWork;
-use crate::domain::service::authorization::{Authorization, Decision};
-use crate::domain::service::name_policy::{NamePolicy, NamePolicyError};
+use crate::domain::model::{Action, Global, MusicGroup};
+use crate::domain::port::{
+    IdentityUnitOfWork, LibraryUnitOfWork, MusicGroupFilter, MusicGroupRepository as _,
+    PermissionFilter, PermissionRepository as _, RepositoryError, UnitOfWork as _,
+    UnitOfWorkFactory, UserFilter, UserRepository as _, UserUnitOfWork,
+};
+use crate::domain::service::{Authorization, Decision, NamePolicy, NamePolicyError};
 
 /// Use case implementation for creating a music group.
 pub(crate) struct CreateMusicGroup<F> {
@@ -179,10 +174,12 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::alias::NumericID;
-    use crate::domain::model::user::{Role, User};
-    use crate::domain::port::music_group_repository::MockMusicGroupRepository;
-    use crate::domain::port::user_repository::MockUserRepository;
+    use crate::domain::NumericID;
+
+    use crate::domain::model::{Role, User};
+
+    use crate::domain::port::{MockMusicGroupRepository, MockUserRepository};
+
     use crate::test_helpers::*;
     use std::error::Error;
     use std::sync::atomic::Ordering;

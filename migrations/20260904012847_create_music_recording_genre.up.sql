@@ -6,7 +6,7 @@ CREATE TABLE music_recording_genre (
     ),
     CONSTRAINT fk_music_recording_genre_recording FOREIGN KEY (
         music_recording_id
-    ) REFERENCES music_recording (music_recording_id),
+    ) REFERENCES music_recording (music_recording_id) ON DELETE CASCADE,
     CONSTRAINT fk_music_recording_genre_genre FOREIGN KEY (
         genre_id
     ) REFERENCES genre (genre_id)

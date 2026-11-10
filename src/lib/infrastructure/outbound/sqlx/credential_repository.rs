@@ -1,11 +1,9 @@
 use sqlx::{QueryBuilder, Sqlite, Transaction};
 
-use crate::domain::alias::NumericID;
-use crate::domain::model::credential::Credential;
-use crate::domain::port::credential_repository::{CredentialFilter, CredentialRepository};
-use crate::domain::port::error::RepositoryError;
+use crate::domain::model::Credential;
+use crate::domain::port::{CredentialFilter, CredentialRepository, RepositoryError};
 
-use super::model::credential::Credential as SqlxCredential;
+use super::model::Credential as SqlxCredential;
 
 /// Repository persisting credentials, backed by a `SQLite` transaction.
 pub(crate) struct SqlxCredentialRepository<'transaction> {
@@ -36,11 +34,14 @@ impl CredentialRepository for SqlxCredentialRepository<'_> {
         domain_credential(row)
     }
 
-    async fn delete(&mut self, id: NumericID) -> Result<bool, RepositoryError> {
-        let result = sqlx::query("DELETE FROM credential WHERE credential_id = ?")
-            .bind(id)
-            .execute(&mut **self.transaction)
-            .await?;
+    async fn delete(&mut self, filter: &CredentialFilter) -> Result<bool, RepositoryError> {
+        let mut builder = QueryBuilder::<Sqlite>::new("DELETE FROM credential");
+        if let Some(id) = filter.id {
+            builder.push(" WHERE credential_id = ");
+            builder.push_bind(id);
+        }
+
+        let result = builder.build().execute(&mut **self.transaction).await?;
         Ok(result.rows_affected() > 0)
     }
 
@@ -92,9 +93,10 @@ fn domain_credential(row: SqlxCredential) -> Result<Credential, RepositoryError>
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::model::credential::CredentialError;
+    use crate::domain::model::CredentialError;
+
+    use crate::infrastructure::outbound::sqlx::test_helpers::begin_transaction;
     use chrono::NaiveDateTime;
-    use sqlx::sqlite::SqlitePoolOptions;
     use std::error::Error;
 
     fn updated_at(value: &str) -> Result<NaiveDateTime, Box<dyn Error>> {
@@ -107,15 +109,6 @@ mod tests {
         updated_at: NaiveDateTime,
     ) -> Result<Credential, CredentialError> {
         Credential::try_new(id, password_hash.to_owned(), updated_at)
-    }
-
-    async fn begin_transaction() -> Result<Transaction<'static, Sqlite>, sqlx::Error> {
-        let pool = SqlitePoolOptions::new()
-            .max_connections(1)
-            .connect("sqlite::memory:")
-            .await?;
-        sqlx::migrate!("./migrations").run(&pool).await?;
-        pool.begin().await
     }
 
     async fn seed_credential(
@@ -251,7 +244,12 @@ mod tests {
 
         // Act
         let mut repository = SqlxCredentialRepository::new(&mut transaction);
-        let deleted = repository.delete(404).await?;
+        let deleted = repository
+            .delete(&CredentialFilter {
+                id: Some(404),
+                ..CredentialFilter::default()
+            })
+            .await?;
 
         // Assert
         assert!(!deleted);
@@ -266,7 +264,12 @@ mod tests {
 
         // Act
         let mut repository = SqlxCredentialRepository::new(&mut transaction);
-        let deleted = repository.delete(7).await?;
+        let deleted = repository
+            .delete(&CredentialFilter {
+                id: Some(7),
+                ..CredentialFilter::default()
+            })
+            .await?;
 
         // Assert
         assert!(deleted);
@@ -288,7 +291,12 @@ mod tests {
 
         // Act
         let mut repository = SqlxCredentialRepository::new(&mut transaction);
-        let result = repository.delete(1).await;
+        let result = repository
+            .delete(&CredentialFilter {
+                id: Some(1),
+                ..CredentialFilter::default()
+            })
+            .await;
 
         // Assert
         assert!(matches!(

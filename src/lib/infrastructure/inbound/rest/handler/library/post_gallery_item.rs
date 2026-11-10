@@ -4,16 +4,14 @@ use axum::response::Response;
 use serde::Deserialize;
 use utoipa::ToSchema;
 
-use crate::application::port::add_gallery_item::{AddGalleryItemCommand, AddGalleryItemError};
-use crate::domain::alias::NumericID;
-use crate::infrastructure::inbound::rest::api_error::{ApiError, ErrorBody};
-use crate::infrastructure::inbound::rest::app_state::AppState;
-use crate::infrastructure::inbound::rest::hal::hal_json;
+use crate::application::port::{AddGalleryItemCommand, AddGalleryItemError};
+use crate::domain::NumericID;
 use crate::infrastructure::inbound::rest::handler::JsonObject;
 use crate::infrastructure::inbound::rest::handler::library::{
     GalleryItemDetailResponse, GalleryItemType, parse_gallery_id,
 };
-use crate::infrastructure::inbound::rest::middleware::auth::AuthenticatedUser;
+use crate::infrastructure::inbound::rest::middleware::AuthenticatedUser;
+use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody, hal_json};
 
 /// Payload to add one of the caller's media to a gallery.
 #[derive(Debug, Deserialize, ToSchema)]

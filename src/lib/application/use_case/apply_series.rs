@@ -4,23 +4,16 @@ use std::sync::Arc;
 
 use tracing::warn;
 
-use crate::application::port::apply_series::{
+use crate::application::port::{
     ApplySeriesCommand, ApplySeriesError, ApplySeriesResponse, ApplySeriesUseCase,
 };
-use crate::domain::model::media_metadata::MediaMetadata;
-use crate::domain::model::permission::Action;
-use crate::domain::model::series::Series;
-use crate::domain::model::video_candidate::Target;
-use crate::domain::port::error::RepositoryError;
-use crate::domain::port::identity_unit_of_work::IdentityUnitOfWork;
-use crate::domain::port::library_unit_of_work::LibraryUnitOfWork;
-use crate::domain::port::permission_repository::{PermissionFilter, PermissionRepository as _};
-use crate::domain::port::series_repository::{SeriesFilter, SeriesRepository as _};
-use crate::domain::port::unit_of_work::{UnitOfWork as _, UnitOfWorkFactory};
-use crate::domain::port::user_repository::{UserFilter, UserRepository as _};
-use crate::domain::port::user_unit_of_work::UserUnitOfWork;
-use crate::domain::port::video_metadata_provider::VideoMetadataProvider;
-use crate::domain::service::authorization::{Authorization, Decision};
+use crate::domain::model::{Action, MediaMetadata, Series, Target};
+use crate::domain::port::{
+    IdentityUnitOfWork, LibraryUnitOfWork, PermissionFilter, PermissionRepository as _,
+    RepositoryError, SeriesFilter, SeriesRepository as _, UnitOfWork as _, UnitOfWorkFactory,
+    UserFilter, UserRepository as _, UserUnitOfWork, VideoMetadataProvider,
+};
+use crate::domain::service::{Authorization, Decision};
 
 /// Use case implementation for applying external metadata to a show.
 ///
@@ -168,21 +161,16 @@ where
                 )
                 .map_err(|_| ApplySeriesError::InvalidReference)?;
 
-                let stored = unit_of_work
-                    .series()
-                    .update(updated)
-                    .await
-                    .map_err(|error| {
-                        if matches!(
-                            error,
-                            RepositoryError::AlreadyExist | RepositoryError::Conflict
-                        ) {
-                            ApplySeriesError::Conflict
-                        } else {
-                            ApplySeriesError::Unknown(error.into())
-                        }
-                    })?
-                    .ok_or(ApplySeriesError::NoSuchSeries)?;
+                let stored = unit_of_work.series().save(updated).await.map_err(|error| {
+                    if matches!(
+                        error,
+                        RepositoryError::AlreadyExist | RepositoryError::Conflict
+                    ) {
+                        ApplySeriesError::Conflict
+                    } else {
+                        ApplySeriesError::Unknown(error.into())
+                    }
+                })?;
 
                 Ok(ApplySeriesResponse::new(stored))
             }
@@ -209,15 +197,15 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::alias::NumericID;
-    use crate::domain::model::configuration::ProviderId;
-    use crate::domain::model::external_ref::ExternalRef;
-    use crate::domain::model::genre::Genre;
-    use crate::domain::model::user::{Role, User};
-    use crate::domain::port::permission_repository::MockPermissionRepository;
-    use crate::domain::port::series_repository::MockSeriesRepository;
-    use crate::domain::port::user_repository::MockUserRepository;
-    use crate::domain::port::video_metadata_provider::MockVideoMetadataProvider;
+    use crate::domain::NumericID;
+
+    use crate::domain::model::{ExternalRef, Genre, ProviderId, Role, User};
+
+    use crate::domain::port::{
+        MockPermissionRepository, MockSeriesRepository, MockUserRepository,
+        MockVideoMetadataProvider,
+    };
+
     use crate::test_helpers::*;
     use chrono::NaiveDate;
     use std::error::Error;
@@ -290,9 +278,9 @@ mod tests {
         let mut series = MockSeriesRepository::new();
         loaded(&mut series, stored);
         series
-            .expect_update()
+            .expect_save()
             .times(1)
-            .returning(|show| Box::pin(async move { Ok(Some(show)) }));
+            .returning(|show| Box::pin(async move { Ok(show) }));
         let mut provider = MockVideoMetadataProvider::new();
         provider
             .expect_lookup()
@@ -328,9 +316,9 @@ mod tests {
         let mut series = MockSeriesRepository::new();
         loaded(&mut series, sample_series(7, Vec::new())?);
         series
-            .expect_update()
+            .expect_save()
             .times(1)
-            .returning(|show| Box::pin(async move { Ok(Some(show)) }));
+            .returning(|show| Box::pin(async move { Ok(show) }));
         let mut provider = MockVideoMetadataProvider::new();
         provider.expect_lookup().times(1).return_once(|_| {
             Box::pin(async {

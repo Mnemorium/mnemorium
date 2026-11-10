@@ -4,19 +4,16 @@ use std::sync::Arc;
 
 use tracing::warn;
 
-use crate::application::port::put_series_season::{
+use crate::application::port::{
     PutSeriesSeasonCommand, PutSeriesSeasonError, PutSeriesSeasonResponse, PutSeriesSeasonUseCase,
 };
-use crate::domain::model::season::{Season, SeasonIndex};
-use crate::domain::port::error::RepositoryError;
-use crate::domain::port::identity_unit_of_work::IdentityUnitOfWork;
-use crate::domain::port::library_unit_of_work::LibraryUnitOfWork;
-use crate::domain::port::permission_repository::{PermissionFilter, PermissionRepository as _};
-use crate::domain::port::series_repository::{SeriesFilter, SeriesRepository as _};
-use crate::domain::port::unit_of_work::{UnitOfWork as _, UnitOfWorkFactory};
-use crate::domain::port::user_repository::{UserFilter, UserRepository as _};
-use crate::domain::port::user_unit_of_work::UserUnitOfWork;
-use crate::domain::service::authorization::{Authorization, Decision};
+use crate::domain::model::{Season, SeasonIndex};
+use crate::domain::port::{
+    IdentityUnitOfWork, LibraryUnitOfWork, PermissionFilter, PermissionRepository as _,
+    RepositoryError, SeriesFilter, SeriesRepository as _, UnitOfWork as _, UnitOfWorkFactory,
+    UserFilter, UserRepository as _, UserUnitOfWork,
+};
+use crate::domain::service::{Authorization, Decision};
 
 /// Use case implementation for creating or replacing a show season.
 pub(crate) struct PutSeriesSeason<F> {
@@ -119,7 +116,7 @@ where
 
                 let stored = unit_of_work
                     .series()
-                    .put_season(series.id(), season)
+                    .save_season(series.id(), season)
                     .await
                     .map_err(|error| {
                         if matches!(
@@ -158,12 +155,12 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::alias::NumericID;
-    use crate::domain::model::series::Series;
-    use crate::domain::model::user::{Role, User};
-    use crate::domain::port::permission_repository::MockPermissionRepository;
-    use crate::domain::port::series_repository::MockSeriesRepository;
-    use crate::domain::port::user_repository::MockUserRepository;
+    use crate::domain::NumericID;
+
+    use crate::domain::model::{Role, Series, User};
+
+    use crate::domain::port::{MockPermissionRepository, MockSeriesRepository, MockUserRepository};
+
     use crate::test_helpers::*;
     use std::error::Error;
     use std::sync::atomic::Ordering;
@@ -233,7 +230,7 @@ mod tests {
             Vec::new(),
         );
         series
-            .expect_put_season()
+            .expect_save_season()
             .times(1)
             .withf(|series_id, season| {
                 *series_id == 7 && season.index().value() == 1 && season.episodes().is_empty()
@@ -267,7 +264,7 @@ mod tests {
         expect_series(&mut series, stored);
         let written = sample_season(1, vec![sample_episode(1, 20)?]);
         series
-            .expect_put_season()
+            .expect_save_season()
             .times(1)
             .return_once(move |_, _| {
                 let copy = written.clone();
@@ -320,7 +317,7 @@ mod tests {
         let mut series = MockSeriesRepository::new();
         expect_series(&mut series, stored);
         series
-            .expect_put_season()
+            .expect_save_season()
             .times(1)
             .returning(|_, _| Box::pin(async { Ok(None) }));
         let harness = harness_with(users, no_permissions(), series);
@@ -360,7 +357,7 @@ mod tests {
         let mut series = MockSeriesRepository::new();
         expect_series(&mut series, stored);
         series
-            .expect_put_season()
+            .expect_save_season()
             .times(1)
             .returning(|_, _| Box::pin(async { Err(RepositoryError::Conflict) }));
         let harness = harness_with(users, no_permissions(), series);
@@ -384,7 +381,7 @@ mod tests {
         let mut series = MockSeriesRepository::new();
         expect_series(&mut series, stored);
         series
-            .expect_put_season()
+            .expect_save_season()
             .times(1)
             .returning(|_, _| Box::pin(async { Err(RepositoryError::DataIntegrityViolation) }));
         let harness = harness_with(users, no_permissions(), series);
@@ -409,7 +406,7 @@ mod tests {
         expect_series(&mut series, stored);
         let written = Season::new(SeasonIndex::new(1), None, None, Vec::new());
         series
-            .expect_put_season()
+            .expect_save_season()
             .times(1)
             .withf(|_, season| season.name().is_none() && season.cover_image_id().is_none())
             .return_once(move |_, _| {

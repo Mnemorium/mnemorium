@@ -1,6 +1,6 @@
 use chrono::NaiveDateTime;
 
-use crate::domain::alias::NumericID;
+use crate::domain::NumericID;
 
 /// Row for a music playlist with one of its track placements, the recording the
 /// placement references and that recording's backing file.

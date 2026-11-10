@@ -4,12 +4,12 @@ use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
 
-use crate::application::port::ensure_storage_directories::{
+use crate::application::port::{
     EnsureStorageDirectoriesCommand, EnsureStorageDirectoriesError,
     EnsureStorageDirectoriesResponse, EnsureStorageDirectoriesUseCase,
 };
-use crate::application::use_case::upload_layout::{media_root, uploads_path};
-use crate::domain::port::file_storage::FileStorage;
+use crate::application::use_case::{media_root, uploads_path};
+use crate::domain::port::FileStorage;
 
 /// Interval between two probes of the library root, in seconds.
 const WAIT_POLL_SECONDS: u64 = 1;
@@ -94,8 +94,8 @@ impl<S: FileStorage> EnsureStorageDirectoriesUseCase for EnsureStorageDirectorie
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::port::error::StorageError;
-    use crate::domain::port::file_storage::MockFileStorage;
+    use crate::domain::port::{MockFileStorage, StorageError};
+
     use std::error::Error;
 
     #[tokio::test]

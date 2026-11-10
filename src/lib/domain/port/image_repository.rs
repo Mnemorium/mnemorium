@@ -1,8 +1,8 @@
 use std::future::Future;
 
-use crate::domain::alias::NumericID;
-use crate::domain::model::image::{Image, Orientation};
-use crate::domain::port::error::RepositoryError;
+use crate::domain::NumericID;
+use crate::domain::model::{Image, Orientation};
+use crate::domain::port::RepositoryError;
 
 /// Search filters for [`ImageRepository::search`]. Every field is optional; an
 /// all-`None` filter returns every image.
@@ -22,16 +22,6 @@ pub(crate) struct ImageFilter {
 /// Port for persisting and querying `Image`.
 #[cfg_attr(test, mockall::automock)]
 pub(crate) trait ImageRepository: Send + Sync {
-    /// Clear every cover reference that names `id`.
-    ///
-    /// The resources carrying the cover are retained; only their artwork is
-    /// forgotten, so an image removal never deletes a music group, album,
-    /// playlist, film, show or season.
-    fn clear_cover_references(
-        &mut self,
-        id: NumericID,
-    ) -> impl Future<Output = Result<(), RepositoryError>> + Send;
-
     /// Insert a new `image`, returning the persisted image with its final
     /// identifier.
     ///
@@ -42,30 +32,18 @@ pub(crate) trait ImageRepository: Send + Sync {
         image: Image,
     ) -> impl Future<Output = Result<Image, RepositoryError>> + Send;
 
-    /// Delete the image identified by `id`.
+    /// Delete every image matching `filter`.
     ///
-    /// Returns `Ok(true)` when an image matched `id` and was deleted, and
-    /// `Ok(false)` when no image matched. A missing image is a valid outcome,
-    /// not an error.
+    /// Returns `Ok(true)` when at least one image was deleted, and `Ok(false)`
+    /// when none matched. An all-`None` filter deletes every image.
+    ///
+    /// The resources carrying the image as their cover are retained: the
+    /// database clears their cover reference, so an image removal never
+    /// deletes a music group, album, playlist, film, show or season.
     fn delete(
         &mut self,
-        id: NumericID,
+        filter: &ImageFilter,
     ) -> impl Future<Output = Result<bool, RepositoryError>> + Send;
-
-    /// Return the image identified by `id`, if any.
-    ///
-    /// A missing image is `Ok(None)`, not an error.
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "part of the type's declared contract; no caller exercises it yet"
-        )
-    )]
-    fn get(
-        &mut self,
-        id: NumericID,
-    ) -> impl Future<Output = Result<Option<Image>, RepositoryError>> + Send;
 
     /// Search images matching `filter`, returned as `Vec<Image>`.
     ///
@@ -79,13 +57,6 @@ pub(crate) trait ImageRepository: Send + Sync {
 
 #[cfg(test)]
 impl<T: ImageRepository + ?Sized> ImageRepository for &mut T {
-    fn clear_cover_references(
-        &mut self,
-        id: NumericID,
-    ) -> impl Future<Output = Result<(), RepositoryError>> + Send {
-        (**self).clear_cover_references(id)
-    }
-
     fn create(
         &mut self,
         image: Image,
@@ -95,16 +66,9 @@ impl<T: ImageRepository + ?Sized> ImageRepository for &mut T {
 
     fn delete(
         &mut self,
-        id: NumericID,
+        filter: &ImageFilter,
     ) -> impl Future<Output = Result<bool, RepositoryError>> + Send {
-        (**self).delete(id)
-    }
-
-    fn get(
-        &mut self,
-        id: NumericID,
-    ) -> impl Future<Output = Result<Option<Image>, RepositoryError>> + Send {
-        (**self).get(id)
+        (**self).delete(filter)
     }
 
     fn search(

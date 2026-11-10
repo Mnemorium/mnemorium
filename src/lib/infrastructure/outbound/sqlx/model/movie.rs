@@ -1,6 +1,6 @@
 use chrono::NaiveDate;
 
-use crate::domain::alias::NumericID;
+use crate::domain::NumericID;
 
 /// Row for a film with the video that backs it.
 ///

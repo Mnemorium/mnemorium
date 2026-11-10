@@ -4,24 +4,20 @@ use std::sync::Arc;
 
 use tracing::warn;
 
-use crate::application::port::apply_music_album::{
+use crate::application::port::{
     ApplyMusicAlbumCommand, ApplyMusicAlbumError, ApplyMusicAlbumResponse, ApplyMusicAlbumUseCase,
 };
-use crate::domain::model::music_album::MusicAlbum;
-use crate::domain::model::music_candidate::MusicTarget;
-use crate::domain::model::music_medium::MediumIndex;
-use crate::domain::model::music_metadata::{Edition, MusicMetadata};
-use crate::domain::model::permission::Action;
-use crate::domain::port::error::RepositoryError;
-use crate::domain::port::identity_unit_of_work::IdentityUnitOfWork;
-use crate::domain::port::library_unit_of_work::LibraryUnitOfWork;
-use crate::domain::port::music_album_repository::{MusicAlbumFilter, MusicAlbumRepository as _};
-use crate::domain::port::music_metadata_provider::MusicMetadataProvider;
-use crate::domain::port::permission_repository::{PermissionFilter, PermissionRepository as _};
-use crate::domain::port::unit_of_work::{UnitOfWork as _, UnitOfWorkFactory};
-use crate::domain::port::user_repository::{UserFilter, UserRepository as _};
-use crate::domain::port::user_unit_of_work::UserUnitOfWork;
-use crate::domain::service::authorization::{Authorization, Decision};
+use crate::domain::model::{
+    Action, Edition, MediumIndex, MusicAlbum, MusicMedium, MusicMetadata, MusicRecording,
+    MusicTarget, TrackIndex,
+};
+use crate::domain::port::{
+    IdentityUnitOfWork, LibraryUnitOfWork, MusicAlbumFilter, MusicAlbumRepository as _,
+    MusicMetadataProvider, MusicRecordingFilter, PermissionFilter, PermissionRepository as _,
+    RepositoryError, UnitOfWork as _, UnitOfWorkFactory, UserFilter, UserRepository as _,
+    UserUnitOfWork,
+};
+use crate::domain::service::{Authorization, Decision};
 
 /// The genre an applied album carries when the provider reports none.
 const DEFAULT_GENRE: &str = "UNKNOWN";
@@ -208,6 +204,41 @@ where
                 let release_date =
                     first_release_date.or_else(|| edition.and_then(Edition::release_date));
 
+                let mut album_mediums = Vec::with_capacity(mediums.len());
+                for medium_index in &mediums {
+                    let mut tracks = Vec::new();
+                    for placement in command
+                        .placements()
+                        .iter()
+                        .filter(|placement| placement.medium_index() == medium_index.index())
+                    {
+                        let recording = unit_of_work
+                            .music_albums()
+                            .search_recordings(&MusicRecordingFilter {
+                                id: Some(placement.recording_id()),
+                                ..MusicRecordingFilter::default()
+                            })
+                            .await
+                            .map_err(|error| ApplyMusicAlbumError::Unknown(error.into()))?
+                            .into_iter()
+                            .next()
+                            .ok_or(ApplyMusicAlbumError::InvalidPlacement)?;
+                        tracks.push(
+                            MusicRecording::try_new(
+                                recording.id(),
+                                recording.name().map(str::to_owned),
+                                recording.isrc_code().map(str::to_owned),
+                                recording.audio_id(),
+                                recording.file_id(),
+                                recording.music_group_ids().map(<[_]>::to_vec),
+                                TrackIndex::MediumIndex(placement.track_index()),
+                            )
+                            .map_err(|_| ApplyMusicAlbumError::InvalidPlacement)?,
+                        );
+                    }
+                    album_mediums.push(MusicMedium::new(*medium_index, tracks));
+                }
+
                 let updated = MusicAlbum::try_new(
                     album.id(),
                     title,
@@ -217,13 +248,13 @@ where
                     album.music_group_id(),
                     album.music_group_ids().map(<[_]>::to_vec),
                     album.cover_image_id(),
-                    album.mediums().to_vec(),
+                    album_mediums,
                 )
                 .map_err(|_| ApplyMusicAlbumError::InvalidReference)?;
 
-                unit_of_work
+                let stored = unit_of_work
                     .music_albums()
-                    .update(updated)
+                    .save(updated)
                     .await
                     .map_err(|error| {
                         if matches!(
@@ -231,65 +262,12 @@ where
                             RepositoryError::AlreadyExist | RepositoryError::Conflict
                         ) {
                             ApplyMusicAlbumError::Conflict
-                        } else {
-                            ApplyMusicAlbumError::Unknown(error.into())
-                        }
-                    })?
-                    .ok_or(ApplyMusicAlbumError::NoSuchAlbum)?;
-
-                unit_of_work
-                    .music_albums()
-                    .replace_mediums(album.id(), &mediums)
-                    .await
-                    .map_err(|error| {
-                        if matches!(error, RepositoryError::Conflict) {
-                            ApplyMusicAlbumError::Conflict
+                        } else if matches!(error, RepositoryError::DataIntegrityViolation) {
+                            ApplyMusicAlbumError::InvalidPlacement
                         } else {
                             ApplyMusicAlbumError::Unknown(error.into())
                         }
                     })?;
-
-                if !command.placements().is_empty() {
-                    let placements: Vec<(u8, u8, i64)> = command
-                        .placements()
-                        .iter()
-                        .map(|placement| {
-                            (
-                                placement.medium_index(),
-                                placement.track_index(),
-                                placement.recording_id(),
-                            )
-                        })
-                        .collect();
-                    unit_of_work
-                        .music_albums()
-                        .place_tracks(album.id(), &placements)
-                        .await
-                        .map_err(|error| {
-                            if matches!(
-                                error,
-                                RepositoryError::AlreadyExist | RepositoryError::Conflict
-                            ) {
-                                ApplyMusicAlbumError::Conflict
-                            } else if matches!(error, RepositoryError::DataIntegrityViolation) {
-                                ApplyMusicAlbumError::InvalidPlacement
-                            } else {
-                                ApplyMusicAlbumError::Unknown(error.into())
-                            }
-                        })?;
-                }
-
-                let stored = unit_of_work
-                    .music_albums()
-                    .search(&MusicAlbumFilter {
-                        id: Some(album.id()),
-                        ..MusicAlbumFilter::default()
-                    })
-                    .await
-                    .map_err(|error| ApplyMusicAlbumError::Unknown(error.into()))?
-                    .into_iter()
-                    .next()
-                    .ok_or(ApplyMusicAlbumError::NoSuchAlbum)?;
 
                 Ok(ApplyMusicAlbumResponse::new(stored))
             }
@@ -316,18 +294,20 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::application::port::apply_music_album::AlbumPlacement;
-    use crate::domain::alias::NumericID;
-    use crate::domain::model::configuration::ProviderId;
-    use crate::domain::model::external_ref::ExternalRef;
-    use crate::domain::model::music_album::ProductionType;
-    use crate::domain::model::music_medium::MusicMedium;
-    use crate::domain::model::music_metadata::{MediumFormat, MediumSummary};
-    use crate::domain::model::user::{Role, User};
-    use crate::domain::port::error::ExternalServiceError;
-    use crate::domain::port::music_album_repository::MockMusicAlbumRepository;
-    use crate::domain::port::music_metadata_provider::MockMusicMetadataProvider;
-    use crate::domain::port::user_repository::MockUserRepository;
+    use crate::application::port::AlbumPlacement;
+
+    use crate::domain::NumericID;
+
+    use crate::domain::model::{
+        ExternalRef, MediumFormat, MediumSummary, MusicMedium, MusicRecording, ProductionType,
+        ProviderId, Role, TrackIndex, User,
+    };
+
+    use crate::domain::port::{
+        ExternalServiceError, MockMusicAlbumRepository, MockMusicMetadataProvider,
+        MockUserRepository,
+    };
+
     use crate::test_helpers::*;
     use chrono::NaiveDate;
     use std::error::Error;
@@ -383,14 +363,6 @@ mod tests {
             });
     }
 
-    /// Expect the post-write album reload.
-    fn expect_reload(albums: &mut MockMusicAlbumRepository, album: MusicAlbum) {
-        albums.expect_search().times(1).return_once(move |_| {
-            let found = album.clone();
-            Box::pin(async move { Ok(vec![found]) })
-        });
-    }
-
     /// The album metadata a provider reports, with one compact disc.
     fn album_metadata(mediums: Vec<MediumSummary>) -> MusicMetadata {
         MusicMetadata::Album {
@@ -422,14 +394,6 @@ mod tests {
         });
     }
 
-    /// The album the write stores, with the applied `DIGITAL` medium.
-    fn applied_album(id: NumericID) -> Result<MusicAlbum, Box<dyn Error>> {
-        sample_album(
-            id,
-            vec![MusicMedium::new(MediumIndex::Digital(1), Vec::new())],
-        )
-    }
-
     #[tokio::test]
     async fn apply_music_album_without_placements_writes_the_structure()
     -> Result<(), Box<dyn Error>> {
@@ -439,22 +403,18 @@ mod tests {
         let mut albums = MockMusicAlbumRepository::new();
         expect_album(&mut albums, sample_album(7, Vec::new())?);
         albums
-            .expect_update()
+            .expect_save()
             .times(1)
             .withf(|album| {
                 album.id() == 7
                     && album.name() == "Kind of Blue"
                     && album.genre_ids() == ["JAZZ".to_owned()]
                     && album.production_type() == Some(ProductionType::Studio)
+                    && album.mediums().to_vec()
+                        == vec![MusicMedium::new(MediumIndex::Digital(1), Vec::new())]
             })
-            .returning(|album| Box::pin(async move { Ok(Some(album)) }));
-        albums
-            .expect_replace_mediums()
-            .times(1)
-            .withf(|album_id, mediums| *album_id == 7 && mediums == [MediumIndex::Digital(1)])
-            .returning(|_, _| Box::pin(async { Ok(()) }));
-        albums.expect_place_tracks().times(0);
-        expect_reload(&mut albums, applied_album(7)?);
+            .returning(|album| Box::pin(async move { Ok(album) }));
+        albums.expect_save_medium().times(0);
         let mut provider = MockMusicMetadataProvider::new();
         expect_lookup(
             &mut provider,
@@ -483,20 +443,29 @@ mod tests {
         expect_admin(&mut users, 1)?;
         let mut albums = MockMusicAlbumRepository::new();
         expect_album(&mut albums, sample_album(7, Vec::new())?);
+        let recorded = MusicRecording::try_new(
+            5,
+            Some("So What".to_owned()),
+            None,
+            1,
+            2,
+            None,
+            TrackIndex::MediumIndex(1),
+        )?;
         albums
-            .expect_update()
+            .expect_search_recordings()
             .times(1)
-            .returning(|album| Box::pin(async move { Ok(Some(album)) }));
+            .withf(|filter| filter.id == Some(5))
+            .return_once(move |_| {
+                let found = recorded.clone();
+                Box::pin(async move { Ok(vec![found]) })
+            });
         albums
-            .expect_replace_mediums()
+            .expect_save()
             .times(1)
-            .returning(|_, _| Box::pin(async { Ok(()) }));
-        albums
-            .expect_place_tracks()
-            .times(1)
-            .withf(|album_id, placements| *album_id == 7 && placements == [(1, 1, 5)])
-            .returning(|_, _| Box::pin(async { Ok(()) }));
-        expect_reload(&mut albums, applied_album(7)?);
+            .withf(|album| album.id() == 7 && album.mediums().len() == 1)
+            .returning(|album| Box::pin(async move { Ok(album) }));
+        albums.expect_save_medium().times(0);
         let mut provider = MockMusicMetadataProvider::new();
         expect_lookup(
             &mut provider,
@@ -529,17 +498,22 @@ mod tests {
         let mut albums = MockMusicAlbumRepository::new();
         expect_album(&mut albums, sample_album(7, Vec::new())?);
         albums
-            .expect_update()
+            .expect_save()
             .times(1)
-            .returning(|album| Box::pin(async move { Ok(Some(album)) }));
-        albums
-            .expect_replace_mediums()
-            .times(1)
-            .withf(|album_id, mediums| {
-                *album_id == 7 && mediums == [MediumIndex::Cd(1), MediumIndex::Cd(2)]
+            .withf(|album| {
+                album.id() == 7
+                    && album.mediums().len() == 2
+                    && album
+                        .mediums()
+                        .first()
+                        .is_some_and(|medium| medium.index() == MediumIndex::Cd(1))
+                    && album
+                        .mediums()
+                        .get(1)
+                        .is_some_and(|medium| medium.index() == MediumIndex::Cd(2))
             })
-            .returning(|_, _| Box::pin(async { Ok(()) }));
-        expect_reload(&mut albums, sample_album(7, Vec::new())?);
+            .returning(|album| Box::pin(async move { Ok(album) }));
+        albums.expect_save_medium().times(0);
         let mut provider = MockMusicMetadataProvider::new();
         expect_lookup(
             &mut provider,
@@ -557,7 +531,7 @@ mod tests {
             .execute(ApplyMusicAlbumCommand::new(1, 7, reference(), Vec::new()))
             .await?;
 
-        // Assert: the assertion lives in the `replace_mediums` expectation.
+        // Assert: the assertion lives in the `save` expectation.
         Ok(())
     }
 
@@ -568,7 +542,7 @@ mod tests {
         expect_admin(&mut users, 1)?;
         let mut albums = MockMusicAlbumRepository::new();
         expect_album(&mut albums, sample_album(7, Vec::new())?);
-        albums.expect_update().times(0);
+        albums.expect_save().times(0);
         let mut provider = MockMusicMetadataProvider::new();
         provider
             .expect_provider()

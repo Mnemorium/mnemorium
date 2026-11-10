@@ -14,8 +14,7 @@ use std::path::{Component, Path, PathBuf};
 use chrono::{DateTime, Utc};
 use tokio::task::spawn_blocking;
 
-use crate::domain::port::error::MediaSourceError;
-use crate::domain::port::media_source::{MediaEntry, MediaSource};
+use crate::domain::port::{MediaEntry, MediaSource, MediaSourceError};
 
 /// Media source backed by the local filesystem under a fixed root.
 pub(crate) struct LocalMediaSource {

@@ -3,7 +3,7 @@ use std::pin::Pin;
 
 use chrono::NaiveDateTime;
 
-use crate::domain::alias::NumericID;
+use crate::domain::NumericID;
 
 /// Command to list the playlists the caller may see.
 #[derive(Debug, Clone, PartialEq, Eq)]

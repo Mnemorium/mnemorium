@@ -1,17 +1,9 @@
 //! Ordered failover chain over the configured metadata providers.
-#![allow(
-    dead_code,
-    reason = "the provider failover serves the internal video-identification path, which has no REST caller yet"
-)]
 
 use tracing::warn;
 
-use crate::domain::model::configuration::ProviderId;
-use crate::domain::model::media_metadata::MediaMetadata;
-use crate::domain::model::media_query::MediaQuery;
-use crate::domain::model::video_candidate::{Candidate, Target};
-use crate::domain::port::error::ExternalServiceError;
-use crate::domain::port::video_metadata_provider::VideoMetadataProvider;
+use crate::domain::model::{Candidate, MediaMetadata, MediaQuery, ProviderId, Target};
+use crate::domain::port::{ExternalServiceError, VideoMetadataProvider};
 
 /// Failover chain implementing the provider port over its configured links.
 ///
@@ -81,10 +73,12 @@ impl<L: VideoMetadataProvider> VideoMetadataProvider for FailoverVideoMetadataPr
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::model::external_ref::ExternalRef;
-    use crate::domain::model::media_query::{MediaQueryError, VideoKind};
-    use crate::domain::port::video_metadata_provider::MockVideoMetadataProvider;
-    use crate::infrastructure::outbound::reqwest::tmdb::TmdbVideoMetadataProvider;
+    use crate::domain::model::{ExternalRef, MediaQueryError, VideoKind};
+
+    use crate::domain::port::MockVideoMetadataProvider;
+
+    use crate::infrastructure::outbound::reqwest::TmdbVideoMetadataProvider;
+
     use rstest::rstest;
     use std::error::Error;
     use std::time::Duration;
