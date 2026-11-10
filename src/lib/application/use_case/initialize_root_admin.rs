@@ -4,10 +4,11 @@ use std::sync::Arc;
 
 use chrono::Utc;
 
+use tracing::info;
+
 use crate::application::port::initialize_root_admin::{
     InitializeRootAdminError, InitializeRootAdminResponse, InitializeRootAdminUseCase,
 };
-use crate::application::security_event;
 use crate::domain::model::credential::Credential;
 use crate::domain::model::user::{Role, User};
 use crate::domain::port::credential_repository::CredentialRepository as _;
@@ -131,7 +132,13 @@ where
                         .await
                         .map_err(|error| InitializeRootAdminError::Unknown(error.into()))?;
                     if value.is_some() {
-                        security_event::system_object("root_admin", "create");
+                        info!(
+                            target: "security",
+                            event = "system_object",
+                            object = %"root_admin",
+                            action = %"create",
+                            "created a system-level object"
+                        );
                     }
                     Ok(value)
                 }

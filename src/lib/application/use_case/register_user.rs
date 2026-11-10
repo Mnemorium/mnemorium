@@ -4,10 +4,11 @@ use std::sync::Arc;
 
 use chrono::Utc;
 
+use tracing::{error, info, warn};
+
 use crate::application::port::register_user::{
     RegisterUserCommand, RegisterUserError, RegisterUserResponse, RegisterUserUseCase,
 };
-use crate::application::security_event;
 use crate::domain::model::credential::Credential;
 use crate::domain::model::permission::{Action, Global};
 use crate::domain::model::user::{Role, User, UserError};
@@ -121,10 +122,13 @@ where
                     if let Decision::Deny(denial) =
                         Authorization::decide(&caller, &permissions, action, &Global)
                     {
-                        security_event::authorization_failed(
-                            caller.id(),
-                            denial.action().verb(),
-                            denial.action().target(),
+                        warn!(
+                            target: "security",
+                            event = "authz_failed",
+                            actor = caller.id(),
+                            action = %denial.action().verb(),
+                            target = %denial.action().target(),
+                            "denied an action"
                         );
                         return Err(RegisterUserError::Forbidden);
                     }
@@ -168,7 +172,12 @@ where
                     let pending_credential =
                         Credential::try_new(0, password_hash, Utc::now().naive_utc()).map_err(
                             |error| {
-                                security_event::application_error("register_user");
+                                error!(
+                                    target: "security",
+                                    event = "application_error",
+                                    operation = %"register_user",
+                                    "a use case originated an internal error"
+                                );
                                 RegisterUserError::Unknown(error.into())
                             },
                         )?;
@@ -181,7 +190,12 @@ where
                     let pending_user =
                         User::try_new(0, username, email, credential.id(), command.role())
                             .map_err(|error| {
-                                security_event::application_error("register_user");
+                                error!(
+                                    target: "security",
+                                    event = "application_error",
+                                    operation = %"register_user",
+                                    "a use case originated an internal error"
+                                );
                                 RegisterUserError::Unknown(error.into())
                             })?;
                     let user = unit_of_work.users().create(pending_user).await.map_err(
@@ -206,7 +220,14 @@ where
                         .commit()
                         .await
                         .map_err(|error| RegisterUserError::Unknown(error.into()))?;
-                    security_event::user_admin(command.caller_id(), "create", "user");
+                    info!(
+                        target: "security",
+                        event = "user_admin",
+                        actor = command.caller_id(),
+                        action = %"create",
+                        target = %"user",
+                        "changed a user-administration object"
+                    );
                     Ok(value)
                 }
                 Err(error) => {

@@ -4,10 +4,11 @@ use std::sync::Arc;
 
 use chrono::Utc;
 
+use tracing::warn;
+
 use crate::application::port::remove_playlist_track::{
     RemovePlaylistTrackCommand, RemovePlaylistTrackError, RemovePlaylistTrackUseCase,
 };
-use crate::application::security_event;
 use crate::domain::model::permission::Action;
 use crate::domain::port::identity_unit_of_work::IdentityUnitOfWork;
 use crate::domain::port::library_unit_of_work::LibraryUnitOfWork;
@@ -93,10 +94,13 @@ where
                     Action::PlaylistModerate,
                     &playlist,
                 ) {
-                    security_event::authorization_failed(
-                        caller.id(),
-                        denial.action().verb(),
-                        denial.action().target(),
+                    warn!(
+                        target: "security",
+                        event = "authz_failed",
+                        actor = caller.id(),
+                        action = %denial.action().verb(),
+                        target = %denial.action().target(),
+                        "denied an action"
                     );
                     return Err(if denial.conceals() {
                         RemovePlaylistTrackError::NoSuchPlaylist

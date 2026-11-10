@@ -4,7 +4,8 @@
     reason = "the provider failover serves the internal video-identification path, which has no REST caller yet"
 )]
 
-use crate::application::security_event;
+use tracing::warn;
+
 use crate::domain::model::configuration::ProviderId;
 use crate::domain::model::media_metadata::MediaMetadata;
 use crate::domain::model::media_query::MediaQuery;
@@ -35,7 +36,12 @@ impl<L: VideoMetadataProvider> VideoMetadataProvider for FailoverVideoMetadataPr
     async fn lookup(&self, target: &Target) -> Result<Option<MediaMetadata>, ExternalServiceError> {
         let provider = target.reference().provider();
         let Some(configured) = self.links.iter().find(|link| link.0 == provider) else {
-            security_event::metadata_provider_unconfigured(provider.as_str());
+            warn!(
+                target: "security",
+                event = "metadata_provider_unconfigured",
+                provider = %provider.as_str(),
+                "a lookup named a provider that is not configured"
+            );
             return Ok(None);
         };
         configured.1.lookup(target).await
@@ -57,9 +63,12 @@ impl<L: VideoMetadataProvider> VideoMetadataProvider for FailoverVideoMetadataPr
                         // another provider would conceal it.
                         return Err(error);
                     }
-                    security_event::metadata_provider_fallback(
-                        link.0.as_str(),
-                        error.classification(),
+                    warn!(
+                        target: "security",
+                        event = "metadata_provider_fallback",
+                        provider = %link.0.as_str(),
+                        classification = %error.classification(),
+                        "fell over to the next metadata provider"
                     );
                     first_failure = first_failure.or(Some(error));
                 }

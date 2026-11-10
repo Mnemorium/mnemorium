@@ -2,10 +2,11 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
+use tracing::warn;
+
 use crate::application::port::put_album_medium::{
     PutAlbumMediumCommand, PutAlbumMediumError, PutAlbumMediumResponse, PutAlbumMediumUseCase,
 };
-use crate::application::security_event;
 use crate::domain::model::music_medium::MediumIndex;
 use crate::domain::model::permission::Action;
 use crate::domain::port::error::RepositoryError;
@@ -94,20 +95,26 @@ where
                 if let Decision::Deny(denial) =
                     Authorization::decide(&caller, &permissions, Action::LibraryRead, &album)
                 {
-                    security_event::authorization_failed(
-                        caller.id(),
-                        denial.action().verb(),
-                        denial.action().target(),
+                    warn!(
+                        target: "security",
+                        event = "authz_failed",
+                        actor = caller.id(),
+                        action = %denial.action().verb(),
+                        target = %denial.action().target(),
+                        "denied an action"
                     );
                     return Err(PutAlbumMediumError::NoSuchAlbum);
                 }
                 if let Decision::Deny(denial) =
                     Authorization::decide(&caller, &permissions, Action::LibraryManage, &album)
                 {
-                    security_event::authorization_failed(
-                        caller.id(),
-                        denial.action().verb(),
-                        denial.action().target(),
+                    warn!(
+                        target: "security",
+                        event = "authz_failed",
+                        actor = caller.id(),
+                        action = %denial.action().verb(),
+                        target = %denial.action().target(),
+                        "denied an action"
                     );
                     return Err(if denial.conceals() {
                         PutAlbumMediumError::NoSuchAlbum
@@ -122,7 +129,13 @@ where
 
                 let medium = MediumIndex::from_wire(command.medium_type(), command.medium_index())
                     .ok_or_else(|| {
-                        security_event::input_validation_failed("medium_type", "invalid_value");
+                        warn!(
+                            target: "security",
+                            event = "input_validation_failed",
+                            field = %"medium_type",
+                            reason = %"invalid_value",
+                            "rejected a client-supplied value"
+                        );
                         PutAlbumMediumError::InvalidMediumType
                     })?;
 

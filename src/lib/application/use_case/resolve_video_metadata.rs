@@ -2,11 +2,12 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
+use tracing::warn;
+
 use crate::application::port::resolve_video_metadata::{
     ResolveVideoMetadataCommand, ResolveVideoMetadataError, ResolveVideoMetadataResponse,
     ResolveVideoMetadataUseCase,
 };
-use crate::application::security_event;
 use crate::domain::model::media_metadata::MediaMetadata;
 use crate::domain::model::video_candidate::Target;
 use crate::domain::port::identity_unit_of_work::IdentityUnitOfWork;
@@ -106,10 +107,13 @@ where
                 if let Decision::Deny(denial) =
                     Authorization::decide_library_surface(&caller, &permissions)
                 {
-                    security_event::authorization_failed(
-                        caller.id(),
-                        denial.action().verb(),
-                        denial.action().target(),
+                    warn!(
+                        target: "security",
+                        event = "authz_failed",
+                        actor = caller.id(),
+                        action = %denial.action().verb(),
+                        target = %denial.action().target(),
+                        "denied an action"
                     );
                     return Err(ResolveVideoMetadataError::NotPermitted);
                 }

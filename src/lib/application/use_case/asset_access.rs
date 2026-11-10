@@ -6,7 +6,8 @@
 //! asset and an unknown asset are one outcome, and an unreadable asset's bytes
 //! are never read.
 
-use crate::application::security_event;
+use tracing::warn;
+
 use crate::domain::alias::NumericID;
 use crate::domain::model::asset::AssetContext;
 use crate::domain::model::audio::Audio;
@@ -245,10 +246,13 @@ where
         (None, None, None) => Authorization::decide_orphan_asset(&caller, &file),
     };
     if let Decision::Deny(denial) = decision {
-        security_event::authorization_failed(
-            caller.id(),
-            denial.action().verb(),
-            denial.action().target(),
+        warn!(
+            target: "security",
+            event = "authz_failed",
+            actor = caller.id(),
+            action = %denial.action().verb(),
+            target = %denial.action().target(),
+            "denied an action"
         );
         return Err(AssetAccessError::NoSuchAsset);
     }

@@ -18,7 +18,6 @@ use crate::application::port::initialize_root_admin::InitializeRootAdminUseCase 
 use crate::application::port::library_use_case_factory::LibraryUseCaseFactory;
 use crate::application::port::load_configuration::LoadConfigurationUseCase as _;
 use crate::application::port::load_state::{DATABASE_PATH, LoadStateUseCase as _, STATE_PATH};
-use crate::application::security_event;
 use crate::application::use_case::ensure_storage_directories::EnsureStorageDirectories;
 use crate::application::use_case::initialize_root_admin::InitializeRootAdmin;
 use crate::application::use_case::load_configuration::LoadConfiguration;
@@ -86,12 +85,28 @@ pub async fn run() -> anyhow::Result<()> {
     // reach a sink (`OBS-006`); identity creation happens before configuration
     // because logging settings are themselves configuration.
     if instance_state_created {
-        security_event::system_object("instance_state", "create");
+        info!(
+            target: "security",
+            event = "system_object",
+            object = %"instance_state",
+            action = %"create",
+            "created a system-level object"
+        );
         if pepper_generated {
-            security_event::secret_initialized("pepper");
+            info!(
+                target: "security",
+                event = "secret_initialized",
+                component = %"pepper",
+                "generated a secret"
+            );
         }
         if jwt_secret_generated {
-            security_event::secret_initialized("jwt_secret");
+            info!(
+                target: "security",
+                event = "secret_initialized",
+                component = %"jwt_secret",
+                "generated a secret"
+            );
         }
     }
     if configuration_file_created {

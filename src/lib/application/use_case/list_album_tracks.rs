@@ -2,11 +2,12 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
+use tracing::{error, warn};
+
 use crate::application::port::list_album_tracks::{
     ListAlbumTracksCommand, ListAlbumTracksError, ListAlbumTracksItem, ListAlbumTracksResponse,
     ListAlbumTracksUseCase,
 };
-use crate::application::security_event;
 use crate::domain::model::permission::Action;
 use crate::domain::port::identity_unit_of_work::IdentityUnitOfWork;
 use crate::domain::port::library_unit_of_work::LibraryUnitOfWork;
@@ -93,10 +94,13 @@ where
                 if let Decision::Deny(denial) =
                     Authorization::decide(&caller, &permissions, Action::LibraryRead, &album)
                 {
-                    security_event::authorization_failed(
-                        caller.id(),
-                        denial.action().verb(),
-                        denial.action().target(),
+                    warn!(
+                        target: "security",
+                        event = "authz_failed",
+                        actor = caller.id(),
+                        action = %denial.action().verb(),
+                        target = %denial.action().target(),
+                        "denied an action"
                     );
                     return Err(ListAlbumTracksError::NoSuchAlbum);
                 }
@@ -112,7 +116,12 @@ where
                 let mut tracks = Vec::with_capacity(medium.tracks().len());
                 for recording in medium.tracks() {
                     let track_index = recording.index().medium_index().ok_or_else(|| {
-                        security_event::application_error("list_album_tracks");
+                        error!(
+                            target: "security",
+                            event = "application_error",
+                            operation = %"list_album_tracks",
+                            "a use case originated an internal error"
+                        );
                         ListAlbumTracksError::Unknown(anyhow::anyhow!(
                             "an album medium sequences a playlist placement"
                         ))

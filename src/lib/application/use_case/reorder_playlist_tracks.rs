@@ -4,11 +4,12 @@ use std::sync::Arc;
 
 use chrono::Utc;
 
+use tracing::warn;
+
 use crate::application::port::reorder_playlist_tracks::{
     ReorderPlaylistTracksCommand, ReorderPlaylistTracksError, ReorderPlaylistTracksResponse,
     ReorderPlaylistTracksUseCase,
 };
-use crate::application::security_event;
 use crate::domain::model::music_playlist::MusicPlaylistError;
 use crate::domain::model::permission::Action;
 use crate::domain::port::identity_unit_of_work::IdentityUnitOfWork;
@@ -105,10 +106,13 @@ where
                     Action::PlaylistModerate,
                     &playlist,
                 ) {
-                    security_event::authorization_failed(
-                        caller.id(),
-                        denial.action().verb(),
-                        denial.action().target(),
+                    warn!(
+                        target: "security",
+                        event = "authz_failed",
+                        actor = caller.id(),
+                        action = %denial.action().verb(),
+                        target = %denial.action().target(),
+                        "denied an action"
                     );
                     return Err(if denial.conceals() {
                         ReorderPlaylistTracksError::NoSuchPlaylist
@@ -122,7 +126,13 @@ where
                         .validate_order(command.order())
                         .map_err(|error| match error {
                             MusicPlaylistError::InvalidOrder => {
-                                security_event::input_validation_failed("order", "invalid_order");
+                                warn!(
+                                    target: "security",
+                                    event = "input_validation_failed",
+                                    field = %"order",
+                                    reason = %"invalid_order",
+                                    "rejected a client-supplied value"
+                                );
                                 ReorderPlaylistTracksError::InvalidOrder
                             }
                             _ => ReorderPlaylistTracksError::Unknown(anyhow::Error::new(error)),

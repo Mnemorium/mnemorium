@@ -2,10 +2,11 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
+use tracing::warn;
+
 use crate::application::port::create_movie::{
     CreateMovieCommand, CreateMovieError, CreateMovieResponse, CreateMovieUseCase,
 };
-use crate::application::security_event;
 use crate::domain::model::movie::Movie;
 use crate::domain::port::error::RepositoryError;
 use crate::domain::port::identity_unit_of_work::IdentityUnitOfWork;
@@ -80,10 +81,13 @@ where
                 if let Decision::Deny(denial) =
                     Authorization::decide_library_manage_surface(&caller, &permissions)
                 {
-                    security_event::authorization_failed(
-                        caller.id(),
-                        denial.action().verb(),
-                        denial.action().target(),
+                    warn!(
+                        target: "security",
+                        event = "authz_failed",
+                        actor = caller.id(),
+                        action = %denial.action().verb(),
+                        target = %denial.action().target(),
+                        "denied an action"
                     );
                     return Err(CreateMovieError::Forbidden);
                 }
@@ -92,11 +96,23 @@ where
                     NamePolicy::validate(command.name().to_owned()).map_err(
                         |error| match error {
                             NamePolicyError::Empty => {
-                                security_event::input_validation_failed("name", "empty");
+                                warn!(
+                                    target: "security",
+                                    event = "input_validation_failed",
+                                    field = %"name",
+                                    reason = %"empty",
+                                    "rejected a client-supplied value"
+                                );
                                 CreateMovieError::InvalidName
                             }
                             NamePolicyError::TooLong => {
-                                security_event::input_validation_failed("name", "too_long");
+                                warn!(
+                                    target: "security",
+                                    event = "input_validation_failed",
+                                    field = %"name",
+                                    reason = %"too_long",
+                                    "rejected a client-supplied value"
+                                );
                                 CreateMovieError::NameTooLong
                             }
                         },
@@ -106,9 +122,12 @@ where
                     .country_of_origin()
                     .map(|value| {
                         CountryCode::validate(value).map_err(|_| {
-                            security_event::input_validation_failed(
-                                "country_of_origin",
-                                "invalid_value",
+                            warn!(
+                                target: "security",
+                                event = "input_validation_failed",
+                                field = %"country_of_origin",
+                                reason = %"invalid_value",
+                                "rejected a client-supplied value"
                             );
                             CreateMovieError::InvalidCountry
                         })
@@ -116,7 +135,13 @@ where
                     .transpose()?;
 
                 if command.genres().iter().any(String::is_empty) {
-                    security_event::input_validation_failed("genres", "empty");
+                    warn!(
+                        target: "security",
+                        event = "input_validation_failed",
+                        field = %"genres",
+                        reason = %"empty",
+                        "rejected a client-supplied value"
+                    );
                     return Err(CreateMovieError::InvalidGenre);
                 }
 

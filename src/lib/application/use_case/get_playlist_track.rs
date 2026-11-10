@@ -2,11 +2,12 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
+use tracing::warn;
+
 use crate::application::port::get_playlist_track::{
     GetPlaylistTrackCommand, GetPlaylistTrackError, GetPlaylistTrackResponse,
     GetPlaylistTrackUseCase,
 };
-use crate::application::security_event;
 use crate::domain::model::permission::Action;
 use crate::domain::port::identity_unit_of_work::IdentityUnitOfWork;
 use crate::domain::port::library_unit_of_work::LibraryUnitOfWork;
@@ -95,10 +96,13 @@ where
                 if let Decision::Deny(denial) =
                     Authorization::decide(&caller, &permissions, Action::PlaylistRead, &playlist)
                 {
-                    security_event::authorization_failed(
-                        caller.id(),
-                        denial.action().verb(),
-                        denial.action().target(),
+                    warn!(
+                        target: "security",
+                        event = "authz_failed",
+                        actor = caller.id(),
+                        action = %denial.action().verb(),
+                        target = %denial.action().target(),
+                        "denied an action"
                     );
                     return Err(GetPlaylistTrackError::NoSuchPlaylist);
                 }

@@ -4,10 +4,11 @@ use std::sync::Arc;
 
 use chrono::Utc;
 
+use tracing::{info, warn};
+
 use crate::application::port::patch_credential::{
     PatchCredentialCommand, PatchCredentialError, PatchCredentialUseCase,
 };
-use crate::application::security_event;
 use crate::domain::model::credential::Credential;
 use crate::domain::model::permission::{Action, Global};
 use crate::domain::port::credential_repository::{CredentialFilter, CredentialRepository as _};
@@ -92,10 +93,13 @@ where
                 if let Decision::Deny(denial) =
                     Authorization::decide(&caller, &permissions, Action::CredentialPatch, &Global)
                 {
-                    security_event::authorization_failed(
-                        caller.id(),
-                        denial.action().verb(),
-                        denial.action().target(),
+                    warn!(
+                        target: "security",
+                        event = "authz_failed",
+                        actor = caller.id(),
+                        action = %denial.action().verb(),
+                        target = %denial.action().target(),
+                        "denied an action"
                     );
                     return Err(PatchCredentialError::Forbidden);
                 }
@@ -136,7 +140,12 @@ where
                         .commit()
                         .await
                         .map_err(|error| PatchCredentialError::Unknown(error.into()))?;
-                    security_event::credential_rotated(command.caller_id());
+                    info!(
+                        target: "security",
+                        event = "credential_rotated",
+                        actor = command.caller_id(),
+                        "rotated a credential"
+                    );
                     Ok(value)
                 }
                 Err(error) => {

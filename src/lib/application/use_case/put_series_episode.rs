@@ -2,11 +2,12 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
+use tracing::warn;
+
 use crate::application::port::put_series_episode::{
     PutSeriesEpisodeCommand, PutSeriesEpisodeError, PutSeriesEpisodeResponse,
     PutSeriesEpisodeUseCase,
 };
-use crate::application::security_event;
 use crate::domain::model::episode::{Episode, EpisodeIndex};
 use crate::domain::port::error::RepositoryError;
 use crate::domain::port::identity_unit_of_work::IdentityUnitOfWork;
@@ -85,10 +86,13 @@ where
                 if let Decision::Deny(denial) =
                     Authorization::decide_library_manage_surface(&caller, &permissions)
                 {
-                    security_event::authorization_failed(
-                        caller.id(),
-                        denial.action().verb(),
-                        denial.action().target(),
+                    warn!(
+                        target: "security",
+                        event = "authz_failed",
+                        actor = caller.id(),
+                        action = %denial.action().verb(),
+                        target = %denial.action().target(),
+                        "denied an action"
                     );
                     return Err(PutSeriesEpisodeError::Forbidden);
                 }
@@ -115,11 +119,23 @@ where
                     NamePolicy::validate(command.name().to_owned()).map_err(
                         |error| match error {
                             NamePolicyError::Empty => {
-                                security_event::input_validation_failed("name", "empty");
+                                warn!(
+                                    target: "security",
+                                    event = "input_validation_failed",
+                                    field = %"name",
+                                    reason = %"empty",
+                                    "rejected a client-supplied value"
+                                );
                                 PutSeriesEpisodeError::InvalidName
                             }
                             NamePolicyError::TooLong => {
-                                security_event::input_validation_failed("name", "too_long");
+                                warn!(
+                                    target: "security",
+                                    event = "input_validation_failed",
+                                    field = %"name",
+                                    reason = %"too_long",
+                                    "rejected a client-supplied value"
+                                );
                                 PutSeriesEpisodeError::NameTooLong
                             }
                         },

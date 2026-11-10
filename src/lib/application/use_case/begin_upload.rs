@@ -4,10 +4,11 @@ use std::sync::Arc;
 
 use chrono::{Duration, Utc};
 
+use tracing::{error, info, warn};
+
 use crate::application::port::begin_upload::{
     BeginUploadCommand, BeginUploadError, BeginUploadResponse, BeginUploadUseCase,
 };
-use crate::application::security_event;
 use crate::application::use_case::upload_layout::{media_root, staged_path};
 use crate::domain::alias::NumericID;
 use crate::domain::model::upload::{ChunkBitmap, MAX_TOTAL_CHUNKS, Upload, UploadError};
@@ -78,27 +79,44 @@ where
             // from a client-declared size above the configured maximum.
             let file_size = command.file_size();
             if file_size == 0 {
-                security_event::input_validation_failed("file_size", "zero");
+                warn!(
+                    target: "security",
+                    event = "input_validation_failed",
+                    field = %"file_size",
+                    reason = %"zero",
+                    "rejected a client-supplied value"
+                );
                 return Err(BeginUploadError::InvalidFileSize);
             }
             if file_size > max_file_size_bytes {
-                security_event::suspicious_business_logic(
-                    command.user_id(),
-                    "begin_upload",
-                    "file_size_exceeded",
+                warn!(
+                    target: "security",
+                    event = "suspicious_business_logic",
+                    actor = command.user_id(),
+                    action = %"begin_upload",
+                    reason = %"file_size_exceeded",
+                    "an action was out of order or exceeded a limit"
                 );
                 return Err(BeginUploadError::FileTooLarge);
             }
             let total = file_size.div_ceil(chunk_size);
             let total_chunks = usize::try_from(total).map_err(|error| {
-                security_event::application_error("begin_upload");
+                error!(
+                    target: "security",
+                    event = "application_error",
+                    operation = %"begin_upload",
+                    "a use case originated an internal error"
+                );
                 BeginUploadError::Unknown(anyhow::anyhow!(error))
             })?;
             if total_chunks > MAX_TOTAL_CHUNKS {
-                security_event::suspicious_business_logic(
-                    command.user_id(),
-                    "begin_upload",
-                    "total_chunks_exceeded",
+                warn!(
+                    target: "security",
+                    event = "suspicious_business_logic",
+                    actor = command.user_id(),
+                    action = %"begin_upload",
+                    reason = %"total_chunks_exceeded",
+                    "an action was out of order or exceeded a limit"
                 );
                 return Err(BeginUploadError::FileTooLarge);
             }
@@ -165,7 +183,13 @@ where
                 )
                 .map_err(|error| match error {
                     UploadError::InvalidFileName => {
-                        security_event::input_validation_failed("file_name", "invalid");
+                        warn!(
+                            target: "security",
+                            event = "input_validation_failed",
+                            field = %"file_name",
+                            reason = %"invalid",
+                            "rejected a client-supplied value"
+                        );
                         BeginUploadError::InvalidFileName
                     }
                     UploadError::InvalidFileSize => BeginUploadError::InvalidFileSize,
@@ -198,12 +222,22 @@ where
                     .created_at()
                     .checked_add_signed(Duration::seconds(i64::try_from(expiry_seconds).map_err(
                         |error| {
-                            security_event::application_error("begin_upload");
+                            error!(
+                                target: "security",
+                                event = "application_error",
+                                operation = %"begin_upload",
+                                "a use case originated an internal error"
+                            );
                             BeginUploadError::Unknown(anyhow::anyhow!(error))
                         },
                     )?))
                     .ok_or_else(|| {
-                        security_event::application_error("begin_upload");
+                        error!(
+                            target: "security",
+                            event = "application_error",
+                            operation = %"begin_upload",
+                            "a use case originated an internal error"
+                        );
                         BeginUploadError::Unknown(anyhow::anyhow!(
                             "the upload expiry overflows the created_at timestamp"
                         ))
@@ -220,10 +254,13 @@ where
             match result {
                 Ok(value) => match unit_of_work.commit().await {
                     Ok(()) => {
-                        security_event::upload(
-                            command.user_id(),
-                            &value.upload_id().to_string(),
-                            "accepted",
+                        info!(
+                            target: "security",
+                            event = "upload",
+                            actor = command.user_id(),
+                            upload = %value.upload_id().to_string(),
+                            outcome = %"accepted",
+                            "upload activity"
                         );
                         Ok(value)
                     }

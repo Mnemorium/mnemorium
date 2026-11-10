@@ -3737,7 +3737,9 @@ the same way.
 ### 6. Security-event catalog
 
 These events are normative: each is emitted at its declared level with its declared fields, and a `security`-target
-event must be one this catalog declares. A field is an identifier, a code or a classification — never a value.
+event must be one this catalog declares. A field is an identifier, a code or a classification — never a value. Each
+owning layer writes its emission inline with the `tracing` macro; this table is the single catalog, and `check_obs_006`
+verifies every emission site against it.
 
 | Event                            | Level   | Fields                                                                             | Emitted when                                                                                |
 | -------------------------------- | ------- | ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |

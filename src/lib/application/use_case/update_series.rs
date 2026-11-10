@@ -2,11 +2,12 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
+use tracing::warn;
+
 use crate::application::field_update::FieldUpdate;
 use crate::application::port::update_series::{
     UpdateSeriesCommand, UpdateSeriesError, UpdateSeriesResponse, UpdateSeriesUseCase,
 };
-use crate::application::security_event;
 use crate::domain::model::permission::Action;
 use crate::domain::model::series::Series;
 use crate::domain::port::error::RepositoryError;
@@ -93,20 +94,26 @@ where
                 if let Decision::Deny(denial) =
                     Authorization::decide(&caller, &permissions, Action::LibraryRead, &series)
                 {
-                    security_event::authorization_failed(
-                        caller.id(),
-                        denial.action().verb(),
-                        denial.action().target(),
+                    warn!(
+                        target: "security",
+                        event = "authz_failed",
+                        actor = caller.id(),
+                        action = %denial.action().verb(),
+                        target = %denial.action().target(),
+                        "denied an action"
                     );
                     return Err(UpdateSeriesError::NoSuchSeries);
                 }
                 if let Decision::Deny(denial) =
                     Authorization::decide(&caller, &permissions, Action::LibraryManage, &series)
                 {
-                    security_event::authorization_failed(
-                        caller.id(),
-                        denial.action().verb(),
-                        denial.action().target(),
+                    warn!(
+                        target: "security",
+                        event = "authz_failed",
+                        actor = caller.id(),
+                        action = %denial.action().verb(),
+                        target = %denial.action().target(),
+                        "denied an action"
                     );
                     return Err(if denial.conceals() {
                         UpdateSeriesError::NoSuchSeries
@@ -119,11 +126,23 @@ where
                     Some(requested) => {
                         NamePolicy::validate(requested.to_owned()).map_err(|error| match error {
                             NamePolicyError::Empty => {
-                                security_event::input_validation_failed("name", "empty");
+                                warn!(
+                                    target: "security",
+                                    event = "input_validation_failed",
+                                    field = %"name",
+                                    reason = %"empty",
+                                    "rejected a client-supplied value"
+                                );
                                 UpdateSeriesError::InvalidName
                             }
                             NamePolicyError::TooLong => {
-                                security_event::input_validation_failed("name", "too_long");
+                                warn!(
+                                    target: "security",
+                                    event = "input_validation_failed",
+                                    field = %"name",
+                                    reason = %"too_long",
+                                    "rejected a client-supplied value"
+                                );
                                 UpdateSeriesError::NameTooLong
                             }
                         })?
@@ -136,9 +155,12 @@ where
                     FieldUpdate::Clear => None,
                     FieldUpdate::Set(value) => {
                         Some(CountryCode::validate(&value).map_err(|_| {
-                            security_event::input_validation_failed(
-                                "country_of_origin",
-                                "invalid_value",
+                            warn!(
+                                target: "security",
+                                event = "input_validation_failed",
+                                field = %"country_of_origin",
+                                reason = %"invalid_value",
+                                "rejected a client-supplied value"
                             );
                             UpdateSeriesError::InvalidCountry
                         })?)
@@ -148,7 +170,13 @@ where
                 let genres = match command.genres() {
                     Some(requested) => {
                         if requested.iter().any(String::is_empty) {
-                            security_event::input_validation_failed("genres", "empty");
+                            warn!(
+                                target: "security",
+                                event = "input_validation_failed",
+                                field = %"genres",
+                                reason = %"empty",
+                                "rejected a client-supplied value"
+                            );
                             return Err(UpdateSeriesError::InvalidGenre);
                         }
                         requested.to_vec()

@@ -2,10 +2,11 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
+use tracing::{debug, warn};
+
 use crate::application::port::get_current_user::{
     GetCurrentUserCommand, GetCurrentUserError, GetCurrentUserResponse, GetCurrentUserUseCase,
 };
-use crate::application::security_event;
 use crate::domain::model::permission::Action;
 use crate::domain::port::identity_unit_of_work::IdentityUnitOfWork;
 use crate::domain::port::permission_repository::{PermissionFilter, PermissionRepository as _};
@@ -77,10 +78,13 @@ where
                 if let Decision::Deny(denial) =
                     Authorization::decide(&user, &permissions, Action::UserRead, &user)
                 {
-                    security_event::authorization_failed(
-                        user.id(),
-                        denial.action().verb(),
-                        denial.action().target(),
+                    warn!(
+                        target: "security",
+                        event = "authz_failed",
+                        actor = user.id(),
+                        action = %denial.action().verb(),
+                        target = %denial.action().target(),
+                        "denied an action"
                     );
                     return Err(GetCurrentUserError::NoSuchUser);
                 }
@@ -100,7 +104,13 @@ where
                         .commit()
                         .await
                         .map_err(|error| GetCurrentUserError::Unknown(error.into()))?;
-                    security_event::sensitive_data_access(command.user_id(), "current_user");
+                    debug!(
+                        target: "security",
+                        event = "sensitive_data_access",
+                        actor = command.user_id(),
+                        object = %"current_user",
+                        "read personal data"
+                    );
                     Ok(value)
                 }
                 Err(error) => {

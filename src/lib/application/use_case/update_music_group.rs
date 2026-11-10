@@ -2,11 +2,12 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
+use tracing::warn;
+
 use crate::application::port::update_music_group::{
     UpdateMusicGroupCommand, UpdateMusicGroupError, UpdateMusicGroupResponse,
     UpdateMusicGroupUseCase,
 };
-use crate::application::security_event;
 use crate::domain::model::music_group::MusicGroup;
 use crate::domain::model::permission::Action;
 use crate::domain::port::error::RepositoryError;
@@ -95,10 +96,13 @@ where
                 if let Decision::Deny(denial) =
                     Authorization::decide(&caller, &permissions, Action::LibraryRead, &group)
                 {
-                    security_event::authorization_failed(
-                        caller.id(),
-                        denial.action().verb(),
-                        denial.action().target(),
+                    warn!(
+                        target: "security",
+                        event = "authz_failed",
+                        actor = caller.id(),
+                        action = %denial.action().verb(),
+                        target = %denial.action().target(),
+                        "denied an action"
                     );
                     return Err(UpdateMusicGroupError::NoSuchGroup);
                 }
@@ -106,10 +110,13 @@ where
                 if let Decision::Deny(denial) =
                     Authorization::decide(&caller, &permissions, Action::LibraryManage, &group)
                 {
-                    security_event::authorization_failed(
-                        caller.id(),
-                        denial.action().verb(),
-                        denial.action().target(),
+                    warn!(
+                        target: "security",
+                        event = "authz_failed",
+                        actor = caller.id(),
+                        action = %denial.action().verb(),
+                        target = %denial.action().target(),
+                        "denied an action"
                     );
                     return Err(if denial.conceals() {
                         UpdateMusicGroupError::NoSuchGroup
@@ -124,11 +131,23 @@ where
                             NamePolicy::validate(requested.to_owned()).map_err(
                                 |error| match error {
                                     NamePolicyError::Empty => {
-                                        security_event::input_validation_failed("name", "empty");
+                                        warn!(
+                                            target: "security",
+                                            event = "input_validation_failed",
+                                            field = %"name",
+                                            reason = %"empty",
+                                            "rejected a client-supplied value"
+                                        );
                                         UpdateMusicGroupError::InvalidName
                                     }
                                     NamePolicyError::TooLong => {
-                                        security_event::input_validation_failed("name", "too_long");
+                                        warn!(
+                                            target: "security",
+                                            event = "input_validation_failed",
+                                            field = %"name",
+                                            reason = %"too_long",
+                                            "rejected a client-supplied value"
+                                        );
                                         UpdateMusicGroupError::NameTooLong
                                     }
                                 },

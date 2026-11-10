@@ -6,10 +6,11 @@ use std::sync::Arc;
 
 use chrono::Utc;
 
+use tracing::info;
+
 use crate::application::port::ingest_media::{
     IngestMediaCommand, IngestMediaError, IngestMediaResponse, IngestMediaUseCase, IngestRequest,
 };
-use crate::application::security_event;
 use crate::application::use_case::upload_layout::media_path;
 use crate::domain::alias::NumericID;
 use crate::domain::model::audio::{Audio, ProbedAudio};
@@ -769,14 +770,17 @@ where
 
 /// Emit the catalogued aggregate outcome of one ingest operation.
 fn report_counts(report: &IngestMediaResponse) {
-    security_event::media_ingest(
-        report.registered(),
-        report.completed(),
-        report.untouched(),
-        report.changed(),
-        report.missing(),
-        report.removed(),
-        report.skipped(),
+    info!(
+        target: "security",
+        event = "ingest",
+        registered = report.registered(),
+        completed = report.completed(),
+        untouched = report.untouched(),
+        changed = report.changed(),
+        missing = report.missing(),
+        removed = report.removed(),
+        skipped = report.skipped(),
+        "reconciled the library root"
     );
 }
 

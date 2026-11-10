@@ -2,10 +2,11 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
+use tracing::warn;
+
 use crate::application::port::get_gallery::{
     GalleryItemSummary, GetGalleryCommand, GetGalleryError, GetGalleryResponse, GetGalleryUseCase,
 };
-use crate::application::security_event;
 use crate::domain::model::permission::Action;
 use crate::domain::port::gallery_repository::{
     GalleryFilter, GalleryItemFilter, GalleryRepository as _,
@@ -89,10 +90,13 @@ where
                 if let Decision::Deny(denial) =
                     Authorization::decide(&caller, &permissions, Action::GalleryRead, &gallery)
                 {
-                    security_event::authorization_failed(
-                        caller.id(),
-                        denial.action().verb(),
-                        denial.action().target(),
+                    warn!(
+                        target: "security",
+                        event = "authz_failed",
+                        actor = caller.id(),
+                        action = %denial.action().verb(),
+                        target = %denial.action().target(),
+                        "denied an action"
                     );
                     return Err(GetGalleryError::NoSuchGallery);
                 }

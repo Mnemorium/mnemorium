@@ -16,10 +16,11 @@ use notify::{EventKind, RecommendedWatcher, RecursiveMode, Watcher as _};
 use tokio::sync::mpsc::UnboundedReceiver;
 use tokio::sync::{Mutex, mpsc};
 
+use tracing::warn;
+
 use crate::application::port::media_change_source::{
     MediaChange, MediaChangeSource, MediaChangeSourceError,
 };
-use crate::application::security_event;
 
 /// Change source backed by the local filesystem watcher.
 pub(crate) struct NotifyMediaChangeSource {
@@ -43,7 +44,13 @@ impl NotifyMediaChangeSource {
         // relative to must be absolute too; the caller passes the fixed
         // `media/` path relative to the working directory.
         let canonical_root = root.canonicalize().map_err(|error| {
-            security_event::media_ingest_fault("watch_registration_failed");
+            warn!(
+                target: "security",
+                event = "ingest_fault",
+                kind = %"watch_registration_failed",
+                operation = "media_change_source",
+                "the change observer degraded; the startup scan remains authoritative"
+            );
             MediaChangeSourceError::Unknown(error.into())
         })?;
         let (sender, receiver) = mpsc::unbounded_channel();
@@ -148,13 +155,25 @@ impl NotifyMediaChangeSource {
                 }
             })
             .map_err(|error| {
-                security_event::media_ingest_fault("watch_registration_failed");
+                warn!(
+                    target: "security",
+                    event = "ingest_fault",
+                    kind = %"watch_registration_failed",
+                    operation = "media_change_source",
+                    "the change observer degraded; the startup scan remains authoritative"
+                );
                 MediaChangeSourceError::Unknown(error.into())
             })?;
         watcher
             .watch(canonical_root.as_path(), RecursiveMode::Recursive)
             .map_err(|_error| {
-                security_event::media_ingest_fault("watch_registration_failed");
+                warn!(
+                    target: "security",
+                    event = "ingest_fault",
+                    kind = %"watch_registration_failed",
+                    operation = "media_change_source",
+                    "the change observer degraded; the startup scan remains authoritative"
+                );
                 MediaChangeSourceError::WatchFailed
             })?;
         Ok(Self {

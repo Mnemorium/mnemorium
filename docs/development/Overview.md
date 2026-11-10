@@ -15,7 +15,6 @@ document describes the source layout those rules constrain.
     └── lib
         ├── application
         │   ├── port
-        │   ├── security_event.rs
         │   └── use_case
         ├── domain
         │   ├── alias.rs
@@ -86,7 +85,6 @@ document describes the source layout those rules constrain.
 | `src/lib/application/port/update_series_season.rs`                                   | Patch-season use-case port: name and cover only                                                                                   |
 | `src/lib/application/port/put_series_episode.rs`                                     | Put-episode use-case port: create or replace an episode and its video by index                                                    |
 | `src/lib/application/port/update_series_episode.rs`                                  | Patch-episode use-case port: metadata only, video untouched                                                                       |
-| `src/lib/application/security_event.rs`                                              | Application-owned security-event constructors (`OBS-006`)                                                                         |
 | `src/lib/application/use_case`                                                       | Application use-case implementations (one per file)                                                                               |
 | `src/lib/application/use_case/identify_music.rs`                                     | Identify-music use case: reports unavailable with no configured provider, distinct from a search that found no candidate          |
 | `src/lib/application/use_case/identify_video.rs`                                     | Identify-video use case: filters the interpreted queries by kind before the first-hit search                                      |

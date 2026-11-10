@@ -4,10 +4,11 @@ use std::sync::Arc;
 
 use chrono::Utc;
 
+use tracing::warn;
+
 use crate::application::port::update_playlist::{
     UpdatePlaylistCommand, UpdatePlaylistError, UpdatePlaylistResponse, UpdatePlaylistUseCase,
 };
-use crate::application::security_event;
 use crate::domain::model::music_playlist::MusicPlaylistError;
 use crate::domain::model::permission::Action;
 use crate::domain::port::error::RepositoryError;
@@ -103,10 +104,13 @@ where
                 if let Decision::Deny(denial) =
                     Authorization::decide(&caller, &permissions, Action::PlaylistRead, &playlist)
                 {
-                    security_event::authorization_failed(
-                        caller.id(),
-                        denial.action().verb(),
-                        denial.action().target(),
+                    warn!(
+                        target: "security",
+                        event = "authz_failed",
+                        actor = caller.id(),
+                        action = %denial.action().verb(),
+                        target = %denial.action().target(),
+                        "denied an action"
                     );
                     return Err(UpdatePlaylistError::NoSuchPlaylist);
                 }
@@ -123,10 +127,13 @@ where
                         &playlist,
                     )
                 {
-                    security_event::authorization_failed(
-                        caller.id(),
-                        denial.action().verb(),
-                        denial.action().target(),
+                    warn!(
+                        target: "security",
+                        event = "authz_failed",
+                        actor = caller.id(),
+                        action = %denial.action().verb(),
+                        target = %denial.action().target(),
+                        "denied an action"
                     );
                     return Err(if denial.conceals() {
                         UpdatePlaylistError::NoSuchPlaylist
@@ -142,10 +149,13 @@ where
                         &playlist,
                     )
                 {
-                    security_event::authorization_failed(
-                        caller.id(),
-                        denial.action().verb(),
-                        denial.action().target(),
+                    warn!(
+                        target: "security",
+                        event = "authz_failed",
+                        actor = caller.id(),
+                        action = %denial.action().verb(),
+                        target = %denial.action().target(),
+                        "denied an action"
                     );
                     return Err(if denial.conceals() {
                         UpdatePlaylistError::NoSuchPlaylist
@@ -158,11 +168,23 @@ where
                     let name = NamePolicy::validate(requested_name.to_owned()).map_err(
                         |error| match error {
                             NamePolicyError::Empty => {
-                                security_event::input_validation_failed("name", "empty");
+                                warn!(
+                                    target: "security",
+                                    event = "input_validation_failed",
+                                    field = %"name",
+                                    reason = %"empty",
+                                    "rejected a client-supplied value"
+                                );
                                 UpdatePlaylistError::InvalidName
                             }
                             NamePolicyError::TooLong => {
-                                security_event::input_validation_failed("name", "too_long");
+                                warn!(
+                                    target: "security",
+                                    event = "input_validation_failed",
+                                    field = %"name",
+                                    reason = %"too_long",
+                                    "rejected a client-supplied value"
+                                );
                                 UpdatePlaylistError::NameTooLong
                             }
                         },

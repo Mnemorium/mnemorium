@@ -4,10 +4,11 @@ use std::sync::Arc;
 
 use chrono::Utc;
 
+use tracing::warn;
+
 use crate::application::port::get_upload::{
     GetUploadCommand, GetUploadError, GetUploadResponse, GetUploadUseCase,
 };
-use crate::application::security_event;
 use crate::application::use_case::upload_layout::staged_path;
 use crate::application::use_case::upload_session::{caller_file_id, expiry, received_bitmap};
 use crate::domain::model::permission::Action;
@@ -120,10 +121,13 @@ where
                 if let Decision::Deny(denial) =
                     Authorization::decide(&caller, &[], Action::UploadRead, &upload)
                 {
-                    security_event::authorization_failed(
-                        caller.id(),
-                        denial.action().verb(),
-                        denial.action().target(),
+                    warn!(
+                        target: "security",
+                        event = "authz_failed",
+                        actor = caller.id(),
+                        action = %denial.action().verb(),
+                        target = %denial.action().target(),
+                        "denied an action"
                     );
                     return Flow::Failed(GetUploadError::NoSuchUpload);
                 }

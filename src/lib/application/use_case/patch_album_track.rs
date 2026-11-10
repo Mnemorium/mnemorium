@@ -2,11 +2,12 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
+use tracing::warn;
+
 use crate::application::field_update::FieldUpdate;
 use crate::application::port::patch_album_track::{
     PatchAlbumTrackCommand, PatchAlbumTrackError, PatchAlbumTrackResponse, PatchAlbumTrackUseCase,
 };
-use crate::application::security_event;
 use crate::domain::model::music_recording::MusicRecordingError;
 use crate::domain::model::permission::Action;
 use crate::domain::port::error::RepositoryError;
@@ -95,20 +96,26 @@ where
                 if let Decision::Deny(denial) =
                     Authorization::decide(&caller, &permissions, Action::LibraryRead, &album)
                 {
-                    security_event::authorization_failed(
-                        caller.id(),
-                        denial.action().verb(),
-                        denial.action().target(),
+                    warn!(
+                        target: "security",
+                        event = "authz_failed",
+                        actor = caller.id(),
+                        action = %denial.action().verb(),
+                        target = %denial.action().target(),
+                        "denied an action"
                     );
                     return Err(PatchAlbumTrackError::NoSuchAlbum);
                 }
                 if let Decision::Deny(denial) =
                     Authorization::decide(&caller, &permissions, Action::LibraryManage, &album)
                 {
-                    security_event::authorization_failed(
-                        caller.id(),
-                        denial.action().verb(),
-                        denial.action().target(),
+                    warn!(
+                        target: "security",
+                        event = "authz_failed",
+                        actor = caller.id(),
+                        action = %denial.action().verb(),
+                        target = %denial.action().target(),
+                        "denied an action"
                     );
                     return Err(if denial.conceals() {
                         PatchAlbumTrackError::NoSuchAlbum
@@ -212,7 +219,13 @@ fn name_error(error: MusicRecordingError) -> PatchAlbumTrackError {
     match error {
         MusicRecordingError::InvalidIsrcCode => PatchAlbumTrackError::InvalidIsrc,
         MusicRecordingError::InvalidName => {
-            security_event::input_validation_failed("name", "empty");
+            warn!(
+                target: "security",
+                event = "input_validation_failed",
+                field = %"name",
+                reason = %"empty",
+                "rejected a client-supplied value"
+            );
             PatchAlbumTrackError::InvalidName
         }
         MusicRecordingError::Unknown(source) => PatchAlbumTrackError::Unknown(source),
@@ -223,7 +236,13 @@ fn name_error(error: MusicRecordingError) -> PatchAlbumTrackError {
 fn isrc_error(error: MusicRecordingError) -> PatchAlbumTrackError {
     match error {
         MusicRecordingError::InvalidIsrcCode => {
-            security_event::input_validation_failed("isrc_code", "invalid_length");
+            warn!(
+                target: "security",
+                event = "input_validation_failed",
+                field = %"isrc_code",
+                reason = %"invalid_length",
+                "rejected a client-supplied value"
+            );
             PatchAlbumTrackError::InvalidIsrc
         }
         MusicRecordingError::InvalidName => PatchAlbumTrackError::InvalidName,

@@ -2,10 +2,11 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
+use tracing::{error, info, warn};
+
 use crate::application::port::login_user::{
     LoginUserCommand, LoginUserError, LoginUserResponse, LoginUserUseCase,
 };
-use crate::application::security_event;
 use crate::domain::port::credential_repository::{CredentialFilter, CredentialRepository as _};
 use crate::domain::port::identity_unit_of_work::IdentityUnitOfWork;
 use crate::domain::port::password_hasher::PasswordHasher;
@@ -99,7 +100,12 @@ where
                     .into_iter()
                     .next()
                     .ok_or_else(|| {
-                        security_event::application_error("login_user");
+                        error!(
+                            target: "security",
+                            event = "application_error",
+                            operation = %"login_user",
+                            "a use case originated an internal error"
+                        );
                         LoginUserError::Unknown(anyhow::anyhow!(
                             "user {} has no credential",
                             user.id()
@@ -119,7 +125,12 @@ where
                     .await
                     .map_err(|error| LoginUserError::Unknown(error.into()))?;
 
-                security_event::authentication_succeeded(user.id());
+                info!(
+                    target: "security",
+                    event = "authn_succeeded",
+                    actor = user.id(),
+                    "authenticated a user"
+                );
 
                 Ok(LoginUserResponse::new(
                     token.value().to_owned(),
@@ -141,7 +152,22 @@ where
                         error,
                         LoginUserError::InvalidUsername | LoginUserError::InvalidPassword
                     ) {
-                        security_event::authentication_failed(command.username());
+                        // The claimed identity is the submitted username, the explicit
+                        // exception in TechnicalDesign.md § 9; cap its length and escape
+                        // control characters so it cannot forge a log record (OBS-003).
+                        let claimed_identity: String = command
+                            .username()
+                            .chars()
+                            .take(256)
+                            .flat_map(char::escape_debug)
+                            .collect();
+                        warn!(
+                            target: "security",
+                            event = "authn_failed",
+                            claimed_identity = %claimed_identity,
+                            reason = "invalid_credentials",
+                            "rejected an authentication attempt"
+                        );
                     }
                     if let Err(_rollback_error) = unit_of_work.rollback().await {
                         // The unit-of-work adapter owns the rollback-failure

@@ -2,10 +2,11 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
+use tracing::warn;
+
 use crate::application::port::apply_music_album::{
     ApplyMusicAlbumCommand, ApplyMusicAlbumError, ApplyMusicAlbumResponse, ApplyMusicAlbumUseCase,
 };
-use crate::application::security_event;
 use crate::domain::model::music_album::MusicAlbum;
 use crate::domain::model::music_candidate::MusicTarget;
 use crate::domain::model::music_medium::MediumIndex;
@@ -109,20 +110,26 @@ where
                 if let Decision::Deny(denial) =
                     Authorization::decide(&caller, &permissions, Action::LibraryRead, &album)
                 {
-                    security_event::authorization_failed(
-                        caller.id(),
-                        denial.action().verb(),
-                        denial.action().target(),
+                    warn!(
+                        target: "security",
+                        event = "authz_failed",
+                        actor = caller.id(),
+                        action = %denial.action().verb(),
+                        target = %denial.action().target(),
+                        "denied an action"
                     );
                     return Err(ApplyMusicAlbumError::NoSuchAlbum);
                 }
                 if let Decision::Deny(denial) =
                     Authorization::decide(&caller, &permissions, Action::LibraryManage, &album)
                 {
-                    security_event::authorization_failed(
-                        caller.id(),
-                        denial.action().verb(),
-                        denial.action().target(),
+                    warn!(
+                        target: "security",
+                        event = "authz_failed",
+                        actor = caller.id(),
+                        action = %denial.action().verb(),
+                        target = %denial.action().target(),
+                        "denied an action"
                     );
                     return Err(if denial.conceals() {
                         ApplyMusicAlbumError::NoSuchAlbum
