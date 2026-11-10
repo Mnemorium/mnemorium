@@ -200,8 +200,9 @@
     markdownlint = {
       enable = true;
       package = pkgs.markdownlint-cli2;
-      entry = "markdownlint-cli2";
-      files = ".*\\.md$";
+      entry = "markdownlint-cli2 '**/*.md'";
+      pass_filenames = false;
+      files = "(.*\\.md$|^\\.markdownlint-cli2\\.jsonc$)";
       fail_fast = true;
     };
     prettier = {
