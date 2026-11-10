@@ -1,3 +1,9 @@
+## [0.38.0](https://github.com/Mnemorium/mnemorium/compare/v0.37.0...v0.38.0) (2026-11-10)
+
+### Features
+
+* **application:** delete user accounts ([#409](https://github.com/Mnemorium/mnemorium/issues/409)) ([163f21b](https://github.com/Mnemorium/mnemorium/commit/163f21bc12b4c0385e9483aa8b693dee46b2cdcf))
+
 ## [0.37.0](https://github.com/Mnemorium/mnemorium/compare/v0.36.0...v0.37.0) (2026-11-09)
 
 ### Features
