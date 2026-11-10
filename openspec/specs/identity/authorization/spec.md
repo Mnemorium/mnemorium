@@ -219,10 +219,10 @@ account SHALL answer `401 Unauthorized`.
 
 ### Requirement: The Root Admin administers per-user permissions
 
-The Root Admin SHALL read and replace a non-root user's permission overrides through
-`/api/v1/user/{user_id}/permission`. `GET` SHALL return the role defaults and the permission overrides; `PUT` SHALL
-replace the permission overrides, and a replacement carrying no permission override SHALL reset the user to the role
-presets. A non-root caller SHALL receive `403 Forbidden`, and an unknown user SHALL receive `404 Not Found`.
+The Root Admin SHALL read and replace a non-root user's permission overrides. Reading SHALL return the role defaults and
+the stored permission overrides. Replacing SHALL replace the complete override set, and a replacement carrying no
+permission override SHALL reset the user to the role presets. A non-root caller SHALL receive `403 Forbidden`, and an
+unknown user SHALL receive `404 Not Found`.
 
 #### Scenario: Read a user's permissions
 
@@ -282,8 +282,8 @@ duplicate action, non-configurable action, or the Root Admin target SHALL be rej
 
 ### Requirement: Permission replacement is atomic
 
-A `PUT` that is rejected for any reason SHALL apply nothing. A successful `PUT` SHALL replace every permission override
-for the target user and SHALL be visible to the next request.
+A replacement that is rejected for any reason SHALL apply nothing. A successful replacement SHALL replace every
+permission override for the target user and SHALL be visible to the next request.
 
 #### Scenario: Rejected replacement leaves the previous set
 
