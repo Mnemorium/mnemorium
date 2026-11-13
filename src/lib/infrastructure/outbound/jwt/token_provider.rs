@@ -65,6 +65,7 @@ impl TokenProvider for JwtTokenProvider {
         let key = DecodingKey::from_secret(self.secret.as_bytes());
         let mut validation = Validation::new(Algorithm::HS256);
         validation.validate_exp = true;
+        validation.leeway = 0;
         validation.set_required_spec_claims(&["exp", "sub"]);
 
         let result = match decode::<Claims>(token, &key, &validation) {
@@ -133,11 +134,12 @@ mod tests {
 
     #[tokio::test]
     async fn validate_expired_token_returns_token_expired() -> Result<(), Box<dyn Error>> {
-        // Arrange
+        // Arrange: a correctly signed token that expired one second ago. The
+        // provider allows no grace, so the near expiry pins the leeway.
         let provider = JwtTokenProvider::new("tmptmp".to_owned(), 3600);
         let expired = encode(
             &Header::new(Algorithm::HS256),
-            &json!({ "sub": "42", "exp": 1i64 }),
+            &json!({ "sub": "42", "exp": Utc::now().timestamp() - 1 }),
             &EncodingKey::from_secret(b"tmptmp"),
         )?;
 
@@ -146,6 +148,25 @@ mod tests {
 
         // Assert
         assert!(matches!(result, Err(TokenProviderError::TokenExpired)));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn validate_token_that_expires_in_thirty_seconds_validates() -> Result<(), Box<dyn Error>>
+    {
+        // Arrange
+        let provider = JwtTokenProvider::new("tmptmp".to_owned(), 3600);
+        let token = encode(
+            &Header::new(Algorithm::HS256),
+            &json!({ "sub": "42", "exp": Utc::now().timestamp() + 30 }),
+            &EncodingKey::from_secret(b"tmptmp"),
+        )?;
+
+        // Act
+        let user_id = provider.validate(&token).await?;
+
+        // Assert
+        assert_eq!(user_id, 42);
         Ok(())
     }
 

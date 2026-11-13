@@ -94,8 +94,11 @@ fn domain_credential(row: SqlxCredential) -> Result<Credential, RepositoryError>
 mod tests {
     use super::*;
     use crate::domain::model::CredentialError;
+    use crate::domain::port::PasswordHasher as _;
+    use crate::infrastructure::outbound::argon2::Argon2PasswordHasher;
 
     use crate::infrastructure::outbound::sqlx::test_helpers::begin_transaction;
+    use allure_cargotest::allure_test;
     use chrono::NaiveDateTime;
     use std::error::Error;
 
@@ -324,6 +327,48 @@ mod tests {
             mapped,
             Err(RepositoryError::DataIntegrityViolation)
         ));
+        Ok(())
+    }
+
+    #[allure_test]
+    #[tokio::test]
+    async fn creation_and_rotation_store_only_a_password_hash() -> Result<(), Box<dyn Error>> {
+        allure.epic("Authentication");
+        allure.feature("REQ-AUTHENTICATION-006");
+        allure.story("SCN-AUTHENTICATION-006-A");
+
+        // Arrange: the same hasher the creation and rotation use cases hash with.
+        let hasher = Argon2PasswordHasher::new(vec![7; 32]);
+        let pending_password = "C0rrect!Horse";
+        let replacement_password = "N3w!Secret";
+        let mut transaction = begin_transaction().await?;
+        let mut repository = SqlxCredentialRepository::new(&mut transaction);
+
+        // Act: creation stores the hash of the first password ...
+        let created = repository
+            .create(credential(
+                0,
+                &hasher.hash_password(pending_password).await?,
+                updated_at("2026-01-01 12:00:00")?,
+            )?)
+            .await?;
+        // ... and rotation replaces it with the hash of the second.
+        let rotated = repository
+            .save(credential(
+                created.id(),
+                &hasher.hash_password(replacement_password).await?,
+                updated_at("2026-02-01 12:00:00")?,
+            )?)
+            .await?;
+
+        // Assert
+        assert_ne!(created.password_hash(), pending_password);
+        assert_ne!(rotated.password_hash(), replacement_password);
+        assert!(
+            hasher
+                .verify_password(replacement_password, rotated.password_hash())
+                .await?
+        );
         Ok(())
     }
 

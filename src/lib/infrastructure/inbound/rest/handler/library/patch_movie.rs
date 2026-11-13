@@ -46,8 +46,8 @@ pub(crate) struct PatchMovieRequest {
 
 /// Update a film partially.
 ///
-/// Only a caller whose `library.manage` scope covers the film may update it. An
-/// absent field keeps its value and a `null` clears an optional value.
+/// Updating a film requires `View` and then `EditMetadata` on it. An absent
+/// field keeps its value and a `null` clears an optional value.
 #[utoipa::path(
     patch,
     operation_id = "patch_movie",

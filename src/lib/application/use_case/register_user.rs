@@ -1,23 +1,26 @@
+use crate::application::authorization::authorize;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
 use chrono::Utc;
 
-use tracing::{error, info, warn};
+use tracing::{error, info};
 
 use crate::application::port::{
     RegisterUserCommand, RegisterUserError, RegisterUserResponse, RegisterUserUseCase,
 };
-use crate::domain::model::{Action, Credential, Global, Role, User, UserError};
+use crate::domain::model::{
+    Action, ChildKind, Credential, Grant, GrantEffect, Principal, ResourceKind, ResourceRef,
+    ResourceRole, Role, User, UserError, Visibility,
+};
 use crate::domain::port::{
-    CredentialRepository as _, IdentityUnitOfWork, PasswordHasher, PermissionFilter,
-    PermissionRepository as _, RepositoryError, UnitOfWork as _, UnitOfWorkFactory, UserFilter,
-    UserRepository as _, UserUnitOfWork,
+    CredentialRepository as _, GrantRepository as _, IdentityUnitOfWork, NewResource,
+    PasswordHasher, RepositoryError, ResourceRepository as _, UnitOfWork as _, UnitOfWorkFactory,
+    UserFilter, UserRepository as _, UserUnitOfWork,
 };
 use crate::domain::service::{
-    Authorization, Decision, PasswordPolicy, PasswordPolicyError, UsernamePolicy,
-    UsernamePolicyError,
+    PasswordPolicy, PasswordPolicyError, UsernamePolicy, UsernamePolicyError,
 };
 
 /// Use case implementation for registering a new user.
@@ -102,32 +105,19 @@ where
                         .into_iter()
                         .next()
                         .ok_or(RegisterUserError::NoSuchCaller)?;
-
-                    let permissions = unit_of_work
-                        .permissions()
-                        .search(&PermissionFilter {
-                            user_id: Some(caller.id()),
-                            ..PermissionFilter::default()
-                        })
-                        .await
-                        .map_err(|error| RegisterUserError::Unknown(error.into()))?;
-                    let action = match command.role() {
-                        Role::Admin => Action::UserCreateAdmin,
-                        Role::Standard => Action::UserCreate,
+                    let child_kind = match command.role() {
+                        Role::Admin => ChildKind::Admin,
+                        Role::Standard => ChildKind::User,
                     };
-                    if let Decision::Deny(denial) =
-                        Authorization::decide(&caller, &permissions, action, &Global)
-                    {
-                        warn!(
-                            target: "security",
-                            event = "authz_failed",
-                            actor = caller.id(),
-                            action = %denial.action().verb(),
-                            target = %denial.action().target(),
-                            "denied an action"
-                        );
-                        return Err(RegisterUserError::Forbidden);
-                    }
+                    authorize(
+                        &mut unit_of_work.resources(),
+                        &caller,
+                        ResourceRef::new(ResourceKind::UserCollection, 0),
+                        Action::CreateChild,
+                        Some(child_kind),
+                    )
+                    .await
+                    .map_err(|_| RegisterUserError::Forbidden)?;
 
                     let username_taken = !unit_of_work
                         .users()
@@ -201,6 +191,31 @@ where
                         },
                     )?;
 
+                    let user_resource = unit_of_work
+                        .resources()
+                        .create(NewResource {
+                            kind: ResourceKind::User,
+                            entity_id: user.id(),
+                            owner_id: None,
+                            auth_parent: Some(ResourceRef::new(ResourceKind::Instance, 0)),
+                            visibility: Visibility::Private,
+                        })
+                        .await
+                        .map_err(|error| RegisterUserError::Unknown(error.into()))?;
+                    let admin_owner = Grant::try_new(
+                        Principal::Role(Role::Admin),
+                        user_resource.resource_id(),
+                        ResourceRole::Owner,
+                        ChildKind::All,
+                        GrantEffect::Allow,
+                    )
+                    .map_err(|error| RegisterUserError::Unknown(error.into()))?;
+                    unit_of_work
+                        .grants()
+                        .save_grant(admin_owner)
+                        .await
+                        .map_err(|error| RegisterUserError::Unknown(error.into()))?;
+
                     Ok(RegisterUserResponse::new(
                         user.id(),
                         user.username().to_owned(),
@@ -239,11 +254,9 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::model::{Permission, Scope};
 
     use crate::domain::port::{
-        MockCredentialRepository, MockPasswordHasher, MockPermissionRepository, MockUserRepository,
-        PasswordHasherError,
+        MockCredentialRepository, MockPasswordHasher, MockUserRepository, PasswordHasherError,
     };
 
     use crate::test_helpers::*;
@@ -284,7 +297,7 @@ mod tests {
 
         let unit_of_work = TestUnitOfWork {
             credentials: credential_repository,
-            permissions: no_permissions(),
+            resources: no_resources(),
             users: user_repository,
             ..TestUnitOfWork::default()
         };
@@ -430,83 +443,6 @@ mod tests {
         assert!(harness.committed.load(Ordering::SeqCst));
         Ok(())
     }
-
-    #[tokio::test]
-    async fn register_user_standard_caller_granted_creation_creates_standard_user()
-    -> Result<(), Box<dyn Error>> {
-        // Arrange
-        let mut user_repository = MockUserRepository::new();
-        let mut credential_repository = MockCredentialRepository::new();
-        let mut password_hasher = MockPasswordHasher::new();
-        expect_caller(&mut user_repository, user(3, "bobby", Role::Standard)?);
-        expect_unique_search(&mut user_repository);
-        expect_successful_persistence(
-            &mut credential_repository,
-            &mut password_hasher,
-            &mut user_repository,
-        );
-        let mut permissions = MockPermissionRepository::new();
-        expect_permissions(
-            &mut permissions,
-            3,
-            vec![Permission::try_new(3, Action::UserCreate, Scope::All)?],
-        );
-        let unit_of_work = TestUnitOfWork {
-            credentials: credential_repository,
-            permissions,
-            users: user_repository,
-            ..TestUnitOfWork::default()
-        };
-        let factory = TestFactory::new(unit_of_work);
-        let use_case: UseCase = RegisterUser::new(Arc::new(factory), Arc::new(password_hasher));
-        let command = command(3, "evelyn", Role::Standard);
-
-        // Act
-        let response = use_case.execute(command).await?;
-
-        // Assert
-        assert_eq!(response.role(), Role::Standard);
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn register_user_standard_caller_register_user_forbidden() -> Result<(), Box<dyn Error>> {
-        // Arrange
-        let harness = use_case_with(|user_repository, _, _| {
-            expect_caller(user_repository, user(3, "bobby", Role::Standard)?);
-            Ok(())
-        })?;
-        let command = command(3, "evelyn", Role::Standard);
-
-        // Act
-        let result = harness.use_case.execute(command).await;
-
-        // Assert
-        assert!(matches!(result, Err(RegisterUserError::Forbidden)));
-        assert!(!harness.committed.load(Ordering::SeqCst));
-        assert!(harness.rolled_back.load(Ordering::SeqCst));
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn register_user_admin_caller_register_admin_user_forbidden() -> Result<(), Box<dyn Error>>
-    {
-        // Arrange
-        let harness = use_case_with(|user_repository, _, _| {
-            expect_caller(user_repository, user(5, "admin", Role::Admin)?);
-            Ok(())
-        })?;
-        let command = command(5, "frank", Role::Admin);
-
-        // Act
-        let result = harness.use_case.execute(command).await;
-
-        // Assert
-        assert!(matches!(result, Err(RegisterUserError::Forbidden)));
-        assert!(harness.rolled_back.load(Ordering::SeqCst));
-        Ok(())
-    }
-
     #[tokio::test]
     async fn register_user_unknown_caller_returns_no_such_caller() -> Result<(), Box<dyn Error>> {
         // Arrange

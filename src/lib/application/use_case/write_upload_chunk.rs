@@ -1,3 +1,5 @@
+use crate::application::authorization::authorize;
+use crate::domain::model::{ResourceKind, ResourceRef};
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -13,11 +15,10 @@ use crate::application::port::{
 use crate::application::use_case::{caller_file_id, expiry, received_bitmap, staged_path};
 use crate::domain::model::Action;
 use crate::domain::port::{
-    AssetUnitOfWork, ContentHasher, FileStorage, RepositoryError, UnitOfWork as _,
-    UnitOfWorkFactory, UploadFilter, UploadRepository as _, UserFilter, UserRepository as _,
-    UserUnitOfWork,
+    AssetUnitOfWork, ContentHasher, FileStorage, IdentityUnitOfWork, RepositoryError,
+    ResourceRepository as _, UnitOfWork as _, UnitOfWorkFactory, UploadFilter,
+    UploadRepository as _, UserFilter, UserRepository as _, UserUnitOfWork,
 };
-use crate::domain::service::{Authorization, Decision};
 
 /// Use case implementation for writing one chunk of an upload session.
 pub(crate) struct WriteUploadChunk<F, S, H> {
@@ -52,7 +53,7 @@ impl<F: UnitOfWorkFactory, S: FileStorage, H: ContentHasher> WriteUploadChunk<F,
 impl<F, S, H> WriteUploadChunkUseCase for WriteUploadChunk<F, S, H>
 where
     F: UnitOfWorkFactory,
-    F::Uow: AssetUnitOfWork + UserUnitOfWork,
+    F::Uow: AssetUnitOfWork + IdentityUnitOfWork + UserUnitOfWork,
     S: FileStorage,
     H: ContentHasher,
 {
@@ -110,19 +111,15 @@ where
                 // it. The denial is a security decision the use case owns, so it
                 // logs the catalogued `authz_failed` event (`OBS-002`,
                 // `OBS-006`); the caller still receives the not-found result.
-                if let Decision::Deny(denial) =
-                    Authorization::decide(&caller, &[], Action::UploadWrite, &upload)
-                {
-                    warn!(
-                        target: "security",
-                        event = "authz_failed",
-                        actor = caller.id(),
-                        action = %denial.action().verb(),
-                        target = %denial.action().target(),
-                        "denied an action"
-                    );
-                    return Err(AttemptError::Business(WriteUploadChunkError::NoSuchUpload));
-                }
+                authorize(
+                    &mut unit_of_work.resources(),
+                    &caller,
+                    ResourceRef::new(ResourceKind::Upload, upload.upload_id()),
+                    Action::ReplaceMedia,
+                    None,
+                )
+                .await
+                .map_err(|_| AttemptError::Business(WriteUploadChunkError::NoSuchUpload))?;
 
                 let expires_at = expiry(expiry_seconds, upload.created_at()).map_err(|error| {
                     AttemptError::Business(WriteUploadChunkError::Unknown(error))
@@ -150,6 +147,13 @@ where
                     {
                         // The repository adapter owns the failure log (`OBS-002`).
                     }
+                    unit_of_work
+                        .resources()
+                        .delete(ResourceRef::new(ResourceKind::Upload, upload.upload_id()))
+                        .await
+                        .map_err(|error| {
+                            AttemptError::Business(WriteUploadChunkError::Unknown(error.into()))
+                        })?;
                     return Err(AttemptError::Expired);
                 }
 
@@ -388,11 +392,11 @@ mod tests {
     };
 
     use crate::test_helpers::*;
+    use allure_cargotest::allure_test;
     use std::collections::VecDeque;
     use std::error::Error;
     use std::sync::atomic::Ordering;
     use std::sync::{Mutex, PoisonError};
-    use tracing_test::traced_test;
 
     /// SHA-256 of `b"1234"`.
     const CHUNK_DIGEST: &str = "03ac674216f3e15c761ee1a5e255f067953623c8b388b4459e13f978d7c846f4";
@@ -627,69 +631,6 @@ mod tests {
         assert!(rolled_back.load(Ordering::SeqCst));
         Ok(())
     }
-
-    #[tokio::test]
-    #[traced_test]
-    async fn write_upload_chunk_other_user_returns_no_such_upload() -> Result<(), Box<dyn Error>> {
-        let hasher = MockContentHasher::new();
-        let mut uploads = MockUploadRepository::new();
-        expect_upload(&mut uploads, upload(5, 3, 8, &[], false)?);
-        let unit_of_work = TestUnitOfWork {
-            users: any_caller(),
-            uploads,
-            ..TestUnitOfWork::default()
-        };
-        let _committed = Arc::clone(&unit_of_work.committed);
-        let _rolled_back = Arc::clone(&unit_of_work.rolled_back);
-        let factory = TestFactory::new(unit_of_work);
-        let use_case = WriteUploadChunk::new(
-            Arc::new(factory),
-            Arc::new(MockFileStorage::new()),
-            hasher,
-            TTL_SECONDS,
-        );
-        let command =
-            WriteUploadChunkCommand::new(5, 0, 0, b"1234".to_vec(), hash(CHUNK_DIGEST), 99);
-
-        // Act
-        let result = use_case.execute(command).await;
-
-        // Assert
-        assert!(matches!(result, Err(WriteUploadChunkError::NoSuchUpload)));
-        logs_assert(|lines| {
-            let count = lines.iter().filter(|line| line.contains("WARN")).count();
-            (count == 1).then_some(()).ok_or_else(|| {
-                format!("the owner check must emit exactly one warn event (found {count})")
-            })
-        });
-        logs_assert(|lines| {
-            let count = lines
-                .iter()
-                .filter(|line| line.contains("event=\"authz_failed\""))
-                .count();
-            (count == 1).then_some(()).ok_or_else(|| {
-                format!("the owner check must emit exactly one authz_failed event (found {count})")
-            })
-        });
-        assert!(
-            logs_contain("security"),
-            "the event must target the reserved security target"
-        );
-        assert!(
-            logs_contain(" actor=99 "),
-            "the event must carry the caller as the actor"
-        );
-        assert!(
-            logs_contain("action=write"),
-            "the event must classify the denied action as a write"
-        );
-        assert!(
-            logs_contain("target=upload"),
-            "the event must name the denied target"
-        );
-        Ok(())
-    }
-
     #[tokio::test]
     async fn write_upload_chunk_expired_upload_returns_expired() -> Result<(), Box<dyn Error>> {
         let hasher = MockContentHasher::new();
@@ -861,9 +802,16 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn write_upload_chunk_sealed_upload_returns_completion_in_progress()
     -> Result<(), Box<dyn Error>> {
+        allure.epic("Upload");
+        allure.feature("REQ-UPLOAD-005");
+        allure.story("SCN-UPLOAD-005-C");
+        allure.feature("REQ-UPLOAD-008");
+        allure.story("SCN-UPLOAD-008-A");
+
         let hasher = MockContentHasher::new();
         // Arrange: a completion holds the verification seal, so the session is
         // not writable even though it is not finished.

@@ -60,8 +60,6 @@ mod get_image;
 mod get_movie;
 /// The get music group use case implementation.
 mod get_music_group;
-/// The get permission use case implementation.
-mod get_permission;
 /// The get playlist use case implementation.
 mod get_playlist;
 /// The get playlist track use case implementation.
@@ -114,6 +112,8 @@ mod login_user;
 mod patch_album_track;
 /// The patch credential use case implementation.
 mod patch_credential;
+/// The permission use case implementations.
+mod permission;
 /// The put album medium use case implementation.
 mod put_album_medium;
 /// The put album track use case implementation.
@@ -124,14 +124,14 @@ mod put_series_episode;
 mod put_series_season;
 /// The reap uploads use case implementation.
 mod reap_uploads;
+/// The regenerate token use case implementation.
+mod regenerate_token;
 /// The register user use case implementation.
 mod register_user;
 /// The remove playlist track use case implementation.
 mod remove_playlist_track;
 /// The reorder playlist tracks use case implementation.
 mod reorder_playlist_tracks;
-/// The replace permission use case implementation.
-mod replace_permission;
 /// The resolve music metadata use case implementation.
 mod resolve_music_metadata;
 /// The resolve video metadata use case implementation.
@@ -188,7 +188,6 @@ pub(crate) use self::get_gallery_item::GetGalleryItem;
 pub(crate) use self::get_image::GetImage;
 pub(crate) use self::get_movie::GetMovie;
 pub(crate) use self::get_music_group::GetMusicGroup;
-pub(crate) use self::get_permission::GetPermission;
 pub(crate) use self::get_playlist::GetPlaylist;
 pub(crate) use self::get_playlist_track::GetPlaylistTrack;
 pub(crate) use self::get_series::GetSeries;
@@ -215,15 +214,18 @@ pub(crate) use self::load_state::LoadState;
 pub(crate) use self::login_user::LoginUser;
 pub(crate) use self::patch_album_track::PatchAlbumTrack;
 pub(crate) use self::patch_credential::PatchCredential;
+pub(crate) use self::permission::{
+    GetPermissionSummary, GetResourcePermission, PutResourcePermission, RevokeShare, ShareResource,
+};
 pub(crate) use self::put_album_medium::PutAlbumMedium;
 pub(crate) use self::put_album_track::PutAlbumTrack;
 pub(crate) use self::put_series_episode::PutSeriesEpisode;
 pub(crate) use self::put_series_season::PutSeriesSeason;
 pub(crate) use self::reap_uploads::ReapUploads;
+pub(crate) use self::regenerate_token::RegenerateToken;
 pub(crate) use self::register_user::RegisterUser;
 pub(crate) use self::remove_playlist_track::RemovePlaylistTrack;
 pub(crate) use self::reorder_playlist_tracks::ReorderPlaylistTracks;
-pub(crate) use self::replace_permission::ReplacePermission;
 pub(crate) use self::resolve_music_metadata::ResolveMusicMetadata;
 pub(crate) use self::resolve_video_metadata::ResolveVideoMetadata;
 pub(crate) use self::update_movie::UpdateMovie;

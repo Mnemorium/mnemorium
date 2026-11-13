@@ -22,12 +22,13 @@ impl From<DeleteGalleryError> for ApiError {
 
 /// Delete a gallery and its items by its identifier.
 ///
-/// The owner and the Root Admin may delete a gallery; the role presets give
-/// `gallery.manage` to the owner and the Root Admin's short-circuit allows it
-/// on every gallery. A caller who can read the gallery but may not manage it
-/// answers `403 Forbidden`; one that cannot read it answers `404 Not Found`.
-/// The seeded default gallery (identifier `0`) is never deletable and answers
-/// `409`. Deletion is permanent.
+/// Deleting a gallery requires the `Delete` action on it; the resource's owner
+/// and the Root Admin hold it. A caller who can read the gallery but may not
+/// delete it answers `403 Forbidden`; one that cannot read it answers `404 Not
+/// Found`. The seeded default gallery (identifier `0`) is never deletable and
+/// answers `409`. Deletion removes the gallery, its items and their media rows,
+/// and the backing file row only where the caller may view the file; the stored
+/// bytes are never touched.
 #[utoipa::path(
     delete,
     operation_id = "delete_gallery",
@@ -57,7 +58,7 @@ impl From<DeleteGalleryError> for ApiError {
             status = FORBIDDEN,
             body = ErrorBody,
             content_type = "application/hal+json",
-            description = "The caller can read the gallery but may not manage it"
+            description = "The caller can read the gallery but may not delete it"
         ),
         (
             status = NOT_FOUND,

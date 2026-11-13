@@ -4,6 +4,7 @@ pub(crate) mod argon2;
 pub(crate) mod envy;
 /// The file storage, configuration file and instance-state file.
 pub(crate) mod file_system;
+mod governor;
 /// The content-type sniffer.
 pub(crate) mod infer;
 /// The JWT token provider.
@@ -20,4 +21,5 @@ pub(crate) mod sha2;
 /// The `SQLite` datastore adapters.
 pub(crate) mod sqlx;
 
+pub(crate) use self::governor::KeyedLoginAttemptLimiter;
 pub(crate) use self::media_probe::LocalMediaProbe;

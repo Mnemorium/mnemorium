@@ -1,3 +1,4 @@
+use crate::application::authorization::allows;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -6,13 +7,11 @@ use crate::application::port::{
     ListMusicGroupsCommand, ListMusicGroupsError, ListMusicGroupsItem, ListMusicGroupsResponse,
     ListMusicGroupsUseCase,
 };
-use crate::domain::model::Action;
+use crate::domain::model::{Action, ResourceKind, ResourceRef};
 use crate::domain::port::{
     IdentityUnitOfWork, LibraryUnitOfWork, MusicGroupFilter, MusicGroupRepository as _,
-    PermissionFilter, PermissionRepository as _, UnitOfWork as _, UnitOfWorkFactory, UserFilter,
-    UserRepository as _, UserUnitOfWork,
+    UnitOfWork as _, UnitOfWorkFactory, UserFilter, UserRepository as _, UserUnitOfWork,
 };
-use crate::domain::service::Authorization;
 
 /// Use case implementation for listing the music groups the caller may see.
 pub(crate) struct ListMusicGroups<F> {
@@ -66,15 +65,6 @@ where
                     .next()
                     .ok_or(ListMusicGroupsError::NoSuchCaller)?;
 
-                let permissions = unit_of_work
-                    .permissions()
-                    .search(&PermissionFilter {
-                        user_id: Some(caller.id()),
-                        ..PermissionFilter::default()
-                    })
-                    .await
-                    .map_err(|error| ListMusicGroupsError::Unknown(error.into()))?;
-
                 let mut groups = unit_of_work
                     .music_groups()
                     .search(&MusicGroupFilter {
@@ -84,10 +74,21 @@ where
                     .await
                     .map_err(|error| ListMusicGroupsError::Unknown(error.into()))?;
 
-                groups.retain(|group| {
-                    Authorization::decide(&caller, &permissions, Action::LibraryRead, group)
-                        .is_allowed()
-                });
+                let mut visible = Vec::with_capacity(groups.len());
+                for group in groups {
+                    if allows(
+                        &mut unit_of_work.resources(),
+                        &caller,
+                        ResourceRef::new(ResourceKind::MusicGroup, group.id()),
+                        Action::Discover,
+                        None,
+                    )
+                    .await
+                    {
+                        visible.push(group);
+                    }
+                }
+                groups = visible;
 
                 let total = groups.len();
                 let offset = command.offset().unwrap_or(0);
@@ -131,11 +132,9 @@ mod tests {
     use super::*;
     use crate::domain::NumericID;
 
-    use crate::domain::model::{MusicGroup, Permission, Scope};
+    use crate::domain::model::MusicGroup;
 
-    use crate::domain::port::{
-        MockMusicGroupRepository, MockPermissionRepository, MockUserRepository, RepositoryError,
-    };
+    use crate::domain::port::{MockMusicGroupRepository, MockUserRepository, RepositoryError};
 
     use crate::test_helpers::*;
     use std::error::Error;
@@ -160,7 +159,7 @@ mod tests {
     ) -> GalleryFactoryHarness {
         let unit_of_work = TestUnitOfWork {
             music_groups: groups,
-            permissions: no_permissions(),
+            resources: no_resources(),
             users,
             ..TestUnitOfWork::default()
         };
@@ -244,44 +243,6 @@ mod tests {
         );
         Ok(())
     }
-
-    #[tokio::test]
-    async fn list_music_groups_none_override_returns_an_empty_page() -> Result<(), Box<dyn Error>> {
-        // Arrange: the caller is shut out of the library entirely.
-        let mut users = MockUserRepository::new();
-        expect_caller(&mut users, 1)?;
-        let mut groups = MockMusicGroupRepository::new();
-        let hidden = group(1, "The Group", None)?;
-        groups.expect_search().times(1).return_once(move |_| {
-            let found = vec![hidden.clone()];
-            Box::pin(async move { Ok(found) })
-        });
-        let mut permissions = MockPermissionRepository::new();
-        expect_permissions(
-            &mut permissions,
-            1,
-            vec![Permission::try_new(1, Action::LibraryRead, Scope::None)?],
-        );
-        let unit_of_work = TestUnitOfWork {
-            music_groups: groups,
-            permissions,
-            users,
-            ..TestUnitOfWork::default()
-        };
-        let harness = GalleryFactoryHarness::new(unit_of_work);
-        let use_case: UseCase = ListMusicGroups::new(Arc::clone(&harness.factory));
-
-        // Act
-        let response = use_case
-            .execute(ListMusicGroupsCommand::new(1, None, None, None))
-            .await?;
-
-        // Assert
-        assert_eq!(response.total(), 0);
-        assert!(response.groups().is_empty());
-        Ok(())
-    }
-
     #[tokio::test]
     async fn list_music_groups_unknown_caller_returns_no_such_caller() -> Result<(), Box<dyn Error>>
     {

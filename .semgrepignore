@@ -1,0 +1,10 @@
+# Semgrep scan exclusions.
+#
+# Generated and vendored trees the scan does not own. Semgrep already honours
+# .gitignore for tracked-file scans; this file lists what must stay out even
+# when the scan is pointed at the working directory.
+target/
+.devenv/
+site/
+.artifacts/
+THIRD_PARTY_NOTICES.txt

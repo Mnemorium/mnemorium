@@ -36,7 +36,7 @@ pub(crate) struct PatchSeriesEpisodeRequest {
 
 /// Update a season episode partially.
 ///
-/// Only a caller whose `library.manage` scope covers the show may update it.
+/// Updating an episode requires `View` and then `EditMetadata` on its show.
 #[utoipa::path(
     patch,
     operation_id = "patch_series_episode",

@@ -11,10 +11,13 @@ use crate::application::port::{
 };
 use crate::application::use_case::{media_root, staged_path};
 use crate::domain::NumericID;
-use crate::domain::model::{ChunkBitmap, MAX_TOTAL_CHUNKS, Upload, UploadError};
+use crate::domain::model::{
+    ChunkBitmap, MAX_TOTAL_CHUNKS, ResourceKind, ResourceRef, Upload, UploadError, Visibility,
+};
 use crate::domain::port::{
-    AssetUnitOfWork, FileStorage, MimeTypeFilter, MimeTypeRepository as _, UnitOfWork as _,
-    UnitOfWorkFactory, UploadRepository as _, UserFilter, UserRepository as _, UserUnitOfWork,
+    AssetUnitOfWork, FileStorage, IdentityUnitOfWork, MimeTypeFilter, MimeTypeRepository as _,
+    NewResource, ResourceRepository as _, UnitOfWork as _, UnitOfWorkFactory,
+    UploadRepository as _, UserFilter, UserRepository as _, UserUnitOfWork,
 };
 
 /// Use case implementation for beginning an upload session.
@@ -54,7 +57,7 @@ impl<F: UnitOfWorkFactory, S: FileStorage> BeginUpload<F, S> {
 impl<F, S> BeginUploadUseCase for BeginUpload<F, S>
 where
     F: UnitOfWorkFactory,
-    F::Uow: AssetUnitOfWork + UserUnitOfWork,
+    F::Uow: AssetUnitOfWork + IdentityUnitOfWork + UserUnitOfWork,
     S: FileStorage,
 {
     fn execute<'future>(
@@ -213,6 +216,18 @@ where
                 // of work commits.
                 staged_upload_id = Some(upload.upload_id());
 
+                unit_of_work
+                    .resources()
+                    .create(NewResource {
+                        kind: ResourceKind::Upload,
+                        entity_id: upload.upload_id(),
+                        owner_id: Some(command.user_id()),
+                        auth_parent: Some(ResourceRef::new(ResourceKind::Instance, 0)),
+                        visibility: Visibility::Private,
+                    })
+                    .await
+                    .map_err(|error| BeginUploadError::Unknown(error.into()))?;
+
                 file_storage
                     .create_upload_file(&staged_path(upload.upload_id()), upload.file_size())
                     .await
@@ -318,6 +333,7 @@ mod tests {
     };
 
     use crate::test_helpers::*;
+    use allure_cargotest::allure_test;
     use std::error::Error;
     use std::sync::atomic::{AtomicBool, Ordering};
     use tracing_test::traced_test;
@@ -1060,8 +1076,13 @@ mod tests {
         )
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn begin_upload_keeps_the_chunk_size_it_was_built_with() -> Result<(), Box<dyn Error>> {
+        allure.epic("Upload");
+        allure.feature("REQ-UPLOAD-003");
+        allure.story("SCN-UPLOAD-003-A");
+
         // Arrange: the use case holds the chunk size it was built with and reads
         // no configuration itself, so a runtime change cannot reach a session.
         let harness = use_case_with_chunk_size(8)?;

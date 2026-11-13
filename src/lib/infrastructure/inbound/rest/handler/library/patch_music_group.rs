@@ -3,22 +3,28 @@ use axum::response::Response;
 use serde::Deserialize;
 use utoipa::ToSchema;
 
+use crate::application::FieldUpdate;
 use crate::application::port::UpdateMusicGroupCommand;
 use crate::domain::NumericID;
 use crate::infrastructure::inbound::rest::handler::JsonObject;
-use crate::infrastructure::inbound::rest::handler::library::{MusicGroupResponse, parse_group_id};
+use crate::infrastructure::inbound::rest::handler::library::{
+    MusicGroupResponse, deserialize_field_update, parse_group_id,
+};
 use crate::infrastructure::inbound::rest::middleware::AuthenticatedUser;
 use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody, hal_json};
 
 /// Payload to update a music group.
 ///
-/// Every field is optional: an omitted field keeps its stored value.
+/// Every field is optional: an omitted field keeps its stored value and a
+/// `null` cover clears it.
 #[derive(Debug, Deserialize, ToSchema)]
 #[non_exhaustive]
 pub(crate) struct PatchMusicGroupRequest {
-    /// Replacement identifier of the image holding the group's artwork.
-    #[schema(example = 1)]
-    pub cover_image_id: Option<NumericID>,
+    /// Replacement identifier of the image holding the group's artwork; `null`
+    /// clears it.
+    #[serde(default, deserialize_with = "deserialize_field_update")]
+    #[schema(value_type = Option<NumericID>, nullable = true, example = 1)]
+    pub cover_image_id: FieldUpdate<NumericID>,
     /// New stage name of the group.
     #[schema(min_length = 1, max_length = 100)]
     pub name: Option<String>,
@@ -26,10 +32,9 @@ pub(crate) struct PatchMusicGroupRequest {
 
 /// Update a music group.
 ///
-/// Only a caller whose `library.manage` covers the group may rename it or
-/// replace its artwork. The name is trimmed and must be unique; the cover must
-/// be a `LIBRARY` image. The seeded default group is protected and refuses
-/// every update with `409 Conflict`.
+/// Updating a group requires `View` and then `EditMetadata` on it. The name is
+/// trimmed and must be unique; the cover must be a `LIBRARY` image. The seeded
+/// default group is protected and refuses every update with `409 Conflict`.
 #[utoipa::path(
     patch,
     operation_id = "patch_music_group",

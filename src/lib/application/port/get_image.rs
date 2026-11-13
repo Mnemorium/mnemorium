@@ -5,7 +5,6 @@ use chrono::NaiveDate;
 
 use crate::domain::NumericID;
 use crate::domain::model::Orientation;
-use crate::domain::port::ContentLink;
 
 /// Command to fetch one typed image.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -44,8 +43,6 @@ impl GetImageCommand {
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub(crate) struct GetImageResponse {
-    /// Playback credential scoped to the backing file.
-    content_link: ContentLink,
     /// Date at which the image was created.
     created_at: NaiveDate,
     /// Identifier of the backing file.
@@ -63,12 +60,6 @@ pub(crate) struct GetImageResponse {
 }
 
 impl GetImageResponse {
-    /// Return the playback credential scoped to the backing file.
-    #[must_use]
-    pub(crate) fn content_link(&self) -> &ContentLink {
-        &self.content_link
-    }
-
     /// Return the date at which the image was created.
     #[must_use]
     pub(crate) fn created_at(&self) -> NaiveDate {
@@ -101,10 +92,6 @@ impl GetImageResponse {
 
     /// Create a new fetch-image response.
     #[must_use]
-    #[expect(
-        clippy::too_many_arguments,
-        reason = "the constructor mirrors the response's fields one-to-one"
-    )]
     pub(crate) fn new(
         id: NumericID,
         name: String,
@@ -113,10 +100,8 @@ impl GetImageResponse {
         orientation: Orientation,
         created_at: NaiveDate,
         file_id: NumericID,
-        content_link: ContentLink,
     ) -> Self {
         Self {
-            content_link,
             created_at,
             file_id,
             height_px,

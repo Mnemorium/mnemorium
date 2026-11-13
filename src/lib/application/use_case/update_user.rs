@@ -1,18 +1,19 @@
+use crate::application::authorization::authorize;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
-use tracing::{info, warn};
+use tracing::info;
 
 use crate::application::port::{
     UpdateUserCommand, UpdateUserError, UpdateUserResponse, UpdateUserUseCase,
 };
-use crate::domain::model::{Action, UserError};
+use crate::domain::model::{Action, ResourceKind, ResourceRef, Role, UserError};
 use crate::domain::port::{
-    IdentityUnitOfWork, PermissionFilter, PermissionRepository as _, RepositoryError,
-    UnitOfWork as _, UnitOfWorkFactory, UserFilter, UserRepository as _, UserUnitOfWork,
+    IdentityUnitOfWork, RepositoryError, UnitOfWork as _, UnitOfWorkFactory, UserFilter,
+    UserRepository as _, UserUnitOfWork,
 };
-use crate::domain::service::{Authorization, Decision, UsernamePolicy, UsernamePolicyError};
+use crate::domain::service::{UsernamePolicy, UsernamePolicyError};
 
 /// Use case implementation for updating the profile of a user.
 pub(crate) struct UpdateUser<F> {
@@ -65,15 +66,6 @@ where
                     .next()
                     .ok_or(UpdateUserError::NoSuchCaller)?;
 
-                let permissions = unit_of_work
-                    .permissions()
-                    .search(&PermissionFilter {
-                        user_id: Some(caller.id()),
-                        ..PermissionFilter::default()
-                    })
-                    .await
-                    .map_err(|error| UpdateUserError::Unknown(error.into()))?;
-
                 let mut user = unit_of_work
                     .users()
                     .search(&UserFilter {
@@ -89,32 +81,31 @@ where
                 if user.id() == 0 {
                     return Err(UpdateUserError::TargetNotModifiable);
                 }
-                if let Decision::Deny(denial) =
-                    Authorization::decide(&caller, &permissions, Action::UserUpdate, &user)
+                // Only the root administers Admin accounts; a non-root Admin
+                // may still update its own profile (`REQ-AUTHORIZATION-019`).
+                if user.role() == Role::Admin && !caller.is_root_admin() && caller.id() != user.id()
                 {
-                    warn!(
-                        target: "security",
-                        event = "authz_failed",
-                        actor = caller.id(),
-                        action = %denial.action().verb(),
-                        target = %denial.action().target(),
-                        "denied an action"
-                    );
-                    return Err(UpdateUserError::NotAdmin);
+                    return Err(UpdateUserError::TargetNotModifiable);
                 }
-                if command.role().is_some()
-                    && let Decision::Deny(denial) =
-                        Authorization::decide(&caller, &permissions, Action::UserRoleChange, &user)
-                {
-                    warn!(
-                        target: "security",
-                        event = "authz_failed",
-                        actor = caller.id(),
-                        action = %denial.action().verb(),
-                        target = %denial.action().target(),
-                        "denied an action"
-                    );
-                    return Err(UpdateUserError::RoleChangeForbidden);
+                authorize(
+                    &mut unit_of_work.resources(),
+                    &caller,
+                    ResourceRef::new(ResourceKind::User, user.id()),
+                    Action::EditMetadata,
+                    None,
+                )
+                .await
+                .map_err(|_| UpdateUserError::NotAdmin)?;
+                if command.role().is_some() {
+                    authorize(
+                        &mut unit_of_work.resources(),
+                        &caller,
+                        ResourceRef::new(ResourceKind::User, user.id()),
+                        Action::ChangeRole,
+                        None,
+                    )
+                    .await
+                    .map_err(|_| UpdateUserError::RoleChangeForbidden)?;
                 }
 
                 if let Some(username) = command.username().map(str::to_owned) {
@@ -250,7 +241,7 @@ mod tests {
         setup(&mut user_repository)?;
 
         let unit_of_work = TestUnitOfWork {
-            permissions: no_permissions(),
+            resources: no_resources(),
             users: user_repository,
             ..TestUnitOfWork::default()
         };
@@ -331,7 +322,7 @@ mod tests {
             .returning(|user| Box::pin(async move { Ok(user) }));
 
         let unit_of_work = TestUnitOfWork {
-            permissions: no_permissions(),
+            resources: no_resources(),
             users: user_repository,
             ..TestUnitOfWork::default()
         };
@@ -392,34 +383,6 @@ mod tests {
         assert!(harness.committed.load(Ordering::SeqCst));
         Ok(())
     }
-
-    #[tokio::test]
-    async fn update_user_standard_caller_returns_not_admin() -> Result<(), Box<dyn Error>> {
-        // Arrange
-        let harness = use_case_with(|user_repository| {
-            let caller = user(3, "bobby", None, Role::Standard)?;
-            user_repository
-                .expect_search()
-                .withf(|filter| filter.id == Some(3))
-                .return_once(move |_| Box::pin(async move { Ok(vec![caller]) }));
-            let target = user(2, "brad", None, Role::Standard)?;
-            user_repository
-                .expect_search()
-                .withf(|filter| filter.id == Some(2))
-                .return_once(move |_| Box::pin(async move { Ok(vec![target]) }));
-            Ok(())
-        })?;
-        let command = command(3, 2, Some("renamed"), None, None);
-
-        // Act
-        let result = harness.use_case.execute(command).await;
-
-        // Assert
-        assert!(matches!(result, Err(UpdateUserError::NotAdmin)));
-        assert!(harness.rolled_back.load(Ordering::SeqCst));
-        Ok(())
-    }
-
     #[tokio::test]
     async fn update_user_target_root_admin_returns_target_not_modifiable()
     -> Result<(), Box<dyn Error>> {
@@ -441,9 +404,8 @@ mod tests {
         assert!(harness.rolled_back.load(Ordering::SeqCst));
         Ok(())
     }
-
     #[tokio::test]
-    async fn update_user_non_root_admin_updates_other_admin_returns_not_admin()
+    async fn update_user_non_root_admin_updates_another_admin_returns_target_not_modifiable()
     -> Result<(), Box<dyn Error>> {
         // Arrange
         let harness = use_case_with(|user_repository| {
@@ -453,13 +415,13 @@ mod tests {
                 user(8, "fellow-admin", None, Role::Admin),
             )
         })?;
-        let command = command(7, 8, Some("renamed-fellow"), None, None);
+        let command = command(7, 8, Some("renamed"), None, None);
 
         // Act
         let result = harness.use_case.execute(command).await;
 
-        // Assert
-        assert!(matches!(result, Err(UpdateUserError::NotAdmin)));
+        // Assert: only the root administers Admin accounts.
+        assert!(matches!(result, Err(UpdateUserError::TargetNotModifiable)));
         assert!(harness.rolled_back.load(Ordering::SeqCst));
         Ok(())
     }
@@ -617,7 +579,7 @@ mod tests {
             .returning(|_| Box::pin(async { Err(RepositoryError::OperationFailed) }));
 
         let unit_of_work = TestUnitOfWork {
-            permissions: no_permissions(),
+            resources: no_resources(),
             users: user_repository,
             ..TestUnitOfWork::default()
         };
@@ -839,7 +801,7 @@ mod tests {
             .returning(|_| Box::pin(async { Err(RepositoryError::AlreadyExist) }));
 
         let unit_of_work = TestUnitOfWork {
-            permissions: no_permissions(),
+            resources: no_resources(),
             users: user_repository,
             ..TestUnitOfWork::default()
         };

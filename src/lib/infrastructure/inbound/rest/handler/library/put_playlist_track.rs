@@ -20,7 +20,7 @@ pub(crate) struct ReorderPlaylistTracksRequest {
 
 /// Reorder the tracks of a music playlist.
 ///
-/// Any caller who can read the playlist may reorder it. The body must be a
+/// Reordering requires `EditMetadata` on the playlist. The body must be a
 /// complete permutation of the current track indices; the tracks are reindexed
 /// to `0..n-1` in the requested order.
 #[utoipa::path(
@@ -104,5 +104,7 @@ pub(crate) async fn put_playlist_track(
             request.order,
         ))
         .await?;
-    Ok(hal_json(PlaylistResponse::new(response.playlist())))
+    Ok(hal_json(PlaylistResponse::from_playlist(
+        response.playlist(),
+    )))
 }

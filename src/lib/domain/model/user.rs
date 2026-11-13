@@ -3,7 +3,6 @@ use std::fmt::{Debug, Formatter, Result as FmtResult};
 use email_address::{EmailAddress, Options};
 
 use crate::domain::NumericID;
-use crate::domain::model::{Protected, ResourceKind, ResourceRef};
 
 /// Error returned when initialising or updating a `User`.
 #[derive(Debug, thiserror::Error)]
@@ -23,7 +22,7 @@ pub(crate) enum UserError {
 
 /// Role of a `User`.
 #[derive(
-    Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize, serde::Serialize, utoipa::ToSchema,
+    Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Deserialize, serde::Serialize, utoipa::ToSchema,
 )]
 #[serde(rename_all = "UPPERCASE")]
 #[non_exhaustive]
@@ -35,6 +34,15 @@ pub(crate) enum Role {
 }
 
 impl Role {
+    /// Render the role as its stored representation (`ADMIN`).
+    #[must_use]
+    pub(crate) fn as_wire(self) -> &'static str {
+        match self {
+            Self::Admin => "ADMIN",
+            Self::Standard => "STANDARD",
+        }
+    }
+
     /// Parse a role from its wire representation (`ADMIN`, `STANDARD`).
     ///
     /// Returns `None` when `value` is not a member of the discrete list, so an
@@ -188,23 +196,5 @@ impl Debug for User {
             .field("role", &self.role)
             .field("username", &"**")
             .finish_non_exhaustive()
-    }
-}
-
-impl Protected for User {
-    fn is_privileged_account(&self) -> bool {
-        self.role == Role::Admin
-    }
-
-    fn is_publicly_visible(&self) -> bool {
-        false
-    }
-
-    fn owner_id(&self) -> Option<NumericID> {
-        Some(self.id)
-    }
-
-    fn resource_ref(&self) -> Option<ResourceRef> {
-        Some(ResourceRef::new(ResourceKind::User, self.id))
     }
 }

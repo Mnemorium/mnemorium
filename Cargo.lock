@@ -24,6 +24,33 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "683d7910e743518b0e34f1186f92494becacb047c7b6bf616c96772180fef923"
 
 [[package]]
+name = "allure-cargotest"
+version = "1.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "727f0c342f21cd5430a3cfba6fe20046ac2921e806feebec58b18900935f368f"
+dependencies = [
+ "allure-rust-commons",
+ "allure-test-macros",
+]
+
+[[package]]
+name = "allure-rust-commons"
+version = "1.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e238950bc5a7332a11e53a2a07404f09f367d40b5f71ac5f39f189dcee1c7d14"
+dependencies = [
+ "serde",
+ "serde_json",
+ "uuid",
+]
+
+[[package]]
+name = "allure-test-macros"
+version = "1.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "76925b05aa5fb98731446d56e82e5eaa2424cda317f98a18b828c509bcf1da83"
+
+[[package]]
 name = "android_system_properties"
 version = "0.1.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1585,6 +1612,7 @@ dependencies = [
 name = "mnemorium"
 version = "0.37.0"
 dependencies = [
+ "allure-cargotest",
  "anyhow",
  "argon2",
  "axum",
@@ -1592,6 +1620,7 @@ dependencies = [
  "chrono",
  "email_address",
  "envy",
+ "governor",
  "image",
  "infer",
  "jsonwebtoken",
@@ -3429,6 +3458,7 @@ version = "1.29.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4a0e2d11620c50695fe12bbbfde96b3477fe606e7284c22d505c12ce51214514"
 dependencies = [
+ "getrandom 0.4.3",
  "js-sys",
  "wasm-bindgen",
 ]

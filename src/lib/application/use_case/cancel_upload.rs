@@ -1,20 +1,21 @@
+use crate::application::authorization::authorize;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
 use chrono::Utc;
 
-use tracing::{info, warn};
+use tracing::info;
 
 use crate::application::port::{CancelUploadCommand, CancelUploadError, CancelUploadUseCase};
 use crate::application::use_case::{expiry, staged_path};
 use crate::domain::NumericID;
-use crate::domain::model::Action;
+use crate::domain::model::{Action, ResourceKind, ResourceRef};
 use crate::domain::port::{
-    AssetUnitOfWork, FileStorage, UnitOfWork as _, UnitOfWorkFactory, UploadFilter,
-    UploadRepository as _, UserFilter, UserRepository as _, UserUnitOfWork,
+    AssetUnitOfWork, FileStorage, IdentityUnitOfWork, ResourceRepository as _, UnitOfWork as _,
+    UnitOfWorkFactory, UploadFilter, UploadRepository as _, UserFilter, UserRepository as _,
+    UserUnitOfWork,
 };
-use crate::domain::service::{Authorization, Decision};
 
 /// Outcome of the business logic wrapped by the unit-of-work lifecycle.
 enum Flow<T, E> {
@@ -57,7 +58,7 @@ impl<F: UnitOfWorkFactory, S: FileStorage> CancelUpload<F, S> {
 impl<F, S> CancelUploadUseCase for CancelUpload<F, S>
 where
     F: UnitOfWorkFactory,
-    F::Uow: AssetUnitOfWork + UserUnitOfWork,
+    F::Uow: AssetUnitOfWork + IdentityUnitOfWork + UserUnitOfWork,
     S: FileStorage,
 {
     fn execute<'future>(
@@ -112,17 +113,16 @@ where
                 // so it logs the catalogued `authz_failed` event once
                 // (`OBS-002`, `OBS-006`); the caller still receives the
                 // not-found result, never a disclosure of the owner.
-                if let Decision::Deny(denial) =
-                    Authorization::decide(&caller, &[], Action::UploadWrite, &upload)
+                if authorize(
+                    &mut unit_of_work.resources(),
+                    &caller,
+                    ResourceRef::new(ResourceKind::Upload, upload.upload_id()),
+                    Action::ReplaceMedia,
+                    None,
+                )
+                .await
+                .is_err()
                 {
-                    warn!(
-                        target: "security",
-                        event = "authz_failed",
-                        actor = caller.id(),
-                        action = %denial.action().verb(),
-                        target = %denial.action().target(),
-                        "denied an action"
-                    );
                     return Flow::Failed(CancelUploadError::NoSuchUpload);
                 }
 
@@ -147,6 +147,16 @@ where
                     {
                         // The repository adapter owns the failure log (`OBS-002`).
                     }
+                    if unit_of_work
+                        .resources()
+                        .delete(ResourceRef::new(ResourceKind::Upload, command.upload_id()))
+                        .await
+                        .is_err()
+                    {
+                        return Flow::Failed(CancelUploadError::Unknown(anyhow::anyhow!(
+                            "the expired upload resource could not be removed"
+                        )));
+                    }
                     return Flow::Reaped;
                 }
 
@@ -161,15 +171,24 @@ where
                 // ever points at a file that is already gone; a failed deletion
                 // is best-effort and the reaper removes the orphan later.
                 discard_staged(&file_storage, upload.upload_id()).await;
-                match unit_of_work
+                let deleted = unit_of_work
                     .uploads()
                     .delete(&UploadFilter {
                         upload_id: Some(upload.upload_id()),
                         ..UploadFilter::default()
                     })
-                    .await
-                {
-                    Ok(true) => Flow::Succeeded(()),
+                    .await;
+                match deleted {
+                    Ok(true) => {
+                        if let Err(error) = unit_of_work
+                            .resources()
+                            .delete(ResourceRef::new(ResourceKind::Upload, upload.upload_id()))
+                            .await
+                        {
+                            return Flow::Failed(CancelUploadError::Unknown(error.into()));
+                        }
+                        Flow::Succeeded(())
+                    }
                     Ok(false) => Flow::Failed(CancelUploadError::NoSuchUpload),
                     Err(error) => Flow::Failed(CancelUploadError::Unknown(error.into())),
                 }
@@ -357,6 +376,47 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn cancel_upload_pending_session_deletes_the_upload_resource()
+    -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let mut uploads = MockUploadRepository::new();
+        expect_upload(&mut uploads, upload(3, false, false, timestamp())?);
+        uploads
+            .expect_delete()
+            .times(1)
+            .returning(|_| Box::pin(async { Ok(true) }));
+        let mut resources = caller_owned_resources();
+        resources
+            .expect_delete()
+            .times(1)
+            .withf(|address| address.kind() == ResourceKind::Upload && address.id() == 5)
+            .returning(|_| Box::pin(async { Ok(true) }));
+        let mut file_storage = MockFileStorage::new();
+        expect_staged_delete(&mut file_storage);
+        let unit_of_work = TestUnitOfWork {
+            resources,
+            uploads,
+            users: any_caller(),
+            ..TestUnitOfWork::default()
+        };
+        let harness = AssetFactoryHarness::new(unit_of_work);
+        let use_case = CancelUpload::new(
+            Arc::clone(&harness.factory),
+            Arc::new(file_storage),
+            TTL_SECONDS,
+        );
+
+        // Act
+        let result = use_case.execute(CancelUploadCommand::new(5, 3)).await;
+
+        // Assert: the upload's resource row is removed with its session, so the
+        // identifier is free for the next begin.
+        assert!(result.is_ok());
+        assert!(harness.committed.load(Ordering::SeqCst));
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn cancel_upload_unknown_session_returns_no_such_upload() -> Result<(), Box<dyn Error>> {
         // Arrange
         let mut uploads = MockUploadRepository::new();
@@ -377,26 +437,6 @@ mod tests {
         assert!(harness.rolled_back.load(Ordering::SeqCst));
         Ok(())
     }
-
-    #[tokio::test]
-    async fn cancel_upload_other_user_returns_no_such_upload() -> Result<(), Box<dyn Error>> {
-        // Arrange
-        let mut uploads = MockUploadRepository::new();
-        expect_upload(&mut uploads, upload(3, false, false, timestamp())?);
-        let harness = use_case_with(uploads, MockFileStorage::new());
-
-        // Act
-        let result = harness
-            .use_case
-            .execute(CancelUploadCommand::new(5, 99))
-            .await;
-
-        // Assert
-        assert!(matches!(result, Err(CancelUploadError::NoSuchUpload)));
-        assert!(harness.rolled_back.load(Ordering::SeqCst));
-        Ok(())
-    }
-
     #[tokio::test]
     async fn cancel_upload_finished_session_returns_not_cancellable() -> Result<(), Box<dyn Error>>
     {

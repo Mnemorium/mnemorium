@@ -25,9 +25,9 @@ pub(crate) struct PostMusicGroupRequest {
 
 /// Create a music group.
 ///
-/// Only a caller whose `library.manage` covers the catalogue may create a
-/// group. The name is trimmed and must be unique; the optional cover must be a
-/// `LIBRARY` image.
+/// Creating a group requires `CreateChild` for a music group on the
+/// **Catalogue**. The name is trimmed and must be unique; the optional cover
+/// must be a `LIBRARY` image.
 #[utoipa::path(
     post,
     operation_id = "post_music_group",

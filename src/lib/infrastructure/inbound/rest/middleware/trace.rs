@@ -35,8 +35,7 @@ pub(crate) async fn tracing(req: Request<Body>, next: Next) -> Response {
 
 #[cfg(test)]
 mod tests {
-    use super::tracing as trace_middleware;
-    use super::*;
+    use super::{tracing as trace_middleware, *};
     use axum::routing::get;
     use axum::{Router, middleware};
     use std::error::Error;

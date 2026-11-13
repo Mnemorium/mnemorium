@@ -2,16 +2,17 @@ use sqlx::{Sqlite, SqlitePool, Transaction};
 
 use crate::domain::port::{
     AssetUnitOfWork, AudioRepository, CredentialRepository, FileRepository, GalleryRepository,
-    IdentityUnitOfWork, ImageRepository, LibraryUnitOfWork, MimeTypeRepository, MovieRepository,
-    MusicAlbumRepository, MusicGroupRepository, MusicPlaylistRepository, PermissionRepository,
-    SeriesRepository, UnitOfWork, UnitOfWorkError, UnitOfWorkFactory, UploadRepository,
-    UserRepository, UserUnitOfWork, VideoRepository,
+    GrantRepository, IdentityUnitOfWork, ImageRepository, LibraryUnitOfWork, MimeTypeRepository,
+    MovieRepository, MusicAlbumRepository, MusicGroupRepository, MusicPlaylistRepository,
+    ResourceRepository, SeriesRepository, UnitOfWork, UnitOfWorkError, UnitOfWorkFactory,
+    UploadRepository, UserRepository, UserUnitOfWork, VideoRepository,
 };
 use crate::infrastructure::outbound::sqlx::{
     SqlxAudioRepository, SqlxCredentialRepository, SqlxFileRepository, SqlxGalleryRepository,
-    SqlxImageRepository, SqlxMimeTypeRepository, SqlxMovieRepository, SqlxMusicAlbumRepository,
-    SqlxMusicGroupRepository, SqlxMusicPlaylistRepository, SqlxPermissionRepository,
-    SqlxSeriesRepository, SqlxUploadRepository, SqlxUserRepository, SqlxVideoRepository,
+    SqlxGrantRepository, SqlxImageRepository, SqlxMimeTypeRepository, SqlxMovieRepository,
+    SqlxMusicAlbumRepository, SqlxMusicGroupRepository, SqlxMusicPlaylistRepository,
+    SqlxResourceRepository, SqlxSeriesRepository, SqlxUploadRepository, SqlxUserRepository,
+    SqlxVideoRepository,
 };
 
 /// Statement opening a write-intent transaction.
@@ -52,8 +53,12 @@ impl IdentityUnitOfWork for SqlxUnitOfWork {
         SqlxCredentialRepository::new(self.transaction())
     }
 
-    fn permissions(&mut self) -> impl PermissionRepository + '_ {
-        SqlxPermissionRepository::new(self.transaction())
+    fn grants(&mut self) -> impl GrantRepository + '_ {
+        SqlxGrantRepository::new(self.transaction())
+    }
+
+    fn resources(&mut self) -> impl ResourceRepository + '_ {
+        SqlxResourceRepository::new(self.transaction())
     }
 }
 

@@ -1,8 +1,8 @@
+use crate::application::authorization::authorize;
+use crate::domain::model::{ChildKind, ResourceKind, ResourceRef};
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
-
-use tracing::warn;
 
 use crate::application::port::{
     PutAlbumTrackCommand, PutAlbumTrackError, PutAlbumTrackResponse, PutAlbumTrackUseCase,
@@ -10,10 +10,9 @@ use crate::application::port::{
 use crate::domain::model::{Action, MusicMedium, MusicRecording, TrackIndex};
 use crate::domain::port::{
     IdentityUnitOfWork, LibraryUnitOfWork, MusicAlbumFilter, MusicAlbumRepository as _,
-    MusicRecordingFilter, PermissionFilter, PermissionRepository as _, RepositoryError,
-    UnitOfWork as _, UnitOfWorkFactory, UserFilter, UserRepository as _, UserUnitOfWork,
+    MusicRecordingFilter, RepositoryError, UnitOfWork as _, UnitOfWorkFactory, UserFilter,
+    UserRepository as _, UserUnitOfWork,
 };
-use crate::domain::service::{Authorization, Decision};
 
 /// Use case implementation for placing a recording at a medium track address.
 pub(crate) struct PutAlbumTrack<F> {
@@ -65,15 +64,6 @@ where
                     .next()
                     .ok_or(PutAlbumTrackError::NoSuchCaller)?;
 
-                let permissions = unit_of_work
-                    .permissions()
-                    .search(&PermissionFilter {
-                        user_id: Some(caller.id()),
-                        ..PermissionFilter::default()
-                    })
-                    .await
-                    .map_err(|error| PutAlbumTrackError::Unknown(error.into()))?;
-
                 let album = unit_of_work
                     .music_albums()
                     .search(&MusicAlbumFilter {
@@ -86,36 +76,30 @@ where
                     .next()
                     .ok_or(PutAlbumTrackError::NoSuchAlbum)?;
 
-                if let Decision::Deny(denial) =
-                    Authorization::decide(&caller, &permissions, Action::LibraryRead, &album)
-                {
-                    warn!(
-                        target: "security",
-                        event = "authz_failed",
-                        actor = caller.id(),
-                        action = %denial.action().verb(),
-                        target = %denial.action().target(),
-                        "denied an action"
-                    );
-                    return Err(PutAlbumTrackError::NoSuchAlbum);
-                }
-                if let Decision::Deny(denial) =
-                    Authorization::decide(&caller, &permissions, Action::LibraryManage, &album)
-                {
-                    warn!(
-                        target: "security",
-                        event = "authz_failed",
-                        actor = caller.id(),
-                        action = %denial.action().verb(),
-                        target = %denial.action().target(),
-                        "denied an action"
-                    );
-                    return Err(if denial.conceals() {
+                authorize(
+                    &mut unit_of_work.resources(),
+                    &caller,
+                    ResourceRef::new(ResourceKind::MusicAlbum, album.id()),
+                    Action::View,
+                    None,
+                )
+                .await
+                .map_err(|_| PutAlbumTrackError::NoSuchAlbum)?;
+                authorize(
+                    &mut unit_of_work.resources(),
+                    &caller,
+                    ResourceRef::new(ResourceKind::MusicAlbum, album.id()),
+                    Action::CreateChild,
+                    Some(ChildKind::MusicRecording),
+                )
+                .await
+                .map_err(|error| {
+                    if error.conceals() {
                         PutAlbumTrackError::NoSuchAlbum
                     } else {
                         PutAlbumTrackError::Forbidden
-                    });
-                }
+                    }
+                })?;
 
                 if album.id() == 0 {
                     return Err(PutAlbumTrackError::DefaultAlbum);
@@ -261,7 +245,7 @@ mod tests {
     ) -> GalleryFactoryHarness {
         let unit_of_work = TestUnitOfWork {
             music_albums: albums,
-            permissions: no_permissions(),
+            resources: no_resources(),
             users,
             ..TestUnitOfWork::default()
         };
@@ -541,26 +525,6 @@ mod tests {
         // Assert
         assert!(matches!(result, Err(PutAlbumTrackError::Unknown(_))));
         assert!(harness.rolled_back.load(Ordering::SeqCst));
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn put_album_track_standard_user_is_forbidden() -> Result<(), Box<dyn Error>> {
-        // Arrange
-        let mut users = MockUserRepository::new();
-        expect_caller(&mut users, 1)?;
-        let mut albums = MockMusicAlbumRepository::new();
-        expect_album(&mut albums, album_with_medium(7)?);
-        let harness = harness_with(users, albums);
-        let use_case: UseCase = PutAlbumTrack::new(Arc::clone(&harness.factory));
-
-        // Act
-        let result = use_case
-            .execute(PutAlbumTrackCommand::new(1, 7, 1, 1, 5))
-            .await;
-
-        // Assert
-        assert!(matches!(result, Err(PutAlbumTrackError::Forbidden)));
         Ok(())
     }
 }

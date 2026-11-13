@@ -69,5 +69,7 @@ pub(crate) async fn get_playlist(
         .get_playlist()
         .execute(GetPlaylistCommand::new(caller.user_id(), playlist_id))
         .await?;
-    Ok(hal_json(PlaylistResponse::new(response.playlist())))
+    Ok(hal_json(PlaylistResponse::from_playlist(
+        response.playlist(),
+    )))
 }

@@ -334,6 +334,7 @@ mod tests {
         PartialRateLimit, PartialSecurity, PartialVideoMetadata, PartialVideoProvider, ProviderId,
         Rotation,
     };
+    use allure_cargotest::allure_test;
 
     use crate::domain::port::{
         LoadedFileConfiguration, MockConfigurationSource, MockEnvironmentConfiguration,
@@ -1019,8 +1020,12 @@ mod tests {
         assert_rejected_naming(partial, "logging.level").await;
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn load_configuration_defaults_have_no_video_provider() -> Result<(), Box<dyn Error>> {
+        allure.epic("Metadata enrichment");
+        allure.feature("REQ-METADATA-ENRICHMENT-015");
+        allure.story("SCN-METADATA-ENRICHMENT-015-B");
         // Arrange
         let use_case = use_case(
             file_layer(PartialConfiguration::default(), false),
@@ -1044,8 +1049,14 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn load_configuration_accepts_a_two_provider_list() -> Result<(), Box<dyn Error>> {
+        allure.epic("Metadata enrichment");
+        allure.feature("REQ-METADATA-ENRICHMENT-015");
+        allure.feature("REQ-METADATA-ENRICHMENT-016");
+        allure.story("SCN-METADATA-ENRICHMENT-015-A");
+        allure.story("SCN-METADATA-ENRICHMENT-016-A");
         // Arrange
         let partial = video_providers(vec![
             provider("tmdb", 1, "sentinel-tmdb"),
@@ -1094,8 +1105,12 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn load_configuration_orders_providers_by_their_index() -> Result<(), Box<dyn Error>> {
+        allure.epic("Metadata enrichment");
+        allure.feature("REQ-METADATA-ENRICHMENT-015");
+        allure.story("SCN-METADATA-ENRICHMENT-015-A");
         // Arrange: the file lists the entries in the reverse of their index order.
         let partial = video_providers(vec![
             provider("omdb", 2, "sentinel-omdb"),
@@ -1127,8 +1142,14 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn load_configuration_unknown_provider_names_the_setting() {
+        allure.epic("Metadata enrichment");
+        allure.feature("REQ-METADATA-ENRICHMENT-015");
+        allure.feature("REQ-METADATA-ENRICHMENT-016");
+        allure.story("SCN-METADATA-ENRICHMENT-015-C");
+        allure.story("SCN-METADATA-ENRICHMENT-016-B");
         // Arrange: the list names a provider the system does not support.
         let partial = video_providers(vec![provider("tvdb", 1, "sentinel-key")]);
 
@@ -1136,8 +1157,14 @@ mod tests {
         assert_rejected_naming(partial, "library.metadata.video.providers").await;
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn load_configuration_duplicate_provider_names_the_setting() {
+        allure.epic("Metadata enrichment");
+        allure.feature("REQ-METADATA-ENRICHMENT-015");
+        allure.feature("REQ-METADATA-ENRICHMENT-016");
+        allure.story("SCN-METADATA-ENRICHMENT-015-C");
+        allure.story("SCN-METADATA-ENRICHMENT-016-B");
         // Arrange
         let partial = video_providers(vec![
             provider("tmdb", 1, "sentinel-first"),
@@ -1148,8 +1175,14 @@ mod tests {
         assert_rejected_naming(partial, "library.metadata.video.providers").await;
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn load_configuration_duplicate_index_names_the_setting() {
+        allure.epic("Metadata enrichment");
+        allure.feature("REQ-METADATA-ENRICHMENT-015");
+        allure.feature("REQ-METADATA-ENRICHMENT-016");
+        allure.story("SCN-METADATA-ENRICHMENT-015-C");
+        allure.story("SCN-METADATA-ENRICHMENT-016-B");
         // Arrange
         let partial = video_providers(vec![
             provider("tmdb", 1, "sentinel-first"),
@@ -1160,8 +1193,14 @@ mod tests {
         assert_rejected_naming(partial, "library.metadata.video.providers").await;
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn load_configuration_zero_index_names_the_setting() {
+        allure.epic("Metadata enrichment");
+        allure.feature("REQ-METADATA-ENRICHMENT-015");
+        allure.feature("REQ-METADATA-ENRICHMENT-016");
+        allure.story("SCN-METADATA-ENRICHMENT-015-C");
+        allure.story("SCN-METADATA-ENRICHMENT-016-B");
         // Arrange
         let partial = video_providers(vec![provider("tmdb", 0, "sentinel-key")]);
 
@@ -1169,8 +1208,14 @@ mod tests {
         assert_rejected_naming(partial, "library.metadata.video.providers").await;
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn load_configuration_missing_key_names_the_setting() {
+        allure.epic("Metadata enrichment");
+        allure.feature("REQ-METADATA-ENRICHMENT-015");
+        allure.feature("REQ-METADATA-ENRICHMENT-016");
+        allure.story("SCN-METADATA-ENRICHMENT-015-C");
+        allure.story("SCN-METADATA-ENRICHMENT-016-B");
         // Arrange: the entry names the provider and the index but no key.
         let partial = video_providers(vec![PartialVideoProvider {
             api_key: None,
@@ -1182,8 +1227,12 @@ mod tests {
         assert_rejected_naming(partial, "library.metadata.video.providers").await;
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn load_configuration_accepts_a_music_provider() -> Result<(), Box<dyn Error>> {
+        allure.epic("Metadata enrichment");
+        allure.feature("REQ-METADATA-ENRICHMENT-015");
+        allure.story("SCN-METADATA-ENRICHMENT-015-E");
         // Arrange: a music provider needs no credential.
         let partial = music_providers(vec![music_provider("musicbrainz", 1)]);
         let use_case = use_case(
@@ -1220,8 +1269,14 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn load_configuration_rejects_a_video_provider_in_the_music_section() {
+        allure.epic("Metadata enrichment");
+        allure.feature("REQ-METADATA-ENRICHMENT-015");
+        allure.feature("REQ-METADATA-ENRICHMENT-016");
+        allure.story("SCN-METADATA-ENRICHMENT-015-D");
+        allure.story("SCN-METADATA-ENRICHMENT-016-B");
         // Arrange: TMDB serves video, not music.
         let partial = music_providers(vec![music_provider("tmdb", 1)]);
 
@@ -1229,8 +1284,14 @@ mod tests {
         assert_rejected_naming(partial, "library.metadata.music.providers").await;
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn load_configuration_rejects_a_music_provider_in_the_video_section() {
+        allure.epic("Metadata enrichment");
+        allure.feature("REQ-METADATA-ENRICHMENT-015");
+        allure.feature("REQ-METADATA-ENRICHMENT-016");
+        allure.story("SCN-METADATA-ENRICHMENT-015-D");
+        allure.story("SCN-METADATA-ENRICHMENT-016-B");
         // Arrange: MusicBrainz needs no key and serves no video.
         let partial = video_providers(vec![provider("musicbrainz", 1, "sentinel-key")]);
 
@@ -1238,8 +1299,14 @@ mod tests {
         assert_rejected_naming(partial, "library.metadata.video.providers").await;
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn load_configuration_rejects_an_unknown_music_provider() {
+        allure.epic("Metadata enrichment");
+        allure.feature("REQ-METADATA-ENRICHMENT-015");
+        allure.feature("REQ-METADATA-ENRICHMENT-016");
+        allure.story("SCN-METADATA-ENRICHMENT-015-C");
+        allure.story("SCN-METADATA-ENRICHMENT-016-B");
         // Arrange
         let partial = music_providers(vec![music_provider("lastfm", 1)]);
 
@@ -1247,8 +1314,14 @@ mod tests {
         assert_rejected_naming(partial, "library.metadata.music.providers").await;
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn load_configuration_rejects_a_duplicate_music_provider() {
+        allure.epic("Metadata enrichment");
+        allure.feature("REQ-METADATA-ENRICHMENT-015");
+        allure.feature("REQ-METADATA-ENRICHMENT-016");
+        allure.story("SCN-METADATA-ENRICHMENT-015-C");
+        allure.story("SCN-METADATA-ENRICHMENT-016-B");
         // Arrange
         let partial = music_providers(vec![
             music_provider("musicbrainz", 1),
@@ -1259,8 +1332,14 @@ mod tests {
         assert_rejected_naming(partial, "library.metadata.music.providers").await;
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn load_configuration_rejects_a_zero_music_index() {
+        allure.epic("Metadata enrichment");
+        allure.feature("REQ-METADATA-ENRICHMENT-015");
+        allure.feature("REQ-METADATA-ENRICHMENT-016");
+        allure.story("SCN-METADATA-ENRICHMENT-015-C");
+        allure.story("SCN-METADATA-ENRICHMENT-016-B");
         // Arrange
         let partial = music_providers(vec![music_provider("musicbrainz", 0)]);
 
@@ -1332,8 +1411,12 @@ mod tests {
         assert_rejected_naming(partial, "library.startup").await;
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn load_configuration_defaults_have_no_music_provider() -> Result<(), Box<dyn Error>> {
+        allure.epic("Metadata enrichment");
+        allure.feature("REQ-METADATA-ENRICHMENT-015");
+        allure.story("SCN-METADATA-ENRICHMENT-015-B");
         // Arrange
         let use_case = use_case(
             file_layer(PartialConfiguration::default(), false),

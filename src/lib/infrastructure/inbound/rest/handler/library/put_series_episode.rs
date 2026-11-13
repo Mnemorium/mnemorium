@@ -34,10 +34,10 @@ pub(crate) struct PutSeriesEpisodeRequest {
 
 /// Create or replace a season episode.
 ///
-/// Only a caller whose `library.manage` scope covers the whole catalogue may
-/// write it. The write is idempotent by index: a free index creates the episode
-/// and an existing index replaces it, replacing its video when a different one
-/// is named.
+/// Writing an episode requires the `CreateChild` action on the show with the
+/// episode child kind. The write is idempotent by index: a free index creates
+/// the episode and an existing index replaces it, replacing its video when a
+/// different one is named.
 #[utoipa::path(
     put,
     operation_id = "put_series_episode",

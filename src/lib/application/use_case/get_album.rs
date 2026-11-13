@@ -1,8 +1,8 @@
+use crate::application::authorization::authorize;
+use crate::domain::model::{ResourceKind, ResourceRef};
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
-
-use tracing::warn;
 
 use crate::application::port::{
     GetAlbumCommand, GetAlbumError, GetAlbumMediumItem, GetAlbumResponse, GetAlbumUseCase,
@@ -10,10 +10,8 @@ use crate::application::port::{
 use crate::domain::model::Action;
 use crate::domain::port::{
     IdentityUnitOfWork, LibraryUnitOfWork, MusicAlbumFilter, MusicAlbumRepository as _,
-    PermissionFilter, PermissionRepository as _, UnitOfWork as _, UnitOfWorkFactory, UserFilter,
-    UserRepository as _, UserUnitOfWork,
+    UnitOfWork as _, UnitOfWorkFactory, UserFilter, UserRepository as _, UserUnitOfWork,
 };
-use crate::domain::service::{Authorization, Decision};
 
 /// Use case implementation for fetching one music album.
 pub(crate) struct GetAlbum<F> {
@@ -62,15 +60,6 @@ where
                     .next()
                     .ok_or(GetAlbumError::NoSuchCaller)?;
 
-                let permissions = unit_of_work
-                    .permissions()
-                    .search(&PermissionFilter {
-                        user_id: Some(caller.id()),
-                        ..PermissionFilter::default()
-                    })
-                    .await
-                    .map_err(|error| GetAlbumError::Unknown(error.into()))?;
-
                 let album = unit_of_work
                     .music_albums()
                     .search(&MusicAlbumFilter {
@@ -82,19 +71,15 @@ where
                     .into_iter()
                     .next()
                     .ok_or(GetAlbumError::NoSuchAlbum)?;
-                if let Decision::Deny(denial) =
-                    Authorization::decide(&caller, &permissions, Action::LibraryRead, &album)
-                {
-                    warn!(
-                        target: "security",
-                        event = "authz_failed",
-                        actor = caller.id(),
-                        action = %denial.action().verb(),
-                        target = %denial.action().target(),
-                        "denied an action"
-                    );
-                    return Err(GetAlbumError::NoSuchAlbum);
-                }
+                authorize(
+                    &mut unit_of_work.resources(),
+                    &caller,
+                    ResourceRef::new(ResourceKind::MusicAlbum, album.id()),
+                    Action::View,
+                    None,
+                )
+                .await
+                .map_err(|_| GetAlbumError::NoSuchAlbum)?;
 
                 let mediums: Vec<_> = album
                     .mediums()
@@ -211,7 +196,7 @@ mod tests {
         albums: MockMusicAlbumRepository,
     ) -> GalleryFactoryHarness {
         let unit_of_work = TestUnitOfWork {
-            permissions: no_permissions(),
+            resources: no_resources(),
             music_albums: albums,
             users,
             ..TestUnitOfWork::default()

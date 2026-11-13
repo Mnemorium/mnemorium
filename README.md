@@ -165,7 +165,10 @@ complete default file is written on the first start. A `MNEMORIUM_*` variable na
 `logging.level` is `MNEMORIUM_LOGGING_LEVEL`, `security.rate_limit.burst_size` is
 `MNEMORIUM_SECURITY_RATE_LIMIT_BURST_SIZE` — and an unknown variable name is ignored, while an unknown key in
 `config.yaml` fails startup. The non-derivable part of the instance — the site pepper and the token signing secret —
-lives in `state.yaml`, which is written once and must be backed up together with the datastore (`mnemorium.db`).
+lives in `state.yaml`, which is written once and must be backed up together with the datastore (`mnemorium.db`). Restore
+`state.yaml` at mode `0600` and `chown` it to the account that owns the working directory (the `mnemorium` account in
+the image): a restored file readable or writable by another account is tightened to `0600` before it is read, while a
+file owned by another account, or one whose mode cannot be repaired, fails startup.
 
 With the container image the working directory is `/app`, so mount your library at `/app/media`:
 
@@ -201,16 +204,15 @@ at `/doc` and the raw document as JSON at `/doc/openapi.json`.
 
 Enter the environment first: `devenv shell`.
 
-| Task      | Command                                                                                                                                                                          |
-| --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Build     | `cargo build` (server: `cargo build --bin server`)                                                                                                                               |
-| Run       | `cargo run --bin server` (listens on `:4080`; health `GET /health`)                                                                                                              |
-| Test      | `cargo test` (unit + integration)                                                                                                                                                |
-| Coverage  | `cargo llvm-cov --lib --ignore-filename-regex 'src/lib/infrastructure/inbound/rest/handler'` (gate ≥ 80% lines/regions/functions; REST handlers are covered by E2E/Schemathesis) |
-| E2E       | `script/e2e.sh` (builds and runs the container; `NO_BUILD=1` reuses the image)                                                                                                   |
-| API fuzz  | `script/api_fuzz.sh` (disposable local server; extra arguments go to Schemathesis)                                                                                               |
-| Lint      | `cargo clippy --all-targets --all-features -- -D warnings`; `cargo fmt --all -- --check`                                                                                         |
-| Full gate | `devenv test` (all pre-commit hooks)                                                                                                                                             |
+| Task      | Command                                                                                                                                                                                           |
+| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Build     | `cargo build` (server: `cargo build --bin server`)                                                                                                                                                |
+| Run       | `cargo run --bin server` (listens on `:4080`; health `GET /health`)                                                                                                                               |
+| Test      | `cargo test` (unit + integration)                                                                                                                                                                 |
+| Coverage  | `cargo llvm-cov --lib --ignore-filename-regex 'src/lib/infrastructure/inbound/rest/handler'` (gate ≥ 80% lines/regions/functions; REST handlers are covered by the system suite and Schemathesis) |
+| API fuzz  | `script/api_fuzz.sh` (disposable local server; extra arguments go to Schemathesis)                                                                                                                |
+| Lint      | `cargo clippy --all-targets --all-features -- -D warnings`; `cargo fmt --all -- --check`                                                                                                          |
+| Full gate | `devenv test` (all pre-commit hooks)                                                                                                                                                              |
 
 The module and layer map lives in [Overview](docs/development/Overview.md). That document also defines the branch, PR
 title, and commit conventions; see the [Technical Design Document](docs/development/TechnicalDesign.md) § 5 for the

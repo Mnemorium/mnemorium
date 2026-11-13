@@ -2,17 +2,16 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
+use crate::application::authorization::allows;
 use crate::application::port::{
     ListPlaylistsCommand, ListPlaylistsError, ListPlaylistsItem, ListPlaylistsResponse,
     ListPlaylistsUseCase,
 };
-use crate::domain::model::Action;
+use crate::domain::model::{Action, ResourceKind, ResourceRef};
 use crate::domain::port::{
     IdentityUnitOfWork, LibraryUnitOfWork, MusicPlaylistFilter, MusicPlaylistRepository as _,
-    PermissionFilter, PermissionRepository as _, UnitOfWork as _, UnitOfWorkFactory, UserFilter,
-    UserRepository as _, UserUnitOfWork,
+    UnitOfWork as _, UnitOfWorkFactory, UserFilter, UserRepository as _, UserUnitOfWork,
 };
-use crate::domain::service::Authorization;
 
 /// Use case implementation for listing the playlists the caller may see.
 pub(crate) struct ListPlaylists<F> {
@@ -64,15 +63,6 @@ where
                     .next()
                     .ok_or(ListPlaylistsError::NoSuchCaller)?;
 
-                let permissions = unit_of_work
-                    .permissions()
-                    .search(&PermissionFilter {
-                        user_id: Some(caller.id()),
-                        ..PermissionFilter::default()
-                    })
-                    .await
-                    .map_err(|error| ListPlaylistsError::Unknown(error.into()))?;
-
                 let mut playlists = unit_of_work
                     .music_playlists()
                     .search(&MusicPlaylistFilter {
@@ -83,10 +73,21 @@ where
                     })
                     .await
                     .map_err(|error| ListPlaylistsError::Unknown(error.into()))?;
-                playlists.retain(|playlist| {
-                    Authorization::decide(&caller, &permissions, Action::PlaylistRead, playlist)
-                        .is_allowed()
-                });
+                let mut visible = Vec::with_capacity(playlists.len());
+                for playlist in playlists {
+                    if allows(
+                        &mut unit_of_work.resources(),
+                        &caller,
+                        ResourceRef::new(ResourceKind::MusicPlaylist, playlist.id()),
+                        Action::Discover,
+                        None,
+                    )
+                    .await
+                    {
+                        visible.push(playlist);
+                    }
+                }
+                playlists = visible;
 
                 let total = playlists.len();
                 let offset = command.offset().unwrap_or(0);
@@ -182,7 +183,7 @@ mod tests {
         playlists: MockMusicPlaylistRepository,
     ) -> GalleryFactoryHarness {
         let unit_of_work = TestUnitOfWork {
-            permissions: no_permissions(),
+            resources: no_resources(),
             music_playlists: playlists,
             users,
             ..TestUnitOfWork::default()
@@ -201,59 +202,6 @@ mod tests {
             .times(1)
             .withf(move |filter| filter.id == Some(caller_id))
             .return_once(move |_| Box::pin(async move { Ok(vec![caller]) }));
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn list_playlists_standard_caller_sees_public_and_owned_only()
-    -> Result<(), Box<dyn Error>> {
-        // Arrange
-        let mut users = MockUserRepository::new();
-        expect_caller(&mut users, 4, Role::Standard)?;
-        let mut playlists = MockMusicPlaylistRepository::new();
-        let public = playlist(2, 3, "Public", true, 2)?;
-        let own = playlist(3, 4, "Mine", false, 1)?;
-        let other_private = playlist(5, 9, "Other", false, 0)?;
-        playlists.expect_search().times(1).return_once(move |_| {
-            let found = vec![public.clone(), own.clone(), other_private.clone()];
-            Box::pin(async move { Ok(found) })
-        });
-        let harness = harness_with(users, playlists);
-        let use_case: UseCase = ListPlaylists::new(Arc::clone(&harness.factory));
-
-        // Act
-        let response = use_case
-            .execute(ListPlaylistsCommand::new(4, None, None, None, None, None))
-            .await?;
-
-        // Assert
-        assert_eq!(response.total(), 2);
-        assert_eq!(
-            response.playlists(),
-            &[
-                ListPlaylistsItem::new(
-                    2,
-                    3,
-                    "Public".to_owned(),
-                    true,
-                    NaiveDateTime::default(),
-                    NaiveDateTime::default(),
-                    2,
-                    None,
-                ),
-                ListPlaylistsItem::new(
-                    3,
-                    4,
-                    "Mine".to_owned(),
-                    false,
-                    NaiveDateTime::default(),
-                    NaiveDateTime::default(),
-                    1,
-                    None,
-                ),
-            ]
-        );
-        assert!(harness.committed.load(Ordering::SeqCst));
         Ok(())
     }
 

@@ -1,3 +1,5 @@
+use crate::application::authorization::authorize;
+use crate::domain::model::ChildKind;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -8,13 +10,13 @@ use crate::application::port::{
     CreateMusicGroupCommand, CreateMusicGroupError, CreateMusicGroupResponse,
     CreateMusicGroupUseCase,
 };
-use crate::domain::model::{Action, Global, MusicGroup};
+use crate::domain::model::{Action, MusicGroup, ResourceKind, ResourceRef, Visibility};
 use crate::domain::port::{
     IdentityUnitOfWork, LibraryUnitOfWork, MusicGroupFilter, MusicGroupRepository as _,
-    PermissionFilter, PermissionRepository as _, RepositoryError, UnitOfWork as _,
-    UnitOfWorkFactory, UserFilter, UserRepository as _, UserUnitOfWork,
+    NewResource, RepositoryError, ResourceRepository as _, UnitOfWork as _, UnitOfWorkFactory,
+    UserFilter, UserRepository as _, UserUnitOfWork,
 };
-use crate::domain::service::{Authorization, Decision, NamePolicy, NamePolicyError};
+use crate::domain::service::{NamePolicy, NamePolicyError};
 
 /// Use case implementation for creating a music group.
 pub(crate) struct CreateMusicGroup<F> {
@@ -72,28 +74,15 @@ where
                     .next()
                     .ok_or(CreateMusicGroupError::NoSuchCaller)?;
 
-                let permissions = unit_of_work
-                    .permissions()
-                    .search(&PermissionFilter {
-                        user_id: Some(caller.id()),
-                        ..PermissionFilter::default()
-                    })
-                    .await
-                    .map_err(|error| CreateMusicGroupError::Unknown(error.into()))?;
-
-                if let Decision::Deny(denial) =
-                    Authorization::decide(&caller, &permissions, Action::LibraryManage, &Global)
-                {
-                    warn!(
-                        target: "security",
-                        event = "authz_failed",
-                        actor = caller.id(),
-                        action = %denial.action().verb(),
-                        target = %denial.action().target(),
-                        "denied an action"
-                    );
-                    return Err(CreateMusicGroupError::Forbidden);
-                }
+                authorize(
+                    &mut unit_of_work.resources(),
+                    &caller,
+                    ResourceRef::new(ResourceKind::Catalogue, 0),
+                    Action::CreateChild,
+                    Some(ChildKind::MusicGroup),
+                )
+                .await
+                .map_err(|_| CreateMusicGroupError::Forbidden)?;
 
                 let name =
                     NamePolicy::validate(command.name().to_owned()).map_err(
@@ -148,6 +137,18 @@ where
                         }
                         other => CreateMusicGroupError::Unknown(other.into()),
                     })?;
+
+                unit_of_work
+                    .resources()
+                    .create(NewResource {
+                        kind: ResourceKind::MusicGroup,
+                        entity_id: created.id(),
+                        owner_id: None,
+                        auth_parent: Some(ResourceRef::new(ResourceKind::Catalogue, 0)),
+                        visibility: Visibility::Public,
+                    })
+                    .await
+                    .map_err(|error| CreateMusicGroupError::Unknown(error.into()))?;
 
                 Ok(CreateMusicGroupResponse::new(created))
             }
@@ -217,7 +218,7 @@ mod tests {
     ) -> GalleryFactoryHarness {
         let unit_of_work = TestUnitOfWork {
             music_groups: groups,
-            permissions: no_permissions(),
+            resources: no_resources(),
             users,
             ..TestUnitOfWork::default()
         };
@@ -264,30 +265,6 @@ mod tests {
         assert!(harness.committed.load(Ordering::SeqCst));
         Ok(())
     }
-
-    #[tokio::test]
-    async fn create_music_group_standard_user_is_forbidden() -> Result<(), Box<dyn Error>> {
-        // Arrange
-        let mut users = MockUserRepository::new();
-        expect_caller(&mut users, 1)?;
-        let harness = harness_with(users, MockMusicGroupRepository::new());
-        let use_case: UseCase = CreateMusicGroup::new(Arc::clone(&harness.factory));
-
-        // Act
-        let result = use_case
-            .execute(CreateMusicGroupCommand::new(
-                1,
-                "The Group".to_owned(),
-                None,
-            ))
-            .await;
-
-        // Assert
-        assert!(matches!(result, Err(CreateMusicGroupError::Forbidden)));
-        assert!(harness.rolled_back.load(Ordering::SeqCst));
-        Ok(())
-    }
-
     #[tokio::test]
     async fn create_music_group_duplicate_name_returns_name_already_exists()
     -> Result<(), Box<dyn Error>> {

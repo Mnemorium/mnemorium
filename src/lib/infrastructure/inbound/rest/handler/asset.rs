@@ -31,33 +31,27 @@ mod post_upload_complete;
 /// The store-chunk endpoint.
 mod put_upload_chunk;
 
-use std::future::Future;
-use std::sync::Arc;
-
 use axum::body::Body;
-use axum::extract::{DefaultBodyLimit, FromRef as _, FromRequestParts};
-use axum::http::request::Parts;
+use axum::extract::DefaultBodyLimit;
 use axum::http::{HeaderMap, HeaderName, HeaderValue, Method, StatusCode, header};
 use axum::middleware;
 use axum::response::{IntoResponse as _, Response};
 use chrono::{NaiveDate, NaiveDateTime};
 use serde::{Deserialize, Serialize};
 use tokio_util::io::ReaderStream;
-use tracing::{error, warn};
+use tracing::warn;
 use utoipa::ToSchema;
 use utoipa_axum::router::{OpenApiRouter, UtoipaMethodRouterExt as _};
 use utoipa_axum::routes;
 
 use crate::application::port::{
-    AssetTarget, ContentOutcome, GetAssetContentCommand, GetAssetContentResponse,
+    AssetTarget, ContentOutcome, GetAssetContentCommand, GetAssetContentError,
+    GetAssetContentResponse,
 };
 use crate::domain::NumericID;
-use crate::domain::port::{
-    ContentLink, ContentLinkProvider as _, TokenProvider as _, TokenProviderError,
-};
 use crate::infrastructure::inbound::rest::middleware::authenticate;
 use crate::infrastructure::inbound::rest::{ApiError, AppState, Link};
-use crate::infrastructure::outbound::jwt::{JwtContentLinkProvider, JwtTokenProvider};
+use crate::infrastructure::outbound::jwt::JwtTokenProvider;
 
 /// Date and time format of the asset representations.
 const TIMESTAMP_FORMAT: &str = "%Y-%m-%dT%H:%M:%S";
@@ -143,146 +137,17 @@ impl UploadSessionResponse {
     }
 }
 
-/// The credential a content request presented.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ContentAccess {
-    /// A file-scoped playback credential naming `file_id`.
-    Link(NumericID),
-    /// A session bearer token naming `user_id`.
-    Session(NumericID),
-}
-
-impl ContentAccess {
-    /// Return the file a playback credential names, if this is a link.
-    #[must_use]
-    pub(crate) fn link_file_id(&self) -> Option<NumericID> {
-        match *self {
-            Self::Link(file_id) => Some(file_id),
-            Self::Session(_) => None,
-        }
-    }
-
-    /// Return the session caller, if this is a bearer request.
-    #[must_use]
-    pub(crate) fn session_user_id(&self) -> Option<NumericID> {
-        match *self {
-            Self::Session(user_id) => Some(user_id),
-            Self::Link(_) => None,
-        }
-    }
-}
-
-/// Extract the bearer session or the file-scoped playback credential.
-///
-/// Exactly one credential is accepted: a session bearer token resolves the
-/// caller, a link credential names one file, and both together are ambiguous
-/// and rejected with `400 Bad Request`. A malformed, invalid or expired
-/// credential answers `401 Unauthorized`, and the query string never reaches a
-/// log sink (`OBS-003`).
-impl FromRequestParts<AppState> for ContentAccess {
-    type Rejection = ApiError;
-
-    fn from_request_parts(
-        parts: &mut Parts,
-        state: &AppState,
-    ) -> impl Future<Output = Result<Self, Self::Rejection>> + Send {
-        let authorization = parts.headers.get(header::AUTHORIZATION).cloned();
-        let mut expires_at = None;
-        let mut signature = None;
-        for pair in parts.uri.query().unwrap_or_default().split('&') {
-            let Some((key, value)) = pair.split_once('=') else {
-                continue;
-            };
-            match key {
-                "exp" => expires_at = value.parse::<u64>().ok(),
-                "sig" if !value.is_empty() => signature = Some(value.to_owned()),
-                _ => {}
+/// Map an asset-content error to its API error.
+impl From<GetAssetContentError> for ApiError {
+    fn from(err: GetAssetContentError) -> Self {
+        match err {
+            GetAssetContentError::NoSuchCaller => Self::Unauthorized(err.to_string()),
+            GetAssetContentError::NoSuchAsset => Self::NotFound(err.to_string()),
+            GetAssetContentError::Forbidden => Self::Forbidden(err.to_string()),
+            GetAssetContentError::LibraryUnavailable => Self::ServiceUnavailable(err.to_string()),
+            GetAssetContentError::BytesMissing | GetAssetContentError::Unknown(_) => {
+                Self::InternalServerError
             }
-        }
-        let token_provider = Arc::<JwtTokenProvider>::from_ref(state);
-        let content_link = Arc::<JwtContentLinkProvider>::from_ref(state);
-
-        async move {
-            if authorization.is_some() && (expires_at.is_some() || signature.is_some()) {
-                warn!(
-                    target: "security",
-                    event = "session_validation_failed",
-                    reason = "ambiguous_content_credential",
-                    "rejected a request carrying both a bearer token and a playback credential"
-                );
-                return Err(ApiError::BadRequest(
-                    "the request must carry either an authorization header or a playback credential"
-                        .to_owned(),
-                ));
-            }
-
-            if let Some(value) = authorization {
-                let Some(token) = value
-                    .to_str()
-                    .ok()
-                    .and_then(|raw| raw.split_once(' '))
-                    .and_then(|(scheme, token)| {
-                        scheme.eq_ignore_ascii_case("bearer").then_some(token)
-                    })
-                else {
-                    warn!(
-                        target: "security",
-                        event = "session_validation_failed",
-                        reason = "missing_authorization_header",
-                        "rejected a request without a bearer token"
-                    );
-                    return Err(ApiError::Unauthorized(
-                        "missing or malformed authorization header".to_owned(),
-                    ));
-                };
-                let user_id = token_provider.validate(token).await.map_err(|error| {
-                    if matches!(
-                        error,
-                        TokenProviderError::InvalidClaims
-                            | TokenProviderError::InvalidToken
-                            | TokenProviderError::TokenExpired
-                    ) {
-                        warn!(
-                            target: "security",
-                            event = "session_validation_failed",
-                            reason = "invalid_or_expired_token",
-                            "rejected an invalid or expired bearer token"
-                        );
-                        ApiError::Unauthorized("invalid or expired token".to_owned())
-                    } else {
-                        error!(
-                            target: "security",
-                            event = "token_provider_fault",
-                            kind = "validation_failed",
-                            "the token provider failed to validate a token"
-                        );
-                        ApiError::InternalServerError
-                    }
-                })?;
-                return Ok(Self::Session(user_id));
-            }
-
-            let (Some(exp), Some(sig)) = (expires_at, signature) else {
-                warn!(
-                    target: "security",
-                    event = "session_validation_failed",
-                    reason = "missing_authorization_header",
-                    "rejected a request without a bearer token or playback credential"
-                );
-                return Err(ApiError::Unauthorized(
-                    "missing or malformed authorization header".to_owned(),
-                ));
-            };
-            let file_id = content_link.verify(exp, &sig).await.map_err(|_error| {
-                warn!(
-                    target: "security",
-                    event = "session_validation_failed",
-                    reason = "invalid_content_credential",
-                    "rejected an invalid or expired playback credential"
-                );
-                ApiError::Unauthorized("invalid or expired playback credential".to_owned())
-            })?;
-            Ok(Self::Link(file_id))
         }
     }
 }
@@ -320,10 +185,10 @@ pub(crate) fn asset_video_href(video_id: NumericID) -> String {
     format!("/api/v1/asset/video/{video_id}")
 }
 
-/// Compose a content link carrying a playback credential.
+/// Compose the content link of the typed asset `kind` addressed by `id`.
 #[must_use]
-pub(crate) fn content_href(base: &str, link: &ContentLink) -> String {
-    format!("{base}?exp={}&sig={}", link.expires_at(), link.signature())
+pub(crate) fn content_href(kind: &str, id: NumericID) -> Link {
+    Link::new(&format!("/api/v1/asset/{kind}/{id}/content"))
 }
 
 /// Render `value` with the representation's date format.
@@ -331,44 +196,18 @@ fn format_date(value: NaiveDate) -> String {
     value.format(DATE_FORMAT).to_string()
 }
 
-/// Parse an asset identifier from a path segment.
+/// Build the content command from the request's caller and headers.
 ///
-/// The malformed value and the parser detail never reach the log (`OBS-003`);
-/// only the classification and its declared fields do (`OBS-006`).
-pub(crate) fn parse_asset_id(
-    value: &str,
-    field: &'static str,
-    message: &'static str,
-) -> Result<NumericID, ApiError> {
-    value.parse::<NumericID>().map_err(|_error| {
-        warn!(
-            target: "security",
-            event = "input_validation_failed",
-            field = field,
-            reason = "invalid_identifier",
-            "rejected a malformed asset identifier"
-        );
-        ApiError::BadRequest(message.to_owned())
-    })
-}
-
-/// Build the content command from the request's credential and headers.
-///
-/// The extractor has already validated the session token or the playback
-/// credential; this only carries the range and conditional values into the use
-/// case, which owns their classification.
+/// The authentication layer has already resolved the session caller; this only
+/// carries the range and conditional values into the use case, which owns their
+/// classification.
 pub(crate) fn content_command(
-    access: ContentAccess,
+    caller_id: NumericID,
     target: AssetTarget,
     headers: &HeaderMap,
     method: &Method,
 ) -> GetAssetContentCommand {
-    let command = match (access.session_user_id(), access.link_file_id()) {
-        (Some(caller_id), _) => GetAssetContentCommand::new(caller_id, target),
-        (None, Some(file_id)) => GetAssetContentCommand::credentialed(target, file_id),
-        (None, None) => GetAssetContentCommand::credentialed(target, 0),
-    };
-    command
+    GetAssetContentCommand::new(caller_id, target)
         .with_head(*method == Method::HEAD)
         .with_range(
             headers
@@ -394,7 +233,8 @@ pub(crate) fn content_command(
 ///
 /// The body streams from the opened reader in bounded chunks; the headers name
 /// the range, the validators and the satisfiability of the request. A `HEAD`,
-/// `304` or `416` carries no reader, so only headers are written.
+/// `304` or `416` carries no reader, so only headers are written. A save
+/// surface's name reaches `Content-Disposition` with RFC 6266 encoding.
 pub(crate) fn asset_content_response(data: GetAssetContentResponse) -> Response {
     let outcome = data.outcome();
     let status = match outcome {
@@ -458,6 +298,96 @@ pub(crate) fn asset_content_response(data: GetAssetContentResponse) -> Response 
     response
 }
 
+/// Build the `Content-Disposition` value naming a saved file.
+///
+/// A name that a quoted string can carry is emitted as `filename=`; any other
+/// name — one carrying a quote, a separator, a control character or a
+/// non-ASCII character — is emitted as an RFC 5987 `filename*=` with a
+/// sanitized ASCII `filename=` fallback, so a CR/LF attempt can never start a
+/// header line.
+pub(crate) fn content_disposition(name: &str) -> HeaderValue {
+    if name.is_empty() {
+        return HeaderValue::from_static("attachment; filename=\"download\"");
+    }
+    if is_plain(name) {
+        return HeaderValue::from_str(&format!("attachment; filename=\"{name}\""))
+            .unwrap_or_else(|_error| HeaderValue::from_static("attachment"));
+    }
+    let encoded = rfc5987(name);
+    HeaderValue::from_str(&format!(
+        "attachment; filename=\"{}\"; filename*=UTF-8''{encoded}",
+        sanitized(name)
+    ))
+    .unwrap_or_else(|_error| HeaderValue::from_static("attachment"))
+}
+
+/// Return whether `name` can be written inside a quoted `filename=` value.
+fn is_plain(name: &str) -> bool {
+    !name.is_empty()
+        && name
+            .chars()
+            .all(|character| character.is_ascii_alphanumeric() || " ._-".contains(character))
+}
+
+/// Reduce a name to an ASCII fallback that can always be quoted.
+fn sanitized(name: &str) -> String {
+    let fallback: String = name
+        .chars()
+        .map(|character| {
+            if character.is_ascii_alphanumeric() || " ._-".contains(character) {
+                character
+            } else {
+                '_'
+            }
+        })
+        .collect();
+    if fallback.trim_matches(['.', ' ']).is_empty() {
+        "download".to_owned()
+    } else {
+        fallback
+    }
+}
+
+/// Percent-encode a name for the RFC 5987 `filename*` parameter.
+fn rfc5987(name: &str) -> String {
+    use std::fmt::Write as _;
+    let mut encoded = String::new();
+    for byte in name.bytes() {
+        if byte.is_ascii_alphanumeric()
+            || matches!(
+                byte,
+                b'!' | b'#' | b'$' | b'&' | b'+' | b'-' | b'.' | b'^' | b'_' | b'`' | b'|' | b'~'
+            )
+        {
+            encoded.push(char::from(byte));
+        } else {
+            let _ignored = write!(encoded, "%{byte:02X}");
+        }
+    }
+    encoded
+}
+
+/// Parse an asset identifier from a path segment.
+///
+/// The malformed value and the parser detail never reach the log (`OBS-003`);
+/// only the classification and its declared fields do (`OBS-006`).
+pub(crate) fn parse_asset_id(
+    value: &str,
+    field: &'static str,
+    message: &'static str,
+) -> Result<NumericID, ApiError> {
+    value.parse::<NumericID>().map_err(|_error| {
+        warn!(
+            target: "security",
+            event = "input_validation_failed",
+            field = field,
+            reason = "invalid_identifier",
+            "rejected a malformed asset identifier"
+        );
+        ApiError::BadRequest(message.to_owned())
+    })
+}
+
 /// Register the routes of the Asset bounded context.
 ///
 /// The handlers carry their own paths, so this only groups them. The
@@ -494,7 +424,7 @@ fn authenticated_asset_router(chunk_body_limit: Option<usize>) -> OpenApiRouter<
         .routes(routes!(get_video_file::get_video_file))
 }
 
-/// The content routes, authorized by a session token or a playback credential.
+/// The content routes, authenticated by the session token.
 fn content_asset_router() -> OpenApiRouter<AppState> {
     OpenApiRouter::new()
         .routes(routes!(get_file_content::get_file_content))
@@ -518,157 +448,88 @@ pub(crate) fn asset_routes(state: &AppState) -> OpenApiRouter<()> {
             .unwrap_or(usize::MAX);
 
     authenticated_asset_router(Some(chunk_body_limit))
+        .merge(content_asset_router())
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
             authenticate::<JwtTokenProvider>,
         ))
-        .merge(content_asset_router())
         .with_state(state.clone())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::infrastructure::inbound::rest::hal_json;
 
-    use crate::test_helpers::{TEST_JWT_SECRET, app_state};
-    use axum::Router;
-    use axum::body::Body;
-    use axum::http::{Request, StatusCode};
-    use axum::routing::get;
-    use std::error::Error;
-    use tower::ServiceExt as _;
-    use tracing_test::traced_test;
-
-    /// Echo the credential the extractor recovered.
-    async fn stub(access: ContentAccess) -> Response {
-        hal_json(serde_json::json!({
-            "link": access.link_file_id(),
-            "session": access.session_user_id(),
-        }))
-    }
-
-    /// A router guarded by the content extractor.
-    fn router() -> Result<Router, Box<dyn Error>> {
-        Ok(Router::new()
-            .route("/content", get(stub))
-            .with_state(app_state()?))
-    }
-
-    /// Mint a session bearer token for `user_id`.
-    async fn bearer(user_id: NumericID) -> Result<String, Box<dyn Error>> {
-        let provider = JwtTokenProvider::new(TEST_JWT_SECRET.to_owned(), 3600);
-        Ok(provider.issue(user_id).await?.value().to_owned())
-    }
-
-    /// Mint a playback credential for `file_id`.
-    async fn credential(file_id: NumericID) -> Result<(u64, String), Box<dyn Error>> {
-        let provider = JwtContentLinkProvider::new(TEST_JWT_SECRET.to_owned());
-        let link = provider.mint(file_id).await?;
-        Ok((link.expires_at(), link.signature().to_owned()))
-    }
-
-    #[tokio::test]
-    async fn a_bearer_header_resolves_the_session() -> Result<(), Box<dyn Error>> {
-        // Arrange
-        let token = bearer(42).await?;
-        let request = Request::builder()
-            .uri("/content")
-            .header(header::AUTHORIZATION, format!("Bearer {token}"))
-            .body(Body::empty())?;
-
+    #[test]
+    fn a_plain_name_is_a_quoted_filename() {
         // Act
-        let response = router()?.oneshot(request).await?;
+        let value = content_disposition("holiday.png");
 
         // Assert
-        assert_eq!(response.status(), StatusCode::OK);
-        Ok(())
+        assert_eq!(value, "attachment; filename=\"holiday.png\"");
     }
 
-    #[tokio::test]
-    async fn a_playback_credential_resolves_the_file() -> Result<(), Box<dyn Error>> {
-        // Arrange
-        let (exp, sig) = credential(7).await?;
-        let request = Request::builder()
-            .uri(format!("/content?exp={exp}&sig={sig}"))
-            .body(Body::empty())?;
-
+    #[test]
+    fn a_quote_and_a_separator_are_encoded() {
         // Act
-        let response = router()?.oneshot(request).await?;
+        let value = content_disposition("a\"b/c.png");
 
         // Assert
-        assert_eq!(response.status(), StatusCode::OK);
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn both_credentials_are_ambiguous() -> Result<(), Box<dyn Error>> {
-        // Arrange
-        let token = bearer(42).await?;
-        let (exp, sig) = credential(7).await?;
-        let request = Request::builder()
-            .uri(format!("/content?exp={exp}&sig={sig}"))
-            .header(header::AUTHORIZATION, format!("Bearer {token}"))
-            .body(Body::empty())?;
-
-        // Act
-        let response = router()?.oneshot(request).await?;
-
-        // Assert
-        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn neither_credential_is_unauthorized() -> Result<(), Box<dyn Error>> {
-        // Arrange
-        let request = Request::builder().uri("/content").body(Body::empty())?;
-
-        // Act
-        let response = router()?.oneshot(request).await?;
-
-        // Assert
-        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn a_tampered_credential_is_unauthorized() -> Result<(), Box<dyn Error>> {
-        // Arrange
-        let request = Request::builder()
-            .uri("/content?exp=4102444800&sig=tampered")
-            .body(Body::empty())?;
-
-        // Act
-        let response = router()?.oneshot(request).await?;
-
-        // Assert
-        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
-        Ok(())
-    }
-
-    #[tokio::test]
-    #[traced_test]
-    async fn the_query_string_never_reaches_a_log_sink() -> Result<(), Box<dyn Error>> {
-        // Arrange
-        let (exp, sig) = credential(7).await?;
-        let request = Request::builder()
-            .uri(format!("/content?exp={exp}&sig={sig}&LEAK_SENTINEL=1"))
-            .body(Body::empty())?;
-
-        // Act
-        let response = router()?.oneshot(request).await?;
-
-        // Assert: the handler answers, and the credential never reaches a sink.
-        assert_eq!(response.status(), StatusCode::OK);
-        assert!(
-            !logs_contain(&sig),
-            "the credential must never reach a log sink"
+        assert_eq!(
+            value,
+            "attachment; filename=\"a_b_c.png\"; filename*=UTF-8''a%22b%2Fc.png"
         );
+    }
+
+    #[test]
+    fn a_non_ascii_name_round_trips_through_the_encoded_parameter() {
+        // Act
+        let value = content_disposition("café.png");
+
+        // Assert
         assert!(
-            !logs_contain("LEAK_SENTINEL"),
-            "the query string must never reach a log sink"
+            value
+                .to_str()
+                .is_ok_and(|text| text.contains("filename*=UTF-8''caf%C3%A9.png"))
         );
-        Ok(())
+    }
+
+    #[test]
+    fn a_crlf_attempt_never_reaches_the_header() {
+        // Act
+        let value = content_disposition("a\r\nSet-Cookie: x.png");
+
+        // Assert
+        assert!(!value.to_str().unwrap_or_default().contains('\r'));
+        assert!(!value.to_str().unwrap_or_default().contains('\n'));
+        assert!(value.to_str().is_ok_and(|text| text.contains("%0D%0A")));
+    }
+
+    #[test]
+    fn a_name_without_a_usable_fallback_degrades_to_download() {
+        // Act
+        let value = content_disposition("");
+
+        // Assert
+        assert_eq!(value, "attachment; filename=\"download\"");
+    }
+
+    #[test]
+    fn the_content_command_carries_the_caller_and_request_values() {
+        // Arrange
+        let mut headers = HeaderMap::new();
+        headers.insert(header::RANGE, HeaderValue::from_static("bytes=0-9"));
+        headers.insert(header::IF_NONE_MATCH, HeaderValue::from_static("etag"));
+        headers.insert(header::IF_RANGE, HeaderValue::from_static("if-range"));
+
+        // Act
+        let command = content_command(9, AssetTarget::File(100), &headers, &Method::HEAD);
+
+        // Assert
+        assert_eq!(command.caller_id(), 9);
+        assert!(command.head());
+        assert_eq!(command.range(), Some("bytes=0-9"));
+        assert_eq!(command.if_none_match(), Some("etag"));
+        assert_eq!(command.if_range(), Some("if-range"));
     }
 }

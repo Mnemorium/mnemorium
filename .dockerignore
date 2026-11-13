@@ -15,9 +15,9 @@ media/
 openspec/
 .agents/
 .mkdocs.yml
-test/e2e/
 test/configuration/
 script/
+security/
 .ls-lint.yml
 .markdownlint-cli2.jsonc
 .prettierrc

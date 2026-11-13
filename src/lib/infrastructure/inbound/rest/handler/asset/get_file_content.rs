@@ -2,34 +2,22 @@ use axum::extract::{Path, State};
 use axum::http::{HeaderMap, Method};
 use axum::response::Response;
 
-use crate::application::port::{AssetTarget, GetAssetContentError};
+use crate::application::port::AssetTarget;
 use crate::domain::NumericID;
 use crate::infrastructure::inbound::rest::handler::asset::{
-    ContentAccess, asset_content_response, content_command, parse_asset_id,
+    asset_content_response, content_command, content_disposition, parse_asset_id,
 };
+use crate::infrastructure::inbound::rest::middleware::AuthenticatedUser;
 use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody};
-
-/// Map an asset-content error to its API error.
-impl From<GetAssetContentError> for ApiError {
-    fn from(err: GetAssetContentError) -> Self {
-        match err {
-            GetAssetContentError::NoSuchCaller | GetAssetContentError::InvalidCredential => {
-                Self::Unauthorized(err.to_string())
-            }
-            GetAssetContentError::NoSuchAsset => Self::NotFound(err.to_string()),
-            GetAssetContentError::LibraryUnavailable => Self::ServiceUnavailable(err.to_string()),
-            GetAssetContentError::BytesMissing | GetAssetContentError::Unknown(_) => {
-                Self::InternalServerError
-            }
-        }
-    }
-}
+use axum::http::header;
 
 /// Read the bytes of a stored file.
 ///
-/// The file is authorized before any byte is read, or the request is
-/// authorized by a file-scoped playback credential. An unreadable file answers
-/// `404 Not Found` with no content, exactly as an unknown one does.
+/// The request is authenticated and the file's `Download` action is decided
+/// before any byte is read. An asset the caller cannot discover answers
+/// `404 Not Found`; a discoverable one whose action refuses answers `403
+/// Forbidden`; neither reads content. The response is an attachment naming the
+/// file's original name when a typed media row stores one.
 #[utoipa::path(
     get,
     operation_id = "get_file_content",
@@ -49,6 +37,7 @@ impl From<GetAssetContentError> for ApiError {
             description = "Stored bytes of the file",
             headers(
                 ("Accept-Ranges" = String, description = "Always `bytes`"),
+                ("Content-Disposition" = String, description = "Attachment naming the file's original name"),
                 ("Content-Range" = String, description = "Served span and total size"),
                 ("Content-Length" = String, description = "Length of the served span"),
                 ("ETag" = String, description = "Validator from the stored digest, when present"),
@@ -60,7 +49,10 @@ impl From<GetAssetContentError> for ApiError {
             body = Vec<u8>,
             content_type = "*/*",
             description = "The requested byte range",
-            headers(("Content-Range" = String, description = "Served span and total size"))
+            headers(
+                ("Content-Disposition" = String, description = "Attachment naming the file's original name"),
+                ("Content-Range" = String, description = "Served span and total size"),
+            )
         ),
         (
             status = RANGE_NOT_SATISFIABLE,
@@ -72,22 +64,22 @@ impl From<GetAssetContentError> for ApiError {
             description = "The content matches the presented validator"
         ),
         (
-            status = BAD_REQUEST,
-            body = ErrorBody,
-            content_type = "application/hal+json",
-            description = "Invalid file identifier or ambiguous credential"
-        ),
-        (
             status = UNAUTHORIZED,
             body = ErrorBody,
             content_type = "application/hal+json",
-            description = "Missing, invalid or expired credential"
+            description = "Missing, invalid or expired session token"
+        ),
+        (
+            status = FORBIDDEN,
+            body = ErrorBody,
+            content_type = "application/hal+json",
+            description = "The caller can discover the file but may not download it"
         ),
         (
             status = NOT_FOUND,
             body = ErrorBody,
             content_type = "application/hal+json",
-            description = "Unknown or unreadable file"
+            description = "Unknown or undiscoverable file"
         ),
         (
             status = SERVICE_UNAVAILABLE,
@@ -112,14 +104,26 @@ pub(crate) async fn get_file_content(
     State(state): State<AppState>,
     method: Method,
     headers: HeaderMap,
-    access: ContentAccess,
+    caller: AuthenticatedUser,
 ) -> Result<Response, ApiError> {
     let file_id = parse_asset_id(&file_id_value, "file_id", "invalid file identifier")?;
-    let command = content_command(access, AssetTarget::File(file_id), &headers, &method);
+    let command = content_command(
+        caller.user_id(),
+        AssetTarget::File(file_id),
+        &headers,
+        &method,
+    );
     let response = state
         .asset_use_case_factory()
         .get_asset_content()
         .execute(command)
         .await?;
-    Ok(asset_content_response(response))
+    let disposition_name = response.file_name().map(str::to_owned);
+    let mut rendered = asset_content_response(response);
+    if let Some(name) = disposition_name {
+        rendered
+            .headers_mut()
+            .insert(header::CONTENT_DISPOSITION, content_disposition(&name));
+    }
+    Ok(rendered)
 }

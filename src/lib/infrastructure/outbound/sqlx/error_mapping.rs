@@ -283,6 +283,48 @@ mod tests {
 
     #[tokio::test]
     #[traced_test]
+    async fn a_framework_failure_never_logs_its_rendered_message() -> Result<(), Box<dyn Error>> {
+        // Arrange: a CHECK failure whose rendered message embeds the schema text.
+        let pool = probe_pool("CREATE TABLE probe (value INTEGER CHECK (value > 0));").await?;
+
+        // Act
+        let mapped = sqlx::query("INSERT INTO probe (value) VALUES (0)")
+            .execute(&pool)
+            .await
+            .map_err(RepositoryError::from);
+
+        // Assert: only the classification reaches the sink.
+        assert!(matches!(
+            mapped,
+            Err(RepositoryError::DataIntegrityViolation)
+        ));
+        logs_assert(assert_unrendered_check_failure);
+        Ok(())
+    }
+
+    /// Assert the captured output carries the classification but neither the
+    /// rendered framework message nor the statement text.
+    fn assert_unrendered_check_failure(lines: &[&str]) -> Result<(), String> {
+        assert_port_fault(lines, "check_violation", "repository")?;
+        let ours: Vec<&str> = lines
+            .iter()
+            .copied()
+            .filter(|line| line.contains("security:"))
+            .collect();
+        if ours
+            .iter()
+            .any(|line| line.contains("CHECK constraint failed"))
+        {
+            return Err("the rendered framework message must not reach the sink".to_owned());
+        }
+        if ours.iter().any(|line| line.contains("probe")) {
+            return Err("the statement must not reach the sink".to_owned());
+        }
+        Ok(())
+    }
+
+    #[tokio::test]
+    #[traced_test]
     async fn check_violation_logs_port_fault() -> Result<(), Box<dyn Error>> {
         // Arrange
         let pool = probe_pool("CREATE TABLE probe (value INTEGER CHECK (value > 0));").await?;

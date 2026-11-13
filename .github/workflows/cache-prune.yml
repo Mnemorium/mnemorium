@@ -45,5 +45,5 @@ jobs:
           # picks the most recent match), so the older ones are dead weight.
           keep_newest "Linux-buildx-release-" 1
           # PR caches are ref-scoped: one per open PR, plus one spare.
-          keep_newest "Linux-buildx-e2e-" 3
+          keep_newest "Linux-buildx-system-" 3
           keep_newest "v0-rust-rust-" 2

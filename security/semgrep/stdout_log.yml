@@ -1,0 +1,32 @@
+---
+# The process writes no log line outside the log sinks.
+#
+# Everything the server reports goes through `tracing` into the configured
+# sinks (§ 9, OBS-001). Two startup banners are the reviewed exceptions: the
+# one-time Root Admin password (`app.rs`) and the seed demo credentials
+# (`seed.rs`), each carrying `#[expect(clippy::print_stdout)]` with its reason.
+rules:
+  - id: mnemorium.rust.logging.direct-stdout
+    languages: [rust]
+    severity: ERROR
+    message: >-
+      Direct stdout/stderr logging bypasses the tracing sinks and their
+      redaction. Emit a catalogued event instead; a one-time credential banner
+      is a reviewed exception and lives in `app.rs` or `seed.rs`.
+    metadata:
+      category: security
+      subcategory:
+        - logging
+      cwe: "CWE-532: Insertion of Sensitive Information into Log File"
+      confidence: HIGH
+      references:
+        - docs/development/TechnicalDesign.md#9-logging--observability
+    paths:
+      exclude:
+        - src/lib/app.rs
+        - src/lib/infrastructure/seed.rs
+    patterns:
+      - pattern-either:
+          - pattern: 'println!(...)'
+          - pattern: 'eprintln!(...)'
+          - pattern: 'dbg!(...)'

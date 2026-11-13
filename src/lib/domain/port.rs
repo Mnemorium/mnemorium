@@ -6,11 +6,11 @@ mod audio_repository;
 mod configuration_source;
 /// The content hasher port.
 mod content_hasher;
-/// The content link port.
-mod content_link;
 mod content_type_sniffer;
 /// The credential repository port.
 mod credential_repository;
+/// The datastore presence port.
+mod datastore_presence;
 mod error;
 /// The file repository port.
 mod file_repository;
@@ -18,6 +18,8 @@ mod file_repository;
 mod file_storage;
 /// The gallery repository port.
 mod gallery_repository;
+/// The grant repository port.
+mod grant_repository;
 /// The identity unit of work port.
 mod identity_unit_of_work;
 /// The image repository port.
@@ -26,6 +28,8 @@ mod image_repository;
 mod instance_state_store;
 /// The library unit of work port.
 mod library_unit_of_work;
+/// The login attempt limiter port.
+mod login_attempt_limiter;
 /// The media probe port.
 mod media_probe;
 mod media_source;
@@ -45,8 +49,8 @@ mod music_playlist_repository;
 mod password_generator;
 /// The password hasher port.
 mod password_hasher;
-/// The permission repository port.
-mod permission_repository;
+/// The resource repository port.
+mod resource_repository;
 /// The secret generator port.
 mod secret_generator;
 /// The series repository port.
@@ -80,17 +84,17 @@ pub(crate) use self::configuration_source::{
 pub(crate) use self::content_hasher::{ContentHasher, ContentHasherSession};
 #[cfg(test)]
 pub(crate) use self::content_hasher::{MockContentHasher, MockContentHasherSession};
-#[cfg(test)]
-pub(crate) use self::content_link::MockContentLinkProvider;
-pub(crate) use self::content_link::{CONTENT_LINK_TTL_SECONDS, ContentLink, ContentLinkProvider};
 pub(crate) use self::content_type_sniffer::ContentTypeSniffer;
 #[cfg(test)]
 pub(crate) use self::content_type_sniffer::MockContentTypeSniffer;
 #[cfg(test)]
 pub(crate) use self::credential_repository::MockCredentialRepository;
 pub(crate) use self::credential_repository::{CredentialFilter, CredentialRepository};
+pub(crate) use self::datastore_presence::DatastorePresence;
+#[cfg(test)]
+pub(crate) use self::datastore_presence::MockDatastorePresence;
 pub(crate) use self::error::{
-    ConfigurationSourceError, ContentHasherError, ContentLinkError, ContentTypeSnifferError,
+    ConfigurationSourceError, ContentHasherError, ContentTypeSnifferError, DatastorePresenceError,
     ExternalServiceError, InstanceStateStoreError, MediaProbeError, MediaSourceError,
     PasswordGeneratorError, PasswordHasherError, RepositoryError, SecretGeneratorError,
     StateSeedSourceError, StorageError, TokenProviderError, UnitOfWorkError,
@@ -106,6 +110,9 @@ pub(crate) use self::gallery_repository::MockGalleryRepository;
 pub(crate) use self::gallery_repository::{
     GalleryFilter, GalleryItemDetail, GalleryItemFilter, GalleryRepository,
 };
+#[cfg(test)]
+pub(crate) use self::grant_repository::MockGrantRepository;
+pub(crate) use self::grant_repository::{GrantFilter, GrantRepository};
 pub(crate) use self::identity_unit_of_work::IdentityUnitOfWork;
 #[cfg(test)]
 pub(crate) use self::image_repository::MockImageRepository;
@@ -114,6 +121,9 @@ pub(crate) use self::instance_state_store::InstanceStateStore;
 #[cfg(test)]
 pub(crate) use self::instance_state_store::MockInstanceStateStore;
 pub(crate) use self::library_unit_of_work::LibraryUnitOfWork;
+#[cfg(test)]
+pub(crate) use self::login_attempt_limiter::MockLoginAttemptLimiter;
+pub(crate) use self::login_attempt_limiter::{LoginAttemptKey, LoginAttemptLimiter};
 pub(crate) use self::media_probe::MediaProbe;
 #[cfg(test)]
 pub(crate) use self::media_probe::MockMediaProbe;
@@ -147,8 +157,8 @@ pub(crate) use self::password_generator::PasswordGenerator;
 pub(crate) use self::password_hasher::MockPasswordHasher;
 pub(crate) use self::password_hasher::PasswordHasher;
 #[cfg(test)]
-pub(crate) use self::permission_repository::MockPermissionRepository;
-pub(crate) use self::permission_repository::{PermissionFilter, PermissionRepository};
+pub(crate) use self::resource_repository::MockResourceRepository;
+pub(crate) use self::resource_repository::{NewResource, ResourceFilter, ResourceRepository};
 #[cfg(test)]
 pub(crate) use self::secret_generator::MockSecretGenerator;
 pub(crate) use self::secret_generator::SecretGenerator;

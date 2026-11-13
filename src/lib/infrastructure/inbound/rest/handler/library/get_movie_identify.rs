@@ -24,7 +24,7 @@ pub(crate) struct IdentifyMovieQuery {
 /// Search the configured video provider for film candidates.
 ///
 /// The route reads a provider rather than the catalogue, so it is guarded by
-/// `library.read` and returns only the candidates the film kind names. With no
+/// `ViewMetadata` on the catalogue and returns only the candidates the film kind names. With no
 /// provider configured it answers an `available: false` document.
 #[utoipa::path(
     get,

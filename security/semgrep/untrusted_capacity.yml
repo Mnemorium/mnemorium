@@ -1,0 +1,32 @@
+---
+# A request-sized length does not preallocate.
+#
+# Every `with_capacity` in the tree is sized by a collection the server already
+# holds (`len()`, `total_chunks()`, a hex digest), not by a client-declared
+# size. Preallocating a `file_size` or `content_length` hands an attacker the
+# allocation.
+rules:
+  - id: mnemorium.rust.availability.untrusted-capacity
+    languages: [rust]
+    severity: ERROR
+    message: >-
+      A collection is preallocated from a client-declared size. Grow the
+      collection as bytes are actually accepted instead of trusting the
+      declared length.
+    metadata:
+      category: security
+      subcategory:
+        - denial-of-service
+      cwe: "CWE-400: Uncontrolled Resource Consumption"
+      confidence: MEDIUM
+      references:
+        - docs/development/TechnicalDesign.md#1-rust
+    patterns:
+      - pattern-either:
+          - pattern: 'Vec::with_capacity($LENGTH)'
+          - pattern: 'String::with_capacity($LENGTH)'
+          - pattern: '$BUFFER.reserve($LENGTH)'
+      - metavariable-regex:
+          metavariable: $LENGTH
+          regex: >-
+            (?i).*(file_size|content_length|size_bytes|chunk_size|total_bytes|payload_len).*

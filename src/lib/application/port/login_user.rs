@@ -1,5 +1,8 @@
 use std::future::Future;
 use std::pin::Pin;
+use std::time::Duration;
+
+use crate::domain::port::IssuedToken;
 
 /// Command to authenticate a user.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -31,39 +34,6 @@ impl LoginUserCommand {
     }
 }
 
-/// Response of a successful authentication.
-#[derive(Debug, Clone, PartialEq, Eq)]
-#[non_exhaustive]
-pub(crate) struct LoginUserResponse {
-    /// Token to present in the `Authorization` header of subsequent requests.
-    access_token: String,
-    /// Lifetime of the token, in seconds.
-    expires_in: u64,
-}
-
-impl LoginUserResponse {
-    /// Return the token to present in the `Authorization` header.
-    #[must_use]
-    pub(crate) fn access_token(&self) -> &str {
-        &self.access_token
-    }
-
-    /// Return the lifetime of the token, in seconds.
-    #[must_use]
-    pub(crate) fn expires_in(&self) -> u64 {
-        self.expires_in
-    }
-
-    /// Create a new authentication response.
-    #[must_use]
-    pub(crate) fn new(access_token: String, expires_in: u64) -> Self {
-        Self {
-            access_token,
-            expires_in,
-        }
-    }
-}
-
 /// Error returned when authenticating a user.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
@@ -74,6 +44,9 @@ pub(crate) enum LoginUserError {
     /// No user exists with the provided username.
     #[error("no user matches the provided username")]
     InvalidUsername,
+    /// The account's login quota is spent.
+    #[error("too many authentication attempts; retry in {} seconds", .0.as_secs())]
+    RateLimited(Duration),
     /// An unexpected or unmapped error occurred.
     #[error("an unknown error occurred: {0}")]
     Unknown(#[source] anyhow::Error),
@@ -96,5 +69,5 @@ pub(crate) trait LoginUserUseCase: Send + Sync {
     fn execute<'future>(
         &'future self,
         command: LoginUserCommand,
-    ) -> Pin<Box<dyn Future<Output = Result<LoginUserResponse, LoginUserError>> + Send + 'future>>;
+    ) -> Pin<Box<dyn Future<Output = Result<IssuedToken, LoginUserError>> + Send + 'future>>;
 }

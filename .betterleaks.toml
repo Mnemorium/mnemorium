@@ -13,9 +13,9 @@ paths = ["^default[.]yaml$"]
 
 
 [[allowlists]]
-description = "Shared throwaway passwords used by e2e and unit tests."
+description = "Shared throwaway passwords used by black-box and unit tests."
 targetRules = ["generic-password"]
 regexTarget = "secret"
 regexes = [
-  "^(?:Mallory!pass|S3cret!pass|Stuart!pass|Wr0ng!pass|longpassword|short1!|super-secret!|C0rrect!Horse)$",
+  "^(?:Alice!Pass|C0rrect!Horse|longpassword|Mallory!pass|N0!Allowed|N0!SuchCredential|N3w!Secret|NewAlice!Pass|R00t!Rotated|R0tated!Pass|S3cret!pass|short1!|Stuart!pass|super-secret!|Wr0ng!pass)$",
 ]

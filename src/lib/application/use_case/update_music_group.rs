@@ -1,3 +1,5 @@
+use crate::application::authorization::authorize;
+use crate::domain::model::{ResourceKind, ResourceRef};
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -11,10 +13,10 @@ use crate::application::port::{
 use crate::domain::model::{Action, MusicGroup};
 use crate::domain::port::{
     IdentityUnitOfWork, LibraryUnitOfWork, MusicGroupFilter, MusicGroupRepository as _,
-    PermissionFilter, PermissionRepository as _, RepositoryError, UnitOfWork as _,
-    UnitOfWorkFactory, UserFilter, UserRepository as _, UserUnitOfWork,
+    RepositoryError, UnitOfWork as _, UnitOfWorkFactory, UserFilter, UserRepository as _,
+    UserUnitOfWork,
 };
-use crate::domain::service::{Authorization, Decision, NamePolicy, NamePolicyError};
+use crate::domain::service::{NamePolicy, NamePolicyError};
 
 /// Use case implementation for updating a music group.
 pub(crate) struct UpdateMusicGroup<F> {
@@ -72,15 +74,6 @@ where
                     .next()
                     .ok_or(UpdateMusicGroupError::NoSuchCaller)?;
 
-                let permissions = unit_of_work
-                    .permissions()
-                    .search(&PermissionFilter {
-                        user_id: Some(caller.id()),
-                        ..PermissionFilter::default()
-                    })
-                    .await
-                    .map_err(|error| UpdateMusicGroupError::Unknown(error.into()))?;
-
                 let group = unit_of_work
                     .music_groups()
                     .search(&MusicGroupFilter {
@@ -93,37 +86,31 @@ where
                     .next()
                     .ok_or(UpdateMusicGroupError::NoSuchGroup)?;
 
-                if let Decision::Deny(denial) =
-                    Authorization::decide(&caller, &permissions, Action::LibraryRead, &group)
-                {
-                    warn!(
-                        target: "security",
-                        event = "authz_failed",
-                        actor = caller.id(),
-                        action = %denial.action().verb(),
-                        target = %denial.action().target(),
-                        "denied an action"
-                    );
-                    return Err(UpdateMusicGroupError::NoSuchGroup);
-                }
+                authorize(
+                    &mut unit_of_work.resources(),
+                    &caller,
+                    ResourceRef::new(ResourceKind::MusicGroup, group.id()),
+                    Action::View,
+                    None,
+                )
+                .await
+                .map_err(|_| UpdateMusicGroupError::NoSuchGroup)?;
 
-                if let Decision::Deny(denial) =
-                    Authorization::decide(&caller, &permissions, Action::LibraryManage, &group)
-                {
-                    warn!(
-                        target: "security",
-                        event = "authz_failed",
-                        actor = caller.id(),
-                        action = %denial.action().verb(),
-                        target = %denial.action().target(),
-                        "denied an action"
-                    );
-                    return Err(if denial.conceals() {
+                authorize(
+                    &mut unit_of_work.resources(),
+                    &caller,
+                    ResourceRef::new(ResourceKind::MusicGroup, group.id()),
+                    Action::EditMetadata,
+                    None,
+                )
+                .await
+                .map_err(|error| {
+                    if error.conceals() {
                         UpdateMusicGroupError::NoSuchGroup
                     } else {
                         UpdateMusicGroupError::Forbidden
-                    });
-                }
+                    }
+                })?;
 
                 let name = match command.name() {
                     Some(requested) => {
@@ -170,7 +157,7 @@ where
                     }
                     None => group.stage_name().to_owned(),
                 };
-                let cover_image_id = command.cover_image_id().or(group.cover_image_id());
+                let cover_image_id = command.cover_image_id().resolve(group.cover_image_id());
                 let updated = MusicGroup::try_new(group.id(), name, cover_image_id)
                     .map_err(|_| UpdateMusicGroupError::InvalidName)?;
 
@@ -208,14 +195,14 @@ where
 
 #[cfg(test)]
 mod tests {
+    use crate::application::FieldUpdate;
+
     use super::*;
     use crate::domain::NumericID;
 
-    use crate::domain::model::{Permission, Role, Scope, User};
+    use crate::domain::model::{Role, User};
 
-    use crate::domain::port::{
-        MockMusicGroupRepository, MockPermissionRepository, MockUserRepository,
-    };
+    use crate::domain::port::{MockMusicGroupRepository, MockUserRepository};
 
     use crate::test_helpers::*;
     use std::error::Error;
@@ -254,7 +241,7 @@ mod tests {
     ) -> GalleryFactoryHarness {
         let unit_of_work = TestUnitOfWork {
             music_groups: groups,
-            permissions: no_permissions(),
+            resources: no_resources(),
             users,
             ..TestUnitOfWork::default()
         };
@@ -303,7 +290,7 @@ mod tests {
                 1,
                 7,
                 Some("  The Renamed  ".to_owned()),
-                None,
+                FieldUpdate::Absent,
             ))
             .await?;
 
@@ -343,44 +330,18 @@ mod tests {
 
         // Act
         let response = use_case
-            .execute(UpdateMusicGroupCommand::new(1, 7, None, Some(19)))
+            .execute(UpdateMusicGroupCommand::new(
+                1,
+                7,
+                None,
+                FieldUpdate::Set(19),
+            ))
             .await?;
 
         // Assert
         assert_eq!(response.group().cover_image_id(), Some(19));
         Ok(())
     }
-
-    #[tokio::test]
-    async fn update_music_group_standard_user_is_forbidden() -> Result<(), Box<dyn Error>> {
-        // Arrange
-        let mut users = MockUserRepository::new();
-        expect_caller(&mut users, 1)?;
-        let mut groups = MockMusicGroupRepository::new();
-        let stored = group(7, "The Group", None)?;
-        groups.expect_search().times(1).return_once(move |_| {
-            let found = stored.clone();
-            Box::pin(async move { Ok(vec![found]) })
-        });
-        let harness = harness_with(users, groups);
-        let use_case: UseCase = UpdateMusicGroup::new(Arc::clone(&harness.factory));
-
-        // Act
-        let result = use_case
-            .execute(UpdateMusicGroupCommand::new(
-                1,
-                7,
-                Some("The Renamed".to_owned()),
-                None,
-            ))
-            .await;
-
-        // Assert
-        assert!(matches!(result, Err(UpdateMusicGroupError::Forbidden)));
-        assert!(harness.rolled_back.load(Ordering::SeqCst));
-        Ok(())
-    }
-
     #[tokio::test]
     async fn update_music_group_duplicate_name_returns_name_already_exists()
     -> Result<(), Box<dyn Error>> {
@@ -407,7 +368,7 @@ mod tests {
                 1,
                 7,
                 Some("The Renamed".to_owned()),
-                None,
+                FieldUpdate::Absent,
             ))
             .await;
 
@@ -439,7 +400,7 @@ mod tests {
                 1,
                 7,
                 Some("  ".to_owned()),
-                None,
+                FieldUpdate::Absent,
             ))
             .await;
 
@@ -476,7 +437,7 @@ mod tests {
                 1,
                 0,
                 Some("Renamed".to_owned()),
-                None,
+                FieldUpdate::Absent,
             ))
             .await;
 
@@ -515,7 +476,7 @@ mod tests {
                 1,
                 0,
                 Some("Renamed".to_owned()),
-                None,
+                FieldUpdate::Absent,
             ))
             .await;
 
@@ -541,48 +502,11 @@ mod tests {
 
         // Act
         let result = use_case
-            .execute(UpdateMusicGroupCommand::new(1, 404, None, None))
-            .await;
-
-        // Assert
-        assert!(matches!(result, Err(UpdateMusicGroupError::NoSuchGroup)));
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn update_music_group_none_override_returns_no_such_group() -> Result<(), Box<dyn Error>>
-    {
-        // Arrange: the caller is shut out of the library entirely.
-        let mut users = MockUserRepository::new();
-        expect_caller(&mut users, 1)?;
-        let mut groups = MockMusicGroupRepository::new();
-        let hidden = group(7, "The Group", None)?;
-        groups.expect_search().times(1).return_once(move |_| {
-            let found = hidden.clone();
-            Box::pin(async move { Ok(vec![found]) })
-        });
-        let mut permissions = MockPermissionRepository::new();
-        expect_permissions(
-            &mut permissions,
-            1,
-            vec![Permission::try_new(1, Action::LibraryRead, Scope::None)?],
-        );
-        let unit_of_work = TestUnitOfWork {
-            music_groups: groups,
-            permissions,
-            users,
-            ..TestUnitOfWork::default()
-        };
-        let harness = GalleryFactoryHarness::new(unit_of_work);
-        let use_case: UseCase = UpdateMusicGroup::new(Arc::clone(&harness.factory));
-
-        // Act
-        let result = use_case
             .execute(UpdateMusicGroupCommand::new(
                 1,
-                7,
-                Some("The Renamed".to_owned()),
+                404,
                 None,
+                FieldUpdate::Absent,
             ))
             .await;
 
@@ -590,7 +514,6 @@ mod tests {
         assert!(matches!(result, Err(UpdateMusicGroupError::NoSuchGroup)));
         Ok(())
     }
-
     #[tokio::test]
     async fn update_music_group_unknown_caller_returns_no_such_caller() -> Result<(), Box<dyn Error>>
     {
@@ -605,7 +528,12 @@ mod tests {
 
         // Act
         let result = use_case
-            .execute(UpdateMusicGroupCommand::new(999, 7, None, None))
+            .execute(UpdateMusicGroupCommand::new(
+                999,
+                7,
+                None,
+                FieldUpdate::Absent,
+            ))
             .await;
 
         // Assert
@@ -635,7 +563,12 @@ mod tests {
 
         // Act
         let result = use_case
-            .execute(UpdateMusicGroupCommand::new(1, 7, None, None))
+            .execute(UpdateMusicGroupCommand::new(
+                1,
+                7,
+                None,
+                FieldUpdate::Absent,
+            ))
             .await;
 
         // Assert

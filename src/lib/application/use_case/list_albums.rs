@@ -1,3 +1,4 @@
+use crate::application::authorization::allows;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -6,13 +7,11 @@ use crate::application::port::{
     ListAlbumsCommand, ListAlbumsError, ListAlbumsItem, ListAlbumsMediumItem, ListAlbumsResponse,
     ListAlbumsUseCase,
 };
-use crate::domain::model::Action;
+use crate::domain::model::{Action, ResourceKind, ResourceRef};
 use crate::domain::port::{
     IdentityUnitOfWork, LibraryUnitOfWork, MusicAlbumFilter, MusicAlbumRepository as _,
-    PermissionFilter, PermissionRepository as _, UnitOfWork as _, UnitOfWorkFactory, UserFilter,
-    UserRepository as _, UserUnitOfWork,
+    UnitOfWork as _, UnitOfWorkFactory, UserFilter, UserRepository as _, UserUnitOfWork,
 };
-use crate::domain::service::Authorization;
 
 /// Use case implementation for listing the music albums the caller may see.
 pub(crate) struct ListAlbums<F> {
@@ -61,15 +60,6 @@ where
                     .next()
                     .ok_or(ListAlbumsError::NoSuchCaller)?;
 
-                let permissions = unit_of_work
-                    .permissions()
-                    .search(&PermissionFilter {
-                        user_id: Some(caller.id()),
-                        ..PermissionFilter::default()
-                    })
-                    .await
-                    .map_err(|error| ListAlbumsError::Unknown(error.into()))?;
-
                 let mut albums = unit_of_work
                     .music_albums()
                     .search(&MusicAlbumFilter {
@@ -79,10 +69,21 @@ where
                     .await
                     .map_err(|error| ListAlbumsError::Unknown(error.into()))?;
 
-                albums.retain(|album| {
-                    Authorization::decide(&caller, &permissions, Action::LibraryRead, album)
-                        .is_allowed()
-                });
+                let mut visible = Vec::with_capacity(albums.len());
+                for album in albums {
+                    if allows(
+                        &mut unit_of_work.resources(),
+                        &caller,
+                        ResourceRef::new(ResourceKind::MusicAlbum, album.id()),
+                        Action::Discover,
+                        None,
+                    )
+                    .await
+                    {
+                        visible.push(album);
+                    }
+                }
+                albums = visible;
 
                 let total = albums.len();
                 let offset = command.offset().unwrap_or(0);
@@ -213,7 +214,7 @@ mod tests {
         albums: MockMusicAlbumRepository,
     ) -> GalleryFactoryHarness {
         let unit_of_work = TestUnitOfWork {
-            permissions: no_permissions(),
+            resources: no_resources(),
             music_albums: albums,
             users,
             ..TestUnitOfWork::default()

@@ -19,15 +19,17 @@ pub(crate) use self::get_health::{__path_get_health, get_health};
 
 use axum::extract::{FromRequest, Request};
 use axum::middleware;
+use axum::response::Response;
+use utoipa::ToSchema;
 use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
 
+use serde::Serialize;
 use serde::de::DeserializeOwned;
 use serde_json::{Number, Value};
 use tracing::warn;
 
-#[cfg(feature = "api-docs")]
-use axum::{Json, routing};
+use axum::routing;
 #[cfg(feature = "api-docs")]
 use utoipa_scalar::Servable as _;
 
@@ -36,9 +38,62 @@ use crate::infrastructure::inbound::rest::handler::identity::identity_routes;
 use crate::infrastructure::inbound::rest::handler::library::library_routes;
 use crate::infrastructure::inbound::rest::handler::user::user_routes;
 use crate::infrastructure::inbound::rest::middleware::{LoginRateLimiter, hal_errors, tracing};
-#[cfg(feature = "api-docs")]
-use crate::infrastructure::inbound::rest::openapi;
-use crate::infrastructure::inbound::rest::{ApiError, AppState};
+use crate::infrastructure::inbound::rest::{ApiError, AppState, Link, SelfLinks, hal_json};
+
+/// HAL links exposed by the API index.
+///
+/// The `self` link addresses the index itself; every other relation reaches one
+/// context's entry collection or operation. Item routes are reached from a
+/// representation, so the index never enumerates them. The `credential`
+/// operation is published as a URI template because its identifier is part of
+/// the path the caller must fill.
+#[derive(Debug, Serialize, ToSchema)]
+#[non_exhaustive]
+pub(crate) struct ApiIndexLinks {
+    /// Templated link to the credential operation.
+    pub credential: Link,
+    /// Link to the current caller's account.
+    pub current_user: Link,
+    /// Link to the gallery collection.
+    pub gallery: Link,
+    /// Link to the liveness probe.
+    pub health: Link,
+    /// Link to the login operation.
+    pub login: Link,
+    /// Link to the film collection.
+    pub movie: Link,
+    /// Link to the music-album collection.
+    pub music_album: Link,
+    /// Link to the music-group collection.
+    pub music_group: Link,
+    /// Link to the caller's permission summary.
+    pub permission: Link,
+    /// Link to the playlist collection.
+    pub playlist: Link,
+    /// Link to the registration operation.
+    pub register: Link,
+    /// Link to the index itself.
+    #[serde(rename = "self")]
+    pub self_link: Link,
+    /// Link to the show collection.
+    pub series: Link,
+    /// Link to the token-regeneration operation.
+    pub token: Link,
+    /// Link to the upload operation.
+    pub upload: Link,
+    /// Link to the user collection.
+    pub user: Link,
+}
+
+/// The public entry point of the API: the one URI a client must know to reach
+/// the surface.
+#[derive(Debug, Serialize, ToSchema)]
+#[non_exhaustive]
+pub(crate) struct ApiIndexResponse {
+    /// Entry points of the authentication, asset, library and user contexts.
+    #[serde(rename = "_links")]
+    pub links: ApiIndexLinks,
+}
 
 /// A JSON request body that must be a JSON object.
 ///
@@ -90,6 +145,49 @@ where
             )
         })
     }
+}
+
+/// Read the public API index.
+///
+/// The index is public and identical for every caller, so a client that knows
+/// only the API base can reach every context by following its links.
+#[utoipa::path(
+    get,
+    operation_id = "get_api_index",
+    path = "/",
+    tag = "system",
+    responses(
+        (
+            status = OK,
+            body = ApiIndexResponse,
+            content_type = "application/hal+json",
+            description = "Entry points of the API",
+        ),
+    ),
+    security(()),
+    summary = "Read the API index"
+)]
+pub(crate) async fn get_api_index() -> Response {
+    hal_json(ApiIndexResponse {
+        links: ApiIndexLinks {
+            login: Link::new("/api/v1/identity/login"),
+            register: Link::new("/api/v1/identity/register"),
+            token: Link::new("/api/v1/identity/token"),
+            credential: Link::templated("/api/v1/identity/credential/{id}"),
+            user: Link::new("/api/v1/user"),
+            current_user: Link::new("/api/v1/user/me"),
+            gallery: Link::new("/api/v1/library/gallery"),
+            permission: Link::new("/api/v1/identity/permission"),
+            playlist: Link::new("/api/v1/library/music/playlist"),
+            movie: Link::new("/api/v1/library/movie"),
+            series: Link::new("/api/v1/library/series"),
+            music_group: Link::new("/api/v1/library/music/group"),
+            music_album: Link::new("/api/v1/library/music/album"),
+            upload: Link::new("/api/v1/asset/upload"),
+            health: Link::new("/health"),
+            self_link: SelfLinks::new("/api/v1").self_link,
+        },
+    })
 }
 
 /// Convert whole-number floats into integers, recursively.
@@ -171,14 +269,20 @@ pub(crate) fn setup_routes(state: &AppState, limiter: &LoginRateLimiter) -> axum
         .nest(
             "/api/v1",
             OpenApiRouter::new()
+                .routes(routes!(get_api_index))
                 .nest("/asset", asset_routes(state))
                 .nest("/identity", identity_routes(state, limiter))
                 .nest("/library", library_routes(state))
                 .nest("/user", user_routes(state)),
-        );
+        )
+        // The document declares the index at `/`, which resolves to the
+        // `/api/v1/` form of the server entry. Serve that trailing-slash form
+        // too, so a client following the document reaches the index.
+        .route("/api/v1/", routing::get(get_api_index));
 
     #[cfg(feature = "api-docs")]
     {
+        use crate::infrastructure::inbound::rest::openapi;
         let document = openapi();
         let json_document = document.clone();
         let documentation: axum::Router = utoipa_scalar::Scalar::with_url("/doc", document).into();
@@ -186,7 +290,7 @@ pub(crate) fn setup_routes(state: &AppState, limiter: &LoginRateLimiter) -> axum
             "/doc/openapi.json",
             routing::get(move || {
                 let response_document = json_document.clone();
-                async move { Json(response_document) }
+                async move { axum::Json(response_document) }
             }),
         );
         api = api.merge(OpenApiRouter::from(documentation.merge(specification)));
@@ -200,14 +304,47 @@ pub(crate) fn setup_routes(state: &AppState, limiter: &LoginRateLimiter) -> axum
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rstest::rstest;
     use serde::Deserialize;
     use std::error::Error;
+
+    use axum::body::Body as HttpBody;
+    use axum::http::{Request, StatusCode};
+    use tower::ServiceExt as _;
+
+    use crate::infrastructure::inbound::rest::middleware::LoginRateLimiter;
+    use crate::test_helpers::app_state;
 
     /// A body whose integer fields must accept the schema's whole-number floats.
     #[derive(Debug, Deserialize, PartialEq)]
     struct Body {
         id: i64,
         nested: Vec<u64>,
+    }
+
+    #[rstest]
+    #[case::no_trailing_slash("/api/v1")]
+    #[case::trailing_slash("/api/v1/")]
+    #[tokio::test]
+    async fn the_api_base_serves_the_index(#[case] uri: &str) -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let state = app_state()?;
+        let (limiter, _cleanup) =
+            LoginRateLimiter::new(state.configuration().security().rate_limit());
+
+        // Act
+        let request = Request::builder().uri(uri).body(HttpBody::empty())?;
+        let response = setup_routes(&state, &limiter).oneshot(request).await?;
+
+        // Assert: the index is registered under the versioned base, so a
+        // client that knows only `/api/v1` reaches it with or without the
+        // trailing slash the document's root path implies.
+        assert_eq!(
+            response.status(),
+            StatusCode::OK,
+            "{uri} must serve the index"
+        );
+        Ok(())
     }
 
     #[test]

@@ -406,7 +406,7 @@ pub(crate) struct GalleryResponse {
     pub created_at: String,
     /// Unique identifier of the gallery.
     pub id: NumericID,
-    /// Whether any authenticated user may read and moderate the gallery.
+    /// Whether any authenticated user may read the gallery.
     pub is_public: bool,
     /// Number of items the gallery contains.
     pub item_count: usize,
@@ -639,12 +639,51 @@ impl AlbumListLinks {
     }
 }
 
+/// One album of a catalog listing: its identifier, name and cover.
+#[derive(Debug, Serialize, ToSchema)]
+#[non_exhaustive]
+pub(crate) struct AlbumSummary {
+    /// Identifier of the image holding the album's artwork, when set.
+    pub cover_image_id: Option<NumericID>,
+    /// Unique identifier of the album.
+    pub id: NumericID,
+    /// Links to the album and its cover.
+    #[serde(rename = "_links")]
+    pub links: AlbumLinks,
+    /// Name of the album.
+    pub name: String,
+}
+
+impl From<&ListAlbumsItem> for AlbumSummary {
+    fn from(item: &ListAlbumsItem) -> Self {
+        Self {
+            cover_image_id: item.cover_image_id(),
+            id: item.album_id(),
+            links: AlbumLinks::for_album(
+                item.album_id(),
+                item.cover_image_id(),
+                item.music_group_id(),
+            ),
+            name: item.name().to_owned(),
+        }
+    }
+}
+
+/// The partial album representations embedded in a catalog page.
+#[derive(Debug, Serialize, ToSchema)]
+#[non_exhaustive]
+pub(crate) struct AlbumEmbedded {
+    /// The albums of the returned page.
+    pub items: Vec<AlbumSummary>,
+}
+
 /// Music albums matching the requested filters.
 #[derive(Debug, Serialize, ToSchema)]
 #[non_exhaustive]
 pub(crate) struct AlbumListResponse {
-    /// The albums of the returned page.
-    pub items: Vec<AlbumResponse>,
+    /// The partial albums of the returned page.
+    #[serde(rename = "_embedded")]
+    pub embedded: AlbumEmbedded,
     /// Navigation links of the collection.
     #[serde(rename = "_links")]
     pub links: AlbumListLinks,
@@ -961,12 +1000,21 @@ impl MusicGroupListLinks {
     }
 }
 
+/// The partial group representations embedded in a catalog page.
+#[derive(Debug, Serialize, ToSchema)]
+#[non_exhaustive]
+pub(crate) struct MusicGroupEmbedded {
+    /// The groups of the returned page.
+    pub items: Vec<MusicGroupResponse>,
+}
+
 /// Music groups matching the requested filters.
 #[derive(Debug, Serialize, ToSchema)]
 #[non_exhaustive]
 pub(crate) struct MusicGroupListResponse {
-    /// The groups of the returned page.
-    pub items: Vec<MusicGroupResponse>,
+    /// The partial groups of the returned page.
+    #[serde(rename = "_embedded")]
+    pub embedded: MusicGroupEmbedded,
     /// Navigation links of the collection.
     #[serde(rename = "_links")]
     pub links: MusicGroupListLinks,
@@ -975,7 +1023,8 @@ pub(crate) struct MusicGroupListResponse {
 /// HAL links exposed by a music track representation.
 ///
 /// The `self` link addresses the track, the `album` link the album that holds
-/// it, and the `medium` link the medium that sequences it.
+/// it, the `medium` link the medium that sequences it, and the `cover` link the
+/// artwork the recording reports.
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 #[non_exhaustive]
 pub(crate) struct TrackLinks {
@@ -1606,12 +1655,47 @@ impl MovieListLinks {
     }
 }
 
+/// One film of a catalog listing: its identifier, name and cover.
+#[derive(Debug, Serialize, ToSchema)]
+#[non_exhaustive]
+pub(crate) struct MovieSummary {
+    /// Identifier of the image holding the film's artwork, when set.
+    pub cover_image_id: Option<NumericID>,
+    /// Unique identifier of the film.
+    pub id: NumericID,
+    /// Links to the film and its cover.
+    #[serde(rename = "_links")]
+    pub links: MovieLinks,
+    /// Name of the film.
+    pub name: String,
+}
+
+impl From<&ListMoviesItem> for MovieSummary {
+    fn from(item: &ListMoviesItem) -> Self {
+        Self {
+            cover_image_id: item.cover_image_id(),
+            id: item.id(),
+            links: MovieLinks::for_movie(item.id(), item.cover_image_id()),
+            name: item.name().to_owned(),
+        }
+    }
+}
+
+/// The partial film representations embedded in a catalog page.
+#[derive(Debug, Serialize, ToSchema)]
+#[non_exhaustive]
+pub(crate) struct MovieEmbedded {
+    /// The films of the returned page.
+    pub items: Vec<MovieSummary>,
+}
+
 /// Films matching the requested filters.
 #[derive(Debug, Serialize, ToSchema)]
 #[non_exhaustive]
 pub(crate) struct MovieListResponse {
-    /// The films of the returned page.
-    pub items: Vec<MovieResponse>,
+    /// The partial films of the returned page.
+    #[serde(rename = "_embedded")]
+    pub embedded: MovieEmbedded,
     /// Navigation links of the collection.
     #[serde(rename = "_links")]
     pub links: MovieListLinks,
@@ -1930,12 +2014,21 @@ impl SeriesListLinks {
     }
 }
 
+/// The partial show representations embedded in a catalog page.
+#[derive(Debug, Serialize, ToSchema)]
+#[non_exhaustive]
+pub(crate) struct SeriesEmbedded {
+    /// The shows of the returned page.
+    pub items: Vec<SeriesSummaryResponse>,
+}
+
 /// Shows matching the requested filters.
 #[derive(Debug, Serialize, ToSchema)]
 #[non_exhaustive]
 pub(crate) struct SeriesListResponse {
-    /// The shows of the returned page.
-    pub items: Vec<SeriesSummaryResponse>,
+    /// The partial shows of the returned page.
+    #[serde(rename = "_embedded")]
+    pub embedded: SeriesEmbedded,
     /// Navigation links of the collection.
     #[serde(rename = "_links")]
     pub links: SeriesListLinks,
@@ -2067,8 +2160,8 @@ impl PlaylistLinks {
 
 /// HAL links exposed by a playlist track representation.
 ///
-/// The `self` link addresses the track, and the `playlist` link the playlist
-/// that sequences it.
+/// The `self` link addresses the track and the `playlist` link the playlist that
+/// sequences it.
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 #[non_exhaustive]
 pub(crate) struct PlaylistTrackLinks {
@@ -2174,7 +2267,7 @@ impl PlaylistResponse {
 
     /// Assemble a playlist representation from a hydrated playlist.
     #[must_use]
-    pub(crate) fn new(playlist: &MusicPlaylist) -> Self {
+    pub(crate) fn from_playlist(playlist: &MusicPlaylist) -> Self {
         Self {
             cover_image_id: playlist.cover_image_id(),
             created_at: format_timestamp(playlist.created_at()),
@@ -2270,7 +2363,10 @@ impl From<CreatePlaylistError> for ApiError {
             CreatePlaylistError::InvalidName | CreatePlaylistError::NameTooLong => {
                 Self::UnprocessableEntity(err.to_string())
             }
-            CreatePlaylistError::NameAlreadyExists => Self::Conflict(err.to_string()),
+            CreatePlaylistError::InvalidCover | CreatePlaylistError::NameAlreadyExists => {
+                Self::Conflict(err.to_string())
+            }
+            CreatePlaylistError::Forbidden => Self::Forbidden(err.to_string()),
             CreatePlaylistError::NoSuchCaller => Self::Unauthorized(err.to_string()),
             CreatePlaylistError::Unknown(_) => Self::InternalServerError,
         }
@@ -2315,7 +2411,8 @@ impl From<GetPlaylistTrackError> for ApiError {
 impl From<UpdatePlaylistError> for ApiError {
     fn from(err: UpdatePlaylistError) -> Self {
         match err {
-            UpdatePlaylistError::NameAlreadyExists
+            UpdatePlaylistError::InvalidCover
+            | UpdatePlaylistError::NameAlreadyExists
             | UpdatePlaylistError::RecordingAlreadyPresent => Self::Conflict(err.to_string()),
             UpdatePlaylistError::Forbidden => Self::Forbidden(err.to_string()),
             UpdatePlaylistError::InvalidName

@@ -44,3 +44,46 @@ impl PasswordGenerator for RandomPasswordGenerator {
         ready(String::from_utf8(password).map_err(|_| PasswordGeneratorError::OperationFailed))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::error::Error;
+
+    use allure_cargotest::allure_test;
+
+    use super::*;
+
+    #[allure_test]
+    #[tokio::test]
+    async fn random_password_generator_samples_follow_declared_shape() -> Result<(), Box<dyn Error>>
+    {
+        allure.epic("Authentication");
+        allure.feature("REQ-AUTHENTICATION-002");
+        allure.story("SCN-AUTHENTICATION-002-A");
+
+        // Act & Assert
+        assert_samples_follow_declared_shape(&RandomPasswordGenerator::new(), 1_000).await
+    }
+
+    async fn assert_samples_follow_declared_shape(
+        generator: &RandomPasswordGenerator,
+        samples: usize,
+    ) -> Result<(), Box<dyn Error>> {
+        for _ in 0..samples {
+            let password = generator.generate().await?;
+            assert_eq!(password.chars().count(), PASSWORD_LENGTH);
+            assert_eq!(
+                password.chars().filter(char::is_ascii_alphanumeric).count(),
+                PASSWORD_LENGTH - 1
+            );
+            assert_eq!(
+                password
+                    .chars()
+                    .filter(|character| SYMBOLS.contains(&(*character as u8)))
+                    .count(),
+                1
+            );
+        }
+        Ok(())
+    }
+}

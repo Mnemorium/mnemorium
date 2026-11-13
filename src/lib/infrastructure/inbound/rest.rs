@@ -17,6 +17,12 @@ use utoipa::OpenApi as _;
 #[cfg(any(feature = "api-docs", test))]
 use utoipa::openapi::OpenApi;
 #[cfg(any(feature = "api-docs", test))]
+use utoipa::openapi::RefOr;
+#[cfg(any(feature = "api-docs", test))]
+use utoipa::openapi::header::HeaderBuilder;
+#[cfg(any(feature = "api-docs", test))]
+use utoipa::openapi::path::{Operation, PathItem};
+#[cfg(any(feature = "api-docs", test))]
 use utoipa::openapi::security::Http;
 #[cfg(any(feature = "api-docs", test))]
 use utoipa::openapi::security::HttpAuthScheme;
@@ -38,7 +44,9 @@ use crate::infrastructure::inbound::rest::handler::library::library_router;
 #[cfg(any(feature = "api-docs", test))]
 use crate::infrastructure::inbound::rest::handler::user::user_router;
 #[cfg(any(feature = "api-docs", test))]
-use crate::infrastructure::inbound::rest::handler::{__path_get_health, get_health};
+use crate::infrastructure::inbound::rest::handler::{
+    __path_get_api_index, __path_get_health, get_api_index, get_health,
+};
 
 /// Add the `bearer_auth` security scheme referenced by the protected
 /// endpoints.
@@ -53,6 +61,40 @@ impl utoipa::Modify for SecurityAddon {
                 "bearer_auth",
                 SecurityScheme::Http(Http::new(HttpAuthScheme::Bearer)),
             );
+        }
+    }
+}
+
+/// Declare the `WWW-Authenticate: Bearer` challenge on every `401` response.
+///
+/// `ApiError::into_response` attaches the header to every `401` the server
+/// emits, so the document declares it once here instead of repeating the
+/// header on each of the 82 handler paths. Every operation that can answer
+/// `401` — each `authenticate`-guarded route and `POST /identity/login` —
+/// declares that response, and no unguarded operation declares one.
+///
+/// The addon runs after `utoipa-axum` merges the handler paths: the
+/// document-scoped modifiers in [`ApiDoc`] run before any route is registered,
+/// so they would see an empty path map.
+#[cfg(any(feature = "api-docs", test))]
+struct UnauthorizedChallengeAddon;
+
+#[cfg(any(feature = "api-docs", test))]
+impl utoipa::Modify for UnauthorizedChallengeAddon {
+    fn modify(&self, openapi: &mut OpenApi) {
+        let challenge = HeaderBuilder::new()
+            .description(Some("Bearer challenge"))
+            .build();
+        for path_item in openapi.paths.paths.values_mut() {
+            for operation in operations_mut(path_item) {
+                if let Some(&mut RefOr::T(ref mut response)) =
+                    operation.responses.responses.get_mut("401")
+                {
+                    response
+                        .headers
+                        .insert("WWW-Authenticate".to_owned(), RefOr::T(challenge.clone()));
+                }
+            }
         }
     }
 }
@@ -85,6 +127,25 @@ impl utoipa::Modify for SecurityAddon {
 #[cfg(any(feature = "api-docs", test))]
 struct ApiDoc;
 
+/// Every operation a path item declares.
+#[cfg(any(feature = "api-docs", test))]
+fn operations_mut(path_item: &mut PathItem) -> impl Iterator<Item = &mut Operation> {
+    [
+        path_item.get.as_mut(),
+        path_item.put.as_mut(),
+        path_item.post.as_mut(),
+        path_item.delete.as_mut(),
+        path_item.options.as_mut(),
+        path_item.head.as_mut(),
+        path_item.patch.as_mut(),
+        path_item.trace.as_mut(),
+        path_item.query.as_mut(),
+    ]
+    .into_iter()
+    .flatten()
+    .chain(path_item.additional_operations.values_mut())
+}
+
 /// Build the complete `OpenAPI` document of the Mnemorium HTTP API.
 ///
 /// Each handler carries its route and its path item, so the document is
@@ -101,8 +162,9 @@ struct ApiDoc;
 #[must_use]
 #[cfg(any(feature = "api-docs", test))]
 pub(crate) fn openapi() -> OpenApi {
-    let (_, openapi) = OpenApiRouter::with_openapi(ApiDoc::openapi())
+    let (_, mut openapi) = OpenApiRouter::with_openapi(ApiDoc::openapi())
         .routes(routes!(get_health))
+        .routes(routes!(get_api_index))
         // The chunk body limit is a runtime layer; the document only needs the
         // route, so no limit is passed here.
         .nest("/asset", asset_router(None))
@@ -115,14 +177,173 @@ pub(crate) fn openapi() -> OpenApi {
         .nest("/library", library_router())
         .nest("/user", user_router())
         .split_for_parts();
+    utoipa::Modify::modify(&UnauthorizedChallengeAddon, &mut openapi);
     openapi
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use utoipa::openapi::RefOr;
-    use utoipa::openapi::path::{Parameter, PathItem};
+    use utoipa::openapi::path::Parameter;
+
+    use std::error::Error;
+    use std::sync::Arc;
+
+    use axum::body::to_bytes;
+    use axum::extract::State;
+    use axum::http::header;
+    use rstest::rstest;
+    use serde_json::Value;
+
+    use crate::application::port::{
+        LoginUserUseCase, MockAssetUseCaseFactory, MockIdentityUseCaseFactory,
+        MockLibraryUseCaseFactory, MockLoginUserUseCase, MockRegenerateTokenUseCase,
+        MockUserUseCaseFactory, RegenerateTokenUseCase,
+    };
+    use crate::domain::model::Configuration;
+    use crate::domain::port::IssuedToken;
+    use crate::infrastructure::inbound::rest::handler::JsonObject;
+    use crate::infrastructure::inbound::rest::handler::identity::{
+        LoginRequest, LoginResponse, TokenResponse, handle_login, handle_token,
+    };
+    use crate::infrastructure::inbound::rest::middleware::AuthenticatedUser;
+    use crate::test_helpers::instance_state;
+
+    /// An application state whose identity factory answers with `factory`.
+    fn identity_state(factory: MockIdentityUseCaseFactory) -> Result<AppState, Box<dyn Error>> {
+        Ok(AppState::new(
+            Arc::new(MockAssetUseCaseFactory::new()),
+            Arc::new(Configuration::default()),
+            Arc::new(factory),
+            Arc::new(instance_state()?),
+            Arc::new(MockLibraryUseCaseFactory::new()),
+            Arc::new(MockUserUseCaseFactory::new()),
+        ))
+    }
+
+    #[tokio::test]
+    async fn the_probe_is_a_hal_representation_of_the_operation() -> Result<(), Box<dyn Error>> {
+        // Act
+        let response = get_health().await;
+        let content_type = response.headers()[header::CONTENT_TYPE].clone();
+        let bytes = to_bytes(response.into_body(), usize::MAX).await?;
+        let body: Value = serde_json::from_slice(&bytes)?;
+
+        // Assert
+        assert_eq!(content_type, HAL_CONTENT_TYPE);
+        assert_eq!(body.get("status").and_then(Value::as_str), Some("ok"));
+        assert_eq!(
+            body.pointer("/_links/self/href").and_then(Value::as_str),
+            Some("/health")
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn login_is_a_hal_representation_of_the_operation() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let mut use_case = MockLoginUserUseCase::new();
+        use_case.expect_execute().times(1).returning(|_| {
+            Box::pin(async { Ok(IssuedToken::new("secret-token".to_owned(), 3600)) })
+        });
+        let mut factory = MockIdentityUseCaseFactory::new();
+        factory
+            .expect_login_user()
+            .times(1)
+            .return_once(move || Arc::new(use_case) as Arc<dyn LoginUserUseCase>);
+        let state = identity_state(factory)?;
+        let request = JsonObject(LoginRequest {
+            username: "alice".to_owned(),
+            password: "secret".to_owned(),
+        });
+        let redacted = format!(
+            "{:?}",
+            LoginResponse::from(IssuedToken::new("secret-token".to_owned(), 3600))
+        );
+
+        // Act
+        let response = handle_login(State(state), request)
+            .await
+            .map_err(|error| format!("the login handler failed: {error:?}"))?;
+        let content_type = response.headers()[header::CONTENT_TYPE].clone();
+        let bytes = to_bytes(response.into_body(), usize::MAX).await?;
+        let body: Value = serde_json::from_slice(&bytes)?;
+
+        // Assert
+        assert_eq!(content_type, HAL_CONTENT_TYPE);
+        assert_eq!(
+            body.get("access_token").and_then(Value::as_str),
+            Some("secret-token")
+        );
+        assert_eq!(
+            body.get("expires_in").and_then(Value::as_u64),
+            Some(3_600u64)
+        );
+        assert_eq!(
+            body.get("token_type").and_then(Value::as_str),
+            Some("bearer")
+        );
+        assert_eq!(
+            body.pointer("/_links/self/href").and_then(Value::as_str),
+            Some("/api/v1/identity/login")
+        );
+        assert!(
+            !redacted.contains("secret-token"),
+            "the token must stay redacted"
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn regeneration_is_a_hal_representation_of_the_operation() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let mut use_case = MockRegenerateTokenUseCase::new();
+        use_case.expect_execute().times(1).returning(|_| {
+            Box::pin(async { Ok(IssuedToken::new("secret-token".to_owned(), 3600)) })
+        });
+        let mut factory = MockIdentityUseCaseFactory::new();
+        factory
+            .expect_regenerate_token()
+            .times(1)
+            .return_once(move || Arc::new(use_case) as Arc<dyn RegenerateTokenUseCase>);
+        let state = identity_state(factory)?;
+        let redacted = format!(
+            "{:?}",
+            TokenResponse::from(IssuedToken::new("secret-token".to_owned(), 3600))
+        );
+
+        // Act
+        let response = handle_token(State(state), AuthenticatedUser::from(0))
+            .await
+            .map_err(|error| format!("the regeneration handler failed: {error:?}"))?;
+        let content_type = response.headers()[header::CONTENT_TYPE].clone();
+        let bytes = to_bytes(response.into_body(), usize::MAX).await?;
+        let body: Value = serde_json::from_slice(&bytes)?;
+
+        // Assert
+        assert_eq!(content_type, HAL_CONTENT_TYPE);
+        assert_eq!(
+            body.get("access_token").and_then(Value::as_str),
+            Some("secret-token")
+        );
+        assert_eq!(
+            body.get("expires_in").and_then(Value::as_u64),
+            Some(3_600u64)
+        );
+        assert_eq!(
+            body.get("token_type").and_then(Value::as_str),
+            Some("bearer")
+        );
+        assert_eq!(
+            body.pointer("/_links/self/href").and_then(Value::as_str),
+            Some("/api/v1/identity/token")
+        );
+        assert!(
+            !redacted.contains("secret-token"),
+            "the token must stay redacted"
+        );
+        Ok(())
+    }
 
     #[test]
     fn openapi_collects_every_context_and_the_security_scheme() {
@@ -305,6 +526,237 @@ mod tests {
         assert!(
             declares_parameter(series_reference, "episode"),
             "the series reference route must declare the episode position"
+        );
+    }
+
+    #[test]
+    fn openapi_declares_the_bearer_challenge_on_every_unauthorized_response() {
+        // Arrange
+        let document = openapi();
+
+        // Act & Assert: the addon reached every declared 401, including the
+        // login response and a sampled guarded operation.
+        let unauthorized = count_bearer_challenges(&document);
+        assert!(
+            unauthorized > 1usize,
+            "the document must declare 401 responses"
+        );
+        let login = document
+            .paths
+            .paths
+            .get("/identity/login")
+            .and_then(|path_item| path_item.post.as_ref());
+        assert!(
+            declares_bearer_challenge(login),
+            "the login 401 must declare the bearer challenge"
+        );
+        let me = document
+            .paths
+            .paths
+            .get("/user/me")
+            .and_then(|path_item| path_item.get.as_ref());
+        assert!(
+            declares_bearer_challenge(me),
+            "a guarded operation's 401 must declare the bearer challenge"
+        );
+    }
+
+    #[test]
+    fn openapi_collects_the_public_index() {
+        // Act
+        let document = openapi();
+        let index = document
+            .paths
+            .paths
+            .get("/")
+            .and_then(|path_item| path_item.get.as_ref());
+        let declared = serde_json::to_value(index).unwrap_or(Value::Null);
+
+        // Assert: the index is a public operation served as a HAL representation
+        // at the document root, which resolves to the `/api/v1` server entry.
+        assert!(index.is_some(), "the document must declare GET /");
+        assert_eq!(
+            declared.get("security"),
+            Some(&serde_json::json!([{}])),
+            "the index must declare no security requirement"
+        );
+        assert!(
+            index.is_some_and(|operation| {
+                operation
+                    .responses
+                    .responses
+                    .get("200")
+                    .is_some_and(|response| {
+                        matches!(
+                            response,
+                            RefOr::T(declared_response)
+                                if declared_response
+                                    .content
+                                    .contains_key("application/hal+json")
+                        )
+                    })
+            }),
+            "the index's 200 response must be application/hal+json"
+        );
+    }
+
+    #[test]
+    fn openapi_collects_the_token_regeneration_operation() {
+        // Act
+        let document = openapi();
+        let declared = document
+            .paths
+            .paths
+            .get("/identity/token")
+            .and_then(|path_item| path_item.post.as_ref());
+
+        // Assert: regeneration is part of the declared surface with the same
+        // success and error responses as login.
+        assert!(
+            declared.is_some(),
+            "the document must declare POST /identity/token"
+        );
+        assert!(
+            declared.is_some_and(
+                |operation| operation.responses.responses.contains_key("200")
+                    && operation.responses.responses.contains_key("401")
+                    && operation.responses.responses.contains_key("500")
+            ),
+            "regeneration must declare its 200, 401 and 500 responses"
+        );
+    }
+
+    #[test]
+    fn openapi_declares_no_logout_or_revocation_operation() {
+        // Act
+        let document = openapi();
+
+        // Assert: tokens are stateless, so the surface offers neither logout
+        // nor revocation.
+        let offending = revocation_operation_ids(&document);
+        assert!(
+            offending.is_empty(),
+            "the document must not declare {offending:?}"
+        );
+    }
+
+    /// Assert every declared 401 carries the bearer challenge and return how
+    /// many operations declare one.
+    fn count_bearer_challenges(document: &OpenApi) -> usize {
+        let declared: Vec<&Operation> = document
+            .paths
+            .paths
+            .values()
+            .flat_map(declared_operations)
+            .filter(|operation| operation.responses.responses.contains_key("401"))
+            .collect();
+        for operation in &declared {
+            assert!(
+                declares_bearer_challenge(Some(operation)),
+                "every declared 401 must carry the bearer challenge"
+            );
+        }
+        declared.len()
+    }
+
+    /// Return the operation IDs naming a logout or revocation capability.
+    fn revocation_operation_ids(document: &OpenApi) -> Vec<String> {
+        const FORBIDDEN: [&str; 3] = ["logout", "revoke", "revocation"];
+
+        let mut offending = Vec::new();
+        for (path, path_item) in &document.paths.paths {
+            for operation in declared_operations(path_item) {
+                let operation_id = operation.operation_id.as_deref().unwrap_or_default();
+                let lowered_id = operation_id.to_lowercase();
+                let lowered_path = path.to_lowercase();
+                if FORBIDDEN
+                    .iter()
+                    .any(|word| lowered_id.contains(word) || lowered_path.contains(word))
+                {
+                    offending.push(operation_id.to_owned());
+                }
+            }
+        }
+        offending
+    }
+
+    /// Return the operations `path_item` declares.
+    fn declared_operations(path_item: &PathItem) -> impl Iterator<Item = &Operation> {
+        [
+            path_item.get.as_ref(),
+            path_item.put.as_ref(),
+            path_item.post.as_ref(),
+            path_item.delete.as_ref(),
+            path_item.options.as_ref(),
+            path_item.head.as_ref(),
+            path_item.patch.as_ref(),
+            path_item.trace.as_ref(),
+            path_item.query.as_ref(),
+        ]
+        .into_iter()
+        .flatten()
+        .chain(path_item.additional_operations.values())
+    }
+
+    fn declares_bearer_challenge(operation: Option<&Operation>) -> bool {
+        operation
+            .and_then(|declared| declared.responses.responses.get("401"))
+            .is_some_and(|declared| match declared.clone() {
+                RefOr::T(challenge) => challenge.headers.contains_key("WWW-Authenticate"),
+                RefOr::Ref(_) => false,
+            })
+    }
+
+    #[rstest]
+    #[case::file("/asset/file/{file_id}/content")]
+    #[case::image("/asset/image/{image_id}/content")]
+    #[case::audio("/asset/audio/{audio_id}/content")]
+    #[case::video("/asset/video/{video_id}/content")]
+    fn openapi_content_operations_declare_no_bad_request(#[case] path: &str) {
+        // Act
+        let document = openapi();
+        let declared = document
+            .paths
+            .paths
+            .get(path)
+            .and_then(|item| item.get.as_ref());
+
+        // Assert: the content routes accept only a bearer token, so no route
+        // declares the ambiguous-credential refusal.
+        assert!(declared.is_some(), "the document must declare GET {path}");
+        assert!(
+            !declared.is_some_and(|operation| operation.responses.responses.contains_key("400")),
+            "{path} must not declare a 400"
+        );
+    }
+
+    #[test]
+    fn openapi_file_content_declares_the_disposition_header() {
+        // Act
+        let document = openapi();
+        let operation = document
+            .paths
+            .paths
+            .get("/asset/file/{file_id}/content")
+            .and_then(|item| item.get.as_ref());
+
+        // Assert
+        assert!(
+            operation.is_some(),
+            "the document must declare the file content route"
+        );
+        let has_disposition = operation
+            .and_then(|declared| declared.responses.responses.get("200"))
+            .cloned()
+            .is_some_and(|declared| {
+                matches!(
+                    declared,
+                    RefOr::T(response) if response.headers.contains_key("Content-Disposition")
+                )
+            });
+        assert!(
+            has_disposition,
+            "the save surface must declare its attachment name"
         );
     }
 }

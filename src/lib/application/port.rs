@@ -67,12 +67,14 @@ mod get_image;
 mod get_movie;
 /// The get music group use-case port.
 mod get_music_group;
-/// The get permission use-case port.
-mod get_permission;
+/// The get permission summary use-case port.
+mod get_permission_summary;
 /// The get playlist use-case port.
 mod get_playlist;
 /// The get playlist track use-case port.
 mod get_playlist_track;
+/// The get resource permission use-case port.
+mod get_resource_permission;
 /// The get series use-case port.
 mod get_series;
 /// The get series episode use-case port.
@@ -131,24 +133,30 @@ mod patch_credential;
 mod put_album_medium;
 /// The put album track use-case port.
 mod put_album_track;
+/// The put resource permission use-case port.
+mod put_resource_permission;
 /// The put series episode use-case port.
 mod put_series_episode;
 /// The put series season use-case port.
 mod put_series_season;
 /// The reap uploads use-case port.
 mod reap_uploads;
+/// The regenerate token use-case port.
+mod regenerate_token;
 /// The register user use-case port.
 mod register_user;
 /// The remove playlist track use-case port.
 mod remove_playlist_track;
 /// The reorder playlist tracks use-case port.
 mod reorder_playlist_tracks;
-/// The replace permission use-case port.
-mod replace_permission;
 /// The resolve music metadata use-case port.
 mod resolve_music_metadata;
 /// The resolve video metadata use-case port.
 mod resolve_video_metadata;
+/// The revoke share use-case port.
+mod revoke_share;
+/// The share resource use-case port.
+mod share_resource;
 /// The update movie use-case port.
 mod update_movie;
 /// The update music album use-case port.
@@ -266,8 +274,9 @@ pub(crate) use self::get_movie::{
 pub(crate) use self::get_music_group::{
     GetMusicGroupCommand, GetMusicGroupError, GetMusicGroupResponse, GetMusicGroupUseCase,
 };
-pub(crate) use self::get_permission::{
-    GetPermissionCommand, GetPermissionError, GetPermissionResponse, GetPermissionUseCase,
+pub(crate) use self::get_permission_summary::{
+    GetPermissionSummaryCommand, GetPermissionSummaryUseCase, GrantedResource,
+    PermissionDecisionQuery, PermissionError, PermissionSummary,
 };
 pub(crate) use self::get_playlist::{
     GetPlaylistCommand, GetPlaylistError, GetPlaylistResponse, GetPlaylistUseCase,
@@ -275,6 +284,9 @@ pub(crate) use self::get_playlist::{
 pub(crate) use self::get_playlist_track::{
     GetPlaylistTrackCommand, GetPlaylistTrackError, GetPlaylistTrackResponse,
     GetPlaylistTrackUseCase,
+};
+pub(crate) use self::get_resource_permission::{
+    GetResourcePermissionCommand, GetResourcePermissionUseCase, ResourcePermission,
 };
 pub(crate) use self::get_series::{
     GetSeriesCommand, GetSeriesError, GetSeriesResponse, GetSeriesSeasonItem, GetSeriesUseCase,
@@ -308,7 +320,8 @@ pub(crate) use self::ingest_media::{
     IngestMediaCommand, IngestMediaError, IngestMediaResponse, IngestMediaUseCase, IngestRequest,
 };
 pub(crate) use self::initialize_root_admin::{
-    InitializeRootAdminError, InitializeRootAdminResponse, InitializeRootAdminUseCase,
+    InitializeRootAdminCommand, InitializeRootAdminError, InitializeRootAdminResponse,
+    InitializeRootAdminUseCase,
 };
 pub(crate) use self::library_use_case_factory::LibraryUseCaseFactory;
 #[cfg(test)]
@@ -353,9 +366,9 @@ pub(crate) use self::load_state::{
     DATABASE_PATH, JWT_SECRET_VARIABLE, LoadStateError, LoadStateResponse, LoadStateUseCase,
     PEPPER_VARIABLE, SECRET_LENGTH, STATE_PATH, StateSeedSource, StateSeeds,
 };
-pub(crate) use self::login_user::{
-    LoginUserCommand, LoginUserError, LoginUserResponse, LoginUserUseCase,
-};
+#[cfg(test)]
+pub(crate) use self::login_user::MockLoginUserUseCase;
+pub(crate) use self::login_user::{LoginUserCommand, LoginUserError, LoginUserUseCase};
 #[cfg(test)]
 pub(crate) use self::media_change_source::MockMediaChangeSource;
 pub(crate) use self::media_change_source::{
@@ -373,6 +386,9 @@ pub(crate) use self::put_album_medium::{
 pub(crate) use self::put_album_track::{
     PutAlbumTrackCommand, PutAlbumTrackError, PutAlbumTrackResponse, PutAlbumTrackUseCase,
 };
+pub(crate) use self::put_resource_permission::{
+    GrantRequest, PutResourcePermissionCommand, PutResourcePermissionUseCase,
+};
 pub(crate) use self::put_series_episode::{
     PutSeriesEpisodeCommand, PutSeriesEpisodeError, PutSeriesEpisodeResponse,
     PutSeriesEpisodeUseCase,
@@ -385,6 +401,11 @@ pub(crate) use self::reap_uploads::MockReapUploadsUseCase;
 pub(crate) use self::reap_uploads::{
     ReapUploadsCommand, ReapUploadsError, ReapUploadsResponse, ReapUploadsUseCase,
 };
+#[cfg(test)]
+pub(crate) use self::regenerate_token::MockRegenerateTokenUseCase;
+pub(crate) use self::regenerate_token::{
+    RegenerateTokenCommand, RegenerateTokenError, RegenerateTokenUseCase,
+};
 pub(crate) use self::register_user::{
     RegisterUserCommand, RegisterUserError, RegisterUserResponse, RegisterUserUseCase,
 };
@@ -395,9 +416,6 @@ pub(crate) use self::reorder_playlist_tracks::{
     ReorderPlaylistTracksCommand, ReorderPlaylistTracksError, ReorderPlaylistTracksResponse,
     ReorderPlaylistTracksUseCase,
 };
-pub(crate) use self::replace_permission::{
-    PermissionRequest, ReplacePermissionCommand, ReplacePermissionError, ReplacePermissionUseCase,
-};
 pub(crate) use self::resolve_music_metadata::{
     ResolveMusicMetadataCommand, ResolveMusicMetadataError, ResolveMusicMetadataResponse,
     ResolveMusicMetadataUseCase,
@@ -406,6 +424,8 @@ pub(crate) use self::resolve_video_metadata::{
     ResolveVideoMetadataCommand, ResolveVideoMetadataError, ResolveVideoMetadataResponse,
     ResolveVideoMetadataUseCase,
 };
+pub(crate) use self::revoke_share::{RevokeShareCommand, RevokeShareUseCase};
+pub(crate) use self::share_resource::{ShareResourceCommand, ShareResourceUseCase};
 pub(crate) use self::update_movie::{
     UpdateMovieCommand, UpdateMovieError, UpdateMovieResponse, UpdateMovieUseCase,
 };

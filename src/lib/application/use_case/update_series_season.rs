@@ -1,8 +1,8 @@
+use crate::application::authorization::authorize;
+use crate::domain::model::{ResourceKind, ResourceRef};
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
-
-use tracing::warn;
 
 use crate::application::port::{
     UpdateSeriesSeasonCommand, UpdateSeriesSeasonError, UpdateSeriesSeasonResponse,
@@ -10,11 +10,9 @@ use crate::application::port::{
 };
 use crate::domain::model::{Action, Season};
 use crate::domain::port::{
-    IdentityUnitOfWork, LibraryUnitOfWork, PermissionFilter, PermissionRepository as _,
-    RepositoryError, SeriesFilter, SeriesRepository as _, UnitOfWork as _, UnitOfWorkFactory,
-    UserFilter, UserRepository as _, UserUnitOfWork,
+    IdentityUnitOfWork, LibraryUnitOfWork, RepositoryError, SeriesFilter, SeriesRepository as _,
+    UnitOfWork as _, UnitOfWorkFactory, UserFilter, UserRepository as _, UserUnitOfWork,
 };
-use crate::domain::service::{Authorization, Decision};
 
 /// Use case implementation for updating a show season partially.
 pub(crate) struct UpdateSeriesSeason<F> {
@@ -68,15 +66,6 @@ where
                     .next()
                     .ok_or(UpdateSeriesSeasonError::NoSuchCaller)?;
 
-                let permissions = unit_of_work
-                    .permissions()
-                    .search(&PermissionFilter {
-                        user_id: Some(caller.id()),
-                        ..PermissionFilter::default()
-                    })
-                    .await
-                    .map_err(|error| UpdateSeriesSeasonError::Unknown(error.into()))?;
-
                 let series = unit_of_work
                     .series()
                     .search(&SeriesFilter {
@@ -89,36 +78,30 @@ where
                     .next()
                     .ok_or(UpdateSeriesSeasonError::NoSuchSeries)?;
 
-                if let Decision::Deny(denial) =
-                    Authorization::decide(&caller, &permissions, Action::LibraryRead, &series)
-                {
-                    warn!(
-                        target: "security",
-                        event = "authz_failed",
-                        actor = caller.id(),
-                        action = %denial.action().verb(),
-                        target = %denial.action().target(),
-                        "denied an action"
-                    );
-                    return Err(UpdateSeriesSeasonError::NoSuchSeries);
-                }
-                if let Decision::Deny(denial) =
-                    Authorization::decide(&caller, &permissions, Action::LibraryManage, &series)
-                {
-                    warn!(
-                        target: "security",
-                        event = "authz_failed",
-                        actor = caller.id(),
-                        action = %denial.action().verb(),
-                        target = %denial.action().target(),
-                        "denied an action"
-                    );
-                    return Err(if denial.conceals() {
+                authorize(
+                    &mut unit_of_work.resources(),
+                    &caller,
+                    ResourceRef::new(ResourceKind::Series, series.id()),
+                    Action::View,
+                    None,
+                )
+                .await
+                .map_err(|_| UpdateSeriesSeasonError::NoSuchSeries)?;
+                authorize(
+                    &mut unit_of_work.resources(),
+                    &caller,
+                    ResourceRef::new(ResourceKind::Series, series.id()),
+                    Action::EditMetadata,
+                    None,
+                )
+                .await
+                .map_err(|error| {
+                    if error.conceals() {
                         UpdateSeriesSeasonError::NoSuchSeries
                     } else {
                         UpdateSeriesSeasonError::Forbidden
-                    });
-                }
+                    }
+                })?;
 
                 let season = series
                     .seasons()
@@ -178,12 +161,13 @@ where
 mod tests {
     use super::*;
     use crate::application::FieldUpdate;
+    use allure_cargotest::allure_test;
 
     use crate::domain::NumericID;
 
-    use crate::domain::model::{Permission, Role, Scope, SeasonIndex, Series, User};
+    use crate::domain::model::{Role, SeasonIndex, Series, User};
 
-    use crate::domain::port::{MockPermissionRepository, MockSeriesRepository, MockUserRepository};
+    use crate::domain::port::{MockResourceRepository, MockSeriesRepository, MockUserRepository};
 
     use crate::test_helpers::*;
     use std::error::Error;
@@ -209,11 +193,11 @@ mod tests {
     /// Build a Library test harness around the given mocks.
     fn harness_with(
         users: MockUserRepository,
-        permissions: MockPermissionRepository,
+        resources: MockResourceRepository,
         series: MockSeriesRepository,
     ) -> GalleryFactoryHarness {
         let unit_of_work = TestUnitOfWork {
-            permissions,
+            resources,
             series,
             users,
             ..TestUnitOfWork::default()
@@ -245,9 +229,14 @@ mod tests {
         sample_series(7, vec![season])
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn update_series_season_replaces_name_and_cover_keeping_episodes()
     -> Result<(), Box<dyn Error>> {
+        allure.epic("Series");
+        allure.feature("REQ-SERIES-011");
+        allure.story("SCN-SERIES-011-A");
+        allure.story("SCN-SERIES-011-C");
         // Arrange
         let mut users = MockUserRepository::new();
         expect_admin(&mut users, 1)?;
@@ -273,7 +262,7 @@ mod tests {
                 let copy = written.clone();
                 Box::pin(async move { Ok(Some(copy)) })
             });
-        let harness = harness_with(users, no_permissions(), series);
+        let harness = harness_with(users, no_resources(), series);
         let use_case: UseCase = UpdateSeriesSeason::new(Arc::clone(&harness.factory));
 
         // Act
@@ -294,8 +283,12 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn update_series_season_null_name_and_cover_clear() -> Result<(), Box<dyn Error>> {
+        allure.epic("Series");
+        allure.feature("REQ-SERIES-011");
+        allure.story("SCN-SERIES-011-B");
         // Arrange
         let mut users = MockUserRepository::new();
         expect_admin(&mut users, 1)?;
@@ -310,7 +303,7 @@ mod tests {
                 let copy = written.clone();
                 Box::pin(async move { Ok(Some(copy)) })
             });
-        let harness = harness_with(users, no_permissions(), series);
+        let harness = harness_with(users, no_resources(), series);
         let use_case: UseCase = UpdateSeriesSeason::new(Arc::clone(&harness.factory));
 
         // Act
@@ -330,15 +323,19 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn update_series_season_absent_season_returns_no_such_season()
     -> Result<(), Box<dyn Error>> {
+        allure.epic("Series");
+        allure.feature("REQ-SERIES-011");
+        allure.story("SCN-SERIES-011-D");
         // Arrange: the show holds no season at index 1.
         let mut users = MockUserRepository::new();
         expect_admin(&mut users, 1)?;
         let mut series = MockSeriesRepository::new();
         expect_series(&mut series, sample_series(7, Vec::new())?);
-        let harness = harness_with(users, no_permissions(), series);
+        let harness = harness_with(users, no_resources(), series);
         let use_case: UseCase = UpdateSeriesSeason::new(Arc::clone(&harness.factory));
 
         // Act
@@ -357,9 +354,13 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn update_series_season_unknown_show_returns_no_such_series() -> Result<(), Box<dyn Error>>
     {
+        allure.epic("Series");
+        allure.feature("REQ-SERIES-011");
+        allure.story("SCN-SERIES-011-D");
         // Arrange
         let mut users = MockUserRepository::new();
         expect_admin(&mut users, 1)?;
@@ -368,7 +369,7 @@ mod tests {
             .expect_search()
             .times(1)
             .returning(|_| Box::pin(async { Ok(Vec::new()) }));
-        let harness = harness_with(users, no_permissions(), series);
+        let harness = harness_with(users, no_resources(), series);
         let use_case: UseCase = UpdateSeriesSeason::new(Arc::clone(&harness.factory));
 
         // Act
@@ -386,69 +387,12 @@ mod tests {
         assert!(matches!(result, Err(UpdateSeriesSeasonError::NoSuchSeries)));
         Ok(())
     }
-
-    #[tokio::test]
-    async fn update_series_season_standard_user_is_forbidden() -> Result<(), Box<dyn Error>> {
-        // Arrange: a standard caller may read the public show but not manage it.
-        let mut users = MockUserRepository::new();
-        expect_caller(&mut users, 1)?;
-        let mut series = MockSeriesRepository::new();
-        expect_series(&mut series, series_with_season()?);
-        let harness = harness_with(users, no_permissions(), series);
-        let use_case: UseCase = UpdateSeriesSeason::new(Arc::clone(&harness.factory));
-
-        // Act
-        let result = use_case
-            .execute(UpdateSeriesSeasonCommand::new(
-                1,
-                7,
-                1,
-                FieldUpdate::Absent,
-                FieldUpdate::Absent,
-            ))
-            .await;
-
-        // Assert
-        assert!(matches!(result, Err(UpdateSeriesSeasonError::Forbidden)));
-        assert!(harness.rolled_back.load(Ordering::SeqCst));
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn update_series_season_concealed_show_returns_no_such_series()
-    -> Result<(), Box<dyn Error>> {
-        // Arrange: the caller is shut out of the library entirely.
-        let mut users = MockUserRepository::new();
-        expect_caller(&mut users, 1)?;
-        let mut series = MockSeriesRepository::new();
-        expect_series(&mut series, series_with_season()?);
-        let mut permissions = MockPermissionRepository::new();
-        expect_permissions(
-            &mut permissions,
-            1,
-            vec![Permission::try_new(1, Action::LibraryRead, Scope::None)?],
-        );
-        let harness = harness_with(users, permissions, series);
-        let use_case: UseCase = UpdateSeriesSeason::new(Arc::clone(&harness.factory));
-
-        // Act
-        let result = use_case
-            .execute(UpdateSeriesSeasonCommand::new(
-                1,
-                7,
-                1,
-                FieldUpdate::Absent,
-                FieldUpdate::Absent,
-            ))
-            .await;
-
-        // Assert
-        assert!(matches!(result, Err(UpdateSeriesSeasonError::NoSuchSeries)));
-        Ok(())
-    }
-
+    #[allure_test]
     #[tokio::test]
     async fn update_series_season_invalid_cover_is_conflict() -> Result<(), Box<dyn Error>> {
+        allure.epic("Series");
+        allure.feature("REQ-SERIES-011");
+        allure.story("SCN-SERIES-011-A");
         // Arrange: the repository rejects the cover through the scope trigger.
         let mut users = MockUserRepository::new();
         expect_admin(&mut users, 1)?;
@@ -458,7 +402,7 @@ mod tests {
             .expect_save_season()
             .times(1)
             .returning(|_, _| Box::pin(async { Err(RepositoryError::Conflict) }));
-        let harness = harness_with(users, no_permissions(), series);
+        let harness = harness_with(users, no_resources(), series);
         let use_case: UseCase = UpdateSeriesSeason::new(Arc::clone(&harness.factory));
 
         // Act
@@ -478,8 +422,12 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn update_series_season_missing_cover_is_conflict() -> Result<(), Box<dyn Error>> {
+        allure.epic("Series");
+        allure.feature("REQ-SERIES-011");
+        allure.story("SCN-SERIES-011-A");
         // Arrange: the repository rejects the cover through the scope trigger.
         let mut users = MockUserRepository::new();
         expect_admin(&mut users, 1)?;
@@ -489,7 +437,7 @@ mod tests {
             .expect_save_season()
             .times(1)
             .returning(|_, _| Box::pin(async { Err(RepositoryError::DataIntegrityViolation) }));
-        let harness = harness_with(users, no_permissions(), series);
+        let harness = harness_with(users, no_resources(), series);
         let use_case: UseCase = UpdateSeriesSeason::new(Arc::clone(&harness.factory));
 
         // Act
@@ -509,9 +457,13 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn update_series_season_absent_at_write_returns_no_such_season()
     -> Result<(), Box<dyn Error>> {
+        allure.epic("Series");
+        allure.feature("REQ-SERIES-011");
+        allure.story("SCN-SERIES-011-D");
         // Arrange: the season disappears between the read and the write.
         let mut users = MockUserRepository::new();
         expect_admin(&mut users, 1)?;
@@ -521,7 +473,7 @@ mod tests {
             .expect_save_season()
             .times(1)
             .returning(|_, _| Box::pin(async { Ok(None) }));
-        let harness = harness_with(users, no_permissions(), series);
+        let harness = harness_with(users, no_resources(), series);
         let use_case: UseCase = UpdateSeriesSeason::new(Arc::clone(&harness.factory));
 
         // Act

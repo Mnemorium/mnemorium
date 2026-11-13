@@ -1,0 +1,32 @@
+---
+# JWT validation is never weakened.
+#
+# Both providers pin `HS256`, require the standard claims they consume and
+# validate expiry; the content-link provider also pins its audience. Turning
+# any of those checks off would let a forged or cross-purpose token through.
+rules:
+  - id: mnemorium.rust.auth.jwt-validation-disabled
+    languages: [rust]
+    severity: ERROR
+    message: >-
+      JWT validation is weakened: expiry, audience or not-before is not
+      checked, the signature check is skipped, or the algorithm is `none`.
+      Validate the signature and every claim the token is meant to carry.
+    metadata:
+      category: security
+      subcategory:
+        - authentication
+      cwe: "CWE-347: Improper Verification of Cryptographic Signature"
+      confidence: HIGH
+      references:
+        - https://docs.rs/jsonwebtoken/latest/jsonwebtoken/struct.Validation.html
+    patterns:
+      - pattern-either:
+          - pattern: '$VALIDATION.validate_exp = false'
+          - pattern: '$VALIDATION.validate_aud = false'
+          - pattern: '$VALIDATION.validate_nbf = false'
+          - pattern: '$VALIDATION.insecure_disable_signature_validation()'
+          - pattern: '$VALIDATION.required_spec_claims.clear()'
+          - pattern: 'jsonwebtoken::dangerous::insecure_decode(...)'
+          - pattern: 'jsonwebtoken::dangerous::insecure_decode::<$CLAIMS>(...)'
+          - pattern: 'Validation::new(Algorithm::none)'

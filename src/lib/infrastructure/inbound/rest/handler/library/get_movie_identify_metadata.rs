@@ -12,7 +12,7 @@ use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody, hal_js
 ///
 /// The reference names the provider that issued it; a provider the system does
 /// not serve answers `404 Not Found`. The route reads the provider rather than
-/// the catalogue, and is guarded by `library.read`. With no provider configured
+/// the catalogue, and is guarded by `ViewMetadata` on the catalogue. With no provider configured
 /// it answers an `available: false` document.
 #[utoipa::path(
     get,

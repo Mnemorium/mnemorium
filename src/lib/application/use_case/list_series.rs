@@ -1,3 +1,4 @@
+use crate::application::authorization::allows;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -5,13 +6,11 @@ use std::sync::Arc;
 use crate::application::port::{
     ListSeriesCommand, ListSeriesError, ListSeriesItem, ListSeriesResponse, ListSeriesUseCase,
 };
-use crate::domain::model::Action;
+use crate::domain::model::{Action, ResourceKind, ResourceRef};
 use crate::domain::port::{
-    IdentityUnitOfWork, LibraryUnitOfWork, PermissionFilter, PermissionRepository as _,
-    SeriesFilter, SeriesRepository as _, UnitOfWork as _, UnitOfWorkFactory, UserFilter,
-    UserRepository as _, UserUnitOfWork,
+    IdentityUnitOfWork, LibraryUnitOfWork, SeriesFilter, SeriesRepository as _, UnitOfWork as _,
+    UnitOfWorkFactory, UserFilter, UserRepository as _, UserUnitOfWork,
 };
-use crate::domain::service::Authorization;
 
 /// Use case implementation for listing the shows the caller may see.
 pub(crate) struct ListSeries<F> {
@@ -60,15 +59,6 @@ where
                     .next()
                     .ok_or(ListSeriesError::NoSuchCaller)?;
 
-                let permissions = unit_of_work
-                    .permissions()
-                    .search(&PermissionFilter {
-                        user_id: Some(caller.id()),
-                        ..PermissionFilter::default()
-                    })
-                    .await
-                    .map_err(|error| ListSeriesError::Unknown(error.into()))?;
-
                 let mut series = unit_of_work
                     .series()
                     .search(&SeriesFilter {
@@ -78,10 +68,21 @@ where
                     .await
                     .map_err(|error| ListSeriesError::Unknown(error.into()))?;
 
-                series.retain(|shown| {
-                    Authorization::decide(&caller, &permissions, Action::LibraryRead, shown)
-                        .is_allowed()
-                });
+                let mut visible = Vec::with_capacity(series.len());
+                for shown in series {
+                    if allows(
+                        &mut unit_of_work.resources(),
+                        &caller,
+                        ResourceRef::new(ResourceKind::Series, shown.id()),
+                        Action::Discover,
+                        None,
+                    )
+                    .await
+                    {
+                        visible.push(shown);
+                    }
+                }
+                series = visible;
 
                 let total = series.len();
                 let offset = command.offset().unwrap_or(0);
@@ -124,6 +125,7 @@ where
 mod tests {
     use super::*;
     use crate::domain::model::Series;
+    use allure_cargotest::allure_test;
 
     use crate::domain::port::{MockSeriesRepository, MockUserRepository, RepositoryError};
 
@@ -140,7 +142,7 @@ mod tests {
         series: MockSeriesRepository,
     ) -> GalleryFactoryHarness {
         let unit_of_work = TestUnitOfWork {
-            permissions: no_permissions(),
+            resources: no_resources(),
             series,
             users,
             ..TestUnitOfWork::default()
@@ -148,8 +150,12 @@ mod tests {
         GalleryFactoryHarness::new(unit_of_work)
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn list_series_projects_only_the_identifier_and_name() -> Result<(), Box<dyn Error>> {
+        allure.epic("Series");
+        allure.feature("REQ-SERIES-001");
+        allure.story("SCN-SERIES-001-D");
         // Arrange: the aggregate carries a season, an episode, a genre and
         // dates, so the projection has something to drop.
         let mut users = MockUserRepository::new();
@@ -188,8 +194,12 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn list_series_carries_the_cover_of_a_show_with_artwork() -> Result<(), Box<dyn Error>> {
+        allure.epic("Series");
+        allure.feature("REQ-SERIES-001");
+        allure.story("SCN-SERIES-001-D");
         // Arrange: one covered show beside one without artwork.
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 1)?;
@@ -245,8 +255,12 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn list_series_forwards_the_filter_and_paginates() -> Result<(), Box<dyn Error>> {
+        allure.epic("Series");
+        allure.feature("REQ-SERIES-001");
+        allure.story("SCN-SERIES-001-B");
         // Arrange
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 1)?;
@@ -282,8 +296,12 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn list_series_unknown_caller_returns_no_such_caller() -> Result<(), Box<dyn Error>> {
+        allure.epic("Series");
+        allure.feature("REQ-SERIES-001");
+        allure.story("SCN-SERIES-001-A");
         // Arrange
         let mut users = MockUserRepository::new();
         users
@@ -310,8 +328,12 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn list_series_repository_failure_returns_unknown() -> Result<(), Box<dyn Error>> {
+        allure.epic("Series");
+        allure.feature("REQ-SERIES-001");
+        allure.story("SCN-SERIES-001-A");
         // Arrange
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 1)?;
@@ -340,8 +362,12 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn list_series_commit_failure_returns_unknown() -> Result<(), Box<dyn Error>> {
+        allure.epic("Series");
+        allure.feature("REQ-SERIES-001");
+        allure.story("SCN-SERIES-001-A");
         // Arrange
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 1)?;

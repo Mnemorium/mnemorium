@@ -8,7 +8,7 @@ use utoipa::IntoParams;
 use super::{DEFAULT_LIMIT, MAX_LIMIT};
 use crate::application::port::ListMusicGroupsCommand;
 use crate::infrastructure::inbound::rest::handler::library::{
-    MusicGroupListLinks, MusicGroupListResponse, MusicGroupResponse,
+    MusicGroupEmbedded, MusicGroupListLinks, MusicGroupListResponse, MusicGroupResponse,
 };
 use crate::infrastructure::inbound::rest::middleware::AuthenticatedUser;
 use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody, hal_json};
@@ -113,11 +113,13 @@ pub(crate) async fn get_music_group_list(
     let returned = response.groups().len();
     let total = response.total();
     let body = MusicGroupListResponse {
-        items: response
-            .groups()
-            .iter()
-            .map(MusicGroupResponse::from)
-            .collect(),
+        embedded: MusicGroupEmbedded {
+            items: response
+                .groups()
+                .iter()
+                .map(MusicGroupResponse::from)
+                .collect(),
+        },
         links: MusicGroupListLinks::for_page(&query, limit, offset, returned, total),
     };
     Ok(hal_json(body))

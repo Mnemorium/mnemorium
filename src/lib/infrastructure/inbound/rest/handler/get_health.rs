@@ -1,11 +1,16 @@
-use axum::response::Json;
+use axum::response::Response;
 use serde::Serialize;
 use utoipa::ToSchema;
+
+use crate::infrastructure::inbound::rest::{SelfLinks, hal_json};
 
 /// Service health status.
 #[derive(Debug, Serialize, ToSchema)]
 #[non_exhaustive]
 pub(crate) struct HealthResponse {
+    /// Links to the probe operation.
+    #[serde(rename = "_links")]
+    pub links: SelfLinks,
     /// Service status.
     #[schema(example = json!("ok"))]
     pub status: String,
@@ -26,15 +31,16 @@ pub(crate) struct HealthResponse {
         (
             status = OK,
             body = HealthResponse,
-            content_type = "application/json",
+            content_type = "application/hal+json",
             description = "Service is healthy",
         ),
     ),
     security(()),
     summary = "Check service health"
 )]
-pub(crate) async fn get_health() -> Json<HealthResponse> {
-    Json(HealthResponse {
+pub(crate) async fn get_health() -> Response {
+    hal_json(HealthResponse {
+        links: SelfLinks::new("/health"),
         status: "ok".to_owned(),
     })
 }

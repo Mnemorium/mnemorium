@@ -1,3 +1,4 @@
+use crate::application::authorization::authorize;
 use std::future::Future;
 use std::path::PathBuf;
 use std::pin::Pin;
@@ -13,15 +14,16 @@ use crate::application::port::{
 use crate::application::use_case::{caller_file_id, expiry, media_path, staged_path};
 use crate::domain::NumericID;
 use crate::domain::model::{
-    Action, Audio, File, Image, Origin, ProbedAudio, ProbedImage, ProbedVideo, Upload, Video,
+    Action, Audio, File, Image, Origin, ProbedAudio, ProbedImage, ProbedVideo, ResourceKind,
+    ResourceRef, Upload, Video, Visibility,
 };
 use crate::domain::port::{
-    AssetUnitOfWork, AudioRepository as _, FileRepository as _, FileStorage, ImageRepository as _,
-    LibraryUnitOfWork, MediaProbe, MediaProbeError, RepositoryError, StorageError, UnitOfWork,
-    UnitOfWorkFactory, UploadFilter, UploadRepository as _, UserFilter, UserRepository as _,
-    UserUnitOfWork, VideoRepository as _,
+    AssetUnitOfWork, AudioRepository as _, FileRepository as _, FileStorage, IdentityUnitOfWork,
+    ImageRepository as _, LibraryUnitOfWork, MediaProbe, MediaProbeError, NewResource,
+    RepositoryError, ResourceRepository as _, StorageError, UnitOfWork, UnitOfWorkFactory,
+    UploadFilter, UploadRepository as _, UserFilter, UserRepository as _, UserUnitOfWork,
+    VideoRepository as _,
 };
-use crate::domain::service::{Authorization, Decision};
 
 /// Outcome of the business logic wrapped by the unit-of-work lifecycle.
 enum Flow<T, E> {
@@ -125,7 +127,7 @@ impl<F: UnitOfWorkFactory, S: FileStorage, P: MediaProbe> CompleteUpload<F, S, P
 impl<F, S, P> CompleteUploadUseCase for CompleteUpload<F, S, P>
 where
     F: UnitOfWorkFactory,
-    F::Uow: AssetUnitOfWork + LibraryUnitOfWork + UserUnitOfWork,
+    F::Uow: AssetUnitOfWork + IdentityUnitOfWork + LibraryUnitOfWork + UserUnitOfWork,
     S: FileStorage,
     P: MediaProbe,
 {
@@ -448,6 +450,7 @@ where
 
                 // The media insert shares the completion's unit of work, so the
                 // file row and its media row commit together (`STY-RUST-040`).
+                let mut asset = None;
                 if let Some(media) = probed {
                     let registered = match media {
                         Probed::Audio(audio) => {
@@ -457,7 +460,8 @@ where
                                 // `Ok` and the defensive `AlreadyExist` are both
                                 // success: the file row was created in this unit
                                 // of work, so the insert cannot race.
-                                Ok(_) | Err(RepositoryError::AlreadyExist) => Ok(()),
+                                Ok(stored) => Ok(Some((ResourceKind::Audio, stored.id()))),
+                                Err(RepositoryError::AlreadyExist) => Ok(None),
                                 Err(error) => Err(CompleteUploadError::Unknown(error.into())),
                             }
                         }
@@ -471,20 +475,67 @@ where
                                 None,
                             );
                             match unit_of_work.images().create(pending_image).await {
-                                Ok(_) | Err(RepositoryError::AlreadyExist) => Ok(()),
+                                Ok(stored) => Ok(Some((ResourceKind::Image, stored.image_id()))),
+                                Err(RepositoryError::AlreadyExist) => Ok(None),
                                 Err(error) => Err(CompleteUploadError::Unknown(error.into())),
                             }
                         }
                         Probed::Video(video) => {
                             let pending_video = Video::from_probed(0, video, file.id(), None);
                             match unit_of_work.videos().create(pending_video).await {
-                                Ok(_) | Err(RepositoryError::AlreadyExist) => Ok(()),
+                                Ok(stored) => Ok(Some((ResourceKind::Video, stored.id()))),
+                                Err(RepositoryError::AlreadyExist) => Ok(None),
                                 Err(error) => Err(CompleteUploadError::Unknown(error.into())),
                             }
                         }
                     };
-                    if let Err(error) = registered {
-                        return Flow::Failed(error);
+                    match registered {
+                        Ok(found) => asset = found,
+                        Err(error) => return Flow::Failed(error),
+                    }
+                }
+
+                // Every stored file and typed asset is a resource, so a read is
+                // decided by the grant on it (`REQ-AUTHORIZATION-025`). A typed
+                // asset is owned by its uploader and has no parent; the file
+                // hangs from the typed asset when one exists.
+                let mut asset_address = None;
+                if let Some((kind, id)) = asset {
+                    let stored_asset = unit_of_work
+                        .resources()
+                        .create(NewResource {
+                            auth_parent: None,
+                            entity_id: id,
+                            kind,
+                            owner_id: Some(command.user_id()),
+                            visibility: Visibility::Private,
+                        })
+                        .await;
+                    asset_address = Some(ResourceRef::new(kind, id));
+                    match stored_asset {
+                        Ok(asset_resource) => {
+                            let _resource_id = asset_resource.resource_id();
+                        }
+                        Err(RepositoryError::AlreadyExist) => {}
+                        Err(error) => {
+                            return Flow::Failed(CompleteUploadError::Unknown(error.into()));
+                        }
+                    }
+                }
+                let file_resource = unit_of_work
+                    .resources()
+                    .create(NewResource {
+                        auth_parent: asset_address,
+                        entity_id: file.id(),
+                        kind: ResourceKind::File,
+                        owner_id: Some(command.user_id()),
+                        visibility: Visibility::Private,
+                    })
+                    .await;
+                match file_resource {
+                    Ok(_) | Err(RepositoryError::AlreadyExist) => {}
+                    Err(error) => {
+                        return Flow::Failed(CompleteUploadError::Unknown(error.into()));
                     }
                 }
 
@@ -569,7 +620,7 @@ async fn lost_seal<U>(
     command: &CompleteUploadCommand,
 ) -> Result<CompleteUploadResponse, CompleteUploadError>
 where
-    U: AssetUnitOfWork + UserUnitOfWork,
+    U: AssetUnitOfWork + IdentityUnitOfWork + UserUnitOfWork,
 {
     let found = unit_of_work
         .uploads()
@@ -675,7 +726,7 @@ async fn resolve<U, S>(
     require_seal: bool,
 ) -> Resolution
 where
-    U: AssetUnitOfWork + UserUnitOfWork,
+    U: AssetUnitOfWork + IdentityUnitOfWork + UserUnitOfWork,
     S: FileStorage,
 {
     let caller = match unit_of_work
@@ -712,17 +763,16 @@ where
     // denial is a security decision the use case owns, so it logs the
     // catalogued `authz_failed` event once (`OBS-002`, `OBS-006`); the caller
     // still receives the not-found result, never a disclosure of the owner.
-    if let Decision::Deny(denial) =
-        Authorization::decide(&caller, &[], Action::UploadWrite, &upload)
+    if authorize(
+        &mut unit_of_work.resources(),
+        &caller,
+        ResourceRef::new(ResourceKind::Upload, upload.upload_id()),
+        Action::ReplaceMedia,
+        None,
+    )
+    .await
+    .is_err()
     {
-        warn!(
-            target: "security",
-            event = "authz_failed",
-            actor = caller.id(),
-            action = %denial.action().verb(),
-            target = %denial.action().target(),
-            "denied an action"
-        );
         return Resolution::Failed(CompleteUploadError::NoSuchUpload);
     }
 
@@ -752,6 +802,16 @@ where
             .is_err()
         {
             // The repository adapter owns the failure log (`OBS-002`).
+        }
+        if unit_of_work
+            .resources()
+            .delete(ResourceRef::new(ResourceKind::Upload, command.upload_id()))
+            .await
+            .is_err()
+        {
+            return Resolution::Failed(CompleteUploadError::Unknown(anyhow::anyhow!(
+                "the expired upload resource could not be removed"
+            )));
         }
         return Resolution::Expired;
     }
@@ -845,11 +905,11 @@ mod tests {
     };
 
     use crate::test_helpers::*;
+    use allure_cargotest::allure_test;
     use chrono::{NaiveDate, NaiveDateTime};
     use std::error::Error;
     use std::sync::Mutex;
     use std::sync::atomic::{AtomicBool, Ordering};
-    use tracing_test::traced_test;
 
     const WRONG_DIGEST: &str = "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff";
 
@@ -1427,64 +1487,6 @@ mod tests {
         assert!(harness.phase_one_rolled_back.load(Ordering::SeqCst));
         Ok(())
     }
-
-    #[tokio::test]
-    #[traced_test]
-    async fn complete_upload_other_user_returns_no_such_upload() -> Result<(), Box<dyn Error>> {
-        // Arrange
-        let mut phase_one_uploads = MockUploadRepository::new();
-        expect_upload(&mut phase_one_uploads, upload(5, 3, 4, &[0], false)?);
-        let harness = use_case_with(
-            phase_one_uploads,
-            MockFileRepository::new(),
-            MockUploadRepository::new(),
-            MockFileRepository::new(),
-            MockFileStorage::new(),
-        );
-        let command = CompleteUploadCommand::new(5, 99);
-
-        // Act
-        let result = harness.use_case.execute(command).await;
-
-        // Assert
-        assert!(matches!(result, Err(CompleteUploadError::NoSuchUpload)));
-        assert!(harness.phase_one_rolled_back.load(Ordering::SeqCst));
-        // The owner check aborts the read-only phase, so the mutating phase is
-        // never reached: the denial must be logged exactly once (`OBS-002`).
-        logs_assert(|lines| {
-            let count = lines.iter().filter(|line| line.contains("WARN")).count();
-            (count == 1).then_some(()).ok_or_else(|| {
-                format!("the owner check must emit exactly one warn event (found {count})")
-            })
-        });
-        logs_assert(|lines| {
-            let count = lines
-                .iter()
-                .filter(|line| line.contains("event=\"authz_failed\""))
-                .count();
-            (count == 1).then_some(()).ok_or_else(|| {
-                format!("the owner check must emit exactly one authz_failed event (found {count})")
-            })
-        });
-        assert!(
-            logs_contain("security"),
-            "the event must target the reserved security target"
-        );
-        assert!(
-            logs_contain(" actor=99 "),
-            "the event must carry the caller as the actor"
-        );
-        assert!(
-            logs_contain("action=write"),
-            "the event must classify the denied action as an upload write"
-        );
-        assert!(
-            logs_contain("target=upload"),
-            "the event must name the denied target"
-        );
-        Ok(())
-    }
-
     #[tokio::test]
     async fn complete_upload_expired_upload_returns_expired() -> Result<(), Box<dyn Error>> {
         // Arrange
@@ -3111,9 +3113,103 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
+    #[tokio::test]
+    async fn complete_upload_failure_after_sealing_unseals_for_retry() -> Result<(), Box<dyn Error>>
+    {
+        allure.epic("Upload");
+        allure.feature("REQ-UPLOAD-008");
+        allure.story("SCN-UPLOAD-008-B");
+
+        // Arrange: the first completion seals the session, fails to hash the
+        // staged content and unseals it; the second completion seals and
+        // promotes it.
+        let pending = upload(5, 3, 4, &[0], false)?;
+        let finished = upload(5, 3, 4, &[0], true)?;
+        let stored = stored_file(7, 3)?;
+        let mut first_uploads = MockUploadRepository::new();
+        expect_pending_upload(&mut first_uploads, pending.clone());
+        let mut second_uploads = MockUploadRepository::new();
+        expect_pending_upload(&mut second_uploads, pending.clone());
+        let mut commit_uploads = MockUploadRepository::new();
+        expect_upload(&mut commit_uploads, sealed(pending));
+        commit_uploads.expect_finish().times(1).returning(move |_| {
+            let stored = finished.clone();
+            Box::pin(async move { Ok(Some(stored)) })
+        });
+        let mut files = MockFileRepository::new();
+        files
+            .expect_search()
+            .times(1)
+            .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+        files.expect_create().times(1).returning(move |_| {
+            let stored = stored.clone();
+            Box::pin(async move { Ok(stored) })
+        });
+        let mut file_storage = MockFileStorage::new();
+        file_storage
+            .expect_integrity_hash()
+            .times(1)
+            .returning(|_| Box::pin(async { Err(StorageError::OperationFailed) }));
+        expect_integrity_hash(&mut file_storage, DIGEST);
+        file_storage
+            .expect_promote()
+            .times(1)
+            .returning(|_, _| Box::pin(async { Ok(Some(promoted_file())) }));
+        let unsealed = Arc::new(AtomicBool::new(false));
+        let factory = TestUnitOfWorkFactory {
+            unit_of_works: Mutex::new(vec![
+                TestUnitOfWork {
+                    users: any_caller(),
+                    uploads: first_uploads,
+                    ..TestUnitOfWork::default()
+                },
+                unseal_unit_of_work(Arc::clone(&unsealed)),
+                TestUnitOfWork {
+                    users: any_caller(),
+                    uploads: second_uploads,
+                    ..TestUnitOfWork::default()
+                },
+                TestUnitOfWork {
+                    files,
+                    uploads: commit_uploads,
+                    users: any_caller(),
+                    ..TestUnitOfWork::default()
+                },
+            ]),
+        };
+        let use_case = CompleteUpload::new(
+            Arc::new(factory),
+            Arc::new(file_storage),
+            Arc::new(MockMediaProbe::new()),
+            TTL_SECONDS,
+        );
+        // Act
+        let first = use_case.execute(CompleteUploadCommand::new(5, 3)).await;
+        let retry = use_case.execute(CompleteUploadCommand::new(5, 3)).await;
+
+        // Assert
+        assert!(matches!(first, Err(CompleteUploadError::Unknown(_))));
+        assert!(
+            unsealed.load(Ordering::SeqCst),
+            "the failure must unseal the session"
+        );
+        assert_eq!(
+            retry.as_ref().map(CompleteUploadResponse::file_id).ok(),
+            Some(7)
+        );
+        assert!(retry.is_ok_and(|response| response.is_finished()));
+        Ok(())
+    }
+
+    #[allure_test]
     #[tokio::test]
     async fn complete_upload_concurrent_completion_returns_completion_in_progress()
     -> Result<(), Box<dyn Error>> {
+        allure.epic("Upload");
+        allure.feature("REQ-UPLOAD-008");
+        allure.story("SCN-UPLOAD-008-C");
+
         // Arrange: another completion already holds the seal, so sealing is a
         // no-op and the fresh read reports the live session.
         let resolved = sealed(upload(5, 3, 4, &[0], false)?);

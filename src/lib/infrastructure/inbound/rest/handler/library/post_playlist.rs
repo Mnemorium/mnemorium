@@ -5,6 +5,7 @@ use serde::Deserialize;
 use utoipa::ToSchema;
 
 use crate::application::port::CreatePlaylistCommand;
+use crate::domain::NumericID;
 use crate::infrastructure::inbound::rest::handler::JsonObject;
 use crate::infrastructure::inbound::rest::handler::library::PlaylistResponse;
 use crate::infrastructure::inbound::rest::middleware::AuthenticatedUser;
@@ -14,6 +15,9 @@ use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody, hal_js
 #[derive(Debug, Deserialize, ToSchema)]
 #[non_exhaustive]
 pub(crate) struct PostPlaylistRequest {
+    /// Identifier of the image holding the playlist's artwork, when set.
+    #[schema(example = 1)]
+    pub cover_image_id: Option<NumericID>,
     /// Whether any authenticated user may read and moderate the playlist.
     #[serde(default)]
     pub is_public: bool,
@@ -24,8 +28,10 @@ pub(crate) struct PostPlaylistRequest {
 
 /// Create a playlist owned by the caller.
 ///
-/// Any authenticated caller may create a playlist. The name is required,
-/// trimmed and at most 100 characters long; `is_public` defaults to `false`.
+/// Creating a playlist requires `CreateChild` for a music playlist on the
+/// **Playlist collection**. The name is required, trimmed and at most 100
+/// characters long; `is_public` defaults to `false` and the optional cover must
+/// be a `USER` image.
 #[utoipa::path(
     post,
     operation_id = "post_playlist",
@@ -103,9 +109,10 @@ pub(crate) async fn post_playlist(
             caller.user_id(),
             request.name,
             request.is_public,
+            request.cover_image_id,
         ))
         .await?;
-    let body = PlaylistResponse::new(response.playlist());
+    let body = PlaylistResponse::from_playlist(response.playlist());
     let location = body.links.self_link.href.clone();
     let mut http_response = hal_json(body);
     *http_response.status_mut() = StatusCode::CREATED;

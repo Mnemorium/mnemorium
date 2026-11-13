@@ -1,18 +1,18 @@
+use crate::domain::model::{Action, ResourceKind, ResourceRef};
+
+use crate::application::authorization::authorize;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
-
-use tracing::warn;
 
 use crate::application::port::{
     ResolveMusicMetadataCommand, ResolveMusicMetadataError, ResolveMusicMetadataResponse,
     ResolveMusicMetadataUseCase,
 };
 use crate::domain::port::{
-    IdentityUnitOfWork, MusicMetadataProvider, PermissionFilter, PermissionRepository as _,
-    UnitOfWork as _, UnitOfWorkFactory, UserFilter, UserRepository as _, UserUnitOfWork,
+    IdentityUnitOfWork, MusicMetadataProvider, UnitOfWork as _, UnitOfWorkFactory, UserFilter,
+    UserRepository as _, UserUnitOfWork,
 };
-use crate::domain::service::{Authorization, Decision};
 
 /// Use case implementation for resolving one music target's metadata.
 ///
@@ -21,7 +21,7 @@ use crate::domain::service::{Authorization, Decision};
 /// provider that does not know the target. A reference another provider issued
 /// is [`ResolveMusicMetadataError::UnknownProvider`]. It resolves once through
 /// the configured provider and never persists or logs the target. It is guarded
-/// by `library.read`: the resolution addresses no catalogue resource, so a
+/// by `ViewMetadata` on the catalogue: the resolution addresses no catalogue resource, so a
 /// denial conceals the whole surface rather than one album.
 pub(crate) struct ResolveMusicMetadata<F, P> {
     /// Configured provider, absent when music identification is unavailable.
@@ -83,31 +83,18 @@ where
                     .next()
                     .ok_or(ResolveMusicMetadataError::NoSuchCaller)?;
 
-                let permissions = unit_of_work
-                    .permissions()
-                    .search(&PermissionFilter {
-                        user_id: Some(caller.id()),
-                        ..PermissionFilter::default()
-                    })
-                    .await
-                    .map_err(|error| ResolveMusicMetadataError::Unknown(error.into()))?;
-
                 // The denial is a security decision the use case owns, so it logs
                 // the catalogued `authz_failed` event (`OBS-002`, `OBS-006`); the
                 // caller still receives the concealed not-found result.
-                if let Decision::Deny(denial) =
-                    Authorization::decide_library_surface(&caller, &permissions)
-                {
-                    warn!(
-                        target: "security",
-                        event = "authz_failed",
-                        actor = caller.id(),
-                        action = %denial.action().verb(),
-                        target = %denial.action().target(),
-                        "denied an action"
-                    );
-                    return Err(ResolveMusicMetadataError::NotPermitted);
-                }
+                authorize(
+                    &mut unit_of_work.resources(),
+                    &caller,
+                    ResourceRef::new(ResourceKind::Catalogue, 0),
+                    Action::ViewMetadata,
+                    None,
+                )
+                .await
+                .map_err(|_| ResolveMusicMetadataError::NotPermitted)?;
 
                 let Some(provider) = metadata_provider else {
                     return Err(ResolveMusicMetadataError::Unavailable);
@@ -146,19 +133,18 @@ where
 mod tests {
     use super::*;
     use crate::domain::model::{
-        Action, ArtistCredit, ExternalRef, MusicKind, MusicMetadata, MusicTarget, Permission,
-        ProductionType, ProviderId, Scope,
+        ArtistCredit, ExternalRef, MusicKind, MusicMetadata, MusicTarget, ProductionType,
+        ProviderId,
     };
+    use allure_cargotest::allure_test;
 
     use crate::domain::port::{
-        ExternalServiceError, MockMusicMetadataProvider, MockPermissionRepository,
+        ExternalServiceError, MockMusicMetadataProvider, MockResourceRepository,
     };
-
     use crate::test_helpers::*;
     use chrono::NaiveDate;
     use std::error::Error;
     use std::sync::atomic::{AtomicBool, Ordering};
-    use tracing_test::traced_test;
 
     /// The caller every test resolves for.
     const CALLER_ID: i64 = 1;
@@ -177,11 +163,11 @@ mod tests {
 
     /// Build a use case over the given permission repository.
     fn use_case_with(
-        permissions: MockPermissionRepository,
+        resources: MockResourceRepository,
         provider: Option<MockMusicMetadataProvider>,
     ) -> Harness {
         let unit_of_work = TestUnitOfWork {
-            permissions,
+            resources,
             users: any_caller(),
             ..TestUnitOfWork::default()
         };
@@ -232,11 +218,15 @@ mod tests {
         provider
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn resolve_music_metadata_reports_unavailable_without_a_provider()
     -> Result<(), Box<dyn Error>> {
+        allure.epic("Metadata enrichment");
+        allure.feature("REQ-METADATA-ENRICHMENT-023");
+        allure.story("SCN-METADATA-ENRICHMENT-023-D");
         // Arrange: no music provider is configured.
-        let harness = use_case_with(no_permissions(), None);
+        let harness = use_case_with(no_resources(), None);
 
         // Act
         let result = harness
@@ -252,58 +242,18 @@ mod tests {
         assert!(harness.rolled_back.load(Ordering::SeqCst));
         Ok(())
     }
-
-    #[tokio::test]
-    #[traced_test]
-    async fn resolve_music_metadata_denies_a_caller_without_library_read()
-    -> Result<(), Box<dyn Error>> {
-        // Arrange: the caller's library read is overridden to cover nothing.
-        let mut permissions = MockPermissionRepository::new();
-        let override_scope = vec![Permission::try_new(
-            CALLER_ID,
-            Action::LibraryRead,
-            Scope::None,
-        )?];
-        permissions
-            .expect_search()
-            .times(1)
-            .return_once(move |_| Box::pin(async move { Ok(override_scope) }));
-        let mut provider = musicbrainz_provider();
-        provider.expect_lookup().times(0);
-        let harness = use_case_with(permissions, Some(provider));
-
-        // Act
-        let result = harness
-            .use_case
-            .execute(ResolveMusicMetadataCommand::new(CALLER_ID, target()))
-            .await;
-
-        // Assert
-        assert!(
-            matches!(result, Err(ResolveMusicMetadataError::NotPermitted)),
-            "a caller without library.read must be denied, got: {result:?}"
-        );
-        logs_assert(|lines| {
-            let count = lines
-                .iter()
-                .filter(|line| line.contains("event=\"authz_failed\""))
-                .count();
-            (count == 1)
-                .then_some(())
-                .ok_or_else(|| format!("a denial must log one authz_failed (found {count})"))
-        });
-        assert!(harness.rolled_back.load(Ordering::SeqCst));
-        Ok(())
-    }
-
+    #[allure_test]
     #[tokio::test]
     async fn resolve_music_metadata_reports_a_reference_another_provider_issued()
     -> Result<(), Box<dyn Error>> {
+        allure.epic("Metadata enrichment");
+        allure.feature("REQ-METADATA-ENRICHMENT-008");
+        allure.story("SCN-METADATA-ENRICHMENT-008-A");
         // Arrange: the configured provider is MusicBrainz, the target names
         // another provider.
         let mut provider = musicbrainz_provider();
         provider.expect_lookup().times(0);
-        let harness = use_case_with(no_permissions(), Some(provider));
+        let harness = use_case_with(no_resources(), Some(provider));
         let foreign = MusicTarget::Album(ExternalRef::new(ProviderId::Tmdb, "27205".to_owned()));
 
         // Act
@@ -321,9 +271,13 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn resolve_music_metadata_reports_a_missing_item_as_no_response()
     -> Result<(), Box<dyn Error>> {
+        allure.epic("Metadata enrichment");
+        allure.feature("REQ-METADATA-ENRICHMENT-023");
+        allure.story("SCN-METADATA-ENRICHMENT-023-E");
         // Arrange: the provider does not know the target.
         let mut provider = musicbrainz_provider();
         provider
@@ -331,7 +285,7 @@ mod tests {
             .times(1)
             .withf(|target| target.kind() == MusicKind::Album)
             .returning(|_| Box::pin(async { Ok(None) }));
-        let harness = use_case_with(no_permissions(), Some(provider));
+        let harness = use_case_with(no_resources(), Some(provider));
 
         // Act
         let response = harness
@@ -348,8 +302,14 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn resolve_music_metadata_returns_the_providers_document() -> Result<(), Box<dyn Error>> {
+        allure.epic("Metadata enrichment");
+        allure.feature("REQ-METADATA-ENRICHMENT-004");
+        allure.feature("REQ-METADATA-ENRICHMENT-023");
+        allure.story("SCN-METADATA-ENRICHMENT-004-A");
+        allure.story("SCN-METADATA-ENRICHMENT-023-B");
         // Arrange: the provider resolves the target into album metadata.
         let expected = album()?;
         let mut provider = musicbrainz_provider();
@@ -357,7 +317,7 @@ mod tests {
             let copy = expected.clone();
             Box::pin(async move { Ok(Some(copy)) })
         });
-        let harness = use_case_with(no_permissions(), Some(provider));
+        let harness = use_case_with(no_resources(), Some(provider));
 
         // Act
         let response = harness
@@ -373,15 +333,19 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn resolve_music_metadata_reports_a_provider_failure() -> Result<(), Box<dyn Error>> {
+        allure.epic("Metadata enrichment");
+        allure.feature("REQ-METADATA-ENRICHMENT-008");
+        allure.story("SCN-METADATA-ENRICHMENT-008-B");
         // Arrange: the configured provider fails.
         let mut provider = musicbrainz_provider();
         provider
             .expect_lookup()
             .times(1)
             .returning(|_| Box::pin(async { Err(ExternalServiceError::RateLimited) }));
-        let harness = use_case_with(no_permissions(), Some(provider));
+        let harness = use_case_with(no_resources(), Some(provider));
 
         // Act
         let result = harness

@@ -1,10 +1,7 @@
 use chrono::{NaiveDate, NaiveDateTime};
 
 use crate::domain::NumericID;
-use crate::domain::model::{
-    AssetOwner, DIGEST_HEX_LENGTH, IntegrityHash, IntegrityHashError, Protected, ResourceKind,
-    ResourceRef,
-};
+use crate::domain::model::{AssetOwner, DIGEST_HEX_LENGTH, IntegrityHash, IntegrityHashError};
 
 /// Error returned when initialising or updating a `File`.
 #[derive(Debug, thiserror::Error)]
@@ -132,6 +129,13 @@ impl File {
 
     /// Return the resource that owns the file, absent when nothing references it.
     #[must_use]
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "the asset decision follows the resource graph now; the accessor stays part of the model contract"
+        )
+    )]
     pub(crate) fn owner(&self) -> Option<AssetOwner> {
         self.owner
     }
@@ -254,23 +258,5 @@ impl File {
     #[must_use]
     pub(crate) fn with_owner(self, owner: Option<AssetOwner>) -> Self {
         Self { owner, ..self }
-    }
-}
-
-impl Protected for File {
-    fn is_privileged_account(&self) -> bool {
-        false
-    }
-
-    fn is_publicly_visible(&self) -> bool {
-        self.is_public()
-    }
-
-    fn owner_id(&self) -> Option<NumericID> {
-        Some(self.user_id)
-    }
-
-    fn resource_ref(&self) -> Option<ResourceRef> {
-        Some(ResourceRef::new(ResourceKind::File, self.id))
     }
 }

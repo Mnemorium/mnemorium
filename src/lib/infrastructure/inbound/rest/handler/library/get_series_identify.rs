@@ -24,7 +24,7 @@ pub(crate) struct IdentifySeriesQuery {
 /// Search the configured video provider for show candidates.
 ///
 /// The route reads a provider rather than the catalogue, so it is guarded by
-/// `library.read` and returns only the candidates the show kind names. With no
+/// `ViewMetadata` on the catalogue and returns only the candidates the show kind names. With no
 /// provider configured it answers an `available: false` document.
 #[utoipa::path(
     get,

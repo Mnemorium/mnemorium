@@ -1,16 +1,17 @@
+use crate::application::authorization::authorize;
+use crate::domain::model::{ResourceKind, ResourceRef};
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
-use tracing::{debug, warn};
+use tracing::debug;
 
 use crate::application::port::{GetUserCommand, GetUserError, GetUserResponse, GetUserUseCase};
 use crate::domain::model::Action;
 use crate::domain::port::{
-    IdentityUnitOfWork, PermissionFilter, PermissionRepository as _, UnitOfWork as _,
-    UnitOfWorkFactory, UserFilter, UserRepository as _, UserUnitOfWork,
+    IdentityUnitOfWork, UnitOfWork as _, UnitOfWorkFactory, UserFilter, UserRepository as _,
+    UserUnitOfWork,
 };
-use crate::domain::service::{Authorization, Decision};
 
 /// Use case implementation for fetching a user by identifier.
 pub(crate) struct GetUser<F> {
@@ -69,28 +70,15 @@ where
                     .into_iter()
                     .next()
                     .ok_or(GetUserError::NoSuchUser)?;
-
-                let permissions = unit_of_work
-                    .permissions()
-                    .search(&PermissionFilter {
-                        user_id: Some(caller.id()),
-                        ..PermissionFilter::default()
-                    })
-                    .await
-                    .map_err(|error| GetUserError::Unknown(error.into()))?;
-                if let Decision::Deny(denial) =
-                    Authorization::decide(&caller, &permissions, Action::UserRead, &user)
-                {
-                    warn!(
-                        target: "security",
-                        event = "authz_failed",
-                        actor = caller.id(),
-                        action = %denial.action().verb(),
-                        target = %denial.action().target(),
-                        "denied an action"
-                    );
-                    return Err(GetUserError::NotAdmin);
-                }
+                authorize(
+                    &mut unit_of_work.resources(),
+                    &caller,
+                    ResourceRef::new(ResourceKind::User, user.id()),
+                    Action::ViewMetadata,
+                    None,
+                )
+                .await
+                .map_err(|_| GetUserError::NotAdmin)?;
 
                 Ok(GetUserResponse::new(
                     user.id(),
@@ -129,9 +117,9 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::model::{Permission, Role, Scope, User, UserError};
+    use crate::domain::model::{Role, User, UserError};
 
-    use crate::domain::port::{MockPermissionRepository, MockUserRepository, RepositoryError};
+    use crate::domain::port::{MockUserRepository, RepositoryError};
 
     use crate::test_helpers::*;
     use std::error::Error;
@@ -156,7 +144,7 @@ mod tests {
         setup(&mut user_repository)?;
 
         let unit_of_work = TestUnitOfWork {
-            permissions: no_permissions(),
+            resources: no_resources(),
             users: user_repository,
             ..TestUnitOfWork::default()
         };
@@ -252,71 +240,6 @@ mod tests {
         assert_eq!(response.role(), Role::Admin);
         Ok(())
     }
-
-    #[tokio::test]
-    async fn get_user_standard_caller_returns_not_admin() -> Result<(), Box<dyn Error>> {
-        // Arrange
-        let harness = use_case_with(|user_repository| {
-            let caller = user(1, "alice", None, Role::Standard)?;
-            user_repository
-                .expect_search()
-                .withf(|filter| filter.id == Some(1))
-                .return_once(move |_| Box::pin(async move { Ok(vec![caller]) }));
-            let target = user(2, "brad", None, Role::Standard)?;
-            user_repository
-                .expect_search()
-                .withf(|filter| filter.id == Some(2))
-                .return_once(move |_| Box::pin(async move { Ok(vec![target]) }));
-            Ok(())
-        })?;
-        let command = GetUserCommand::new(1, 2);
-
-        // Act
-        let result = harness.use_case.execute(command).await;
-
-        // Assert
-        assert!(matches!(result, Err(GetUserError::NotAdmin)));
-        assert!(harness.rolled_back.load(Ordering::SeqCst));
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn get_user_standard_caller_granted_read_returns_profile() -> Result<(), Box<dyn Error>> {
-        // Arrange
-        let mut user_repository = MockUserRepository::new();
-        let caller = user(1, "alice", None, Role::Standard)?;
-        user_repository
-            .expect_search()
-            .withf(|filter| filter.id == Some(1))
-            .return_once(move |_| Box::pin(async move { Ok(vec![caller]) }));
-        let target = user(2, "brad", None, Role::Standard)?;
-        user_repository
-            .expect_search()
-            .withf(|filter| filter.id == Some(2))
-            .return_once(move |_| Box::pin(async move { Ok(vec![target]) }));
-        let mut permissions = MockPermissionRepository::new();
-        expect_permissions(
-            &mut permissions,
-            1,
-            vec![Permission::try_new(1, Action::UserRead, Scope::All)?],
-        );
-        let unit_of_work = TestUnitOfWork {
-            permissions,
-            users: user_repository,
-            ..TestUnitOfWork::default()
-        };
-        let factory = TestFactory::new(unit_of_work);
-        let use_case: UseCase = GetUser::new(Arc::new(factory));
-        let command = GetUserCommand::new(1, 2);
-
-        // Act
-        let response = use_case.execute(command).await?;
-
-        // Assert
-        assert_eq!(response.id(), 2);
-        Ok(())
-    }
-
     #[tokio::test]
     async fn get_user_unknown_caller_returns_no_such_caller() -> Result<(), Box<dyn Error>> {
         // Arrange

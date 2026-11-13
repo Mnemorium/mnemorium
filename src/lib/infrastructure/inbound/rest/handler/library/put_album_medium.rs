@@ -25,9 +25,9 @@ pub(crate) struct PutAlbumMediumRequest {
 
 /// Create or retype a music medium.
 ///
-/// Only a caller whose `library.manage` scope covers the album may write it.
-/// The write is idempotent by `(album, index)`: an existing medium keeps its
-/// tracks and changes type.
+/// Writing a medium requires `View` and then `CreateChild` for a music medium
+/// on the album. The write is idempotent by `(album, index)`: an existing
+/// medium keeps its tracks and changes type.
 #[utoipa::path(
     put,
     operation_id = "put_album_medium",

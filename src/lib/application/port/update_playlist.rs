@@ -1,6 +1,7 @@
 use std::future::Future;
 use std::pin::Pin;
 
+use crate::application::FieldUpdate;
 use crate::domain::NumericID;
 use crate::domain::model::MusicPlaylist;
 
@@ -12,6 +13,8 @@ pub(crate) struct UpdatePlaylistCommand {
     add_track: Option<NumericID>,
     /// Identifier of the authenticated caller.
     caller_id: NumericID,
+    /// Replacement cover image, when the request names one or clears it.
+    cover_image_id: FieldUpdate<NumericID>,
     /// New visibility, when requested.
     is_public: Option<bool>,
     /// New name, when requested.
@@ -31,6 +34,12 @@ impl UpdatePlaylistCommand {
     #[must_use]
     pub(crate) fn caller_id(&self) -> NumericID {
         self.caller_id
+    }
+
+    /// Return the replacement cover image, if the request names one or clears it.
+    #[must_use]
+    pub(crate) fn cover_image_id(&self) -> FieldUpdate<NumericID> {
+        self.cover_image_id
     }
 
     /// Return the new visibility, if requested.
@@ -53,10 +62,12 @@ impl UpdatePlaylistCommand {
         name: Option<String>,
         is_public: Option<bool>,
         add_track: Option<NumericID>,
+        cover_image_id: FieldUpdate<NumericID>,
     ) -> Self {
         Self {
             add_track,
             caller_id,
+            cover_image_id,
             is_public,
             name,
             playlist_id,
@@ -96,9 +107,12 @@ impl UpdatePlaylistResponse {
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub(crate) enum UpdatePlaylistError {
-    /// The caller may read the playlist but does not own it.
-    #[error("only the owner may change a playlist's metadata")]
+    /// The caller may read the playlist but may not change it.
+    #[error("the caller may not change this playlist")]
     Forbidden,
+    /// The cover image does not exist, belongs to the library, or already has a referrer.
+    #[error("the cover image is not usable by a playlist")]
+    InvalidCover,
     /// The name is empty or made only of whitespace.
     #[error("playlist name must not be empty")]
     InvalidName,

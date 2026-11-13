@@ -76,6 +76,7 @@ fn all_compact_discs(mediums: &[MediumSummary]) -> bool {
 mod tests {
     use super::*;
     use crate::domain::model::{ExternalRef, MediumFormat, MusicCandidate, MusicKind, ProviderId};
+    use allure_cargotest::allure_test;
 
     use chrono::NaiveDate;
     use std::error::Error;
@@ -182,8 +183,12 @@ mod tests {
             .collect()
     }
 
+    #[allure_test]
     #[test]
     fn order_editions_places_compact_discs_first() {
+        allure.epic("Metadata enrichment");
+        allure.feature("REQ-METADATA-ENRICHMENT-020");
+        allure.story("SCN-METADATA-ENRICHMENT-020-A");
         // Arrange
         let editions = vec![
             edition("vinyl", None, None, &[vinyl()]),
@@ -197,8 +202,12 @@ mod tests {
         assert_eq!(edition_ids(&ordered), vec!["cd", "vinyl"]);
     }
 
+    #[allure_test]
     #[test]
     fn order_editions_keeps_the_provider_order_within_a_bucket() {
+        allure.epic("Metadata enrichment");
+        allure.feature("REQ-METADATA-ENRICHMENT-020");
+        allure.story("SCN-METADATA-ENRICHMENT-020-B");
         // Arrange
         let editions = vec![
             edition("cd-a", None, None, &[cd()]),
@@ -217,8 +226,12 @@ mod tests {
         );
     }
 
+    #[allure_test]
     #[test]
     fn a_mixed_format_edition_is_not_a_compact_disc() {
+        allure.epic("Metadata enrichment");
+        allure.feature("REQ-METADATA-ENRICHMENT-020");
+        allure.story("SCN-METADATA-ENRICHMENT-020-C");
         // Arrange
         let editions = vec![
             edition("mixed", None, None, &[cd(), vinyl()]),
@@ -232,8 +245,12 @@ mod tests {
         assert_eq!(edition_ids(&ordered), vec!["cd", "mixed"]);
     }
 
+    #[allure_test]
     #[test]
     fn an_edition_without_a_medium_is_not_a_compact_disc() {
+        allure.epic("Metadata enrichment");
+        allure.feature("REQ-METADATA-ENRICHMENT-020");
+        allure.story("SCN-METADATA-ENRICHMENT-020-D");
         // Arrange
         let editions = vec![
             edition("unknown", None, None, &[]),

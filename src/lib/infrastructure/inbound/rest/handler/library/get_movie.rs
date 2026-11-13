@@ -10,7 +10,7 @@ use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody, hal_js
 
 /// Fetch one film by its identifier.
 ///
-/// Any authenticated caller may read a film; the film is not owned and carries
+/// A caller that may `View` a film reads it; the film is not owned and carries
 /// no visibility flag. The representation carries the film's genres and the
 /// video that backs it.
 #[utoipa::path(

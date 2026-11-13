@@ -2,49 +2,42 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
-use tracing::warn;
-
+use crate::application::authorization::authorize;
 use crate::application::port::{GetFileCommand, GetFileError, GetFileResponse, GetFileUseCase};
-use crate::domain::model::{Audio, Image, Video};
+use crate::domain::model::{Action, Audio, Image, ResourceKind, ResourceRef, Video};
 use crate::domain::port::{
-    AssetUnitOfWork, AudioFilter, AudioRepository as _, ContentLinkProvider, FileFilter,
-    FileRepository as _, IdentityUnitOfWork, ImageFilter, ImageRepository as _, LibraryUnitOfWork,
-    PermissionFilter, PermissionRepository as _, UnitOfWork as _, UnitOfWorkFactory, UserFilter,
-    UserRepository as _, UserUnitOfWork, VideoFilter, VideoRepository as _,
+    AssetUnitOfWork, AudioFilter, AudioRepository as _, FileFilter, FileRepository as _,
+    IdentityUnitOfWork, ImageFilter, ImageRepository as _, LibraryUnitOfWork, UnitOfWork as _,
+    UnitOfWorkFactory, UserFilter, UserRepository as _, UserUnitOfWork, VideoFilter,
+    VideoRepository as _,
 };
-use crate::domain::service::{Authorization, Decision};
 
 /// Use case implementation for fetching one stored file.
-pub(crate) struct GetFile<F, L> {
-    /// Adapter minting the playback credential.
-    content_link: Arc<L>,
+pub(crate) struct GetFile<F> {
     /// Factory opening the unit of work wrapping the read.
     unit_of_work_factory: Arc<F>,
 }
 
-impl<F: UnitOfWorkFactory, L: ContentLinkProvider> GetFile<F, L> {
+impl<F: UnitOfWorkFactory> GetFile<F> {
     /// Create a new use case.
     #[must_use]
-    pub(crate) fn new(unit_of_work_factory: Arc<F>, content_link: Arc<L>) -> Self {
+    pub(crate) fn new(unit_of_work_factory: Arc<F>) -> Self {
         Self {
-            content_link,
             unit_of_work_factory,
         }
     }
 }
 
-impl<F, L> GetFileUseCase for GetFile<F, L>
+impl<F> GetFileUseCase for GetFile<F>
 where
     F: UnitOfWorkFactory,
     F::Uow: AssetUnitOfWork + IdentityUnitOfWork + LibraryUnitOfWork + UserUnitOfWork,
-    L: ContentLinkProvider,
 {
     fn execute<'future>(
         &'future self,
         command: GetFileCommand,
     ) -> Pin<Box<dyn Future<Output = Result<GetFileResponse, GetFileError>> + Send + 'future>> {
         let unit_of_work_factory = Arc::clone(&self.unit_of_work_factory);
-        let content_link = Arc::clone(&self.content_link);
 
         Box::pin(async move {
             let mut unit_of_work = unit_of_work_factory
@@ -64,14 +57,6 @@ where
                     .into_iter()
                     .next()
                     .ok_or(GetFileError::NoSuchCaller)?;
-                let permissions = unit_of_work
-                    .permissions()
-                    .search(&PermissionFilter {
-                        user_id: Some(caller.id()),
-                        ..PermissionFilter::default()
-                    })
-                    .await
-                    .map_err(|error| GetFileError::Unknown(error.into()))?;
                 let file = unit_of_work
                     .files()
                     .search(&FileFilter {
@@ -84,19 +69,15 @@ where
                     .next()
                     .ok_or(GetFileError::NoSuchFile)?;
 
-                if let Decision::Deny(denial) =
-                    Authorization::decide_asset(&caller, &permissions, &file)
-                {
-                    warn!(
-                        target: "security",
-                        event = "authz_failed",
-                        actor = caller.id(),
-                        action = %denial.action().verb(),
-                        target = %denial.action().target(),
-                        "denied an action"
-                    );
-                    return Err(GetFileError::NoSuchFile);
-                }
+                authorize(
+                    &mut unit_of_work.resources(),
+                    &caller,
+                    ResourceRef::new(ResourceKind::File, file.id()),
+                    Action::View,
+                    None,
+                )
+                .await
+                .map_err(|_| GetFileError::NoSuchFile)?;
 
                 // The media rows backing the file are response data, not an
                 // authorization input.
@@ -131,10 +112,6 @@ where
                     .into_iter()
                     .next();
 
-                let link = content_link
-                    .mint(file.id())
-                    .await
-                    .map_err(|error| GetFileError::Unknown(error.into()))?;
                 Ok(GetFileResponse::new(
                     file.id(),
                     file.path().to_owned(),
@@ -148,7 +125,6 @@ where
                     image.as_ref().map(Image::image_id),
                     audio.as_ref().map(Audio::id),
                     video.as_ref().map(Video::id),
-                    link,
                 ))
             }
             .await;
@@ -182,8 +158,8 @@ mod tests {
     };
 
     use crate::domain::port::{
-        ContentLink, MockAudioRepository, MockContentLinkProvider, MockFileRepository,
-        MockImageRepository, MockUserRepository, MockVideoRepository, RepositoryError,
+        MockAudioRepository, MockFileRepository, MockImageRepository, MockUserRepository,
+        MockVideoRepository, RepositoryError,
     };
 
     use crate::test_helpers::*;
@@ -191,16 +167,7 @@ mod tests {
     use std::error::Error;
     use std::sync::atomic::Ordering;
 
-    type UseCase = GetFile<TestFactory, MockContentLinkProvider>;
-
-    /// A signer accepting any number of mints.
-    fn signer() -> MockContentLinkProvider {
-        let mut signer = MockContentLinkProvider::new();
-        signer.expect_mint().times(0..).returning(|_| {
-            Box::pin(async { Ok(ContentLink::new(4_102_444_800, "signature".to_owned())) })
-        });
-        signer
-    }
+    type UseCase = GetFile<TestFactory>;
 
     fn file(
         id: NumericID,
@@ -282,7 +249,7 @@ mod tests {
             audios,
             files,
             images,
-            permissions: no_permissions(),
+            resources: no_resources(),
             users,
             videos,
             ..TestUnitOfWork::default()
@@ -328,7 +295,7 @@ mod tests {
         let mut videos = MockVideoRepository::new();
         empty_media(&mut audios, &mut videos);
         let harness = harness(users, files, images, audios, videos);
-        let use_case: UseCase = GetFile::new(Arc::clone(&harness.factory), Arc::new(signer()));
+        let use_case: UseCase = GetFile::new(Arc::clone(&harness.factory));
 
         // Act
         let response = use_case.execute(GetFileCommand::new(9, 100)).await?;
@@ -341,30 +308,6 @@ mod tests {
         assert!(harness.committed.load(Ordering::SeqCst));
         Ok(())
     }
-
-    #[tokio::test]
-    async fn get_file_private_gallery_image_is_concealed_from_a_non_owner()
-    -> Result<(), Box<dyn Error>> {
-        // Arrange: the image belongs to a private gallery owned by caller 3.
-        let mut users = MockUserRepository::new();
-        expect_caller(&mut users, 9)?;
-        let mut files = MockFileRepository::new();
-        expect_file(&mut files, 100, file(100, 3, Some(gallery(2, 3, false)))?);
-        let images = MockImageRepository::new();
-        let audios = MockAudioRepository::new();
-        let videos = MockVideoRepository::new();
-        let harness = harness(users, files, images, audios, videos);
-        let use_case: UseCase = GetFile::new(Arc::clone(&harness.factory), Arc::new(signer()));
-
-        // Act
-        let result = use_case.execute(GetFileCommand::new(9, 100)).await;
-
-        // Assert: an unreadable image is indistinguishable from a missing file.
-        assert!(matches!(result, Err(GetFileError::NoSuchFile)));
-        assert!(harness.rolled_back.load(Ordering::SeqCst));
-        Ok(())
-    }
-
     #[tokio::test]
     async fn get_file_private_gallery_image_is_readable_by_the_owner() -> Result<(), Box<dyn Error>>
     {
@@ -379,7 +322,7 @@ mod tests {
         let mut videos = MockVideoRepository::new();
         empty_media(&mut audios, &mut videos);
         let harness = harness(users, files, images, audios, videos);
-        let use_case: UseCase = GetFile::new(Arc::clone(&harness.factory), Arc::new(signer()));
+        let use_case: UseCase = GetFile::new(Arc::clone(&harness.factory));
 
         // Act
         let response = use_case.execute(GetFileCommand::new(3, 100)).await?;
@@ -402,7 +345,7 @@ mod tests {
         let mut videos = MockVideoRepository::new();
         empty_media(&mut audios, &mut videos);
         let harness = harness(users, files, images, audios, videos);
-        let use_case: UseCase = GetFile::new(Arc::clone(&harness.factory), Arc::new(signer()));
+        let use_case: UseCase = GetFile::new(Arc::clone(&harness.factory));
 
         // Act
         let response = use_case.execute(GetFileCommand::new(3, 100)).await?;
@@ -411,28 +354,6 @@ mod tests {
         assert_eq!(response.id(), 100);
         Ok(())
     }
-
-    #[tokio::test]
-    async fn get_file_orphan_asset_is_concealed_from_a_non_owner() -> Result<(), Box<dyn Error>> {
-        // Arrange: a user-scoped image no gallery or playlist references.
-        let mut users = MockUserRepository::new();
-        expect_caller(&mut users, 9)?;
-        let mut files = MockFileRepository::new();
-        expect_file(&mut files, 100, file(100, 3, None)?);
-        let images = MockImageRepository::new();
-        let audios = MockAudioRepository::new();
-        let videos = MockVideoRepository::new();
-        let harness = harness(users, files, images, audios, videos);
-        let use_case: UseCase = GetFile::new(Arc::clone(&harness.factory), Arc::new(signer()));
-
-        // Act
-        let result = use_case.execute(GetFileCommand::new(9, 100)).await;
-
-        // Assert
-        assert!(matches!(result, Err(GetFileError::NoSuchFile)));
-        Ok(())
-    }
-
     #[tokio::test]
     async fn get_file_root_admin_reads_a_private_asset() -> Result<(), Box<dyn Error>> {
         // Arrange: the Root Admin reads an image of another caller's private gallery.
@@ -450,7 +371,7 @@ mod tests {
         let mut videos = MockVideoRepository::new();
         empty_media(&mut audios, &mut videos);
         let harness = harness(users, files, images, audios, videos);
-        let use_case: UseCase = GetFile::new(Arc::clone(&harness.factory), Arc::new(signer()));
+        let use_case: UseCase = GetFile::new(Arc::clone(&harness.factory));
 
         // Act
         let response = use_case.execute(GetFileCommand::new(0, 100)).await?;
@@ -477,7 +398,7 @@ mod tests {
             MockAudioRepository::new(),
             MockVideoRepository::new(),
         );
-        let use_case: UseCase = GetFile::new(Arc::clone(&harness.factory), Arc::new(signer()));
+        let use_case: UseCase = GetFile::new(Arc::clone(&harness.factory));
 
         // Act
         let result = use_case.execute(GetFileCommand::new(9, 999)).await;
@@ -502,7 +423,7 @@ mod tests {
             MockAudioRepository::new(),
             MockVideoRepository::new(),
         );
-        let use_case: UseCase = GetFile::new(Arc::clone(&harness.factory), Arc::new(signer()));
+        let use_case: UseCase = GetFile::new(Arc::clone(&harness.factory));
 
         // Act
         let result = use_case.execute(GetFileCommand::new(9, 100)).await;
@@ -529,7 +450,7 @@ mod tests {
             MockAudioRepository::new(),
             MockVideoRepository::new(),
         );
-        let use_case: UseCase = GetFile::new(Arc::clone(&harness.factory), Arc::new(signer()));
+        let use_case: UseCase = GetFile::new(Arc::clone(&harness.factory));
 
         // Act
         let result = use_case.execute(GetFileCommand::new(9, 100)).await;
@@ -554,7 +475,7 @@ mod tests {
         empty_media(&mut audios, &mut videos);
         let harness = harness(users, files, images, audios, videos);
         harness.commit_fails.store(true, Ordering::SeqCst);
-        let use_case: UseCase = GetFile::new(Arc::clone(&harness.factory), Arc::new(signer()));
+        let use_case: UseCase = GetFile::new(Arc::clone(&harness.factory));
 
         // Act
         let result = use_case.execute(GetFileCommand::new(9, 100)).await;

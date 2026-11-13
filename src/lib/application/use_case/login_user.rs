@@ -4,16 +4,17 @@ use std::sync::Arc;
 
 use tracing::{error, info, warn};
 
-use crate::application::port::{
-    LoginUserCommand, LoginUserError, LoginUserResponse, LoginUserUseCase,
-};
+use crate::application::port::{LoginUserCommand, LoginUserError, LoginUserUseCase};
 use crate::domain::port::{
-    CredentialFilter, CredentialRepository as _, IdentityUnitOfWork, PasswordHasher, TokenProvider,
-    UnitOfWork as _, UnitOfWorkFactory, UserFilter, UserRepository as _, UserUnitOfWork,
+    CredentialFilter, CredentialRepository as _, IdentityUnitOfWork, IssuedToken, LoginAttemptKey,
+    LoginAttemptLimiter, PasswordHasher, TokenProvider, UnitOfWork as _, UnitOfWorkFactory,
+    UserFilter, UserRepository as _, UserUnitOfWork,
 };
 
 /// Use case implementation for authenticating a user.
-pub(crate) struct LoginUser<F, H, P> {
+pub(crate) struct LoginUser<F, H, P, L: ?Sized> {
+    /// Limiter counting attempts per account.
+    attempt_limiter: Arc<L>,
     /// Hasher for user passwords.
     password_hasher: Arc<H>,
     /// Provider issuing and validating tokens.
@@ -22,15 +23,19 @@ pub(crate) struct LoginUser<F, H, P> {
     unit_of_work_factory: Arc<F>,
 }
 
-impl<F: UnitOfWorkFactory, H: PasswordHasher, P: TokenProvider> LoginUser<F, H, P> {
+impl<F: UnitOfWorkFactory, H: PasswordHasher, P: TokenProvider, L: LoginAttemptLimiter + ?Sized>
+    LoginUser<F, H, P, L>
+{
     /// Create a new use case.
     #[must_use]
     pub(crate) fn new(
         unit_of_work_factory: Arc<F>,
         password_hasher: Arc<H>,
         token_provider: Arc<P>,
+        attempt_limiter: Arc<L>,
     ) -> Self {
         Self {
+            attempt_limiter,
             password_hasher,
             token_provider,
             unit_of_work_factory,
@@ -38,21 +43,22 @@ impl<F: UnitOfWorkFactory, H: PasswordHasher, P: TokenProvider> LoginUser<F, H, 
     }
 }
 
-impl<F, H, P> LoginUserUseCase for LoginUser<F, H, P>
+impl<F, H, P, L> LoginUserUseCase for LoginUser<F, H, P, L>
 where
     F: UnitOfWorkFactory,
     F::Uow: IdentityUnitOfWork + UserUnitOfWork,
     H: PasswordHasher,
     P: TokenProvider,
+    L: LoginAttemptLimiter + ?Sized,
 {
     fn execute<'future>(
         &'future self,
         command: LoginUserCommand,
-    ) -> Pin<Box<dyn Future<Output = Result<LoginUserResponse, LoginUserError>> + Send + 'future>>
-    {
+    ) -> Pin<Box<dyn Future<Output = Result<IssuedToken, LoginUserError>> + Send + 'future>> {
         let password_hasher = Arc::clone(&self.password_hasher);
         let token_provider = Arc::clone(&self.token_provider);
         let unit_of_work_factory = Arc::clone(&self.unit_of_work_factory);
+        let attempt_limiter = Arc::clone(&self.attempt_limiter);
 
         Box::pin(async move {
             let username = command.username().to_owned();
@@ -67,7 +73,7 @@ where
                 let Some(user) = unit_of_work
                     .users()
                     .search(&UserFilter {
-                        username: Some(username),
+                        username: Some(username.clone()),
                         ..UserFilter::default()
                     })
                     .await
@@ -75,6 +81,11 @@ where
                     .into_iter()
                     .next()
                 else {
+                    // A username that resolves to no account is throttled under
+                    // a derived key, so a `429` cannot reveal whether it exists.
+                    if let Some(wait) = attempt_limiter.check(LoginAttemptKey::Username(username)) {
+                        return Err(LoginUserError::RateLimited(wait));
+                    }
                     // Spend the same password work as a real verification on
                     // the absent-user branch, then report an unknown username.
                     // A backend fault surfaces as an internal error, exactly as
@@ -85,6 +96,12 @@ where
                         .map_err(|error| LoginUserError::Unknown(error.into()))?;
                     return Err(LoginUserError::InvalidUsername);
                 };
+
+                // The account dimension is checked before any password work, so
+                // attempts against one account are slowed across client addresses.
+                if let Some(wait) = attempt_limiter.check(LoginAttemptKey::User(user.id())) {
+                    return Err(LoginUserError::RateLimited(wait));
+                }
 
                 let credential = unit_of_work
                     .credentials()
@@ -129,10 +146,7 @@ where
                     "authenticated a user"
                 );
 
-                Ok(LoginUserResponse::new(
-                    token.value().to_owned(),
-                    token.expires_in(),
-                ))
+                Ok(token)
             }
             .await;
 
@@ -184,17 +198,20 @@ mod tests {
     use crate::domain::model::{Credential, Role, User, UserError};
 
     use crate::domain::port::{
-        IssuedToken, MockCredentialRepository, MockPasswordHasher, MockTokenProvider,
-        MockUserRepository, PasswordHasherError, RepositoryError, TokenProviderError,
+        IssuedToken, MockCredentialRepository, MockLoginAttemptLimiter, MockPasswordHasher,
+        MockTokenProvider, MockUserRepository, PasswordHasherError, RepositoryError,
+        TokenProviderError,
     };
 
     use crate::test_helpers::*;
     use chrono::NaiveDateTime;
     use std::error::Error;
     use std::sync::atomic::{AtomicBool, Ordering};
+    use std::time::Duration;
     use tracing_test::traced_test;
 
-    type UseCase = LoginUser<TestFactory, MockPasswordHasher, MockTokenProvider>;
+    type UseCase =
+        LoginUser<TestFactory, MockPasswordHasher, MockTokenProvider, MockLoginAttemptLimiter>;
 
     /// A use case under test together with its transaction-lifecycle flags.
     struct Harness {
@@ -213,6 +230,25 @@ mod tests {
             &mut MockPasswordHasher,
             &mut MockTokenProvider,
         ) -> Result<(), Box<dyn Error>>,
+    ) -> Result<Harness, Box<dyn Error>> {
+        use_case_with_limiter(setup, unlimited())
+    }
+
+    /// A limiter that never throttles, for the cases that do not exercise it.
+    fn unlimited() -> MockLoginAttemptLimiter {
+        let mut limiter = MockLoginAttemptLimiter::new();
+        limiter.expect_check().returning(|_| None);
+        limiter
+    }
+
+    fn use_case_with_limiter(
+        setup: impl FnOnce(
+            &mut MockUserRepository,
+            &mut MockCredentialRepository,
+            &mut MockPasswordHasher,
+            &mut MockTokenProvider,
+        ) -> Result<(), Box<dyn Error>>,
+        attempt_limiter: MockLoginAttemptLimiter,
     ) -> Result<Harness, Box<dyn Error>> {
         let mut user_repository = MockUserRepository::new();
         let mut credential_repository = MockCredentialRepository::new();
@@ -240,6 +276,7 @@ mod tests {
                 Arc::new(factory),
                 Arc::new(password_hasher),
                 Arc::new(token_provider),
+                Arc::new(attempt_limiter),
             ),
             committed,
             rolled_back,
@@ -309,7 +346,7 @@ mod tests {
         let response = harness.use_case.execute(command).await?;
 
         // Assert
-        assert_eq!(response.access_token(), "token");
+        assert_eq!(response.value(), "token");
         assert_eq!(response.expires_in(), 3600);
         assert!(harness.committed.load(Ordering::SeqCst));
         Ok(())
@@ -746,6 +783,63 @@ mod tests {
             !logs_contain("event="),
             "a port failure is owned by the adapter"
         );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn login_user_exhausted_account_quota_returns_rate_limited() -> Result<(), Box<dyn Error>>
+    {
+        // Arrange: the account's quota is spent before any password work runs.
+        let mut attempt_limiter = MockLoginAttemptLimiter::new();
+        attempt_limiter.expect_check().times(1).returning(|key| {
+            assert_eq!(key, LoginAttemptKey::User(1));
+            Some(Duration::from_secs(5))
+        });
+        let harness = use_case_with_limiter(
+            |user_repository, _, _, _| {
+                expect_user(user_repository, user(1, "alice")?);
+                Ok(())
+            },
+            attempt_limiter,
+        )?;
+        let command = command("alice", SECRET_PASSWORD);
+
+        // Act
+        let result = harness.use_case.execute(command).await;
+
+        // Assert
+        assert!(matches!(result, Err(LoginUserError::RateLimited(_))));
+        assert!(harness.rolled_back.load(Ordering::SeqCst));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn login_user_exhausted_unknown_username_quota_returns_rate_limited()
+    -> Result<(), Box<dyn Error>> {
+        // Arrange: an unknown username is counted under its own derived key.
+        let mut attempt_limiter = MockLoginAttemptLimiter::new();
+        attempt_limiter.expect_check().times(1).returning(|key| {
+            assert!(matches!(key, LoginAttemptKey::Username(_)));
+            Some(Duration::from_secs(5))
+        });
+        let harness = use_case_with_limiter(
+            |user_repository, _, _, _| {
+                user_repository
+                    .expect_search()
+                    .times(1)
+                    .returning(|_| Box::pin(async { Ok(Vec::new()) }));
+                Ok(())
+            },
+            attempt_limiter,
+        )?;
+        let command = command("ghost", SECRET_PASSWORD);
+
+        // Act
+        let result = harness.use_case.execute(command).await;
+
+        // Assert
+        assert!(matches!(result, Err(LoginUserError::RateLimited(_))));
+        assert!(harness.rolled_back.load(Ordering::SeqCst));
         Ok(())
     }
 }

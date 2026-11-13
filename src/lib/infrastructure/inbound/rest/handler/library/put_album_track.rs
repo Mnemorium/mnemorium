@@ -24,9 +24,10 @@ pub(crate) struct PutAlbumTrackRequest {
 
 /// Place or move a recording at a medium track address.
 ///
-/// Only a caller whose `library.manage` scope covers the album may write it.
-/// The server removes the recording's previous medium placement and inserts the
-/// new one in one transaction; an occupied destination is a conflict.
+/// Writing a placement requires `View` and then `CreateChild` for a music
+/// recording on the album. The server removes the recording's previous medium
+/// placement and inserts the new one in one transaction; an occupied
+/// destination is a conflict.
 #[utoipa::path(
     put,
     operation_id = "put_album_track",

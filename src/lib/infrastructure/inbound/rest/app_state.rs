@@ -6,7 +6,7 @@ use crate::application::port::{
     AssetUseCaseFactory, IdentityUseCaseFactory, LibraryUseCaseFactory, UserUseCaseFactory,
 };
 use crate::domain::model::{Configuration, InstanceState};
-use crate::infrastructure::outbound::jwt::{JwtContentLinkProvider, JwtTokenProvider};
+use crate::infrastructure::outbound::jwt::JwtTokenProvider;
 
 /// Application state injected into routers and middleware.
 ///
@@ -93,14 +93,6 @@ impl AppState {
     #[must_use]
     pub(crate) fn user_use_case_factory(&self) -> Arc<dyn UserUseCaseFactory> {
         Arc::clone(&self.user_use_case_factory)
-    }
-}
-
-impl FromRef<AppState> for Arc<JwtContentLinkProvider> {
-    fn from_ref(input: &AppState) -> Self {
-        Arc::new(JwtContentLinkProvider::new(
-            input.instance_state.jwt_secret().to_owned(),
-        ))
     }
 }
 

@@ -31,9 +31,9 @@ pub(crate) struct PatchAlbumTrackRequest {
 
 /// Edit the shared recording behind a track address.
 ///
-/// Only a caller whose `library.manage` scope covers the album may write it.
-/// The recording is shared, so the change is visible in every playlist that
-/// references it.
+/// Editing a track's metadata requires `View` and then `EditMetadata` on the
+/// album. The recording is shared, so the change is visible in every playlist
+/// that references it.
 #[utoipa::path(
     patch,
     operation_id = "patch_album_track",

@@ -3,7 +3,6 @@ use std::pin::Pin;
 
 use crate::domain::NumericID;
 use crate::domain::model::ScanType;
-use crate::domain::port::ContentLink;
 
 /// Command to fetch one typed video.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -45,8 +44,6 @@ pub(crate) struct GetVideoResponse {
     codec: String,
     /// Identifier of the colour space.
     color_id: String,
-    /// Playback credential scoped to the backing file.
-    content_link: ContentLink,
     /// Duration of the video, in milliseconds.
     duration_ms: f64,
     /// Identifier of the backing file.
@@ -74,12 +71,6 @@ impl GetVideoResponse {
     #[must_use]
     pub(crate) fn color_id(&self) -> &str {
         &self.color_id
-    }
-
-    /// Return the playback credential scoped to the backing file.
-    #[must_use]
-    pub(crate) fn content_link(&self) -> &ContentLink {
-        &self.content_link
     }
 
     /// Return the duration, in milliseconds.
@@ -128,12 +119,10 @@ impl GetVideoResponse {
         width: i64,
         scan_type: ScanType,
         file_id: NumericID,
-        content_link: ContentLink,
     ) -> Self {
         Self {
             codec,
             color_id,
-            content_link,
             duration_ms,
             file_id,
             frame_count,

@@ -1,8 +1,8 @@
+use crate::application::authorization::authorize;
+use crate::domain::model::{ResourceKind, ResourceRef};
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
-
-use tracing::warn;
 
 use crate::application::port::{
     GetSeriesEpisodeCommand, GetSeriesEpisodeError, GetSeriesEpisodeResponse,
@@ -10,11 +10,9 @@ use crate::application::port::{
 };
 use crate::domain::model::Action;
 use crate::domain::port::{
-    IdentityUnitOfWork, LibraryUnitOfWork, PermissionFilter, PermissionRepository as _,
-    SeriesFilter, SeriesRepository as _, UnitOfWork as _, UnitOfWorkFactory, UserFilter,
-    UserRepository as _, UserUnitOfWork,
+    IdentityUnitOfWork, LibraryUnitOfWork, SeriesFilter, SeriesRepository as _, UnitOfWork as _,
+    UnitOfWorkFactory, UserFilter, UserRepository as _, UserUnitOfWork,
 };
-use crate::domain::service::{Authorization, Decision};
 
 /// Use case implementation for fetching one episode of a season.
 pub(crate) struct GetSeriesEpisode<F> {
@@ -68,15 +66,6 @@ where
                     .next()
                     .ok_or(GetSeriesEpisodeError::NoSuchCaller)?;
 
-                let permissions = unit_of_work
-                    .permissions()
-                    .search(&PermissionFilter {
-                        user_id: Some(caller.id()),
-                        ..PermissionFilter::default()
-                    })
-                    .await
-                    .map_err(|error| GetSeriesEpisodeError::Unknown(error.into()))?;
-
                 let shown = unit_of_work
                     .series()
                     .search(&SeriesFilter {
@@ -88,19 +77,15 @@ where
                     .into_iter()
                     .next()
                     .ok_or(GetSeriesEpisodeError::NoSuchSeries)?;
-                if let Decision::Deny(denial) =
-                    Authorization::decide(&caller, &permissions, Action::LibraryRead, &shown)
-                {
-                    warn!(
-                        target: "security",
-                        event = "authz_failed",
-                        actor = caller.id(),
-                        action = %denial.action().verb(),
-                        target = %denial.action().target(),
-                        "denied an action"
-                    );
-                    return Err(GetSeriesEpisodeError::NoSuchSeries);
-                }
+                authorize(
+                    &mut unit_of_work.resources(),
+                    &caller,
+                    ResourceRef::new(ResourceKind::Series, shown.id()),
+                    Action::View,
+                    None,
+                )
+                .await
+                .map_err(|_| GetSeriesEpisodeError::NoSuchSeries)?;
 
                 let season = shown
                     .seasons()
@@ -148,6 +133,7 @@ where
 mod tests {
     use super::*;
     use crate::domain::port::{MockSeriesRepository, MockUserRepository, RepositoryError};
+    use allure_cargotest::allure_test;
 
     use crate::test_helpers::*;
     use std::error::Error;
@@ -162,7 +148,7 @@ mod tests {
         series: MockSeriesRepository,
     ) -> GalleryFactoryHarness {
         let unit_of_work = TestUnitOfWork {
-            permissions: no_permissions(),
+            resources: no_resources(),
             series,
             users,
             ..TestUnitOfWork::default()
@@ -170,8 +156,12 @@ mod tests {
         GalleryFactoryHarness::new(unit_of_work)
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn get_series_episode_returns_the_requested_episode() -> Result<(), Box<dyn Error>> {
+        allure.epic("Series");
+        allure.feature("REQ-SERIES-006");
+        allure.story("SCN-SERIES-006-A");
         // Arrange
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 1)?;
@@ -216,9 +206,13 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn get_series_episode_unknown_show_returns_no_such_series() -> Result<(), Box<dyn Error>>
     {
+        allure.epic("Series");
+        allure.feature("REQ-SERIES-006");
+        allure.story("SCN-SERIES-006-C");
         // Arrange
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 1)?;
@@ -243,9 +237,13 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn get_series_episode_unknown_season_returns_no_such_season() -> Result<(), Box<dyn Error>>
     {
+        allure.epic("Series");
+        allure.feature("REQ-SERIES-006");
+        allure.story("SCN-SERIES-006-C");
         // Arrange
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 1)?;
@@ -271,9 +269,13 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn get_series_episode_outside_the_season_returns_no_such_episode()
     -> Result<(), Box<dyn Error>> {
+        allure.epic("Series");
+        allure.feature("REQ-SERIES-006");
+        allure.story("SCN-SERIES-006-C");
         // Arrange
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 1)?;
@@ -303,9 +305,13 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn get_series_episode_unknown_caller_returns_no_such_caller() -> Result<(), Box<dyn Error>>
     {
+        allure.epic("Series");
+        allure.feature("REQ-SERIES-006");
+        allure.story("SCN-SERIES-006-A");
         // Arrange
         let mut users = MockUserRepository::new();
         users
@@ -328,8 +334,12 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn get_series_episode_repository_failure_returns_unknown() -> Result<(), Box<dyn Error>> {
+        allure.epic("Series");
+        allure.feature("REQ-SERIES-006");
+        allure.story("SCN-SERIES-006-A");
         // Arrange
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 1)?;

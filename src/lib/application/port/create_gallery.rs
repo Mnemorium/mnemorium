@@ -12,7 +12,7 @@ use crate::domain::service::MAX_NAME_LENGTH;
 pub(crate) struct CreateGalleryCommand {
     /// Identifier of the authenticated caller that will own the gallery.
     caller_id: NumericID,
-    /// Whether any authenticated user may read and moderate the gallery.
+    /// Whether any authenticated user may read the gallery.
     is_public: bool,
     /// Name of the gallery.
     name: String,
@@ -56,7 +56,7 @@ pub(crate) struct CreateGalleryResponse {
     created_at: NaiveDateTime,
     /// Unique identifier of the created gallery.
     gallery_id: NumericID,
-    /// Whether any authenticated user may read and moderate the gallery.
+    /// Whether any authenticated user may read the gallery.
     is_public: bool,
     /// Date and time of the last modification of the gallery.
     last_modified_at: NaiveDateTime,
@@ -128,6 +128,9 @@ impl CreateGalleryResponse {
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub(crate) enum CreateGalleryError {
+    /// The caller may not create a gallery.
+    #[error("the caller may not create a gallery")]
+    Forbidden,
     /// The name is empty or made only of whitespace.
     #[error("gallery name must not be empty")]
     InvalidName,

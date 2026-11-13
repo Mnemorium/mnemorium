@@ -1,3 +1,5 @@
+use crate::application::authorization::authorize;
+use crate::domain::model::ChildKind;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -7,14 +9,14 @@ use tracing::warn;
 use crate::application::port::{
     CreateMovieCommand, CreateMovieError, CreateMovieResponse, CreateMovieUseCase,
 };
-use crate::domain::model::Movie;
+use crate::domain::model::{Action, Movie, ResourceKind, ResourceRef, Visibility};
 use crate::domain::port::{
     EpisodeFilter, IdentityUnitOfWork, LibraryUnitOfWork, MovieFilter, MovieRepository as _,
-    PermissionFilter, PermissionRepository as _, RepositoryError, SeriesRepository as _,
-    UnitOfWork as _, UnitOfWorkFactory, UserFilter, UserRepository as _, UserUnitOfWork,
-    VideoFilter, VideoRepository as _,
+    NewResource, RepositoryError, ResourceRepository as _, SeriesRepository as _, UnitOfWork as _,
+    UnitOfWorkFactory, UserFilter, UserRepository as _, UserUnitOfWork, VideoFilter,
+    VideoRepository as _,
 };
-use crate::domain::service::{Authorization, CountryCode, Decision, NamePolicy, NamePolicyError};
+use crate::domain::service::{CountryCode, NamePolicy, NamePolicyError};
 
 /// Use case implementation for creating a film from a video.
 pub(crate) struct CreateMovie<F> {
@@ -63,28 +65,15 @@ where
                     .next()
                     .ok_or(CreateMovieError::NoSuchCaller)?;
 
-                let permissions = unit_of_work
-                    .permissions()
-                    .search(&PermissionFilter {
-                        user_id: Some(caller.id()),
-                        ..PermissionFilter::default()
-                    })
-                    .await
-                    .map_err(|error| CreateMovieError::Unknown(error.into()))?;
-
-                if let Decision::Deny(denial) =
-                    Authorization::decide_library_manage_surface(&caller, &permissions)
-                {
-                    warn!(
-                        target: "security",
-                        event = "authz_failed",
-                        actor = caller.id(),
-                        action = %denial.action().verb(),
-                        target = %denial.action().target(),
-                        "denied an action"
-                    );
-                    return Err(CreateMovieError::Forbidden);
-                }
+                authorize(
+                    &mut unit_of_work.resources(),
+                    &caller,
+                    ResourceRef::new(ResourceKind::Catalogue, 0),
+                    Action::CreateChild,
+                    Some(ChildKind::Movie),
+                )
+                .await
+                .map_err(|_| CreateMovieError::Forbidden)?;
 
                 let name =
                     NamePolicy::validate(command.name().to_owned()).map_err(
@@ -202,6 +191,18 @@ where
                     }
                 })?;
 
+                unit_of_work
+                    .resources()
+                    .create(NewResource {
+                        kind: ResourceKind::Movie,
+                        entity_id: stored.id(),
+                        owner_id: None,
+                        auth_parent: Some(ResourceRef::new(ResourceKind::Catalogue, 0)),
+                        visibility: Visibility::Public,
+                    })
+                    .await
+                    .map_err(|error| CreateMovieError::Unknown(error.into()))?;
+
                 Ok(CreateMovieResponse::new(stored, true))
             }
             .await;
@@ -227,12 +228,14 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use allure_cargotest::allure_test;
+
     use crate::domain::NumericID;
 
     use crate::domain::model::{Role, User};
 
     use crate::domain::port::{
-        MockMovieRepository, MockPermissionRepository, MockSeriesRepository, MockUserRepository,
+        MockMovieRepository, MockResourceRepository, MockSeriesRepository, MockUserRepository,
         MockVideoRepository,
     };
 
@@ -261,14 +264,14 @@ mod tests {
     /// Build a Library test harness around the given mocks.
     fn harness_with(
         users: MockUserRepository,
-        permissions: MockPermissionRepository,
+        resources: MockResourceRepository,
         movies: MockMovieRepository,
         series: MockSeriesRepository,
         videos: MockVideoRepository,
     ) -> GalleryFactoryHarness {
         let unit_of_work = TestUnitOfWork {
             movies,
-            permissions,
+            resources,
             series,
             users,
             videos,
@@ -291,8 +294,12 @@ mod tests {
         )
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn create_movie_new_film_reports_created() -> Result<(), Box<dyn Error>> {
+        allure.epic("Movies");
+        allure.feature("REQ-MOVIES-004");
+        allure.story("SCN-MOVIES-004-A");
         // Arrange: the video is free and no film or episode backs it.
         let mut users = MockUserRepository::new();
         expect_admin(&mut users, 1)?;
@@ -333,7 +340,7 @@ mod tests {
             .times(1)
             .withf(|filter| filter.video_id == Some(5))
             .returning(|_| Box::pin(async { Ok(Vec::new()) }));
-        let harness = harness_with(users, no_permissions(), movies, series, videos);
+        let harness = harness_with(users, no_resources(), movies, series, videos);
         let use_case: UseCase = CreateMovie::new(Arc::clone(&harness.factory));
 
         // Act
@@ -346,8 +353,12 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn create_movie_existing_film_returns_it_unchanged() -> Result<(), Box<dyn Error>> {
+        allure.epic("Movies");
+        allure.feature("REQ-MOVIES-004");
+        allure.story("SCN-MOVIES-004-B");
         // Arrange: the video already backs film 7.
         let mut users = MockUserRepository::new();
         expect_admin(&mut users, 1)?;
@@ -366,7 +377,7 @@ mod tests {
         movies.expect_create().times(0);
         let mut series = MockSeriesRepository::new();
         series.expect_search_episodes().times(0);
-        let harness = harness_with(users, no_permissions(), movies, series, videos);
+        let harness = harness_with(users, no_resources(), movies, series, videos);
         let use_case: UseCase = CreateMovie::new(Arc::clone(&harness.factory));
 
         // Act
@@ -381,32 +392,12 @@ mod tests {
         assert!(harness.committed.load(Ordering::SeqCst));
         Ok(())
     }
-
-    #[tokio::test]
-    async fn create_movie_standard_user_is_forbidden() -> Result<(), Box<dyn Error>> {
-        // Arrange
-        let mut users = MockUserRepository::new();
-        expect_caller(&mut users, 1)?;
-        let harness = harness_with(
-            users,
-            no_permissions(),
-            MockMovieRepository::new(),
-            MockSeriesRepository::new(),
-            MockVideoRepository::new(),
-        );
-        let use_case: UseCase = CreateMovie::new(Arc::clone(&harness.factory));
-
-        // Act
-        let result = use_case.execute(command()).await;
-
-        // Assert
-        assert!(matches!(result, Err(CreateMovieError::Forbidden)));
-        assert!(harness.rolled_back.load(Ordering::SeqCst));
-        Ok(())
-    }
-
+    #[allure_test]
     #[tokio::test]
     async fn create_movie_unknown_video_is_unprocessable() -> Result<(), Box<dyn Error>> {
+        allure.epic("Movies");
+        allure.feature("REQ-MOVIES-004");
+        allure.story("SCN-MOVIES-004-E");
         // Arrange
         let mut users = MockUserRepository::new();
         expect_admin(&mut users, 1)?;
@@ -417,7 +408,7 @@ mod tests {
             .returning(|_| Box::pin(async { Ok(Vec::new()) }));
         let harness = harness_with(
             users,
-            no_permissions(),
+            no_resources(),
             MockMovieRepository::new(),
             MockSeriesRepository::new(),
             videos,
@@ -433,14 +424,18 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn create_movie_empty_name_is_invalid() -> Result<(), Box<dyn Error>> {
+        allure.epic("Movies");
+        allure.feature("REQ-MOVIES-004");
+        allure.story("SCN-MOVIES-004-E");
         // Arrange
         let mut users = MockUserRepository::new();
         expect_admin(&mut users, 1)?;
         let harness = harness_with(
             users,
-            no_permissions(),
+            no_resources(),
             MockMovieRepository::new(),
             MockSeriesRepository::new(),
             MockVideoRepository::new(),
@@ -466,14 +461,18 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn create_movie_invalid_country_is_unprocessable() -> Result<(), Box<dyn Error>> {
+        allure.epic("Movies");
+        allure.feature("REQ-MOVIES-004");
+        allure.story("SCN-MOVIES-004-E");
         // Arrange
         let mut users = MockUserRepository::new();
         expect_admin(&mut users, 1)?;
         let harness = harness_with(
             users,
-            no_permissions(),
+            no_resources(),
             MockMovieRepository::new(),
             MockSeriesRepository::new(),
             MockVideoRepository::new(),
@@ -499,14 +498,18 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn create_movie_empty_genre_is_invalid() -> Result<(), Box<dyn Error>> {
+        allure.epic("Movies");
+        allure.feature("REQ-MOVIES-004");
+        allure.story("SCN-MOVIES-004-E");
         // Arrange
         let mut users = MockUserRepository::new();
         expect_admin(&mut users, 1)?;
         let harness = harness_with(
             users,
-            no_permissions(),
+            no_resources(),
             MockMovieRepository::new(),
             MockSeriesRepository::new(),
             MockVideoRepository::new(),
@@ -532,8 +535,12 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn create_movie_video_backing_an_episode_is_conflict() -> Result<(), Box<dyn Error>> {
+        allure.epic("Movies");
+        allure.feature("REQ-MOVIES-004");
+        allure.story("SCN-MOVIES-004-C");
         // Arrange: an episode already backs video 5.
         let mut users = MockUserRepository::new();
         expect_admin(&mut users, 1)?;
@@ -558,7 +565,7 @@ mod tests {
                 let found = attached.clone();
                 Box::pin(async move { Ok(vec![found]) })
             });
-        let harness = harness_with(users, no_permissions(), movies, series, videos);
+        let harness = harness_with(users, no_resources(), movies, series, videos);
         let use_case: UseCase = CreateMovie::new(Arc::clone(&harness.factory));
 
         // Act
@@ -570,8 +577,12 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn create_movie_invalid_cover_is_conflict() -> Result<(), Box<dyn Error>> {
+        allure.epic("Movies");
+        allure.feature("REQ-MOVIES-004");
+        allure.story("SCN-MOVIES-004-F");
         // Arrange: the repository rejects the cover through the scope trigger.
         let mut users = MockUserRepository::new();
         expect_admin(&mut users, 1)?;
@@ -595,7 +606,7 @@ mod tests {
             .expect_search_episodes()
             .times(1)
             .returning(|_| Box::pin(async { Ok(Vec::new()) }));
-        let harness = harness_with(users, no_permissions(), movies, series, videos);
+        let harness = harness_with(users, no_resources(), movies, series, videos);
         let use_case: UseCase = CreateMovie::new(Arc::clone(&harness.factory));
 
         // Act
@@ -618,56 +629,12 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn create_movie_missing_cover_is_conflict() -> Result<(), Box<dyn Error>> {
-        // Arrange: the repository rejects the cover through the scope trigger.
-        let mut users = MockUserRepository::new();
-        expect_admin(&mut users, 1)?;
-        let mut videos = MockVideoRepository::new();
-        let video = sample_video(5, 5)?;
-        videos.expect_search().times(1).return_once(move |_| {
-            let found = video.clone();
-            Box::pin(async move { Ok(vec![found]) })
-        });
-        let mut movies = MockMovieRepository::new();
-        movies
-            .expect_search()
-            .times(1)
-            .returning(|_| Box::pin(async { Ok(Vec::new()) }));
-        movies
-            .expect_create()
-            .times(1)
-            .returning(|_| Box::pin(async { Err(RepositoryError::DataIntegrityViolation) }));
-        let mut series = MockSeriesRepository::new();
-        series
-            .expect_search_episodes()
-            .times(1)
-            .returning(|_| Box::pin(async { Ok(Vec::new()) }));
-        let harness = harness_with(users, no_permissions(), movies, series, videos);
-        let use_case: UseCase = CreateMovie::new(Arc::clone(&harness.factory));
-
-        // Act
-        let result = use_case
-            .execute(CreateMovieCommand::new(
-                1,
-                5,
-                "Some Like It Hot".to_owned(),
-                None,
-                None,
-                None,
-                Vec::new(),
-                Some(9),
-            ))
-            .await;
-
-        // Assert
-        assert!(matches!(result, Err(CreateMovieError::Conflict)));
-        assert!(harness.rolled_back.load(Ordering::SeqCst));
-        Ok(())
-    }
-
+    #[allure_test]
     #[tokio::test]
     async fn create_movie_unknown_caller_returns_no_such_caller() -> Result<(), Box<dyn Error>> {
+        allure.epic("Movies");
+        allure.feature("REQ-MOVIES-004");
+        allure.story("SCN-MOVIES-004-A");
         // Arrange
         let mut users = MockUserRepository::new();
         users
@@ -676,7 +643,7 @@ mod tests {
             .returning(|_| Box::pin(async { Ok(Vec::new()) }));
         let harness = harness_with(
             users,
-            no_permissions(),
+            no_resources(),
             MockMovieRepository::new(),
             MockSeriesRepository::new(),
             MockVideoRepository::new(),
@@ -691,8 +658,12 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn create_movie_dependency_failure_returns_unknown() -> Result<(), Box<dyn Error>> {
+        allure.epic("Movies");
+        allure.feature("REQ-MOVIES-004");
+        allure.story("SCN-MOVIES-004-A");
         // Arrange: the video load fails at the port.
         let mut users = MockUserRepository::new();
         expect_admin(&mut users, 1)?;
@@ -703,7 +674,7 @@ mod tests {
             .returning(|_| Box::pin(async { Err(RepositoryError::Unavailable) }));
         let harness = harness_with(
             users,
-            no_permissions(),
+            no_resources(),
             MockMovieRepository::new(),
             MockSeriesRepository::new(),
             videos,

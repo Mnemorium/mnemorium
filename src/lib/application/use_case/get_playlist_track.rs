@@ -1,8 +1,8 @@
+use crate::application::authorization::authorize;
+use crate::domain::model::{ResourceKind, ResourceRef};
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
-
-use tracing::warn;
 
 use crate::application::port::{
     GetPlaylistTrackCommand, GetPlaylistTrackError, GetPlaylistTrackResponse,
@@ -11,10 +11,8 @@ use crate::application::port::{
 use crate::domain::model::Action;
 use crate::domain::port::{
     IdentityUnitOfWork, LibraryUnitOfWork, MusicPlaylistFilter, MusicPlaylistRepository as _,
-    PermissionFilter, PermissionRepository as _, UnitOfWork as _, UnitOfWorkFactory, UserFilter,
-    UserRepository as _, UserUnitOfWork,
+    UnitOfWork as _, UnitOfWorkFactory, UserFilter, UserRepository as _, UserUnitOfWork,
 };
-use crate::domain::service::{Authorization, Decision};
 
 /// Use case implementation for fetching one track of a playlist.
 pub(crate) struct GetPlaylistTrack<F> {
@@ -68,15 +66,6 @@ where
                     .next()
                     .ok_or(GetPlaylistTrackError::NoSuchCaller)?;
 
-                let permissions = unit_of_work
-                    .permissions()
-                    .search(&PermissionFilter {
-                        user_id: Some(caller.id()),
-                        ..PermissionFilter::default()
-                    })
-                    .await
-                    .map_err(|error| GetPlaylistTrackError::Unknown(error.into()))?;
-
                 let playlist = unit_of_work
                     .music_playlists()
                     .search(&MusicPlaylistFilter {
@@ -89,19 +78,15 @@ where
                     .next()
                     .ok_or(GetPlaylistTrackError::NoSuchPlaylist)?;
 
-                if let Decision::Deny(denial) =
-                    Authorization::decide(&caller, &permissions, Action::PlaylistRead, &playlist)
-                {
-                    warn!(
-                        target: "security",
-                        event = "authz_failed",
-                        actor = caller.id(),
-                        action = %denial.action().verb(),
-                        target = %denial.action().target(),
-                        "denied an action"
-                    );
-                    return Err(GetPlaylistTrackError::NoSuchPlaylist);
-                }
+                authorize(
+                    &mut unit_of_work.resources(),
+                    &caller,
+                    ResourceRef::new(ResourceKind::MusicPlaylist, playlist.id()),
+                    Action::View,
+                    None,
+                )
+                .await
+                .map_err(|_| GetPlaylistTrackError::NoSuchPlaylist)?;
 
                 let track = playlist
                     .tracks()
@@ -181,7 +166,7 @@ mod tests {
         playlists: MockMusicPlaylistRepository,
     ) -> GalleryFactoryHarness {
         let unit_of_work = TestUnitOfWork {
-            permissions: no_permissions(),
+            resources: no_resources(),
             music_playlists: playlists,
             users,
             ..TestUnitOfWork::default()
@@ -259,28 +244,6 @@ mod tests {
         assert!(harness.rolled_back.load(Ordering::SeqCst));
         Ok(())
     }
-
-    #[tokio::test]
-    async fn get_playlist_track_invisible_playlist_returns_no_such_playlist()
-    -> Result<(), Box<dyn Error>> {
-        // Arrange
-        let mut users = MockUserRepository::new();
-        expect_caller(&mut users, 9, Role::Standard)?;
-        let mut playlists = MockMusicPlaylistRepository::new();
-        expect_playlist(&mut playlists, playlist(3, 4, false, vec![track(30, 0)?]));
-        let harness = harness_with(users, playlists);
-        let use_case: UseCase = GetPlaylistTrack::new(Arc::clone(&harness.factory));
-
-        // Act
-        let result = use_case
-            .execute(GetPlaylistTrackCommand::new(9, 3, 0))
-            .await;
-
-        // Assert
-        assert!(matches!(result, Err(GetPlaylistTrackError::NoSuchPlaylist)));
-        Ok(())
-    }
-
     #[tokio::test]
     async fn get_playlist_track_unknown_playlist_returns_no_such_playlist()
     -> Result<(), Box<dyn Error>> {

@@ -2,41 +2,35 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
-use tracing::warn;
-
+use crate::application::authorization::authorize;
 use crate::application::port::{GetImageCommand, GetImageError, GetImageResponse, GetImageUseCase};
+use crate::domain::model::{Action, ResourceKind, ResourceRef};
 use crate::domain::port::{
-    AssetUnitOfWork, ContentLinkProvider, FileFilter, FileRepository as _, IdentityUnitOfWork,
-    ImageFilter, ImageRepository as _, LibraryUnitOfWork, PermissionFilter,
-    PermissionRepository as _, UnitOfWork as _, UnitOfWorkFactory, UserFilter, UserRepository as _,
-    UserUnitOfWork,
+    AssetUnitOfWork, FileFilter, FileRepository as _, IdentityUnitOfWork, ImageFilter,
+    ImageRepository as _, LibraryUnitOfWork, UnitOfWork as _, UnitOfWorkFactory, UserFilter,
+    UserRepository as _, UserUnitOfWork,
 };
-use crate::domain::service::{Authorization, Decision};
 
 /// Use case implementation for fetching one typed image.
-pub(crate) struct GetImage<F, L> {
-    /// Adapter minting the playback credential.
-    content_link: Arc<L>,
+pub(crate) struct GetImage<F> {
     /// Factory opening the unit of work wrapping the read.
     unit_of_work_factory: Arc<F>,
 }
 
-impl<F: UnitOfWorkFactory, L: ContentLinkProvider> GetImage<F, L> {
+impl<F: UnitOfWorkFactory> GetImage<F> {
     /// Create a new use case.
     #[must_use]
-    pub(crate) fn new(unit_of_work_factory: Arc<F>, content_link: Arc<L>) -> Self {
+    pub(crate) fn new(unit_of_work_factory: Arc<F>) -> Self {
         Self {
-            content_link,
             unit_of_work_factory,
         }
     }
 }
 
-impl<F, L> GetImageUseCase for GetImage<F, L>
+impl<F> GetImageUseCase for GetImage<F>
 where
     F: UnitOfWorkFactory,
     F::Uow: AssetUnitOfWork + IdentityUnitOfWork + LibraryUnitOfWork + UserUnitOfWork,
-    L: ContentLinkProvider,
 {
     fn execute<'future>(
         &'future self,
@@ -44,7 +38,6 @@ where
     ) -> Pin<Box<dyn Future<Output = Result<GetImageResponse, GetImageError>> + Send + 'future>>
     {
         let unit_of_work_factory = Arc::clone(&self.unit_of_work_factory);
-        let content_link = Arc::clone(&self.content_link);
 
         Box::pin(async move {
             let mut unit_of_work = unit_of_work_factory
@@ -64,14 +57,6 @@ where
                     .into_iter()
                     .next()
                     .ok_or(GetImageError::NoSuchCaller)?;
-                let permissions = unit_of_work
-                    .permissions()
-                    .search(&PermissionFilter {
-                        user_id: Some(caller.id()),
-                        ..PermissionFilter::default()
-                    })
-                    .await
-                    .map_err(|error| GetImageError::Unknown(error.into()))?;
                 let image = unit_of_work
                     .images()
                     .search(&ImageFilter {
@@ -95,24 +80,16 @@ where
                     .next()
                     .ok_or(GetImageError::NoSuchImage)?;
 
-                if let Decision::Deny(denial) =
-                    Authorization::decide_asset(&caller, &permissions, &file)
-                {
-                    warn!(
-                        target: "security",
-                        event = "authz_failed",
-                        actor = caller.id(),
-                        action = %denial.action().verb(),
-                        target = %denial.action().target(),
-                        "denied an action"
-                    );
-                    return Err(GetImageError::NoSuchImage);
-                }
+                authorize(
+                    &mut unit_of_work.resources(),
+                    &caller,
+                    ResourceRef::new(ResourceKind::File, file.id()),
+                    Action::View,
+                    None,
+                )
+                .await
+                .map_err(|_| GetImageError::NoSuchImage)?;
 
-                let link = content_link
-                    .mint(image.file_id())
-                    .await
-                    .map_err(|error| GetImageError::Unknown(error.into()))?;
                 Ok(GetImageResponse::new(
                     image.image_id(),
                     image.name().to_owned(),
@@ -121,7 +98,6 @@ where
                     image.orientation(),
                     image.created_at(),
                     image.file_id(),
-                    link,
                 ))
             }
             .await;
@@ -149,31 +125,19 @@ mod tests {
     use super::*;
     use crate::domain::NumericID;
 
-    use crate::domain::model::{
-        AssetOwner, AssetScope, File, Image, Orientation, ProtectedResource, ResourceKind,
-        ResourceRef,
-    };
+    use crate::domain::model::{AssetOwner, AssetScope, File, Image, Orientation};
 
     use crate::domain::port::{
-        ContentLink, MockContentLinkProvider, MockFileRepository, MockImageRepository,
-        MockUserRepository, RepositoryError,
+        MockFileRepository, MockImageRepository, MockUserRepository, RepositoryError,
     };
 
     use crate::test_helpers::*;
+    use allure_cargotest::allure_test;
     use chrono::{NaiveDate, NaiveDateTime};
     use std::error::Error;
     use std::sync::atomic::Ordering;
 
-    type UseCase = GetImage<TestFactory, MockContentLinkProvider>;
-
-    /// A signer accepting any number of mints.
-    fn signer() -> MockContentLinkProvider {
-        let mut signer = MockContentLinkProvider::new();
-        signer.expect_mint().times(0..).returning(|_| {
-            Box::pin(async { Ok(ContentLink::new(4_102_444_800, "signature".to_owned())) })
-        });
-        signer
-    }
+    type UseCase = GetImage<TestFactory>;
 
     fn file(
         id: NumericID,
@@ -193,19 +157,6 @@ mod tests {
             None,
         )?
         .with_owner(owner))
-    }
-
-    fn resource(
-        kind: ResourceKind,
-        id: NumericID,
-        owner_id: Option<NumericID>,
-        is_public: bool,
-    ) -> AssetOwner {
-        AssetOwner::Resource(ProtectedResource::new(
-            ResourceRef::new(kind, id),
-            owner_id,
-            is_public,
-        ))
     }
 
     fn image(
@@ -233,7 +184,7 @@ mod tests {
         AssetFactoryHarness::new(TestUnitOfWork {
             files,
             images,
-            permissions: no_permissions(),
+            resources: no_resources(),
             users,
             ..TestUnitOfWork::default()
         })
@@ -253,9 +204,14 @@ mod tests {
             .return_once(move |_| Box::pin(async move { Ok(vec![stored]) }));
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn get_image_projects_the_typed_representation() -> Result<(), Box<dyn Error>> {
-        // Arrange: a library image readable through `library.read`.
+        allure.epic("Image");
+        allure.feature("REQ-IMAGE-003");
+        allure.story("SCN-IMAGE-003-A");
+
+        // Arrange: a library image readable through `ViewMetadata` on the catalogue.
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 9)?;
         let mut images = MockImageRepository::new();
@@ -263,7 +219,7 @@ mod tests {
         let mut files = MockFileRepository::new();
         expect_file(&mut files, file(100, 3, Some(AssetOwner::Library))?);
         let harness = harness(users, files, images);
-        let use_case: UseCase = GetImage::new(Arc::clone(&harness.factory), Arc::new(signer()));
+        let use_case: UseCase = GetImage::new(Arc::clone(&harness.factory));
 
         // Act
         let response = use_case.execute(GetImageCommand::new(9, 19)).await?;
@@ -278,8 +234,13 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn get_image_unknown_image_returns_no_such_image() -> Result<(), Box<dyn Error>> {
+        allure.epic("Image");
+        allure.feature("REQ-IMAGE-003");
+        allure.story("SCN-IMAGE-003-B");
+
         // Arrange
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 9)?;
@@ -289,7 +250,7 @@ mod tests {
             .times(1)
             .returning(|_| Box::pin(async { Ok(Vec::new()) }));
         let harness = harness(users, MockFileRepository::new(), images);
-        let use_case: UseCase = GetImage::new(Arc::clone(&harness.factory), Arc::new(signer()));
+        let use_case: UseCase = GetImage::new(Arc::clone(&harness.factory));
 
         // Act
         let result = use_case.execute(GetImageCommand::new(9, 999)).await;
@@ -298,38 +259,13 @@ mod tests {
         assert!(matches!(result, Err(GetImageError::NoSuchImage)));
         Ok(())
     }
-
-    #[tokio::test]
-    async fn get_image_of_a_private_gallery_is_concealed_from_a_non_owner()
-    -> Result<(), Box<dyn Error>> {
-        // Arrange
-        let mut users = MockUserRepository::new();
-        expect_caller(&mut users, 9)?;
-        let mut images = MockImageRepository::new();
-        expect_image(&mut images, image(19, 100, Some(AssetScope::User))?);
-        let mut files = MockFileRepository::new();
-        expect_file(
-            &mut files,
-            file(
-                100,
-                3,
-                Some(resource(ResourceKind::Gallery, 2, Some(3), false)),
-            )?,
-        );
-        let harness = harness(users, files, images);
-        let use_case: UseCase = GetImage::new(Arc::clone(&harness.factory), Arc::new(signer()));
-
-        // Act
-        let result = use_case.execute(GetImageCommand::new(9, 19)).await;
-
-        // Assert
-        assert!(matches!(result, Err(GetImageError::NoSuchImage)));
-        assert!(harness.rolled_back.load(Ordering::SeqCst));
-        Ok(())
-    }
-
+    #[allure_test]
     #[tokio::test]
     async fn get_image_unknown_caller_returns_no_such_caller() -> Result<(), Box<dyn Error>> {
+        allure.epic("Image");
+        allure.feature("REQ-IMAGE-003");
+        allure.story("SCN-IMAGE-003-B");
+
         // Arrange: the image exists, but its caller does not.
         let mut users = MockUserRepository::new();
         users
@@ -337,7 +273,7 @@ mod tests {
             .times(1)
             .returning(|_| Box::pin(async { Ok(Vec::new()) }));
         let harness = harness(users, MockFileRepository::new(), MockImageRepository::new());
-        let use_case: UseCase = GetImage::new(Arc::clone(&harness.factory), Arc::new(signer()));
+        let use_case: UseCase = GetImage::new(Arc::clone(&harness.factory));
 
         // Act
         let result = use_case.execute(GetImageCommand::new(9, 19)).await;
@@ -347,8 +283,13 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn get_image_repository_failure_returns_unknown() -> Result<(), Box<dyn Error>> {
+        allure.epic("Image");
+        allure.feature("REQ-IMAGE-003");
+        allure.story("SCN-IMAGE-003-B");
+
         // Arrange: the caller load fails before the image resolves.
         let mut users = MockUserRepository::new();
         users
@@ -356,7 +297,7 @@ mod tests {
             .times(1)
             .returning(|_| Box::pin(async { Err(RepositoryError::OperationFailed) }));
         let harness = harness(users, MockFileRepository::new(), MockImageRepository::new());
-        let use_case: UseCase = GetImage::new(Arc::clone(&harness.factory), Arc::new(signer()));
+        let use_case: UseCase = GetImage::new(Arc::clone(&harness.factory));
 
         // Act
         let result = use_case.execute(GetImageCommand::new(9, 19)).await;

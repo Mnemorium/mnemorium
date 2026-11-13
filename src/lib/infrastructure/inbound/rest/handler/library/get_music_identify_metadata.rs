@@ -203,7 +203,7 @@ impl MusicMetadataDocumentResponse {
 /// The reference names the provider that issued it and the kind of work it
 /// denotes; a provider the server does not serve answers `404 Not Found`. The
 /// route is a read of the provider, not of the catalogue, and is guarded by
-/// `library.read`. With no provider configured it answers an
+/// `ViewMetadata` on the catalogue. With no provider configured it answers an
 /// `available: false` document.
 #[utoipa::path(
     get,

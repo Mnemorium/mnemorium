@@ -83,10 +83,7 @@ impl FileResponse {
                 audio: response
                     .audio_id()
                     .map(|id| Link::new(&asset_audio_href(id))),
-                content: Link::new(&content_href(
-                    &format!("/api/v1/asset/file/{}/content", response.id()),
-                    response.content_link(),
-                )),
+                content: content_href("file", response.id()),
                 image: response
                     .image_id()
                     .map(|id| Link::new(&asset_image_href(id))),
@@ -120,7 +117,7 @@ impl From<GetFileError> for ApiError {
 /// Fetch one stored file by its identifier.
 ///
 /// Any authenticated caller may read a file it is allowed to read: a catalogue
-/// asset follows `library.read`, a gallery asset its gallery and a playlist
+/// asset follows `ViewMetadata` on the catalogue, a gallery asset its gallery and a playlist
 /// cover its playlist. An unknown file and an unreadable file answer the same
 /// `404 Not Found`.
 #[utoipa::path(
@@ -137,7 +134,7 @@ impl From<GetFileError> for ApiError {
             body = FileResponse,
             content_type = "application/hal+json",
             description = "File found",
-            headers(("Cache-Control" = String, description = "Always `no-store`"))
+            headers(("Cache-Control" = String, description = "Always `private, max-age=60`"))
         ),
         (
             status = BAD_REQUEST,
@@ -181,8 +178,9 @@ pub(crate) async fn get_file(
         .execute(GetFileCommand::new(caller.user_id(), file_id))
         .await?;
     let mut representation = hal_json(FileResponse::from_response(&response));
-    representation
-        .headers_mut()
-        .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    representation.headers_mut().insert(
+        header::CACHE_CONTROL,
+        HeaderValue::from_static("private, max-age=60"),
+    );
     Ok(representation)
 }

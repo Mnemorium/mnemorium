@@ -7,12 +7,14 @@ use chrono::Utc;
 use tracing::info;
 
 use crate::application::port::{
-    InitializeRootAdminError, InitializeRootAdminResponse, InitializeRootAdminUseCase,
+    InitializeRootAdminCommand, InitializeRootAdminError, InitializeRootAdminResponse,
+    InitializeRootAdminUseCase,
 };
-use crate::domain::model::{Credential, Role, User};
+use crate::domain::model::{Credential, ResourceKind, ResourceRef, Role, User, Visibility};
 use crate::domain::port::{
-    CredentialRepository as _, IdentityUnitOfWork, PasswordGenerator, PasswordHasher,
-    UnitOfWork as _, UnitOfWorkFactory, UserFilter, UserRepository as _, UserUnitOfWork,
+    CredentialRepository as _, IdentityUnitOfWork, NewResource, PasswordGenerator, PasswordHasher,
+    ResourceRepository as _, UnitOfWork as _, UnitOfWorkFactory, UserFilter, UserRepository as _,
+    UserUnitOfWork,
 };
 
 /// Username granted to the root admin.
@@ -53,6 +55,7 @@ where
 {
     fn execute<'future>(
         &'future self,
+        command: InitializeRootAdminCommand,
     ) -> Pin<
         Box<
             dyn Future<
@@ -84,6 +87,9 @@ where
                 if root_admin_exists {
                     return Ok(None);
                 }
+                if !command.reveal_password() {
+                    return Err(InitializeRootAdminError::RevealDisabled);
+                }
 
                 let default_password = password_generator
                     .generate()
@@ -114,6 +120,19 @@ where
                 unit_of_work
                     .users()
                     .save(pending_user)
+                    .await
+                    .map_err(|error| InitializeRootAdminError::Unknown(error.into()))?;
+                // The root is a resource like every other account, so a caller
+                // reads it through the decision engine (`REQ-AUTHORIZATION-021`).
+                unit_of_work
+                    .resources()
+                    .create(NewResource {
+                        auth_parent: Some(ResourceRef::new(ResourceKind::Instance, 0)),
+                        entity_id: 0,
+                        kind: ResourceKind::User,
+                        owner_id: None,
+                        visibility: Visibility::Private,
+                    })
                     .await
                     .map_err(|error| InitializeRootAdminError::Unknown(error.into()))?;
 
@@ -157,6 +176,7 @@ mod tests {
     };
 
     use crate::test_helpers::*;
+    use allure_cargotest::allure_test;
     use std::error::Error;
     use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -253,7 +273,10 @@ mod tests {
         )?;
 
         // Act
-        let result = harness.use_case.execute().await?;
+        let result = harness
+            .use_case
+            .execute(InitializeRootAdminCommand::new(true))
+            .await?;
 
         // Assert
         let response = result.ok_or_else(|| anyhow::anyhow!("expected a response"))?;
@@ -278,7 +301,10 @@ mod tests {
         })?;
 
         // Act
-        let response = harness.use_case.execute().await?;
+        let response = harness
+            .use_case
+            .execute(InitializeRootAdminCommand::new(true))
+            .await?;
 
         // Assert
         assert!(response.is_none());
@@ -298,7 +324,10 @@ mod tests {
         })?;
 
         // Act
-        let result = harness.use_case.execute().await;
+        let result = harness
+            .use_case
+            .execute(InitializeRootAdminCommand::new(true))
+            .await;
 
         // Assert
         assert!(matches!(result, Err(InitializeRootAdminError::Unknown(_))));
@@ -320,7 +349,10 @@ mod tests {
         })?;
 
         // Act
-        let result = harness.use_case.execute().await;
+        let result = harness
+            .use_case
+            .execute(InitializeRootAdminCommand::new(true))
+            .await;
 
         // Assert
         assert!(matches!(result, Err(InitializeRootAdminError::Unknown(_))));
@@ -342,7 +374,10 @@ mod tests {
         })?;
 
         // Act
-        let result = harness.use_case.execute().await;
+        let result = harness
+            .use_case
+            .execute(InitializeRootAdminCommand::new(true))
+            .await;
 
         // Assert
         assert!(matches!(result, Err(InitializeRootAdminError::Unknown(_))));
@@ -350,9 +385,14 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn initialize_root_admin_save_credential_failure_returns_unknown()
     -> Result<(), Box<dyn Error>> {
+        allure.epic("Authentication");
+        allure.feature("REQ-AUTHENTICATION-001");
+        allure.story("SCN-AUTHENTICATION-001-C");
+
         // Arrange
         let harness = use_case_with(
             |user_repository, credential_repository, password_hasher, password_generator| {
@@ -371,7 +411,10 @@ mod tests {
         )?;
 
         // Act
-        let result = harness.use_case.execute().await;
+        let result = harness
+            .use_case
+            .execute(InitializeRootAdminCommand::new(true))
+            .await;
 
         // Assert
         assert!(matches!(result, Err(InitializeRootAdminError::Unknown(_))));
@@ -379,9 +422,14 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn initialize_root_admin_save_user_failure_returns_unknown() -> Result<(), Box<dyn Error>>
     {
+        allure.epic("Authentication");
+        allure.feature("REQ-AUTHENTICATION-001");
+        allure.story("SCN-AUTHENTICATION-001-D");
+
         // Arrange
         let harness = use_case_with(
             |user_repository, credential_repository, password_hasher, password_generator| {
@@ -404,7 +452,10 @@ mod tests {
         )?;
 
         // Act
-        let result = harness.use_case.execute().await;
+        let result = harness
+            .use_case
+            .execute(InitializeRootAdminCommand::new(true))
+            .await;
 
         // Assert
         assert!(matches!(result, Err(InitializeRootAdminError::Unknown(_))));

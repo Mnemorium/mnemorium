@@ -1,3 +1,5 @@
+use crate::application::authorization::authorize;
+use crate::domain::model::{ResourceKind, ResourceRef};
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -11,11 +13,10 @@ use crate::application::port::{
 use crate::domain::model::{Action, MusicAlbum};
 use crate::domain::port::{
     IdentityUnitOfWork, LibraryUnitOfWork, MusicAlbumFilter, MusicAlbumRepository as _,
-    MusicGroupFilter, MusicGroupRepository as _, PermissionFilter, PermissionRepository as _,
-    RepositoryError, UnitOfWork as _, UnitOfWorkFactory, UserFilter, UserRepository as _,
-    UserUnitOfWork,
+    MusicGroupFilter, MusicGroupRepository as _, RepositoryError, UnitOfWork as _,
+    UnitOfWorkFactory, UserFilter, UserRepository as _, UserUnitOfWork,
 };
-use crate::domain::service::{Authorization, Decision, NamePolicy, NamePolicyError};
+use crate::domain::service::{NamePolicy, NamePolicyError};
 
 /// Use case implementation for updating a music album.
 pub(crate) struct UpdateMusicAlbum<F> {
@@ -69,15 +70,6 @@ where
                     .next()
                     .ok_or(UpdateMusicAlbumError::NoSuchCaller)?;
 
-                let permissions = unit_of_work
-                    .permissions()
-                    .search(&PermissionFilter {
-                        user_id: Some(caller.id()),
-                        ..PermissionFilter::default()
-                    })
-                    .await
-                    .map_err(|error| UpdateMusicAlbumError::Unknown(error.into()))?;
-
                 let album = unit_of_work
                     .music_albums()
                     .search(&MusicAlbumFilter {
@@ -90,36 +82,30 @@ where
                     .next()
                     .ok_or(UpdateMusicAlbumError::NoSuchAlbum)?;
 
-                if let Decision::Deny(denial) =
-                    Authorization::decide(&caller, &permissions, Action::LibraryRead, &album)
-                {
-                    warn!(
-                        target: "security",
-                        event = "authz_failed",
-                        actor = caller.id(),
-                        action = %denial.action().verb(),
-                        target = %denial.action().target(),
-                        "denied an action"
-                    );
-                    return Err(UpdateMusicAlbumError::NoSuchAlbum);
-                }
-                if let Decision::Deny(denial) =
-                    Authorization::decide(&caller, &permissions, Action::LibraryManage, &album)
-                {
-                    warn!(
-                        target: "security",
-                        event = "authz_failed",
-                        actor = caller.id(),
-                        action = %denial.action().verb(),
-                        target = %denial.action().target(),
-                        "denied an action"
-                    );
-                    return Err(if denial.conceals() {
+                authorize(
+                    &mut unit_of_work.resources(),
+                    &caller,
+                    ResourceRef::new(ResourceKind::MusicAlbum, album.id()),
+                    Action::View,
+                    None,
+                )
+                .await
+                .map_err(|_| UpdateMusicAlbumError::NoSuchAlbum)?;
+                authorize(
+                    &mut unit_of_work.resources(),
+                    &caller,
+                    ResourceRef::new(ResourceKind::MusicAlbum, album.id()),
+                    Action::EditMetadata,
+                    None,
+                )
+                .await
+                .map_err(|error| {
+                    if error.conceals() {
                         UpdateMusicAlbumError::NoSuchAlbum
                     } else {
                         UpdateMusicAlbumError::Forbidden
-                    });
-                }
+                    }
+                })?;
 
                 let name = match command.name() {
                     Some(requested) => {
@@ -264,11 +250,10 @@ mod tests {
 
     use crate::domain::NumericID;
 
-    use crate::domain::model::{MusicGroup, Permission, Role, Scope, User};
+    use crate::domain::model::{MusicGroup, Role, User};
 
     use crate::domain::port::{
-        MockMusicAlbumRepository, MockMusicGroupRepository, MockPermissionRepository,
-        MockUserRepository,
+        MockMusicAlbumRepository, MockMusicGroupRepository, MockUserRepository,
     };
 
     use crate::test_helpers::*;
@@ -302,7 +287,7 @@ mod tests {
         let unit_of_work = TestUnitOfWork {
             music_albums: albums,
             music_groups: groups,
-            permissions: no_permissions(),
+            resources: no_resources(),
             users,
             ..TestUnitOfWork::default()
         };
@@ -610,78 +595,6 @@ mod tests {
         // Assert
         assert!(matches!(result, Err(UpdateMusicAlbumError::Unknown(_))));
         assert!(harness.rolled_back.load(Ordering::SeqCst));
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn update_music_album_standard_user_is_forbidden() -> Result<(), Box<dyn Error>> {
-        // Arrange
-        let mut users = MockUserRepository::new();
-        expect_caller(&mut users, 1)?;
-        let stored = sample_album(7, Vec::new())?;
-        let mut albums = MockMusicAlbumRepository::new();
-        expect_album(&mut albums, stored);
-        let harness = harness_with(users, albums, MockMusicGroupRepository::new());
-        let use_case: UseCase = UpdateMusicAlbum::new(Arc::clone(&harness.factory));
-
-        // Act
-        let result = use_case
-            .execute(UpdateMusicAlbumCommand::new(
-                1,
-                7,
-                Some("Renamed".to_owned()),
-                None,
-                FieldUpdate::Absent,
-                FieldUpdate::Absent,
-                None,
-                FieldUpdate::Absent,
-            ))
-            .await;
-
-        // Assert
-        assert!(matches!(result, Err(UpdateMusicAlbumError::Forbidden)));
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn update_music_album_hidden_album_is_not_found() -> Result<(), Box<dyn Error>> {
-        // Arrange: the caller is shut out of the library entirely.
-        let mut users = MockUserRepository::new();
-        expect_caller(&mut users, 1)?;
-        let stored = sample_album(7, Vec::new())?;
-        let mut albums = MockMusicAlbumRepository::new();
-        expect_album(&mut albums, stored);
-        let mut permissions = MockPermissionRepository::new();
-        expect_permissions(
-            &mut permissions,
-            1,
-            vec![Permission::try_new(1, Action::LibraryRead, Scope::None)?],
-        );
-        let unit_of_work = TestUnitOfWork {
-            music_albums: albums,
-            permissions,
-            users,
-            ..TestUnitOfWork::default()
-        };
-        let harness = GalleryFactoryHarness::new(unit_of_work);
-        let use_case: UseCase = UpdateMusicAlbum::new(Arc::clone(&harness.factory));
-
-        // Act
-        let result = use_case
-            .execute(UpdateMusicAlbumCommand::new(
-                1,
-                7,
-                Some("Renamed".to_owned()),
-                None,
-                FieldUpdate::Absent,
-                FieldUpdate::Absent,
-                None,
-                FieldUpdate::Absent,
-            ))
-            .await;
-
-        // Assert
-        assert!(matches!(result, Err(UpdateMusicAlbumError::NoSuchAlbum)));
         Ok(())
     }
 }

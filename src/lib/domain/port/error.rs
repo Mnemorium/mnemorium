@@ -1,5 +1,7 @@
 //! Error types raised by the outbound port adapters.
 
+use std::io;
+
 /// Error returned when a repository operation fails.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
@@ -237,28 +239,6 @@ pub(crate) enum TokenProviderError {
     Unknown(#[source] anyhow::Error),
 }
 
-/// Error returned when minting or verifying a content link fails.
-#[derive(Debug, thiserror::Error)]
-#[non_exhaustive]
-pub(crate) enum ContentLinkError {
-    /// The credential has expired.
-    #[error("the content credential has expired")]
-    Expired,
-    /// The credential is malformed, tampered with, or names another file.
-    #[error("the content credential is invalid")]
-    Invalid,
-    /// The provider could not complete the requested operation.
-    #[error("the content credential could not be produced")]
-    OperationFailed,
-    /// An unexpected or unmapped error occurred.
-    #[error("an unexpected or unmapped error occurred: {0}")]
-    #[expect(
-        dead_code,
-        reason = "the error enum keeps the catch-all variant the rulebook's error shape declares; no caller constructs it yet"
-    )]
-    Unknown(#[source] anyhow::Error),
-}
-
 /// Error returned when a unit of work operation fails.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
@@ -310,6 +290,12 @@ pub(crate) enum InstanceStateStoreError {
     /// The persisted identity exists but cannot be decoded or fails validation.
     #[error("the persisted instance identity is corrupt: {0}")]
     Corrupt(#[source] anyhow::Error),
+    /// The persisted identity is readable or writable by another account, or is
+    /// not a regular file. It is never read.
+    #[error(
+        "the persisted instance identity in state.yaml is not private to the server account; run chmod 600 state.yaml or chown it to the account that owns the working directory"
+    )]
+    Insecure,
     /// The identity file could not be read or written.
     #[error("the instance identity store failed: {0}")]
     OperationFailed(#[source] anyhow::Error),
@@ -335,6 +321,18 @@ pub(crate) enum StateSeedSourceError {
     /// The environment cannot be mapped onto the seed fields.
     #[error("the instance state seeds could not be read from the environment: {0}")]
     Unreadable(#[source] envy::Error),
+}
+
+/// Error returned when the presence of the datastore cannot be decided.
+///
+/// A missing datastore is a value, never this error (`STY-RUST-016`); the error
+/// is reserved for a path that cannot be inspected.
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
+pub(crate) enum DatastorePresenceError {
+    /// The datastore path could not be inspected.
+    #[error("the datastore path could not be inspected: {0}")]
+    Unreadable(#[source] io::Error),
 }
 
 /// Error returned when probing a media file fails.

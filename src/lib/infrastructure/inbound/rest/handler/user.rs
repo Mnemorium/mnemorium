@@ -19,9 +19,6 @@ use utoipa_axum::routes;
 use crate::application::port::GetUserResponse as GetUserResponseData;
 use crate::domain::NumericID;
 use crate::domain::model::Role;
-use crate::infrastructure::inbound::rest::handler::identity::{
-    __path_get_permission, __path_put_permission, get_permission, put_permission,
-};
 use crate::infrastructure::inbound::rest::middleware::authenticate;
 use crate::infrastructure::inbound::rest::{ApiError, AppState, SelfLinks};
 use crate::infrastructure::outbound::jwt::JwtTokenProvider;
@@ -96,7 +93,6 @@ pub(crate) fn user_router() -> OpenApiRouter<AppState> {
             delete_user::delete_user
         ))
         .routes(routes!(get_user_list::get_user_list))
-        .routes(routes!(get_permission, put_permission))
 }
 
 /// Routes of the user bounded context.

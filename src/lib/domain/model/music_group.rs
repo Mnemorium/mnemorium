@@ -1,5 +1,4 @@
 use crate::domain::NumericID;
-use crate::domain::model::{Protected, ResourceRef};
 
 /// Error returned when initialising a `MusicGroup`.
 #[derive(Debug, thiserror::Error)]
@@ -66,26 +65,5 @@ impl MusicGroup {
             id,
             stage_name,
         })
-    }
-}
-
-impl Protected for MusicGroup {
-    fn is_privileged_account(&self) -> bool {
-        false
-    }
-
-    fn is_publicly_visible(&self) -> bool {
-        true
-    }
-
-    fn owner_id(&self) -> Option<NumericID> {
-        None
-    }
-
-    /// Groups are not a `LISTED`-addressable kind: the permission catalogue
-    /// names films, shows and albums, so a listed library scope never selects
-    /// one group.
-    fn resource_ref(&self) -> Option<ResourceRef> {
-        None
     }
 }

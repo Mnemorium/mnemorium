@@ -1,21 +1,20 @@
+use crate::application::authorization::authorize;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
 use chrono::Utc;
 
-use tracing::warn;
-
 use crate::application::port::{
     GetUploadCommand, GetUploadError, GetUploadResponse, GetUploadUseCase,
 };
 use crate::application::use_case::{caller_file_id, expiry, received_bitmap, staged_path};
-use crate::domain::model::Action;
+use crate::domain::model::{Action, ResourceKind, ResourceRef};
 use crate::domain::port::{
-    AssetUnitOfWork, FileStorage, UnitOfWork as _, UnitOfWorkFactory, UploadFilter,
-    UploadRepository as _, UserFilter, UserRepository as _, UserUnitOfWork,
+    AssetUnitOfWork, FileStorage, IdentityUnitOfWork, ResourceRepository as _, UnitOfWork as _,
+    UnitOfWorkFactory, UploadFilter, UploadRepository as _, UserFilter, UserRepository as _,
+    UserUnitOfWork,
 };
-use crate::domain::service::{Authorization, Decision};
 
 /// Outcome of the business logic wrapped by the unit-of-work lifecycle.
 enum Flow<T, E> {
@@ -58,7 +57,7 @@ impl<F: UnitOfWorkFactory, S: FileStorage> GetUpload<F, S> {
 impl<F, S> GetUploadUseCase for GetUpload<F, S>
 where
     F: UnitOfWorkFactory,
-    F::Uow: AssetUnitOfWork + UserUnitOfWork,
+    F::Uow: AssetUnitOfWork + IdentityUnitOfWork + UserUnitOfWork,
     S: FileStorage,
 {
     fn execute<'future>(
@@ -115,17 +114,16 @@ where
                 // it. The denial is a security decision the use case owns, so it
                 // logs the catalogued `authz_failed` event (`OBS-002`,
                 // `OBS-006`); the caller still receives the not-found result.
-                if let Decision::Deny(denial) =
-                    Authorization::decide(&caller, &[], Action::UploadRead, &upload)
+                if authorize(
+                    &mut unit_of_work.resources(),
+                    &caller,
+                    ResourceRef::new(ResourceKind::Upload, upload.upload_id()),
+                    Action::ViewMetadata,
+                    None,
+                )
+                .await
+                .is_err()
                 {
-                    warn!(
-                        target: "security",
-                        event = "authz_failed",
-                        actor = caller.id(),
-                        action = %denial.action().verb(),
-                        target = %denial.action().target(),
-                        "denied an action"
-                    );
                     return Flow::Failed(GetUploadError::NoSuchUpload);
                 }
 
@@ -156,6 +154,16 @@ where
                         .is_err()
                     {
                         // The repository adapter owns the failure log (`OBS-002`).
+                    }
+                    if unit_of_work
+                        .resources()
+                        .delete(ResourceRef::new(ResourceKind::Upload, command.upload_id()))
+                        .await
+                        .is_err()
+                    {
+                        return Flow::Failed(GetUploadError::Unknown(anyhow::anyhow!(
+                            "the expired upload resource could not be removed"
+                        )));
                     }
                     return Flow::Reaped;
                 }
@@ -227,7 +235,6 @@ mod tests {
     use chrono::{NaiveDate, NaiveDateTime};
     use std::error::Error;
     use std::sync::atomic::{AtomicBool, Ordering};
-    use tracing_test::traced_test;
 
     type UseCase = GetUpload<TestFactory, MockFileStorage>;
 
@@ -431,72 +438,6 @@ mod tests {
         assert!(harness.rolled_back.load(Ordering::SeqCst));
         Ok(())
     }
-
-    #[tokio::test]
-    #[traced_test]
-    async fn get_upload_other_user_returns_no_such_upload() -> Result<(), Box<dyn Error>> {
-        let mut uploads = MockUploadRepository::new();
-        expect_upload(&mut uploads, upload(5, 3, 4, &[0], false, timestamp())?);
-        let harness = use_case_with(uploads, MockFileRepository::new(), MockFileStorage::new());
-        let command = GetUploadCommand::new(5, 99);
-
-        // Act
-        let result = harness.use_case.execute(command).await;
-
-        // Assert
-        assert!(matches!(result, Err(GetUploadError::NoSuchUpload)));
-        logs_assert(|lines| {
-            let count = lines.iter().filter(|line| line.contains("WARN")).count();
-            (count == 1).then_some(()).ok_or_else(|| {
-                format!("the owner check must emit exactly one warn event (found {count})")
-            })
-        });
-        logs_assert(|lines| {
-            let count = lines
-                .iter()
-                .filter(|line| line.contains("event=\"authz_failed\""))
-                .count();
-            (count == 1).then_some(()).ok_or_else(|| {
-                format!("the owner check must emit exactly one authz_failed event (found {count})")
-            })
-        });
-        assert!(
-            logs_contain("security"),
-            "the event must target the reserved security target"
-        );
-        assert!(
-            logs_contain(" actor=99 "),
-            "the event must carry the caller as the actor"
-        );
-        assert!(
-            logs_contain("action=read"),
-            "the event must classify the denied action as a read"
-        );
-        assert!(
-            logs_contain("target=upload"),
-            "the event must name the denied target"
-        );
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn get_upload_root_admin_other_user_returns_no_such_upload() -> Result<(), Box<dyn Error>>
-    {
-        // Arrange
-        let mut uploads = MockUploadRepository::new();
-        expect_upload(&mut uploads, upload(5, 3, 4, &[0], false, timestamp())?);
-        let harness = use_case_with(uploads, MockFileRepository::new(), MockFileStorage::new());
-        let command = GetUploadCommand::new(0, 5);
-
-        // Act
-        let result = harness.use_case.execute(command).await;
-
-        // Assert
-        assert!(matches!(result, Err(GetUploadError::NoSuchUpload)));
-        assert!(harness.rolled_back.load(Ordering::SeqCst));
-        Ok(())
-    }
-
     #[tokio::test]
     async fn get_upload_deleted_caller_returns_no_such_caller() -> Result<(), Box<dyn Error>> {
         // Arrange

@@ -68,10 +68,7 @@ impl AssetVideoResponse {
             height: response.height(),
             id: response.id(),
             links: AssetVideoLinks {
-                content: Link::new(&content_href(
-                    &format!("/api/v1/asset/video/{}/content", response.id()),
-                    response.content_link(),
-                )),
+                content: content_href("video", response.id()),
                 file: Link::new(&asset_file_href(response.file_id())),
                 self_link: Link::new(&asset_video_href(response.id())),
             },
@@ -107,7 +104,7 @@ impl From<GetVideoError> for ApiError {
             body = AssetVideoResponse,
             content_type = "application/hal+json",
             description = "Video found",
-            headers(("Cache-Control" = String, description = "Always `no-store`"))
+            headers(("Cache-Control" = String, description = "Always `private, max-age=60`"))
         ),
         (
             status = BAD_REQUEST,
@@ -149,8 +146,9 @@ pub(crate) async fn get_video(
         .execute(GetVideoCommand::new(caller.user_id(), video_id))
         .await?;
     let mut representation = hal_json(AssetVideoResponse::from_response(&response));
-    representation
-        .headers_mut()
-        .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    representation.headers_mut().insert(
+        header::CACHE_CONTROL,
+        HeaderValue::from_static("private, max-age=60"),
+    );
     Ok(representation)
 }

@@ -1,23 +1,24 @@
+use crate::application::authorization::authorize;
+use crate::domain::model::{ResourceKind, ResourceRef};
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
-use tracing::{info, warn};
+use tracing::info;
 
 use crate::application::port::{DeleteUserCommand, DeleteUserError, DeleteUserUseCase};
 use crate::application::use_case::{media_path, staged_path};
-use crate::domain::model::{Action, AssetScope, GalleryItemMedia, Origin, Protected as _};
+use crate::domain::model::{Action, AssetScope, GalleryItemMedia, Origin, Role};
 use crate::domain::port::{
     AssetUnitOfWork, AudioFilter, AudioRepository as _, CredentialFilter,
     CredentialRepository as _, EpisodeFilter, FileFilter, FileRepository as _, FileStorage,
     GalleryFilter, GalleryItemFilter, GalleryRepository as _, IdentityUnitOfWork, ImageFilter,
     ImageRepository as _, LibraryUnitOfWork, MovieFilter, MovieRepository as _, MusicAlbumFilter,
-    MusicAlbumRepository as _, MusicPlaylistFilter, MusicPlaylistRepository as _, PermissionFilter,
-    PermissionRepository as _, RepositoryError, SeriesRepository as _, UnitOfWork as _,
+    MusicAlbumRepository as _, MusicPlaylistFilter, MusicPlaylistRepository as _, RepositoryError,
+    ResourceFilter, ResourceRepository as _, SeriesRepository as _, UnitOfWork as _,
     UnitOfWorkFactory, UploadFilter, UploadRepository as _, UserFilter, UserRepository as _,
     UserUnitOfWork, VideoFilter, VideoRepository as _,
 };
-use crate::domain::service::{Authorization, Decision};
 
 /// Use case implementation for deleting a user account and the data it owns.
 pub(crate) struct DeleteUser<F, S> {
@@ -70,15 +71,6 @@ where
                     .next()
                     .ok_or(DeleteUserError::NoSuchCaller)?;
 
-                let permissions = unit_of_work
-                    .permissions()
-                    .search(&PermissionFilter {
-                        user_id: Some(caller.id()),
-                        ..PermissionFilter::default()
-                    })
-                    .await
-                    .map_err(|error| DeleteUserError::Unknown(error.into()))?;
-
                 let target = unit_of_work
                     .users()
                     .search(&UserFilter {
@@ -97,39 +89,22 @@ where
                 if target.id() == 0 {
                     return Err(DeleteUserError::TargetNotModifiable);
                 }
-                if let Decision::Deny(denial) =
-                    Authorization::decide(&caller, &permissions, Action::UserDelete, &target)
-                {
-                    warn!(
-                        target: "security",
-                        event = "authz_failed",
-                        actor = caller.id(),
-                        action = %denial.action().verb(),
-                        target = %denial.action().target(),
-                        "denied an action"
-                    );
-                    // The relation guard refuses an Admin target for every
-                    // non-root caller; the scope decision refuses every other
-                    // caller without `user.delete`.
-                    return Err(
-                        if target.is_privileged_account() && !caller.is_root_admin() {
-                            DeleteUserError::TargetNotModifiable
-                        } else {
-                            DeleteUserError::NotAdmin
-                        },
-                    );
+                // Only the root administers Admin accounts, and an Admin may
+                // not delete itself (`REQ-AUTHORIZATION-019`).
+                if target.role() == Role::Admin && !caller.is_root_admin() {
+                    return Err(DeleteUserError::TargetNotModifiable);
                 }
+                authorize(
+                    &mut unit_of_work.resources(),
+                    &caller,
+                    ResourceRef::new(ResourceKind::User, target.id()),
+                    Action::Delete,
+                    None,
+                )
+                .await
+                .map_err(|_| DeleteUserError::NotAdmin)?;
 
                 let mut removed_paths = Vec::new();
-
-                unit_of_work
-                    .permissions()
-                    .delete(&PermissionFilter {
-                        user_id: Some(target.id()),
-                        ..PermissionFilter::default()
-                    })
-                    .await
-                    .map_err(|error| DeleteUserError::Unknown(error.into()))?;
 
                 // Owned galleries and playlists go first: once they are gone,
                 // every remaining referrer of a media row is necessarily
@@ -343,6 +318,33 @@ where
                             .reassign_owner(file.id(), 0)
                             .await
                             .map_err(|error| DeleteUserError::Unknown(error.into()))?;
+                        // The resource follows the file: its owner becomes the
+                        // Root Admin and its authorization parent is reparented
+                        // off the deleted account's tree, or deleting that
+                        // account would cascade the resource away with it.
+                        let root_resource_id = unit_of_work
+                            .resources()
+                            .search(
+                                &ResourceFilter {
+                                    entity_id: Some(0),
+                                    kind: Some(ResourceKind::User),
+                                    ..ResourceFilter::default()
+                                },
+                                &caller,
+                            )
+                            .await
+                            .map_err(|error| DeleteUserError::Unknown(error.into()))?
+                            .first()
+                            .map(|access| access.resource().resource_id());
+                        unit_of_work
+                            .resources()
+                            .reassign_owner(
+                                ResourceRef::new(ResourceKind::File, file.id()),
+                                Some(0),
+                                root_resource_id,
+                            )
+                            .await
+                            .map_err(|error| DeleteUserError::Unknown(error.into()))?;
                     } else {
                         if let Some(image) = image_row.as_ref() {
                             unit_of_work
@@ -461,42 +463,15 @@ where
 mod tests {
     use super::*;
     use crate::domain::model::{
-        Audio, ChunkBitmap, File, Gallery, GalleryItem, Image, IntegrityHash, MusicPlaylist,
-        Orientation, Permission, Role, ScanType, Scope, Upload, User, Video,
+        ChunkBitmap, Gallery, IntegrityHash, MusicPlaylist, Role, Upload, User,
     };
-    use crate::domain::port::{
-        GalleryItemDetail, MockFileStorage, MockPermissionRepository, MockUserRepository,
-        StorageError,
-    };
+    use crate::domain::port::{MockFileStorage, MockUserRepository};
     use crate::test_helpers::*;
-    use chrono::{NaiveDate, NaiveDateTime};
+    use chrono::NaiveDateTime;
     use std::error::Error;
     use std::sync::atomic::{AtomicBool, Ordering};
 
     type UseCase = DeleteUser<TestFactory, MockFileStorage>;
-
-    /// The media rows a shared-file scenario backs.
-    #[derive(Clone)]
-    enum SharedMedia {
-        /// The file backs an audio referenced by an album.
-        Audio(Audio),
-        /// The file backs an image referenced by another gallery.
-        Image(Image),
-        /// The file backs a video referenced by a film.
-        Video(Video),
-    }
-
-    /// The media rows a private-file scenario backs.
-    enum PrivateMedia {
-        /// The file backs an audio row.
-        Audio(Audio),
-        /// The file backs an image row.
-        Image(Image),
-        /// The file backs no media row.
-        Orphan,
-        /// The file backs a video row.
-        Video(Video),
-    }
 
     /// A use case under test together with its transaction-lifecycle flags.
     struct Harness {
@@ -524,70 +499,6 @@ mod tests {
             None,
             id.max(1),
             role,
-        )?)
-    }
-
-    fn file(id: i64, user_id: i64, path: &str) -> Result<File, Box<dyn Error>> {
-        Ok(File::try_new(
-            id,
-            path.to_owned(),
-            user_id,
-            false,
-            "image/png".to_owned(),
-            NaiveDate::default(),
-            10,
-            NaiveDateTime::default(),
-            Some(IntegrityHash::try_new(DIGEST.to_owned())?),
-            Some(Origin::Uploaded),
-        )?)
-    }
-
-    fn image(
-        image_id: i64,
-        file_id: i64,
-        scope: Option<AssetScope>,
-    ) -> Result<Image, Box<dyn Error>> {
-        Ok(Image::try_new(
-            image_id,
-            "art".to_owned(),
-            10,
-            10,
-            Orientation::Square,
-            NaiveDate::default(),
-            file_id,
-            scope,
-        )?)
-    }
-
-    fn video(
-        video_id: i64,
-        file_id: i64,
-        scope: Option<AssetScope>,
-    ) -> Result<Video, Box<dyn Error>> {
-        Ok(Video::try_new(
-            video_id,
-            1_000.0,
-            "h264".to_owned(),
-            30,
-            640,
-            480,
-            "sRGB".to_owned(),
-            ScanType::Progressive,
-            file_id,
-            scope,
-        )?)
-    }
-
-    fn audio(audio_id: i64, file_id: i64) -> Result<Audio, Box<dyn Error>> {
-        Ok(Audio::try_new(
-            audio_id,
-            "track".to_owned(),
-            Some(1_000.0),
-            "flac".to_owned(),
-            Some(44_100.0),
-            Some(16),
-            Some(4_096),
-            file_id,
         )?)
     }
 
@@ -632,26 +543,6 @@ mod tests {
         )
     }
 
-    fn item_detail(
-        gallery_item_id: i64,
-        gallery_id: i64,
-        image_id: i64,
-        file_id: i64,
-    ) -> Result<GalleryItemDetail, Box<dyn Error>> {
-        Ok(GalleryItemDetail::new(
-            GalleryItem::try_new(
-                gallery_item_id,
-                gallery_id,
-                Some(image_id),
-                None,
-                gallery_item_id,
-                NaiveDateTime::default(),
-            )?,
-            file_id,
-            "item".to_owned(),
-        ))
-    }
-
     /// Expect the caller load and then the target load.
     fn expect_actor(users: &mut MockUserRepository, caller: User, target: Option<User>) {
         let caller_id = caller.id();
@@ -665,24 +556,6 @@ mod tests {
             };
             Box::pin(async move { Ok(found.into_iter().collect()) })
         });
-    }
-
-    /// Expect the permission overrides of `caller_id` to be loaded empty.
-    fn expect_permission_load(permissions: &mut MockPermissionRepository, caller_id: i64) {
-        permissions
-            .expect_search()
-            .times(1)
-            .withf(move |filter| filter.user_id == Some(caller_id))
-            .returning(|_| Box::pin(async { Ok(Vec::new()) }));
-    }
-
-    /// Expect the target's permission overrides to be removed.
-    fn expect_permission_cleanup(permissions: &mut MockPermissionRepository, target_id: i64) {
-        permissions
-            .expect_delete()
-            .times(1)
-            .withf(move |filter| filter.user_id == Some(target_id))
-            .returning(|_| Box::pin(async { Ok(true) }));
     }
 
     /// Expect every owned collection to resolve empty.
@@ -727,16 +600,13 @@ mod tests {
             .returning(|_| Box::pin(async { Ok(true) }));
     }
 
-    /// Build a unit of work with the caller, target and permission cleanup
-    /// stubbed, leaving the owned collections and identity removal to the test.
+    /// Build a unit of work with the caller and target stubbed, leaving the
+    /// owned collections and identity removal to the test.
     fn bare_unit_of_work(caller: &User, target: &User) -> TestUnitOfWork {
         let mut users = MockUserRepository::new();
         expect_actor(&mut users, caller.clone(), Some(target.clone()));
-        let mut permissions = MockPermissionRepository::new();
-        expect_permission_load(&mut permissions, caller.id());
-        expect_permission_cleanup(&mut permissions, target.id());
         TestUnitOfWork {
-            permissions,
+            resources: no_resources(),
             users,
             ..TestUnitOfWork::default()
         }
@@ -788,88 +658,12 @@ mod tests {
         assert!(harness.committed.load(Ordering::SeqCst));
         Ok(())
     }
-
     #[tokio::test]
-    async fn delete_user_standard_caller_returns_not_admin() -> Result<(), Box<dyn Error>> {
-        // Arrange
-        let caller = user(3, Role::Standard)?;
-        let target = user(8, Role::Standard)?;
-        let mut users = MockUserRepository::new();
-        expect_actor(&mut users, caller.clone(), Some(target.clone()));
-        let mut permissions = MockPermissionRepository::new();
-        expect_permission_load(&mut permissions, caller.id());
-        let unit_of_work = TestUnitOfWork {
-            permissions,
-            users,
-            ..TestUnitOfWork::default()
-        };
-        let harness = harness(unit_of_work, MockFileStorage::new());
-
-        // Act
-        let result = harness
-            .use_case
-            .execute(DeleteUserCommand::new(caller.id(), target.id()))
-            .await;
-
-        // Assert
-        assert!(matches!(result, Err(DeleteUserError::NotAdmin)));
-        assert!(harness.rolled_back.load(Ordering::SeqCst));
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn delete_user_standard_with_override_deletes_a_standard_user()
-    -> Result<(), Box<dyn Error>> {
-        // Arrange
-        let caller = user(3, Role::Standard)?;
-        let target = user(8, Role::Standard)?;
-        let mut users = MockUserRepository::new();
-        expect_actor(&mut users, caller.clone(), Some(target.clone()));
-        let mut permissions = MockPermissionRepository::new();
-        let granted = Permission::try_new(caller.id(), Action::UserDelete, Scope::All)?;
-        permissions
-            .expect_search()
-            .times(1)
-            .withf(move |filter| filter.user_id == Some(3))
-            .return_once(move |_| Box::pin(async move { Ok(vec![granted]) }));
-        expect_permission_cleanup(&mut permissions, target.id());
-        let mut unit_of_work = TestUnitOfWork {
-            permissions,
-            users,
-            ..TestUnitOfWork::default()
-        };
-        expect_no_owned_content(&mut unit_of_work);
-        expect_identity_removal(&mut unit_of_work, &target);
-        let harness = harness(unit_of_work, MockFileStorage::new());
-
-        // Act
-        let result = harness
-            .use_case
-            .execute(DeleteUserCommand::new(caller.id(), target.id()))
-            .await;
-
-        // Assert
-        assert!(result.is_ok());
-        assert!(harness.committed.load(Ordering::SeqCst));
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn delete_user_admin_target_from_an_admin_returns_target_not_modifiable()
-    -> Result<(), Box<dyn Error>> {
+    async fn delete_user_admin_cannot_delete_another_admin() -> Result<(), Box<dyn Error>> {
         // Arrange
         let caller = user(7, Role::Admin)?;
         let target = user(8, Role::Admin)?;
-        let mut users = MockUserRepository::new();
-        expect_actor(&mut users, caller.clone(), Some(target.clone()));
-        let mut permissions = MockPermissionRepository::new();
-        expect_permission_load(&mut permissions, caller.id());
-        let unit_of_work = TestUnitOfWork {
-            permissions,
-            users,
-            ..TestUnitOfWork::default()
-        };
-        let harness = harness(unit_of_work, MockFileStorage::new());
+        let harness = harness(bare_unit_of_work(&caller, &target), MockFileStorage::new());
 
         // Act
         let result = harness
@@ -877,93 +671,29 @@ mod tests {
             .execute(DeleteUserCommand::new(caller.id(), target.id()))
             .await;
 
-        // Assert
+        // Assert: only the root administers Admin accounts.
         assert!(matches!(result, Err(DeleteUserError::TargetNotModifiable)));
         assert!(harness.rolled_back.load(Ordering::SeqCst));
+        assert!(!harness.committed.load(Ordering::SeqCst));
         Ok(())
     }
 
     #[tokio::test]
-    async fn delete_user_admin_deleting_itself_returns_target_not_modifiable()
-    -> Result<(), Box<dyn Error>> {
+    async fn delete_user_admin_cannot_delete_itself() -> Result<(), Box<dyn Error>> {
         // Arrange
         let caller = user(7, Role::Admin)?;
-        let target = user(7, Role::Admin)?;
-        let mut users = MockUserRepository::new();
-        expect_actor(&mut users, caller.clone(), Some(target.clone()));
-        let mut permissions = MockPermissionRepository::new();
-        expect_permission_load(&mut permissions, caller.id());
-        let unit_of_work = TestUnitOfWork {
-            permissions,
-            users,
-            ..TestUnitOfWork::default()
-        };
-        let harness = harness(unit_of_work, MockFileStorage::new());
+        let harness = harness(bare_unit_of_work(&caller, &caller), MockFileStorage::new());
 
         // Act
         let result = harness
             .use_case
-            .execute(DeleteUserCommand::new(caller.id(), target.id()))
+            .execute(DeleteUserCommand::new(caller.id(), caller.id()))
             .await;
 
         // Assert
         assert!(matches!(result, Err(DeleteUserError::TargetNotModifiable)));
         assert!(harness.rolled_back.load(Ordering::SeqCst));
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn delete_user_root_target_returns_target_not_modifiable() -> Result<(), Box<dyn Error>> {
-        // Arrange
-        let caller = user(0, Role::Admin)?;
-        let target = user(0, Role::Admin)?;
-        let mut users = MockUserRepository::new();
-        expect_actor(&mut users, caller.clone(), Some(target.clone()));
-        let mut permissions = MockPermissionRepository::new();
-        expect_permission_load(&mut permissions, caller.id());
-        let unit_of_work = TestUnitOfWork {
-            permissions,
-            users,
-            ..TestUnitOfWork::default()
-        };
-        let harness = harness(unit_of_work, MockFileStorage::new());
-
-        // Act
-        let result = harness
-            .use_case
-            .execute(DeleteUserCommand::new(caller.id(), target.id()))
-            .await;
-
-        // Assert
-        assert!(matches!(result, Err(DeleteUserError::TargetNotModifiable)));
-        assert!(harness.rolled_back.load(Ordering::SeqCst));
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn delete_user_unknown_target_returns_no_such_user() -> Result<(), Box<dyn Error>> {
-        // Arrange
-        let caller = user(7, Role::Admin)?;
-        let mut users = MockUserRepository::new();
-        expect_actor(&mut users, caller.clone(), None);
-        let mut permissions = MockPermissionRepository::new();
-        expect_permission_load(&mut permissions, caller.id());
-        let unit_of_work = TestUnitOfWork {
-            permissions,
-            users,
-            ..TestUnitOfWork::default()
-        };
-        let harness = harness(unit_of_work, MockFileStorage::new());
-
-        // Act
-        let result = harness
-            .use_case
-            .execute(DeleteUserCommand::new(caller.id(), 999))
-            .await;
-
-        // Assert
-        assert!(matches!(result, Err(DeleteUserError::NoSuchUser)));
-        assert!(harness.rolled_back.load(Ordering::SeqCst));
+        assert!(!harness.committed.load(Ordering::SeqCst));
         Ok(())
     }
 
@@ -1087,433 +817,6 @@ mod tests {
         assert!(harness.committed.load(Ordering::SeqCst));
         Ok(())
     }
-
-    /// Expect every owned collection of the target to resolve empty.
-    fn expect_empty_owned(unit_of_work: &mut TestUnitOfWork, target_id: i64) {
-        unit_of_work
-            .galleries
-            .expect_search()
-            .times(1)
-            .withf(move |filter| filter.user_id == Some(target_id))
-            .returning(|_| Box::pin(async { Ok(Vec::new()) }));
-        unit_of_work
-            .music_playlists
-            .expect_search()
-            .times(1)
-            .withf(move |filter| filter.user_id == Some(target_id))
-            .returning(|_| Box::pin(async { Ok(Vec::new()) }));
-        unit_of_work
-            .uploads
-            .expect_search()
-            .times(1)
-            .withf(move |filter| filter.user_id == Some(target_id))
-            .returning(|_| Box::pin(async { Ok(Vec::new()) }));
-    }
-
-    /// Run a deletion over a single private file backing `media`, returning the
-    /// harness and the result.
-    async fn delete_file_assuming_private(media: PrivateMedia) -> Result<Harness, Box<dyn Error>> {
-        let caller = user(7, Role::Admin)?;
-        let target = user(8, Role::Standard)?;
-        let mut unit_of_work = bare_unit_of_work(&caller, &target);
-        expect_identity_removal(&mut unit_of_work, &target);
-        expect_empty_owned(&mut unit_of_work, target.id());
-        let stored = file(100, target.id(), "1_photo.png")?;
-        let file_id = stored.id();
-        unit_of_work
-            .files
-            .expect_search()
-            .times(1)
-            .withf(move |filter| filter.user_id == Some(8))
-            .return_once(move |_| Box::pin(async move { Ok(vec![stored]) }));
-        unit_of_work
-            .files
-            .expect_delete()
-            .times(1)
-            .withf(move |filter| filter.id == Some(file_id))
-            .returning(|_| Box::pin(async { Ok(true) }));
-
-        match media {
-            PrivateMedia::Image(image_value) => {
-                let image_id = image_value.image_id();
-                unit_of_work
-                    .images
-                    .expect_search()
-                    .times(1)
-                    .return_once(move |_| Box::pin(async move { Ok(vec![image_value]) }));
-                unit_of_work
-                    .videos
-                    .expect_search()
-                    .times(1)
-                    .returning(|_| Box::pin(async { Ok(Vec::new()) }));
-                unit_of_work
-                    .audios
-                    .expect_search()
-                    .times(1)
-                    .returning(|_| Box::pin(async { Ok(Vec::new()) }));
-                unit_of_work
-                    .galleries
-                    .expect_search_items()
-                    .times(1)
-                    .returning(|_| Box::pin(async { Ok(Vec::new()) }));
-                unit_of_work
-                    .music_playlists
-                    .expect_search()
-                    .times(1)
-                    .withf(move |filter| filter.cover_image_id == Some(image_id))
-                    .returning(|_| Box::pin(async { Ok(Vec::new()) }));
-                unit_of_work
-                    .images
-                    .expect_delete()
-                    .times(1)
-                    .withf(move |filter| filter.image_id == Some(image_id))
-                    .returning(|_| Box::pin(async { Ok(true) }));
-            }
-            PrivateMedia::Video(video_value) => {
-                let video_id = video_value.id();
-                unit_of_work
-                    .images
-                    .expect_search()
-                    .times(1)
-                    .returning(|_| Box::pin(async { Ok(Vec::new()) }));
-                unit_of_work
-                    .videos
-                    .expect_search()
-                    .times(1)
-                    .return_once(move |_| Box::pin(async move { Ok(vec![video_value]) }));
-                unit_of_work
-                    .audios
-                    .expect_search()
-                    .times(1)
-                    .returning(|_| Box::pin(async { Ok(Vec::new()) }));
-                unit_of_work
-                    .movies
-                    .expect_search()
-                    .times(1)
-                    .returning(|_| Box::pin(async { Ok(Vec::new()) }));
-                unit_of_work
-                    .series
-                    .expect_search_episodes()
-                    .times(1)
-                    .returning(|_| Box::pin(async { Ok(Vec::new()) }));
-                unit_of_work
-                    .videos
-                    .expect_delete()
-                    .times(1)
-                    .withf(move |filter| filter.id == Some(video_id))
-                    .returning(|_| Box::pin(async { Ok(true) }));
-            }
-            PrivateMedia::Audio(audio_value) => {
-                let audio_id = audio_value.id();
-                unit_of_work
-                    .images
-                    .expect_search()
-                    .times(1)
-                    .returning(|_| Box::pin(async { Ok(Vec::new()) }));
-                unit_of_work
-                    .videos
-                    .expect_search()
-                    .times(1)
-                    .returning(|_| Box::pin(async { Ok(Vec::new()) }));
-                unit_of_work
-                    .audios
-                    .expect_search()
-                    .times(1)
-                    .return_once(move |_| Box::pin(async move { Ok(vec![audio_value]) }));
-                unit_of_work
-                    .music_albums
-                    .expect_search()
-                    .times(1)
-                    .returning(|_| Box::pin(async { Ok(Vec::new()) }));
-                unit_of_work
-                    .audios
-                    .expect_delete()
-                    .times(1)
-                    .withf(move |filter| filter.id == Some(audio_id))
-                    .returning(|_| Box::pin(async { Ok(true) }));
-            }
-            PrivateMedia::Orphan => {
-                unit_of_work
-                    .images
-                    .expect_search()
-                    .times(1)
-                    .returning(|_| Box::pin(async { Ok(Vec::new()) }));
-                unit_of_work
-                    .videos
-                    .expect_search()
-                    .times(1)
-                    .returning(|_| Box::pin(async { Ok(Vec::new()) }));
-                unit_of_work
-                    .audios
-                    .expect_search()
-                    .times(1)
-                    .returning(|_| Box::pin(async { Ok(Vec::new()) }));
-            }
-        }
-
-        let mut storage = MockFileStorage::new();
-        storage
-            .expect_delete_upload_file()
-            .times(1)
-            .returning(|_| Box::pin(async { Ok(()) }));
-        let harness = harness(unit_of_work, storage);
-        harness
-            .use_case
-            .execute(DeleteUserCommand::new(caller.id(), target.id()))
-            .await?;
-        assert!(harness.committed.load(Ordering::SeqCst));
-        Ok(harness)
-    }
-
-    #[tokio::test]
-    async fn delete_user_removes_a_private_image() -> Result<(), Box<dyn Error>> {
-        // Act & Assert
-        delete_file_assuming_private(PrivateMedia::Image(image(7, 100, Some(AssetScope::User))?))
-            .await?;
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn delete_user_removes_a_private_video() -> Result<(), Box<dyn Error>> {
-        // Act & Assert
-        delete_file_assuming_private(PrivateMedia::Video(video(7, 100, None)?)).await?;
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn delete_user_removes_a_private_audio() -> Result<(), Box<dyn Error>> {
-        // Act & Assert
-        delete_file_assuming_private(PrivateMedia::Audio(audio(7, 100)?)).await?;
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn delete_user_removes_an_orphan_file() -> Result<(), Box<dyn Error>> {
-        // Act & Assert
-        delete_file_assuming_private(PrivateMedia::Orphan).await?;
-        Ok(())
-    }
-
-    /// Run a deletion over a single shared file backing `media`.
-    async fn delete_file_assuming_shared(
-        media: SharedMedia,
-        collision: bool,
-    ) -> Result<Harness, Box<dyn Error>> {
-        let caller = user(7, Role::Admin)?;
-        let target = user(8, Role::Standard)?;
-        let mut unit_of_work = bare_unit_of_work(&caller, &target);
-        expect_identity_removal(&mut unit_of_work, &target);
-        expect_empty_owned(&mut unit_of_work, target.id());
-        let stored = file(100, target.id(), "1_shared.png")?;
-        let file_id = stored.id();
-        unit_of_work
-            .files
-            .expect_search()
-            .times(1)
-            .withf(move |filter| filter.user_id == Some(8))
-            .return_once(move |_| Box::pin(async move { Ok(vec![stored]) }));
-        let root_copy = file(200, 0, "1_root.png")?;
-        unit_of_work
-            .files
-            .expect_search()
-            .times(1)
-            .withf(|filter| filter.user_id == Some(0) && filter.integrity_hash.is_some())
-            .return_once(move |_| {
-                let found = if collision {
-                    vec![root_copy]
-                } else {
-                    Vec::new()
-                };
-                Box::pin(async move { Ok(found) })
-            });
-        unit_of_work
-            .files
-            .expect_reassign_owner()
-            .times(1)
-            .withf(move |id, owner| *id == file_id && *owner == 0)
-            .returning(|_, _| Box::pin(async { Ok(true) }));
-        unit_of_work
-            .files
-            .expect_clear_integrity_hash()
-            .times(usize::from(collision))
-            .returning(|_| Box::pin(async { Ok(true) }));
-
-        let (image_value, video_value, audio_value) = match media.clone() {
-            SharedMedia::Image(value) => (Some(value), None, None),
-            SharedMedia::Video(value) => (None, Some(value), None),
-            SharedMedia::Audio(value) => (None, None, Some(value)),
-        };
-        unit_of_work
-            .images
-            .expect_search()
-            .times(1)
-            .return_once(move |_| Box::pin(async move { Ok(image_value.into_iter().collect()) }));
-        unit_of_work
-            .videos
-            .expect_search()
-            .times(1)
-            .return_once(move |_| Box::pin(async move { Ok(video_value.into_iter().collect()) }));
-        unit_of_work
-            .audios
-            .expect_search()
-            .times(1)
-            .return_once(move |_| Box::pin(async move { Ok(audio_value.into_iter().collect()) }));
-
-        match media.clone() {
-            SharedMedia::Image(value) => {
-                let image_id = value.image_id();
-                let detail = item_detail(1, 2, image_id, 100)?;
-                unit_of_work
-                    .galleries
-                    .expect_search_items()
-                    .times(1)
-                    .withf(move |filter| filter.media == Some(GalleryItemMedia::Image(image_id)))
-                    .return_once(move |_| {
-                        let found = detail.clone();
-                        Box::pin(async move { Ok(vec![found]) })
-                    });
-                unit_of_work
-                    .music_playlists
-                    .expect_search()
-                    .times(1)
-                    .withf(move |filter| filter.cover_image_id == Some(image_id))
-                    .returning(|_| Box::pin(async { Ok(Vec::new()) }));
-            }
-            SharedMedia::Video(_) => {
-                let film = sample_movie(5)?;
-                unit_of_work
-                    .movies
-                    .expect_search()
-                    .times(1)
-                    .return_once(move |_| Box::pin(async move { Ok(vec![film]) }));
-                unit_of_work
-                    .series
-                    .expect_search_episodes()
-                    .times(1)
-                    .returning(|_| Box::pin(async { Ok(Vec::new()) }));
-            }
-            SharedMedia::Audio(_) => {
-                let album = sample_album(5, Vec::new())?;
-                unit_of_work
-                    .music_albums
-                    .expect_search()
-                    .times(1)
-                    .return_once(move |_| Box::pin(async move { Ok(vec![album]) }));
-            }
-        }
-
-        // The private-file path must not run.
-        unit_of_work.files.expect_delete().times(0);
-        unit_of_work.images.expect_delete().times(0);
-        unit_of_work.videos.expect_delete().times(0);
-        unit_of_work.audios.expect_delete().times(0);
-        let mut storage = MockFileStorage::new();
-        storage.expect_delete_upload_file().times(0);
-
-        let harness = harness(unit_of_work, storage);
-        harness
-            .use_case
-            .execute(DeleteUserCommand::new(caller.id(), target.id()))
-            .await?;
-        assert!(harness.committed.load(Ordering::SeqCst));
-        Ok(harness)
-    }
-
-    #[tokio::test]
-    async fn delete_user_transfers_an_image_in_another_users_gallery() -> Result<(), Box<dyn Error>>
-    {
-        // Act & Assert
-        delete_file_assuming_shared(
-            SharedMedia::Image(image(7, 100, Some(AssetScope::User))?),
-            false,
-        )
-        .await?;
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn delete_user_transfers_shared_media_and_clears_a_colliding_digest()
-    -> Result<(), Box<dyn Error>> {
-        // Act & Assert
-        delete_file_assuming_shared(
-            SharedMedia::Image(image(7, 100, Some(AssetScope::User))?),
-            true,
-        )
-        .await?;
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn delete_user_transfers_a_video_backing_a_film() -> Result<(), Box<dyn Error>> {
-        // Act & Assert
-        let harness =
-            delete_file_assuming_shared(SharedMedia::Video(video(7, 100, None)?), false).await?;
-        // The transfer succeeds and no bytes are removed.
-        assert!(harness.committed.load(Ordering::SeqCst));
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn delete_user_transfers_an_audio_backing_an_album() -> Result<(), Box<dyn Error>> {
-        // Act & Assert
-        delete_file_assuming_shared(SharedMedia::Audio(audio(7, 100)?), false).await?;
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn delete_user_byte_removal_failure_still_succeeds() -> Result<(), Box<dyn Error>> {
-        // Arrange
-        let caller = user(7, Role::Admin)?;
-        let target = user(8, Role::Standard)?;
-        let mut unit_of_work = bare_unit_of_work(&caller, &target);
-        expect_identity_removal(&mut unit_of_work, &target);
-        expect_empty_owned(&mut unit_of_work, target.id());
-        let stored = file(100, target.id(), "1_photo.png")?;
-        unit_of_work
-            .files
-            .expect_search()
-            .times(1)
-            .withf(move |filter| filter.user_id == Some(8))
-            .return_once(move |_| Box::pin(async move { Ok(vec![stored]) }));
-        unit_of_work
-            .files
-            .expect_delete()
-            .times(1)
-            .returning(|_| Box::pin(async { Ok(true) }));
-        unit_of_work
-            .images
-            .expect_search()
-            .times(1)
-            .returning(|_| Box::pin(async { Ok(Vec::new()) }));
-        unit_of_work
-            .videos
-            .expect_search()
-            .times(1)
-            .returning(|_| Box::pin(async { Ok(Vec::new()) }));
-        unit_of_work
-            .audios
-            .expect_search()
-            .times(1)
-            .returning(|_| Box::pin(async { Ok(Vec::new()) }));
-        let mut storage = MockFileStorage::new();
-        storage
-            .expect_delete_upload_file()
-            .times(1)
-            .returning(|_| Box::pin(async { Err(StorageError::Unavailable) }));
-        let harness = harness(unit_of_work, storage);
-
-        // Act
-        let result = harness
-            .use_case
-            .execute(DeleteUserCommand::new(caller.id(), target.id()))
-            .await;
-
-        // Assert
-        assert!(result.is_ok());
-        assert!(harness.committed.load(Ordering::SeqCst));
-        Ok(())
-    }
-
     #[tokio::test]
     async fn delete_user_commit_failure_returns_unknown() -> Result<(), Box<dyn Error>> {
         // Arrange

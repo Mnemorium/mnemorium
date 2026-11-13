@@ -1,3 +1,5 @@
+/// The action catalog domain model.
+mod action;
 /// The artwork domain model.
 mod artwork;
 /// The asset domain model.
@@ -22,6 +24,8 @@ mod gallery;
 mod gallery_item;
 /// The genre domain model.
 mod genre;
+/// The grant domain model.
+mod grant;
 /// The image domain model.
 mod image;
 /// The instance state domain model.
@@ -53,8 +57,12 @@ mod music_query;
 /// The music recording domain model.
 mod music_recording;
 mod partial_configuration;
-/// The permission domain model.
-mod permission;
+/// The principal domain model.
+mod principal;
+/// The resource-graph domain model.
+mod resource;
+/// The resource-role domain model.
+mod role;
 /// The season domain model.
 mod season;
 /// The series domain model.
@@ -68,6 +76,7 @@ mod video;
 /// The video candidate domain model.
 mod video_candidate;
 
+pub(crate) use self::action::Action;
 pub(crate) use self::artwork::Artwork;
 pub(crate) use self::asset::{AssetOwner, ProtectedResource};
 pub(crate) use self::asset_scope::AssetScope;
@@ -91,6 +100,7 @@ pub(crate) use self::file::{File, Origin};
 pub(crate) use self::gallery::Gallery;
 pub(crate) use self::gallery_item::{GalleryItem, GalleryItemMedia};
 pub(crate) use self::genre::Genre;
+pub(crate) use self::grant::{ChildKind, Grant, GrantEffect};
 pub(crate) use self::image::{Image, Orientation, ProbedImage};
 #[cfg(test)]
 pub(crate) use self::instance_state::InstanceStateError;
@@ -123,10 +133,12 @@ pub(crate) use self::partial_configuration::{
     PartialLibraryMetadata, PartialLibraryStartup, PartialMusicProvider, PartialMusicProviders,
     PartialVideoMetadata, PartialVideoProvider,
 };
-pub(crate) use self::permission::{
-    ACTIONS, Action, Global, Permission, PermissionError, PermissionPreset, Protected,
-    ResourceKind, ResourceRef, RootAccess, Scope,
+pub(crate) use self::principal::Principal;
+pub(crate) use self::resource::{
+    MAX_AUTHORIZATION_DEPTH, RelationSource, Resource, ResourceAccess, ResourceKind, ResourceRef,
+    ResourceRelationKind, Visibility,
 };
+pub(crate) use self::role::ResourceRole;
 pub(crate) use self::season::{Season, SeasonIndex};
 pub(crate) use self::series::Series;
 pub(crate) use self::upload::{ChunkBitmap, MAX_TOTAL_CHUNKS, Upload, UploadError};

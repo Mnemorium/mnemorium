@@ -11,9 +11,9 @@ use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody, hal_js
 
 /// Fetch one season of a show.
 ///
-/// Any authenticated caller may read a season; the show is not owned and
-/// carries no visibility flag. The season is scoped to the show named in the
-/// path, so two shows may each hold a season 1.
+/// A caller that may `View` a season reads it; the show is not owned and carries
+/// no visibility flag. The season is scoped to the show named in the path, so
+/// two shows may each hold a season 1.
 #[utoipa::path(
     get,
     operation_id = "get_series_season",

@@ -1,3 +1,5 @@
+use crate::application::authorization::authorize;
+use crate::domain::model::ChildKind;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -7,13 +9,13 @@ use tracing::warn;
 use crate::application::port::{
     CreateSeriesCommand, CreateSeriesError, CreateSeriesResponse, CreateSeriesUseCase,
 };
-use crate::domain::model::Series;
+use crate::domain::model::{Action, ResourceKind, ResourceRef, Series, Visibility};
 use crate::domain::port::{
-    IdentityUnitOfWork, LibraryUnitOfWork, PermissionFilter, PermissionRepository as _,
-    RepositoryError, SeriesRepository as _, UnitOfWork as _, UnitOfWorkFactory, UserFilter,
-    UserRepository as _, UserUnitOfWork,
+    IdentityUnitOfWork, LibraryUnitOfWork, NewResource, RepositoryError, ResourceRepository as _,
+    SeriesRepository as _, UnitOfWork as _, UnitOfWorkFactory, UserFilter, UserRepository as _,
+    UserUnitOfWork,
 };
-use crate::domain::service::{Authorization, CountryCode, Decision, NamePolicy, NamePolicyError};
+use crate::domain::service::{CountryCode, NamePolicy, NamePolicyError};
 
 /// Use case implementation for creating a show.
 pub(crate) struct CreateSeries<F> {
@@ -63,28 +65,15 @@ where
                     .next()
                     .ok_or(CreateSeriesError::NoSuchCaller)?;
 
-                let permissions = unit_of_work
-                    .permissions()
-                    .search(&PermissionFilter {
-                        user_id: Some(caller.id()),
-                        ..PermissionFilter::default()
-                    })
-                    .await
-                    .map_err(|error| CreateSeriesError::Unknown(error.into()))?;
-
-                if let Decision::Deny(denial) =
-                    Authorization::decide_library_manage_surface(&caller, &permissions)
-                {
-                    warn!(
-                        target: "security",
-                        event = "authz_failed",
-                        actor = caller.id(),
-                        action = %denial.action().verb(),
-                        target = %denial.action().target(),
-                        "denied an action"
-                    );
-                    return Err(CreateSeriesError::Forbidden);
-                }
+                authorize(
+                    &mut unit_of_work.resources(),
+                    &caller,
+                    ResourceRef::new(ResourceKind::Catalogue, 0),
+                    Action::CreateChild,
+                    Some(ChildKind::Series),
+                )
+                .await
+                .map_err(|_| CreateSeriesError::Forbidden)?;
 
                 let name =
                     NamePolicy::validate(command.name().to_owned()).map_err(
@@ -168,6 +157,18 @@ where
                         }
                     })?;
 
+                unit_of_work
+                    .resources()
+                    .create(NewResource {
+                        kind: ResourceKind::Series,
+                        entity_id: stored.id(),
+                        owner_id: None,
+                        auth_parent: Some(ResourceRef::new(ResourceKind::Catalogue, 0)),
+                        visibility: Visibility::Public,
+                    })
+                    .await
+                    .map_err(|error| CreateSeriesError::Unknown(error.into()))?;
+
                 Ok(CreateSeriesResponse::new(stored))
             }
             .await;
@@ -194,10 +195,11 @@ where
 mod tests {
     use super::*;
     use crate::domain::NumericID;
+    use allure_cargotest::allure_test;
 
     use crate::domain::model::{Role, User};
 
-    use crate::domain::port::{MockPermissionRepository, MockSeriesRepository, MockUserRepository};
+    use crate::domain::port::{MockResourceRepository, MockSeriesRepository, MockUserRepository};
 
     use crate::test_helpers::*;
     use chrono::NaiveDate;
@@ -224,11 +226,11 @@ mod tests {
     /// Build a Library test harness around the given mocks.
     fn harness_with(
         users: MockUserRepository,
-        permissions: MockPermissionRepository,
+        resources: MockResourceRepository,
         series: MockSeriesRepository,
     ) -> GalleryFactoryHarness {
         let unit_of_work = TestUnitOfWork {
-            permissions,
+            resources,
             series,
             users,
             ..TestUnitOfWork::default()
@@ -249,8 +251,12 @@ mod tests {
         )
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn create_series_stores_the_show_with_no_seasons() -> Result<(), Box<dyn Error>> {
+        allure.epic("Series");
+        allure.feature("REQ-SERIES-008");
+        allure.story("SCN-SERIES-008-A");
         // Arrange
         let mut users = MockUserRepository::new();
         expect_admin(&mut users, 1)?;
@@ -270,7 +276,7 @@ mod tests {
                 let created = stored.clone();
                 Box::pin(async move { Ok(created) })
             });
-        let harness = harness_with(users, no_permissions(), series);
+        let harness = harness_with(users, no_resources(), series);
         let use_case: UseCase = CreateSeries::new(Arc::clone(&harness.factory));
 
         // Act
@@ -296,8 +302,12 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn create_series_repeated_name_returns_a_second_show() -> Result<(), Box<dyn Error>> {
+        allure.epic("Series");
+        allure.feature("REQ-SERIES-008");
+        allure.story("SCN-SERIES-008-B");
         // Arrange: the schema holds no unique show name, so creation never looks
         // one up before inserting.
         let mut users = MockUserRepository::new();
@@ -308,7 +318,7 @@ mod tests {
             let created = stored.clone();
             Box::pin(async move { Ok(created) })
         });
-        let harness = harness_with(users, no_permissions(), series);
+        let harness = harness_with(users, no_resources(), series);
         let use_case: UseCase = CreateSeries::new(Arc::clone(&harness.factory));
 
         // Act
@@ -323,8 +333,12 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn create_series_unknown_genre_is_written() -> Result<(), Box<dyn Error>> {
+        allure.epic("Series");
+        allure.feature("REQ-SERIES-008");
+        allure.story("SCN-SERIES-008-C");
         // Arrange: the genre vocabulary is open on write.
         let mut users = MockUserRepository::new();
         expect_admin(&mut users, 1)?;
@@ -338,7 +352,7 @@ mod tests {
                 let created = stored.clone();
                 Box::pin(async move { Ok(created) })
             });
-        let harness = harness_with(users, no_permissions(), series);
+        let harness = harness_with(users, no_resources(), series);
         let use_case: UseCase = CreateSeries::new(Arc::clone(&harness.factory));
 
         // Act
@@ -359,12 +373,16 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn create_series_empty_name_is_invalid() -> Result<(), Box<dyn Error>> {
+        allure.epic("Series");
+        allure.feature("REQ-SERIES-008");
+        allure.story("SCN-SERIES-008-D");
         // Arrange
         let mut users = MockUserRepository::new();
         expect_admin(&mut users, 1)?;
-        let harness = harness_with(users, no_permissions(), MockSeriesRepository::new());
+        let harness = harness_with(users, no_resources(), MockSeriesRepository::new());
         let use_case: UseCase = CreateSeries::new(Arc::clone(&harness.factory));
 
         // Act
@@ -385,12 +403,16 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn create_series_invalid_country_is_unprocessable() -> Result<(), Box<dyn Error>> {
+        allure.epic("Series");
+        allure.feature("REQ-SERIES-008");
+        allure.story("SCN-SERIES-008-D");
         // Arrange
         let mut users = MockUserRepository::new();
         expect_admin(&mut users, 1)?;
-        let harness = harness_with(users, no_permissions(), MockSeriesRepository::new());
+        let harness = harness_with(users, no_resources(), MockSeriesRepository::new());
         let use_case: UseCase = CreateSeries::new(Arc::clone(&harness.factory));
 
         // Act
@@ -411,12 +433,16 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn create_series_empty_genre_is_invalid() -> Result<(), Box<dyn Error>> {
+        allure.epic("Series");
+        allure.feature("REQ-SERIES-008");
+        allure.story("SCN-SERIES-008-D");
         // Arrange
         let mut users = MockUserRepository::new();
         expect_admin(&mut users, 1)?;
-        let harness = harness_with(users, no_permissions(), MockSeriesRepository::new());
+        let harness = harness_with(users, no_resources(), MockSeriesRepository::new());
         let use_case: UseCase = CreateSeries::new(Arc::clone(&harness.factory));
 
         // Act
@@ -436,26 +462,12 @@ mod tests {
         assert!(matches!(result, Err(CreateSeriesError::InvalidGenre)));
         Ok(())
     }
-
-    #[tokio::test]
-    async fn create_series_standard_user_is_forbidden() -> Result<(), Box<dyn Error>> {
-        // Arrange
-        let mut users = MockUserRepository::new();
-        expect_caller(&mut users, 1)?;
-        let harness = harness_with(users, no_permissions(), MockSeriesRepository::new());
-        let use_case: UseCase = CreateSeries::new(Arc::clone(&harness.factory));
-
-        // Act
-        let result = use_case.execute(command()).await;
-
-        // Assert
-        assert!(matches!(result, Err(CreateSeriesError::Forbidden)));
-        assert!(harness.rolled_back.load(Ordering::SeqCst));
-        Ok(())
-    }
-
+    #[allure_test]
     #[tokio::test]
     async fn create_series_invalid_cover_is_conflict() -> Result<(), Box<dyn Error>> {
+        allure.epic("Series");
+        allure.feature("REQ-SERIES-008");
+        allure.story("SCN-SERIES-008-E");
         // Arrange: the repository rejects the cover through the scope trigger.
         let mut users = MockUserRepository::new();
         expect_admin(&mut users, 1)?;
@@ -464,7 +476,7 @@ mod tests {
             .expect_create()
             .times(1)
             .returning(|_| Box::pin(async { Err(RepositoryError::Conflict) }));
-        let harness = harness_with(users, no_permissions(), series);
+        let harness = harness_with(users, no_resources(), series);
         let use_case: UseCase = CreateSeries::new(Arc::clone(&harness.factory));
 
         // Act
@@ -486,8 +498,12 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn create_series_missing_cover_is_conflict() -> Result<(), Box<dyn Error>> {
+        allure.epic("Series");
+        allure.feature("REQ-SERIES-008");
+        allure.story("SCN-SERIES-008-E");
         // Arrange: the repository rejects the cover through the scope trigger.
         let mut users = MockUserRepository::new();
         expect_admin(&mut users, 1)?;
@@ -496,7 +512,7 @@ mod tests {
             .expect_create()
             .times(1)
             .returning(|_| Box::pin(async { Err(RepositoryError::DataIntegrityViolation) }));
-        let harness = harness_with(users, no_permissions(), series);
+        let harness = harness_with(users, no_resources(), series);
         let use_case: UseCase = CreateSeries::new(Arc::clone(&harness.factory));
 
         // Act

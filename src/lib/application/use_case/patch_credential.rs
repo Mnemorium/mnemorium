@@ -1,21 +1,22 @@
+use crate::application::authorization::authorize;
+use crate::domain::model::{ResourceKind, ResourceRef};
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
 use chrono::Utc;
 
-use tracing::{info, warn};
+use tracing::info;
 
 use crate::application::port::{
     PatchCredentialCommand, PatchCredentialError, PatchCredentialUseCase,
 };
-use crate::domain::model::{Action, Credential, Global};
+use crate::domain::model::{Action, Credential};
 use crate::domain::port::{
     CredentialFilter, CredentialRepository as _, IdentityUnitOfWork, PasswordHasher,
-    PermissionFilter, PermissionRepository as _, UnitOfWork as _, UnitOfWorkFactory, UserFilter,
-    UserRepository as _, UserUnitOfWork,
+    UnitOfWork as _, UnitOfWorkFactory, UserFilter, UserRepository as _, UserUnitOfWork,
 };
-use crate::domain::service::{Authorization, Decision, PasswordPolicy, PasswordPolicyError};
+use crate::domain::service::{PasswordPolicy, PasswordPolicyError};
 
 /// Use case implementation for changing the password behind a credential.
 pub(crate) struct PatchCredential<F, H> {
@@ -77,28 +78,15 @@ where
                     .into_iter()
                     .next()
                     .ok_or(PatchCredentialError::NoSuchCaller)?;
-
-                let permissions = unit_of_work
-                    .permissions()
-                    .search(&PermissionFilter {
-                        user_id: Some(caller.id()),
-                        ..PermissionFilter::default()
-                    })
-                    .await
-                    .map_err(|error| PatchCredentialError::Unknown(error.into()))?;
-                if let Decision::Deny(denial) =
-                    Authorization::decide(&caller, &permissions, Action::CredentialPatch, &Global)
-                {
-                    warn!(
-                        target: "security",
-                        event = "authz_failed",
-                        actor = caller.id(),
-                        action = %denial.action().verb(),
-                        target = %denial.action().target(),
-                        "denied an action"
-                    );
-                    return Err(PatchCredentialError::Forbidden);
-                }
+                authorize(
+                    &mut unit_of_work.resources(),
+                    &caller,
+                    ResourceRef::new(ResourceKind::User, caller.id()),
+                    Action::ReplaceCredential,
+                    None,
+                )
+                .await
+                .map_err(|_| PatchCredentialError::Forbidden)?;
 
                 let credential = unit_of_work
                     .credentials()
@@ -202,7 +190,7 @@ mod tests {
 
         let unit_of_work = TestUnitOfWork {
             credentials: credential_repository,
-            permissions: no_permissions(),
+            resources: no_resources(),
             users: user_repository,
             ..TestUnitOfWork::default()
         };

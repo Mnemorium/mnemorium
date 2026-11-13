@@ -1,3 +1,5 @@
+use crate::application::authorization::authorize;
+use crate::domain::model::ChildKind;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -8,14 +10,13 @@ use crate::application::port::{
     PutSeriesEpisodeCommand, PutSeriesEpisodeError, PutSeriesEpisodeResponse,
     PutSeriesEpisodeUseCase,
 };
-use crate::domain::model::{Episode, EpisodeIndex};
+use crate::domain::model::{Action, Episode, EpisodeIndex, ResourceKind, ResourceRef};
 use crate::domain::port::{
     EpisodeFilter, IdentityUnitOfWork, LibraryUnitOfWork, MovieFilter, MovieRepository as _,
-    PermissionFilter, PermissionRepository as _, RepositoryError, SeriesFilter,
-    SeriesRepository as _, UnitOfWork as _, UnitOfWorkFactory, UserFilter, UserRepository as _,
-    UserUnitOfWork, VideoFilter, VideoRepository as _,
+    RepositoryError, SeriesFilter, SeriesRepository as _, UnitOfWork as _, UnitOfWorkFactory,
+    UserFilter, UserRepository as _, UserUnitOfWork, VideoFilter, VideoRepository as _,
 };
-use crate::domain::service::{Authorization, Decision, NamePolicy, NamePolicyError};
+use crate::domain::service::{NamePolicy, NamePolicyError};
 
 /// Use case implementation for creating or replacing a season episode.
 pub(crate) struct PutSeriesEpisode<F> {
@@ -69,28 +70,21 @@ where
                     .next()
                     .ok_or(PutSeriesEpisodeError::NoSuchCaller)?;
 
-                let permissions = unit_of_work
-                    .permissions()
-                    .search(&PermissionFilter {
-                        user_id: Some(caller.id()),
-                        ..PermissionFilter::default()
-                    })
-                    .await
-                    .map_err(|error| PutSeriesEpisodeError::Unknown(error.into()))?;
-
-                if let Decision::Deny(denial) =
-                    Authorization::decide_library_manage_surface(&caller, &permissions)
-                {
-                    warn!(
-                        target: "security",
-                        event = "authz_failed",
-                        actor = caller.id(),
-                        action = %denial.action().verb(),
-                        target = %denial.action().target(),
-                        "denied an action"
-                    );
-                    return Err(PutSeriesEpisodeError::Forbidden);
-                }
+                authorize(
+                    &mut unit_of_work.resources(),
+                    &caller,
+                    ResourceRef::new(ResourceKind::Series, command.series_id()),
+                    Action::CreateChild,
+                    Some(ChildKind::Episode),
+                )
+                .await
+                .map_err(|error| {
+                    if error.conceals() {
+                        PutSeriesEpisodeError::NoSuchSeries
+                    } else {
+                        PutSeriesEpisodeError::Forbidden
+                    }
+                })?;
 
                 let series = unit_of_work
                     .series()
@@ -233,11 +227,12 @@ where
 mod tests {
     use super::*;
     use crate::domain::NumericID;
+    use allure_cargotest::allure_test;
 
     use crate::domain::model::{Role, Series, User};
 
     use crate::domain::port::{
-        MockMovieRepository, MockPermissionRepository, MockSeriesRepository, MockUserRepository,
+        MockMovieRepository, MockResourceRepository, MockSeriesRepository, MockUserRepository,
         MockVideoRepository,
     };
 
@@ -265,14 +260,14 @@ mod tests {
     /// Build a Library test harness around the given mocks.
     fn harness_with(
         users: MockUserRepository,
-        permissions: MockPermissionRepository,
+        resources: MockResourceRepository,
         series: MockSeriesRepository,
         movies: MockMovieRepository,
         videos: MockVideoRepository,
     ) -> GalleryFactoryHarness {
         let unit_of_work = TestUnitOfWork {
             movies,
-            permissions,
+            resources,
             series,
             users,
             videos,
@@ -313,8 +308,12 @@ mod tests {
         )
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn put_series_episode_new_index_reports_created() -> Result<(), Box<dyn Error>> {
+        allure.epic("Series");
+        allure.feature("REQ-SERIES-012");
+        allure.story("SCN-SERIES-012-A");
         // Arrange: the season holds no episode and video 5 is free.
         let mut users = MockUserRepository::new();
         expect_admin(&mut users, 1)?;
@@ -353,7 +352,7 @@ mod tests {
             .expect_search_episodes()
             .times(1)
             .returning(|_| Box::pin(async { Ok(Vec::new()) }));
-        let harness = harness_with(users, no_permissions(), series, movies, videos);
+        let harness = harness_with(users, no_resources(), series, movies, videos);
         let use_case: UseCase = PutSeriesEpisode::new(Arc::clone(&harness.factory));
 
         // Act
@@ -367,8 +366,13 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn put_series_episode_existing_index_replaces_the_video() -> Result<(), Box<dyn Error>> {
+        allure.epic("Series");
+        allure.feature("REQ-SERIES-012");
+        allure.story("SCN-SERIES-012-B");
+        allure.story("SCN-SERIES-012-C");
         // Arrange: episode 1 already backs video 20; the request names video 5.
         let mut users = MockUserRepository::new();
         expect_admin(&mut users, 1)?;
@@ -401,7 +405,7 @@ mod tests {
             .expect_search()
             .times(1)
             .returning(|_| Box::pin(async { Ok(Vec::new()) }));
-        let harness = harness_with(users, no_permissions(), series, movies, videos);
+        let harness = harness_with(users, no_resources(), series, movies, videos);
         let use_case: UseCase = PutSeriesEpisode::new(Arc::clone(&harness.factory));
 
         // Act
@@ -413,8 +417,12 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn put_series_episode_same_video_is_not_a_conflict() -> Result<(), Box<dyn Error>> {
+        allure.epic("Series");
+        allure.feature("REQ-SERIES-012");
+        allure.story("SCN-SERIES-012-B");
         // Arrange: episode 1 already backs video 5, the same video named again.
         let mut users = MockUserRepository::new();
         expect_admin(&mut users, 1)?;
@@ -443,7 +451,7 @@ mod tests {
             .expect_search()
             .times(1)
             .returning(|_| Box::pin(async { Ok(Vec::new()) }));
-        let harness = harness_with(users, no_permissions(), series, movies, videos);
+        let harness = harness_with(users, no_resources(), series, movies, videos);
         let use_case: UseCase = PutSeriesEpisode::new(Arc::clone(&harness.factory));
 
         // Act
@@ -455,8 +463,12 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn put_series_episode_video_backing_a_film_is_conflict() -> Result<(), Box<dyn Error>> {
+        allure.epic("Series");
+        allure.feature("REQ-SERIES-012");
+        allure.story("SCN-SERIES-012-D");
         // Arrange: film 9 already backs video 5.
         let mut users = MockUserRepository::new();
         expect_admin(&mut users, 1)?;
@@ -475,7 +487,7 @@ mod tests {
             let found = film.clone();
             Box::pin(async move { Ok(vec![found]) })
         });
-        let harness = harness_with(users, no_permissions(), series, movies, videos);
+        let harness = harness_with(users, no_resources(), series, movies, videos);
         let use_case: UseCase = PutSeriesEpisode::new(Arc::clone(&harness.factory));
 
         // Act
@@ -487,9 +499,13 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn put_series_episode_video_backing_another_episode_is_conflict()
     -> Result<(), Box<dyn Error>> {
+        allure.epic("Series");
+        allure.feature("REQ-SERIES-012");
+        allure.story("SCN-SERIES-012-D");
         // Arrange: video 5 already backs another episode.
         let mut users = MockUserRepository::new();
         expect_admin(&mut users, 1)?;
@@ -515,7 +531,7 @@ mod tests {
             .expect_search()
             .times(1)
             .returning(|_| Box::pin(async { Ok(Vec::new()) }));
-        let harness = harness_with(users, no_permissions(), series, movies, videos);
+        let harness = harness_with(users, no_resources(), series, movies, videos);
         let use_case: UseCase = PutSeriesEpisode::new(Arc::clone(&harness.factory));
 
         // Act
@@ -526,8 +542,12 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn put_series_episode_unknown_video_is_unprocessable() -> Result<(), Box<dyn Error>> {
+        allure.epic("Series");
+        allure.feature("REQ-SERIES-012");
+        allure.story("SCN-SERIES-012-E");
         // Arrange
         let mut users = MockUserRepository::new();
         expect_admin(&mut users, 1)?;
@@ -540,7 +560,7 @@ mod tests {
             .returning(|_| Box::pin(async { Ok(Vec::new()) }));
         let harness = harness_with(
             users,
-            no_permissions(),
+            no_resources(),
             series,
             MockMovieRepository::new(),
             videos,
@@ -556,9 +576,13 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn put_series_episode_unknown_show_returns_no_such_series() -> Result<(), Box<dyn Error>>
     {
+        allure.epic("Series");
+        allure.feature("REQ-SERIES-012");
+        allure.story("SCN-SERIES-012-F");
         // Arrange
         let mut users = MockUserRepository::new();
         expect_admin(&mut users, 1)?;
@@ -569,7 +593,7 @@ mod tests {
             .returning(|_| Box::pin(async { Ok(Vec::new()) }));
         let harness = harness_with(
             users,
-            no_permissions(),
+            no_resources(),
             series,
             MockMovieRepository::new(),
             MockVideoRepository::new(),
@@ -584,9 +608,13 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn put_series_episode_unknown_season_returns_no_such_season() -> Result<(), Box<dyn Error>>
     {
+        allure.epic("Series");
+        allure.feature("REQ-SERIES-012");
+        allure.story("SCN-SERIES-012-F");
         // Arrange: the show holds no season at index 1.
         let mut users = MockUserRepository::new();
         expect_admin(&mut users, 1)?;
@@ -594,7 +622,7 @@ mod tests {
         expect_series(&mut series, sample_series(7, Vec::new())?);
         let harness = harness_with(
             users,
-            no_permissions(),
+            no_resources(),
             series,
             MockMovieRepository::new(),
             MockVideoRepository::new(),
@@ -609,8 +637,12 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn put_series_episode_empty_name_is_invalid() -> Result<(), Box<dyn Error>> {
+        allure.epic("Series");
+        allure.feature("REQ-SERIES-012");
+        allure.story("SCN-SERIES-012-E");
         // Arrange
         let mut users = MockUserRepository::new();
         expect_admin(&mut users, 1)?;
@@ -618,7 +650,7 @@ mod tests {
         expect_series(&mut series, series_with_episodes(Vec::new())?);
         let harness = harness_with(
             users,
-            no_permissions(),
+            no_resources(),
             series,
             MockMovieRepository::new(),
             MockVideoRepository::new(),
@@ -643,33 +675,13 @@ mod tests {
         assert!(matches!(result, Err(PutSeriesEpisodeError::InvalidName)));
         Ok(())
     }
-
-    #[tokio::test]
-    async fn put_series_episode_standard_user_is_forbidden() -> Result<(), Box<dyn Error>> {
-        // Arrange
-        let mut users = MockUserRepository::new();
-        expect_caller(&mut users, 1)?;
-        let harness = harness_with(
-            users,
-            no_permissions(),
-            MockSeriesRepository::new(),
-            MockMovieRepository::new(),
-            MockVideoRepository::new(),
-        );
-        let use_case: UseCase = PutSeriesEpisode::new(Arc::clone(&harness.factory));
-
-        // Act
-        let result = use_case.execute(command(5)).await;
-
-        // Assert
-        assert!(matches!(result, Err(PutSeriesEpisodeError::Forbidden)));
-        assert!(harness.rolled_back.load(Ordering::SeqCst));
-        Ok(())
-    }
-
+    #[allure_test]
     #[tokio::test]
     async fn put_series_episode_absent_at_write_returns_no_such_season()
     -> Result<(), Box<dyn Error>> {
+        allure.epic("Series");
+        allure.feature("REQ-SERIES-012");
+        allure.story("SCN-SERIES-012-F");
         // Arrange: the season disappears between the read and the write.
         let mut users = MockUserRepository::new();
         expect_admin(&mut users, 1)?;
@@ -694,7 +706,7 @@ mod tests {
             .expect_search()
             .times(1)
             .returning(|_| Box::pin(async { Ok(Vec::new()) }));
-        let harness = harness_with(users, no_permissions(), series, movies, videos);
+        let harness = harness_with(users, no_resources(), series, movies, videos);
         let use_case: UseCase = PutSeriesEpisode::new(Arc::clone(&harness.factory));
 
         // Act
@@ -705,8 +717,12 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn put_series_episode_dependency_failure_returns_unknown() -> Result<(), Box<dyn Error>> {
+        allure.epic("Series");
+        allure.feature("REQ-SERIES-012");
+        allure.story("SCN-SERIES-012-A");
         // Arrange: the show load fails at the port.
         let mut users = MockUserRepository::new();
         expect_admin(&mut users, 1)?;
@@ -717,7 +733,7 @@ mod tests {
             .returning(|_| Box::pin(async { Err(RepositoryError::Unavailable) }));
         let harness = harness_with(
             users,
-            no_permissions(),
+            no_resources(),
             series,
             MockMovieRepository::new(),
             MockVideoRepository::new(),

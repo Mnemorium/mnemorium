@@ -1,5 +1,9 @@
 [sqlfluff]
 dialect = sqlite
+# Lint every SQL file: the datastore backfill migration is larger than the
+# default 20 kB parser guard, and skipping it would hide violations instead of
+# reporting them.
+large_file_skip_byte_limit = 0
 
 [sqlfluff:rules:capitalisation.identifiers]
 capitalisation_policy = lower

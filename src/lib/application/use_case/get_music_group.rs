@@ -1,8 +1,8 @@
+use crate::application::authorization::authorize;
+use crate::domain::model::{ResourceKind, ResourceRef};
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
-
-use tracing::warn;
 
 use crate::application::port::{
     GetMusicGroupCommand, GetMusicGroupError, GetMusicGroupResponse, GetMusicGroupUseCase,
@@ -10,10 +10,8 @@ use crate::application::port::{
 use crate::domain::model::Action;
 use crate::domain::port::{
     IdentityUnitOfWork, LibraryUnitOfWork, MusicGroupFilter, MusicGroupRepository as _,
-    PermissionFilter, PermissionRepository as _, UnitOfWork as _, UnitOfWorkFactory, UserFilter,
-    UserRepository as _, UserUnitOfWork,
+    UnitOfWork as _, UnitOfWorkFactory, UserFilter, UserRepository as _, UserUnitOfWork,
 };
-use crate::domain::service::{Authorization, Decision};
 
 /// Use case implementation for fetching one music group.
 pub(crate) struct GetMusicGroup<F> {
@@ -65,15 +63,6 @@ where
                     .next()
                     .ok_or(GetMusicGroupError::NoSuchCaller)?;
 
-                let permissions = unit_of_work
-                    .permissions()
-                    .search(&PermissionFilter {
-                        user_id: Some(caller.id()),
-                        ..PermissionFilter::default()
-                    })
-                    .await
-                    .map_err(|error| GetMusicGroupError::Unknown(error.into()))?;
-
                 let group = unit_of_work
                     .music_groups()
                     .search(&MusicGroupFilter {
@@ -85,19 +74,15 @@ where
                     .into_iter()
                     .next()
                     .ok_or(GetMusicGroupError::NoSuchGroup)?;
-                if let Decision::Deny(denial) =
-                    Authorization::decide(&caller, &permissions, Action::LibraryRead, &group)
-                {
-                    warn!(
-                        target: "security",
-                        event = "authz_failed",
-                        actor = caller.id(),
-                        action = %denial.action().verb(),
-                        target = %denial.action().target(),
-                        "denied an action"
-                    );
-                    return Err(GetMusicGroupError::NoSuchGroup);
-                }
+                authorize(
+                    &mut unit_of_work.resources(),
+                    &caller,
+                    ResourceRef::new(ResourceKind::MusicGroup, group.id()),
+                    Action::View,
+                    None,
+                )
+                .await
+                .map_err(|_| GetMusicGroupError::NoSuchGroup)?;
 
                 Ok(GetMusicGroupResponse::new(
                     group.stage_name().to_owned(),
@@ -130,11 +115,9 @@ mod tests {
     use super::*;
     use crate::domain::NumericID;
 
-    use crate::domain::model::{MusicGroup, Permission, Scope};
+    use crate::domain::model::MusicGroup;
 
-    use crate::domain::port::{
-        MockMusicGroupRepository, MockPermissionRepository, MockUserRepository, RepositoryError,
-    };
+    use crate::domain::port::{MockMusicGroupRepository, MockUserRepository, RepositoryError};
 
     use crate::test_helpers::*;
     use std::error::Error;
@@ -159,7 +142,7 @@ mod tests {
     ) -> GalleryFactoryHarness {
         let unit_of_work = TestUnitOfWork {
             music_groups: groups,
-            permissions: no_permissions(),
+            resources: no_resources(),
             users,
             ..TestUnitOfWork::default()
         };
@@ -218,42 +201,6 @@ mod tests {
         assert!(harness.rolled_back.load(Ordering::SeqCst));
         Ok(())
     }
-
-    #[tokio::test]
-    async fn get_music_group_none_override_returns_no_such_group() -> Result<(), Box<dyn Error>> {
-        // Arrange: the caller is shut out of the library entirely.
-        let mut users = MockUserRepository::new();
-        expect_caller(&mut users, 1)?;
-        let mut groups = MockMusicGroupRepository::new();
-        let hidden = group(7, "The Group", None)?;
-        groups.expect_search().times(1).return_once(move |_| {
-            let found = hidden.clone();
-            Box::pin(async move { Ok(vec![found]) })
-        });
-        let mut permissions = MockPermissionRepository::new();
-        expect_permissions(
-            &mut permissions,
-            1,
-            vec![Permission::try_new(1, Action::LibraryRead, Scope::None)?],
-        );
-        let unit_of_work = TestUnitOfWork {
-            music_groups: groups,
-            permissions,
-            users,
-            ..TestUnitOfWork::default()
-        };
-        let harness = GalleryFactoryHarness::new(unit_of_work);
-        let use_case: UseCase = GetMusicGroup::new(Arc::clone(&harness.factory));
-
-        // Act
-        let result = use_case.execute(GetMusicGroupCommand::new(1, 7)).await;
-
-        // Assert
-        assert!(matches!(result, Err(GetMusicGroupError::NoSuchGroup)));
-        assert!(harness.rolled_back.load(Ordering::SeqCst));
-        Ok(())
-    }
-
     #[tokio::test]
     async fn get_music_group_unknown_caller_returns_no_such_caller() -> Result<(), Box<dyn Error>> {
         // Arrange

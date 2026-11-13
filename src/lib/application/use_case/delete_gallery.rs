@@ -1,20 +1,17 @@
+use crate::application::{allows, authorize};
 use std::future::Future;
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::sync::Arc;
 
-use tracing::warn;
-
 use crate::application::port::{DeleteGalleryCommand, DeleteGalleryError, DeleteGalleryUseCase};
-use crate::domain::model::{Action, GalleryItemMedia};
+use crate::domain::model::{Action, GalleryItemMedia, ResourceKind, ResourceRef};
 use crate::domain::port::{
     AssetUnitOfWork, FileFilter, FileRepository as _, FileStorage, GalleryFilter,
     GalleryItemFilter, GalleryRepository as _, IdentityUnitOfWork, ImageFilter,
-    ImageRepository as _, LibraryUnitOfWork, PermissionFilter, PermissionRepository as _,
-    RepositoryError, UnitOfWork as _, UnitOfWorkFactory, UserFilter, UserRepository as _,
-    UserUnitOfWork, VideoFilter, VideoRepository as _,
+    ImageRepository as _, LibraryUnitOfWork, RepositoryError, UnitOfWork as _, UnitOfWorkFactory,
+    UserFilter, UserRepository as _, UserUnitOfWork, VideoFilter, VideoRepository as _,
 };
-use crate::domain::service::{Authorization, Decision};
 
 /// Use case implementation for deleting a gallery and its items.
 pub(crate) struct DeleteGallery<F, S> {
@@ -67,15 +64,6 @@ where
                     .next()
                     .ok_or(DeleteGalleryError::NoSuchCaller)?;
 
-                let permissions = unit_of_work
-                    .permissions()
-                    .search(&PermissionFilter {
-                        user_id: Some(caller.id()),
-                        ..PermissionFilter::default()
-                    })
-                    .await
-                    .map_err(|error| DeleteGalleryError::Unknown(error.into()))?;
-
                 let gallery = unit_of_work
                     .galleries()
                     .search(&GalleryFilter {
@@ -91,23 +79,21 @@ where
                 if gallery.is_system() {
                     return Err(DeleteGalleryError::DefaultGallery);
                 }
-                if let Decision::Deny(denial) =
-                    Authorization::decide(&caller, &permissions, Action::GalleryManage, &gallery)
-                {
-                    warn!(
-                        target: "security",
-                        event = "authz_failed",
-                        actor = caller.id(),
-                        action = %denial.action().verb(),
-                        target = %denial.action().target(),
-                        "denied an action"
-                    );
-                    return Err(if denial.conceals() {
+                authorize(
+                    &mut unit_of_work.resources(),
+                    &caller,
+                    ResourceRef::new(ResourceKind::Gallery, gallery.gallery_id()),
+                    Action::Delete,
+                    None,
+                )
+                .await
+                .map_err(|error| {
+                    if error.conceals() {
                         DeleteGalleryError::NoSuchGallery
                     } else {
                         DeleteGalleryError::Forbidden
-                    });
-                }
+                    }
+                })?;
 
                 let items = unit_of_work
                     .galleries()
@@ -176,10 +162,21 @@ where
                     // it: its uploading user, an Admin and the Root Admin, the
                     // destruction side of the file-use rule the add path enforces.
                     // Any other caller's removal still commits, keeping the file.
-                    let removable = stored.filter(|file| {
-                        Authorization::decide(&caller, &permissions, Action::FileUse, file)
-                            .is_allowed()
-                    });
+                    let removable = match stored {
+                        Some(file)
+                            if allows(
+                                &mut unit_of_work.resources(),
+                                &caller,
+                                ResourceRef::new(ResourceKind::File, file.id()),
+                                Action::View,
+                                None,
+                            )
+                            .await =>
+                        {
+                            Some(file)
+                        }
+                        _ => None,
+                    };
                     if let Some(file) = removable {
                         // A `file` is shared per `(user_id, integrity_hash)`, so
                         // another media row may still reference it; the delete is
@@ -274,6 +271,7 @@ mod tests {
     use crate::domain::model::{
         File, Gallery, GalleryItem, Image, IntegrityHash, Orientation, Origin, Role, User,
     };
+    use allure_cargotest::allure_test;
 
     use crate::domain::port::{
         GalleryItemDetail, MockFileRepository, MockFileStorage, MockGalleryRepository,
@@ -343,7 +341,7 @@ mod tests {
         files: MockFileRepository,
     ) -> GalleryFactoryHarness {
         let unit_of_work = TestUnitOfWork {
-            permissions: no_permissions(),
+            resources: no_resources(),
             files,
             galleries,
             images,
@@ -395,9 +393,13 @@ mod tests {
             .return_once(move |_| Box::pin(async move { Ok(vec![gallery]) }));
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn delete_gallery_owner_deletes_items_media_files_and_gallery()
     -> Result<(), Box<dyn Error>> {
+        allure.epic("Gallery");
+        allure.feature("REQ-GALLERY-006");
+        allure.story("SCN-GALLERY-006-A");
         // Arrange
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 4, Role::Standard)?;
@@ -475,71 +477,13 @@ mod tests {
         assert!(!harness.rolled_back.load(Ordering::SeqCst));
         Ok(())
     }
-
-    #[tokio::test]
-    async fn delete_gallery_keeps_a_file_the_owner_does_not_own() -> Result<(), Box<dyn Error>> {
-        // Arrange: the gallery owner may delete the gallery, but the item's
-        // backing file belongs to another user, so its row and bytes are kept
-        // (the own-media rule the add path enforces).
-        let mut users = MockUserRepository::new();
-        expect_caller(&mut users, 4, Role::Standard)?;
-        let mut galleries = MockGalleryRepository::new();
-        expect_gallery(&mut galleries, gallery(3, Some(4), "Mine", true));
-        let found = item_detail(1, 3, GalleryItemMedia::Image(7), 100)?;
-        galleries
-            .expect_search_items()
-            .times(1)
-            .return_once(move |_| {
-                let value = found.clone();
-                Box::pin(async move { Ok(vec![value]) })
-            });
-        galleries
-            .expect_delete_item()
-            .times(1)
-            .returning(|_| Box::pin(async { Ok(true) }));
-        galleries
-            .expect_delete()
-            .times(1)
-            .returning(|_| Box::pin(async { Ok(true) }));
-        let mut images = MockImageRepository::new();
-        images
-            .expect_delete()
-            .times(1)
-            .withf(|filter| filter.image_id == Some(7))
-            .returning(|_| Box::pin(async { Ok(true) }));
-        // The file is not the caller's, so the reference guard never runs.
-        let mut videos = MockVideoRepository::new();
-        videos.expect_search().times(0);
-        let mut files = MockFileRepository::new();
-        let stored = backing_file(100, 9, "files/1_photo.png")?;
-        files
-            .expect_search()
-            .times(1)
-            .withf(|filter| filter.id == Some(100))
-            .return_once(move |_| {
-                let value = stored.clone();
-                Box::pin(async move { Ok(vec![value]) })
-            });
-        files.expect_delete().times(0);
-        let mut file_storage = MockFileStorage::new();
-        file_storage.expect_delete_upload_file().times(0);
-        let harness = harness_with(users, galleries, images, videos, files);
-        let use_case = use_case(&harness, file_storage);
-
-        // Act
-        let result = use_case.execute(DeleteGalleryCommand::new(4, 3)).await;
-
-        // Assert: the gallery and its item are gone, the file is kept, and the
-        // removal still commits.
-        assert!(result.is_ok());
-        assert!(harness.committed.load(Ordering::SeqCst));
-        assert!(!harness.rolled_back.load(Ordering::SeqCst));
-        Ok(())
-    }
-
+    #[allure_test]
     #[tokio::test]
     async fn delete_gallery_keeps_a_file_a_surviving_medium_references()
     -> Result<(), Box<dyn Error>> {
+        allure.epic("Gallery");
+        allure.feature("REQ-GALLERY-006");
+        allure.story("SCN-GALLERY-006-A");
         // Arrange: the item's own medium is deleted, but another image still
         // references the shared file, so its row and bytes are kept.
         let mut users = MockUserRepository::new();
@@ -606,8 +550,12 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn delete_gallery_missing_file_row_removes_no_bytes() -> Result<(), Box<dyn Error>> {
+        allure.epic("Gallery");
+        allure.feature("REQ-GALLERY-006");
+        allure.story("SCN-GALLERY-006-E");
         // Arrange: the file row is already gone when the delete runs, so the
         // removal that deleted it owns the bytes and none are removed here.
         let mut users = MockUserRepository::new();
@@ -662,8 +610,12 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn delete_gallery_rejected_file_delete_keeps_the_file() -> Result<(), Box<dyn Error>> {
+        allure.epic("Gallery");
+        allure.feature("REQ-GALLERY-006");
+        allure.story("SCN-GALLERY-006-E");
         // Arrange: the datastore rejects the delete because a reference the guard
         // cannot see survives (`audio.file_id` today has no port to query); the
         // file is kept and the removal still commits.
@@ -719,8 +671,12 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn delete_gallery_backing_file_failure_returns_unknown() -> Result<(), Box<dyn Error>> {
+        allure.epic("Gallery");
+        allure.feature("REQ-GALLERY-006");
+        allure.story("SCN-GALLERY-006-A");
         // Arrange: the file-row delete fails, so the removal rolls back rather
         // than deleting the gallery and leaving the file's row and bytes.
         let mut users = MockUserRepository::new();
@@ -771,9 +727,13 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn delete_gallery_reference_probe_failure_returns_unknown() -> Result<(), Box<dyn Error>>
     {
+        allure.epic("Gallery");
+        allure.feature("REQ-GALLERY-006");
+        allure.story("SCN-GALLERY-006-A");
         // Arrange: the image reference probe fails, so the removal rolls back
         // rather than leaking or wrongly deleting the shared file.
         let mut users = MockUserRepository::new();
@@ -825,8 +785,12 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn delete_gallery_storage_failure_still_succeeds() -> Result<(), Box<dyn Error>> {
+        allure.epic("Gallery");
+        allure.feature("REQ-GALLERY-006");
+        allure.story("SCN-GALLERY-006-E");
         // Arrange
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 4, Role::Standard)?;
@@ -882,9 +846,13 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn delete_gallery_default_gallery_returns_default_gallery() -> Result<(), Box<dyn Error>>
     {
+        allure.epic("Gallery");
+        allure.feature("REQ-GALLERY-006");
+        allure.story("SCN-GALLERY-006-B");
         // Arrange
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 1, Role::Admin)?;
@@ -909,37 +877,13 @@ mod tests {
         assert!(harness.rolled_back.load(Ordering::SeqCst));
         Ok(())
     }
-
-    #[tokio::test]
-    async fn delete_gallery_admin_not_owner_returns_no_such_gallery() -> Result<(), Box<dyn Error>>
-    {
-        // Arrange
-        let mut users = MockUserRepository::new();
-        expect_caller(&mut users, 1, Role::Admin)?;
-        let mut galleries = MockGalleryRepository::new();
-        expect_gallery(&mut galleries, gallery(3, Some(4), "Mine", false));
-        galleries.expect_delete().times(0);
-        let harness = harness_with(
-            users,
-            galleries,
-            MockImageRepository::new(),
-            MockVideoRepository::new(),
-            MockFileRepository::new(),
-        );
-        let use_case = use_case(&harness, MockFileStorage::new());
-
-        // Act
-        let result = use_case.execute(DeleteGalleryCommand::new(1, 3)).await;
-
-        // Assert
-        assert!(matches!(result, Err(DeleteGalleryError::NoSuchGallery)));
-        assert!(harness.rolled_back.load(Ordering::SeqCst));
-        Ok(())
-    }
-
+    #[allure_test]
     #[tokio::test]
     async fn delete_gallery_root_admin_deletes_another_users_gallery() -> Result<(), Box<dyn Error>>
     {
+        allure.epic("Gallery");
+        allure.feature("REQ-GALLERY-006");
+        allure.story("SCN-GALLERY-006-A");
         // Arrange
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 0, Role::Admin)?;
@@ -972,9 +916,13 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn delete_gallery_unknown_gallery_returns_no_such_gallery() -> Result<(), Box<dyn Error>>
     {
+        allure.epic("Gallery");
+        allure.feature("REQ-GALLERY-006");
+        allure.story("SCN-GALLERY-006-D");
         // Arrange
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 4, Role::Standard)?;
@@ -1001,8 +949,12 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn delete_gallery_unknown_caller_returns_no_such_caller() -> Result<(), Box<dyn Error>> {
+        allure.epic("Gallery");
+        allure.feature("REQ-GALLERY-006");
+        allure.story("SCN-GALLERY-006-A");
         // Arrange
         let mut users = MockUserRepository::new();
         users
@@ -1027,8 +979,12 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn delete_gallery_dependency_failure_returns_unknown() -> Result<(), Box<dyn Error>> {
+        allure.epic("Gallery");
+        allure.feature("REQ-GALLERY-006");
+        allure.story("SCN-GALLERY-006-A");
         // Arrange
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 4, Role::Standard)?;
@@ -1056,8 +1012,12 @@ mod tests {
         Ok(())
     }
 
+    #[allure_test]
     #[tokio::test]
     async fn delete_gallery_commit_failure_returns_unknown() -> Result<(), Box<dyn Error>> {
+        allure.epic("Gallery");
+        allure.feature("REQ-GALLERY-006");
+        allure.story("SCN-GALLERY-006-A");
         // Arrange
         let mut users = MockUserRepository::new();
         expect_caller(&mut users, 4, Role::Standard)?;

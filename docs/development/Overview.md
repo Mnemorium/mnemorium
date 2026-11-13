@@ -125,7 +125,7 @@ document describes the source layout those rules constrain.
 | `src/lib/infrastructure/inbound/rest/app_state.rs`                                   | Application state shared by the HTTP layer: immutable configuration, instance identity and per-context use-case factories                                                |
 | `src/lib/infrastructure/inbound/rest/hal.rs`                                         | Shared HAL types and helpers: link types, the `application/hal+json` media type, and the `hal_json` wrapper                                                              |
 | `src/lib/infrastructure/inbound/rest.rs`                                             | REST module root: declares the submodules and builds the OpenAPI document (`openapi`)                                                                                    |
-| `src/lib/infrastructure/inbound/rest/handler.rs`                                     | Declares the route table (`setup_routes`), registers each context's routes and installs the `tracing` and `hal_errors` middleware                                        |
+| `src/lib/infrastructure/inbound/rest/handler.rs`                                     | Declares the route table (`setup_routes`), serves the public API index, registers each context's routes and installs the `tracing` and `hal_errors` middleware           |
 | `src/lib/infrastructure/inbound/rest/handler`                                        | Endpoint-only HTTP handlers, one folder per bounded context; shared payloads, links and helpers live in the context module file; the root is the import surface for them |
 | `src/lib/infrastructure/inbound/rest/handler/library/get_video_identify.rs`          | Film and show identification reads over the configured video provider                                                                                                    |
 | `src/lib/infrastructure/inbound/rest/handler/library/get_video_identify_metadata.rs` | Film, show and episode reference resolution over the configured video provider                                                                                           |
@@ -159,7 +159,7 @@ document describes the source layout those rules constrain.
 | `src/lib/infrastructure/outbound/sqlx/permission_repository.rs`                      | Permission override adapter grouping `LISTED` resources and replacing them atomically                                                                                    |
 | `src/lib/infrastructure/seed.rs`                                                     | Test-only seed data applied behind the `test-seed` feature                                                                                                               |
 | `src/lib/infrastructure/use_case_factory`                                            | Per-context factories building use cases on demand                                                                                                                       |
-| `src/lib/infrastructure/logging.rs`                                                  | `tracing` subscriber setup driven by the configuration                                                                                                                   |
+| `src/lib/infrastructure/logging.rs`                                                  | `tracing` subscriber implementing the `logging` capability: the rotating file sink, the standard-output sink and the security floor (`REQ-LOGGING-001`–`004`)            |
 
 Every module root (`x.rs` beside `x/`) is the import surface for its children: callers import
 `crate::…::<root>::<Item>`, and the root re-exports exactly what they use (`STY-RUST-090`,
@@ -172,14 +172,15 @@ An **application use case** (`port/<name>.rs` plus `use_case/<name>.rs`) is a te
 
 `src/lib/app.rs` is the composition root and runs the startup in a fixed order:
 
-1. Establish or load the instance state (`state.yaml`; `TechnicalDesign.md` § 10.2). `LoadState` checks the fixed
-   `mnemorium.db` path itself first, so a datastore without state fails instead of regenerating the secrets, and it
-   reads the `MNEMORIUM_PEPPER` / `MNEMORIUM_JWT_SECRET` creation seeds through its seed port.
+1. Establish or load the instance state (`state.yaml`; `TechnicalDesign.md` § 10.2). `LoadState` reads the datastore's
+   presence through its `DatastorePresence` port first, so a datastore without state fails instead of regenerating the
+   secrets, and it reads the `MNEMORIUM_PEPPER` / `MNEMORIUM_JWT_SECRET` creation seeds through its seed port. A
+   restored state with a wider mode is tightened to `0600` before it is read.
 2. Resolve the configuration (built-in defaults → `config.yaml` → environment), writing the default configuration file
    when it is absent and logging the settings the environment overrode.
 3. Install the logging subscriber and emit the first-boot lifecycle events.
 4. Initialize the Root Admin, open the SQLite datastore at `mnemorium.db`, create the storage directories, and build
-   `AppState` with the immutable configuration, the immutable identity and the per-context factories.
+   `AppState` with the immutable configuration, the immutable state and the per-context factories.
 
 With the `test-seed` feature the composition root also applies the seed data after the Root Admin and before the storage
 check: it creates the library root when absent, materialises the demo media under it, creates the demo accounts and file

@@ -196,6 +196,30 @@ async fn seed_identities(pool: &SqlitePool, pepper: &str) -> anyhow::Result<u64>
         .rows_affected();
 
         created = created.saturating_add(inserted);
+
+        // Every account is a resource under the instance root, and the Admin
+        // role grant gives the seeded Admin owner-level reach over it
+        // (`REQ-AUTHORIZATION-019`, `-035`).
+        sqlx::query(
+            "INSERT INTO resource (kind, entity_id, owner_id, auth_parent_id, visibility)
+             VALUES ('USER', ?1, NULL, 1, 'PRIVATE')
+             ON CONFLICT DO NOTHING",
+        )
+        .bind(account.user_id)
+        .execute(pool)
+        .await?;
+        sqlx::query(
+            "INSERT INTO grant (
+                 principal_kind, principal_id, principal_role, resource_id,
+                 role, child_kind, effect
+             )
+             SELECT 'ROLE', NULL, 'ADMIN', resource_id, 'OWNER', 'ALL', 'ALLOW'
+             FROM resource WHERE kind = 'USER' AND entity_id = ?1
+             ON CONFLICT DO NOTHING",
+        )
+        .bind(account.user_id)
+        .execute(pool)
+        .await?;
     }
 
     Ok(created)
@@ -234,6 +258,18 @@ async fn seed_files(pool: &SqlitePool, library_root: &Path) -> anyhow::Result<()
         .bind(uploaded_at)
         .bind(size_bytes)
         .bind(modified_at)
+        .execute(pool)
+        .await?;
+
+        // A seeded file is a resource owned by the account it names, so the
+        // read is decided by the grant on it (`REQ-AUTHORIZATION-025`).
+        sqlx::query(
+            "INSERT INTO resource (kind, entity_id, owner_id, auth_parent_id, visibility)
+             VALUES ('FILE', ?1, ?2, NULL, 'PRIVATE')
+             ON CONFLICT DO NOTHING",
+        )
+        .bind(media.file_id)
+        .bind(media.owner_id)
         .execute(pool)
         .await?;
     }

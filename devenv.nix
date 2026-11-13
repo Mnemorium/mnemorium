@@ -187,6 +187,7 @@
       name = "betterleaks";
       entry = "betterleaks git --pre-commit --staged --redact --verbose";
       pass_filenames = false;
+      fail_fast = true;
     };
 
     documentation = {
@@ -265,22 +266,17 @@
     description = "Generate test coverage report";
   };
 
-  tasks."test:e2e" = {
-    exec = "pytest test/e2e";
-    description = "Run the E2E tests against a running server";
-  };
-
   tasks."test:api" = {
     exec = "script/api_fuzz.sh";
     description = "Fuzz the API with Schemathesis against a disposable, seeded server";
   };
 
-  tasks."test:configuration" = {
-    exec = "script/configuration.sh";
-    description = "Run the configuration tests against the mnemorium image";
-  };
-
   # Tooling
+
+  tasks."setup:allure" = {
+    exec = "npm install -g --prefix \"$NPM_CONFIG_PREFIX\" allure@3.33.0";
+    description = "Install the Allure Report CLI globally into the devenv state prefix";
+  };
 
   tasks."setup:openspec" = {
     exec = "npm install -g --prefix \"$NPM_CONFIG_PREFIX\" @fission-ai/openspec@latest";
@@ -320,7 +316,7 @@
   };
 
   tasks."fmt:md" = {
-    exec = "prettier --write 'docs/**/*.md' README.md '**/TODO.md'";
+    exec = "prettier --write 'docs/**/*.md' README.md 'openspec/**/*.md'";
     description = "Format markdown code";
   };
 
@@ -364,7 +360,7 @@
   # Security
 
   tasks."security:semgrep" = {
-    exec = "mkdir -p .artifacts && semgrep scan --config p/rust --config p/security-audit --config p/cwe-top-25 --metrics=off --sarif --output .artifacts/semgrep.sarif .";
+    exec = "mkdir -p .artifacts && semgrep scan --config p/rust --config p/security-audit --config p/cwe-top-25 --config p/github-actions --config security/semgrep --metrics=off --sarif --output .artifacts/semgrep.sarif .";
     description = "Run the Semgrep scan and write the SARIF report to .artifacts/semgrep.sarif";
   };
 

@@ -23,10 +23,10 @@ impl From<DeleteGalleryItemError> for ApiError {
 
 /// Delete one item of a gallery by its identifiers.
 ///
-/// Any authenticated caller may delete an item of a public gallery; an item of
-/// a private gallery may be deleted by the gallery owner and the Root Admin
-/// only. The item is scoped to the gallery named in the path. Deletion is
-/// permanent and removes the medium and its backing file.
+/// Removing an item requires the `Delete` action on the gallery, which its owner
+/// and the Root Admin hold. The item is scoped to the gallery named in the path.
+/// The item and its media row are removed; the backing file row is removed only
+/// where the caller may view the file, and the stored bytes are never touched.
 #[utoipa::path(
     delete,
     operation_id = "delete_gallery_item",
@@ -57,7 +57,7 @@ impl From<DeleteGalleryItemError> for ApiError {
             status = FORBIDDEN,
             body = ErrorBody,
             content_type = "application/hal+json",
-            description = "The caller can read the gallery but may not moderate it"
+            description = "The caller can read the gallery but may not delete its items"
         ),
         (
             status = NOT_FOUND,
