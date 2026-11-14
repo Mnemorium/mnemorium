@@ -32,6 +32,20 @@
 #   REPORT=1         write a self-contained HTML report under .artifacts/
 #   REPORT_DIR=DIR   directory for that report (default .artifacts/schemathesis)
 #
+# Modes:
+#   script/api_fuzz.sh                 build, start, fuzz, stop (default)
+#   script/api_fuzz.sh --start         build and start only: leaves the server
+#                                      running, exports LOGIN_USERNAME and
+#                                      LOGIN_PASSWORD, and publishes the schema
+#                                      URL and generated config path, so a
+#                                      separate Schemathesis invocation (the
+#                                      Schemathesis action in CI) can fuzz it
+#   script/api_fuzz.sh --stop          stop the server a previous --start left
+#                                      running and remove its directory
+#
+# `--start` records the pid and directory in $API_FUZZ_STATE (default
+# "$RUNNER_TEMP/mnemorium-api-fuzz.state"), which `--stop` reads.
+#
 # Schemathesis resolves each operation against the `servers` entries in the
 # served document, so `/health` stays at the service root while the contexts
 # sit under `/api/v1`. Do not pass `-u`/`--base-url`: an explicit base URL
@@ -56,6 +70,21 @@ readonly ROOT_ADMIN_USERNAME="root"
 readonly STARTUP_TIMEOUT_S=60
 readonly HEALTH_TIMEOUT_S=60
 
+readonly STATE_FILE="${API_FUZZ_STATE:-${RUNNER_TEMP:-/tmp}/mnemorium-api-fuzz.state}"
+
+MODE="run"
+case "${1:-}" in
+--start)
+	MODE="start"
+	shift
+	;;
+--stop)
+	MODE="stop"
+	shift
+	;;
+esac
+readonly MODE
+
 DATA_DIR="$(mktemp -d)"
 readonly DATA_DIR
 readonly SERVER_LOG="${DATA_DIR}/server.log"
@@ -65,6 +94,10 @@ SERVER_PID=""
 
 cleanup() {
 	local status=$?
+	if [[ -n ${PRESERVE:-} && ${status} -eq 0 ]]; then
+		printf 'pid=%s\ndata_dir=%s\n' "${SERVER_PID}" "${DATA_DIR}" >"${STATE_FILE}"
+		exit 0
+	fi
 	if [[ -n ${SERVER_PID} ]] && kill -0 "${SERVER_PID}" 2>/dev/null; then
 		kill -TERM "${SERVER_PID}" 2>/dev/null || true
 		wait "${SERVER_PID}" 2>/dev/null || true
@@ -78,6 +111,35 @@ cleanup() {
 	exit "${status}"
 }
 trap cleanup EXIT
+
+# --stop tears down what a previous --start left running; it builds nothing and
+# needs no schemathesis.
+if [[ ${MODE} == stop ]]; then
+	if [[ ! -f ${STATE_FILE} ]]; then
+		echo "==> No running disposable server recorded in ${STATE_FILE}"
+		exit 0
+	fi
+	pid="$(sed -n 's/^pid=//p' "${STATE_FILE}")"
+	data_dir="$(sed -n 's/^data_dir=//p' "${STATE_FILE}")"
+	if [[ -n ${pid} ]] && kill -0 "${pid}" 2>/dev/null; then
+		echo "==> Stopping the disposable server (pid ${pid})"
+		kill -TERM "${pid}" 2>/dev/null || true
+		for _ in $(seq 1 50); do
+			kill -0 "${pid}" 2>/dev/null || break
+			sleep 0.1
+		done
+		kill -KILL "${pid}" 2>/dev/null || true
+	fi
+	if [[ -n ${data_dir} ]]; then
+		if [[ -z ${KEEP:-} ]]; then
+			rm -rf "${data_dir}"
+		else
+			echo "kept the disposable server directory at ${data_dir}" >&2
+		fi
+	fi
+	rm -f "${STATE_FILE}"
+	exit 0
+fi
 
 # Build the login payload with Python so the generated password never needs
 # shell or JSON escaping.
@@ -121,7 +183,7 @@ seed_upload() {
 	printf '%s' "${upload_id}"
 }
 
-if ! command -v schemathesis >/dev/null 2>&1; then
+if [[ ${MODE} == run ]] && ! command -v schemathesis >/dev/null 2>&1; then
 	echo "error: schemathesis is not on PATH; run 'devenv tasks run setup:schemathesis'" >&2
 	exit 1
 fi
@@ -156,9 +218,12 @@ fi
 
 echo "==> Starting a disposable server in ${DATA_DIR}"
 mkdir -p "${DATA_DIR}/media"
+# `setsid` puts the server in its own session, so it outlives this shell (the
+# `--start` mode hands it to a later step) and a signal to the shell's process
+# group does not take it down. The exec chain keeps $! as the server's pid.
 (
 	cd "${DATA_DIR}"
-	exec env \
+	exec setsid env \
 		MNEMORIUM_SECURITY_LOG_ROOT_ADMIN_PASSWORD=true \
 		MNEMORIUM_SECURITY_RATE_LIMIT_BURST_SIZE=10000 \
 		"${BINARY}"
@@ -237,6 +302,29 @@ TOML
 
 export LOGIN_USERNAME="${ROOT_ADMIN_USERNAME}"
 export LOGIN_PASSWORD="${PASSWORD}"
+
+# --start hands the running server to a separate Schemathesis invocation: the
+# generated config resolves ${LOGIN_USERNAME}/${LOGIN_PASSWORD} from the
+# environment, so both are published to later steps.
+if [[ ${MODE} == start ]]; then
+	echo "::add-mask::${PASSWORD}"
+	if [[ -n ${GITHUB_ENV:-} ]]; then
+		{
+			echo "LOGIN_USERNAME=${LOGIN_USERNAME}"
+			echo "LOGIN_PASSWORD=${LOGIN_PASSWORD}"
+		} >>"${GITHUB_ENV}"
+	fi
+	if [[ -n ${GITHUB_OUTPUT:-} ]]; then
+		{
+			echo "schema=${SCHEMA_URL}"
+			echo "config=${SCHEMATHESIS_CONFIG}"
+		} >>"${GITHUB_OUTPUT}"
+	fi
+	PRESERVE=1
+	echo "==> Disposable server is running at ${BASE_URL}; schema ${SCHEMA_URL}"
+	echo "==> Schemathesis config: ${SCHEMATHESIS_CONFIG}"
+	exit 0
+fi
 
 if [[ -n ${SHOW_PASSWORD:-} ]]; then
 	echo "Root Admin username: ${ROOT_ADMIN_USERNAME}"

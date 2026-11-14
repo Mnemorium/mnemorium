@@ -41,7 +41,8 @@ For Markdown, use the `lint:md` and `fmt:md` devenv tasks, or run
 `markdownlint-cli2 '**/*.md'` / `prettier`; `devenv test` runs both gates.
 
 Testing strategy and conventions live in `docs/development/TechnicalDesign.md`
-§ 5; shared Rust test fixtures live in an inline `#[cfg(test)] mod test_helpers`,
+§ 5; the black-box performance suite, its volume dataset and its baseline live in
+`docs/development/Test.md`; shared Rust test fixtures live in an inline `#[cfg(test)] mod test_helpers`,
 crate-wide in `src/lib/lib.rs` and module-scoped in the roots `rule_enforcer.yaml`
 lists under `TEST-044`.
 

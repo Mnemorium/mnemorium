@@ -1,0 +1,421 @@
+---
+name: Mnemorium Performance
+
+on:
+  workflow_dispatch:
+    inputs:
+      scenario:
+        description: Scenario to run
+        type: choice
+        options:
+          - smoke
+          - load
+          - stress
+        default: smoke
+      profile:
+        description: Profile to run
+        type: choice
+        options:
+          - all
+          - read
+          - write
+        default: all
+      repeat:
+        description: Number of repetitions
+        type: string
+        default: "1"
+  schedule:
+    - cron: '0 2 * * 1,4'
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  K6_ARCHIVE: xk6-subcommand-openapi_v0.1.0_linux_amd64.tar.gz
+  K6_SHA256: 309a6ed0822a6afadf9a29b52c574ddbded90b74dd85f558521a713e1a181521
+  PERF_ENVIRONMENT: ubuntu-latest
+  # `ubuntu-latest` is four vCPUs in total, so the SUT is capped at two and k6
+  # keeps the rest. The local default is four; the fingerprint records the cap.
+  PERF_CPUS: 2
+
+jobs:
+  changes:
+    name: Decide whether to run
+    runs-on: ubuntu-latest
+    outputs:
+      run: ${{ steps.changed.outputs.run }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Compare with the last successful run
+        id: changed
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [[ "${GITHUB_EVENT_NAME}" != "schedule" ]]; then
+            echo "run=true" >>"${GITHUB_OUTPUT}"
+            exit 0
+          fi
+          last="$(gh run list --workflow performance.yml --status success --limit 1 \
+            --json headSha --jq '.[0].headSha // empty')"
+          if [[ -z "${last}" ]]; then
+            echo "run=true" >>"${GITHUB_OUTPUT}"
+          elif git diff --quiet "${last}" HEAD -- \
+            src migrations test/seed test/performance Dockerfile devenv.nix script/performance.sh; then
+            echo "run=false" >>"${GITHUB_OUTPUT}"
+          else
+            echo "run=true" >>"${GITHUB_OUTPUT}"
+          fi
+
+  smoke-read:
+    name: smoke / read
+    needs: changes
+    if: >-
+      needs.changes.outputs.run == 'true' &&
+      (github.event_name == 'schedule' ||
+      (github.event_name == 'workflow_dispatch' && inputs.scenario == 'smoke')) &&
+      (github.event_name == 'schedule' || inputs.profile == 'all' || inputs.profile == 'read')
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      PERF_MAIL_TO: ${{ secrets.PERF_MAIL_TO }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install the pinned k6
+        run: |
+          curl -fsSL -o "${RUNNER_TEMP}/${K6_ARCHIVE}" \
+            "https://github.com/grafana/xk6-subcommand-openapi/releases/download/v0.1.0/${K6_ARCHIVE}"
+          echo "${K6_SHA256}  ${RUNNER_TEMP}/${K6_ARCHIVE}" | sha256sum -c -
+          mkdir -p "${RUNNER_TEMP}/k6"
+          tar xzf "${RUNNER_TEMP}/${K6_ARCHIVE}" -C "${RUNNER_TEMP}/k6" --strip-components=1
+          "${RUNNER_TEMP}/k6/k6" version | grep -F 'v2.3.0'
+          echo "${RUNNER_TEMP}/k6" >>"${GITHUB_PATH}"
+      - name: Run the scenario
+        env:
+          REPEAT: ${{ inputs.repeat || '1' }}
+        run: |
+          script/performance.sh run smoke \
+            --profile read \
+            --repeat "${REPEAT}"
+      - name: Publish the job summary
+        id: report
+        if: always()
+        run: |
+          report="$(find .artifacts/performance -name report.md -printf '%T@ %p\n' 2>/dev/null |
+            sort -n | tail -n 1 | cut -d' ' -f2-)"
+          if [[ -n "${report}" ]]; then
+            cat "${report}" >>"${GITHUB_STEP_SUMMARY}"
+            cp "${report}" .artifacts/performance/report.md
+            {
+              echo "path=.artifacts/performance/report.md"
+              echo "body<<REPORT"
+              cat "${report}"
+              echo "REPORT"
+            } >>"${GITHUB_OUTPUT}"
+          fi
+      - name: Upload the run artifacts
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7
+        with:
+          name: performance-smoke-read
+          path: .artifacts/performance
+          retention-days: 30
+          if-no-files-found: warn
+      - name: Mail the report
+        if: always() && env.PERF_MAIL_TO != '' && steps.report.outputs.path != ''
+        uses: dawidd6/action-send-mail@27bf7a883db6de205849f760badd38a1a3ce0dd0  # v24
+        with:
+          server_address: ${{ secrets.PERF_SMTP_SERVER }}
+          server_port: ${{ secrets.PERF_SMTP_PORT }}
+          username: ${{ secrets.PERF_SMTP_USERNAME }}
+          password: ${{ secrets.PERF_SMTP_PASSWORD }}
+          subject: "Mnemorium performance — smoke / read"
+          to: ${{ env.PERF_MAIL_TO }}
+          from: ${{ secrets.PERF_MAIL_FROM || 'performance@mnemorium.invalid' }}
+          body: ${{ steps.report.outputs.body }}
+          attachments: ${{ steps.report.outputs.path }}
+
+  smoke-write:
+    name: smoke / write
+    needs: changes
+    if: >-
+      needs.changes.outputs.run == 'true' &&
+      (github.event_name == 'schedule' ||
+      (github.event_name == 'workflow_dispatch' && inputs.scenario == 'smoke')) &&
+      (github.event_name == 'schedule' || inputs.profile == 'all' || inputs.profile == 'write')
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      PERF_MAIL_TO: ${{ secrets.PERF_MAIL_TO }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install the pinned k6
+        run: |
+          curl -fsSL -o "${RUNNER_TEMP}/${K6_ARCHIVE}" \
+            "https://github.com/grafana/xk6-subcommand-openapi/releases/download/v0.1.0/${K6_ARCHIVE}"
+          echo "${K6_SHA256}  ${RUNNER_TEMP}/${K6_ARCHIVE}" | sha256sum -c -
+          mkdir -p "${RUNNER_TEMP}/k6"
+          tar xzf "${RUNNER_TEMP}/${K6_ARCHIVE}" -C "${RUNNER_TEMP}/k6" --strip-components=1
+          "${RUNNER_TEMP}/k6/k6" version | grep -F 'v2.3.0'
+          echo "${RUNNER_TEMP}/k6" >>"${GITHUB_PATH}"
+      - name: Run the scenario
+        env:
+          REPEAT: ${{ inputs.repeat || '1' }}
+        run: |
+          script/performance.sh run smoke \
+            --profile write \
+            --repeat "${REPEAT}"
+      - name: Publish the job summary
+        id: report
+        if: always()
+        run: |
+          report="$(find .artifacts/performance -name report.md -printf '%T@ %p\n' 2>/dev/null |
+            sort -n | tail -n 1 | cut -d' ' -f2-)"
+          if [[ -n "${report}" ]]; then
+            cat "${report}" >>"${GITHUB_STEP_SUMMARY}"
+            cp "${report}" .artifacts/performance/report.md
+            {
+              echo "path=.artifacts/performance/report.md"
+              echo "body<<REPORT"
+              cat "${report}"
+              echo "REPORT"
+            } >>"${GITHUB_OUTPUT}"
+          fi
+      - name: Upload the run artifacts
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7
+        with:
+          name: performance-smoke-write
+          path: .artifacts/performance
+          retention-days: 30
+          if-no-files-found: warn
+      - name: Mail the report
+        if: always() && env.PERF_MAIL_TO != '' && steps.report.outputs.path != ''
+        uses: dawidd6/action-send-mail@27bf7a883db6de205849f760badd38a1a3ce0dd0  # v24
+        with:
+          server_address: ${{ secrets.PERF_SMTP_SERVER }}
+          server_port: ${{ secrets.PERF_SMTP_PORT }}
+          username: ${{ secrets.PERF_SMTP_USERNAME }}
+          password: ${{ secrets.PERF_SMTP_PASSWORD }}
+          subject: "Mnemorium performance — smoke / write"
+          to: ${{ env.PERF_MAIL_TO }}
+          from: ${{ secrets.PERF_MAIL_FROM || 'performance@mnemorium.invalid' }}
+          body: ${{ steps.report.outputs.body }}
+          attachments: ${{ steps.report.outputs.path }}
+
+  load-read:
+    name: load / read
+    needs: changes
+    if: >-
+      needs.changes.outputs.run == 'true' &&
+      github.event_name == 'workflow_dispatch' && inputs.scenario == 'load' &&
+      (inputs.profile == 'all' || inputs.profile == 'read')
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      PERF_MAIL_TO: ${{ secrets.PERF_MAIL_TO }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install the pinned k6
+        run: |
+          curl -fsSL -o "${RUNNER_TEMP}/${K6_ARCHIVE}" \
+            "https://github.com/grafana/xk6-subcommand-openapi/releases/download/v0.1.0/${K6_ARCHIVE}"
+          echo "${K6_SHA256}  ${RUNNER_TEMP}/${K6_ARCHIVE}" | sha256sum -c -
+          mkdir -p "${RUNNER_TEMP}/k6"
+          tar xzf "${RUNNER_TEMP}/${K6_ARCHIVE}" -C "${RUNNER_TEMP}/k6" --strip-components=1
+          "${RUNNER_TEMP}/k6/k6" version | grep -F 'v2.3.0'
+          echo "${RUNNER_TEMP}/k6" >>"${GITHUB_PATH}"
+      - name: Run the scenario
+        env:
+          REPEAT: ${{ inputs.repeat || '1' }}
+        run: |
+          script/performance.sh run load \
+            --profile read \
+            --repeat "${REPEAT}"
+      - name: Publish the job summary
+        id: report
+        if: always()
+        run: |
+          report="$(find .artifacts/performance -name report.md -printf '%T@ %p\n' 2>/dev/null |
+            sort -n | tail -n 1 | cut -d' ' -f2-)"
+          if [[ -n "${report}" ]]; then
+            cat "${report}" >>"${GITHUB_STEP_SUMMARY}"
+            cp "${report}" .artifacts/performance/report.md
+            {
+              echo "path=.artifacts/performance/report.md"
+              echo "body<<REPORT"
+              cat "${report}"
+              echo "REPORT"
+            } >>"${GITHUB_OUTPUT}"
+          fi
+      - name: Upload the run artifacts
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7
+        with:
+          name: performance-load-read
+          path: .artifacts/performance
+          retention-days: 30
+          if-no-files-found: warn
+      - name: Mail the report
+        if: always() && env.PERF_MAIL_TO != '' && steps.report.outputs.path != ''
+        uses: dawidd6/action-send-mail@27bf7a883db6de205849f760badd38a1a3ce0dd0  # v24
+        with:
+          server_address: ${{ secrets.PERF_SMTP_SERVER }}
+          server_port: ${{ secrets.PERF_SMTP_PORT }}
+          username: ${{ secrets.PERF_SMTP_USERNAME }}
+          password: ${{ secrets.PERF_SMTP_PASSWORD }}
+          subject: "Mnemorium performance — load / read"
+          to: ${{ env.PERF_MAIL_TO }}
+          from: ${{ secrets.PERF_MAIL_FROM || 'performance@mnemorium.invalid' }}
+          body: ${{ steps.report.outputs.body }}
+          attachments: ${{ steps.report.outputs.path }}
+
+  load-write:
+    name: load / write
+    needs: changes
+    if: >-
+      needs.changes.outputs.run == 'true' &&
+      github.event_name == 'workflow_dispatch' && inputs.scenario == 'load' &&
+      (inputs.profile == 'all' || inputs.profile == 'write')
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      PERF_MAIL_TO: ${{ secrets.PERF_MAIL_TO }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install the pinned k6
+        run: |
+          curl -fsSL -o "${RUNNER_TEMP}/${K6_ARCHIVE}" \
+            "https://github.com/grafana/xk6-subcommand-openapi/releases/download/v0.1.0/${K6_ARCHIVE}"
+          echo "${K6_SHA256}  ${RUNNER_TEMP}/${K6_ARCHIVE}" | sha256sum -c -
+          mkdir -p "${RUNNER_TEMP}/k6"
+          tar xzf "${RUNNER_TEMP}/${K6_ARCHIVE}" -C "${RUNNER_TEMP}/k6" --strip-components=1
+          "${RUNNER_TEMP}/k6/k6" version | grep -F 'v2.3.0'
+          echo "${RUNNER_TEMP}/k6" >>"${GITHUB_PATH}"
+      - name: Run the scenario
+        env:
+          REPEAT: ${{ inputs.repeat || '1' }}
+        run: |
+          script/performance.sh run load \
+            --profile write \
+            --repeat "${REPEAT}"
+      - name: Publish the job summary
+        id: report
+        if: always()
+        run: |
+          report="$(find .artifacts/performance -name report.md -printf '%T@ %p\n' 2>/dev/null |
+            sort -n | tail -n 1 | cut -d' ' -f2-)"
+          if [[ -n "${report}" ]]; then
+            cat "${report}" >>"${GITHUB_STEP_SUMMARY}"
+            cp "${report}" .artifacts/performance/report.md
+            {
+              echo "path=.artifacts/performance/report.md"
+              echo "body<<REPORT"
+              cat "${report}"
+              echo "REPORT"
+            } >>"${GITHUB_OUTPUT}"
+          fi
+      - name: Upload the run artifacts
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7
+        with:
+          name: performance-load-write
+          path: .artifacts/performance
+          retention-days: 30
+          if-no-files-found: warn
+      - name: Mail the report
+        if: always() && env.PERF_MAIL_TO != '' && steps.report.outputs.path != ''
+        uses: dawidd6/action-send-mail@27bf7a883db6de205849f760badd38a1a3ce0dd0  # v24
+        with:
+          server_address: ${{ secrets.PERF_SMTP_SERVER }}
+          server_port: ${{ secrets.PERF_SMTP_PORT }}
+          username: ${{ secrets.PERF_SMTP_USERNAME }}
+          password: ${{ secrets.PERF_SMTP_PASSWORD }}
+          subject: "Mnemorium performance — load / write"
+          to: ${{ env.PERF_MAIL_TO }}
+          from: ${{ secrets.PERF_MAIL_FROM || 'performance@mnemorium.invalid' }}
+          body: ${{ steps.report.outputs.body }}
+          attachments: ${{ steps.report.outputs.path }}
+
+  stress:
+    name: stress / read
+    needs: changes
+    if: >-
+      needs.changes.outputs.run == 'true' && github.event_name == 'workflow_dispatch' && inputs.scenario == 'stress'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      PERF_MAIL_TO: ${{ secrets.PERF_MAIL_TO }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install the pinned k6
+        run: |
+          curl -fsSL -o "${RUNNER_TEMP}/${K6_ARCHIVE}" \
+            "https://github.com/grafana/xk6-subcommand-openapi/releases/download/v0.1.0/${K6_ARCHIVE}"
+          echo "${K6_SHA256}  ${RUNNER_TEMP}/${K6_ARCHIVE}" | sha256sum -c -
+          mkdir -p "${RUNNER_TEMP}/k6"
+          tar xzf "${RUNNER_TEMP}/${K6_ARCHIVE}" -C "${RUNNER_TEMP}/k6" --strip-components=1
+          "${RUNNER_TEMP}/k6/k6" version | grep -F 'v2.3.0'
+          echo "${RUNNER_TEMP}/k6" >>"${GITHUB_PATH}"
+      - name: Run the scenario
+        env:
+          REPEAT: ${{ inputs.repeat || '1' }}
+        run: |
+          script/performance.sh run stress \
+            --profile read \
+            --repeat "${REPEAT}"
+      - name: Publish the job summary
+        id: report
+        if: always()
+        run: |
+          report="$(find .artifacts/performance -name report.md -printf '%T@ %p\n' 2>/dev/null |
+            sort -n | tail -n 1 | cut -d' ' -f2-)"
+          if [[ -n "${report}" ]]; then
+            cat "${report}" >>"${GITHUB_STEP_SUMMARY}"
+            cp "${report}" .artifacts/performance/report.md
+            {
+              echo "path=.artifacts/performance/report.md"
+              echo "body<<REPORT"
+              cat "${report}"
+              echo "REPORT"
+            } >>"${GITHUB_OUTPUT}"
+          fi
+      - name: Upload the run artifacts
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7
+        with:
+          name: performance-stress
+          path: .artifacts/performance
+          retention-days: 30
+          if-no-files-found: warn
+      - name: Mail the report
+        if: always() && env.PERF_MAIL_TO != '' && steps.report.outputs.path != ''
+        uses: dawidd6/action-send-mail@27bf7a883db6de205849f760badd38a1a3ce0dd0  # v24
+        with:
+          server_address: ${{ secrets.PERF_SMTP_SERVER }}
+          server_port: ${{ secrets.PERF_SMTP_PORT }}
+          username: ${{ secrets.PERF_SMTP_USERNAME }}
+          password: ${{ secrets.PERF_SMTP_PASSWORD }}
+          subject: "Mnemorium performance — stress"
+          to: ${{ env.PERF_MAIL_TO }}
+          from: ${{ secrets.PERF_MAIL_FROM || 'performance@mnemorium.invalid' }}
+          body: ${{ steps.report.outputs.body }}
+          attachments: ${{ steps.report.outputs.path }}

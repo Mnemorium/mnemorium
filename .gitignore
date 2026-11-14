@@ -37,8 +37,12 @@ mnemorium.db*
 logs/
 events.ndjson
 
-# Security scan artifacts
+# Security and performance artifacts
 .artifacts/
+
+# Performance suite toolchain and generated client
+node_modules/
+test/performance/generated/
 
 # Schemathesis local storage
 .schemathesis/

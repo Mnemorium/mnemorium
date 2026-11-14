@@ -25,4 +25,6 @@ ignore:
   - .opencode
   - .pytest_cache
   - test/TODO.md
+  - test/performance/node_modules
+  - test/performance/generated
   - openspec

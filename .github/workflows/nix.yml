@@ -1,0 +1,45 @@
+---
+name: Mnemorium Nix
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - '**/*.nix'
+      - 'devenv.lock'
+      - 'devenv.yaml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: >-
+    ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  nixfmt:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: cachix/install-nix-action@75c75c31ebece974e48ebc36b4ad125bd97bd97b  # v31
+      - name: nixfmt
+        # Resolve nixfmt from the revision devenv.lock pins, so the formatter
+        # matches the development environment and cannot drift. The repository
+        # stays workflow-literal and the revision is validated as a full commit,
+        # so a PR-controlled lockfile cannot redirect the fetched source.
+        run: |
+          node="$(jq -r '.nodes.root.inputs.nixpkgs' devenv.lock)"
+          if [[ -z "${node}" || "${node}" == "null" ]]; then
+            echo "devenv.lock root has no nixpkgs input" >&2
+            exit 1
+          fi
+          rev="$(jq -r --arg n "${node}" '.nodes[$n].locked.rev' devenv.lock)"
+          if [[ ! "${rev}" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "devenv.lock nixpkgs input is not pinned to a commit: ${rev}" >&2
+            exit 1
+          fi
+          nix run "github:cachix/devenv-nixpkgs/${rev}#nixfmt" -- --check devenv.nix

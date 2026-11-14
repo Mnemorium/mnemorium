@@ -1,0 +1,33 @@
+---
+name: Mnemorium TOML
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - '**/*.toml'
+      - '.taplo.toml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: >-
+    ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  taplo:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: taiki-e/install-action@c509219cf42fba86913069efd0ade2458c59337b  # v2
+        with:
+          # Pinned to the version `devenv.nix` ships, so the pre-commit hook and
+          # this job format with the same taplo.
+          tool: taplo@0.10.0
+      - name: Check TOML formatting
+        run: taplo fmt --check

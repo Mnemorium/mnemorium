@@ -11,12 +11,23 @@
 //! The fixed identifiers below are shared with the SQL scripts, which name
 //! them in their header comment: files `9001`-`9007`, images `9001`-`9003`,
 //! videos `9001`-`9003`, audio `9001` and the accounts `9001`-`9002`.
+//!
+//! The volume library the black-box suites measure is generated into
+//! `test/seed/sql/0005`-`0007` by `script/generate_perf_seed.sh`. Its `file`
+//! rows name paths under `perf/`; this module writes one hidden hardlink base
+//! per media type under `perf/.base/` and grounds every row's path to it, so
+//! the startup scan reports each file `Untouched`.
 
-use std::path::Path;
+use std::{
+    fs as blocking_fs, io,
+    path::{Path, PathBuf},
+    time::{Duration, UNIX_EPOCH},
+};
 
+use anyhow::Context as _;
 use chrono::{DateTime, Utc};
 use sqlx::SqlitePool;
-use tokio::fs;
+use tokio::{fs, task::spawn_blocking};
 use tracing::info;
 
 use crate::domain::port::PasswordHasher as _;
@@ -99,6 +110,60 @@ const SEED_FILES: [SeedFile; 7] = [
     },
 ];
 
+/// Size of the bulk image base, in bytes.
+///
+/// Shared with `script/generate_perf_seed.sh`, whose `file` rows carry this
+/// value. A mismatch makes the startup scan re-probe every bulk file.
+const PERF_IMAGE_BYTES: u64 = 1024;
+/// Size of the bulk video base, in bytes.
+const PERF_VIDEO_BYTES: u64 = 2048;
+/// Size of the bulk audio base, in bytes.
+const PERF_AUDIO_BYTES: u64 = 4096;
+/// Size of the multi-megabyte stream base the read-asset flow measures.
+const PERF_STREAM_BYTES: u64 = 4_194_304;
+/// Modification instant every bulk file, and its base, shares.
+///
+/// Whole seconds on purpose: `modified_at` is stored as text without
+/// sub-second precision, so equality must not depend on it.
+const PERF_MODIFIED_AT_EPOCH_S: u64 = 1_577_836_800;
+
+/// The bulk file bases, one per media kind plus the stream asset.
+///
+/// The hidden directory matters: the startup walk skips entries whose name
+/// starts with a dot, so a base is never registered as a library file.
+const PERF_BASES: [PerfBase; 4] = [
+    PerfBase {
+        name: "image.png",
+        size_bytes: PERF_IMAGE_BYTES,
+        seed: include_bytes!("../../../test/seed/media/cover.png"),
+    },
+    PerfBase {
+        name: "video.mp4",
+        size_bytes: PERF_VIDEO_BYTES,
+        seed: include_bytes!("../../../test/seed/media/clip.mp4"),
+    },
+    PerfBase {
+        name: "audio.flac",
+        size_bytes: PERF_AUDIO_BYTES,
+        seed: include_bytes!("../../../test/seed/media/track.flac"),
+    },
+    PerfBase {
+        name: "stream.mp4",
+        size_bytes: PERF_STREAM_BYTES,
+        seed: include_bytes!("../../../test/seed/media/audiovisual.mp4"),
+    },
+];
+
+/// A hardlink base the bulk files share.
+struct PerfBase {
+    /// File name under `perf/.base/`.
+    name: &'static str,
+    /// Seed bytes repeated to fill `size_bytes`.
+    seed: &'static [u8],
+    /// Exact byte length the generated rows declare.
+    size_bytes: u64,
+}
+
 /// A demo account the seed creates.
 struct SeedUser {
     /// Identifier of the `credential` row.
@@ -149,12 +214,21 @@ pub(crate) async fn apply(
 
     let accounts = seed_identities(pool, pepper).await?;
     seed_files(pool, library_root).await?;
+    // The hardlink bases are written before the migrator so a row can only be
+    // created once its bytes are available. Grounding the visible links waits
+    // for the migrator: the rows are what name them.
+    prepare_perf_bases(library_root).await?;
 
     // The scripts mirror the migrations: embedded at compile time and applied
     // once through a migrator with its own history table.
     let mut migrator = sqlx::migrate!("./test/seed/sql");
     migrator.dangerous_set_table_name("_sqlx_seeds");
     migrator.run(pool).await?;
+
+    // A row without its file is deleted by the startup scan, and a file
+    // without its row is registered and probed. Both are paid for on every
+    // `test-seed` boot, so the seed leaves neither state behind.
+    seed_perf_links(pool, library_root).await?;
 
     info!("test seed data applied");
     if accounts > 0 {
@@ -277,6 +351,118 @@ async fn seed_files(pool: &SqlitePool, library_root: &Path) -> anyhow::Result<()
     Ok(())
 }
 
+/// Write the hardlink bases the bulk file rows point at.
+///
+/// Each base is filled to its declared size and stamped with the shared
+/// modification instant. The base directory is hidden, so the startup walk
+/// skips it and only the visible links are reconciled.
+async fn prepare_perf_bases(library_root: &Path) -> anyhow::Result<()> {
+    let directory: PathBuf = library_root.join("perf/.base");
+    fs::create_dir_all(&directory).await?;
+    let modified = UNIX_EPOCH
+        .checked_add(Duration::from_secs(PERF_MODIFIED_AT_EPOCH_S))
+        .context("the perf base instant is representable")?;
+
+    for base in &PERF_BASES {
+        let path = directory.join(base.name);
+        let length = usize::try_from(base.size_bytes)?;
+        let needs_write =
+            blocking_fs::metadata(&path).map_or(true, |metadata| metadata.len() != base.size_bytes);
+        if needs_write {
+            let mut bytes = Vec::with_capacity(length);
+            while bytes.len() < length {
+                let remaining = length.saturating_sub(bytes.len());
+                let take = remaining.min(base.seed.len());
+                let piece = base
+                    .seed
+                    .get(..take)
+                    .context("the base seed slice is in range")?;
+                bytes.extend_from_slice(piece);
+            }
+            fs::write(&path, &bytes).await?;
+        }
+
+        // The write resets the instant to "now", so stamp it afterwards on
+        // every run, not only when the bytes changed.
+        let stamped = path.clone();
+        spawn_blocking(move || -> io::Result<()> {
+            let file = blocking_fs::File::options().write(true).open(&stamped)?;
+            file.set_times(blocking_fs::FileTimes::new().set_modified(modified))
+        })
+        .await
+        .map_err(|error| anyhow::anyhow!("the base stamp task failed: {error}"))??;
+    }
+
+    Ok(())
+}
+
+/// Hardlink every bulk `file` row to its base, idempotently.
+///
+/// The rows are the authority on which paths exist: the generator derives
+/// them arithmetically, and this step only grounds the paths they name. An
+/// existing link whose size or instant drifted from the base is relinked,
+/// because the scan compares exactly those two values.
+async fn seed_perf_links(pool: &SqlitePool, library_root: &Path) -> anyhow::Result<()> {
+    let rows: Vec<(String, String, i64)> =
+        sqlx::query_as("SELECT path, mime_type_id, size_bytes FROM file WHERE path LIKE 'perf/%'")
+            .fetch_all(pool)
+            .await?;
+    if rows.is_empty() {
+        return Ok(());
+    }
+
+    let root = library_root.to_path_buf();
+    let modified = UNIX_EPOCH
+        .checked_add(Duration::from_secs(PERF_MODIFIED_AT_EPOCH_S))
+        .context("the perf base instant is representable")?;
+    spawn_blocking(move || -> anyhow::Result<()> {
+        let base_directory = root.join("perf/.base");
+        for row in &rows {
+            let relative = &row.0;
+            let expected = u64::try_from(row.2)?;
+            let base = match (row.1.as_str(), expected) {
+                ("image/png", _) => "image.png",
+                ("audio/flac", _) => "audio.flac",
+                ("video/mp4", PERF_STREAM_BYTES) => "stream.mp4",
+                ("video/mp4", _) => "video.mp4",
+                _ => continue,
+            };
+            let link = root.join(relative);
+            let matches = blocking_fs::metadata(&link).is_ok_and(|metadata| {
+                metadata.len() == expected
+                    && metadata.modified().is_ok_and(|instant| instant == modified)
+            });
+            if matches {
+                continue;
+            }
+            if let Some(parent) = link.parent() {
+                blocking_fs::create_dir_all(parent)?;
+            }
+            match blocking_fs::remove_file(&link) {
+                Ok(()) => {}
+                Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+                Err(error) => return Err(error.into()),
+            }
+            blocking_fs::hard_link(base_directory.join(base), &link)?;
+            let grounded = blocking_fs::metadata(&link).is_ok_and(|metadata| {
+                metadata.len() == expected
+                    && metadata.modified().is_ok_and(|instant| instant == modified)
+            });
+            if !grounded {
+                anyhow::bail!(
+                    "the seeded file {} does not match its base after a hardlink",
+                    link.display()
+                );
+            }
+        }
+        Ok(())
+    })
+    .await
+    .map_err(|error| anyhow::anyhow!("the perf link task failed: {error}"))??;
+
+    Ok(())
+}
+
 /// Print the demo credentials once, when an account was actually created.
 #[expect(
     clippy::print_stdout,
@@ -291,6 +477,9 @@ fn show_demo_accounts() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
+
+    use chrono::NaiveDateTime;
     use sqlx::sqlite::SqlitePoolOptions;
     use std::error::Error;
     use tempfile::tempdir;
@@ -351,6 +540,51 @@ mod tests {
         assert_eq!(users, 2);
         assert_eq!(movie, "Seed Movie");
         assert_eq!(album, "Seed Album");
+        Ok(())
+    }
+
+    /// Every `file` row the seed leaves behind must resolve to a file whose
+    /// size and modification instant the scan compares equal.
+    ///
+    /// This is the invariant that keeps a `test-seed` boot from deleting the
+    /// bulk library: a missing path deletes the row, and a size or instant
+    /// drift re-probes it on every start.
+    #[tokio::test]
+    async fn seeded_files_resolve_on_disk_with_matching_metadata() -> Result<(), Box<dyn Error>> {
+        // Arrange
+        let pool = migrated_pool().await?;
+        let library = tempdir()?;
+        apply(&pool, "pepper", library.path()).await?;
+
+        // Act
+        let rows: Vec<(String, i64, NaiveDateTime)> =
+            sqlx::query_as("SELECT path, size_bytes, modified_at FROM file")
+                .fetch_all(&pool)
+                .await?;
+        let perf: i64 = sqlx::query_scalar("SELECT count(*) FROM file WHERE path LIKE 'perf/%'")
+            .fetch_one(&pool)
+            .await?;
+
+        // Assert
+        assert!(perf > 0, "the volume library must be seeded");
+        assert!(!rows.is_empty());
+        assert_files_match(library.path(), &rows)?;
+        Ok(())
+    }
+
+    /// Assert every recorded path exists with the recorded metadata.
+    fn assert_files_match(
+        root: &Path,
+        rows: &[(String, i64, NaiveDateTime)],
+    ) -> Result<(), Box<dyn Error>> {
+        for row in rows {
+            let path = &row.0;
+            let metadata = fs::metadata(root.join(path))?;
+            let actual_size = i64::try_from(metadata.len())?;
+            let actual_modified = DateTime::<Utc>::from(metadata.modified()?).naive_utc();
+            assert_eq!(actual_size, row.1, "{path} changed size");
+            assert_eq!(actual_modified, row.2, "{path} changed instant");
+        }
         Ok(())
     }
 

@@ -27,7 +27,11 @@ rules:
     # accessors each have one caller by design. Raised to 78 for the permission
     # API: its boundary parsers, wire projections and per-use-case readers each
     # have one caller by construction.
-    max_single_call_functions: 82
+    # Raised to 84 for the volume seed's two grounding steps: `prepare_perf_bases`
+    # runs before the seed migrator and `seed_perf_links` after it, so each has
+    # exactly one call site by design and inlining either would merge two
+    # different failure points into one function.
+    max_single_call_functions: 84
   STY-RUST-002:
     bounded_contexts: &bounded_contexts
       - asset

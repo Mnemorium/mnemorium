@@ -1,0 +1,115 @@
+---
+name: Mnemorium Pull Request
+
+on:
+  pull_request:
+    branches:
+      - main
+    types:
+      - opened
+      - edited
+      - synchronize
+      - reopened
+      - ready_for_review
+  merge_group:
+    types:
+      - checks_requested
+    branches:
+      - main
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: >-
+    ${{ github.workflow }}-${{
+    github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gatekeeper:
+    runs-on: ubuntu-slim
+    steps:
+      - uses: amannn/action-semantic-pull-request@48f256284bd46cdaab1048c3721360e808335d50  # v6
+        if: github.event_name == 'pull_request'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          types: |
+            feat
+            fix
+            refactor
+            perf
+            docs
+            test
+            build
+            ci
+            chore
+          scopes: |
+            domain
+            application
+            infrastructure
+            api
+            persistence
+            server
+            test-e2e
+            user
+            development
+            repo
+            config
+            agent
+            github
+            devenv
+            devops
+
+  betterleaks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - id: betterleaks
+        uses: dortort/betterleaks-action@cd0b905aa4befb8f42f8b1ab98150180c9e77515  # v0.1.0
+        with:
+          version: v1.8.1
+          scan-mode: git
+          config: .betterleaks.toml
+          fail-on-leak: true
+          validation: "false"
+          redact: true
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7
+        if: always()
+        with:
+          name: betterleaks-report
+          path: ${{ steps.betterleaks.outputs.report-path }}
+
+  ls-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ls-lint/action@a87c5eb4fb26d7af1bd0adba203dd1e76f7e94eb  # v2
+
+  rules:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0  # v7.1.0
+        with:
+          python-version: "3.14"
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1  # v7.1.0
+        with:
+          node-version: "24.19.0"
+      - name: Install rule-checking tools
+        run: |
+          pip install -r requirements.txt
+          pip install yq==3.4.3
+          npm install -g @ast-grep/cli@0.45.1
+      - name: Run rulebook checks
+        run: script/rule_enforcer.sh check --verbose

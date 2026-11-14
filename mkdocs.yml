@@ -29,6 +29,7 @@ nav:
   - Development:
       - Overview: development/Overview.md
       - Technical Design: development/TechnicalDesign.md
+      - Testing: development/Test.md
       - Glossary: development/Glossary.md
       - Use Cases: development/UseCases.md
 

@@ -16,6 +16,8 @@ openspec/
 .agents/
 .mkdocs.yml
 test/configuration/
+test/performance/node_modules/
+test/performance/generated/
 script/
 security/
 .ls-lint.yml

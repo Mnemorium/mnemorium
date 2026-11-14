@@ -476,7 +476,8 @@ the application orchestrates the deletion instead (`ARCH-004`; `PERS-020` states
 
 PR titles follow the [Conventional Commits v1.0.0](https://www.conventionalcommits.org/en/v1.0.0/) specification: the
 type at the start of the title determines the semantic version bump (see [Versioning](#versioning) below). The allowed
-types are enforced by the semantic PR gating job in `.github/workflows/ci.yml` (`amannn/action-semantic-pull-request`).
+types are enforced by the semantic PR gating job in `.github/workflows/pull-request.yml`
+(`amannn/action-semantic-pull-request`).
 
 ### Branch naming
 
@@ -505,9 +506,10 @@ Examples:
 
 ### Docs-only PRs
 
-A PR whose type is `docs` must only change documentation: files under `docs/`, any `*.md` file, `mkdocs.yml`, or image
-assets (`*.png` anywhere, or any file under `.github/assets/`). Anything else is rejected by the `docs-only` job in
-`.github/workflows/ci.yml`; use another type (for example `build` or `chore`) for tooling or dependency updates.
+A PR whose type is `docs` should only change documentation: files under `docs/`, any `*.md` file, `mkdocs.yml`, or image
+assets (`*.png` anywhere, or any file under `.github/assets/`). No CI job enforces the file set — it is a review
+convention, and a `docs` PR that also changes code or tooling makes its changelog entry and release notes misleading.
+Use another type (for example `build` or `chore`) for tooling or dependency updates.
 
 ### Scopes
 
@@ -556,8 +558,8 @@ When a release is needed, the release workflow (`.github/workflows/cd.yml`) runs
 ### Release process
 
 The release workflow (`.github/workflows/cd.yml`) runs when a pull request is merged into `main`. Before the merge, the
-merge queue validates the queued pull request(s) by running the required checks from `.github/workflows/ci.yml` on the
-`merge_group` event:
+merge queue validates the queued pull request(s) by running the required checks from `.github/workflows/ci.yml`,
+`.github/workflows/docs.yml` and `.github/workflows/pull-request.yml` on the `merge_group` event:
 
 ```puml
 @startuml

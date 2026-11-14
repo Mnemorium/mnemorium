@@ -1,0 +1,20 @@
+{
+  "name": "mnemorium-performance",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "client": "../../script/performance.sh client",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "format:check": "prettier --check ."
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@types/k6": "2.3.1",
+    "eslint": "10.15.0",
+    "prettier": "3.8.3",
+    "typescript": "5.9.3",
+    "typescript-eslint": "8.72.2"
+  }
+}
