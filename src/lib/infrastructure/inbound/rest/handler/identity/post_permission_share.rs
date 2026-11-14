@@ -39,6 +39,12 @@ pub(crate) struct ShareRequest {
     responses(
         (status = OK, body = GrantBody, content_type = "application/hal+json", description = "Grant stored"),
         (
+            status = BAD_REQUEST,
+            body = ErrorBody,
+            content_type = "application/hal+json",
+            description = "Invalid resource identifier"
+        ),
+        (
             status = UNAUTHORIZED,
             body = ErrorBody,
             content_type = "application/hal+json",
@@ -57,10 +63,16 @@ pub(crate) struct ShareRequest {
             description = "Unknown resource"
         ),
         (
+            status = UNSUPPORTED_MEDIA_TYPE,
+            body = ErrorBody,
+            content_type = "application/hal+json",
+            description = "Unsupported request media type"
+        ),
+        (
             status = UNPROCESSABLE_ENTITY,
             body = ErrorBody,
             content_type = "application/hal+json",
-            description = "Invalid grant representation"
+            description = "Unknown resource kind, principal or role, or invalid grant representation"
         ),
         (
             status = INTERNAL_SERVER_ERROR,

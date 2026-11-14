@@ -38,6 +38,12 @@ pub(crate) struct PutPermissionRequest {
     responses(
         (status = OK, body = ResourcePermissionBody, content_type = "application/hal+json", description = "Permission replaced"),
         (
+            status = BAD_REQUEST,
+            body = ErrorBody,
+            content_type = "application/hal+json",
+            description = "Invalid resource identifier"
+        ),
+        (
             status = UNAUTHORIZED,
             body = ErrorBody,
             content_type = "application/hal+json",
@@ -56,10 +62,16 @@ pub(crate) struct PutPermissionRequest {
             description = "Unknown resource"
         ),
         (
+            status = UNSUPPORTED_MEDIA_TYPE,
+            body = ErrorBody,
+            content_type = "application/hal+json",
+            description = "Unsupported request media type"
+        ),
+        (
             status = UNPROCESSABLE_ENTITY,
             body = ErrorBody,
             content_type = "application/hal+json",
-            description = "Invalid grant set"
+            description = "Unknown resource kind, visibility or invalid grant set"
         ),
         (
             status = INTERNAL_SERVER_ERROR,

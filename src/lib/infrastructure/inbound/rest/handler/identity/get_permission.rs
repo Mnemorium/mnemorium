@@ -115,11 +115,16 @@ pub(crate) struct PermissionQuery {
 
 impl PermissionQuery {
     /// Turn the query into its use-case command.
+    ///
+    /// A request that names no user describes the caller, so `user_id` is
+    /// optional. An empty value for `action` or `resource_kind` is absent.
     fn into_command(self, caller_id: NumericID) -> Result<GetPermissionSummaryCommand, ApiError> {
-        let user_id = self
-            .user_id
-            .ok_or_else(|| ApiError::BadRequest("user_id is required".to_owned()))?;
-        let decision = match (self.resource_kind, self.resource_id, self.action) {
+        let user_id = self.user_id.unwrap_or(caller_id);
+        let decision = match (
+            non_blank(self.resource_kind),
+            self.resource_id,
+            non_blank(self.action),
+        ) {
             (None, None, None) => None,
             (Some(kind), Some(id), Some(action)) => Some(PermissionDecisionQuery {
                 action: parse_action(&action)?,
@@ -137,6 +142,11 @@ impl PermissionQuery {
             user_id,
         })
     }
+}
+
+/// Treat an empty or blank query value as absent.
+fn non_blank(value: Option<String>) -> Option<String> {
+    value.filter(|inner| !inner.trim().is_empty())
 }
 
 /// Return the `_links.self` target of a user's summary.
@@ -182,6 +192,12 @@ pub(crate) fn summary_href(user_id: NumericID) -> String {
             body = ErrorBody,
             content_type = "application/hal+json",
             description = "Unknown user or resource"
+        ),
+        (
+            status = UNPROCESSABLE_ENTITY,
+            body = ErrorBody,
+            content_type = "application/hal+json",
+            description = "Unknown action or resource kind"
         ),
         (
             status = INTERNAL_SERVER_ERROR,

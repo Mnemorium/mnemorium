@@ -24,6 +24,12 @@ use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody, hal_js
     responses(
         (status = OK, body = ResourcePermissionBody, content_type = "application/hal+json", description = "Permission returned"),
         (
+            status = BAD_REQUEST,
+            body = ErrorBody,
+            content_type = "application/hal+json",
+            description = "Invalid resource identifier"
+        ),
+        (
             status = UNAUTHORIZED,
             body = ErrorBody,
             content_type = "application/hal+json",
@@ -40,6 +46,12 @@ use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody, hal_js
             body = ErrorBody,
             content_type = "application/hal+json",
             description = "Unknown resource"
+        ),
+        (
+            status = UNPROCESSABLE_ENTITY,
+            body = ErrorBody,
+            content_type = "application/hal+json",
+            description = "Unknown resource kind"
         ),
         (
             status = INTERNAL_SERVER_ERROR,

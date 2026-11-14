@@ -49,6 +49,12 @@ use crate::infrastructure::inbound::rest::{ApiError, AppState, ErrorBody};
             description = "Unknown resource or grant"
         ),
         (
+            status = UNPROCESSABLE_ENTITY,
+            body = ErrorBody,
+            content_type = "application/hal+json",
+            description = "Unknown resource kind"
+        ),
+        (
             status = INTERNAL_SERVER_ERROR,
             body = ErrorBody,
             content_type = "application/hal+json",

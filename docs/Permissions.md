@@ -243,14 +243,16 @@ Every permission endpoint lives under `/api/v1/identity`. Nothing permission-rel
 
 | Method   | Route                                                        | Who may call it                                |
 | -------- | ------------------------------------------------------------ | ---------------------------------------------- |
-| `GET`    | `/identity/permission?user_id={id}`                          | Self, or `ManagePermissions` on that `User`    |
+| `GET`    | `/identity/permission[?user_id={id}]`                        | Self, or `ManagePermissions` on that `User`    |
 | `GET`    | `/identity/permission/resource/{kind}/{id}`                  | `Share` or `ManagePermissions` on the resource |
 | `PUT`    | `/identity/permission/resource/{kind}/{id}`                  | `ManagePermissions` on the resource            |
 | `POST`   | `/identity/permission/resource/{kind}/{id}/share`            | `Share` or `ManagePermissions` on the resource |
 | `DELETE` | `/identity/permission/resource/{kind}/{id}/share/{grant_id}` | `Share` or `ManagePermissions` on the resource |
 
-The user summary returns the effective permissions. Add `resource_kind`, `resource_id` and `action` to receive the
-explanation for one decision; the full explanation is returned only to a caller holding `ManagePermissions`.
+The user summary returns the effective permissions. Omit `user_id` to describe the caller. Add `resource_kind`,
+`resource_id` and `action` together to receive the explanation for one decision; the full explanation is returned only
+to a caller holding `ManagePermissions`. `resource_kind` and `action` take their values from the closed vocabulary the
+specification publishes.
 
 `PUT` replaces the visibility and the complete **user** grant set atomically. Seeded role grants are never edited here.
 `POST /share` accepts only `Viewer` and `Downloader` `Allow` grants; it cannot escalate or deny.
