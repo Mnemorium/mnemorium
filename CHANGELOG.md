@@ -1,3 +1,9 @@
+## [0.39.0](https://github.com/Mnemorium/mnemorium/compare/v0.38.0...v0.39.0) (2026-11-14)
+
+### Features
+
+* **api:** replace permission scopes with the resource-and-grant engine ([#410](https://github.com/Mnemorium/mnemorium/issues/410)) ([5a5b399](https://github.com/Mnemorium/mnemorium/commit/5a5b399cb27c59718770c3491c9713dfb2a95fcb))
+
 ## [0.38.0](https://github.com/Mnemorium/mnemorium/compare/v0.37.0...v0.38.0) (2026-11-10)
 
 ### Features
