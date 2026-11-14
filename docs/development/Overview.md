@@ -558,8 +558,8 @@ When a release is needed, the release workflow (`.github/workflows/cd.yml`) runs
 ### Release process
 
 The release workflow (`.github/workflows/cd.yml`) runs when a pull request is merged into `main`. Before the merge, the
-merge queue validates the queued pull request(s) by running the required checks from `.github/workflows/ci.yml`,
-`.github/workflows/docs.yml` and `.github/workflows/pull-request.yml` on the `merge_group` event:
+merge queue validates the queued pull request(s) by running the required checks from the per-area workflows under
+`.github/workflows/`, including `docs.yml` and `pull-request.yml`, on the `merge_group` event:
 
 ```puml
 @startuml

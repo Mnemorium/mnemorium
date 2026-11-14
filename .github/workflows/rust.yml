@@ -165,9 +165,9 @@ jobs:
         run: pip install semgrep==1.172.0
       - name: Scan
         run: |
-          # `--severity ERROR` keeps this gate identical to the ci.yml scan:
-          # the repository rules mark a finding ERROR to fail CI and WARNING to
-          # report only, and `--error` alone would fail on the warnings.
+          # `--severity ERROR` keeps this gate to errors only: the repository
+          # rules mark a finding ERROR to fail CI and WARNING to report only,
+          # and `--error` alone would fail on the warnings.
           semgrep scan \
             --config p/rust \
             --config p/security-audit \
