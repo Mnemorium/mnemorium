@@ -1,9 +1,13 @@
 #!/usr/bin/env bash
-# Emit the volume library every `test-seed` boot applies.
+# Emit the volume library a performance `test-seed` boot applies.
 #
-# The three files under `test/seed/sql` are committed, so no suite needs this
+# The three files under `test/seed/perf` are committed, so no suite needs this
 # script to boot a server; it exists so the volumes can be re-derived from one
 # place. Re-running it produces byte-identical files.
+#
+# The directory is separate from `test/seed/api` on purpose: only
+# `script/performance.sh` sets `MNEMORIUM_SEED_PROFILE=perf`, so the API
+# fixture the system suite and Schemathesis use stays small.
 #
 # The dataset is deliberately smaller than the first proposal in
 # `.opencode/plan/performance-testing-plan.md`: the committed SQL and the added
@@ -36,7 +40,7 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 readonly SCRIPT_DIR
 REPO_ROOT="$(cd -- "${SCRIPT_DIR}/.." && pwd)"
 readonly REPO_ROOT
-readonly OUTPUT_DIR="${REPO_ROOT}/test/seed/sql"
+readonly OUTPUT_DIR="${REPO_ROOT}/test/seed/perf"
 
 # Volumes. Every one is a lever: shrink here, re-run, commit.
 readonly GALLERIES=1000
@@ -234,7 +238,7 @@ generate_galleries() {
 		printf "    child_kind, effect\n"
 		printf ")\nVALUES\n"
 		printf "('\''USER'\'', %d, NULL, %d, '\''DOWNLOADER'\'', '\''ALL'\'', '\''ALLOW'\'');\n", owner, image_file_res_base
-	}' >"${OUTPUT_DIR}/0005_library_volume_galleries.sql"
+	}' >"${OUTPUT_DIR}/0001_library_volume_galleries.sql"
 }
 
 generate_music() {
@@ -345,7 +349,7 @@ generate_music() {
 			printf "(%d, %d, '\''ALBUM_MEMBER'\'', %d)", album_res_base + int(t / tracks_per_album), recording_res_base + t, t % tracks_per_album
 			close_row(t == tracks - 1)
 		}
-	}' >"${OUTPUT_DIR}/0006_library_volume_music.sql"
+	}' >"${OUTPUT_DIR}/0002_library_volume_music.sql"
 }
 
 generate_video() {
@@ -440,14 +444,14 @@ generate_video() {
 		printf "    child_kind, effect\n"
 		printf ")\nVALUES\n"
 		printf "('\''USER'\'', %d, NULL, %d, '\''DOWNLOADER'\'', '\''ALL'\'', '\''ALLOW'\'');\n", owner, movie_file_res_base
-	}' >"${OUTPUT_DIR}/0007_library_volume_video.sql"
+	}' >"${OUTPUT_DIR}/0003_library_volume_video.sql"
 }
 
 generate_galleries
 generate_music
 generate_video
 
-printf 'Wrote %s/{0005,0006,0007}_*.sql (%s files, %s media rows)\n' \
+printf 'Wrote %s/{0001,0002,0003}_*.sql (%s files, %s media rows)\n' \
 	"${OUTPUT_DIR}" \
 	"$((TOTAL_IMAGES + TOTAL_TRACKS + TOTAL_VIDEOS))" \
 	"$((TOTAL_IMAGES + TOTAL_TRACKS + TOTAL_VIDEOS))"

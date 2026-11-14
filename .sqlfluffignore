@@ -4,6 +4,6 @@
 # is byte-stable, and the seed unit test applies the files and checks every row
 # they insert, so formatting lint on them would only duplicate that proof at
 # minutes per run. Hand-written SQL stays fully linted.
-test/seed/sql/0005_library_volume_galleries.sql
-test/seed/sql/0006_library_volume_music.sql
-test/seed/sql/0007_library_volume_video.sql
+test/seed/perf/0001_library_volume_galleries.sql
+test/seed/perf/0002_library_volume_music.sql
+test/seed/perf/0003_library_volume_video.sql

@@ -2948,10 +2948,11 @@ mechanism the container cannot observe.
 
 ### Seed data
 
-`test/seed/sql` holds the SQL scripts and `test/seed/media` the media bytes the `test-seed` Cargo feature applies to a
-developer or fixture datastore. The feature is off by default and is the only switch: a build without it neither
-compiles the seed module nor runs the scripts, so the shipped image is unaffected (`ARG CARGO_FEATURES=""` in the
-`Dockerfile`).
+`test/seed/api` holds the demo fixture, `test/seed/perf` the volume library, and `test/seed/media` the media bytes the
+`test-seed` Cargo feature applies to a developer or fixture datastore. The feature is off by default and is the switch
+that compiles the seed module; which fixture it applies is `MNEMORIUM_SEED_PROFILE`, whose default is the small demo
+library. A build without the feature neither compiles the seed module nor runs the scripts, so the shipped image is
+unaffected (`ARG CARGO_FEATURES=""` in the `Dockerfile`).
 
 The scripts mirror the migration mechanism: they are embedded at compile time and applied once through a second `sqlx`
 migrator whose history table is `_sqlx_seeds`. They are one-way -- no `.down.sql` -- because seeded data is disposable.

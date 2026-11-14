@@ -233,6 +233,7 @@ start_sut() {
 		--memory "${MEMORY}" \
 		--memory-swap "${MEMORY}" \
 		--user "$(id -u):$(id -g)" \
+		-e MNEMORIUM_SEED_PROFILE=perf \
 		-p "127.0.0.1:${PORT}:4080" \
 		-v "${log_dir}:/app" \
 		"${IMAGE}" >/dev/null
@@ -463,7 +464,7 @@ start_flamegraph_sut() {
 		cd "${WORK_DIR}"
 		# 99 Hz: cargo-flamegraph hardcodes `--call-graph dwarf,64000`, and at its
 		# 997 Hz default a busy 90 s read capture writes about 90 GiB.
-		CARGO_PROFILE_RELEASE_DEBUG=1 cargo flamegraph \
+		MNEMORIUM_SEED_PROFILE=perf CARGO_PROFILE_RELEASE_DEBUG=1 cargo flamegraph \
 			--freq 99 \
 			--manifest-path "${REPO_ROOT}/Cargo.toml" \
 			--bin server \

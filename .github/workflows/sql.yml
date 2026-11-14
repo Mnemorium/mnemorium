@@ -32,4 +32,4 @@ jobs:
       - name: Install sqlfluff
         run: pip install -r requirements.txt
       - name: Lint SQL
-        run: sqlfluff lint --dialect sqlite migrations test/seed/sql
+        run: sqlfluff lint --dialect sqlite migrations test/seed/api test/seed/perf
