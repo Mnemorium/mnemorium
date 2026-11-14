@@ -31,7 +31,7 @@ jobs:
   gatekeeper:
     runs-on: ubuntu-slim
     steps:
-      - uses: amannn/action-semantic-pull-request@48f256284bd46cdaab1048c3721360e808335d50  # v6
+      - uses: amannn/action-semantic-pull-request@2252a14e810aa9b85c2d560bd7070c802206ecf6  # v6
         if: github.event_name == 'pull_request'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -308,7 +308,7 @@ jobs:
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0  # v2
         with:
           cache-on-failure: true
-      - uses: taiki-e/install-action@c509219cf42fba86913069efd0ade2458c59337b  # v2
+      - uses: taiki-e/install-action@cfdb7ed4ccc7c7dce37759eae89dc5674b469b39  # v2
         with:
           # cargo-machete is pinned to the version devenv/nixpkgs ships
           # (`pkgs.cargo-machete`), so the local hook and this job agree.
@@ -408,7 +408,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8  # v1
         with:
           toolchain: "1.98.0"
-      - uses: taiki-e/install-action@c509219cf42fba86913069efd0ade2458c59337b  # v2
+      - uses: taiki-e/install-action@cfdb7ed4ccc7c7dce37759eae89dc5674b469b39  # v2
         with:
           # cargo-about is pinned to the version devenv/nixpkgs ships: the
           # notices are byte-compared, so both environments must run the same
@@ -492,7 +492,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false
-      - uses: taiki-e/install-action@c509219cf42fba86913069efd0ade2458c59337b  # v2
+      - uses: taiki-e/install-action@cfdb7ed4ccc7c7dce37759eae89dc5674b469b39  # v2
         with:
           tool: shellcheck,shfmt
       - name: ShellCheck
@@ -508,7 +508,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false
-      - uses: cachix/install-nix-action@75c75c31ebece974e48ebc36b4ad125bd97bd97b  # v31
+      - uses: cachix/install-nix-action@91f6a0f59e94dfb2cfed0f4000f36a68ead1d20c  # v31
       - name: nixfmt
         # Resolve nixfmt from the revision devenv.lock pins, so the formatter
         # matches the development environment and cannot drift. The repository
@@ -536,7 +536,7 @@ jobs:
         with:
           persist-credentials: false
       - uses: ls-lint/action@a87c5eb4fb26d7af1bd0adba203dd1e76f7e94eb  # v2
-      - uses: taiki-e/install-action@c509219cf42fba86913069efd0ade2458c59337b  # v2
+      - uses: taiki-e/install-action@cfdb7ed4ccc7c7dce37759eae89dc5674b469b39  # v2
         with:
           tool: taplo
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0  # v7.1.0
